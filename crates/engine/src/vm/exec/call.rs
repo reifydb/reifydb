@@ -9,7 +9,7 @@ use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	interface::catalog::{
 		policy::{CallableOp, PolicyTargetType},
-		procedure::{Procedure, ProcedureParam},
+		procedure::{Procedure, ProcedureParam, RunAs},
 	},
 	internal_error,
 	value::{
@@ -47,6 +47,7 @@ use reifydb_value::{
 		column_view::ColumnView,
 		constraint::TypeConstraint,
 		frame::frame::Frame,
+		identity::IdentityId,
 		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
 		value_type::ValueType,
 	},
@@ -745,13 +746,17 @@ impl<'a> Vm<'a> {
 		} else {
 			("default".to_string(), func_name.to_string())
 		};
-		PolicyEvaluator::new(ctx.services, &self.symbols).enforce_identity_policy(
+		let prev = ctx.tx.identity();
+		ctx.tx.set_identity(self.identity);
+		let checked = PolicyEvaluator::new(ctx.services, &self.symbols).enforce_identity_policy(
 			ctx.tx,
 			&pol_ns,
 			&pol_name,
 			CallableOp::Call,
 			PolicyTargetType::Procedure,
-		)?;
+		);
+		ctx.tx.set_identity(prev);
+		checked?;
 
 		match proc_def {
 			Procedure::InProcess {
@@ -809,29 +814,18 @@ impl<'a> Vm<'a> {
 			Procedure::Rql {
 				body,
 				params,
+				run_as,
 				..
 			}
 			| Procedure::Test {
 				body,
 				params,
+				run_as,
 				..
 			} => {
 				let source = body.clone();
 				let params = params.clone();
-				let compiled = ctx.services.compiler.compile_with_policy(
-					ctx.tx,
-					&source,
-					inject_from_policies,
-				)?;
-				match compiled {
-					CompilationResult::Ready(compiled_list) => {
-						self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;
-						Ok(())
-					}
-					CompilationResult::Incremental(_) => Err(internal_error!(
-						"Procedure body should not require incremental compilation"
-					)),
-				}
+				self.run_body_as(ctx, *run_as, &source, &params, args, name)
 			}
 		}
 	}
@@ -857,11 +851,53 @@ impl<'a> Vm<'a> {
 
 		let source = proc_def.body().unwrap_or_default().to_string();
 		let params = proc_def.params().to_vec();
-		let compiled = ctx.services.compiler.compile_with_policy(ctx.tx, &source, inject_from_policies)?;
+		let run_as = proc_def
+			.run_as()
+			.ok_or_else(|| internal_error!("test procedure {} carries no run_as", func_name))?;
+		self.run_body_as(ctx, run_as, &source, &params, args, name)
+	}
+
+	fn run_body_as(
+		&mut self,
+		ctx: CallContext<'_, '_>,
+		run_as: RunAs,
+		source: &str,
+		params: &[ProcedureParam],
+		args: Vec<Value>,
+		name: &Fragment,
+	) -> Result<()> {
+		let target = match run_as {
+			RunAs::System => IdentityId::system(),
+			RunAs::Caller => self.identity,
+		};
+		let prev = ctx.tx.identity();
+		ctx.tx.set_identity(target);
+		let result = self.compile_and_execute_body(
+			CallContext {
+				services: ctx.services,
+				tx: &mut *ctx.tx,
+			},
+			source,
+			params,
+			args,
+			name,
+		);
+		ctx.tx.set_identity(prev);
+		result
+	}
+
+	fn compile_and_execute_body(
+		&mut self,
+		ctx: CallContext<'_, '_>,
+		source: &str,
+		params: &[ProcedureParam],
+		args: Vec<Value>,
+		name: &Fragment,
+	) -> Result<()> {
+		let compiled = ctx.services.compiler.compile_with_policy(ctx.tx, source, inject_from_policies)?;
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
-				self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;
-				Ok(())
+				self.execute_procedure_body(ctx, &compiled_list, params, args, name)
 			}
 			CompilationResult::Incremental(_) => {
 				Err(internal_error!("Procedure body should not require incremental compilation"))

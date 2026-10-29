@@ -44,6 +44,21 @@ pub(crate) fn dispatch(
 	params: &Params,
 	dispatch_depth: u8,
 ) -> Result<RecordBatch> {
+	let prev = tx.identity();
+	tx.set_identity(vm.identity);
+	let result = fire_handlers(vm, services, tx, plan, params, dispatch_depth);
+	tx.set_identity(prev);
+	result
+}
+
+fn fire_handlers(
+	vm: &mut Vm,
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+	plan: DispatchNode,
+	params: &Params,
+	dispatch_depth: u8,
+) -> Result<RecordBatch> {
 	if dispatch_depth >= MAX_DISPATCH_DEPTH {
 		return Err(internal_error!(
 			"Max dispatch depth ({}) exceeded for event variant '{}'",

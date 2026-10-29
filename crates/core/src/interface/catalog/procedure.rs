@@ -299,6 +299,20 @@ impl Procedure {
 		}
 	}
 
+	pub fn run_as(&self) -> Option<RunAs> {
+		match self {
+			Procedure::Rql {
+				run_as,
+				..
+			}
+			| Procedure::Test {
+				run_as,
+				..
+			} => Some(*run_as),
+			_ => None,
+		}
+	}
+
 	pub fn body(&self) -> Option<&str> {
 		match self {
 			Procedure::Rql {
