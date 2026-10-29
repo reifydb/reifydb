@@ -115,7 +115,7 @@ impl SubscriptionSubsystem {
 		);
 
 		let SubscriptionQueueFloor(floor) = floor;
-		let start = queue.released().0;
+		let start = engine.current_version()?;
 		let reader_ref = Arc::new(OnceLock::<ActorRef<SubscriptionReaderMessage>>::new());
 		let wake_ref = reader_ref.clone();
 		floor.adopt(start, move || {
