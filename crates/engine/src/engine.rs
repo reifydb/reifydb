@@ -24,7 +24,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark};
 use reifydb_core::{
-	commit::watermark::CdcConsumerWatermark,
+	commit::{queue::CommitQueue, watermark::CdcConsumerWatermark},
 	common::CommitVersion,
 	durability::Durability,
 	error::diagnostic::engine::read_only_rejection,
@@ -657,6 +657,11 @@ impl StandardEngine {
 		ActorRef<M>: Send + Sync,
 	{
 		self.executor.ioc.try_resolve::<ActorRef<M>>()
+	}
+
+	#[inline]
+	pub fn commit_released(&self) -> CommitVersion {
+		self.executor.ioc.resolve::<CommitQueue>().expect("CommitQueue must be registered").released_through()
 	}
 
 	#[inline]

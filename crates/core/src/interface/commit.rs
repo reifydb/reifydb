@@ -19,11 +19,11 @@ use crate::{
 	common::{ChangeVersion, CommitVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{catalog::object::ObjectId, change::Change},
-	key::cdc::should_exclude_from_cdc,
+	key::tag::KeyTag,
 };
 
 pub fn flow_relevant(delta: &Delta) -> bool {
-	!should_exclude_from_cdc(delta.key().kind())
+	!is_commit_excluded(delta.key().kind())
 		&& !matches!(
 			delta,
 			Delta::Remove {
@@ -31,6 +31,26 @@ pub fn flow_relevant(delta: &Delta) -> bool {
 				..
 			}
 		)
+}
+
+pub fn is_commit_excluded(kind: KeyTag) -> bool {
+	matches!(
+		kind,
+		KeyTag::OperatorState
+			| KeyTag::CdcConsumer | KeyTag::Metric
+			| KeyTag::SystemSequence
+			| KeyTag::RowSequence | KeyTag::ColumnSequence
+			| KeyTag::SystemVersion
+			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
+			| KeyTag::RingBufferOrder
+			| KeyTag::PartitionedRingBufferOrder
+			| KeyTag::RingBufferFree
+			| KeyTag::Index | KeyTag::ConfigStorage
+			| KeyTag::Token | KeyTag::VersionEpoch
+			| KeyTag::QueuePartition
+			| KeyTag::QueueItemState
+			| KeyTag::QueueDue | KeyTag::QueueKeyActive
+	)
 }
 
 #[derive(Debug)]
@@ -125,4 +145,474 @@ pub trait CommitFloor: Send + Sync + 'static {
 pub struct FlowWal {
 	pub log: Arc<dyn CommitLog>,
 	pub floor: Arc<dyn CommitFloor>,
+}
+
+#[cfg(test)]
+mod exclusion_tests {
+	use super::*;
+
+	#[test]
+	fn test_all_key_kinds_have_explicit_exclusion_decision() {
+		// The exhaustive match forces every new KeyTag to make a commit exclusion decision instead of
+		// silently defaulting into the log.
+
+		let test_variant = KeyTag::Row;
+
+		match test_variant {
+			KeyTag::Namespace => {}
+			KeyTag::Table => {}
+			KeyTag::Row => {}
+			KeyTag::NamespaceTable => {}
+			KeyTag::SystemSequence => {}
+			KeyTag::Columns => {}
+			KeyTag::Column => {}
+			KeyTag::RowSequence => {}
+			KeyTag::ColumnProperty => {}
+			KeyTag::SystemVersion => {}
+			KeyTag::Index => {}
+			KeyTag::IndexEntry => {}
+			KeyTag::ColumnSequence => {}
+			KeyTag::CdcConsumer => {}
+			KeyTag::View => {}
+			KeyTag::NamespaceView => {}
+			KeyTag::PrimaryKey => {}
+			KeyTag::OperatorState => {}
+			KeyTag::RingBuffer => {}
+			KeyTag::NamespaceRingBuffer => {}
+			KeyTag::RingBufferMetadata => {}
+			KeyTag::RingBufferOrder => {}
+			KeyTag::PartitionedRingBufferOrder => {}
+			KeyTag::RingBufferFree => {}
+			KeyTag::Flow => {}
+			KeyTag::NamespaceFlow => {}
+			KeyTag::Operator => {}
+			KeyTag::OperatorByFlow => {}
+			KeyTag::FlowEdge => {}
+			KeyTag::FlowEdgeByFlow => {}
+			KeyTag::OutputFrontier => {}
+			KeyTag::Dictionary => {}
+			KeyTag::DictionaryEntry => {}
+			KeyTag::DictionaryEntryIndex => {}
+			KeyTag::NamespaceDictionary => {}
+			KeyTag::Metric => {}
+			KeyTag::FlowVersion => {}
+			KeyTag::RowShape => {}
+			KeyTag::SumType => {}
+			KeyTag::NamespaceSumType => {}
+			KeyTag::RowShapeField => {}
+			KeyTag::Handler => {}
+			KeyTag::NamespaceHandler => {}
+			KeyTag::VariantHandler => {}
+			KeyTag::Series => {}
+			KeyTag::NamespaceSeries => {}
+			KeyTag::SeriesPartitionMetadata => {}
+			KeyTag::RingBufferEviction => {}
+			KeyTag::ViewEviction => {}
+			KeyTag::TableEviction => {}
+			KeyTag::SeriesEviction => {}
+			KeyTag::Identity => {}
+			KeyTag::Role => {}
+			KeyTag::GrantedRole => {}
+			KeyTag::Policy => {}
+			KeyTag::PolicyOp => {}
+			KeyTag::Migration => {}
+			KeyTag::Authentication => {}
+			KeyTag::AuthenticationMethod => {}
+			KeyTag::MigrationEvent => {}
+			KeyTag::ConfigStorage => {}
+			KeyTag::Token => {}
+			KeyTag::Source => {}
+			KeyTag::NamespaceSource => {}
+			KeyTag::Sink => {}
+			KeyTag::NamespaceSink => {}
+			KeyTag::WindowedViewGroup => {}
+			KeyTag::NamespaceWindowedViewGroup => {}
+			KeyTag::RowSettings => {}
+			KeyTag::Procedure => {}
+			KeyTag::NamespaceProcedure => {}
+			KeyTag::ProcedureParam => {}
+			KeyTag::Binding => {}
+			KeyTag::OperatorRetention => {}
+			KeyTag::NamespaceBinding => {}
+			KeyTag::ColumnBlock => {}
+			KeyTag::SeriesColumnBlock => {}
+			KeyTag::TableColumnBlock => {}
+			KeyTag::IdentityAttribute => {}
+			KeyTag::IdentityAttributeValue => {}
+			KeyTag::PartitionedRow => {}
+			KeyTag::PartitionedSeriesRow => {}
+			KeyTag::Partition => {}
+			KeyTag::Queue => {}
+			KeyTag::NamespaceQueue => {}
+			KeyTag::QueueDeduplication => {}
+			KeyTag::QueuePartition => {}
+			KeyTag::QueueItemState => {}
+			KeyTag::QueueDue => {}
+			KeyTag::QueueAttempt => {}
+			KeyTag::QueueKeyActive => {}
+			KeyTag::VersionEpoch => {}
+			KeyTag::SeriesRow => {}
+			KeyTag::SortedViewRow => {}
+			KeyTag::PartitionedSortedViewRow => {}
+			KeyTag::Relationship => {} /* When adding a new variant, add it here.
+			                            * The compiler will error if you forget.
+			                            * Then add a test and update is_commit_excluded() if
+			                            * needed. */
+		}
+	}
+
+	#[test]
+	fn test_sorted_view_rows_reach_the_cdc_log() {
+		// A sorted view's rows carry their own kind, and a subscriber that never sees them reads a
+		// view that silently stops changing.
+		assert!(!is_commit_excluded(KeyTag::SortedViewRow));
+		assert!(!is_commit_excluded(KeyTag::PartitionedSortedViewRow));
+	}
+
+	#[test]
+	fn test_exclude_operator_state() {
+		assert!(is_commit_excluded(KeyTag::OperatorState));
+	}
+
+	#[test]
+	fn test_exclude_cdc_consumer() {
+		assert!(is_commit_excluded(KeyTag::CdcConsumer));
+	}
+
+	#[test]
+	fn test_exclude_storage_tracker() {
+		assert!(is_commit_excluded(KeyTag::Metric));
+	}
+
+	#[test]
+	fn test_exclude_system_sequence() {
+		assert!(is_commit_excluded(KeyTag::SystemSequence));
+	}
+
+	#[test]
+	fn test_exclude_row_sequence() {
+		assert!(is_commit_excluded(KeyTag::RowSequence));
+	}
+
+	#[test]
+	fn test_exclude_column_sequence() {
+		assert!(is_commit_excluded(KeyTag::ColumnSequence));
+	}
+
+	#[test]
+	fn test_exclude_system_version() {
+		assert!(is_commit_excluded(KeyTag::SystemVersion));
+	}
+
+	#[test]
+	fn test_exclude_transaction_version() {}
+
+	#[test]
+	fn test_exclude_ring_buffer_metadata() {
+		assert!(is_commit_excluded(KeyTag::RingBufferMetadata));
+	}
+
+	#[test]
+	fn test_exclude_index() {
+		assert!(is_commit_excluded(KeyTag::Index));
+	}
+
+	#[test]
+	fn test_include_namespace() {
+		assert!(!is_commit_excluded(KeyTag::Namespace));
+	}
+
+	#[test]
+	fn test_include_table() {
+		assert!(!is_commit_excluded(KeyTag::Table));
+	}
+
+	#[test]
+	fn test_include_row() {
+		assert!(!is_commit_excluded(KeyTag::Row));
+	}
+
+	#[test]
+	fn test_include_series_row() {
+		// Series rows rode into the log under KeyTag::Row, so their own kind must keep them there.
+		assert!(!is_commit_excluded(KeyTag::SeriesRow));
+	}
+
+	#[test]
+	fn test_include_partitioned_row() {
+		assert!(!is_commit_excluded(KeyTag::PartitionedRow));
+	}
+
+	#[test]
+	fn test_include_partition() {
+		assert!(!is_commit_excluded(KeyTag::Partition));
+	}
+
+	#[test]
+	fn test_include_namespace_table() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceTable));
+	}
+
+	#[test]
+	fn test_include_columns() {
+		assert!(!is_commit_excluded(KeyTag::Columns));
+	}
+
+	#[test]
+	fn test_include_column() {
+		assert!(!is_commit_excluded(KeyTag::Column));
+	}
+
+	#[test]
+	fn test_include_column_property() {
+		assert!(!is_commit_excluded(KeyTag::ColumnProperty));
+	}
+
+	#[test]
+	fn test_include_index_entry() {
+		assert!(!is_commit_excluded(KeyTag::IndexEntry));
+	}
+
+	#[test]
+	fn test_include_view() {
+		assert!(!is_commit_excluded(KeyTag::View));
+	}
+
+	#[test]
+	fn test_include_namespace_view() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceView));
+	}
+
+	#[test]
+	fn test_include_primary_key() {
+		assert!(!is_commit_excluded(KeyTag::PrimaryKey));
+	}
+
+	#[test]
+	fn test_include_ring_buffer() {
+		assert!(!is_commit_excluded(KeyTag::RingBuffer));
+	}
+
+	#[test]
+	fn test_include_namespace_ring_buffer() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceRingBuffer));
+	}
+
+	#[test]
+	fn test_include_queue() {
+		assert!(!is_commit_excluded(KeyTag::Queue));
+	}
+
+	#[test]
+	fn test_include_namespace_queue() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceQueue));
+	}
+
+	#[test]
+	fn test_include_queue_deduplication() {
+		assert!(!is_commit_excluded(KeyTag::QueueDeduplication));
+	}
+
+	#[test]
+	fn test_exclude_queue_partition() {
+		assert!(is_commit_excluded(KeyTag::QueuePartition));
+	}
+
+	#[test]
+	fn test_exclude_queue_item_state() {
+		assert!(is_commit_excluded(KeyTag::QueueItemState));
+	}
+
+	#[test]
+	fn test_exclude_queue_due() {
+		assert!(is_commit_excluded(KeyTag::QueueDue));
+	}
+
+	#[test]
+	fn test_exclude_queue_key_active() {
+		assert!(is_commit_excluded(KeyTag::QueueKeyActive));
+	}
+
+	#[test]
+	fn test_include_queue_attempt() {
+		// Attempt records are the durable audit trail of what a worker reported, not internal
+		// scheduling churn. Excluding them would make every ack invisible to subscribers and
+		// to any downstream view built on effect outcomes.
+		assert!(!is_commit_excluded(KeyTag::QueueAttempt));
+	}
+
+	#[test]
+	fn test_include_operator_retention() {
+		assert!(!is_commit_excluded(KeyTag::OperatorRetention));
+	}
+
+	#[test]
+	fn test_include_flow() {
+		assert!(!is_commit_excluded(KeyTag::Flow));
+	}
+
+	#[test]
+	fn test_include_namespace_flow() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceFlow));
+	}
+
+	#[test]
+	fn test_include_operator() {
+		assert!(!is_commit_excluded(KeyTag::Operator));
+	}
+
+	#[test]
+	fn test_include_operator_by_flow() {
+		assert!(!is_commit_excluded(KeyTag::OperatorByFlow));
+	}
+
+	#[test]
+	fn test_include_flow_edge() {
+		assert!(!is_commit_excluded(KeyTag::FlowEdge));
+	}
+
+	#[test]
+	fn test_include_flow_edge_by_flow() {
+		assert!(!is_commit_excluded(KeyTag::FlowEdgeByFlow));
+	}
+
+	#[test]
+	fn test_include_dictionary() {
+		assert!(!is_commit_excluded(KeyTag::Dictionary));
+	}
+
+	#[test]
+	fn test_include_dictionary_entry() {
+		assert!(!is_commit_excluded(KeyTag::DictionaryEntry));
+	}
+
+	#[test]
+	fn test_include_dictionary_entry_index() {
+		assert!(!is_commit_excluded(KeyTag::DictionaryEntryIndex));
+	}
+
+	#[test]
+	fn test_include_namespace_dictionary() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceDictionary));
+	}
+
+	#[test]
+	fn test_include_handler() {
+		assert!(!is_commit_excluded(KeyTag::Handler));
+	}
+
+	#[test]
+	fn test_include_namespace_handler() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceHandler));
+	}
+
+	#[test]
+	fn test_include_variant_handler() {
+		assert!(!is_commit_excluded(KeyTag::VariantHandler));
+	}
+
+	#[test]
+	fn test_include_shape() {
+		assert!(!is_commit_excluded(KeyTag::RowShape));
+	}
+
+	#[test]
+	fn test_include_sum_type() {
+		assert!(!is_commit_excluded(KeyTag::SumType));
+	}
+
+	#[test]
+	fn test_include_namespace_sum_type() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceSumType));
+	}
+
+	#[test]
+	fn test_include_shape_field() {
+		assert!(!is_commit_excluded(KeyTag::RowShapeField));
+	}
+
+	#[test]
+	fn test_include_series() {
+		assert!(!is_commit_excluded(KeyTag::Series));
+	}
+
+	#[test]
+	fn test_include_namespace_series() {
+		assert!(!is_commit_excluded(KeyTag::NamespaceSeries));
+	}
+
+	#[test]
+	fn test_include_series_partition_metadata() {
+		assert!(!is_commit_excluded(KeyTag::SeriesPartitionMetadata));
+	}
+
+	#[test]
+	fn test_include_identity() {
+		assert!(!is_commit_excluded(KeyTag::Identity));
+	}
+
+	#[test]
+	fn test_include_role() {
+		assert!(!is_commit_excluded(KeyTag::Role));
+	}
+
+	#[test]
+	fn test_include_granted_role() {
+		assert!(!is_commit_excluded(KeyTag::GrantedRole));
+	}
+
+	#[test]
+	fn test_include_identity_attribute() {
+		assert!(!is_commit_excluded(KeyTag::IdentityAttribute));
+	}
+
+	#[test]
+	fn test_include_identity_attribute_value() {
+		assert!(!is_commit_excluded(KeyTag::IdentityAttributeValue));
+	}
+
+	#[test]
+	fn test_include_authentication() {
+		assert!(!is_commit_excluded(KeyTag::Authentication));
+	}
+
+	#[test]
+	fn test_include_authentication_method() {
+		assert!(!is_commit_excluded(KeyTag::AuthenticationMethod));
+	}
+
+	#[test]
+	fn test_include_policy() {
+		assert!(!is_commit_excluded(KeyTag::Policy));
+	}
+
+	#[test]
+	fn test_include_policy_op() {
+		assert!(!is_commit_excluded(KeyTag::PolicyOp));
+	}
+
+	#[test]
+	fn test_include_migration() {
+		assert!(!is_commit_excluded(KeyTag::Migration));
+	}
+
+	#[test]
+	fn test_include_migration_event() {
+		assert!(!is_commit_excluded(KeyTag::MigrationEvent));
+	}
+
+	#[test]
+	fn test_exclude_flow_version() {
+		assert!(is_commit_excluded(KeyTag::FlowVersion));
+	}
+
+	#[test]
+	fn test_exclude_config() {
+		assert!(is_commit_excluded(KeyTag::ConfigStorage));
+	}
+
+	#[test]
+	fn test_exclude_version_epoch() {
+		assert!(is_commit_excluded(KeyTag::VersionEpoch));
+	}
 }

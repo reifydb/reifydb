@@ -359,8 +359,8 @@ impl Database {
 		let mut caught_up = 0u32;
 		let mut plateaued = 0u32;
 		loop {
-			let producer = self.engine.cdc_producer_watermark().0;
-			let consumer = self.engine.consumer_watermark().0;
+			let producer = self.engine.commit_released().0;
+			let consumer = self.engine.cdc_consumer_watermark().0;
 
 			if consumer >= producer && producer == last_producer {
 				caught_up += 1;

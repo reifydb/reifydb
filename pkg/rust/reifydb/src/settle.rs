@@ -81,8 +81,8 @@ struct SettleState {
 	/// How far every deferred flow has materialized. `None` when no flow subsystem published a
 	/// watermark, in which case there is nothing to wait for.
 	flow_caught_up: Option<CommitVersion>,
-	cdc_producer: CommitVersion,
-	cdc_consumer: CommitVersion,
+	released: CommitVersion,
+	subscription: CommitVersion,
 	/// Batches staged for a subscriber but not yet drained by one.
 	pending_batches: usize,
 }
@@ -92,8 +92,8 @@ impl SettleState {
 	/// Whether everything committed up to `target` has been materialized and staged.
 	fn has_reached(&self, target: CommitVersion) -> bool {
 		!self.actors_pending
-			&& self.cdc_producer >= target
-			&& self.cdc_consumer >= self.cdc_producer
+			&& self.released >= target
+			&& self.subscription >= self.released
 			&& self.flow_caught_up.is_none_or(|flow| flow >= target)
 	}
 
@@ -107,7 +107,7 @@ impl SettleState {
 	fn is_quiescent(&self, previous_pending: Option<usize>) -> bool {
 		!self.actors_pending
 			&& self.flow_caught_up.is_none_or(|flow| flow >= self.target)
-			&& self.cdc_consumer >= self.cdc_producer
+			&& self.subscription >= self.released
 			&& previous_pending == Some(self.pending_batches)
 	}
 }
@@ -117,15 +117,15 @@ impl fmt::Display for SettleState {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"actors_pending={}, tx_target={}, flow_caught_up={}, cdc_producer={}, cdc_consumer={}, pending_batches={}",
+			"actors_pending={}, tx_target={}, flow_caught_up={}, released={}, subscription={}, pending_batches={}",
 			self.actors_pending,
 			self.target.0,
 			match self.flow_caught_up {
 				Some(v) => v.0.to_string(),
 				None => "n/a".to_string(),
 			},
-			self.cdc_producer.0,
-			self.cdc_consumer.0,
+			self.released.0,
+			self.subscription.0,
 			self.pending_batches
 		)
 	}
@@ -246,8 +246,8 @@ impl Database {
 			actors_pending: self.spawner().system().has_pending(),
 			target: self.watermarks().tx().current().unwrap_or(CommitVersion(0)),
 			flow_caught_up: engine.ioc().try_resolve::<FlowCaughtUpWatermark>().map(|w| w.get()),
-			cdc_producer: engine.cdc_producer_watermark(),
-			cdc_consumer: engine.cdc_consumer_watermark(),
+			released: engine.commit_released(),
+			subscription: engine.cdc_consumer_watermark(),
 			pending_batches: store.pending_batches(),
 		}
 	}
@@ -427,8 +427,8 @@ mod tests {
 			actors_pending: false,
 			target: CommitVersion(10),
 			flow_caught_up: Some(CommitVersion(10)),
-			cdc_producer: CommitVersion(10),
-			cdc_consumer: CommitVersion(10),
+			released: CommitVersion(10),
+			subscription: CommitVersion(10),
 			pending_batches: 3,
 		}
 	}
@@ -496,8 +496,8 @@ mod tests {
 			"actors_pending=",
 			"tx_target=",
 			"flow_caught_up=",
-			"cdc_producer=",
-			"cdc_consumer=",
+			"released=",
+			"subscription=",
 			"pending_batches=",
 			"staged_batches_before_last_pass=",
 		] {
@@ -526,7 +526,7 @@ mod tests {
 		assert!(!flow.is_quiescent(previous), "flow output short of the commit target is not materialized yet");
 
 		let mut consumer = quiescent_state();
-		consumer.cdc_consumer = CommitVersion(9);
+		consumer.subscription = CommitVersion(9);
 		assert!(!consumer.is_quiescent(previous), "a cdc consumer behind its producer still has work");
 
 		let mut staged = quiescent_state();
