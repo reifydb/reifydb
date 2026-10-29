@@ -176,7 +176,7 @@ impl ServerActor {
 
 	#[inline]
 	fn handle_logout(&self, token: String, reply: Reply<ServerLogoutResponse>) {
-		match self.auth_service.revoke_token(&token) {
+		match self.auth_service.end_session(&token) {
 			Ok(true) => reply.send(ServerLogoutResponse::Ok),
 			Ok(false) => reply.send(ServerLogoutResponse::InvalidToken),
 			Err(e) => {

@@ -526,7 +526,7 @@ impl WasmDB {
 		let token = self.session.take_token();
 		match token {
 			Some(t) => {
-				let revoked = self.auth_service.revoke_token(&t);
+				let revoked = self.auth_service.end_session(&t);
 				self.session.clear();
 				match revoked {
 					Ok(true) => Ok(()),

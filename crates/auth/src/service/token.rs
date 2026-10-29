@@ -81,6 +81,17 @@ impl AuthService {
 		Ok(true)
 	}
 
+	pub fn end_session(&self, token: &str) -> Result<bool, Error> {
+		let Some(def) = self.find_token(token)? else {
+			return Ok(false);
+		};
+		if def.kind == TokenKind::ApiKey {
+			return Ok(true);
+		}
+		self.drop_and_commit(def.id)?;
+		Ok(true)
+	}
+
 	#[inline]
 	fn find_token(&self, token: &str) -> Result<Option<Token>, Error> {
 		let mut txn = self.engine.begin_query()?;
