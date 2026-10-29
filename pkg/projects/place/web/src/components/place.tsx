@@ -8,11 +8,12 @@ import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
-import type { GuestSession } from '@/session'
+import { type GuestSession, signedInName } from '@/session'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
 import { Account } from './account'
 import { CanvasView, useCamera } from './canvas-view'
+import { GuestBanner } from './guest-banner'
 import { useLive } from './live'
 import { Sidebar } from './sidebar'
 import { Toolbar } from './toolbar'
@@ -22,6 +23,8 @@ export function Place({ client, guest }: { client: PlaceClient; guest: GuestSess
   const [message, setMessage] = useState<string | null>(null)
   const { buffer, minimap, activity } = useLive(client, setMessage)
   const camera = useCamera()
+  const [name, setName] = useState<string | null>(() => signedInName())
+  const [signUpOpen, setSignUpOpen] = useState(false)
   const pending = useMemo(() => new Pending(), [])
   const pendingVersion = useSyncExternalStore(
     (listener) => pending.subscribe(listener),
@@ -147,46 +150,49 @@ export function Place({ client, guest }: { client: PlaceClient; guest: GuestSess
   void pendingVersion
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="relative min-w-0 flex-1">
-        <CanvasView
-          buffer={buffer}
-          camera={camera}
-          activity={activity}
-          pending={pending}
-          layerVisible={layerVisible}
-          tool={tool}
-          color={color}
-          onStroke={onStroke}
-          onShape={onShape}
-          onPick={onPick}
-          onHover={setHover}
-          ghost={ghost}
-          onPlace={onPlace}
-        />
-        <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
-        {tool !== 'pan' && (
-          <BottomBar
-            color={color}
-            onColor={setColor}
-            hover={hover}
-            count={count}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {!name && <GuestBanner onSignUp={() => setSignUpOpen(true)} />}
+      <div className="flex min-h-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          <CanvasView
+            buffer={buffer}
+            camera={camera}
+            activity={activity}
+            pending={pending}
             layerVisible={layerVisible}
-            onLayerVisible={setLayerVisible}
-            committing={committing}
-            onCommit={onCommit}
-            onClear={() => {
-              setNotice(null)
-              pending.clear()
-            }}
-            notice={notice}
-            message={message}
+            tool={tool}
+            color={color}
+            onStroke={onStroke}
+            onShape={onShape}
+            onPick={onPick}
+            onHover={setHover}
+            ghost={ghost}
+            onPlace={onPlace}
           />
-        )}
-        <Account guest={guest} />
-        <Welcome />
+          <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
+          {tool !== 'pan' && (
+            <BottomBar
+              color={color}
+              onColor={setColor}
+              hover={hover}
+              count={count}
+              layerVisible={layerVisible}
+              onLayerVisible={setLayerVisible}
+              committing={committing}
+              onCommit={onCommit}
+              onClear={() => {
+                setNotice(null)
+                pending.clear()
+              }}
+              notice={notice}
+              message={message}
+            />
+          )}
+          <Account guest={guest} name={name} onName={setName} open={signUpOpen} onOpen={setSignUpOpen} />
+          <Welcome />
+        </div>
+        <Sidebar activity={activity} minimap={minimap} camera={camera} />
       </div>
-      <Sidebar activity={activity} minimap={minimap} camera={camera} />
     </div>
   )
 }

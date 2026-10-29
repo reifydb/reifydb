@@ -2,11 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 import { type FormEvent, useState } from 'react'
-import { type GuestSession, signedInName } from '@/session'
+import type { GuestSession } from '@/session'
 
-export function Account({ guest }: { guest: GuestSession }) {
-  const [name, setName] = useState<string | null>(() => signedInName())
-  const [open, setOpen] = useState(false)
+interface AccountProps {
+  guest: GuestSession
+  name: string | null
+  onName: (name: string) => void
+  open: boolean
+  onOpen: (open: boolean) => void
+}
+
+export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -20,13 +26,7 @@ export function Account({ guest }: { guest: GuestSession }) {
     )
   }
 
-  if (!open) {
-    return (
-      <button type="button" className="game-button absolute left-4 top-4 z-10" onClick={() => setOpen(true)}>
-        Sign up
-      </button>
-    )
-  }
+  if (!open) return null
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -34,7 +34,7 @@ export function Account({ guest }: { guest: GuestSession }) {
     setError(null)
     try {
       await guest.signUp(identifier.trim(), password)
-      setName(identifier.trim())
+      onName(identifier.trim())
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure))
     } finally {
@@ -67,7 +67,7 @@ export function Account({ guest }: { guest: GuestSession }) {
       />
       {error && <p className="text-status-error">Sign up failed: {error}</p>}
       <div className="flex justify-end gap-2">
-        <button type="button" className="game-button game-button--secondary" onClick={() => setOpen(false)}>
+        <button type="button" className="game-button game-button--secondary" onClick={() => onOpen(false)}>
           Cancel
         </button>
         <button type="submit" className="game-button" disabled={busy || identifier.trim() === '' || password === ''}>
