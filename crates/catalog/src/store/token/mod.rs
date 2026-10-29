@@ -19,6 +19,7 @@ pub(crate) fn convert_token<K>(multi: MultiVersionRow<K>) -> Result<Token> {
 	let identity = token::get_identity(&bytes);
 	let expires_at = token::try_get_expires_at(&bytes);
 	let created_at = token::get_created_at(&bytes);
+	let kind = token::get_kind(&bytes);
 
 	Ok(Token {
 		id,
@@ -26,5 +27,6 @@ pub(crate) fn convert_token<K>(multi: MultiVersionRow<K>) -> Result<Token> {
 		identity,
 		expires_at,
 		created_at,
+		kind,
 	})
 }

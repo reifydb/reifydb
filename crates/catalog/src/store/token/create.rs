@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::token::Token, key::identity::TokenKey};
+use reifydb_core::{
+	interface::catalog::token::{Token, TokenKind},
+	key::identity::TokenKey,
+};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
@@ -18,6 +21,27 @@ impl CatalogStore {
 		expires_at: Option<DateTime>,
 		created_at: DateTime,
 	) -> Result<Token> {
+		Self::insert_token(txn, token, identity, expires_at, created_at, TokenKind::ApiKey)
+	}
+
+	pub(crate) fn create_session_token(
+		txn: &mut AdminTransaction,
+		token: &str,
+		identity: IdentityId,
+		expires_at: Option<DateTime>,
+		created_at: DateTime,
+	) -> Result<Token> {
+		Self::insert_token(txn, token, identity, expires_at, created_at, TokenKind::Session)
+	}
+
+	fn insert_token(
+		txn: &mut AdminTransaction,
+		token: &str,
+		identity: IdentityId,
+		expires_at: Option<DateTime>,
+		created_at: DateTime,
+		kind: TokenKind,
+	) -> Result<Token> {
 		let id = SystemSequence::next_token_id(txn)?;
 
 		let mut row = token::allocate();
@@ -30,6 +54,7 @@ impl CatalogStore {
 			token::set_expires_at_none(&mut row);
 		}
 		token::set_created_at(&mut row, created_at);
+		token::set_kind(&mut row, kind);
 
 		txn.set(vec![(TokenKey::new(id).into(), row.freeze().into())])?;
 
@@ -39,6 +64,7 @@ impl CatalogStore {
 			identity,
 			expires_at,
 			created_at,
+			kind,
 		})
 	}
 }

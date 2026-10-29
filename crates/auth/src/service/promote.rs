@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_catalog::{create_token, drop_tokens_by_identity};
+use reifydb_catalog::{create_session_token, drop_session_tokens_by_identity};
 use reifydb_core::retry::RetryStrategy;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -60,8 +60,8 @@ impl AuthService {
 			if let Some((attribute, value)) = lookup {
 				self.set_lookup_attribute(&mut admin, guest, attribute, value)?;
 			}
-			drop_tokens_by_identity(&mut admin, guest)?;
-			create_token(&mut admin, &token, guest, self.expires_at(ttl)?, self.now()?)?;
+			drop_session_tokens_by_identity(&mut admin, guest)?;
+			create_session_token(&mut admin, &token, guest, self.expires_at(ttl)?, self.now()?)?;
 			admin.commit()?;
 			Ok(())
 		})?;
@@ -89,7 +89,7 @@ impl AuthService {
 			if let Some((attribute, value)) = lookup {
 				self.set_lookup_attribute(&mut admin, identity.id, attribute, value)?;
 			}
-			create_token(&mut admin, &token, identity.id, self.expires_at(ttl)?, self.now()?)?;
+			create_session_token(&mut admin, &token, identity.id, self.expires_at(ttl)?, self.now()?)?;
 			admin.commit()?;
 			Ok(identity.id)
 		})?;

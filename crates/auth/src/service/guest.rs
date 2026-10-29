@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_catalog::create_token;
+use reifydb_catalog::create_session_token;
 use reifydb_core::retry::RetryStrategy;
 use reifydb_value::{
 	error::Error,
@@ -40,7 +40,7 @@ impl AuthService {
 				&self.clock,
 				&self.rng,
 			)?;
-			create_token(&mut admin, &token, identity.id, self.expires_at(ttl)?, self.now()?)?;
+			create_session_token(&mut admin, &token, identity.id, self.expires_at(ttl)?, self.now()?)?;
 			admin.commit()?;
 			Ok(identity.id)
 		})?;

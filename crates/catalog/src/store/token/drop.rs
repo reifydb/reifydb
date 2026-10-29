@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
-use reifydb_core::{interface::catalog::token::TokenId, key::identity::TokenKey};
+use reifydb_core::{
+	interface::catalog::token::{TokenId, TokenKind},
+	key::identity::TokenKey,
+};
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
@@ -15,15 +18,26 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+		Self::drop_identity_tokens_where(txn, identity, |_| true)
+	}
+
+	pub(crate) fn drop_session_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+		Self::drop_identity_tokens_where(txn, identity, |kind| kind == TokenKind::Session)
+	}
+
+	fn drop_identity_tokens_where(
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		drops_kind: impl Fn(TokenKind) -> bool,
+	) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let token_identity = token::get_identity(EncodedCatalogRow::view(&multi.bytes));
-				if token_identity == identity {
-					let id = token::get_id(EncodedCatalogRow::view(&multi.bytes));
-					to_remove.push(id);
+				let row = EncodedCatalogRow::view(&multi.bytes);
+				if token::get_identity(row) == identity && drops_kind(token::get_kind(row)) {
+					to_remove.push(token::get_id(row));
 				}
 			}
 		}

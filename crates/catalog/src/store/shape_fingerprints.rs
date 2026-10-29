@@ -365,8 +365,8 @@ fn pinned() -> Vec<Pin> {
 		(
 			"token::token",
 			&*TOKEN_SHAPE,
-			0x9587a04c89ad35cc,
-			&["id", "token", "identity", "expires_at", "created_at"],
+			0xb55c98a7257c20c9,
+			&["id", "token", "identity", "expires_at", "created_at", "kind"],
 		),
 		(
 			"view::view",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::interface::catalog::token::TokenKind;
 use reifydb_macro::catalog_shape;
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
@@ -11,5 +12,6 @@ catalog_shape! {
 		identity: IdentityId,
 		expires_at: DateTime?,
 		created_at: DateTime,
+		kind: TokenKind,
 	}
 }

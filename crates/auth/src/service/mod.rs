@@ -10,7 +10,7 @@ mod token;
 
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use reifydb_catalog::{catalog::Catalog, create_token};
+use reifydb_catalog::{catalog::Catalog, create_session_token, create_token};
 use reifydb_core::{interface::catalog::token::Token, retry::RetryStrategy};
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
@@ -184,7 +184,8 @@ impl AuthService {
 		RetryStrategy::default().retry(&self.rng, "auth::persist_token", || {
 			let mut admin = self.engine.begin_admin()?;
 
-			let def = create_token(&mut admin, token, identity, self.expires_at(ttl)?, self.now()?)?;
+			let def =
+				create_session_token(&mut admin, token, identity, self.expires_at(ttl)?, self.now()?)?;
 
 			admin.commit()?;
 			Ok(def)
@@ -207,8 +208,7 @@ impl AuthService {
 
 	#[instrument(name = "auth::create_session", level = "debug", skip(self))]
 	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, Error> {
-		let expires_at = self.expires_at(ttl)?;
-		self.create_token(&generate_session_token(&self.rng), identity, expires_at)
+		self.persist_token(&generate_session_token(&self.rng), identity, ttl)
 	}
 
 	pub(super) fn set_lookup_attribute(

@@ -38,6 +38,16 @@ pub fn create_token(
 	CatalogStore::create_token(txn, token, identity, expires_at, created_at)
 }
 
+pub fn create_session_token(
+	txn: &mut AdminTransaction,
+	token: &str,
+	identity: IdentityId,
+	expires_at: Option<DateTime>,
+	created_at: DateTime,
+) -> Result<Token> {
+	CatalogStore::create_session_token(txn, token, identity, expires_at, created_at)
+}
+
 pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
 	CatalogStore::find_token_by_value(txn, value)
 }
@@ -48,6 +58,10 @@ pub fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
 
 pub fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 	CatalogStore::drop_tokens_by_identity(txn, identity)
+}
+
+pub fn drop_session_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	CatalogStore::drop_session_tokens_by_identity(txn, identity)
 }
 
 pub fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
