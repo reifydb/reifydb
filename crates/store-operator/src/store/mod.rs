@@ -18,7 +18,11 @@ use std::{ops::Deref, sync::Arc};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::default;
-use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
+use reifydb_core::{
+	common::CommitVersion,
+	lifecycle::watermark::CheckpointFloor,
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
+};
 use reifydb_filter::adaptive::FilterMetrics;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{
@@ -253,7 +257,38 @@ impl StandardOperatorStore {
 		if let Some(tiers) = self.range.tiers() {
 			collectors.push(Arc::new(tiers.clone()));
 		}
+		collectors.push(Arc::new(CheckpointCollector(self.clone())));
 		collectors
+	}
+}
+
+struct CheckpointCollector(StandardOperatorStore);
+
+impl MetricsCollector for CheckpointCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let flows = self
+			.0
+			.checkpoint_list()
+			.unwrap_or_else(|err| panic!("flow checkpoints could not be listed for metrics: {err}"));
+		let oldest = flows
+			.iter()
+			.filter_map(|flow| {
+				let checkpoint = self.0.checkpoint_get(*flow).unwrap_or_else(|err| {
+					panic!("flow {} checkpoint could not be read for metrics: {err}", flow.0)
+				});
+				checkpoint.map(|checkpoint| (*flow, checkpoint))
+			})
+			.min_by_key(|(_, checkpoint)| checkpoint.lsn);
+		out.push(MetricsSample::count("operator_checkpoints", "flows", flows.len() as u64));
+		if let Some((flow, checkpoint)) = oldest {
+			out.push(MetricsSample::count("operator_checkpoints", "oldest_flow", flow.0));
+			out.push(MetricsSample::count("operator_checkpoints", "oldest_lsn", checkpoint.lsn.as_u64()));
+			out.push(MetricsSample::version(
+				"operator_checkpoints",
+				"oldest_version",
+				checkpoint.version.0,
+			));
+		}
 	}
 }
 

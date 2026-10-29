@@ -19,6 +19,7 @@ use reifydb_core::{
 		store::{WalCheckpoint, WalFloorCheckpoint},
 	},
 	key::operator::state::GroupStateKey,
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	wal::WalRecord,
 };
 use reifydb_runtime::{
@@ -197,6 +198,34 @@ pub fn open_wal(fs: Fs, clock: Clock, dir: &Path) -> WalResult<CommitWal> {
 	let (log, scans) = Log::open_detached(fs, clock, dir)?;
 	let (wal, _) = Wal::open(CommitDevice::Log(log), scans)?;
 	Ok(wal)
+}
+
+pub struct CommitLogMetrics(CommitWal);
+
+impl CommitLogMetrics {
+	pub fn new(wal: CommitWal) -> Self {
+		Self(wal)
+	}
+}
+
+impl MetricsCollector for CommitLogMetrics {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let cursors = self
+			.0
+			.cursors()
+			.unwrap_or_else(|err| panic!("commit log cursors could not be read for metrics: {err}"));
+		let appended = cursors.appended.map(Lsn::as_u64).unwrap_or(0);
+		let start = cursors.start.map(Lsn::as_u64).unwrap_or(0);
+		out.push(MetricsSample::count("commit_log", "appended", appended));
+		out.push(MetricsSample::count("commit_log", "durable", cursors.durable.map(Lsn::as_u64).unwrap_or(0)));
+		out.push(MetricsSample::bytes("commit_log", "retained_bytes", cursors.bytes));
+		for (name, floor) in cursors.floors {
+			let scope = format!("commit_log::floor::{name}");
+			let held = floor.map(Lsn::as_u64).unwrap_or(start);
+			out.push(MetricsSample::count(scope.clone(), "lsn", held));
+			out.push(MetricsSample::count(scope, "lag", appended.saturating_sub(held)));
+		}
+	}
 }
 
 pub fn memory_wal(clock: Clock) -> WalResult<CommitWal> {

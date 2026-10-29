@@ -78,7 +78,7 @@ use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::flow_wal,
+	wal::{CommitLogMetrics, flow_wal},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -461,6 +461,7 @@ impl DatabaseBuilder {
 		metrics_registry.register_collectors(single_store.metrics_collectors());
 		metrics_registry.register_collectors(operator_store.metrics_collectors());
 		metrics_registry.register_collector(Arc::new(commit_queue.clone()));
+		metrics_registry.register_collector(Arc::new(CommitLogMetrics::new(multi.wal().clone())));
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()
