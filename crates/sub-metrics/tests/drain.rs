@@ -4,7 +4,11 @@
 //! Executed requests must land in system::metrics::request_history and per-fingerprint
 //! aggregates in system::metrics::statement_stats on the flush tick.
 
-use std::{sync::Arc, thread};
+use std::{
+	sync::Arc,
+	thread,
+	time::{Duration as StdDuration, Instant},
+};
 
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
 use reifydb_core::{
@@ -75,7 +79,14 @@ fn executed_requests_drain_into_both_ringbuffers() {
 		DateTime::from_epoch_millis(1000).unwrap(),
 	));
 
-	thread::sleep(Duration::from_milliseconds(300).unwrap().to_std());
+	// Poll, never a fixed sleep: under load the drain tick can land past any fixed wait.
+	let deadline = Instant::now() + StdDuration::from_secs(10);
+	while Instant::now() < deadline
+		&& (TestEngine::row_count(&test_engine.query("from system::metrics::request_history")) < 1
+			|| TestEngine::row_count(&test_engine.query("from system::metrics::statement_stats")) < 1)
+	{
+		thread::sleep(StdDuration::from_millis(10));
+	}
 
 	let history = test_engine.query("from system::metrics::request_history");
 	assert_eq!(TestEngine::row_count(&history), 1, "the executed request must appear in request_history");
