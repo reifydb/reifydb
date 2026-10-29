@@ -10,7 +10,7 @@ import { ProbesPage } from '@/pages/probes'
 import { loadBackend } from '../../support/backend'
 import { commandAs } from '../../support/db'
 import { identityNamed } from '../../support/identity'
-import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, refusingStore, renderWithProviders } from '../../support/store'
 
 const MINUTE = 60_000
 
@@ -66,12 +66,6 @@ describe('the probes page over a live subscription', () => {
     ;({ store, client } = await bridgeStore(db, 'viewer'))
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      await client.caughtUp()
-    })
-  }
-
   it('hydrates the probes registered before the page mounted, sorted by name', async () => {
     // The page is usually opened long after the probes registered; without hydration it would show none until one heartbeats.
     const us = await createProbeService(db, 'probe_us')
@@ -80,7 +74,7 @@ describe('the probes page over a live subscription', () => {
     await registerProbe(db, eu, 'eu-west', new Date())
 
     renderWithProviders(<ProbesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
 
     const rows = await screen.findAllByRole('row', { name: /-(east|west)/ })
     expect(rows.map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual(['eu-west', 'us-east'])
@@ -92,11 +86,11 @@ describe('the probes page over a live subscription', () => {
     // Probes register while the page is open; the subscription must deliver the row, since nothing polls any more.
     const probe = await createProbeService(db, 'probe_ap')
     renderWithProviders(<ProbesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(await screen.findByText('No probes registered')).toBeInTheDocument()
 
     await registerProbe(db, probe, 'ap-south', new Date())
-    await caughtUp()
+    await caughtUp(store, client)
 
     const row = await screen.findByRole('row', { name: /ap-south/ })
     expect(within(row).getByText('Online')).toBeInTheDocument()
@@ -108,12 +102,12 @@ describe('the probes page over a live subscription', () => {
     const probe = await createProbeService(db, 'probe_sa')
     await registerProbe(db, probe, 'sa-east', new Date(Date.now() - 5 * MINUTE))
     renderWithProviders(<ProbesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     const row = await screen.findByRole('row', { name: /sa-east/ })
     expect(within(row).getByText('Offline')).toBeInTheDocument()
 
     await heartbeat(db, probe, new Date())
-    await caughtUp()
+    await caughtUp(store, client)
 
     await waitFor(() =>
       expect(within(screen.getByRole('row', { name: /sa-east/ })).getByText('Online')).toBeInTheDocument(),
@@ -129,13 +123,13 @@ describe('the probes page over a live subscription', () => {
         <ProbeNames />
       </StoreProvider>,
     )
-    await caughtUp()
+    await caughtUp(store, client)
     // Registering before the subscription hydrates would let hydration, not the live diff, deliver the name.
     expect(await screen.findByText('probes ready')).toBeInTheDocument()
     expect(screen.queryByText(`${probe} af-south`)).not.toBeInTheDocument()
 
     await registerProbe(db, probe, 'af-south', new Date())
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(await screen.findByText(`${probe} af-south`)).toBeInTheDocument()
   })
@@ -155,14 +149,6 @@ describe('the probes page without new data', () => {
     vi.useRealTimers()
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      // without this yield the drain is queued ahead of the store's batch flush and misses the hydration
-      await Promise.resolve()
-      await client.caughtUp()
-    })
-  }
-
   it('marks a probe offline once its last heartbeat ages past the window', async () => {
     // Nothing polls and a dead probe sends nothing, so only the clock can flip it; otherwise it stays online forever.
     const probe = await createProbeService(db, 'probe_eu')
@@ -170,7 +156,7 @@ describe('the probes page without new data', () => {
     // Only the page clock is faked; the bridge and the queries wait on real timeouts.
     vi.useFakeTimers({ now: new Date('2026-09-11T12:00:00Z'), toFake: ['Date', 'setInterval', 'clearInterval'] })
     renderWithProviders(<ProbesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(within(screen.getByRole('row', { name: /eu-west/ })).getByText('Online')).toBeInTheDocument()
 
     act(() => {
@@ -186,7 +172,7 @@ describe('the probes page without new data', () => {
     store = refusal.store
 
     renderWithProviders(<ProbesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     await act(() => refusal.refused)
 
     expect(screen.getByText('Failed to load probes: policy denied')).toBeInTheDocument()

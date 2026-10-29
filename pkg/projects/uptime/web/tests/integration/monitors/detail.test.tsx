@@ -11,10 +11,9 @@ import { MonitorDetailPage } from '@/pages/monitors/detail.tsx'
 import { monitors, results } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { commandAs } from '../../support/db'
-import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, refusingStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import {
-  caughtUp,
   createMonitor,
   identityOf,
   monitorInDb,
@@ -64,7 +63,7 @@ describe('monitor detail writes', () => {
     routeParams.monitorId = monitorId
     vi.mocked(client.command).mockClear()
     renderWithProviders(<MonitorDetailPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
   }
 
   async function commandSettled(calls: number) {
@@ -83,7 +82,7 @@ describe('monitor detail writes', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Pause' }))
     await commandSettled(1)
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     expect(await screen.findByRole('button', { name: 'Resume' })).toBeInTheDocument()
     expect(screen.getByText('Paused')).toBeInTheDocument()
@@ -93,7 +92,7 @@ describe('monitor detail writes', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Resume' }))
     await commandSettled(2)
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     expect(await screen.findByRole('button', { name: 'Pause' })).toBeInTheDocument()
     expect(await monitorInDb(db, id)).toMatchObject([{ enabled: true, status: 'up' }])

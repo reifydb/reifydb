@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { act, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Store, Uuid7Value, rql, type StoreClient } from '@reifydb/react'
@@ -11,7 +11,7 @@ import { STORE_OPTIONS } from '@/store/client'
 import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { commandAs } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import { createMonitor } from '../../support/monitors'
 import { countMembers, createStatusPage, readMembers, readPages } from '../../support/status-pages'
@@ -38,17 +38,9 @@ describe('create status page flow', () => {
     navigate.mockClear()
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      // without this yield the drain is queued ahead of the store's batch flush and misses the hydration
-      await Promise.resolve()
-      await client.caughtUp()
-    })
-  }
-
   async function renderPage() {
     renderWithProviders(<StatusPageNewPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     vi.mocked(client.command).mockClear()
   }
 
@@ -102,7 +94,7 @@ describe('create status page flow', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /alpha/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /beta/ }))
     await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(beta) })
-    await caughtUp()
+    await caughtUp(store, client)
     expect(screen.queryByRole('checkbox', { name: /beta/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /create status page/i }))
 
@@ -153,7 +145,7 @@ describe('create status page flow', () => {
       },
     }
     renderWithProviders(<StatusPageNewPage />, new Store(refused, STORE_OPTIONS))
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(await screen.findByText('Failed to load monitors: monitors subscription refused')).toBeInTheDocument()
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()

@@ -9,14 +9,14 @@
 // encoded envelopes the WebSocket transport sends, with only the transport swapped for the native
 // bridge.
 
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DurationValue, Option, Uuid7Value, rql, type Store } from '@reifydb/react'
 import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
 import { loadBackend } from '../../support/backend'
 import { commandAs } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
@@ -71,18 +71,11 @@ describe('the dashboard over a live subscription, unbatched', () => {
     })
   }
 
-  // Inside act so the subscription callbacks reach React state under the test's control.
-  async function caughtUp() {
-    await act(async () => {
-      await client.caughtUp()
-    })
-  }
-
   it('hydrates the monitors that already exist when the page mounts', async () => {
     // The dashboard is normally opened on an account that already has monitors. Without hydration
     // it would render its empty state and stay there until the next write happened to arrive.
     await createMonitor('alpha-api', 'https://alpha.example.com/health')
-    await caughtUp()
+    await caughtUp(store, client)
 
     renderWithProviders(<DashboardPage />, store)
 
@@ -95,11 +88,11 @@ describe('the dashboard over a live subscription, unbatched', () => {
     // a change, not because anything asked again. A test that seeded the store could never tell
     // the two apart.
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(await screen.findByRole('heading', { name: 'No monitors yet' })).toBeInTheDocument()
 
     await createMonitor('beta-api', 'https://beta.example.com/health')
-    await caughtUp()
+    await caughtUp(store, client)
 
     await waitFor(() => expect(screen.getByRole('row', { name: /beta-api/i })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: 'No monitors yet' })).not.toBeInTheDocument()
@@ -119,18 +112,12 @@ describe('the dashboard over one batched subscription', () => {
     ;({ store, client, identity } = await bridgeStore(db, 'tester'))
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      await client.caughtUp()
-    })
-  }
-
   it('opens every subscription the page needs as one batch', async () => {
     // An empty dashboard mounts five distinct subscriptions. The sixth, uptime::results, belongs to
     // a monitor row and opens in a later tick once there is a row to mount it. Batched, the page
     // costs one round trip instead of five, and no hook had to be told that is what happened.
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(client.subscribe).toHaveBeenCalledTimes(1)
     const subscriptions = (client.subscribe as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
@@ -162,7 +149,7 @@ describe('the dashboard over one batched subscription', () => {
     })
 
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(await screen.findByRole('row', { name: /gamma-api/i })).toBeInTheDocument()
 
     await commandAs(db, identity, CREATE_MONITOR, {
@@ -179,7 +166,7 @@ describe('the dashboard over one batched subscription', () => {
       failure_threshold: 3,
       enabled: true,
     })
-    await caughtUp()
+    await caughtUp(store, client)
 
     await waitFor(() => expect(screen.getByRole('row', { name: /delta-api/i })).toBeInTheDocument())
   })

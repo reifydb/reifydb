@@ -14,11 +14,10 @@ import { STORE_OPTIONS } from '@/store/client'
 import { monitorRegions, monitors, regions } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { commandRoot, queryRoot } from '../../support/db'
-import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, refusingStore, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import {
   addRegion,
-  caughtUp,
   createMonitor,
   identityOf,
   monitorInDb,
@@ -63,9 +62,9 @@ describe('edit monitor flow', () => {
   async function renderEdit(monitorId: string) {
     routeParams.monitorId = monitorId
     renderWithProviders(<MonitorEditPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
     const name = await screen.findByLabelText('Name')
-    await caughtUp(client)
+    await caughtUp(store, client)
     return name
   }
 
@@ -113,7 +112,7 @@ describe('edit monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zanzibar' }))
     // Removed after ticking, so the form still sends the id and only the server can refuse it.
     await commandRoot(db, DELETE_REGION, { id: gone })
-    await caughtUp(client)
+    await caughtUp(store, client)
     await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
     expect(await screen.findByText(/unknown region/)).toBeInTheDocument()
@@ -132,7 +131,7 @@ describe('edit monitor flow', () => {
     store = refusal.store
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
     await act(() => refusal.refused)
 
     expect(await screen.findByText(`Failed to load monitor: ${message}`)).toBeInTheDocument()
@@ -158,11 +157,11 @@ describe('edit monitor flow', () => {
       gated.subscribe(monitors, null),
       gated.subscribe(regions, null),
     ]
-    await caughtUp(client)
+    await caughtUp(store, client)
     expect(gated.getEntry(monitors, null).status).toBe('ready')
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, gated)
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
 
@@ -222,7 +221,7 @@ describe('the at-least-one-region check', () => {
     // A monitor left with no region is never checked again, so the update must fail as a whole instead of saving it dead.
     const id = await createMonitor(db, identity, 'alpha', [usEast, euWest])
     const { result } = renderHook(() => useUpdateMonitor(id), { wrapper })
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     await act(async () => {
       await expect(result.current.update(input([]))).rejects.toThrow(/a monitor must use at least one region/)

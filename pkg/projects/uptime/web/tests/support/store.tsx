@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import type { ReactElement } from 'react'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import {
   entryKey,
   rql,
@@ -76,6 +76,13 @@ export function refusingStore<P extends object | null>(
     STORE_OPTIONS,
   )
   return { store, refused: delivered }
+}
+
+export async function caughtUp(store: Store, client: BridgeClient) {
+  await act(async () => {
+    await store.flushed()
+    await client.caughtUp()
+  })
 }
 
 export function renderWithProviders(ui: ReactElement, store: Store) {

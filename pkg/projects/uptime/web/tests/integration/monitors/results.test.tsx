@@ -10,9 +10,8 @@ import { DashboardPage } from '@/pages/dashboard'
 import { MonitorDetailPage } from '@/pages/monitors/detail.tsx'
 import { results } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
-import { bridgeStore, refusingStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, refusingStore, renderWithProviders } from '../../support/store'
 import {
-  caughtUp,
   createMonitor,
   identityOf,
   insertResults,
@@ -53,12 +52,12 @@ describe('per-monitor results over the batched store', () => {
     // A monitor page that took results from every monitor would show beta's 503 among alpha's checks.
     routeParams.monitorId = alpha
     renderWithProviders(<MonitorDetailPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
     expect(await screen.findByText('No checks recorded yet')).toBeInTheDocument()
 
     await reportResult(db, { monitorId: beta, owner, regionId: usEast, success: false, statusCode: 503, responseMs: 90 })
     await reportResult(db, { monitorId: alpha, owner, regionId: usEast, success: true, statusCode: 201, responseMs: 40 })
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     await waitFor(() => expect(screen.getByText('HTTP 201')).toBeInTheDocument())
     expect(screen.queryByText('HTTP 503')).not.toBeInTheDocument()
@@ -72,7 +71,7 @@ describe('per-monitor results over the batched store', () => {
     routeParams.monitorId = alpha
 
     renderWithProviders(<MonitorDetailPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     expect(await screen.findByText('HTTP 201')).toBeInTheDocument()
     expect(screen.queryByText('HTTP 503')).not.toBeInTheDocument()
@@ -92,7 +91,7 @@ describe('per-monitor results over the batched store', () => {
     routeParams.monitorId = alpha
 
     renderWithProviders(<MonitorDetailPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     expect(await screen.findByText('HTTP 299')).toBeInTheDocument()
   })
@@ -103,10 +102,10 @@ describe('per-monitor results over the batched store', () => {
     await reportResult(db, { monitorId: beta, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 300 })
 
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
     const alphaRow = await screen.findByRole('row', { name: /alpha/i })
     await userEvent.click(within(alphaRow).getByRole('button', { name: 'Expand regions' }))
-    await caughtUp(client)
+    await caughtUp(store, client)
 
     const regionRow = await screen.findByRole('row', { name: /US East/ })
     await waitFor(() => expect(within(regionRow).getByText('100 ms')).toBeInTheDocument())
@@ -121,10 +120,10 @@ describe('per-monitor results over the batched store', () => {
     store = refusal.store
 
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
     await userEvent.click(within(await screen.findByRole('row', { name: /alpha/i })).getByRole('button', { name: 'Expand regions' }))
     await userEvent.click(within(screen.getByRole('row', { name: /beta/i })).getByRole('button', { name: 'Expand regions' }))
-    await caughtUp(client)
+    await caughtUp(store, client)
     await act(() => refusal.refused)
 
     expect(await screen.findByText('Failed to load checks: results subscription refused')).toBeInTheDocument()

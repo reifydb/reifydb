@@ -48,6 +48,7 @@ export class Store {
     private queued: Queued[] = [];
     private releasing: string[] = [];
     private flushing = false;
+    private readonly inflight = new Set<Promise<void>>();
 
     constructor(private readonly client: StoreClient, options: StoreOptions = {}) {
         this.onBackgroundError = options.onBackgroundError ?? (() => undefined);
@@ -117,6 +118,12 @@ export class Store {
         const entry = this.state.getState().entries[entryKey(spec.rql, params, spec.shape)]
             ?? (Array.isArray(spec.shape) ? tupleLoading(spec.shape.length) : LOADING);
         return entry as Entry<SpecData<ReadSpec<S, P>>>;
+    }
+
+    async flushed(): Promise<void> {
+        while (this.flushing || this.inflight.size > 0) {
+            await (this.flushing ? Promise.resolve() : Promise.all(this.inflight));
+        }
     }
 
     subscribeState(listener: () => void): () => void {
@@ -193,7 +200,7 @@ export class Store {
         if (live.length === 0) {
             return;
         }
-        this.client.subscribe(live.map(entry => entry.request)).then(
+        const acked = this.client.subscribe(live.map(entry => entry.request)).then(
             subscriptionIds => {
                 live.forEach(({key, sub}, index) => {
                     const id = subscriptionIds[index];
@@ -210,6 +217,8 @@ export class Store {
                 }
             }
         );
+        this.inflight.add(acked);
+        acked.finally(() => this.inflight.delete(acked));
     }
 
     private attach(key: string, sub: Subscription, id: string, rows?: Map<number, unknown>): void {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { act } from '@testing-library/react'
 import {
   BooleanValue,
   DateTimeValue,
@@ -16,7 +15,7 @@ import {
   Uuid7Value,
   rql,
 } from '@reifydb/react'
-import type { BridgeClient, TestDb } from '@reifydb/reifydb'
+import type { TestDb } from '@reifydb/reifydb'
 import { commandAs, commandRoot, queryRoot } from './db'
 import { routerMock } from './router-mock'
 
@@ -69,14 +68,6 @@ const identityByName = rql(Shape.object({ id: Shape.identityid() }))<{
 }>`from system::identities filter { name == $name } map { id }`
 
 const regions = rql(Shape.object({ id: Shape.uuid7(), label: Shape.utf8() }))`from uptime::regions map { id, label }`
-
-export async function caughtUp(client: BridgeClient) {
-  await act(async () => {
-    // The store sends a batch one microtask after mount; a caughtUp queued before it never waits for hydration.
-    await Promise.resolve()
-    await client.caughtUp()
-  })
-}
 
 export async function identityOf(db: TestDb, name: string): Promise<string> {
   const [row] = await queryRoot(db, identityByName, { name })

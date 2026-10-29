@@ -10,9 +10,9 @@ import { Utf8Value } from '@reifydb/core'
 import { Option, Shape, rql, type Store } from '@reifydb/react'
 import { loadBackend } from '../../support/backend'
 import { commandRoot, queryRoot } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
-import { addRegion, caughtUp, monitorInDb, monitorRegionsInDb, regionNamed } from '../../support/monitors'
+import { addRegion, monitorInDb, monitorRegionsInDb, regionNamed } from '../../support/monitors'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
@@ -65,7 +65,7 @@ describe('create monitor flow', () => {
 
   async function renderPage() {
     renderWithProviders(<MonitorNewPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
   }
 
   it('creates a monitor through the real form and it lands in the real uptime schema', async () => {
@@ -204,7 +204,7 @@ describe('create monitor flow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zanzibar' }))
     // Removed after ticking, so the form still sends the id and only the server can refuse it.
     await commandRoot(db, DELETE_REGION, { id: gone })
-    await caughtUp(client)
+    await caughtUp(store, client)
     await userEvent.click(screen.getByRole('button', { name: /create monitor/i }))
 
     expect(await screen.findByText(/unknown region/)).toBeInTheDocument()

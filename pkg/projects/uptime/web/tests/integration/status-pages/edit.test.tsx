@@ -13,7 +13,7 @@ import { STORE_OPTIONS } from '@/store/client'
 import { monitors } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
 import { commandAs, commandRoot } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 import { createMonitor, identityOf } from '../../support/monitors'
 import { createStatusPage, readMembers, readPages } from '../../support/status-pages'
@@ -58,18 +58,10 @@ describe('edit status page flow', () => {
     navigate.mockClear()
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      // without this yield the drain is queued ahead of the store's batch flush and misses the hydration
-      await Promise.resolve()
-      await client.caughtUp()
-    })
-  }
-
   async function renderPage(pageId: string) {
     route.pageId = pageId
     renderWithProviders(<StatusPageEditPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     vi.mocked(client.command).mockClear()
   }
 
@@ -148,7 +140,7 @@ describe('edit status page flow', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /alpha/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /beta/ }))
     await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(gamma) })
-    await caughtUp()
+    await caughtUp(store, client)
     await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
     expect(await screen.findByText(/unknown monitor id/)).toBeInTheDocument()
@@ -167,7 +159,7 @@ describe('edit status page flow', () => {
     expect(await screen.findByRole('checkbox', { name: /beta/ })).toBeChecked()
 
     await commandAs(db, identity, DELETE_MONITOR, { id: new Uuid7Value(beta) })
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(screen.queryByRole('checkbox', { name: /beta/ })).not.toBeInTheDocument()
     expect(screen.getByText('Deleted monitor')).toBeInTheDocument()
@@ -207,7 +199,7 @@ describe('edit status page flow', () => {
     }
     route.pageId = id
     renderWithProviders(<StatusPageEditPage />, new Store(refused, STORE_OPTIONS))
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(await screen.findByText('Failed to load monitors: monitors subscription refused')).toBeInTheDocument()
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()

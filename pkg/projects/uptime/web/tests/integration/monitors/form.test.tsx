@@ -9,8 +9,7 @@ import type { BridgeClient, TestFactory } from '@reifydb/reifydb'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { regions } from '@/store/queries'
 import { loadBackend } from '../../support/backend'
-import { bridgeStore, renderWithProviders } from '../../support/store'
-import { caughtUp } from '../../support/monitors'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 import { navigate } from '../../support/router-mock'
 
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
@@ -31,7 +30,7 @@ async function renderForm() {
   let store
   ;({ store, client } = await bridgeStore(create(), 'tester'))
   renderWithProviders(<MonitorNewPage />, store)
-  await caughtUp(client)
+  await caughtUp(store, client)
 }
 
 async function fillAndSubmit(kind: Kind, target: string) {

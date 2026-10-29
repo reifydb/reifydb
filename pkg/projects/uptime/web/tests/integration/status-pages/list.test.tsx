@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ListValue, Uuid7Value, rql, type Store } from '@reifydb/react'
@@ -9,7 +9,7 @@ import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { StatusPagesPage } from '@/pages/status-pages'
 import { loadBackend } from '../../support/backend'
 import { commandAs } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
 import { createMonitor } from '../../support/monitors'
 import { createStatusPage, readMembers, readPages } from '../../support/status-pages'
 
@@ -41,14 +41,6 @@ describe('status pages list over a live subscription', () => {
     vi.restoreAllMocks()
   })
 
-  async function caughtUp() {
-    await act(async () => {
-      // without this yield the drain is queued ahead of the store's batch flush and misses the hydration
-      await Promise.resolve()
-      await client.caughtUp()
-    })
-  }
-
   it('hydrates the pages that already exist, with their member counts', async () => {
     // Without hydration an account that already has pages would show the empty state until the next write.
     const alpha = await createMonitor(db, identity, 'alpha')
@@ -56,7 +48,7 @@ describe('status pages list over a live subscription', () => {
     await createStatusPage(db, identity, 'acme', 'Acme status', [alpha, beta])
 
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
 
     const row = await screen.findByRole('row', { name: /Acme status/ })
     expect(within(row).getByRole('link', { name: '/status/acme' })).toHaveAttribute('href', '/status/acme')
@@ -66,12 +58,12 @@ describe('status pages list over a live subscription', () => {
   it('shows a page created by another path after the list mounted, without a refetch', async () => {
     // A write must reach an already-mounted list as a change; nothing on the page asks again.
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(await screen.findByRole('heading', { name: 'No status pages yet' })).toBeInTheDocument()
 
     const alpha = await createMonitor(db, identity, 'alpha')
     await createStatusPage(db, identity, 'late', 'Late page', [alpha])
-    await caughtUp()
+    await caughtUp(store, client)
 
     const row = await screen.findByRole('row', { name: /Late page/ })
     expect(within(row).getByText('1')).toBeInTheDocument()
@@ -84,14 +76,14 @@ describe('status pages list over a live subscription', () => {
     const beta = await createMonitor(db, identity, 'beta')
     const id = await createStatusPage(db, identity, 'acme', 'Acme status', [alpha])
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     expect(within(await screen.findByRole('row', { name: /Acme status/ })).getByText('1')).toBeInTheDocument()
 
     await commandAs(db, identity, ADD_STATUS_PAGE_MONITORS, {
       id,
       monitor_ids: new ListValue([new Uuid7Value(beta)], 'Uuid7'),
     })
-    await caughtUp()
+    await caughtUp(store, client)
 
     await waitFor(() =>
       expect(within(screen.getByRole('row', { name: /Acme status/ })).getByText('2')).toBeInTheDocument(),
@@ -105,11 +97,11 @@ describe('status pages list over a live subscription', () => {
     await createStatusPage(db, mallory, 'before', 'Mallory before', [theirs])
 
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     await createStatusPage(db, mallory, 'after', 'Mallory after', [theirs])
     const mine = await createMonitor(db, identity, 'mine')
     await createStatusPage(db, identity, 'mine', 'My page', [mine])
-    await caughtUp()
+    await caughtUp(store, client)
 
     expect(await screen.findByRole('row', { name: /My page/ })).toBeInTheDocument()
     expect(screen.queryByText(/Mallory/)).not.toBeInTheDocument()
@@ -123,13 +115,13 @@ describe('status pages list over a live subscription', () => {
     const drop = await createStatusPage(db, identity, 'drop', 'Drop me', [alpha])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     vi.mocked(client.command).mockClear()
 
     const row = await screen.findByRole('row', { name: /Drop me/ })
     await userEvent.click(within(row).getByRole('button', { name: 'Delete status page' }))
     await Promise.all(vi.mocked(client.command).mock.results.map((r) => r.value))
-    await caughtUp()
+    await caughtUp(store, client)
 
     await waitFor(() => expect(screen.queryByRole('row', { name: /Drop me/ })).not.toBeInTheDocument())
     expect(screen.getByRole('row', { name: /Keep me/ })).toBeInTheDocument()
@@ -144,7 +136,7 @@ describe('status pages list over a live subscription', () => {
     const id = await createStatusPage(db, identity, 'acme', 'Acme status', [alpha])
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderWithProviders(<StatusPagesPage />, store)
-    await caughtUp()
+    await caughtUp(store, client)
     vi.mocked(client.command).mockClear()
 
     const row = await screen.findByRole('row', { name: /Acme status/ })

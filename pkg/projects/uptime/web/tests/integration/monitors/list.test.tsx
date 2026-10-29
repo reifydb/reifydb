@@ -9,8 +9,8 @@ import type { BridgeClient, TestDb, TestFactory } from '@reifydb/reifydb'
 import { DashboardPage } from '@/pages/dashboard'
 import { loadBackend } from '../../support/backend'
 import { commandRoot } from '../../support/db'
-import { bridgeStore, renderWithProviders } from '../../support/store'
-import { addRegion, caughtUp, createMonitor, regionNamed } from '../../support/monitors'
+import { bridgeStore, caughtUp, renderWithProviders } from '../../support/store'
+import { addRegion, createMonitor, regionNamed } from '../../support/monitors'
 
 // a dynamic import inside the factory runs lazily; a static one is hoisted above this call and throws TDZ
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
@@ -46,7 +46,7 @@ describe('monitors list', () => {
 
   async function renderPage() {
     renderWithProviders(<DashboardPage />, store)
-    await caughtUp(client)
+    await caughtUp(store, client)
   }
 
   function setRegionStatus(monitorId: string, regionId: string, status: string) {
