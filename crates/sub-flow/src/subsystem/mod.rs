@@ -174,7 +174,7 @@ impl FlowSubsystem {
 				committers: committer_refs,
 				terminal_committers: terminal_committer_refs,
 				queue: queue.clone(),
-				queue_floor: queue_floor.clone(),
+				queue_floor,
 				loader: loader_handle.actor_ref().clone(),
 				floor: flow_wal.floor.clone(),
 				control,
@@ -228,10 +228,6 @@ impl FlowSubsystem {
 			panic!("flow supervisor refused its bootstrap message");
 		}
 
-		let supervisor_ref = supervisor_handle.actor_ref().clone();
-		queue_floor.adopt(scan_from, move || {
-			let _ = supervisor_ref.send(FlowSupervisorMessage::Wake);
-		});
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Wake);
 
 		Ok(Self {

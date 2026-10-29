@@ -227,9 +227,14 @@ impl FlowSupervisor {
 	fn handle_bootstrap(
 		&self,
 		state: &mut SupervisorState,
+		ctx: &Context<FlowSupervisorMessage>,
 		scan_from: CommitVersion,
 		scan_lease: VersionLeaseGuard,
 	) {
+		let self_ref = ctx.self_ref().clone();
+		self.queue_floor.adopt(scan_from, move || {
+			let _ = self_ref.send(FlowSupervisorMessage::Wake);
+		});
 		let mut query = match self.engine.begin_query_at_version(&scan_lease, IdentityId::system()) {
 			Ok(q) => q,
 			Err(e) => panic!(
@@ -1202,7 +1207,7 @@ impl Actor for FlowSupervisor {
 			FlowSupervisorMessage::Bootstrap {
 				scan_from,
 				scan_lease,
-			} => self.handle_bootstrap(state, scan_from, scan_lease),
+			} => self.handle_bootstrap(state, ctx, scan_from, scan_lease),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
