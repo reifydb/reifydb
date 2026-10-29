@@ -10,7 +10,11 @@ use std::{
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::object::ObjectId, change::Change, resolved::ResolvedSeries},
+	interface::{
+		catalog::{object::ObjectId, view::ViewStorageKind},
+		change::Change,
+		resolved::ResolvedSeries,
+	},
 	internal_err,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -121,6 +125,12 @@ impl<'a> TransactionScan<'a> {
 					ScanPartitions::One(partition) => Some(partition),
 					ScanPartitions::All | ScanPartitions::Many(_) => None,
 				};
+				if view.def().storage_kind() == ViewStorageKind::RingBuffer {
+					let node = RingBufferScan::for_view(view, partition, Arc::clone(context), tx)?
+						.oldest_first()
+						.keep_dictionary_ids();
+					return Ok((Box::new(node), false));
+				}
 				let node = ViewScanNode::new(view, partition, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();

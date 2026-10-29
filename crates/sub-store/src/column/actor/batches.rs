@@ -33,6 +33,7 @@ pub fn system_column_schema(time: &TimeSource, partitioned: bool) -> Vec<(String
 		.into_iter()
 		.filter(|sc| *sc != SystemColumn::Time || carries_time(time))
 		.filter(|sc| *sc != SystemColumn::Partitions || partitioned)
+		.filter(|sc| *sc != SystemColumn::Sequence)
 		.map(|sc| (sc.name().to_string(), sc.ty()))
 		.collect()
 }
@@ -205,6 +206,9 @@ fn system_column_buffer(
 		SystemColumn::CommitVersion => {
 			let total: usize = batches.iter().map(|b| b.num_rows()).sum();
 			Ok(factory::uint8(sc.name(), vec![version.0; total]))
+		}
+		SystemColumn::Sequence => {
+			panic!("the column store materialises tables and series, whose rows carry no {}", sc.name())
 		}
 	}
 }

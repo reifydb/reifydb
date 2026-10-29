@@ -7,7 +7,6 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		id::{ColumnId, NamespaceId, RingBufferId, SeriesId},
-		ringbuffer::EvictionVisibility,
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
@@ -171,7 +170,6 @@ fn request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		capacity: REQUEST_HISTORY_CAPACITY,
 		partition_by: vec![],
 		time: TimeSource::Processing,
-		eviction: EvictionVisibility::Visible,
 	}
 }
 
@@ -194,7 +192,6 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		capacity: STATEMENT_STATS_CAPACITY,
 		partition_by: vec![],
 		time: TimeSource::Processing,
-		eviction: EvictionVisibility::Visible,
 	}
 }
 

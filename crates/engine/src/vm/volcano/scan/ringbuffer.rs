@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{
+	cmp::Reverse,
+	collections::{BinaryHeap, VecDeque},
+	sync::Arc,
+};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -9,23 +13,31 @@ use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, 
 use reifydb_core::{
 	common::TimeSource,
 	interface::{
-		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
-		resolved::ResolvedRingBuffer,
-		store::MultiVersionRow,
+		catalog::{
+			column::Column,
+			dictionary::Dictionary,
+			object::ObjectId,
+			ringbuffer::{PartitionedMetadata, RingBufferMetadata},
+			storage::StorageId,
+			view::View,
+		},
+		resolved::{ResolvedRingBuffer, ResolvedView},
 	},
 	internal_error,
 	key::{
 		any::TaggedKey,
-		row::{PartitionedRowKey, StorageRowKey},
+		partition::PartitionKey,
+		row::{PartitionedRowKey, RowKey},
 	},
-	partition::partition_col_indices,
+	partition::{partition_col_indices, registry_values},
 	value::{
 		batch::{append_rows, batch},
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
+	datetime::DateTime,
 	partition::Partition,
 	row_number::RowNumber,
 	system_columns::{SystemColumn, with_system_column},
@@ -34,37 +46,144 @@ use reifydb_value::value::{
 use tracing::instrument;
 
 use super::{
-	super::decode_dictionary_columns,
-	empty_scan,
-	merge::{MergeLayout, PartitionMerge},
-	partition_array, scan_headers, source_system_columns, storage_partitioned_row,
+	super::decode_dictionary_columns, empty_scan, guard_view_read, partition_array, scan_headers,
+	source_system_columns,
 };
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-pub struct RingBufferScan {
-	ringbuffer: ResolvedRingBuffer,
+const MERGE_WINDOW: usize = 64;
 
+struct RingSource {
+	storage: StorageId,
+	name: String,
+	columns: Vec<Column>,
+	capacity: u64,
+	registry: Option<ObjectId>,
+	only: Option<Partition>,
+	view: Option<ResolvedView>,
+}
+
+impl RingSource {
+	fn key(&self, partition: Option<Partition>, row: RowNumber) -> TaggedKey {
+		match partition {
+			Some(partition) => PartitionedRowKey::new(self.storage, partition, row).into(),
+			None => RowKey::new(self.storage, row).into(),
+		}
+	}
+
+	fn read(
+		&self,
+		txn: &mut Transaction<'_>,
+		partition: Option<Partition>,
+		rows: &[RowNumber],
+	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+		if rows.is_empty() {
+			return Ok(Vec::new());
+		}
+		let keys: Vec<TaggedKey> = rows.iter().map(|&row| self.key(partition, row)).collect();
+		Ok(rows.iter()
+			.zip(txn.get(&keys)?)
+			.filter_map(|(&row, stored)| stored.map(|stored| (row, stored.bytes)))
+			.collect())
+	}
+}
+
+struct MergeHead {
+	partition: Option<Partition>,
+	pending: VecDeque<RowNumber>,
+	buffer: VecDeque<(RowNumber, EncodedBytes)>,
+}
+
+type MergeOrder = (DateTime, Option<Partition>, u64);
+
+struct OldestFirstMerge {
+	heads: Vec<MergeHead>,
+	queue: BinaryHeap<Reverse<(MergeOrder, usize)>>,
+}
+
+impl OldestFirstMerge {
+	fn open(txn: &mut Transaction<'_>, source: &RingSource, partitions: &[PartitionedMetadata]) -> Result<Self> {
+		let mut merge = Self {
+			heads: partitions
+				.iter()
+				.map(|listed| MergeHead {
+					partition: listed.partition,
+					pending: listed
+						.metadata
+						.oldest_first(source.capacity)
+						.map(|(_, row)| row)
+						.collect(),
+					buffer: VecDeque::new(),
+				})
+				.collect(),
+			queue: BinaryHeap::new(),
+		};
+		for index in 0..merge.heads.len() {
+			merge.enqueue(txn, source, index)?;
+		}
+		Ok(merge)
+	}
+
+	fn enqueue(&mut self, txn: &mut Transaction<'_>, source: &RingSource, index: usize) -> Result<()> {
+		let head = &mut self.heads[index];
+		while head.buffer.is_empty() && !head.pending.is_empty() {
+			let take = head.pending.len().min(MERGE_WINDOW);
+			let window: Vec<RowNumber> = head.pending.drain(..take).collect();
+			head.buffer.extend(source.read(txn, head.partition, &window)?);
+		}
+		if let Some((_, bytes)) = head.buffer.front() {
+			let row = EncodedRingBufferRow::view(bytes);
+			self.queue.push(Reverse(((row.created_at(), head.partition, row.sequence()), index)));
+		}
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		source: &RingSource,
+		batch_size: usize,
+	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>> {
+		let mut rows = Vec::new();
+		while rows.len() < batch_size {
+			let Some(Reverse((_, index))) = self.queue.pop() else {
+				break;
+			};
+			let head = &mut self.heads[index];
+			let Some((row, bytes)) = head.buffer.pop_front() else {
+				return Err(
+					internal_error!("a queued ring buffer merge head had no buffered row").into()
+				);
+			};
+			rows.push((head.partition, row, bytes));
+			self.enqueue(txn, source, index)?;
+		}
+		Ok(rows)
+	}
+}
+
+pub struct RingBufferScan {
+	source: RingSource,
 	partitions: Vec<PartitionedMetadata>,
 	current_partition_index: usize,
 	headers: ColumnHeaders,
 	shape: Option<RowShape>,
-
 	storage_types: Vec<ValueType>,
-
 	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
-
-	partition_col_indices: Vec<usize>,
 	current_partition_rows: Vec<(RowNumber, EncodedBytes)>,
 	current_partition_cursor: usize,
 	current_partition_loaded: bool,
 	finished: bool,
+	produced: bool,
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
 	system_columns: Vec<SystemColumn>,
-	merge: Option<PartitionMerge>,
+	newest_first: bool,
+	oldest_first: bool,
+	merge: Option<OldestFirstMerge>,
 	keep_dictionary_ids: bool,
 }
 
@@ -74,58 +193,101 @@ impl RingBufferScan {
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
 	) -> Result<Self> {
-		let mut storage_types = Vec::with_capacity(ringbuffer.columns().len());
-		let mut dictionaries = Vec::with_capacity(ringbuffer.columns().len());
+		let def = ringbuffer.def();
+		let partitioned = !partition_col_indices(ringbuffer.columns(), &def.partition_by).is_empty();
+		let system_columns = source_system_columns(partitioned, def.time != TimeSource::None, false, true);
+		let source = RingSource {
+			storage: def.id.into(),
+			name: def.name.clone(),
+			columns: ringbuffer.columns().to_vec(),
+			capacity: def.capacity,
+			registry: Some(ObjectId::ringbuffer(def.id)),
+			only: None,
+			view: None,
+		};
+		Self::over(source, system_columns, false, context, rx)
+	}
 
-		for col in ringbuffer.columns() {
-			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
-					storage_types.push(ValueType::DictionaryId);
-					dictionaries.push(Some((dict, col.constraint.get_type())));
-				} else {
+	pub fn for_view(
+		view: ResolvedView,
+		partition: Option<Partition>,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self> {
+		let View::RingBuffer(def) = view.def() else {
+			return Err(internal_error!(
+				"view {} is not ring buffer backed and cannot be scanned as a ring",
+				view.def().name()
+			)
+			.into());
+		};
+		let system_columns = source_system_columns(false, true, false, true);
+		let source = RingSource {
+			storage: view.def().storage_id(),
+			name: def.name.clone(),
+			columns: def.columns.clone(),
+			capacity: def.capacity,
+			registry: None,
+			only: partition,
+			view: Some(view.clone()),
+		};
+		Self::over(source, system_columns, true, context, rx)
+	}
+
+	fn over(
+		source: RingSource,
+		system_columns: Vec<SystemColumn>,
+		newest_first: bool,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self> {
+		let mut storage_types = Vec::with_capacity(source.columns.len());
+		let mut dictionaries = Vec::with_capacity(source.columns.len());
+		for col in &source.columns {
+			match col.dictionary_id {
+				Some(dict_id) => match context.services.catalog.find_dictionary(rx, dict_id)? {
+					Some(dict) => {
+						storage_types.push(ValueType::DictionaryId);
+						dictionaries.push(Some((dict, col.constraint.get_type())));
+					}
+					None => {
+						storage_types.push(col.constraint.get_type());
+						dictionaries.push(None);
+					}
+				},
+				None => {
 					storage_types.push(col.constraint.get_type());
 					dictionaries.push(None);
 				}
-			} else {
-				storage_types.push(col.constraint.get_type());
-				dictionaries.push(None);
 			}
 		}
-
-		let partition_col_indices = partition_col_indices(ringbuffer.columns(), &ringbuffer.def().partition_by);
-
-		let system_columns = source_system_columns(
-			!partition_col_indices.is_empty(),
-			ringbuffer.def().time != TimeSource::None,
-			false,
-		);
-		let headers = scan_headers(ringbuffer.columns().iter().map(|col| col.name.as_str()), &system_columns);
-
+		let headers = scan_headers(source.columns.iter().map(|col| col.name.as_str()), &system_columns);
 		Ok(Self {
-			ringbuffer,
+			source,
 			partitions: Vec::new(),
 			current_partition_index: 0,
 			headers,
 			shape: None,
 			storage_types,
 			dictionaries,
-			partition_col_indices,
 			current_partition_rows: Vec::new(),
 			current_partition_cursor: 0,
 			current_partition_loaded: false,
 			finished: false,
+			produced: false,
 			context: Some(context),
 			initialized: false,
 			system_columns,
+			newest_first,
+			oldest_first: false,
 			merge: None,
 			keep_dictionary_ids: false,
 		})
 	}
 
 	pub(crate) fn oldest_first(mut self) -> Self {
-		if !self.partition_col_indices.is_empty() {
-			self.merge = Some(PartitionMerge::new(MergeLayout::Row, self.ringbuffer.def().id.into(), None));
-		}
+		self.newest_first = false;
+		self.oldest_first = true;
 		self
 	}
 
@@ -138,21 +300,61 @@ impl RingBufferScan {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
-
 		let fingerprint = EncodedRingBufferRow::view(first).fingerprint();
-
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"RowShape with fingerprint {:?} not found for ringbuffer {}",
+				"RowShape with fingerprint {:?} not found for ring {}",
 				fingerprint,
-				self.ringbuffer.def().name
+				self.source.name
 			)
 		})?;
-
 		self.shape = Some(shape.clone());
-
 		Ok(shape)
+	}
+
+	fn list_partitions(&self, txn: &mut Transaction<'_>, ctx: &QueryContext) -> Result<Vec<PartitionedMetadata>> {
+		let mut listed: Vec<PartitionedMetadata> = ctx
+			.services
+			.catalog
+			.list_ringbuffer_partitions(txn, self.source.storage)?
+			.into_iter()
+			.filter(|listed| !listed.metadata.is_empty())
+			.filter(|listed| self.source.only.is_none() || listed.partition == self.source.only)
+			.collect();
+		if let Some(object) = self.source.registry
+			&& listed.len() > 1
+		{
+			let keys: Vec<TaggedKey> = listed
+				.iter()
+				.map(|listed| PartitionKey::new(object, listed.partition.unwrap_or_default()).into())
+				.collect();
+			let values: Vec<_> = txn
+				.get(&keys)?
+				.into_iter()
+				.map(|row| row.map(|row| registry_values(&row.bytes)).unwrap_or_default())
+				.collect();
+			let mut ordered: Vec<_> = values.into_iter().zip(listed).collect();
+			ordered.sort_by(|left, right| left.0.cmp(&right.0));
+			listed = ordered.into_iter().map(|(_, listed)| listed).collect();
+		}
+		Ok(listed)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::load_partition")]
+	fn load_partition_rows(
+		&self,
+		txn: &mut Transaction<'_>,
+		index: usize,
+	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+		let listed = &self.partitions[index];
+		let metadata: &RingBufferMetadata = &listed.metadata;
+		let rows: Vec<RowNumber> = metadata.oldest_first(self.source.capacity).map(|(_, row)| row).collect();
+		let mut loaded = self.source.read(txn, listed.partition, &rows)?;
+		if self.newest_first {
+			loaded.reverse();
+		}
+		Ok(loaded)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::drain")]
@@ -160,52 +362,34 @@ impl RingBufferScan {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		batch_size: usize,
-		partitioned: bool,
-	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<Partition>)> {
-		let mut batch: Vec<EncodedBytes> = Vec::new();
-		let mut row_numbers: Vec<RowNumber> = Vec::new();
-		let mut partitions_sidecar: Vec<Partition> = Vec::new();
-
-		while batch.len() < batch_size && self.current_partition_index < self.partitions.len() {
+	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>> {
+		let mut drained = Vec::new();
+		while drained.len() < batch_size && self.current_partition_index < self.partitions.len() {
 			if !self.current_partition_loaded {
 				self.current_partition_rows =
 					self.load_partition_rows(txn, self.current_partition_index)?;
 				self.current_partition_cursor = 0;
 				self.current_partition_loaded = true;
 			}
-
-			#[allow(clippy::disallowed_methods)]
-			let hash = if partitioned {
-				Some(Partition::of(&self.partitions[self.current_partition_index].partition_values))
-			} else {
-				None
-			};
-
-			while batch.len() < batch_size
+			let partition = self.partitions[self.current_partition_index].partition;
+			while drained.len() < batch_size
 				&& self.current_partition_cursor < self.current_partition_rows.len()
 			{
 				let (rn, row) = self.current_partition_rows[self.current_partition_cursor].clone();
-				batch.push(row);
-				row_numbers.push(rn);
-				if let Some(h) = hash {
-					partitions_sidecar.push(h);
-				}
+				drained.push((partition, rn, row));
 				self.current_partition_cursor += 1;
 			}
-
 			if self.current_partition_cursor >= self.current_partition_rows.len() {
 				self.current_partition_index += 1;
 				self.current_partition_loaded = false;
 			}
 		}
-
-		Ok((batch, row_numbers, partitions_sidecar))
+		Ok(drained)
 	}
 
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::column_alloc")]
 	fn storage_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
-		self.ringbuffer
-			.columns()
+		self.source
+			.columns
 			.iter()
 			.enumerate()
 			.map(|(idx, col)| {
@@ -214,91 +398,26 @@ impl RingBufferScan {
 			.collect()
 	}
 
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::empty_columns")]
 	fn empty_columns(&self) -> Vec<(FieldRef, ArrayRef)> {
-		self.ringbuffer
-			.columns()
+		self.source
+			.columns
 			.iter()
 			.map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(&col.name))
 			.collect()
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::append_rows")]
-	fn append_batch(
-		&mut self,
-		txn: &mut Transaction<'_>,
-		columns: RecordBatch,
-		bytes_vec: Vec<EncodedBytes>,
-		row_numbers: Vec<RowNumber>,
-	) -> Result<RecordBatch> {
-		let shape = self.get_or_load_shape(txn, &bytes_vec[0])?;
-		append_rows(columns, &shape, bytes_vec, row_numbers)
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::load_partition")]
-	fn load_partition_rows(
-		&self,
-		txn: &mut Transaction<'_>,
-		partition_index: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		let pm = &self.partitions[partition_index];
-		let rb_id = self.ringbuffer.def().id;
-
-		if self.partition_col_indices.is_empty() {
-			if pm.metadata.head >= pm.metadata.tail {
-				return Ok(Vec::new());
-			}
-			let mut out = txn
-				.range_row(
-					rb_id.into(),
-					Bound::Included(StorageRowKey::new(RowNumber(pm.metadata.tail - 1))),
-					Bound::Included(StorageRowKey::new(RowNumber(pm.metadata.head))),
-					RangeScope::All,
-					1024,
-				)?
-				.map(|entry| entry.map(|entry| (entry.key.row(), entry.bytes)))
-				.collect::<Result<Vec<_>>>()?;
-			out.sort_by_key(|(rn, _)| rn.0);
-			return Ok(out);
-		}
-
-		#[allow(clippy::disallowed_methods)]
-		let hash = Partition::of(&pm.partition_values);
-		let mut out = Vec::new();
-		let mut last_key = None;
-		loop {
-			let batch: Vec<_> = txn
-				.range(
-					PartitionedRowKey::partition_scan_range(rb_id, hash, last_key.as_ref()),
-					RangeScope::All,
-					1024,
-				)?
-				.collect::<Result<Vec<_>>>()?;
-			if batch.is_empty() {
-				break;
-			}
-			let n = batch.len();
-			for entry in batch {
-				if let TaggedKey::PartitionedRow(pk) = &entry.key {
-					out.push((pk.row, entry.bytes));
-				}
-				last_key = Some(entry.key.clone());
-			}
-			if n < 1024 {
-				break;
-			}
-		}
-		out.sort_by_key(|(rn, _)| rn.0);
-		Ok(out)
 	}
 }
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "volcano::scan::ringbuffer::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		if let Some(view) = &self.source.view {
+			guard_view_read(view, txn, &ctx.services)?;
+		}
 		if !self.initialized {
-			self.partitions =
-				ctx.services.catalog.list_ringbuffer_partitions(txn, self.ringbuffer.def())?;
+			self.partitions = self.list_partitions(txn, ctx)?;
+			if self.oldest_first && self.partitions.len() > 1 {
+				self.merge = Some(OldestFirstMerge::open(txn, &self.source, &self.partitions)?);
+			}
 			self.initialized = true;
 		}
 		Ok(())
@@ -309,53 +428,41 @@ impl QueryNode for RingBufferScan {
 		if self.finished {
 			return Ok(None);
 		}
-
 		let batch_size = self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
-		let partitioned = !self.partition_col_indices.is_empty();
-
-		let (batch_rows, row_numbers, partitions_sidecar) = match self.merge.as_mut() {
-			Some(merge) => merged_batch(merge.next(txn, batch_size as u64)?)?,
-			None => self.drain_batch(txn, batch_size, partitioned)?,
+		let drained = match self.merge.as_mut() {
+			Some(merge) => merge.next(txn, &self.source, batch_size)?,
+			None => self.drain_batch(txn, batch_size)?,
 		};
 
-		if !batch_rows.is_empty() {
-			let columns = batch(self.storage_columns())?;
-			let mut columns = self.append_batch(txn, columns, batch_rows, row_numbers)?;
-			if partitioned {
-				columns = with_system_column(
-					columns,
-					SystemColumn::Partitions,
-					partition_array(&partitions_sidecar),
-				)?;
+		if drained.is_empty() {
+			self.finished = true;
+			if self.produced {
+				return Ok(None);
 			}
-
-			if self.keep_dictionary_ids {
-				return Ok(Some(columns));
-			}
-			return Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, txn)?));
-		}
-
-		self.finished = true;
-		if self.partitions.is_empty() || self.partitions.iter().all(|p| p.metadata.is_empty()) {
 			return Ok(Some(empty_scan(self.empty_columns(), &self.system_columns)?));
 		}
-		Ok(None)
+		self.produced = true;
+
+		let mut partitions = Vec::with_capacity(drained.len());
+		let mut row_numbers = Vec::with_capacity(drained.len());
+		let mut rows = Vec::with_capacity(drained.len());
+		for (partition, rn, row) in drained {
+			partitions.push(partition.unwrap_or_default());
+			row_numbers.push(rn);
+			rows.push(row);
+		}
+		let shape = self.get_or_load_shape(txn, &rows[0])?;
+		let mut columns = append_rows(batch(self.storage_columns())?, &shape, rows, row_numbers)?;
+		if self.system_columns.contains(&SystemColumn::Partitions) {
+			columns = with_system_column(columns, SystemColumn::Partitions, partition_array(&partitions))?;
+		}
+		if self.keep_dictionary_ids {
+			return Ok(Some(columns));
+		}
+		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, txn)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
-}
-
-fn merged_batch(rows: Vec<MultiVersionRow<TaggedKey>>) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<Partition>)> {
-	let mut batch = Vec::with_capacity(rows.len());
-	let mut row_numbers = Vec::with_capacity(rows.len());
-	let mut partitions = Vec::with_capacity(rows.len());
-	for row in rows {
-		let row = storage_partitioned_row(row)?;
-		batch.push(row.bytes);
-		row_numbers.push(row.key.row());
-		partitions.push(row.key.partition());
-	}
-	Ok((batch, row_numbers, partitions))
 }

@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	ringbuffer::EncodedRingBufferRowBuilder,
+	ringbuffer::{EncodedRingBufferRow, EncodedRingBufferRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -25,11 +22,11 @@ use reifydb_core::{
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			ringbuffer::{RingBuffer, RingBufferMetadata},
+			ringbuffer::RingBuffer,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	key::any::TaggedKey,
+	ring::Ring,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -49,10 +46,7 @@ use super::{
 	coerce::InputFragments,
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
-	partition::{
-		VictimProbe, ensure_partition_metadata, ringbuffer_batch_partitions, save_all_partition_metadata,
-		select_oldest_for_partition, update_metadata_after_insert,
-	},
+	partition::ringbuffer_batch_partitions,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
@@ -60,7 +54,7 @@ use crate::{
 	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::{RingBufferOperations, ringbuffer_key},
+	transaction::operation::ringbuffer::{RingBufferOperations, RingTxn, save_ring},
 	vm::{
 		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
@@ -94,7 +88,7 @@ pub(crate) fn insert_ringbuffer(
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile_and_initialize_input(*input, txn, &context)?;
 
-	let mut partition_metadata_cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
+	let mut ring = Ring::new(ringbuffer.capacity);
 	let (inserted_count, returned_rows) = drive_ringbuffer_insert(
 		services,
 		txn,
@@ -105,7 +99,7 @@ pub(crate) fn insert_ringbuffer(
 		input_node.as_mut(),
 		&fragments,
 		returning.is_some(),
-		&mut partition_metadata_cache,
+		&mut ring,
 	)?;
 
 	finalize_ringbuffer_insert(
@@ -115,7 +109,7 @@ pub(crate) fn insert_ringbuffer(
 		&shape,
 		symbols,
 		&returning,
-		&partition_metadata_cache,
+		&ring,
 		&returned_rows,
 		inserted_count,
 		caller,
@@ -145,7 +139,7 @@ fn drive_ringbuffer_insert(
 	input_node: &mut dyn QueryNode,
 	fragments: &InputFragments,
 	has_returning: bool,
-	partition_metadata_cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+	ring: &mut Ring,
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let namespace = target_data.namespace;
 	let ringbuffer = target_data.ringbuffer;
@@ -213,8 +207,7 @@ fn drive_ringbuffer_insert(
 			shape,
 			&rows,
 			&batch.rows,
-			&verified,
-			partition_metadata_cache,
+			ring,
 			has_returning.then_some(&mut returned_rows),
 		)?;
 	}
@@ -229,83 +222,50 @@ pub(crate) fn insert_ringbuffer_chunks(
 	shape: &RowShape,
 	rows: &[EncodedBytes],
 	partitions: &[Partition],
-	values: &HashMap<Partition, Vec<Value>>,
-	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+	ring: &mut Ring,
 	mut returned: Option<&mut Vec<(RowNumber, EncodedBytes)>>,
 ) -> Result<u64> {
-	let mut inserted_count = 0u64;
 	let mut start = 0;
 	while start < rows.len() {
-		let mut held: HashMap<Option<Partition>, u64> = HashMap::new();
+		let mut held: HashMap<Option<Partition>, Vec<usize>> = HashMap::new();
 		let mut end = start;
 		while end < rows.len() {
-			let count = held.entry(partitions.get(end).copied()).or_default();
-			if *count >= ringbuffer.capacity && end > start {
+			let members = held.entry(partitions.get(end).copied()).or_default();
+			if members.len() as u64 >= ringbuffer.capacity {
 				break;
 			}
-			*count += 1;
+			members.push(end - start);
 			end += 1;
 		}
 
-		let mut chosen = HashSet::new();
-		let mut pending = HashSet::new();
-		let mut probe = VictimProbe::default();
-		let mut victims = Vec::new();
-		let mut victim_partitions = Vec::new();
-		let ids = catalog.next_row_number_batch_for_ringbuffer(txn, ringbuffer.id, (end - start) as u64)?;
-		let chunk_partitions = partitions.get(start..end).unwrap_or_default();
-		for (offset, &row_number) in ids.iter().enumerate() {
-			let partition = chunk_partitions.get(offset).copied();
-			let partition_key = partition.map_or(&[][..], |partition| values[&partition].as_slice());
-			ensure_partition_metadata(catalog, txn, ringbuffer, partition_key, cache)?;
-			let current_metadata = cache.get_mut(partition_key).unwrap();
-
-			if current_metadata.is_full(ringbuffer.capacity)
-				&& let Some(victim) = select_oldest_for_partition(
-					txn,
-					ringbuffer,
-					partition,
-					current_metadata,
-					&chosen,
-					&pending,
-					&mut probe,
-					ids.len() - offset,
-				)? {
-				chosen.insert(victim);
-				victims.push(victim);
-				victim_partitions.extend(partition);
-			}
-
-			pending.insert(row_number);
-			update_metadata_after_insert(current_metadata, row_number);
-		}
-
-		if !victims.is_empty() {
-			let victim_keys: Vec<TaggedKey> = victims
-				.iter()
-				.enumerate()
-				.map(|(idx, &victim)| {
-					ringbuffer_key(ringbuffer, victim_partitions.get(idx).copied(), victim)
-				})
-				.collect();
-			let displayed =
-				txn.get(&victim_keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect();
-			txn.remove_from_ringbuffer(
+		let count = end - start;
+		let mut ids = vec![RowNumber(0); count];
+		let mut evicted = vec![None; count];
+		let mut stamped: Vec<EncodedBytes> = rows[start..end].to_vec();
+		for (partition, members) in &held {
+			let mut store = RingTxn {
+				catalog,
+				txn: &mut *txn,
 				ringbuffer,
-				&victim_partitions,
-				&victims,
-				displayed,
-				ringbuffer.eviction,
-			)?;
+			};
+			let placements = ring.place(&mut store, *partition, members.len())?;
+			for (&offset, placement) in members.iter().zip(placements) {
+				ids[offset] = placement.row;
+				evicted[offset] = placement.evicted;
+				let mut row = EncodedRingBufferRow::from(stamped[offset].clone()).thaw();
+				row.set_sequence(placement.sequence);
+				stamped[offset] = row.freeze_bytes();
+			}
 		}
-		let stored = txn.insert_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &rows[start..end])?;
+
+		let chunk_partitions = partitions.get(start..end).unwrap_or_default();
+		let stored = txn.write_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &stamped, &evicted)?;
 		if let Some(returned) = returned.as_mut() {
 			returned.extend(ids.iter().copied().zip(stored));
 		}
-		inserted_count += (end - start) as u64;
 		start = end;
 	}
-	Ok(inserted_count)
+	Ok(rows.len() as u64)
 }
 
 #[inline]
@@ -317,13 +277,13 @@ fn finalize_ringbuffer_insert(
 	shape: &RowShape,
 	symbols: &SymbolTable,
 	returning: &Option<Vec<Expression>>,
-	partition_metadata_cache: &HashMap<Vec<Value>, RingBufferMetadata>,
+	ring: &Ring,
 	returned_rows: &[(RowNumber, EncodedBytes)],
 	inserted_count: u64,
 	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let ringbuffer = target_data.ringbuffer;
-	save_all_partition_metadata(&services.catalog, txn, ringbuffer, partition_metadata_cache)?;
+	save_ring(&services.catalog, txn, ringbuffer, ring)?;
 
 	reifydb_assertions! {
 		let returning_rows_match = returning.is_none() || returned_rows.len() as u64 == inserted_count;
@@ -398,7 +358,7 @@ fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) ->
 
 #[cfg(all(test, reifydb_assertions))]
 mod tests {
-	use std::{collections::HashMap, sync::Arc};
+	use std::sync::Arc;
 
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_codec::row::shape::{RowFamily, RowShape};
@@ -407,7 +367,7 @@ mod tests {
 		interface::catalog::{
 			id::{NamespaceId, RingBufferId},
 			namespace::Namespace,
-			ringbuffer::{EvictionVisibility, RingBuffer},
+			ringbuffer::RingBuffer,
 		},
 		value::column::headers::ColumnHeaders,
 	};
@@ -420,7 +380,9 @@ mod tests {
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use super::{InputFragments, RingBufferTarget, build_insert_ringbuffer_query_context, drive_ringbuffer_insert};
+	use super::{
+		InputFragments, Ring, RingBufferTarget, build_insert_ringbuffer_query_context, drive_ringbuffer_insert,
+	};
 	use crate::{
 		Result,
 		vm::{
@@ -471,7 +433,6 @@ mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			time: TimeSource::None,
-			eviction: EvictionVisibility::Visible,
 		};
 		let target = RingBufferTarget {
 			namespace: &namespace,
@@ -499,7 +460,7 @@ mod tests {
 			&mut NegativeZeroNode,
 			&fragments,
 			false,
-			&mut HashMap::new(),
+			&mut Ring::new(1),
 		);
 	}
 }

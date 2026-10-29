@@ -60,7 +60,7 @@ impl QueueScan {
 			dictionaries.push(None);
 		}
 
-		let system_columns = source_system_columns(false, queue.def().time != TimeSource::None, false);
+		let system_columns = source_system_columns(false, queue.def().time != TimeSource::None, false, false);
 		let headers = scan_headers(queue.columns().iter().map(|col| col.name.as_str()), &system_columns);
 
 		Ok(Self {

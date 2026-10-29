@@ -4,9 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
-		catalog::{
-			id::PrimaryKeyId, key::PrimaryKey, object::ObjectId, ringbuffer::EvictionVisibility, view::View,
-		},
+		catalog::{id::PrimaryKeyId, key::PrimaryKey, object::ObjectId, view::View},
 		store::MultiVersionRow,
 	},
 	key::catalog::ViewKey,
@@ -40,9 +38,6 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 	for (mut view, version) in views {
 		*view.columns_mut() = CatalogStore::list_columns(rx, view.id())?;
-		if let View::RingBuffer(ringbuffer) = &mut view {
-			ringbuffer.eviction = CatalogStore::find_view_eviction(rx, ringbuffer.id)?;
-		}
 		catalog.set_view(view.id(), version, Some(view));
 	}
 
@@ -50,7 +45,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 }
 
 fn convert_view<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<View> {
-	decode_view(EncodedCatalogRow::view(&multi.bytes), vec![], primary_key, EvictionVisibility::Visible)
+	decode_view(EncodedCatalogRow::view(&multi.bytes), vec![], primary_key)
 }
 
 fn get_view_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {

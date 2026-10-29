@@ -27,12 +27,13 @@ pub mod sink;
 pub mod sort;
 pub mod source;
 
-const FORWARDED_SYSTEM_COLUMNS: [SystemColumn; 5] = [
+const FORWARDED_SYSTEM_COLUMNS: [SystemColumn; 6] = [
 	SystemColumn::RowNumbers,
 	SystemColumn::CreatedAt,
 	SystemColumn::UpdatedAt,
 	SystemColumn::Time,
 	SystemColumn::CommitVersion,
+	SystemColumn::Sequence,
 ];
 
 pub fn schema_context<'a>(

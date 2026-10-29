@@ -236,7 +236,6 @@ pub fn build(kind: Kind, layout: Layout, runtime: RuntimeContext) -> SinkOp {
 				primary_key: None,
 				partition_by: partition_by.clone(),
 				capacity,
-				eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
 				sort: vec![],
 			});
 			SinkOp::Ring(SinkRingBufferViewOperator::new(

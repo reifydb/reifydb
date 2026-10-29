@@ -662,6 +662,12 @@ fn stamps<R: AsRef<[u8]>>(
 			Arc::new(datetime_array(rows.iter().map(|row| shape.updated_at(row.as_ref())))),
 		));
 	}
+	if carried.contains(&SystemColumn::Sequence) {
+		columns.push((
+			SystemColumn::Sequence,
+			Arc::new(UInt64Array::from_iter_values(rows.iter().map(|row| shape.sequence(row.as_ref())))),
+		));
+	}
 	let time: Vec<DateTime> = rows.iter().filter_map(|row| shape.time(row.as_ref())).collect();
 	match time.len() {
 		0 => {}

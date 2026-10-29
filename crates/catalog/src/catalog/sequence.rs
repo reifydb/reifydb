@@ -43,18 +43,14 @@ impl Catalog {
 		RowSequence::next_row_number_batch(txn, table, count)
 	}
 
-	#[instrument(
-		name = "catalog::sequence::next_row_number_batch_for_ringbuffer",
-		level = "trace",
-		skip(self, txn)
-	)]
-	pub fn next_row_number_batch_for_ringbuffer(
+	#[instrument(name = "catalog::sequence::reserve_ringbuffer_row_numbers", level = "trace", skip(self, txn))]
+	pub fn reserve_ringbuffer_row_numbers(
 		&self,
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
-	) -> Result<Vec<RowNumber>> {
-		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
+	) -> Result<RowNumber> {
+		RowSequence::reserve_ringbuffer_row_numbers(txn, ringbuffer, count)
 	}
 
 	#[instrument(name = "catalog::sequence::next_row_number_batch_for_queue", level = "trace", skip(self, txn))]

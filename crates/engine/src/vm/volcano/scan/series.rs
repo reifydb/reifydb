@@ -92,6 +92,7 @@ impl SeriesScanNode {
 			!series.def().partition_by.is_empty(),
 			series.def().time != TimeSource::None,
 			false,
+			false,
 		);
 		let headers = scan_headers(columns.into_iter(), &system_columns);
 

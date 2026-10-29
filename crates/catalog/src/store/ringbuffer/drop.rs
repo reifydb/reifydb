@@ -19,13 +19,15 @@ impl CatalogStore {
 				None,
 			)])?;
 
-			let partitions =
-				Self::list_ringbuffer_partitions(&mut Transaction::Admin(&mut *txn), &ringbuffer_def)?;
+			let partitions = Self::list_ringbuffer_partitions(
+				&mut Transaction::Admin(&mut *txn),
+				ringbuffer_def.id.into(),
+			)?;
 			for partition in partitions {
 				Self::remove_partition_metadata(
 					&mut Transaction::Admin(&mut *txn),
 					&ringbuffer_def,
-					&partition.partition_values,
+					partition.partition,
 				)?;
 			}
 
@@ -53,7 +55,7 @@ pub mod tests {
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		fragment::Fragment,
-		value::{Value, constraint::TypeConstraint, value_type::ValueType},
+		value::{Value, constraint::TypeConstraint, partition::Partition, value_type::ValueType},
 	};
 
 	use crate::{
@@ -154,29 +156,29 @@ pub mod tests {
 		.unwrap();
 
 		for region in ["us", "eu"] {
-			let partition_key = vec![Value::Utf8(region.to_string())];
+			#[allow(clippy::disallowed_methods)]
+			let partition = Partition::of(&[Value::Utf8(region.to_string())]);
 			let metadata = RingBufferMetadata {
+				base_rn: 1,
+				next_sequence: 3,
 				count: 3,
-				head: 1,
-				tail: 4,
 			};
-			CatalogStore::update_ringbuffer_partition_metadata_txn(
+			CatalogStore::save_partition_metadata(
 				&mut Transaction::Admin(&mut txn),
-				rb.id,
-				&partition_key,
+				&rb,
+				Some(partition),
 				&metadata,
 			)
 			.unwrap();
 		}
 
-		let before = CatalogStore::list_ringbuffer_partition_metadata(&mut Transaction::Admin(&mut txn), &rb)
+		let before = CatalogStore::list_ringbuffer_partitions(&mut Transaction::Admin(&mut txn), rb.id.into())
 			.unwrap();
 		assert_eq!(before.len(), 2);
 
 		CatalogStore::drop_ringbuffer(&mut txn, rb.id).unwrap();
 
-		// The ringbuffer definition is gone, so scan the raw metadata keyspace for this id directly
-		// rather than going through list_ringbuffer_partition_metadata (which needs a RingBuffer).
+		// The definition is gone, so only a raw scan of the metadata keyspace can see orphans.
 		let range = RingBufferMetadataKey::full_scan_for_storage(rb.id);
 		let remaining: Vec<_> =
 			Transaction::Admin(&mut txn).range(range, RangeScope::All, 4096).unwrap().collect();

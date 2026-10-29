@@ -337,10 +337,17 @@ impl FlowEngineInner {
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
 		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
-		let (storage, family, deferred, columns, partition_by) = match right {
+		let (storage, family, deferred, columns, partition_by, ring) = match right {
 			LookupObject::Table(table) => {
 				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
-				(StorageId::Table(table.id), RowFamily::Table, false, table.columns, table.partition_by)
+				(
+					StorageId::Table(table.id),
+					RowFamily::Table,
+					false,
+					table.columns,
+					table.partition_by,
+					None,
+				)
 			}
 			LookupObject::RingBuffer(ringbuffer) => {
 				let ringbuffer = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
@@ -350,6 +357,7 @@ impl FlowEngineInner {
 					false,
 					ringbuffer.columns,
 					ringbuffer.partition_by,
+					Some(ringbuffer.capacity),
 				)
 			}
 			LookupObject::View(view) => match self.catalog.get_view(&mut txn.reborrow(), view)? {
@@ -359,6 +367,7 @@ impl FlowEngineInner {
 					view.kind == ViewKind::Deferred,
 					view.columns,
 					view.partition_by,
+					None,
 				),
 				other => {
 					return Err(error!(lookup_right_unsupported(Fragment::None, other.name())));
@@ -380,6 +389,7 @@ impl FlowEngineInner {
 			right,
 			deferred,
 			storage,
+			ring,
 			columns,
 			partition_by,
 			shape,

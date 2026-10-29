@@ -119,7 +119,7 @@ impl ViewScanNode {
 			}
 		}
 
-		let system_columns = source_system_columns(false, true, false);
+		let system_columns = source_system_columns(false, true, false, false);
 		let headers = scan_headers(view.columns().iter().map(|col| col.name.as_str()), &system_columns);
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
 		let sorted = !view.def().sort().is_empty() && view.def().storage_kind() == ViewStorageKind::Table;

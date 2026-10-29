@@ -11,7 +11,7 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	common::TimeSource,
 	interface::{
-		catalog::{dictionary::Dictionary, storage::StorageId},
+		catalog::{dictionary::Dictionary, storage::StorageId, view::ViewStorageKind},
 		resolved::ResolvedObject,
 	},
 	internal_err, internal_error,
@@ -533,11 +533,16 @@ fn storage_columns(source: &ResolvedObject, dictionaries: &[Option<(Dictionary, 
 fn lookup_system_columns(source: &ResolvedObject) -> Vec<SystemColumn> {
 	match source {
 		ResolvedObject::Table(table) => {
-			source_system_columns(false, table.def().time != TimeSource::None, true)
+			source_system_columns(false, table.def().time != TimeSource::None, true, false)
 		}
-		ResolvedObject::View(_) => source_system_columns(false, true, false),
+		ResolvedObject::View(view) => source_system_columns(
+			false,
+			true,
+			false,
+			view.def().storage_kind() == ViewStorageKind::RingBuffer,
+		),
 		ResolvedObject::RingBuffer(rb) => {
-			source_system_columns(false, rb.def().time != TimeSource::None, false)
+			source_system_columns(false, rb.def().time != TimeSource::None, false, true)
 		}
 		_ => Vec::new(),
 	}

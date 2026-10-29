@@ -24,12 +24,18 @@ impl RowSequence {
 		Self::next_row_number_batch_for_source(txn, StorageId::from(table), count)
 	}
 
-	pub(crate) fn next_row_number_batch_for_ringbuffer(
+	pub(crate) fn reserve_ringbuffer_row_numbers(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
-	) -> Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, StorageId::from(ringbuffer), count)
+	) -> Result<RowNumber> {
+		let last = GeneratorU64::next_batched(
+			txn,
+			&RowSequenceKey::new(StorageId::from(ringbuffer)),
+			None,
+			count,
+		)?;
+		Ok(RowNumber(last + 1 - count))
 	}
 
 	pub(crate) fn next_row_number_batch_for_queue(

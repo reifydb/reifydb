@@ -50,7 +50,6 @@ impl<'bump> Compiler<'bump> {
 			ttl_eviction: create.ttl_eviction,
 			persistent: create.persistent,
 			time: create.time,
-			eviction: create.eviction,
 		}))
 	}
 }

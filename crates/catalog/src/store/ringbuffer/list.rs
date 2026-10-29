@@ -76,7 +76,6 @@ impl CatalogStore {
 				primary_key,
 				partition_by,
 				time,
-				eviction: Self::find_ringbuffer_eviction(rx, ringbuffer_id)?,
 			};
 
 			result.push(ringbuffer);

@@ -223,6 +223,7 @@ impl HostContext for SingleEntryHost {
 	fn lookup_read(
 		&mut self,
 		_storage: StorageId,
+		_ring: Option<u64>,
 		_version: CommitVersion,
 		_partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {

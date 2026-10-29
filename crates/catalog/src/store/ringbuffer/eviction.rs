@@ -3,11 +3,7 @@
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	interface::catalog::{
-		id::{RingBufferId, ViewId},
-		ringbuffer::EvictionVisibility,
-		storage::StorageId,
-	},
+	interface::catalog::{ringbuffer::EvictionVisibility, storage::StorageId},
 	key::{
 		any::TaggedKey,
 		ringbuffer::{RingBufferEvictionKey, SeriesEvictionKey, TableEvictionKey, ViewEvictionKey},
@@ -19,48 +15,10 @@ use reifydb_value::util::cowvec::CowVec;
 
 use crate::{CatalogStore, Result};
 
-const CAPACITY_SILENT: u8 = 0b01;
 const TTL_VISIBLE: u8 = 0b10;
-const KNOWN_FLAGS: u8 = CAPACITY_SILENT | TTL_VISIBLE;
+const KNOWN_FLAGS: u8 = TTL_VISIBLE;
 
 impl CatalogStore {
-	pub(crate) fn store_ringbuffer_eviction(
-		txn: &mut AdminTransaction,
-		ringbuffer: RingBufferId,
-		eviction: EvictionVisibility,
-	) -> Result<()> {
-		set_flag(
-			txn,
-			RingBufferEvictionKey::new(ringbuffer).into(),
-			CAPACITY_SILENT,
-			eviction == EvictionVisibility::Silent,
-		)
-	}
-
-	pub(crate) fn find_ringbuffer_eviction(
-		rx: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-	) -> Result<EvictionVisibility> {
-		Ok(capacity_eviction(read_flags(rx, RingBufferEvictionKey::new(ringbuffer).into())?))
-	}
-
-	pub(crate) fn store_view_eviction(
-		txn: &mut AdminTransaction,
-		view: ViewId,
-		eviction: EvictionVisibility,
-	) -> Result<()> {
-		set_flag(
-			txn,
-			ViewEvictionKey::new(view).into(),
-			CAPACITY_SILENT,
-			eviction == EvictionVisibility::Silent,
-		)
-	}
-
-	pub(crate) fn find_view_eviction(rx: &mut Transaction<'_>, view: ViewId) -> Result<EvictionVisibility> {
-		Ok(capacity_eviction(read_flags(rx, ViewEvictionKey::new(view).into())?))
-	}
-
 	pub(crate) fn store_ttl_eviction(
 		txn: &mut AdminTransaction,
 		storage: StorageId,
@@ -103,13 +61,6 @@ fn eviction_key(storage: StorageId) -> Option<TaggedKey> {
 	}
 }
 
-fn capacity_eviction(flags: u8) -> EvictionVisibility {
-	match flags & CAPACITY_SILENT {
-		0 => EvictionVisibility::Visible,
-		_ => EvictionVisibility::Silent,
-	}
-}
-
 fn set_flag(txn: &mut AdminTransaction, key: TaggedKey, flag: u8, on: bool) -> Result<()> {
 	if !on {
 		return Ok(());
@@ -136,11 +87,8 @@ fn read_flags(rx: &mut Transaction<'_>, key: TaggedKey) -> Result<u8> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::{CommitVersion, TimeSource},
-		interface::catalog::{
-			id::{QueueId, SeriesId, TableId},
-			view::View,
-		},
+		common::TimeSource,
+		interface::catalog::id::{QueueId, RingBufferId, SeriesId, TableId, ViewId},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::{
@@ -150,12 +98,10 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		cache::{CatalogCache, load::CatalogCacheLoader},
 		catalog::{
 			Catalog,
 			ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
 		},
-		store::view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 		test_utils::{ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table},
 	};
 
@@ -163,7 +109,7 @@ mod tests {
 		txn.get(&[key]).unwrap().pop().flatten().is_some()
 	}
 
-	fn create_ringbuffer(txn: &mut AdminTransaction, eviction: EvictionVisibility) -> RingBufferId {
+	fn create_ringbuffer(txn: &mut AdminTransaction) -> RingBufferId {
 		let namespace = ensure_test_namespace(txn);
 		Catalog::testing()
 			.create_ringbuffer(
@@ -182,135 +128,24 @@ mod tests {
 					capacity: 1,
 					partition_by: vec![],
 					time: TimeSource::Processing,
-					eviction,
 				},
 			)
 			.unwrap()
 			.id
 	}
 
-	fn create_ringbuffer_view(txn: &mut AdminTransaction, eviction: EvictionVisibility) -> ViewId {
-		let namespace = ensure_test_namespace(txn);
-		CatalogStore::create_deferred_view(
-			txn,
-			ViewToCreate {
-				name: Fragment::internal("v"),
-				namespace: namespace.id(),
-				columns: vec![ViewColumnToCreate {
-					name: Fragment::internal("a"),
-					fragment: Fragment::internal("a"),
-					constraint: TypeConstraint::unconstrained(ValueType::Int4),
-					dictionary_id: None,
-				}],
-				storage: ViewStorage::RingBuffer {
-					capacity: 1,
-					partition_by: vec![],
-					eviction,
-				},
-				sort: vec![],
-			},
-		)
-		.unwrap()
-		.id()
-	}
-
-	fn view_eviction(view: View) -> EvictionVisibility {
-		match view {
-			View::RingBuffer(ringbuffer) => ringbuffer.eviction,
-			other => panic!("expected a ring buffer view, got {other:?}"),
-		}
-	}
-
-	#[test]
-	fn a_ringbuffer_without_a_record_reads_visible() {
-		// Every ring buffer stored before this record existed must keep today's visible push-out.
-		let mut txn = create_test_admin_transaction();
-		let created = ensure_test_ringbuffer(&mut txn);
-		assert!(!record_present(&mut txn, RingBufferEvictionKey::new(created.id).into()));
-		let found =
-			CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id).unwrap().unwrap();
-		assert_eq!(found.eviction, EvictionVisibility::Visible);
-	}
-
-	#[test]
-	fn a_visible_ringbuffer_writes_no_record() {
-		// A record for the default would add a key and a cdc change to every existing create.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer(&mut txn, EvictionVisibility::Visible);
-		assert!(!record_present(&mut txn, RingBufferEvictionKey::new(id).into()));
-	}
-
-	#[test]
-	fn a_silent_ringbuffer_round_trips_through_find_list_and_the_cache() {
-		// Any read path that drops the record would turn push-outs visible again after a restart.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer(&mut txn, EvictionVisibility::Silent);
-
-		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), id).unwrap().unwrap();
-		assert_eq!(found.eviction, EvictionVisibility::Silent);
-
-		let listed = CatalogStore::list_ringbuffers(&mut Transaction::Admin(&mut txn)).unwrap();
-		assert_eq!(listed.iter().find(|r| r.id == id).unwrap().eviction, EvictionVisibility::Silent);
-
-		let cache = CatalogCache::new();
-		CatalogCacheLoader::load_all(&mut Transaction::Admin(&mut txn), &cache).unwrap();
-		let cached = cache.find_ringbuffer_at(id, CommitVersion(u64::MAX)).expect("ring buffer in the cache");
-		assert_eq!(cached.eviction, EvictionVisibility::Silent);
-	}
-
-	#[test]
-	fn dropping_a_silent_ringbuffer_removes_its_record() {
-		// A leftover record would make a later object reusing the id silently drop removes.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer(&mut txn, EvictionVisibility::Silent);
-		assert!(record_present(&mut txn, RingBufferEvictionKey::new(id).into()));
-		CatalogStore::drop_ringbuffer(&mut txn, id).unwrap();
-		assert!(!record_present(&mut txn, RingBufferEvictionKey::new(id).into()));
-	}
-
-	#[test]
-	fn a_ringbuffer_view_without_a_record_reads_visible() {
-		// Every ring buffer view stored before this record existed must keep today's visible push-out.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer_view(&mut txn, EvictionVisibility::Visible);
-		assert!(!record_present(&mut txn, ViewEvictionKey::new(id).into()));
-		let found = CatalogStore::find_view(&mut Transaction::Admin(&mut txn), id).unwrap().unwrap();
-		assert_eq!(view_eviction(found), EvictionVisibility::Visible);
-	}
-
-	#[test]
-	fn a_silent_ringbuffer_view_round_trips_through_find_and_the_cache() {
-		// Any read path that drops the record would turn the sink's push-outs visible again.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer_view(&mut txn, EvictionVisibility::Silent);
-
-		let found = CatalogStore::find_view(&mut Transaction::Admin(&mut txn), id).unwrap().unwrap();
-		assert_eq!(view_eviction(found), EvictionVisibility::Silent);
-
-		let cache = CatalogCache::new();
-		CatalogCacheLoader::load_all(&mut Transaction::Admin(&mut txn), &cache).unwrap();
-		let cached = cache.find_view_at(id, CommitVersion(u64::MAX)).expect("view in the cache");
-		assert_eq!(view_eviction(cached), EvictionVisibility::Silent);
-	}
-
-	#[test]
-	fn dropping_a_silent_ringbuffer_view_removes_its_record() {
-		// A leftover record would make a later view reusing the id silently drop removes.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer_view(&mut txn, EvictionVisibility::Silent);
-		assert!(record_present(&mut txn, ViewEvictionKey::new(id).into()));
-		CatalogStore::drop_view(&mut txn, id).unwrap();
-		assert!(!record_present(&mut txn, ViewEvictionKey::new(id).into()));
-	}
-
 	#[test]
 	fn a_record_that_is_not_one_known_byte_is_an_error() {
-		// Reading garbage as visible would hide storage corruption behind a plausible default.
+		// Reading garbage as a default would hide storage corruption behind a plausible policy.
 		let mut txn = create_test_admin_transaction();
 		let created = ensure_test_ringbuffer(&mut txn);
 		txn.set(vec![(RingBufferEvictionKey::new(created.id).into(), EncodedBytes(CowVec::new(vec![7])))])
 			.unwrap();
-		assert!(CatalogStore::find_ringbuffer_eviction(&mut Transaction::Admin(&mut txn), created.id).is_err());
+		assert!(CatalogStore::find_ttl_eviction(
+			&mut Transaction::Admin(&mut txn),
+			StorageId::RingBuffer(created.id)
+		)
+		.is_err());
 	}
 
 	fn record_byte(txn: &mut AdminTransaction, key: TaggedKey) -> Option<Vec<u8>> {
@@ -361,48 +196,6 @@ mod tests {
 	}
 
 	#[test]
-	fn capacity_and_ttl_flags_share_one_record_and_stay_independent() {
-		// Overwriting instead of merging would drop the capacity policy when the ttl policy is stored.
-		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer(&mut txn, EvictionVisibility::Silent);
-		CatalogStore::store_ttl_eviction(&mut txn, StorageId::RingBuffer(id), EvictionVisibility::Visible)
-			.unwrap();
-		assert_eq!(record_byte(&mut txn, RingBufferEvictionKey::new(id).into()), Some(vec![0b11]));
-		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), id).unwrap().unwrap();
-		assert_eq!(found.eviction, EvictionVisibility::Silent);
-		assert_eq!(ttl_eviction(&mut txn, StorageId::RingBuffer(id)), EvictionVisibility::Visible);
-	}
-
-	#[test]
-	fn a_stored_capacity_byte_keeps_meaning_capacity_silent_only() {
-		// Records written before the flags existed hold [1] and must not turn ttl expiry visible.
-		let mut txn = create_test_admin_transaction();
-		let created = ensure_test_ringbuffer(&mut txn);
-		txn.set(vec![(RingBufferEvictionKey::new(created.id).into(), EncodedBytes(CowVec::new(vec![1])))])
-			.unwrap();
-		let found =
-			CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id).unwrap().unwrap();
-		assert_eq!(found.eviction, EvictionVisibility::Silent);
-		assert_eq!(ttl_eviction(&mut txn, StorageId::RingBuffer(created.id)), EvictionVisibility::Silent);
-	}
-
-	#[test]
-	fn a_ttl_only_record_keeps_capacity_visible() {
-		// Reading any record as capacity silent would stop push-outs retracting downstream.
-		let mut txn = create_test_admin_transaction();
-		let created = ensure_test_ringbuffer(&mut txn);
-		CatalogStore::store_ttl_eviction(
-			&mut txn,
-			StorageId::RingBuffer(created.id),
-			EvictionVisibility::Visible,
-		)
-		.unwrap();
-		let found =
-			CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id).unwrap().unwrap();
-		assert_eq!(found.eviction, EvictionVisibility::Visible);
-	}
-
-	#[test]
 	fn an_unknown_flag_bit_is_an_error_for_the_ttl_read_too() {
 		// Reading an unknown bit as a default would hide storage corruption behind a plausible policy.
 		let mut txn = create_test_admin_transaction();
@@ -428,10 +221,10 @@ mod tests {
 	}
 
 	#[test]
-	fn dropping_a_ttl_visible_ringbuffer_with_visible_capacity_removes_its_record() {
-		// The record now exists without a silent capacity, so drop must not key off the capacity policy.
+	fn dropping_a_ttl_visible_ringbuffer_removes_its_record() {
+		// A leftover record would make a later ring buffer reusing the id announce its expiry.
 		let mut txn = create_test_admin_transaction();
-		let id = create_ringbuffer(&mut txn, EvictionVisibility::Visible);
+		let id = create_ringbuffer(&mut txn);
 		CatalogStore::store_ttl_eviction(&mut txn, StorageId::RingBuffer(id), EvictionVisibility::Visible)
 			.unwrap();
 		assert!(record_present(&mut txn, RingBufferEvictionKey::new(id).into()));

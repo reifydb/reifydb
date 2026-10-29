@@ -19,7 +19,7 @@ use reifydb_value::{
 		column_view::ColumnView,
 		datetime::TIME_COLUMN_NAME,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, column_view, created_at, require_row_numbers, user_columns},
+		system_columns::{SystemColumn, column_view, created_at, require_row_numbers, sequences, user_columns},
 	},
 };
 use tracing::instrument;
@@ -84,7 +84,10 @@ pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Opt
 		.map(|key| Ok((ordering_values(columns, &key.column)?, key.direction.clone())))
 		.collect::<Result<_>>()?;
 	let tail = ordering.last().map(|(_, direction)| direction.clone()).unwrap_or(SortDirection::Desc);
-	let numbers = require_row_numbers(columns)?;
+	let numbers: Vec<u64> = match sequences(columns)? {
+		sequences if sequences.len() == rows => sequences.to_vec(),
+		_ => require_row_numbers(columns)?.iter().map(|number| number.value()).collect(),
+	};
 	let mut winner: Option<usize> = None;
 	for idx in 0..rows {
 		if ordering.iter().any(|(values, _)| matches!(values[idx], Value::None { .. })) {

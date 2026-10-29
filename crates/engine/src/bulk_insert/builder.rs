@@ -30,6 +30,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{any::TaggedKey, series::SeriesPartitionMetadataKey},
+	ring::Ring,
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -63,12 +64,15 @@ use crate::{
 	flow_sync::{load_flow_diff_need, sync_transactional_views},
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{SeriesRows, write_series_rows},
+	transaction::operation::{
+		ringbuffer::save_ring,
+		series::{SeriesRows, write_series_rows},
+	},
 	vm::{
 		instruction::dml::{
 			coerce::key_out_of_range,
 			columns::{CastColumns, fill_sequences, intern_dictionary_columns},
-			partition::{ringbuffer_batch_partitions, save_all_partition_metadata},
+			partition::ringbuffer_batch_partitions,
 			primary_key::{Violation, get_primary_key},
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::{assign_series_keys, series_batch_partitions, write_inserted_series_metadata},
@@ -662,7 +666,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		entries.push(builder.freeze_bytes());
 	}
 
-	let mut cache = HashMap::new();
+	let mut ring = Ring::new(ringbuffer.capacity);
 	let inserted = insert_ringbuffer_chunks(
 		catalog,
 		&mut Transaction::Command(txn),
@@ -670,11 +674,10 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		shape,
 		&entries,
 		&batch.rows,
-		&verified,
-		&mut cache,
+		&mut ring,
 		None,
 	)?;
-	save_all_partition_metadata(catalog, &mut Transaction::Command(txn), ringbuffer, &cache)?;
+	save_ring(catalog, &mut Transaction::Command(txn), ringbuffer, &ring)?;
 	Ok(inserted)
 }
 

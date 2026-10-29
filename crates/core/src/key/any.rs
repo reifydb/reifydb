@@ -3,8 +3,7 @@
 
 use std::{borrow::Cow, cmp::Ordering};
 
-use reifydb_codec::key::{encode_bytes, encode_u128_varint, encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_value::value::Value;
+use reifydb_codec::key::{encode_bytes, encode_u128_varint, encoded::EncodedKey};
 use smallvec::SmallVec;
 
 use crate::{
@@ -1065,14 +1064,6 @@ fn metrics_id_cmp(left: &MetricsId, right: &MetricsId) -> Ordering {
 	}
 }
 
-pub(crate) fn encode_values(values: &[Value]) -> EncodedKey {
-	let mut serializer = KeySerializer::new();
-	for value in values {
-		serializer.extend_value(value);
-	}
-	serializer.to_encoded_key()
-}
-
 impl Ord for MetricKey {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
@@ -1425,7 +1416,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::shape::fingerprint::RowShapeFingerprint};
 	use reifydb_runtime::version_epoch::EpochSeconds;
 	use reifydb_value::value::{
-		Value, datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, partition::Partition,
+		datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, partition::Partition,
 		row_number::RowNumber, sumtype::SumTypeId,
 	};
 	use smallvec::SmallVec;
@@ -1784,14 +1775,8 @@ mod tests {
 			probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8])),
 			probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8, 0x02])),
 			probe_encodable(RingBufferMetadataKey::new(StorageId::ringbuffer(1))),
-			probe_encodable(RingBufferMetadataKey::partition(
-				StorageId::ringbuffer(1),
-				vec![Value::Uint8(1)],
-			)),
-			probe_encodable(RingBufferMetadataKey::partition(
-				StorageId::ringbuffer(1),
-				vec![Value::Uint8(2)],
-			)),
+			probe_encodable(RingBufferMetadataKey::of(StorageId::ringbuffer(1), Some(Partition(1)))),
+			probe_encodable(RingBufferMetadataKey::of(StorageId::ringbuffer(1), Some(Partition(2)))),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(1))),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(2))),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x20u8]), RowNumber(1))),
@@ -2061,17 +2046,17 @@ mod tests {
 		);
 		assert_projection_matches_bytes(
 			vec![
-				probe_encodable(RingBufferMetadataKey::partition(
+				probe_encodable(RingBufferMetadataKey::of(
 					StorageId::ringbuffer(1),
-					vec![Value::Uint8(1)],
+					Some(Partition(1)),
 				)),
-				probe_encodable(RingBufferMetadataKey::partition(
+				probe_encodable(RingBufferMetadataKey::of(
 					StorageId::ringbuffer(1),
-					vec![Value::Uint8(2)],
+					Some(Partition(2)),
 				)),
-				probe_encodable(RingBufferMetadataKey::partition(
+				probe_encodable(RingBufferMetadataKey::of(
 					StorageId::ringbuffer(2),
-					vec![Value::Uint8(1)],
+					Some(Partition(1)),
 				)),
 			],
 			"RingBufferMetadataKey",
@@ -2215,10 +2200,7 @@ mod tests {
 				namespace: NamespaceId(26),
 				ringbuffer: RingBufferId(27),
 			}),
-			probe_encodable(RingBufferMetadataKey::partition(
-				StorageId::ringbuffer(28),
-				vec![Value::Utf8("east".to_string()), Value::Uint8(3)],
-			)),
+			probe_encodable(RingBufferMetadataKey::of(StorageId::ringbuffer(28), Some(Partition(3)))),
 			probe(FlowKey {
 				flow: FlowId(29),
 			}),

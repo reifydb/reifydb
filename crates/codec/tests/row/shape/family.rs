@@ -4,7 +4,7 @@
 use reifydb_codec::row::{
 	bytes::{
 		CATALOG_HEADER_SIZE, QUEUE_ATTEMPT_HEADER_SIZE, QUEUE_DEDUPLICATION_HEADER_SIZE, QUEUE_HEADER_SIZE,
-		SHAPE_HEADER_SIZE, write_timestamps,
+		RINGBUFFER_HEADER_SIZE, SHAPE_HEADER_SIZE, write_timestamps,
 	},
 	operator::OPERATOR_HEADER_SIZE,
 	pod::POD_HEADER_SIZE,
@@ -87,18 +87,27 @@ fn the_source_families_never_share_a_fingerprint_for_the_same_columns() {
 }
 
 #[test]
-fn the_three_thirty_three_byte_source_families_lay_their_fields_out_identically() {
-	// Table, series and ring buffer differ only in type, so a header-width drift in one silently reframes its rows.
+fn the_two_thirty_three_byte_source_families_lay_their_fields_out_identically() {
+	// Table and series differ only in type, so a header-width drift in one silently reframes its rows.
 	let table = RowShape::new(RowFamily::Table, fields());
 	let series = RowShape::new(RowFamily::Series, fields());
+
+	assert_eq!(series.header_size(), table.header_size());
+	assert_eq!(series.data_offset(), table.data_offset());
+	assert_eq!(series.fields()[0].offset, table.fields()[0].offset);
+	assert_eq!(series.total_static_size(), table.total_static_size());
+}
+
+#[test]
+fn a_ring_buffer_lays_its_fields_out_eight_bytes_after_a_table() {
+	// The #sequence slot is the only difference, so any other drift reframes every ring buffer row.
+	let table = RowShape::new(RowFamily::Table, fields());
 	let ringbuffer = RowShape::new(RowFamily::RingBuffer, fields());
 
-	for shape in [&series, &ringbuffer] {
-		assert_eq!(shape.header_size(), table.header_size());
-		assert_eq!(shape.data_offset(), table.data_offset());
-		assert_eq!(shape.fields()[0].offset, table.fields()[0].offset);
-		assert_eq!(shape.total_static_size(), table.total_static_size());
-	}
+	assert_eq!(ringbuffer.header_size(), table.header_size() + 8);
+	assert_eq!(ringbuffer.data_offset(), table.data_offset() + 8);
+	assert_eq!(ringbuffer.fields()[0].offset, table.fields()[0].offset + 8);
+	assert_eq!(ringbuffer.total_static_size(), table.total_static_size() + 8);
 }
 
 #[test]
@@ -153,7 +162,7 @@ fn every_family_declares_the_header_width_its_own_accessors_read() {
 	assert_eq!(RowFamily::Pod.header_size(), POD_HEADER_SIZE);
 	assert_eq!(RowFamily::Table.header_size(), SHAPE_HEADER_SIZE);
 	assert_eq!(RowFamily::Series.header_size(), SHAPE_HEADER_SIZE);
-	assert_eq!(RowFamily::RingBuffer.header_size(), SHAPE_HEADER_SIZE);
+	assert_eq!(RowFamily::RingBuffer.header_size(), RINGBUFFER_HEADER_SIZE);
 	assert_eq!(RowFamily::Queue.header_size(), QUEUE_HEADER_SIZE);
 	assert_eq!(RowFamily::QueueAttempt.header_size(), QUEUE_ATTEMPT_HEADER_SIZE);
 	assert_eq!(RowFamily::QueueDeduplication.header_size(), QUEUE_DEDUPLICATION_HEADER_SIZE);
@@ -167,7 +176,7 @@ fn the_nine_header_widths_are_the_widths_every_stored_row_was_written_under() {
 	assert_eq!(RowFamily::Operator.header_size(), 8, "the operator row is nothing but the instant it belongs to");
 	assert_eq!(RowFamily::Table.header_size(), 33);
 	assert_eq!(RowFamily::Series.header_size(), 33);
-	assert_eq!(RowFamily::RingBuffer.header_size(), 33);
+	assert_eq!(RowFamily::RingBuffer.header_size(), 41, "the source header plus #sequence");
 	assert_eq!(RowFamily::Queue.header_size(), 41, "the source header plus not_before");
 	assert_eq!(RowFamily::QueueAttempt.header_size(), 43, "the source header plus outcome, lost and finished_at");
 	assert_eq!(RowFamily::QueueDeduplication.header_size(), 49, "the source header plus row_number and expires_at");

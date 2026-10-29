@@ -200,8 +200,6 @@ mod read_only;
 mod returning;
 #[path = "ringbuffer.rs"]
 mod ringbuffer;
-#[path = "ringbuffer_capacity_eviction.rs"]
-mod ringbuffer_capacity_eviction;
 #[path = "row_parameter_lookup.rs"]
 mod row_parameter_lookup;
 #[path = "run_tests_error_quotes_body.rs"]

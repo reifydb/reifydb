@@ -327,11 +327,12 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
+		ring: Option<u64>,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		self.record("lookup_read", partitions.len());
-		self.inner.lookup_read(storage, version, partitions)
+		self.inner.lookup_read(storage, ring, version, partitions)
 	}
 
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {

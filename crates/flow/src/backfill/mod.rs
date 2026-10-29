@@ -26,8 +26,13 @@ use reifydb_value::{
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
-const LIVE_SYSTEM_COLUMNS: [SystemColumn; 4] =
-	[SystemColumn::RowNumbers, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
+const LIVE_SYSTEM_COLUMNS: [SystemColumn; 5] = [
+	SystemColumn::RowNumbers,
+	SystemColumn::CreatedAt,
+	SystemColumn::UpdatedAt,
+	SystemColumn::Time,
+	SystemColumn::Sequence,
+];
 
 pub trait Scan {
 	fn version(&self) -> CommitVersion;

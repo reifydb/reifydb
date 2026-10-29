@@ -7,9 +7,9 @@ use reifydb_value::value::datetime::DateTime;
 
 use crate::row::{
 	bytes::{
-		EncodedBytes, EncodedRowBuilder, RowBuilder, SHAPE_HEADER_SIZE, SourceRowBuilder, read_created_at,
-		read_defined_at, read_fingerprint, read_storage_time, read_updated_at, sealed::Sealed,
-		write_fingerprint, write_storage_time, write_timestamps,
+		EncodedBytes, EncodedRowBuilder, RINGBUFFER_HEADER_SIZE, RowBuilder, SourceRowBuilder, read_created_at,
+		read_defined_at, read_fingerprint, read_sequence, read_storage_time, read_updated_at, sealed::Sealed,
+		write_fingerprint, write_sequence, write_storage_time, write_timestamps,
 	},
 	shape::fingerprint::RowShapeFingerprint,
 };
@@ -58,12 +58,17 @@ impl EncodedRingBufferRow {
 	}
 
 	#[inline]
+	pub fn sequence(&self) -> u64 {
+		read_sequence(&self.0)
+	}
+
+	#[inline]
 	pub fn is_defined(&self, index: usize) -> bool {
-		read_defined_at(&self.0, SHAPE_HEADER_SIZE, index)
+		read_defined_at(&self.0, RINGBUFFER_HEADER_SIZE, index)
 	}
 
 	pub fn body(&self) -> &[u8] {
-		&self.0[SHAPE_HEADER_SIZE..]
+		&self.0[RINGBUFFER_HEADER_SIZE..]
 	}
 }
 
@@ -121,12 +126,21 @@ impl EncodedRingBufferRowBuilder {
 	}
 
 	#[inline]
+	pub fn sequence(&self) -> u64 {
+		read_sequence(self.as_slice())
+	}
+
+	pub fn set_sequence(&mut self, sequence: u64) {
+		write_sequence(self.as_mut_slice(), sequence);
+	}
+
+	#[inline]
 	pub fn is_defined(&self, index: usize) -> bool {
-		read_defined_at(self.as_slice(), SHAPE_HEADER_SIZE, index)
+		read_defined_at(self.as_slice(), RINGBUFFER_HEADER_SIZE, index)
 	}
 
 	pub fn body(&self) -> &[u8] {
-		&self.as_slice()[SHAPE_HEADER_SIZE..]
+		&self.as_slice()[RINGBUFFER_HEADER_SIZE..]
 	}
 
 	pub fn freeze(self) -> EncodedRingBufferRow {

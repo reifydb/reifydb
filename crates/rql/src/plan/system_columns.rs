@@ -7,8 +7,11 @@ use reifydb_core::{
 	common::TimeSource,
 	error::diagnostic::query::column_not_found,
 	expression::{Expression, name::display_label},
-	interface::resolved::{
-		ResolvedObject, ResolvedQueue, ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
+	interface::{
+		catalog::view::ViewStorageKind,
+		resolved::{
+			ResolvedObject, ResolvedQueue, ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
+		},
 	},
 	sort::SortKey,
 };
@@ -389,6 +392,13 @@ impl Source<'_> {
 		};
 		if flow_lacks {
 			return Some(format!("flow inputs have no {column}"));
+		}
+		if column == SystemColumn::Sequence {
+			return match self {
+				Source::RingBuffer(_) => None,
+				Source::View(view) if view.def().storage_kind() == ViewStorageKind::RingBuffer => None,
+				_ => Some(format!("only ringbuffer rows have a {column}")),
+			};
 		}
 		match self {
 			Source::Table(table) => {

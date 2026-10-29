@@ -30,13 +30,14 @@ use reifydb_core::{
 		progress::Progress,
 		task::LifecycleTask,
 	},
+	ring::Ring,
 	row::Ttl,
 	state::horizon::Cutoff,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
 	transaction::operation::{
-		ringbuffer::apply_ringbuffer_partition_metadata_after_delete,
+		ringbuffer::{RingTxn, ringbuffer_key, save_ring},
 		series::{SeriesDeleteTally, apply_series_metadata_after_delete},
 	},
 	vm::instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
@@ -45,7 +46,10 @@ use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition},
+	value::{
+		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		row_number::RowNumber,
+	},
 };
 use tracing::{debug, instrument, warn};
 
@@ -424,7 +428,7 @@ impl Evictor {
 		}
 
 		let range = scan::resume_range(keyspace, state.cursors.get(cursor_key));
-		let result = scan::scan_expired(txn, range, family, cutoff, batch_size, &|_| None)?;
+		let result = scan::scan_expired(txn, range, family, cutoff, batch_size)?;
 		let drained = advance_cursor(state, cursor_key.clone(), result.next_cursor);
 		Ok((result.expired.into_iter().map(|row| row.key).collect(), drained))
 	}
@@ -559,73 +563,37 @@ impl Evictor {
 			return Ok((0, drained));
 		}
 
-		let partitioned = !ringbuffer.partition_by.is_empty();
-		let mut groups: HashMap<Partition, Vec<TaggedKey>> = HashMap::new();
+		let mut groups: HashMap<Option<Partition>, Vec<RowNumber>> = HashMap::new();
 		for key in &expired {
-			let partition = if partitioned {
-				let TaggedKey::PartitionedRow(decoded) = key else {
-					continue;
-				};
-				decoded.partition
-			} else {
-				Partition::default()
-			};
-			groups.entry(partition).or_default().push(key.clone());
+			match key {
+				TaggedKey::PartitionedRow(decoded) => {
+					groups.entry(Some(decoded.partition)).or_default().push(decoded.row)
+				}
+				TaggedKey::Row(decoded) => groups.entry(None).or_default().push(decoded.row),
+				_ => {}
+			}
 		}
 
-		#[allow(clippy::disallowed_methods)]
-		let values_by_partition: HashMap<Partition, Vec<Value>> = if partitioned {
-			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer)?
-				.into_iter()
-				.map(|entry| (Partition::of(&entry.partition_values), entry.partition_values))
-				.collect()
-		} else {
-			HashMap::new()
-		};
-
+		let mut ring = Ring::new(ringbuffer.capacity);
 		let mut evicted = 0u64;
-		for (partition, keys) in groups {
-			let partition_values: &[Value] = if partitioned {
-				let Some(values) = values_by_partition.get(&partition) else {
-					continue;
-				};
-				values
-			} else {
-				&[]
+		for (partition, rows) in groups {
+			let mut tx = Transaction::Command(&mut txn);
+			let mut store = RingTxn {
+				catalog: &catalog,
+				txn: &mut tx,
+				ringbuffer: &ringbuffer,
 			};
-
-			let Some(metadata) = catalog.find_partition_metadata(
-				&mut Transaction::Command(&mut txn),
-				&ringbuffer,
-				partition_values,
-			)?
-			else {
-				continue;
-			};
-
-			let partition_keyspace = if partitioned {
-				PartitionedRowKey::partition_range(storage, partition)
-			} else {
-				RowKey::full_scan(storage)
-			};
-			let survivor = scan::min_survivor_row(&mut txn, partition_keyspace, &keys, &|key| {
-				decode_ringbuffer_row_number(key, partitioned)
-			})?;
-
+			let removed = ring.remove(&mut store, partition, &rows)?;
+			let keys: Vec<TaggedKey> = rows
+				.iter()
+				.zip(removed)
+				.filter(|(_, removed)| removed.is_some())
+				.map(|(&row, _)| ringbuffer_key(&ringbuffer, partition, row))
+				.collect();
 			remove_expired(&mut txn, &keys, eviction)?;
-
-			let deleted = keys.len() as u64;
-			apply_ringbuffer_partition_metadata_after_delete(
-				&catalog,
-				&mut Transaction::Command(&mut txn),
-				&ringbuffer,
-				partition_values,
-				metadata,
-				deleted,
-				survivor,
-			)?;
-			evicted += deleted;
+			evicted += keys.len() as u64;
 		}
+		save_ring(&catalog, &mut Transaction::Command(&mut txn), &ringbuffer, &ring)?;
 
 		txn.commit()?;
 		Ok((evicted, drained))
@@ -760,14 +728,6 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 	}
 }
 
-fn decode_ringbuffer_row_number(key: &TaggedKey, partitioned: bool) -> Option<u64> {
-	match (partitioned, key) {
-		(true, TaggedKey::PartitionedRow(key)) => Some(key.row.0),
-		(false, TaggedKey::Row(key)) => Some(key.row.0),
-		_ => None,
-	}
-}
-
 pub struct RetentionEvictTask {
 	evictor: Evictor,
 	state: EvictorState,
@@ -831,8 +791,7 @@ mod tests {
 		interface::{
 			catalog::{
 				ringbuffer::{
-					EvictionVisibility, PartitionedMetadata, RingBuffer, RingBufferMetadata,
-					encode_ringbuffer_metadata,
+					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
 				},
 				series::SeriesPartitionMetadata,
 				view::View,
@@ -848,7 +807,7 @@ mod tests {
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
 		params,
-		value::{duration::Duration as ValueDuration, row_number::RowNumber},
+		value::{Value, duration::Duration as ValueDuration},
 	};
 
 	use super::*;
@@ -882,8 +841,9 @@ mod tests {
 			.find_ringbuffer_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
 			.unwrap()
 			.unwrap();
-		let partitions =
-			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer).unwrap();
+		let partitions = catalog
+			.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), ringbuffer.id.into())
+			.unwrap();
 		txn.rollback().unwrap();
 		partitions
 	}
@@ -952,26 +912,28 @@ mod tests {
 
 	fn seed_partition(engine: &StandardEngine, storage: StorageId, values: Vec<Value>) {
 		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
-		let mut metadata = RingBufferMetadata::new();
-		metadata.count = 1;
-		metadata.tail = 2;
+		let metadata = RingBufferMetadata {
+			base_rn: 1,
+			next_sequence: 1,
+			count: 1,
+		};
 		txn.set(vec![(
-			RingBufferMetadataKey::partition(storage, values).into(),
+			RingBufferMetadataKey::of(storage, Some(Partition::of(&values))).into(),
 			encode_ringbuffer_metadata(&metadata).into_bytes(),
 		)])
 		.unwrap();
 		txn.commit().unwrap();
 	}
 
-	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Vec<Value>> {
+	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Option<Partition>> {
 		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
-		let values: Vec<Vec<Value>> = txn
+		let values: Vec<Option<Partition>> = txn
 			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
 			.map(|row| match row.unwrap().key {
 				TaggedKey::RingBufferMetadata(key) => key
-					.partition_values()
-					.expect("a metadata key written by the sink decodes its partition values"),
+					.partition()
+					.expect("a metadata key written by the sink decodes its partition hash"),
 				other => panic!("metadata scan yielded {other:?}"),
 			})
 			.collect();
@@ -1304,25 +1266,11 @@ mod tests {
 				true => assert_announced_with_old_rows(&feed),
 				false => assert_silent(&feed),
 			}
-			assert!(ringbuffer_partitions(&test, "rb").is_empty(), "metadata must drain either way");
+			let partitions = ringbuffer_partitions(&test, "rb");
+			assert_eq!(partitions.len(), 1, "an unpartitioned ring keeps its one metadata row");
+			assert_eq!(partitions[0].metadata.count, 0, "the count must drain either way");
+			assert_eq!(partitions[0].metadata.next_sequence, 2, "draining must not rewind the write cycle");
 		}
-	}
-
-	#[test]
-	fn ttl_visible_ringbuffer_keeps_capacity_push_out_silent() {
-		// The two reasons are independent flags, so ttl visible must not flip capacity to visible.
-		let test = TestEngine::new();
-		test.admin("create namespace test;");
-		test.admin(
-			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 1, row: { ttl: 1h }, eviction: { capacity: silent, ttl: visible } }",
-		);
-		assert_eq!(ringbuffer_by_name(&test, "rb").eviction, EvictionVisibility::Silent);
-		test.command("INSERT test::rb [{ v: 1 }]");
-		test.command("INSERT test::rb [{ v: 2 }]");
-		let storage = StorageId::RingBuffer(ringbuffer_by_name(&test, "rb").id);
-		let feed = expire_and_read_feed(&test, &table_keyspaces(storage));
-		assert_eq!(feed.stored.len(), 1, "the silent push-out must already have removed the first row");
-		assert_announced_with_old_rows(&feed);
 	}
 
 	#[test]
@@ -1400,16 +1348,12 @@ mod tests {
 			"the fully expired us partition must lose its metadata key, not keep a zero-count entry"
 		);
 		let eu = &partitions[0];
-		assert_eq!(eu.metadata.count, 1);
-		assert_eq!(
-			eu.metadata.head,
-			eu.metadata.tail - 1,
-			"head must advance to the single surviving row in the same commit"
-		);
+		assert_eq!(eu.metadata.count, 1, "the count must drop to the single surviving row in the same commit");
+		assert_eq!(eu.metadata.next_sequence, 3, "expiry must never rewind the write cycle");
 	}
 
 	#[test]
-	fn plain_ringbuffer_delete_mode_evicts_and_removes_empty_metadata() {
+	fn plain_ringbuffer_delete_mode_evicts_and_keeps_its_drained_metadata() {
 		// A non-partitioned ring buffer must get the same metadata maintenance on its
 		// whole-buffer entry as a partitioned one gets per partition.
 		let test = TestEngine::new();
@@ -1433,16 +1377,19 @@ mod tests {
 		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
-		assert!(
-			ringbuffer_partitions(&test, "rb").is_empty(),
-			"a fully drained buffer must not leak a zero-count metadata entry"
+		let partitions = ringbuffer_partitions(&test, "rb");
+		assert_eq!(
+			partitions.len(),
+			1,
+			"an unpartitioned ring keeps its one metadata row so #sequence never restarts"
 		);
+		assert_eq!(partitions[0].metadata.count, 0);
+		assert_eq!(partitions[0].metadata.next_sequence, 3);
 	}
 
 	#[test]
 	fn plain_ringbuffer_drop_mode_evicts_and_maintains_metadata() {
-		// Silence applies to CDC, not to bookkeeping: count and head must still move in the same
-		// commit or later inserts and evictions desync.
+		// Silence applies to CDC, not to bookkeeping: the count must still move in the same commit.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1459,7 +1406,7 @@ mod tests {
 		let partitions = ringbuffer_partitions(&test, "rb");
 		assert_eq!(partitions.len(), 1);
 		assert_eq!(partitions[0].metadata.count, 1);
-		assert_eq!(partitions[0].metadata.head, partitions[0].metadata.tail - 1);
+		assert_eq!(partitions[0].metadata.next_sequence, 3, "expiry must never rewind the write cycle");
 	}
 
 	#[test]
@@ -1612,8 +1559,8 @@ mod tests {
 		assert_eq!(dml.len(), 1);
 		assert_eq!(evicted.len(), 1);
 		assert_eq!(
-			(dml[0].metadata.count, dml[0].metadata.head, dml[0].metadata.tail),
-			(evicted[0].metadata.count, evicted[0].metadata.head, evicted[0].metadata.tail),
+			(dml[0].metadata.count, dml[0].metadata.base_rn, dml[0].metadata.next_sequence),
+			(evicted[0].metadata.count, evicted[0].metadata.base_rn, evicted[0].metadata.next_sequence),
 			"DML DELETE and the evictor must produce identical partition metadata from the same state"
 		);
 	}
@@ -1646,7 +1593,7 @@ mod tests {
 
 		assert_eq!(
 			partition_metadata_values(&test, view),
-			vec![us.clone()],
+			vec![Some(Partition::of(&us))],
 			"the view must hold the seeded partition metadata (guards against a vacuous skip test)"
 		);
 
@@ -1665,7 +1612,7 @@ mod tests {
 		);
 		assert_eq!(
 			partition_metadata_values(&test, view),
-			vec![us],
+			vec![Some(Partition::of(&us))],
 			"skipping must leave the view's partition metadata untouched"
 		);
 	}

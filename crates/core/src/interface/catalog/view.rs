@@ -10,7 +10,6 @@ use crate::{
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, ViewId},
 		key::PrimaryKey,
-		ringbuffer::EvictionVisibility,
 		series::SeriesKey,
 		storage::StorageId,
 	},
@@ -69,7 +68,6 @@ pub struct RingBufferView {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub capacity: u64,
-	pub eviction: EvictionVisibility,
 	pub sort: Vec<ViewSortKey>,
 }
 

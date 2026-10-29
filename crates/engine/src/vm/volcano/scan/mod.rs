@@ -64,13 +64,19 @@ pub mod table;
 pub mod view;
 pub mod vtable;
 
-pub(crate) fn source_system_columns(partitioned: bool, timed: bool, versioned: bool) -> Vec<SystemColumn> {
+pub(crate) fn source_system_columns(
+	partitioned: bool,
+	timed: bool,
+	versioned: bool,
+	sequenced: bool,
+) -> Vec<SystemColumn> {
 	SystemColumn::ALL
 		.into_iter()
 		.filter(|column| match column {
 			SystemColumn::Partitions => partitioned,
 			SystemColumn::Time => timed,
 			SystemColumn::CommitVersion => versioned,
+			SystemColumn::Sequence => sequenced,
 			SystemColumn::RowNumbers | SystemColumn::CreatedAt | SystemColumn::UpdatedAt => true,
 		})
 		.collect()

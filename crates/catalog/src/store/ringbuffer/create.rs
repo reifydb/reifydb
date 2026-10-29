@@ -166,7 +166,7 @@ impl CatalogStore {
 	}
 
 	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
+		let row = encode_ringbuffer_metadata(&RingBufferMetadata::unpartitioned());
 		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
 		Ok(())
 	}
@@ -390,13 +390,11 @@ pub mod tests {
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		let metadata = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), result.id)
+		let metadata = CatalogStore::find_partition_metadata(&mut Transaction::Admin(&mut txn), &result, None)
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 1);
-		assert_eq!(metadata.tail, 1);
+		assert_eq!(metadata, RingBufferMetadata::unpartitioned());
 	}
 
 	#[test]

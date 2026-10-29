@@ -8,19 +8,20 @@ use reifydb_core::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::{EvictionVisibility, PartitionedMetadata, RingBuffer, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
+		storage::StorageId,
 	},
 	internal,
 	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalRingBufferChanges,
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{Value, constraint::TypeConstraint, dictionary::DictionaryId},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition},
 };
 use tracing::{instrument, warn};
 
@@ -51,7 +52,6 @@ pub struct RingBufferToCreate {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
-	pub eviction: EvictionVisibility,
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -256,12 +256,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
-		let eviction = to_create.eviction;
-		let mut ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
-		if eviction == EvictionVisibility::Silent {
-			CatalogStore::store_ringbuffer_eviction(txn, ringbuffer.id, eviction)?;
-			ringbuffer.eviction = eviction;
-		}
+		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
@@ -281,13 +276,8 @@ impl Catalog {
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
 	) -> Result<RingBuffer> {
-		let eviction = to_create.eviction;
-		let mut ringbuffer =
+		let ringbuffer =
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
-		if eviction == EvictionVisibility::Silent {
-			CatalogStore::store_ringbuffer_eviction(txn, ringbuffer.id, eviction)?;
-			ringbuffer.eviction = eviction;
-		}
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
@@ -312,91 +302,13 @@ impl Catalog {
 		CatalogStore::list_ringbuffers(txn)
 	}
 
-	#[instrument(name = "catalog::ringbuffer::find_metadata", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer_metadata(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: RingBufferId,
-	) -> Result<Option<RingBufferMetadata>> {
-		CatalogStore::find_ringbuffer_metadata(txn, id)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::get_metadata", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer_metadata(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: RingBufferId,
-	) -> Result<RingBufferMetadata> {
-		CatalogStore::get_ringbuffer_metadata(txn, id)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::update_metadata", level = "debug", skip(self, txn))]
-	pub fn update_ringbuffer_metadata(
-		&self,
-		txn: &mut CommandTransaction,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata(txn, ringbuffer_id, metadata)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::update_metadata_admin", level = "debug", skip(self, txn))]
-	pub fn update_ringbuffer_metadata_admin(
-		&self,
-		txn: &mut AdminTransaction,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata_admin(txn, ringbuffer_id, metadata)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::update_metadata_txn", level = "debug", skip(self, txn))]
-	pub fn update_ringbuffer_metadata_txn(
-		&self,
-		txn: &mut Transaction<'_>,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata_txn(txn, ringbuffer_id, metadata)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer_partition_metadata(
-		&self,
-		txn: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-	) -> Result<Option<RingBufferMetadata>> {
-		CatalogStore::find_ringbuffer_partition_metadata(txn, ringbuffer, partition_values)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::list_partition_metadata", level = "trace", skip(self, txn))]
-	pub fn list_ringbuffer_partition_metadata(
-		&self,
-		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBuffer,
-	) -> Result<Vec<PartitionedMetadata>> {
-		CatalogStore::list_ringbuffer_partition_metadata(txn, ringbuffer)
-	}
-
-	#[instrument(name = "catalog::ringbuffer::update_partition_metadata_txn", level = "debug", skip(self, txn))]
-	pub fn update_ringbuffer_partition_metadata_txn(
-		&self,
-		txn: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-		metadata: &RingBufferMetadata,
-	) -> Result<()> {
-		CatalogStore::update_ringbuffer_partition_metadata_txn(txn, ringbuffer, partition_values, metadata)
-	}
-
 	#[instrument(name = "catalog::ringbuffer::list_partitions", level = "trace", skip(self, txn))]
 	pub fn list_ringbuffer_partitions(
 		&self,
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBuffer,
+		storage: StorageId,
 	) -> Result<Vec<PartitionedMetadata>> {
-		CatalogStore::list_ringbuffer_partitions(txn, ringbuffer)
+		CatalogStore::list_ringbuffer_partitions(txn, storage)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]
@@ -404,9 +316,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 	) -> Result<Option<RingBufferMetadata>> {
-		CatalogStore::find_partition_metadata(txn, ringbuffer, partition_key)
+		CatalogStore::find_partition_metadata(txn, ringbuffer, partition)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::save_partition_metadata", level = "debug", skip(self, txn))]
@@ -414,10 +326,10 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
-		CatalogStore::save_partition_metadata(txn, ringbuffer, partition_key, metadata)
+		CatalogStore::save_partition_metadata(txn, ringbuffer, partition, metadata)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::remove_partition_metadata", level = "debug", skip(self, txn))]
@@ -425,9 +337,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 	) -> Result<()> {
-		CatalogStore::remove_partition_metadata(txn, ringbuffer, partition_key)
+		CatalogStore::remove_partition_metadata(txn, ringbuffer, partition)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]

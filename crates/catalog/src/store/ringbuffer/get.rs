@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{
-		id::RingBufferId,
-		ringbuffer::{RingBuffer, RingBufferMetadata},
-	},
+	interface::catalog::{id::RingBufferId, ringbuffer::RingBuffer},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -18,18 +15,6 @@ impl CatalogStore {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
 			Error(Box::new(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				ringbuffer
-			)))
-		})
-	}
-
-	pub(crate) fn get_ringbuffer_metadata(
-		rx: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-	) -> Result<RingBufferMetadata> {
-		Self::find_ringbuffer_metadata(rx, ringbuffer)?.ok_or_else(|| {
-			Error(Box::new(internal!(
-				"Ring buffer metadata for ID {:?} not found. This indicates a critical catalog inconsistency.",
 				ringbuffer
 			)))
 		})
@@ -66,32 +51,5 @@ pub mod tests {
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("RingBufferId(999)"));
 		assert!(err.message.contains("not found in catalog"));
-	}
-
-	#[test]
-	fn test_get_ringbuffer_metadata_exists() {
-		let mut txn = create_test_admin_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
-
-		let result = CatalogStore::get_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-			.unwrap();
-
-		assert_eq!(result.count, 0);
-		assert_eq!(result.head, 1);
-		assert_eq!(result.tail, 1);
-	}
-
-	#[test]
-	fn test_get_ringbuffer_metadata_not_exists() {
-		let mut txn = create_test_admin_transaction();
-
-		let result =
-			CatalogStore::get_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), RingBufferId(999));
-
-		assert!(result.is_err());
-		let err = result.unwrap_err();
-		assert_eq!(err.code, "INTERNAL_ERROR");
-		assert!(err.message.contains("RingBufferId(999)"));
-		assert!(err.message.contains("not found"));
 	}
 }

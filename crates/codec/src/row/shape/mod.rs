@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 
 use super::bytes::{
 	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_ATTEMPT_HEADER_SIZE, QUEUE_DEDUPLICATION_HEADER_SIZE,
-	QUEUE_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE, read_created_at, read_defined_at, read_storage_time,
-	read_updated_at, write_fingerprint,
+	QUEUE_HEADER_SIZE, RINGBUFFER_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE, read_created_at, read_defined_at,
+	read_sequence, read_storage_time, read_updated_at, write_fingerprint,
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
@@ -61,7 +61,7 @@ impl RowFamily {
 			Self::Pod => POD_HEADER_SIZE,
 			Self::Table => SHAPE_HEADER_SIZE,
 			Self::Series => SHAPE_HEADER_SIZE,
-			Self::RingBuffer => SHAPE_HEADER_SIZE,
+			Self::RingBuffer => RINGBUFFER_HEADER_SIZE,
 			Self::Queue => QUEUE_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
 			Self::QueueAttempt => QUEUE_ATTEMPT_HEADER_SIZE,
@@ -71,12 +71,15 @@ impl RowFamily {
 
 	pub const fn system_columns(self) -> &'static [SystemColumn] {
 		match self {
-			Self::Table
-			| Self::Series
-			| Self::RingBuffer
-			| Self::Queue
-			| Self::QueueAttempt
-			| Self::QueueDeduplication => &[SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time],
+			Self::RingBuffer => &[
+				SystemColumn::CreatedAt,
+				SystemColumn::UpdatedAt,
+				SystemColumn::Time,
+				SystemColumn::Sequence,
+			],
+			Self::Table | Self::Series | Self::Queue | Self::QueueAttempt | Self::QueueDeduplication => {
+				&[SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time]
+			}
 			Self::Operator => &[SystemColumn::Time],
 			Self::Pod | Self::Catalog => &[],
 		}
@@ -282,6 +285,14 @@ impl RowShape {
 		match self.family.system_columns().contains(&SystemColumn::CreatedAt) {
 			true => read_created_at(row),
 			false => panic!("{} rows carry no created_at", format!("{:?}", self.family).to_lowercase()),
+		}
+	}
+
+	#[inline]
+	pub fn sequence(&self, row: &[u8]) -> u64 {
+		match self.family.system_columns().contains(&SystemColumn::Sequence) {
+			true => read_sequence(row),
+			false => panic!("{} rows carry no sequence", format!("{:?}", self.family).to_lowercase()),
 		}
 	}
 

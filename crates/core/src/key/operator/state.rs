@@ -268,8 +268,6 @@ impl KeyspaceId {
 
 	pub const DISTINCT_LAYOUT: Self = Self(0x12);
 
-	pub const RINGBUFFER_EXPIRY: Self = Self(0x13);
-
 	pub const RINGBUFFER_TTL_ARM: Self = Self(0x14);
 
 	pub const SEAL_LEDGER: Self = Self(0x15);
@@ -293,8 +291,6 @@ impl KeyspaceId {
 	pub const TUMBLING_EXPIRY: Self = Self(0x1E);
 
 	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1F);
-
-	pub const PARTITIONED_RINGBUFFER_EXPIRY: Self = Self(0x20);
 
 	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x21);
 
@@ -352,7 +348,6 @@ impl KeyspaceId {
 			Self::RINGBUFFER_ENTRY => "RINGBUFFER_ENTRY",
 			Self::GATE_VISIBILITY => "GATE_VISIBILITY",
 			Self::DISTINCT_LAYOUT => "DISTINCT_LAYOUT",
-			Self::RINGBUFFER_EXPIRY => "RINGBUFFER_EXPIRY",
 			Self::RINGBUFFER_TTL_ARM => "RINGBUFFER_TTL_ARM",
 			Self::SEAL_LEDGER => "SEAL_LEDGER",
 			Self::JOIN_PUBLISHED => "JOIN_PUBLISHED",
@@ -366,7 +361,6 @@ impl KeyspaceId {
 			Self::GUEST_RUNNING => "GUEST_RUNNING",
 			Self::TUMBLING_EXPIRY => "TUMBLING_EXPIRY",
 			Self::PARTITIONED_RINGBUFFER_ENTRY => "PARTITIONED_RINGBUFFER_ENTRY",
-			Self::PARTITIONED_RINGBUFFER_EXPIRY => "PARTITIONED_RINGBUFFER_EXPIRY",
 			Self::PARTITIONED_RINGBUFFER_TTL_ARM => "PARTITIONED_RINGBUFFER_TTL_ARM",
 			Self::PARTITIONED_RINGBUFFER_META => "PARTITIONED_RINGBUFFER_META",
 			Self::CUSTOM_UNMANAGED => "CUSTOM_UNMANAGED",
@@ -1017,7 +1011,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 54] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 52] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1044,7 +1038,6 @@ mod tests {
 		("RINGBUFFER_ENTRY", KeyspaceId::RINGBUFFER_ENTRY, Phase::Data, true),
 		("GATE_VISIBILITY", KeyspaceId::GATE_VISIBILITY, Phase::Data, true),
 		("DISTINCT_LAYOUT", KeyspaceId::DISTINCT_LAYOUT, Phase::Data, true),
-		("RINGBUFFER_EXPIRY", KeyspaceId::RINGBUFFER_EXPIRY, Phase::Data, true),
 		("RINGBUFFER_TTL_ARM", KeyspaceId::RINGBUFFER_TTL_ARM, Phase::Data, true),
 		("SEAL_LEDGER", KeyspaceId::SEAL_LEDGER, Phase::Data, true),
 		("JOIN_PUBLISHED", KeyspaceId::JOIN_PUBLISHED, Phase::Data, true),
@@ -1058,7 +1051,6 @@ mod tests {
 		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, true),
 		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_ENTRY", KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY, Phase::Data, true),
-		("PARTITIONED_RINGBUFFER_EXPIRY", KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_TTL_ARM", KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, true),
 		("CUSTOM_UNMANAGED", KeyspaceId::CUSTOM_UNMANAGED, Phase::Data, false),

@@ -2,86 +2,32 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{
-		id::RingBufferId,
-		ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
-	},
+	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 	key::ringbuffer::RingBufferMetadataKey,
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
-use reifydb_value::value::Value;
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::partition::Partition;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn update_ringbuffer_metadata(
-		txn: &mut CommandTransaction,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
-		Ok(())
-	}
-
-	pub(crate) fn update_ringbuffer_metadata_admin(
-		txn: &mut AdminTransaction,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
-		Ok(())
-	}
-
-	pub(crate) fn update_ringbuffer_metadata_txn(
-		txn: &mut Transaction<'_>,
-		ringbuffer_id: RingBufferId,
-		metadata: RingBufferMetadata,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
-		Ok(())
-	}
-
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
-		if ringbuffer.partition_by.is_empty() {
-			Self::update_ringbuffer_metadata_txn(txn, ringbuffer.id, metadata.clone())
-		} else {
-			Self::update_ringbuffer_partition_metadata_txn(txn, ringbuffer.id, partition_key, metadata)
-		}
+		let row = encode_ringbuffer_metadata(metadata);
+		txn.set(vec![(RingBufferMetadataKey::of(ringbuffer.id, partition).into(), row.into_bytes())])?;
+		Ok(())
 	}
 
 	pub(crate) fn remove_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 	) -> Result<()> {
-		if ringbuffer.partition_by.is_empty() {
-			txn.remove(vec![(RingBufferMetadataKey::new(ringbuffer.id).into(), None)])
-		} else {
-			txn.remove(vec![(
-				RingBufferMetadataKey::partition(ringbuffer.id, partition_key.to_vec()).into(),
-				None,
-			)])
-		}
-	}
-
-	pub(crate) fn update_ringbuffer_partition_metadata_txn(
-		txn: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-		metadata: &RingBufferMetadata,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(metadata);
-		let key = RingBufferMetadataKey::partition(ringbuffer, partition_values.to_vec());
-		txn.set(vec![(key.clone().into(), row.into_bytes())])?;
-		Ok(())
+		txn.remove(vec![(RingBufferMetadataKey::of(ringbuffer.id, partition).into(), None)])
 	}
 }
 
@@ -94,57 +40,39 @@ pub mod tests {
 	use crate::test_utils::ensure_test_ringbuffer;
 
 	#[test]
-	fn test_update_ringbuffer_metadata() {
+	fn test_saved_metadata_is_found_under_its_own_partition_only() {
+		// A save that ignored the partition would hand one partition's slot range to another.
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let metadata = RingBufferMetadata {
+			base_rn: 40,
+			next_sequence: 7,
+			count: 5,
+		};
+		let mut tx = Transaction::Admin(&mut txn);
+		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, Some(Partition(9)), &metadata).unwrap();
 
-		let mut metadata =
-			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-				.unwrap()
-				.expect("Metadata should exist");
-
-		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 1);
-		assert_eq!(metadata.tail, 1);
-
-		metadata.count = 5;
-		metadata.head = 2;
-		metadata.tail = 7;
-
-		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, ringbuffer.id, metadata.clone()).unwrap();
-
-		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-			.unwrap()
-			.expect("Metadata should exist");
-
-		assert_eq!(updated.count, 5);
-		assert_eq!(updated.head, 2);
-		assert_eq!(updated.tail, 7);
+		assert_eq!(
+			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, Some(Partition(9))).unwrap(),
+			Some(metadata)
+		);
+		assert_eq!(
+			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, Some(Partition(8))).unwrap(),
+			None
+		);
 	}
 
 	#[test]
-	fn test_update_ringbuffer_metadata_wrap_around() {
-		// A full buffer has head behind tail; the codec must survive that ordering.
+	fn test_removed_metadata_disappears_from_the_partition_list() {
+		// A lingering metadata row would make scans list a partition that holds no rows.
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let mut tx = Transaction::Admin(&mut txn);
+		let metadata = RingBufferMetadata::reserved(10);
+		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, Some(Partition(1)), &metadata).unwrap();
+		CatalogStore::remove_partition_metadata(&mut tx, &ringbuffer, Some(Partition(1))).unwrap();
 
-		let mut metadata =
-			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-				.unwrap()
-				.expect("Metadata should exist");
-
-		metadata.count = ringbuffer.capacity;
-		metadata.head = ringbuffer.capacity - 1;
-		metadata.tail = 0;
-
-		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, ringbuffer.id, metadata.clone()).unwrap();
-
-		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-			.unwrap()
-			.expect("Metadata should exist");
-
-		assert_eq!(updated.count, ringbuffer.capacity);
-		assert_eq!(updated.head, ringbuffer.capacity - 1);
-		assert_eq!(updated.tail, 0);
+		let listed = CatalogStore::list_ringbuffer_partitions(&mut tx, ringbuffer.id.into()).unwrap();
+		assert!(listed.iter().all(|entry| entry.partition != Some(Partition(1))));
 	}
 }

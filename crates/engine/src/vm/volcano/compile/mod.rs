@@ -7,7 +7,7 @@ mod vtable;
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::id::IndexId;
+use reifydb_core::interface::catalog::{id::IndexId, view::ViewStorageKind};
 use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	nodes::{
@@ -209,6 +209,9 @@ pub(crate) fn compile<'a>(
 			#[cfg(not(feature = "column"))]
 			ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
 		},
+		RqlQueryPlan::ViewScan(node) if node.source.def().storage_kind() == ViewStorageKind::RingBuffer => {
+			Box::new(RingBufferScan::for_view(node.source.clone(), node.partition, context, rx).unwrap())
+		}
 		RqlQueryPlan::ViewScan(node) => {
 			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 		}

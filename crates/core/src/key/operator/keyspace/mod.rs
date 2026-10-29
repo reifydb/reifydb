@@ -30,10 +30,9 @@ use crate::{
 				},
 				lookup::LookupRead,
 				ringbuffer::{
-					PartitionedRingbufferEntry, PartitionedRingbufferExpiry,
-					PartitionedRingbufferMeta, PartitionedRingbufferTtlArm, RingbufferEntry,
-					RingbufferExpiry, RingbufferForward, RingbufferMeta, RingbufferNextRow,
-					RingbufferTtlArm,
+					PartitionedRingbufferEntry, PartitionedRingbufferMeta,
+					PartitionedRingbufferTtlArm, RingbufferEntry, RingbufferForward,
+					RingbufferMeta, RingbufferNextRow, RingbufferTtlArm,
 				},
 				root::{
 					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
@@ -187,12 +186,10 @@ catalogue!(
 	JoinRowMapping,
 	RingbufferForward,
 	RingbufferEntry,
-	RingbufferExpiry,
 	RingbufferTtlArm,
 	RingbufferMeta,
 	RingbufferNextRow,
 	PartitionedRingbufferEntry,
-	PartitionedRingbufferExpiry,
 	PartitionedRingbufferTtlArm,
 	PartitionedRingbufferMeta,
 	TimerWheel,
@@ -272,12 +269,10 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::CUSTOM_MANAGED_LATEST
 		| KeyspaceId::RINGBUFFER_FORWARD
 		| KeyspaceId::RINGBUFFER_ENTRY
-		| KeyspaceId::RINGBUFFER_EXPIRY
 		| KeyspaceId::RINGBUFFER_TTL_ARM
 		| KeyspaceId::RINGBUFFER_META
 		| KeyspaceId::RINGBUFFER_NEXT_ROW
 		| KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY
-		| KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY
 		| KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM
 		| KeyspaceId::PARTITIONED_RINGBUFFER_META
 		| KeyspaceId::TIMER_WHEEL
@@ -500,7 +495,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 54, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 52, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -524,7 +519,7 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			54,
+			52,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(

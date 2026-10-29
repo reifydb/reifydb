@@ -44,6 +44,7 @@ impl ColumnTableScanNode {
 			!table.def().partition_by.is_empty(),
 			table.def().time != TimeSource::None,
 			true,
+			false,
 		);
 		let headers = scan_headers(table.columns().iter().map(|col| col.name.as_str()), &system_columns);
 		Self {

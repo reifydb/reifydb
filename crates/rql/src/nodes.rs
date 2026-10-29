@@ -59,7 +59,6 @@ pub enum CompiledViewStorageKind {
 	RingBuffer {
 		capacity: u64,
 		partition_by: Vec<String>,
-		eviction: EvictionVisibility,
 	},
 	Series {
 		key: SeriesKey,
@@ -137,7 +136,6 @@ pub struct CreateRingBufferNode {
 	pub persistent: bool,
 	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
-	pub eviction: EvictionVisibility,
 }
 
 #[derive(Debug, Clone)]

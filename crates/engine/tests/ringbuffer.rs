@@ -3,7 +3,7 @@
 
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, partition::Partition};
 
 #[test]
 fn test_ringbuffer_delete_partition_to_zero_removes_partition_metadata() {
@@ -22,10 +22,12 @@ fn test_ringbuffer_delete_partition_to_zero_removes_partition_metadata() {
 	let mut txn = Transaction::Query(&mut query_txn);
 	let namespace = catalog.find_namespace_by_name(&mut txn, "test").unwrap().unwrap();
 	let rb = catalog.find_ringbuffer_by_name(&mut txn, namespace.id(), "rb").unwrap().unwrap();
-	let partitions = catalog.list_ringbuffer_partitions(&mut txn, &rb).unwrap();
+	let partitions = catalog.list_ringbuffer_partitions(&mut txn, rb.id.into()).unwrap();
 
 	assert_eq!(partitions.len(), 1, "expected only the still-live 'eu' partition's metadata, got {partitions:?}");
-	assert_eq!(partitions[0].partition_values, vec![Value::Utf8("eu".to_string())]);
+	#[allow(clippy::disallowed_methods)]
+	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
+	assert_eq!(partitions[0].partition, Some(eu));
 }
 
 #[test]

@@ -77,7 +77,7 @@ impl ColumnSeriesScanNode {
 			columns.push(col.name.as_str());
 		}
 		let system_columns =
-			source_system_columns(!def.partition_by.is_empty(), def.time != TimeSource::None, false);
+			source_system_columns(!def.partition_by.is_empty(), def.time != TimeSource::None, false, false);
 		let headers = scan_headers(columns.into_iter(), &system_columns);
 		Self {
 			series,

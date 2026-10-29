@@ -21,7 +21,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			ringbuffer::{PartitionedMetadata, RingBuffer},
+			ringbuffer::RingBuffer,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
@@ -81,7 +81,6 @@ pub(crate) fn update_ringbuffer(
 		returning,
 	} = plan;
 	let (namespace, ringbuffer) = resolve_update_ringbuffer_target(services, txn, &target)?;
-	let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 	let target_data = RingBufferTarget {
 		namespace: &namespace,
@@ -188,14 +187,11 @@ pub(crate) fn update_ringbuffer(
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			builder.set_timestamps(old_created_at, now);
+			builder.set_sequence(old_row.sequence());
 			if let Some(time) = times.updated(row_idx, builder.as_slice(), old_time)? {
 				builder.set_time(time);
 			}
 			let row = builder.freeze_bytes();
-
-			if !row_belongs_to_any_partition(&partitions, row_number) {
-				continue;
-			}
 
 			if !ringbuffer.partition_by.is_empty() {
 				if Some(new_partitions[row_idx]) != partition {
@@ -292,13 +288,6 @@ fn enforce_old_row_policies(
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_compiled_row_dependent(compiled, txn.identity(), &old_columns)
-}
-
-#[inline]
-fn row_belongs_to_any_partition(partitions: &[PartitionedMetadata], row_number: RowNumber) -> bool {
-	partitions
-		.iter()
-		.any(|p| !p.metadata.is_empty() && row_number.0 >= p.metadata.head && row_number.0 < p.metadata.tail)
 }
 
 #[inline]

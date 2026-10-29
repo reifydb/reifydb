@@ -29,12 +29,6 @@ pub struct RingbufferEntryKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct RingbufferExpiryKey {
-	pub expires_at: Asc<i64>,
-	pub row: Asc<RowNumber>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RingbufferTtlArmKey {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
@@ -46,13 +40,6 @@ pub struct RingbufferNextRowKey {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferEntryKey {
 	pub partition: Asc<Partition>,
-	pub row: Asc<RowNumber>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct PartitionedRingbufferExpiryKey {
-	pub partition: Asc<Partition>,
-	pub expires_at: Asc<i64>,
 	pub row: Asc<RowNumber>,
 }
 
@@ -96,26 +83,6 @@ impl Keyspace for RingbufferEntry {
 
 	type GroupedKey = RingbufferEntryKey;
 	type Suffix = RingbufferEntryKey;
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
-	}
-
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		suffix
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RingbufferExpiry;
-
-impl Keyspace for RingbufferExpiry {
-	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_EXPIRY;
-	const NAME: &'static str = "RINGBUFFER_EXPIRY";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = RingbufferExpiryKey;
-	type Suffix = RingbufferExpiryKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)
@@ -196,26 +163,6 @@ impl Keyspace for PartitionedRingbufferEntry {
 
 	type GroupedKey = PartitionedRingbufferEntryKey;
 	type Suffix = PartitionedRingbufferEntryKey;
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(GroupId::ROOT, *key)
-	}
-
-	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		suffix
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PartitionedRingbufferExpiry;
-
-impl Keyspace for PartitionedRingbufferExpiry {
-	const ID: KeyspaceId = KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY;
-	const NAME: &'static str = "PARTITIONED_RINGBUFFER_EXPIRY";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = PartitionedRingbufferExpiryKey;
-	type Suffix = PartitionedRingbufferExpiryKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

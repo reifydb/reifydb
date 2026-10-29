@@ -76,6 +76,7 @@ pub struct LookupConfig {
 	pub right: LookupObject,
 	pub deferred: bool,
 	pub storage: StorageId,
+	pub ring: Option<u64>,
 	pub columns: Vec<Column>,
 	pub partition_by: Vec<String>,
 	pub shape: RowShape,
@@ -289,8 +290,10 @@ impl LookupOperator {
 		match reads.rows.entry((partition, version)) {
 			Entry::Occupied(read) => Ok(read.get().clone()),
 			Entry::Vacant(slot) => {
-				let read =
-					host.lookup_read(self.config.storage, version, &[partition])?.pop().flatten();
+				let read = host
+					.lookup_read(self.config.storage, self.config.ring, version, &[partition])?
+					.pop()
+					.flatten();
 				Ok(slot.insert(read).clone())
 			}
 		}
@@ -314,7 +317,7 @@ impl LookupOperator {
 			}
 		}
 		for (version, partitions) in groups {
-			let rows = host.lookup_read(self.config.storage, version, &partitions)?;
+			let rows = host.lookup_read(self.config.storage, self.config.ring, version, &partitions)?;
 			reads.rows.extend(partitions.into_iter().map(|partition| (partition, version)).zip(rows));
 		}
 		Ok(())
@@ -801,6 +804,7 @@ mod tests {
 			right: LookupObject::Table(table.id),
 			deferred: true,
 			storage: StorageId::from(table.id),
+			ring: None,
 			columns: table.columns.clone(),
 			partition_by: table.partition_by.clone(),
 			shape: row_shape_from_columns(RowFamily::Table, &table.columns),
@@ -824,6 +828,7 @@ mod tests {
 			right: LookupObject::RingBuffer(ringbuffer.id),
 			deferred: false,
 			storage: StorageId::RingBuffer(ringbuffer.id),
+			ring: Some(ringbuffer.capacity),
 			columns: ringbuffer.columns.clone(),
 			partition_by: ringbuffer.partition_by.clone(),
 			shape: row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns),

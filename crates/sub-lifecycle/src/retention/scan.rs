@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
 use reifydb_core::{
@@ -15,7 +15,6 @@ use reifydb_value::{Result, value::datetime::DateTime};
 
 pub struct ExpiredScan {
 	pub expired: Vec<MultiVersionRow<TaggedKey>>,
-	pub min_survivor_row: Option<u64>,
 	pub next_cursor: Option<TaggedKey>,
 }
 
@@ -60,33 +59,6 @@ pub fn scan_expired_indexed(
 	})
 }
 
-pub fn min_survivor_row(
-	txn: &mut CommandTransaction,
-	keyspace: TaggedKeyBoundRange,
-	deleted: &[TaggedKey],
-	row_number_of: &dyn Fn(&TaggedKey) -> Option<u64>,
-) -> Result<Option<u64>> {
-	let skip: BTreeSet<&TaggedKey> = deleted.iter().collect();
-	let mut seen: Option<TaggedKey> = None;
-
-	let mut stream = txn.range_rev_persistence(keyspace, RangeScope::All, 1024)?;
-	for entry in stream.by_ref() {
-		let entry = entry?;
-		if seen.as_ref() == Some(&entry.key) {
-			continue;
-		}
-		seen = Some(entry.key.clone());
-		if skip.contains(&entry.key) {
-			continue;
-		}
-		if let Some(row_number) = row_number_of(&entry.key) {
-			return Ok(Some(row_number));
-		}
-	}
-
-	Ok(None)
-}
-
 pub fn keyspace_start(range: &TaggedKeyBoundRange) -> EncodedKey {
 	match &range.start {
 		Bound::Included(bound) | Bound::Excluded(bound) => bound.encode(),
@@ -104,16 +76,13 @@ pub fn scan_expired(
 	family: RowFamily,
 	cutoff: Cutoff,
 	limit: usize,
-	row_number_of: &dyn Fn(&TaggedKey) -> Option<u64>,
 ) -> Result<ExpiredScan> {
 	let mut expired: Vec<MultiVersionRow<TaggedKey>> = Vec::new();
-	let mut min_survivor_row: Option<u64> = None;
 	let mut next_cursor: Option<TaggedKey> = None;
 
 	if limit == 0 {
 		return Ok(ExpiredScan {
 			expired,
-			min_survivor_row,
 			next_cursor,
 		});
 	}
@@ -133,12 +102,9 @@ pub fn scan_expired(
 			}
 			let finished = current.take().unwrap();
 			let finished_key = finished.key.clone();
-			classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
+			classify(finished, family, cutoff, &mut expired);
 			examined += 1;
 			if examined >= limit {
-				if let Some(row_number) = row_number_of(&entry.key) {
-					min_survivor_row = fold_min(min_survivor_row, row_number);
-				}
 				next_cursor = Some(finished_key);
 				break;
 			}
@@ -148,12 +114,11 @@ pub fn scan_expired(
 	drop(stream);
 
 	if let Some(finished) = current.take() {
-		classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
+		classify(finished, family, cutoff, &mut expired);
 	}
 
 	Ok(ExpiredScan {
 		expired,
-		min_survivor_row,
 		next_cursor,
 	})
 }
@@ -162,17 +127,9 @@ fn classify(
 	row: MultiVersionRow<TaggedKey>,
 	family: RowFamily,
 	cutoff: Cutoff,
-	row_number_of: &dyn Fn(&TaggedKey) -> Option<u64>,
 	expired: &mut Vec<MultiVersionRow<TaggedKey>>,
-	min_survivor_row: &mut Option<u64>,
 ) {
 	if family.updated_at(&row.bytes) <= cutoff.instant() {
 		expired.push(row);
-	} else if let Some(row_number) = row_number_of(&row.key) {
-		*min_survivor_row = fold_min(*min_survivor_row, row_number);
 	}
-}
-
-fn fold_min(current: Option<u64>, candidate: u64) -> Option<u64> {
-	Some(current.map_or(candidate, |m| m.min(candidate)))
 }

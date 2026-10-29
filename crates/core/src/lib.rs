@@ -27,6 +27,7 @@ pub mod operator_with;
 pub mod partition;
 pub mod profiler;
 pub mod retry;
+pub mod ring;
 pub mod row;
 pub mod sort;
 pub mod state;

@@ -37,16 +37,18 @@ pub enum SystemColumn {
 	UpdatedAt,
 	Time,
 	CommitVersion,
+	Sequence,
 }
 
 impl SystemColumn {
-	pub const ALL: [SystemColumn; 6] = [
+	pub const ALL: [SystemColumn; 7] = [
 		SystemColumn::RowNumbers,
 		SystemColumn::Partitions,
 		SystemColumn::CreatedAt,
 		SystemColumn::UpdatedAt,
 		SystemColumn::Time,
 		SystemColumn::CommitVersion,
+		SystemColumn::Sequence,
 	];
 
 	pub const fn name(self) -> &'static str {
@@ -57,6 +59,7 @@ impl SystemColumn {
 			SystemColumn::UpdatedAt => "#updated_at",
 			SystemColumn::Time => "#time",
 			SystemColumn::CommitVersion => "#commit_version",
+			SystemColumn::Sequence => "#sequence",
 		}
 	}
 
@@ -68,6 +71,7 @@ impl SystemColumn {
 			SystemColumn::UpdatedAt => ValueType::DateTime,
 			SystemColumn::Time => ValueType::DateTime,
 			SystemColumn::CommitVersion => ValueType::Uint8,
+			SystemColumn::Sequence => ValueType::Uint8,
 		}
 	}
 
@@ -80,7 +84,7 @@ impl SystemColumn {
 	}
 }
 
-static SYSTEM_FIELDS: LazyLock<[[FieldRef; 2]; 6]> = LazyLock::new(|| {
+static SYSTEM_FIELDS: LazyLock<[[FieldRef; 2]; 7]> = LazyLock::new(|| {
 	SystemColumn::ALL.map(|column| {
 		[false, true].map(|holds_nones| {
 			let value_type = match holds_nones {
@@ -119,6 +123,13 @@ pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
 	let values: &[u64] = array.values();
 	// SAFETY: RowNumber is repr(transparent) over u64 with no niche, so the cast keeps the bounds and lifetime.
 	Ok(unsafe { slice::from_raw_parts(values.as_ptr().cast::<RowNumber>(), values.len()) })
+}
+
+pub fn sequences(batch: &RecordBatch) -> Result<&[u64]> {
+	let Some(array) = present::<UInt64Array>(batch, SystemColumn::Sequence)? else {
+		return Ok(&[]);
+	};
+	Ok(array.values())
 }
 
 pub fn partitions(batch: &RecordBatch) -> Result<Vec<Partition>> {

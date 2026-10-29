@@ -37,6 +37,10 @@ const EXPIRES_AT_OFFSET: usize = DEDUPLICATION_ROW_NUMBER_OFFSET + RowNumber::EN
 
 pub const QUEUE_DEDUPLICATION_HEADER_SIZE: usize = EXPIRES_AT_OFFSET + DateTime::ENCODED_SIZE;
 
+const SEQUENCE_OFFSET: usize = SHAPE_HEADER_SIZE;
+
+pub const RINGBUFFER_HEADER_SIZE: usize = SEQUENCE_OFFSET + 8;
+
 const HAS_TIME: u8 = 1 << 0;
 
 const HAS_NOT_BEFORE: u8 = 1 << 1;
@@ -199,6 +203,16 @@ pub fn write_timestamps(buf: &mut [u8], created_at: DateTime, updated_at: DateTi
 pub fn write_storage_time(buf: &mut [u8], time: DateTime) {
 	buf[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE].copy_from_slice(&time.to_le_bytes());
 	buf[FLAGS_OFFSET] |= HAS_TIME;
+}
+
+#[inline]
+pub fn write_sequence(buf: &mut [u8], sequence: u64) {
+	buf[SEQUENCE_OFFSET..SEQUENCE_OFFSET + 8].copy_from_slice(&sequence.to_le_bytes());
+}
+
+#[inline]
+pub fn read_sequence(buf: &[u8]) -> u64 {
+	u64::from_le_bytes(buf[SEQUENCE_OFFSET..SEQUENCE_OFFSET + 8].try_into().unwrap())
 }
 
 #[inline]

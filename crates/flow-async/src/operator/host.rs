@@ -19,6 +19,7 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		flow::OperatorId,
 		id::ViewId,
+		ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 		storage::StorageId,
 	},
 	internal_err,
@@ -28,15 +29,17 @@ use reifydb_core::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
-		row::StoragePartitionedRowKey,
+		ringbuffer::RingBufferMetadataKey,
+		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey},
 	},
+	ring::{RingStore, newest},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
 use reifydb_flow::txn::{Find, Intern, Resolve};
-use reifydb_transaction::multi::RangeScope;
+use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -139,6 +142,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
+		ring: Option<u64>,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
@@ -146,6 +150,38 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion;
 
 	fn lookup_floor(&self) -> Option<CommitVersion>;
+}
+
+struct QueryRing<'a> {
+	query: &'a MultiReadTransaction,
+	storage: StorageId,
+}
+
+impl RingStore for QueryRing<'_> {
+	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
+		let key = RingBufferMetadataKey::of(self.storage, partition).into();
+		self.query
+			.get(&[key])?
+			.pop()
+			.flatten()
+			.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes())))
+			.transpose()
+	}
+
+	fn reserve(&mut self, _capacity: u64) -> Result<u64> {
+		panic!("a lookup read of ring {:?} must never reserve row numbers", self.storage)
+	}
+
+	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
+		let keys: Vec<TaggedKey> = rows
+			.iter()
+			.map(|&row| match partition {
+				Some(partition) => PartitionedRowKey::new(self.storage, partition, row).into(),
+				None => RowKey::new(self.storage, row).into(),
+			})
+			.collect();
+		Ok(self.query.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes().clone())).collect())
+	}
 }
 
 pub struct TxnHostContext<'a, T: FlowTransaction> {
@@ -359,6 +395,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
+		ring: Option<u64>,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
@@ -370,6 +407,16 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		}
 		let mut query = self.txn.query();
 		query.read_as_of_version_inclusive(version);
+		if let Some(capacity) = ring {
+			let mut store = QueryRing {
+				query: &query,
+				storage,
+			};
+			return partitions
+				.iter()
+				.map(|&partition| newest(&mut store, Some(partition), capacity))
+				.collect();
+		}
 		partitions
 			.iter()
 			.map(|&partition| {

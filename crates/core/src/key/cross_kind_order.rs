@@ -183,7 +183,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		}
 		.encode(),
 		KeyTag::RingBufferMetadata => {
-			RingBufferMetadataKey::partition(StorageId::ringbuffer(RingBufferId(1)), vec![]).encode()
+			RingBufferMetadataKey::of(StorageId::ringbuffer(RingBufferId(1)), None).encode()
 		}
 		KeyTag::Flow => FlowKey {
 			flow: FlowId(1),

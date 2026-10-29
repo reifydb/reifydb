@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, decode_ringbuffer_metadata},
+		storage::StorageId,
 	},
 	key::{
 		any::TaggedKey,
@@ -15,7 +16,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::Value;
+use reifydb_value::value::partition::Partition;
 
 use crate::{
 	CatalogStore, Result,
@@ -55,92 +56,45 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			time: decode_ringbuffer_time(&bytes),
-			eviction: Self::find_ringbuffer_eviction(rx, id)?,
 		}))
-	}
-
-	pub(crate) fn find_ringbuffer_metadata(
-		rx: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-	) -> Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&[RingBufferMetadataKey::new(ringbuffer).into()])?.pop().flatten() else {
-			return Ok(None);
-		};
-
-		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
-	}
-
-	pub(crate) fn find_ringbuffer_partition_metadata(
-		rx: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-		partition_values: &[Value],
-	) -> Result<Option<RingBufferMetadata>> {
-		let key = RingBufferMetadataKey::partition(ringbuffer, partition_values.to_vec());
-		let Some(multi) = rx.get(&[key.clone().into()])?.pop().flatten() else {
-			return Ok(None);
-		};
-
-		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
-	}
-
-	pub(crate) fn list_ringbuffer_partition_metadata(
-		rx: &mut Transaction<'_>,
-		ringbuffer: &RingBuffer,
-	) -> Result<Vec<PartitionedMetadata>> {
-		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id);
-		let stream = rx.range(range, RangeScope::All, 4096)?;
-		let mut results = Vec::new();
-
-		for entry in stream {
-			let multi = entry?;
-			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
-			let TaggedKey::RingBufferMetadata(key) = multi.key else {
-				continue;
-			};
-			let Some(partition_values) = key.partition_values() else {
-				return_internal_error!(
-					"Ring buffer metadata key for {:?} carries partition bytes that do not decode as values. This indicates a corrupt metadata key.",
-					key.storage
-				)
-			};
-			results.push(PartitionedMetadata {
-				metadata,
-				partition_values,
-			});
-		}
-
-		results.sort_by(|left, right| left.partition_values.cmp(&right.partition_values));
-
-		Ok(results)
-	}
-
-	pub(crate) fn list_ringbuffer_partitions(
-		rx: &mut Transaction<'_>,
-		ringbuffer: &RingBuffer,
-	) -> Result<Vec<PartitionedMetadata>> {
-		if ringbuffer.partition_by.is_empty() {
-			Ok(Self::find_ringbuffer_metadata(rx, ringbuffer.id)?
-				.into_iter()
-				.map(|metadata| PartitionedMetadata {
-					metadata,
-					partition_values: vec![],
-				})
-				.collect())
-		} else {
-			Self::list_ringbuffer_partition_metadata(rx, ringbuffer)
-		}
 	}
 
 	pub(crate) fn find_partition_metadata(
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition_key: &[Value],
+		partition: Option<Partition>,
 	) -> Result<Option<RingBufferMetadata>> {
-		if ringbuffer.partition_by.is_empty() {
-			Self::find_ringbuffer_metadata(rx, ringbuffer.id)
-		} else {
-			Self::find_ringbuffer_partition_metadata(rx, ringbuffer.id, partition_key)
+		let key = RingBufferMetadataKey::of(ringbuffer.id, partition);
+		let Some(multi) = rx.get(&[key.into()])?.pop().flatten() else {
+			return Ok(None);
+		};
+		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
+	}
+
+	pub(crate) fn list_ringbuffer_partitions(
+		rx: &mut Transaction<'_>,
+		storage: StorageId,
+	) -> Result<Vec<PartitionedMetadata>> {
+		let range = RingBufferMetadataKey::full_scan_for_storage(storage);
+		let mut results = Vec::new();
+		for entry in rx.range(range, RangeScope::All, 4096)? {
+			let multi = entry?;
+			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
+			let TaggedKey::RingBufferMetadata(key) = multi.key else {
+				continue;
+			};
+			let Some(partition) = key.partition() else {
+				return_internal_error!(
+					"Ring buffer metadata key for {:?} carries partition bytes that are not a partition hash. This indicates a corrupt metadata key.",
+					key.storage
+				)
+			};
+			results.push(PartitionedMetadata {
+				metadata,
+				partition,
+			});
 		}
+		Ok(results)
 	}
 
 	pub(crate) fn find_ringbuffer_by_name(
@@ -216,31 +170,6 @@ pub mod tests {
 
 		let result =
 			CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), RingBufferId(999)).unwrap();
-
-		assert!(result.is_none());
-	}
-
-	#[test]
-	fn test_find_ringbuffer_metadata() {
-		let mut txn = create_test_admin_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
-
-		let metadata = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
-			.unwrap()
-			.expect("Metadata should exist");
-
-		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 1);
-		assert_eq!(metadata.tail, 1);
-	}
-
-	#[test]
-	fn test_find_ringbuffer_metadata_not_exists() {
-		let mut txn = create_test_admin_transaction();
-
-		let result =
-			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), RingBufferId(999))
-				.unwrap();
 
 		assert!(result.is_none());
 	}

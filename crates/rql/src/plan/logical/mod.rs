@@ -667,7 +667,6 @@ pub struct CreateRingBufferNode<'bump> {
 	pub persistent: bool,
 	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
-	pub eviction: EvictionVisibility,
 }
 
 #[derive(Debug)]

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::{RowBuilder, SHAPE_HEADER_SIZE},
+	bytes::{RINGBUFFER_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE},
 	ringbuffer::EncodedRingBufferRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -19,10 +19,34 @@ fn shape() -> RowShape {
 }
 
 #[test]
-fn the_ringbuffer_header_is_the_full_source_header() {
-	// The queue family sits 8 bytes wider, so borrowing its constant shifts every field offset.
-	assert_eq!(shape().header_size(), SHAPE_HEADER_SIZE);
-	assert_eq!(shape().header_size(), 33);
+fn the_ringbuffer_header_is_the_source_header_plus_the_sequence() {
+	// Borrowing the plain source width would read the #sequence bytes as the bitvec and shift every field.
+	assert_eq!(shape().header_size(), RINGBUFFER_HEADER_SIZE);
+	assert_eq!(shape().header_size(), SHAPE_HEADER_SIZE + 8);
+	assert_eq!(shape().header_size(), 41);
+}
+
+#[test]
+fn the_sequence_round_trips_and_leaves_the_stamps_and_fields_alone() {
+	// The sequence slot sits between the flags byte and the bitvec, so a wrong offset clobbers a stamp or a field.
+	let shape = shape();
+	let mut row = shape.allocate_ringbuffer();
+	row.set_timestamps(DateTime::from_millis(111), DateTime::from_millis(222));
+	row.set_time(DateTime::from_millis(333));
+	shape.set::<i32>(&mut row, 0, 7);
+	shape.set::<i32>(&mut row, 1, -7);
+	row.set_sequence(u64::MAX - 1);
+
+	let frozen = row.freeze_bytes();
+	let typed = EncodedRingBufferRow::view(&frozen);
+
+	assert_eq!(typed.sequence(), u64::MAX - 1);
+	assert_eq!(shape.sequence(&frozen), u64::MAX - 1);
+	assert_eq!(typed.created_at(), DateTime::from_millis(111));
+	assert_eq!(typed.updated_at(), DateTime::from_millis(222));
+	assert_eq!(typed.time(), Some(DateTime::from_millis(333)));
+	assert_eq!(shape.get::<i32>(&frozen, 0), 7);
+	assert_eq!(shape.get::<i32>(&frozen, 1), -7);
 }
 
 #[test]
@@ -86,7 +110,7 @@ fn the_body_begins_where_the_bitvec_begins() {
 	let frozen = row.freeze_bytes();
 	let typed = EncodedRingBufferRow::view(&frozen);
 
-	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);
+	assert_eq!(typed.body().len(), frozen.len() - RINGBUFFER_HEADER_SIZE);
 	assert_eq!(typed.body(), &frozen.as_slice()[shape.header_size()..]);
 }
 

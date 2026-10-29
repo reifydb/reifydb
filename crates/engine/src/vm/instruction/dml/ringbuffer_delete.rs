@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -15,26 +18,27 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			ringbuffer::{EvictionVisibility, RingBuffer, RingBufferMetadata},
+			ringbuffer::RingBuffer,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	key::{
-		any::TaggedKey,
-		row::{PartitionedRowKey, RowKey},
-	},
-	partition::partition_col_indices,
+	internal_err,
+	ring::Ring,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteRingBufferNode, query::QueryPlan};
-use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
 	value::{
-		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::row_numbers,
+		Value,
+		identity::IdentityId,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, partitions, row_numbers},
 	},
 };
 
@@ -46,7 +50,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::{RingBufferOperations, apply_ringbuffer_partition_metadata_after_delete},
+	transaction::operation::ringbuffer::{RingBufferOperations, RingTxn, save_ring},
 	vm::{
 		services::Services,
 		volcano::{
@@ -75,15 +79,14 @@ pub(crate) fn delete_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let partition_col_indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 
 	let exec = WriteExecCtx {
 		services,
 		symbols,
 	};
-	let row_numbers_filter = if let Some(input_plan) = input {
-		Some(collect_row_numbers_for_ringbuffer_delete(
+	let rows_filter = if let Some(input_plan) = input {
+		Some(collect_rows_for_ringbuffer_delete(
 			&exec,
 			txn,
 			*input_plan,
@@ -96,14 +99,8 @@ pub(crate) fn delete_ringbuffer(
 		None
 	};
 
-	let (deleted_count, returned_rows) = delete_ringbuffer_partitions(
-		services,
-		txn,
-		&target_data,
-		&partition_col_indices,
-		row_numbers_filter.as_ref(),
-		returning.is_some(),
-	)?;
+	let (deleted_count, returned_rows) =
+		delete_ringbuffer_rows(services, txn, &target_data, rows_filter, returning.is_some())?;
 
 	if let Some(returning_exprs) = &returning {
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
@@ -141,7 +138,7 @@ fn build_delete_ringbuffer_resolved_source(namespace: &Namespace, ringbuffer: &R
 	Some(ResolvedObject::RingBuffer(resolved_rb))
 }
 
-fn collect_row_numbers_for_ringbuffer_delete(
+fn collect_rows_for_ringbuffer_delete(
 	exec: &WriteExecCtx<'_>,
 	txn: &mut Transaction<'_>,
 	input_plan: QueryPlan,
@@ -149,8 +146,10 @@ fn collect_row_numbers_for_ringbuffer_delete(
 	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 	caller: IdentityId,
-) -> Result<HashSet<RowNumber>> {
-	let mut row_numbers_to_delete = HashSet::new();
+) -> Result<Vec<(Option<Partition>, RowNumber)>> {
+	let mut seen = HashSet::new();
+	let mut rows_to_delete = Vec::new();
+	let partitioned = !target.ringbuffer.partition_by.is_empty();
 
 	let batch_size = exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64;
 	let mut input_node = compile(
@@ -191,85 +190,82 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;
-		if row_numbers(&columns)?.is_empty() {
+		let numbers = row_numbers(&columns)?;
+		if numbers.is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
-		row_numbers_to_delete.extend(row_numbers(&columns)?.iter().copied());
+		let sidecar = partitions(&columns)?;
+		if partitioned && sidecar.len() != numbers.len() {
+			return internal_err!(
+				"a delete from partitioned ring buffer {} got rows without their {} column",
+				target.ringbuffer.name,
+				SystemColumn::Partitions
+			);
+		}
+		for (idx, &row_number) in numbers.iter().enumerate() {
+			let row = (sidecar.get(idx).copied(), row_number);
+			if seen.insert(row) {
+				rows_to_delete.push(row);
+			}
+		}
 	}
-	Ok(row_numbers_to_delete)
+	Ok(rows_to_delete)
 }
 
-fn delete_ringbuffer_partitions(
+fn delete_ringbuffer_rows(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
-	partition_col_indices: &[usize],
-	row_numbers_filter: Option<&HashSet<RowNumber>>,
+	rows_filter: Option<Vec<(Option<Partition>, RowNumber)>>,
 	has_returning: bool,
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let ringbuffer = target.ringbuffer;
-	let mut deleted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
-	let partitions = services.catalog.list_ringbuffer_partitions(txn, ringbuffer)?;
-
-	for partition_info in partitions {
-		let partition_key = partition_info.partition_values.clone();
-		let partition = partition_info.metadata;
-		let mut min_remaining_row: Option<u64> = None;
-		let mut partition_deleted = 0u64;
-		#[allow(clippy::disallowed_methods)]
-		let partition_hash = if partition_col_indices.is_empty() {
-			None
-		} else {
-			Some(Partition::of(&partition_key))
-		};
-
-		let mut doomed = Vec::new();
-		let mut doomed_rows = Vec::new();
-		for (row_num, row) in collect_partition_rows(txn, ringbuffer, partition_hash, &partition)? {
-			let should_delete = match row_numbers_filter {
-				Some(filter) => filter.contains(&row_num),
-				None => true,
-			};
-			if should_delete {
-				doomed.push(row_num);
-				doomed_rows.push(Some(row));
-			} else {
-				min_remaining_row =
-					Some(min_remaining_row.map_or(row_num.0, |m: u64| m.min(row_num.0)));
+	let catalog = &services.catalog;
+	let mut ring = Ring::new(ringbuffer.capacity);
+	let mut grouped: Vec<(Option<Partition>, Vec<RowNumber>)> = Vec::new();
+	let mut position: HashMap<Option<Partition>, usize> = HashMap::new();
+	match rows_filter {
+		Some(rows) => {
+			for (partition, row) in rows {
+				let index = *position.entry(partition).or_insert_with(|| {
+					grouped.push((partition, Vec::new()));
+					grouped.len() - 1
+				});
+				grouped[index].1.push(row);
 			}
 		}
-		let doomed_partitions = match partition_hash {
-			Some(partition) => vec![partition; doomed.len()],
-			None => Vec::new(),
-		};
-		let deleted_values = txn.remove_from_ringbuffer(
-			ringbuffer,
-			&doomed_partitions,
-			&doomed,
-			doomed_rows,
-			EvictionVisibility::Visible,
-		)?;
-		if has_returning {
-			returned_rows.extend(doomed.iter().copied().zip(deleted_values));
-		}
-		partition_deleted += doomed.len() as u64;
-		deleted_count += doomed.len() as u64;
-
-		if row_numbers_filter.is_some() {
-			apply_ringbuffer_partition_metadata_after_delete(
-				&services.catalog,
-				txn,
-				ringbuffer,
-				&partition_key,
-				partition,
-				partition_deleted,
-				min_remaining_row,
-			)?;
-		} else {
-			services.catalog.remove_partition_metadata(txn, ringbuffer, &partition_key)?;
+		None => {
+			for listed in catalog.list_ringbuffer_partitions(txn, ringbuffer.id.into())? {
+				let rows =
+					listed.metadata.oldest_first(ringbuffer.capacity).map(|(_, row)| row).collect();
+				grouped.push((listed.partition, rows));
+			}
 		}
 	}
+
+	let mut deleted_count = 0u64;
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	for (partition, rows) in grouped {
+		let mut store = RingTxn {
+			catalog,
+			txn: &mut *txn,
+			ringbuffer,
+		};
+		let removed = ring.remove(&mut store, partition, &rows)?;
+		let (doomed, doomed_rows): (Vec<RowNumber>, Vec<EncodedBytes>) = rows
+			.into_iter()
+			.zip(removed)
+			.filter_map(|(row, bytes)| bytes.map(|bytes| (row, bytes)))
+			.unzip();
+		let doomed_partitions: Vec<Partition> =
+			partition.map(|partition| vec![partition; doomed.len()]).unwrap_or_default();
+		txn.remove_from_ringbuffer(ringbuffer, &doomed_partitions, &doomed, &doomed_rows)?;
+		deleted_count += doomed.len() as u64;
+		if has_returning {
+			returned_rows.extend(doomed.into_iter().zip(doomed_rows));
+		}
+	}
+	save_ring(catalog, txn, ringbuffer, &ring)?;
 	Ok((deleted_count, returned_rows))
 }
 
@@ -280,50 +276,4 @@ fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> 
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("deleted", Value::Uint8(deleted)),
 	])
-}
-
-fn collect_partition_rows(
-	txn: &mut Transaction<'_>,
-	ringbuffer: &RingBuffer,
-	partition: Option<Partition>,
-	metadata: &RingBufferMetadata,
-) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-	let Some(partition) = partition else {
-		let row_nums: Vec<RowNumber> = (metadata.head..metadata.tail).map(RowNumber).collect();
-		let keys: Vec<TaggedKey> =
-			row_nums.iter().map(|&row_num| RowKey::new(ringbuffer.id, row_num).into()).collect();
-		return Ok(row_nums
-			.into_iter()
-			.zip(txn.get(&keys)?)
-			.filter_map(|(row_num, row)| row.map(|row| (row_num, row.bytes)))
-			.collect());
-	};
-
-	let mut out = Vec::new();
-	let mut last_key = None;
-	loop {
-		let batch: Vec<_> = txn
-			.range(
-				PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, last_key.as_ref()),
-				RangeScope::All,
-				1024,
-			)?
-			.collect::<Result<Vec<_>>>()?;
-		if batch.is_empty() {
-			break;
-		}
-		let n = batch.len();
-		for entry in batch {
-			if let TaggedKey::PartitionedRow(pk) = &entry.key {
-				out.push((pk.row, entry.bytes.clone()));
-			}
-			last_key = Some(entry.key.clone());
-		}
-		if n < 1024 {
-			break;
-		}
-	}
-
-	out.sort_by_key(|(rn, _)| rn.0);
-	Ok(out)
 }
