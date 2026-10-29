@@ -145,16 +145,17 @@ fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 
 fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
 	let identity = tx.identity();
-	if identity.is_privileged() {
-		return Ok(());
-	}
 	let attributes = catalog.list_identity_attributes(tx)?;
-	if identity.is_anonymous() {
+	if let Some(kind) = identity.sentinel_kind() {
+		let name = match kind {
+			IdentityKind::Root | IdentityKind::System => Value::Utf8(kind.as_str().to_string()),
+			_ => Value::none_of(ValueType::Utf8),
+		};
 		let mut fields = vec![
 			("id".to_string(), Value::IdentityId(identity)),
-			("name".to_string(), Value::none_of(ValueType::Utf8)),
+			("name".to_string(), name),
 			("roles".to_string(), Value::List(vec![])),
-			("kind".to_string(), Value::Utf8(IdentityKind::Anonymous.as_str().to_string())),
+			("kind".to_string(), Value::Utf8(kind.as_str().to_string())),
 		];
 		for attribute in &attributes {
 			fields.push((attribute.name.clone(), Value::none_of(attribute.value_type.clone())));
