@@ -62,19 +62,20 @@ help:
 	@printf "  %-25s %s\n" "test-dev" "Fast development tests (db + embedded_blocking only)"
 	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
-	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (REPEAT=K to repeat K times)"
+	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (REPEAT=K to repeat K times; SUITE=x to narrow)"
+	@printf "  %-25s %s\n" "test-mutant" "Mutate a crate against its own workspace tests (SUITE=x)"
 	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
 	@printf "  %-25s %s\n" "test-chaos" "Run chaos mirror tests in ../testchaos (N= per workload, REPEAT=, SEED=, FILTER=, SUITE=)"
 	@printf "  %-25s %s\n" "test-fuzz" "Replay tracked fuzz crash files in ../testfuzz"
-	@printf "  %-25s %s\n" "test-workspace-chaos N=64" "Run workspace chaos tests (N= per workload, FILTER=, SEED=, PACKAGE=, PACKAGES=)"
-	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (PACKAGE=, PACKAGES=, FILTER=)"
+	@printf "  %-25s %s\n" "test-workspace-chaos N=64" "Run workspace chaos tests (N= per workload, FILTER=, SEED=, SUITE=)"
+	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (SUITE=, FILTER=)"
 	@echo ""
 	@echo "  📈 Coverage"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "coverage-install" "Install cargo-llvm-cov and llvm-tools-preview (one-time)"
-	@printf "  %-25s %s\n" "coverage" "Coverage for normal tests (PACKAGE=, PACKAGES=)"
-	@printf "  %-25s %s\n" "coverage-chaos N=1000" "Coverage for chaos tests (N=, FILTER=, SEED=, PACKAGE=)"
-	@printf "  %-25s %s\n" "coverage-summary" "Print the per-file coverage table (PACKAGE= to scope)"
+	@printf "  %-25s %s\n" "coverage" "Coverage for normal tests (SUITE=)"
+	@printf "  %-25s %s\n" "coverage-chaos N=1000" "Coverage for chaos tests (N=, FILTER=, SEED=, SUITE=)"
+	@printf "  %-25s %s\n" "coverage-summary" "Print the per-file coverage table (SUITE= to scope)"
 	@printf "  %-25s %s\n" "coverage-open" "Open the HTML coverage report"
 	@echo ""
 	@echo "  🔧 Test Components"
@@ -278,6 +279,7 @@ include mk/test-examples.mk
 include mk/test-workspace-chaos.mk
 include mk/test-chaos.mk
 include mk/coverage.mk
+include mk/mutants.mk
 
 # Only include benchmark makefile when benchmark targets are being run
 ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)

@@ -28,7 +28,7 @@ test-workspace:
 			exit $$rc; \
 		}; \
 		echo "🧪 Running workspace tests..."; \
-		MAKEFLAGS= cargo nextest run --cargo-profile $(PROFILE) --workspace --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
+		MAKEFLAGS= cargo nextest run --cargo-profile $(PROFILE) $(if $(SUITE),-p reifydb-$(SUITE),--workspace) --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
 			rc=$$?; \
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \

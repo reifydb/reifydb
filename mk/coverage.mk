@@ -7,34 +7,30 @@
 #
 #   make coverage-install                                    # one-time bootstrap
 #   make coverage                                            # whole workspace
-#   make coverage PACKAGE=reifydb-store-cdc                  # one crate
-#   make coverage-chaos PACKAGE=reifydb-store-cdc N=1000     # chaos, 1000 seeds
-#   make coverage-chaos PACKAGES="reifydb-store-cdc reifydb-cdc"
-#   make coverage-summary PACKAGE=reifydb-store-cdc
+#   make coverage SUITE=store-multi                          # one crate
+#   make coverage-chaos SUITE=store-multi N=1000             # chaos, 1000 seeds
+#   make coverage-summary SUITE=store-multi
 #   make coverage-open
 #
-# N, FILTER, SEED, PACKAGE and PACKAGES mean exactly what they mean in
+# N, FILTER, SEED and SUITE mean exactly what they mean in
 # mk/test-workspace-chaos.mk, and coverage-chaos reuses that file's test selection and
 # package list, so this file must be included after it. N is the per-workload
 # iteration count: each iteration draws its own seed, so raising N widens the
 # state space a single run explores. It is read at compile time and recompiles
 # the chaos crates.
 #
-# PACKAGE and PACKAGES also scope the report. Running only chaos tests leaves
+# SUITE also scopes the report. Running only chaos tests leaves
 # most of the workspace untouched, and those unhit crates would otherwise drown
 # the numbers for the crate under test, so every crate outside the selection is
 # filtered out of the report. The filter is built as the complement of the
 # selection because llvm-cov only takes an ignore pattern and Rust's regex crate
 # has no lookahead, so "keep only these" cannot be written directly.
 #
-# A package name maps to its directory by dropping the reifydb- prefix; a name
-# with no matching directory under crates/ is a hard error, because a silently
-# unmatched name filters out every real crate and reports nothing.
+# A SUITE with no matching directory under crates/ is a hard error, because a
+# silently unmatched name filters out every real crate and reports nothing.
 #
-# `coverage` honours PACKAGE and PACKAGES only when they actually came from the
-# caller. mk/test-workspace-chaos.mk defaults PACKAGES to its own crate list, so reading it
-# unconditionally would make a bare `make coverage` cover the chaos crates
-# instead of the workspace. `coverage-chaos` wants that default and takes it.
+# `coverage` without SUITE covers the workspace; `coverage-chaos` without SUITE
+# takes the chaos crate list from mk/test-workspace-chaos.mk.
 #
 # Every llvm-cov invocation carries COVERAGE_PROFILE. The report step looks for
 # object files under the profile it is given, so a summary that omits the flag
@@ -54,8 +50,7 @@ COVERAGE_EMPTY :=
 COVERAGE_SPACE := $(COVERAGE_EMPTY) $(COVERAGE_EMPTY)
 COVERAGE_ALL_DIRS := $(notdir $(patsubst %/,%,$(dir $(wildcard crates/*/Cargo.toml))))
 
-COV_FROM_CALLER = $(filter command line environment,$(origin PACKAGES) $(origin PACKAGE))
-COV_PKGS = $(if $(COV_FROM_CALLER),$(strip $(PACKAGES) $(PACKAGE)),)
+COV_PKGS = $(if $(SUITE),reifydb-$(SUITE),)
 COV_SELECT = $(if $(COV_PKGS),$(foreach p,$(COV_PKGS),-p $(p)),--workspace)
 
 COVERAGE_KEEP_DIRS = $(patsubst reifydb-%,%,$(COV_PKGS))
@@ -64,9 +59,9 @@ COVERAGE_DROP_RE = $(if $(COVERAGE_KEEP_DIRS),|crates/($(subst $(COVERAGE_SPACE)
 COVERAGE_IGNORE = --ignore-filename-regex '(^|/)(tests|benches|examples)/|/vendor/|/\.cargo/registry/$(COVERAGE_DROP_RE)'
 
 ifneq ($(filter coverage coverage-chaos coverage-summary,$(MAKECMDGOALS)),)
-COVERAGE_UNKNOWN := $(filter-out $(COVERAGE_ALL_DIRS),$(patsubst reifydb-%,%,$(strip $(PACKAGES) $(PACKAGE))))
+COVERAGE_UNKNOWN := $(filter-out $(COVERAGE_ALL_DIRS),$(SUITE))
 ifneq ($(strip $(COVERAGE_UNKNOWN)),)
-$(error no crates/ directory for coverage package: $(COVERAGE_UNKNOWN))
+$(error no crates/ directory for coverage suite: $(COVERAGE_UNKNOWN))
 endif
 endif
 
@@ -85,7 +80,7 @@ coverage:
 	@echo "   report: $(COVERAGE_HTML)"
 
 .PHONY: coverage-chaos
-coverage-chaos: COV_PKGS = $(strip $(PACKAGES) $(PACKAGE))
+coverage-chaos: COV_PKGS = $(CHAOS_SELECTED)
 coverage-chaos:
 	@echo "📈 Chaos coverage (N=$(if $(ITERATIONS),$(ITERATIONS),32)$(if $(SEED), SEED=$(SEED),)$(if $(FILTER), FILTER=$(FILTER),))"
 	@echo "   packages: $(COV_PKGS)"
