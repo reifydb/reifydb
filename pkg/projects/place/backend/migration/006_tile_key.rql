@@ -7,7 +7,7 @@ CREATE MIGRATION 'place_tile_key' {
         from: { filter { true } },
         update: { filter { $identity.kind == "guest" or $identity.kind == "user" } }
     };
-    create table place::edit { owner: identity_id, tile: uint2, pixels: blob };
+    create table place::edit { owner: identity_id, name: utf8, tile: uint2, pixels: blob, painted: uint2 };
     create table policy place_edit on place::edit {
         from: { filter { true } },
         insert: { filter { $identity.kind == "guest" or $identity.kind == "user" } }
@@ -19,6 +19,8 @@ CREATE MIGRATION 'place_tile_key' {
         assert { place::pixel_count($tiles) <= 4096 } "too many pixels";
         let $keys = place::tile_keys($tiles);
         update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys };
-        for $t in $tiles { insert place::edit [{ owner: $identity.id, tile: place::tile_key($t), pixels: $t }] }
+        for $t in $tiles {
+            insert place::edit [{ owner: $identity.id, name: $identity.name, tile: place::tile_key($t), pixels: $t, painted: place::edit_pixels($t) }]
+        }
     }
 };

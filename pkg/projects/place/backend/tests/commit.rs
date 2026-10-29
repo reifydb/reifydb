@@ -565,3 +565,69 @@ fn an_anonymous_call_is_refused_by_the_call_policy_itself() {
 	assert!(err.contains("place_call_commit"), "the call policy must be the one that refuses: {err}");
 	assert_eq!(pixel(&db, 1, 1), 0);
 }
+
+#[test]
+fn edit_pixels_answers_the_pixel_count_of_each_tile_edit() {
+	// The agents list sums this per painter; an off count misreports how much each one painted.
+	let db = build();
+	let mut map = HashMap::new();
+	map.insert("one".to_string(), Value::Blob(Blob::new(encode_edit(3, 5, &[(0, 1)]))));
+	map.insert("three".to_string(), Value::Blob(Blob::new(encode_edit(3, 5, &[(0, 1), (1, 2), (2, 3)]))));
+	map.insert("empty".to_string(), Value::Blob(Blob::new(encode_edit(3, 5, &[]))));
+	let r = db.engine().query_as(
+		IdentityId::root(),
+		"map { one: place::edit_pixels($one), three: place::edit_pixels($three), empty: place::edit_pixels($empty) }",
+		Params::from(map),
+	);
+	if let Some(e) = r.error {
+		panic!("edit pixels query failed: {e:?}");
+	}
+	let row = r.frames.iter().flat_map(|f| f.rows()).next().expect("one row");
+	assert_eq!(row.get::<u16>("one").unwrap().unwrap(), 1);
+	assert_eq!(row.get::<u16>("three").unwrap().unwrap(), 3);
+	assert_eq!(row.get::<u16>("empty").unwrap().unwrap(), 0);
+}
+
+#[test]
+fn an_edit_row_carries_the_painter_name_and_its_pixel_count() {
+	// The agents list reads names and pixel totals from these columns; without them it shows ids and edit counts.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 1, 0);
+	mark_ready(&db);
+	let agent = login_as(&db, IdentityId::anonymous(), "password", &[("identifier", "agent-a"), ("password", "x")]);
+
+	commit_as(&db, agent, vec![pack(1, 1, 3), pack(2, 1, 4), pack(65, 1, 5)]).expect("commit");
+
+	let mut rows: Vec<(String, u16, u16)> = root_query(&db, "from place::edit map { name, tile, painted }")
+		.iter()
+		.flat_map(|f| f.rows())
+		.map(|r| {
+			(
+				r.get::<String>("name").unwrap().unwrap(),
+				r.get::<u16>("tile").unwrap().unwrap(),
+				r.get::<u16>("painted").unwrap().unwrap(),
+			)
+		})
+		.collect();
+	rows.sort_by_key(|(_, tile, _)| *tile);
+	assert_eq!(rows, vec![("agent-a".to_string(), tile_key(0, 0), 2), ("agent-a".to_string(), tile_key(1, 0), 1)]);
+}
+
+#[test]
+fn a_guest_edit_row_carries_the_guest_name_shape() {
+	// The list folds guests by the guest: name prefix, so a guest row must carry exactly that shape.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	mark_ready(&db);
+
+	commit(&db, vec![pack(1, 1, 3)]).expect("guest commit");
+
+	let names: Vec<String> = root_query(&db, "from place::edit map { name }")
+		.iter()
+		.flat_map(|f| f.rows())
+		.map(|r| r.get::<String>("name").unwrap().unwrap())
+		.collect();
+	assert_eq!(names.len(), 1);
+	assert!(names[0].starts_with("guest:"), "{names:?}");
+}

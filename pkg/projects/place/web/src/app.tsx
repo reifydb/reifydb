@@ -6,6 +6,8 @@ import { clearStoredSession } from '@reifydb/auth'
 import { Client, type WsClient } from '@reifydb/client'
 import { Loading } from '@reifydb/ui'
 import { wsUrl } from './config'
+import { loadAgents } from './agents'
+import { AgentsPage } from './components/agents-page'
 import { BrandBar } from './components/brand-bar'
 import { Landing } from './components/landing'
 import { Place } from './components/place'
@@ -18,6 +20,7 @@ type Connection =
 
 function App() {
   const canvas = window.location.pathname.startsWith('/canvas')
+  const agents = window.location.pathname.startsWith('/agents')
   const [connection, setConnection] = useState<Connection>({ status: 'connecting' })
   const [generation, setGeneration] = useState(0)
 
@@ -59,12 +62,20 @@ function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-primary">
       {canvas && <BrandBar tag="AGENT CANVAS" />}
+      {agents && <BrandBar tag="AGENTS" />}
       <main className="relative flex min-h-0 flex-1 flex-col">
         {connection.status === 'connecting' && <Loading />}
         {connection.status === 'failed' && (
           <p className="font-mono text-sm text-status-error">Could not connect to ReifyDB: {connection.message}</p>
         )}
-        {connection.status === 'ready' && (canvas ? <Place client={connection.client} guest={connection.guest} /> : <Landing client={connection.client} />)}
+        {connection.status === 'ready' &&
+          (canvas ? (
+            <Place client={connection.client} guest={connection.guest} />
+          ) : agents ? (
+            <AgentsPage load={() => loadAgents(connection.client)} />
+          ) : (
+            <Landing client={connection.client} />
+          ))}
       </main>
     </div>
   )

@@ -59,6 +59,7 @@ pub fn migration_path() -> PathBuf {
 pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 	[
 		("place::tile_key", TileFunction::TileKey),
+		("place::edit_pixels", TileFunction::EditPixels),
 		("place::tile_keys", TileFunction::TileKeys),
 		("place::pixel_count", TileFunction::PixelCount),
 		("place::paint", TileFunction::Paint),
@@ -131,6 +132,7 @@ pub fn decode_edit(edit: &[u8]) -> Result<TileEdit, String> {
 #[derive(Clone, Copy)]
 enum TileFunction {
 	TileKey,
+	EditPixels,
 	TileKeys,
 	PixelCount,
 	Paint,
@@ -148,7 +150,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
 		match self.function {
-			TileFunction::TileKey => ValueType::Uint2,
+			TileFunction::TileKey | TileFunction::EditPixels => ValueType::Uint2,
 			TileFunction::TileKeys => ValueType::List(Box::new(ValueType::Uint2)),
 			TileFunction::PixelCount => ValueType::Int4,
 			TileFunction::Paint => ValueType::Blob,
@@ -163,7 +165,8 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 		let rows = ctx.row_count;
 		let tiles = &args[args.len() - 1];
 		match self.function {
-			TileFunction::TileKey => key_rows(ctx, tiles),
+			TileFunction::TileKey => edit_rows(ctx, tiles, |edit| tile_key(edit.tx, edit.ty)),
+			TileFunction::EditPixels => edit_rows(ctx, tiles, |edit| edit.pixels.len() as u16),
 			TileFunction::TileKeys => {
 				let edits = decode_edits(ctx, tiles)?;
 				let mut keys: Vec<u16> = edits.iter().map(|edit| tile_key(edit.tx, edit.ty)).collect();
@@ -204,13 +207,17 @@ fn decode_edits(ctx: &FunctionContext<'_>, tiles: &(FieldRef, ArrayRef)) -> Resu
 		.map_err(|reason| failed(ctx, reason))
 }
 
-fn key_rows(ctx: &FunctionContext<'_>, tiles: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), RoutineError> {
+fn edit_rows(
+	ctx: &FunctionContext<'_>,
+	tiles: &(FieldRef, ArrayRef),
+	value: fn(&TileEdit) -> u16,
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let view = ColumnView::try_from(tiles)?;
 	let edits = blobs(ctx, 0, &view)?;
 	let mut keys = Vec::with_capacity(ctx.row_count);
 	for row in 0..ctx.row_count {
 		let edit = decode_edit(edits.value(row_of(edits.len(), row))).map_err(|reason| failed(ctx, reason))?;
-		keys.push(tile_key(edit.tx, edit.ty));
+		keys.push(value(&edit));
 	}
 	Ok(uint2(ctx.fragment.text(), keys))
 }
@@ -264,7 +271,10 @@ impl Function for TileRoutine {
 	fn arity(&self) -> Arity {
 		match self.function {
 			TileFunction::Paint => Arity::Exact(3),
-			TileFunction::TileKey | TileFunction::TileKeys | TileFunction::PixelCount => Arity::Exact(1),
+			TileFunction::TileKey
+			| TileFunction::EditPixels
+			| TileFunction::TileKeys
+			| TileFunction::PixelCount => Arity::Exact(1),
 		}
 	}
 

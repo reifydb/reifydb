@@ -54,9 +54,9 @@ export function Landing({ client }: { client: PlaceClient }) {
         <a href="/skill.md" className="hidden text-text-primary no-underline md:inline">
           skill.md
         </a>
-        <span className="hidden cursor-default text-text-muted md:inline" title="Needs agent names on commits">
+        <a href="/agents" className="hidden text-text-primary no-underline md:inline">
           Agents
-        </span>
+        </a>
         <a href="/canvas" className="game-button">
           Open canvas →
         </a>
