@@ -39,7 +39,7 @@ use crate::{
 		uuid::{Uuid4, Uuid7},
 		value_type::{
 			ValueType,
-			field::{field_error, from_field},
+			field::{enum_variants, field_error, from_field},
 		},
 	},
 };
@@ -609,8 +609,16 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int16(a) => wide_int_array::as_string::<i128>(a, index),
 			ViewData::Uint1(a) => primitive::as_string(*a, index),
 			ViewData::Enum {
+				container,
 				..
-			} => self.get_value(index).to_string(),
+			} => {
+				let tag = container.value(index);
+				enum_variants(self.field)
+					.expect("an enum view was built from a parsed enum field")
+					.into_iter()
+					.find(|(variant, _)| *variant == tag)
+					.map_or_else(|| self.get_value(index).to_string(), |(_, name)| name)
+			}
 			ViewData::Uint2(a) => primitive::as_string(*a, index),
 			ViewData::Uint4(a) => primitive::as_string(*a, index),
 			ViewData::Uint8(a) => primitive::as_string(*a, index),

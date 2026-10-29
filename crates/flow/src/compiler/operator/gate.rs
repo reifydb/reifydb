@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{expression::Expression, flow::operator::OperatorDef::Gate, interface::catalog::flow::OperatorId};
-use reifydb_rql::{nodes::GateNode, query::QueryPlan};
+use reifydb_rql::{
+	expression::variant::resolve_is_variant_tags,
+	nodes::GateNode,
+	query::{QueryPlan, extract_resolved_source},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -24,7 +28,13 @@ impl From<GateNode> for GateCompiler {
 
 impl CompileOperator for GateCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
-		let conditions = self.conditions;
+		let mut conditions = self.conditions;
+		if let Some(source) = extract_resolved_source(&self.input) {
+			let mut tx = txn.reborrow();
+			for expr in &mut conditions {
+				resolve_is_variant_tags(expr, &source, &compiler.catalog, &mut tx)?;
+			}
+		}
 
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 

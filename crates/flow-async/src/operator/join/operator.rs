@@ -32,7 +32,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
-use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_dictionary_columns_except};
+use reifydb_flow::{
+	context::FlowContext,
+	error::FlowGraphError,
+	operator::source::{decode_dictionary_columns_except, mark_diffs, schema_sumtypes},
+};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -47,6 +51,7 @@ use reifydb_value::{
 		dictionary::DictionaryId,
 		duration::Duration,
 		row_number::RowNumber,
+		sumtype::SumTypeId,
 		system_columns::{require_row_numbers, resolve_column},
 		value_type::ValueType,
 	},
@@ -170,6 +175,7 @@ pub struct JoinOperator {
 	alias: Option<String>,
 	left_schema: SchemaRef,
 	right_schema: SchemaRef,
+	output_sumtypes: HashMap<String, SumTypeId>,
 	left_kept: Vec<(String, DictionaryId)>,
 	right_kept: Vec<(String, DictionaryId)>,
 	routines: Routines,
@@ -212,6 +218,10 @@ impl JoinOperator {
 		let left_kept = dictionary_columns(&left_schema)?.into_iter().collect();
 		let right_kept = dictionary_columns(&right_schema)?.into_iter().collect();
 
+		let output_sumtypes = schema_sumtypes(
+			&JoinedColumnsBuilder::new(&left_schema, &right_schema, &alias, natural)
+				.schema(&left_schema, &right_schema),
+		)?;
 		let lowered_left_exprs: Vec<LoweredExpr> =
 			left_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "join_key")).collect();
 
@@ -241,6 +251,7 @@ impl JoinOperator {
 			ctx,
 			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 			expiry: JoinExpiryIndex::default(),
+			output_sumtypes,
 		})
 	}
 
@@ -970,6 +981,7 @@ impl HostOperator for JoinOperator {
 			}
 		}
 
+		mark_diffs(&mut result, &self.output_sumtypes)?;
 		Ok(Change::from_flow(self.operator, version, result, change.changed_at))
 	}
 

@@ -41,8 +41,10 @@ use reifydb_value::{
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
+		sumtype::SumTypeId,
 		system_columns::{
-			SystemColumn, column_view, is_system_field, stamp_system_columns, system_column, system_field,
+			SystemColumn, column_view, is_system_field, stamp_system_columns, sumtype_tag_position,
+			system_column, system_field,
 		},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
@@ -56,7 +58,7 @@ use reifydb_value::{
 use crate::{
 	error::CoreError,
 	interface::catalog::column::Column as CatalogColumn,
-	internal_err,
+	internal_err, internal_error,
 	metrics::heap::HeapSize,
 	value::column::{
 		builder::{ColumnBuilder, TypedBuilder, append_fixed},
@@ -69,6 +71,31 @@ use crate::{
 pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
 	let row_count = columns.first().map_or(0, |(_, array)| array.len());
 	assemble(columns, HashMap::new(), row_count)
+}
+
+pub fn mark_tag_columns(batch: RecordBatch, sumtypes: &HashMap<String, SumTypeId>) -> Result<RecordBatch> {
+	if sumtypes.is_empty() {
+		return Ok(batch);
+	}
+	let schema = batch.schema();
+	let mut columns = Vec::with_capacity(batch.num_columns());
+	for (field, array) in schema.fields().iter().zip(batch.columns()) {
+		let field = match sumtypes.get(field.name()) {
+			Some(id) => mark_field(field, *id)?,
+			None => field.clone(),
+		};
+		columns.push((field, array.clone()));
+	}
+	batch_with(&schema, columns, batch.num_rows())
+}
+
+pub fn mark_field(field: &FieldRef, id: SumTypeId) -> Result<FieldRef> {
+	let mut field_type = from_field(field)?;
+	if field_type.value_type.as_ref().map(ValueType::inner_type) != Some(&ValueType::Uint1) {
+		return Err(internal_error!("sumtype tag column {} is not uint1", field.name()));
+	}
+	field_type.sumtype = Some(id);
+	Ok(Arc::new(to_field(field.name(), &field_type).with_nullable(field.is_nullable())))
 }
 
 pub fn batch_with(schema: &SchemaRef, columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch> {
@@ -447,11 +474,16 @@ pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> 
 	let schema = batch.schema_ref();
 	let mut key_views = Vec::with_capacity(keys.len());
 	for &key in keys {
-		let index = schema.fields().iter().position(|field| field.name() == key).ok_or_else(|| {
-			Error::from(CoreError::FrameError {
-				message: format!("Column '{}' not found", key),
-			})
-		})?;
+		let index = schema
+			.fields()
+			.iter()
+			.position(|field| field.name() == key)
+			.or_else(|| sumtype_tag_position(batch, key))
+			.ok_or_else(|| {
+				Error::from(CoreError::FrameError {
+					message: format!("Column '{}' not found", key),
+				})
+			})?;
 		key_views.push(ColumnView::try_from((batch.column(index), schema.field(index)))?);
 	}
 	group_rows(&key_views, batch.num_rows(), dict)

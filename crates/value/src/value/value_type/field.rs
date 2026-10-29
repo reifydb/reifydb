@@ -106,7 +106,10 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 			inner: inner.as_ref().clone(),
 			accuracy: *accuracy,
 		})),
-		ValueType::Enum(id) => field(DataType::UInt8).with_extension_type(EnumTag(*id)),
+		ValueType::Enum(id) => field(DataType::UInt8).with_extension_type(EnumTag(EnumMetadata {
+			sumtype_id: id.0,
+			variants: Vec::new(),
+		})),
 		ValueType::Option(_) => {
 			panic!("field {name}: a nested Option has no arrow field, found {field_type:?}")
 		}
@@ -150,7 +153,7 @@ pub fn from_field(field: &Field) -> Result<FieldType> {
 				accuracy: metadata.accuracy,
 			}
 		}
-		Some(EnumTag::NAME) => ValueType::Enum(tagged::<EnumTag>(field)?.0),
+		Some(EnumTag::NAME) => ValueType::Enum(SumTypeId(tagged::<EnumTag>(field)?.0.sumtype_id)),
 		Some(SumTypeTagTag::NAME) => {
 			field_type.sumtype = Some(tagged::<SumTypeTagTag>(field)?.0);
 			ValueType::Uint1
@@ -223,6 +226,21 @@ fn decimal(precision: u8, scale: i8) -> Result<ValueType> {
 
 fn tagged<E: ExtensionType>(field: &Field) -> Result<E> {
 	field.try_extension_type::<E>().map_err(|error| field_error(format!("field {}: {error}", field.name())))
+}
+
+pub fn with_enum_variants(field: Field, id: SumTypeId, variants: Vec<(u8, String)>) -> Field {
+	field.with_extension_type(EnumTag(EnumMetadata {
+		sumtype_id: id.0,
+		variants,
+	}))
+}
+
+pub fn enum_variants(field: &Field) -> Result<Vec<(u8, String)>> {
+	Ok(tagged::<EnumTag>(field)?.0.variants)
+}
+
+pub fn is_sumtype_tag(field: &Field) -> bool {
+	field.extension_type_name() == Some(SumTypeTagTag::NAME)
 }
 
 pub(crate) fn field_error(message: String) -> Error {
@@ -299,7 +317,7 @@ tag!(
 );
 tag!(AnyTag, "reifydb.any", Option<ValueType>, DataType::LargeBinary, write_declared_type, read_declared_type);
 tag!(DigestTag, "reifydb.digest", DigestMetadata, DataType::LargeBinary, write_digest, read_digest);
-tag!(EnumTag, "reifydb.enum", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
+tag!(EnumTag, "reifydb.enum", EnumMetadata, DataType::UInt8, write_enum, read_enum);
 tag!(SumTypeTagTag, "reifydb.sumtype_tag", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
 
 #[derive(Deserialize)]
@@ -320,6 +338,13 @@ struct DeclaredTypeMetadata {
 #[derive(Deserialize)]
 struct SumTypeMetadata {
 	sumtype_id: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct EnumMetadata {
+	sumtype_id: u64,
+	#[serde(default)]
+	variants: Vec<(u8, String)>,
 }
 
 #[derive(Deserialize)]
@@ -386,6 +411,16 @@ fn read_sumtype(name: &str, metadata: Option<&str>) -> StdResult<SumTypeId, Arro
 	let text = metadata
 		.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its sumtype_id metadata")))?;
 	parse::<SumTypeMetadata>(name, text).map(|parsed| SumTypeId(parsed.sumtype_id))
+}
+
+fn write_enum(metadata: &EnumMetadata) -> Option<String> {
+	Some(json!(metadata).to_string())
+}
+
+fn read_enum(name: &str, metadata: Option<&str>) -> StdResult<EnumMetadata, ArrowError> {
+	let text = metadata
+		.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its sumtype_id metadata")))?;
+	parse::<EnumMetadata>(name, text)
 }
 
 fn read_digest(name: &str, metadata: Option<&str>) -> StdResult<DigestMetadata, ArrowError> {

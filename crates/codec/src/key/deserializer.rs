@@ -454,7 +454,7 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::List => Ok(Value::List(self.read_container_items()?)),
 			ValueKind::Tuple => Ok(Value::Tuple(self.read_container_items()?)),
 			ValueKind::Record => Ok(Value::Record(self.read_record_fields()?)),
-			ValueKind::Any | ValueKind::Type | ValueKind::Digest => {
+			ValueKind::Any | ValueKind::Type | ValueKind::Digest | ValueKind::Enum => {
 				Err(Error::from(TypeError::SerdeKeycode {
 					message: format!(
 						"value kind {:?} cannot be deserialized from keys (position {})",

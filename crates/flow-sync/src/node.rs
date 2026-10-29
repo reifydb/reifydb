@@ -73,7 +73,7 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::{collections::HashMap, sync::Arc};
 
 	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use reifydb_core::{
@@ -203,7 +203,9 @@ mod tests {
 		txn.dictionaries.insert(SYMBOLS, symbols());
 		let sol = txn.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
 		let eth = txn.intern(&symbols(), &[utf8("eth")]).unwrap()[0];
-		let mut source = Node::Source(SourceOperator::from_columns(OperatorId(1), &trades_table().columns));
+		let mut source = Node::Source(
+			SourceOperator::from_columns(OperatorId(1), &trades_table().columns, HashMap::new()).unwrap(),
+		);
 
 		let out = source
 			.apply(

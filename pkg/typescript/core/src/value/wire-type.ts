@@ -71,6 +71,9 @@ export function typeFromWire(wire: WireType): Type {
         }
         return digestType(inner, wire.accuracy);
     }
+    if (wire.id === 'Enum') {
+        return 'Utf8';
+    }
     if (wire.id === 'Decimal') {
         const precision = wire.precision ?? FIXED_POINT_MAX_PRECISION;
         return decimalType(precision, wire.scale ?? DECIMAL_DEFAULT_SCALE);
@@ -92,7 +95,20 @@ export function typeFromWire(wire: WireType): Type {
 
 /** Reads the column types of a frames payload, leaving the rest of the frame untouched. */
 export function columnsFromWire<T extends {type: any}>(columns: T[]): T[] {
-    return columns.map(column => ({...column, type: typeFromWire(column.type)}));
+    return columns.map(column => {
+        const decoded = {...column, type: typeFromWire(column.type)};
+        const variants: [number, string][] | undefined = (column as any).variants;
+        if (!variants || !isEnumWire(column.type)) {
+            return decoded;
+        }
+        const names = new Map(variants.map(([tag, name]) => [String(tag), name]));
+        return {...decoded, payload: (column as any).payload.map((cell: any) => names.get(cell) ?? cell)};
+    });
+}
+
+function isEnumWire(wire: WireType): boolean {
+    if (wire.id === 'Enum') return true;
+    return wire.id === 'Option' && !!wire.underlying && !Array.isArray(wire.underlying) && isEnumWire(wire.underlying);
 }
 
 const LEGACY_FRAME_KEYS = ['row_numbers', 'created_at', 'updated_at', 'time'];

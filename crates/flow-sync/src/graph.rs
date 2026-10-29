@@ -23,8 +23,14 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::{
-		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, first_input, map::MapOperator,
-		sink::table::TableSink, sort::SortOperator, source::SourceOperator,
+		append::AppendOperator,
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		first_input,
+		map::MapOperator,
+		sink::table::TableSink,
+		sort::SortOperator,
+		source::{SourceOperator, unit_sumtype_tags},
 	},
 };
 use reifydb_routine_abi::registry::Routines;
@@ -50,10 +56,18 @@ pub fn build<T: Lookup>(
 			SourceTable {
 				table,
 				..
-			} => Node::Source(SourceOperator::from_columns(*operator_id, &txn.table(table)?.columns)),
+			} => {
+				let columns = txn.table(table)?.columns;
+				let tags = unit_sumtype_tags(&columns, |id| txn.sumtype(id))?;
+				Node::Source(SourceOperator::from_columns(*operator_id, &columns, tags)?)
+			}
 			SourceView {
 				view,
-			} => Node::Source(SourceOperator::from_columns(*operator_id, txn.view(view)?.columns())),
+			} => {
+				let view = txn.view(view)?;
+				let tags = unit_sumtype_tags(view.columns(), |id| txn.sumtype(id))?;
+				Node::Source(SourceOperator::from_columns(*operator_id, view.columns(), tags)?)
+			}
 			SourceRingBuffer {
 				..
 			} => unimplemented!(),

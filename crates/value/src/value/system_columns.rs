@@ -24,7 +24,7 @@ use crate::{
 		row_number::RowNumber,
 		value_type::{
 			ValueType,
-			field::{FieldType, field_error, to_field},
+			field::{FieldType, field_error, is_sumtype_tag, to_field},
 		},
 	},
 };
@@ -351,6 +351,12 @@ pub fn resolve_column(batch: &RecordBatch, name: &str) -> Option<usize> {
 		.find(|column| &column.name()[1..] == bare)
 		.and_then(|column| position(batch, column.name()))
 		.or_else(|| position(batch, name))
+		.or_else(|| sumtype_tag_position(batch, name))
+}
+
+pub fn sumtype_tag_position(batch: &RecordBatch, name: &str) -> Option<usize> {
+	let tag = format!("{name}_tag");
+	batch.schema_ref().fields().iter().position(|field| field.name() == &tag && is_sumtype_tag(field))
 }
 
 pub fn check_user_columns(batch: &RecordBatch) -> Result<()> {

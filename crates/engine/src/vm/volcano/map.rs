@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -11,7 +11,10 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::{batch::batch, column::headers::ColumnHeaders},
+	value::{
+		batch::{batch, mark_tag_columns},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::cast_for_write},
@@ -19,7 +22,11 @@ use reifydb_evaluate::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::column_view::ColumnView};
+use reifydb_value::{
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{column_view::ColumnView, sumtype::SumTypeId},
+};
 use tracing::instrument;
 
 use super::{NoopNode, with_system_headers, with_user_columns};
@@ -39,6 +46,7 @@ pub(crate) struct MapNode {
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
+	tag_marks: HashMap<String, SumTypeId>,
 }
 
 impl MapNode {
@@ -50,6 +58,7 @@ impl MapNode {
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
+			tag_marks: HashMap::new(),
 		}
 	}
 }
@@ -59,7 +68,19 @@ impl QueryNode for MapNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let (expressions, written) =
 			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+				let tag_column = format!("{}_tag", alias_expr.alias.0.text());
+				let stored = self.source.as_ref().filter(|source| {
+					matches!(alias_expr.expression.as_ref(), Expression::SumTypeConstructor(_))
+						&& source.columns().iter().any(|column| column.name == tag_column)
+				});
+				expand_sumtype_ctor(
+					ctx,
+					rx,
+					ctx.source.as_ref().or(stored),
+					alias_expr,
+					expanded,
+					&mut self.tag_marks,
+				)
 			})?;
 		reject_variant_column_clashes(&expressions.iter().map(display_label).collect::<Vec<_>>(), &written)?;
 		self.expressions = expressions;
@@ -106,7 +127,7 @@ impl QueryNode for MapNode {
 			let result = self.apply(&transform_ctx, columns)?;
 			let result = strip_udf_columns(result, &self.udf_names)?;
 
-			Ok(Some(result))
+			Ok(Some(mark_tag_columns(result, &self.tag_marks)?))
 		} else {
 			Ok(None)
 		}
@@ -177,6 +198,7 @@ pub(crate) struct MapWithoutInputNode {
 
 	udf_columns: Option<RecordBatch>,
 	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
+	tag_marks: HashMap<String, SumTypeId>,
 }
 
 impl MapWithoutInputNode {
@@ -186,6 +208,7 @@ impl MapWithoutInputNode {
 			headers: None,
 			udf_columns: None,
 			context: None,
+			tag_marks: HashMap::new(),
 		}
 	}
 }
@@ -195,7 +218,14 @@ impl QueryNode for MapWithoutInputNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let (expressions, written) =
 			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+				expand_sumtype_ctor(
+					ctx,
+					rx,
+					ctx.source.as_ref(),
+					alias_expr,
+					expanded,
+					&mut self.tag_marks,
+				)
 			})?;
 		reject_variant_column_clashes(&expressions.iter().map(display_label).collect::<Vec<_>>(), &written)?;
 		self.expressions = expressions;
@@ -234,7 +264,7 @@ impl QueryNode for MapWithoutInputNode {
 			columns.push(column);
 		}
 
-		let columns = batch(columns)?;
+		let columns = mark_tag_columns(batch(columns)?, &self.tag_marks)?;
 		self.headers = Some(ColumnHeaders::from_batch(&columns));
 		Ok(Some(columns))
 	}

@@ -111,10 +111,11 @@ fn find(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
 fn digest_kind_is_appended_last_as_tag_30() {
 	// Persisted and wire tags must never shift, so a new kind only ever takes the next free number.
 	assert_eq!(ValueKind::Digest.byte(), 30);
-	assert_eq!(ValueKind::ALL.len(), 31);
+	assert_eq!(ValueKind::Enum.byte(), 31);
+	assert_eq!(ValueKind::ALL.len(), 32);
 	assert_eq!(ValueKind::ALL[30], ValueKind::Digest);
 	assert_eq!(ValueKind::from_byte(30), Some(ValueKind::Digest));
-	assert_eq!(ValueKind::from_byte(31), None);
+	assert_eq!(ValueKind::from_byte(32), None);
 	assert_eq!(ValueKind::of_type(&digest_type(ValueType::Float8, ACCURACY)), ValueKind::Digest);
 }
 

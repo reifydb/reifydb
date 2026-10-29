@@ -60,8 +60,13 @@ pub struct PlainEncoded {
 pub fn encode_plain(col: &ColumnView<'_>) -> Result<PlainEncoded, EncodeError> {
 	let result = match &col.data {
 		ViewData::Enum {
+			container,
 			..
-		} => unreachable!("enum RBCF form arrives in P3"),
+		} => PlainEncoded {
+			data: container.values().to_vec(),
+			offsets: vec![],
+			type_code: ValueKind::Enum.byte(),
+		},
 		ViewData::Bool(c) => PlainEncoded {
 			data: encode_bitvec(c.values()),
 			offsets: vec![],

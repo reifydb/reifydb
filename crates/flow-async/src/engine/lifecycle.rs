@@ -140,7 +140,7 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::{collections::HashMap, sync::Arc};
 
 	use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 	use reifydb_core::{
@@ -228,7 +228,11 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
+		inner.insert_operator(
+			FlowId(1),
+			operator,
+			Box::new(SourceOperator::from_columns(operator, &[], HashMap::new()).unwrap()),
+		);
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.apply_batch(&[OperatorWrite::Insert {
@@ -281,7 +285,11 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
+		inner.insert_operator(
+			FlowId(1),
+			operator,
+			Box::new(SourceOperator::from_columns(operator, &[], HashMap::new()).unwrap()),
+		);
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		let at = DateTime::from_millis(5_000);
@@ -352,7 +360,11 @@ mod tests {
 				},
 			));
 			inner.register_flow_dag(builder.build());
-			inner.insert_operator(flow_id, operator, Box::new(SourceOperator::from_columns(operator, &[])));
+			inner.insert_operator(
+				flow_id,
+				operator,
+				Box::new(SourceOperator::from_columns(operator, &[], HashMap::new()).unwrap()),
+			);
 		}
 
 		inner.remove_flow(FlowId(1));
@@ -399,7 +411,11 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(FlowId(1), operator, Box::new(SourceOperator::from_columns(operator, &[])));
+		inner.insert_operator(
+			FlowId(1),
+			operator,
+			Box::new(SourceOperator::from_columns(operator, &[], HashMap::new()).unwrap()),
+		);
 
 		inner.remove_flow(FlowId(1));
 

@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -21,12 +22,15 @@ use reifydb_value::{
 		system_columns::user_columns,
 		value_type::{
 			ValueType,
-			field::{FieldType, from_field, to_field},
+			field::{FieldType, from_field, to_field, with_enum_variants},
 		},
 	},
 };
 
-use crate::{Result, vm::vm::Vm};
+use crate::{
+	Result,
+	vm::{services::Services, vm::Vm},
+};
 
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_make_list(&mut self, count: usize) -> Result<()> {
@@ -93,7 +97,12 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_emit(&mut self, result: &mut Vec<Frame>) -> Result<()> {
+	pub(crate) fn exec_emit(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		result: &mut Vec<Frame>,
+	) -> Result<()> {
 		let Some(value) = self.stack.pop().ok() else {
 			return Ok(());
 		};
@@ -106,7 +115,7 @@ impl<'a> Vm<'a> {
 				batch: c,
 				..
 			} => {
-				result.push(Frame::from(rebuild_enums(c)?));
+				result.push(Frame::from(rebuild_enums(c, services, tx)?));
 			}
 			Variable::Closure(_) => {
 				result.push(Frame::from(single_row([("value", Value::none())])?));
@@ -182,7 +191,7 @@ fn format_column_list(names: &[String]) -> String {
 	format!("[{}]", names.join(", "))
 }
 
-fn rebuild_enums(batch: RecordBatch) -> Result<RecordBatch> {
+fn rebuild_enums(batch: RecordBatch, services: &Arc<Services>, tx: &mut Transaction<'_>) -> Result<RecordBatch> {
 	let schema = batch.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
@@ -194,7 +203,18 @@ fn rebuild_enums(batch: RecordBatch) -> Result<RecordBatch> {
 					_ => ValueType::Enum(id),
 				};
 				let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
-				Arc::new(to_field(name, &FieldType::from(value_type)).with_nullable(field.is_nullable()))
+				let variants = services
+					.catalog
+					.get_sumtype(tx, id)?
+					.variants
+					.into_iter()
+					.map(|variant| (variant.tag, variant.name))
+					.collect();
+				Arc::new(with_enum_variants(
+					to_field(name, &FieldType::from(value_type)).with_nullable(field.is_nullable()),
+					id,
+					variants,
+				))
 			}
 			None => field.clone(),
 		};

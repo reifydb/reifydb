@@ -10,7 +10,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		diff_type::DiffType,
 		frame::frame::Frame,
 		system_columns::{SystemColumn, row_numbers},
@@ -182,7 +182,18 @@ fn frame_json_rows(frame: &Frame) -> Result<Vec<JsonValue>, String> {
 				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
 			}
 			for view in &columns {
-				obj.insert(view.field.name().clone(), row_value(&view.get_type(), view.get_value(i)));
+				let value = match (&view.data, view.get_value(i)) {
+					(
+						ViewData::Enum {
+							..
+						},
+						Value::Enum {
+							..
+						},
+					) => JsonValue::String(view.as_string(i)),
+					(_, value) => row_value(&view.get_type(), value),
+				};
+				obj.insert(view.field.name().clone(), value);
 			}
 			JsonValue::Object(obj)
 		})

@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter::once, sync::Arc};
+use std::{collections::HashMap, iter::once, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId, series::Series},
+		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId, series::Series, sumtype::SumType},
 		change::{Change, Diff},
 	},
 	value::{
-		batch::batch,
+		batch::{batch, mark_field, mark_tag_columns},
 		column::{builder::ColumnBuilder, dictionary::decode_dictionary_ids},
 	},
 };
@@ -21,7 +21,9 @@ use reifydb_value::{
 	error::Error,
 	value::{
 		column_view::{ColumnView, ViewData},
+		constraint::Constraint,
 		dictionary::DictionaryId,
+		sumtype::SumTypeId,
 		system_columns::{SystemColumn, with_system_column},
 		value_type::{ValueType, field::from_field},
 	},
@@ -32,14 +34,20 @@ use crate::{error::FlowSinkError, txn::Resolve};
 pub struct SourceOperator {
 	operator: OperatorId,
 	schema: SchemaRef,
+	sumtypes: HashMap<String, SumTypeId>,
 }
 
 impl SourceOperator {
-	pub fn from_columns(operator: OperatorId, columns: &[Column]) -> Self {
-		Self {
+	pub fn from_columns(
+		operator: OperatorId,
+		columns: &[Column],
+		sumtypes: HashMap<String, SumTypeId>,
+	) -> Result<Self> {
+		Ok(Self {
 			operator,
-			schema: catalog_schema(columns),
-		}
+			schema: mark_schema(&catalog_schema(columns), &sumtypes)?,
+			sumtypes,
+		})
 	}
 
 	pub fn from_series(operator: OperatorId, series: &Series) -> Self {
@@ -48,6 +56,7 @@ impl SourceOperator {
 		Self {
 			operator,
 			schema: Arc::new(Schema::new(once(key).chain(data).collect::<Vec<_>>())),
+			sumtypes: HashMap::new(),
 		}
 	}
 
@@ -64,16 +73,16 @@ impl SourceOperator {
 		let diffs = change
 			.diffs
 			.into_iter()
-			.map(|diff| stamp_commit_version(diff, commit))
+			.map(|diff| stamp_commit_version(diff, commit, &self.sumtypes))
 			.collect::<Result<Vec<_>>>()?;
 		Ok(Change::from_flow(self.operator, change.version, diffs, change.changed_at))
 	}
 }
 
-fn stamp_commit_version(diff: Diff, commit: CommitVersion) -> Result<Diff> {
+fn stamp_commit_version(diff: Diff, commit: CommitVersion, sumtypes: &HashMap<String, SumTypeId>) -> Result<Diff> {
 	let stamp = |batch: RecordBatch| {
 		let versions: ArrayRef = Arc::new(UInt64Array::from(vec![commit.0; batch.num_rows()]));
-		with_system_column(batch, SystemColumn::CommitVersion, versions)
+		with_system_column(mark_tag_columns(batch, sumtypes)?, SystemColumn::CommitVersion, versions)
 	};
 	Ok(match diff {
 		Diff::Insert {
@@ -162,6 +171,55 @@ pub fn decoded_schema(
 		fields.push(ColumnBuilder::with_capacity(value_type, 0).finish(field.name()).0);
 	}
 	Ok(Arc::new(Schema::new(fields)))
+}
+
+pub fn unit_sumtype_tags(
+	columns: &[Column],
+	mut sumtype: impl FnMut(SumTypeId) -> Result<SumType>,
+) -> Result<HashMap<String, SumTypeId>> {
+	let mut tags = HashMap::new();
+	for column in columns {
+		if let Some(Constraint::SumType(id)) = column.constraint.constraint()
+			&& sumtype(*id)?.variants.iter().all(|variant| variant.fields.is_empty())
+		{
+			tags.insert(column.name.clone(), *id);
+		}
+	}
+	Ok(tags)
+}
+
+pub fn mark_schema(schema: &SchemaRef, sumtypes: &HashMap<String, SumTypeId>) -> Result<SchemaRef> {
+	let fields = schema
+		.fields()
+		.iter()
+		.map(|field| match sumtypes.get(field.name()) {
+			Some(id) => mark_field(field, *id),
+			None => Ok(field.clone()),
+		})
+		.collect::<Result<Vec<_>>>()?;
+	Ok(Arc::new(Schema::new(fields)))
+}
+
+pub fn schema_sumtypes(schema: &SchemaRef) -> Result<HashMap<String, SumTypeId>> {
+	let mut sumtypes = HashMap::new();
+	for field in schema.fields() {
+		if let Some(id) = from_field(field)?.sumtype {
+			sumtypes.insert(field.name().clone(), id);
+		}
+	}
+	Ok(sumtypes)
+}
+
+pub fn mark_diffs(diffs: &mut [Diff], sumtypes: &HashMap<String, SumTypeId>) -> Result<()> {
+	if sumtypes.is_empty() {
+		return Ok(());
+	}
+	for diff in diffs {
+		for batch in diff.batches_mut() {
+			*batch = mark_tag_columns(batch.clone(), sumtypes)?;
+		}
+	}
+	Ok(())
 }
 
 pub fn catalog_schema(columns: &[Column]) -> SchemaRef {

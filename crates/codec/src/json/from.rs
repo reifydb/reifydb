@@ -43,7 +43,7 @@ use reifydb_value::{
 			Uuid4, Uuid7,
 			parse::{parse_uuid4, parse_uuid7},
 		},
-		value_type::ValueType,
+		value_type::{ValueType, field::with_enum_variants},
 	},
 };
 use serde::de::Error as _;
@@ -97,7 +97,15 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Result<Frame, DecodeError> {
 	let columns = frame
 		.columns
 		.into_iter()
-		.map(|col| convert_column_to_data(&col.name, col.r#type.0, col.payload))
+		.map(|col| {
+			let (field, array) = convert_column_to_data(&col.name, col.r#type.0.clone(), col.payload)?;
+			Ok(match col.r#type.0.inner_type() {
+				ValueType::Enum(id) => {
+					(Arc::new(with_enum_variants(field.as_ref().clone(), *id, col.variants)), array)
+				}
+				_ => (field, array),
+			})
+		})
 		.collect::<Result<Vec<_>, DecodeError>>()?;
 	let row_count = columns.first().map_or(0, |(_, array)| array.len());
 
@@ -205,7 +213,11 @@ fn strip_options(ty: &ValueType, layers: u32) -> ValueType {
 
 fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 	match base {
-		ValueType::Enum(_) => unreachable!("enum json form arrives in P3"),
+		ValueType::Enum(id) => text.parse().ok().map(|tag| Value::Enum {
+			id: *id,
+			tag,
+			fields: Vec::new(),
+		}),
 		ValueType::Boolean => text.parse().ok().map(Value::Boolean),
 		ValueType::Float4 => parse_float4(text).map(Value::Float4),
 		ValueType::Float8 => parse_float8(text).map(Value::Float8),
@@ -449,7 +461,7 @@ fn convert_list_or_record_column(
 
 fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Result<(ValueType, ArrayRef), DecodeError> {
 	let array: ArrayRef = match base {
-		ValueType::Enum(_) => unreachable!("enum json form arrives in P3"),
+		ValueType::Enum(_) => Arc::new(UInt8Array::from(cells(name, base, rows, 0u8, |s| s.parse().ok())?)),
 		ValueType::Option(inner) => return base_column(name, inner, rows),
 		ValueType::Boolean => Arc::new(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?)),
 		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| {

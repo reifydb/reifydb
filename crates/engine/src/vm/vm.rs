@@ -429,7 +429,7 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DefineClosure(def) => self.exec_define_closure(def),
 
-				Instruction::Emit => self.exec_emit(result)?,
+				Instruction::Emit => self.exec_emit(services, tx, result)?,
 				Instruction::Append {
 					target,
 				} => self.exec_append(target)?,

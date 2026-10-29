@@ -34,7 +34,7 @@ use reifydb_evaluate::{
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
-	operator::source::{decode_change, decode_dictionary_columns},
+	operator::source::{decode_change, decode_dictionary_columns, mark_diffs, schema_sumtypes},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -46,6 +46,7 @@ use reifydb_value::{
 		duration::Duration,
 		partition::Partition,
 		row_number::RowNumber,
+		sumtype::SumTypeId,
 		system_columns::{require_row_numbers, resolve_column, row_numbers},
 	},
 };
@@ -95,6 +96,7 @@ pub struct LookupOperator {
 	lowered_left: Vec<LoweredExpr>,
 	expiry: LookupExpiry,
 	columns: JoinedColumnsCache,
+	output_sumtypes: HashMap<String, SumTypeId>,
 }
 
 #[derive(Default)]
@@ -203,11 +205,16 @@ impl LookupOperator {
 			.collect();
 		let expiry = LookupExpiry::new(config.left_retention);
 		let columns = JoinedColumnsCache::new(config.alias.clone(), false, SequenceColumn::Forward);
+		let output_sumtypes = schema_sumtypes(
+			&columns.builder(&config.left_schema, &config.right_schema)
+				.schema(&config.left_schema, &config.right_schema),
+		)?;
 		Ok(Self {
 			config,
 			lowered_left,
 			expiry,
 			columns,
+			output_sumtypes,
 		})
 	}
 
@@ -672,6 +679,7 @@ impl HostOperator for LookupOperator {
 			}
 		}
 
+		mark_diffs(&mut result, &self.output_sumtypes)?;
 		Ok(Change::from_flow(self.config.operator, version, result, change.changed_at))
 	}
 

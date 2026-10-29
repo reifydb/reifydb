@@ -15,6 +15,7 @@ use reifydb_core::{
 			flow::OperatorId,
 			id::{TableId, ViewId},
 			object::ObjectId,
+			sumtype::SumType,
 			table::Table,
 			view::View,
 		},
@@ -38,6 +39,7 @@ use reifydb_value::value::{
 	Value,
 	datetime::DateTime,
 	dictionary::{DictionaryEntryId, DictionaryId},
+	sumtype::SumTypeId,
 };
 use smallvec::smallvec;
 
@@ -203,6 +205,10 @@ impl Lookup for FlowTransaction<'_> {
 
 	fn table(&mut self, id: TableId) -> Result<Table> {
 		self.catalog.get_table(&mut self.tx, id)
+	}
+
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+		self.catalog.get_sumtype(&mut self.tx, id)
 	}
 }
 

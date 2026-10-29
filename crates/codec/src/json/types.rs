@@ -26,5 +26,7 @@ pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
 	pub r#type: WireValueType,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub variants: Vec<(u8, String)>,
 	pub payload: Vec<JsonValue>,
 }

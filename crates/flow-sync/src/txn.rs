@@ -7,13 +7,17 @@ use reifydb_core::{
 		catalog::{
 			id::{TableId, ViewId},
 			object::ObjectId,
+			sumtype::SumType,
 			table::Table,
 			view::View,
 		},
 		change::Diff,
 	},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, sumtype::SumTypeId},
+};
 
 pub trait Changes {
 	fn cursor(&self) -> usize;
@@ -29,6 +33,8 @@ pub trait Lookup {
 	fn view(&mut self, id: ViewId) -> Result<View>;
 
 	fn table(&mut self, id: TableId) -> Result<Table>;
+
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType>;
 }
 
 pub trait ClockNow {

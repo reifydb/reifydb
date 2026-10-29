@@ -545,6 +545,8 @@ mod join {
 // view keys an update's `pre` by row number and never reads its values. Measured, not assumed -
 // decoding `post` but not `pre` passes all 160 iterations of the source sweeps.
 mod source {
+	use std::collections::HashMap;
+
 	use arrow_array::RecordBatch;
 	use arrow_schema::SchemaRef;
 	use reifydb_core::{
@@ -659,12 +661,29 @@ mod source {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
 				match kind {
-					"series" => Op::Series(SourceOperator::from_columns(SOURCE, &[])),
-					"table" => Op::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
-					"view" => {
-						Op::View(SourceOperator::from_columns(SOURCE, series_view().columns()))
-					}
-					_ => Op::Ring(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
+					"series" => Op::Series(
+						SourceOperator::from_columns(SOURCE, &[], HashMap::new()).unwrap(),
+					),
+					"table" => Op::Table(
+						SourceOperator::from_columns(SOURCE, &table().columns, HashMap::new())
+							.unwrap(),
+					),
+					"view" => Op::View(
+						SourceOperator::from_columns(
+							SOURCE,
+							series_view().columns(),
+							HashMap::new(),
+						)
+						.unwrap(),
+					),
+					_ => Op::Ring(
+						SourceOperator::from_columns(
+							SOURCE,
+							&ringbuffer().columns,
+							HashMap::new(),
+						)
+						.unwrap(),
+					),
 				}
 			})
 			.with_dictionaries();
@@ -711,12 +730,29 @@ mod source {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
 				match kind {
-					"series" => Op::Series(SourceOperator::from_columns(SOURCE, &[])),
-					"table" => Op::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
-					"view" => {
-						Op::View(SourceOperator::from_columns(SOURCE, series_view().columns()))
-					}
-					_ => Op::Ring(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
+					"series" => Op::Series(
+						SourceOperator::from_columns(SOURCE, &[], HashMap::new()).unwrap(),
+					),
+					"table" => Op::Table(
+						SourceOperator::from_columns(SOURCE, &table().columns, HashMap::new())
+							.unwrap(),
+					),
+					"view" => Op::View(
+						SourceOperator::from_columns(
+							SOURCE,
+							series_view().columns(),
+							HashMap::new(),
+						)
+						.unwrap(),
+					),
+					_ => Op::Ring(
+						SourceOperator::from_columns(
+							SOURCE,
+							&ringbuffer().columns,
+							HashMap::new(),
+						)
+						.unwrap(),
+					),
 				}
 			})
 			.with_dictionaries();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -11,7 +11,10 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::column::{headers::ColumnHeaders, write::check_digest_write},
+	value::{
+		batch::mark_tag_columns,
+		column::{headers::ColumnHeaders, write::check_digest_write},
+	},
 };
 use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::cast_for_write},
@@ -22,7 +25,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{column_view::ColumnView, system_columns::user_columns},
+	value::{column_view::ColumnView, sumtype::SumTypeId, system_columns::user_columns},
 };
 use tracing::instrument;
 
@@ -43,6 +46,7 @@ pub(crate) struct PatchNode {
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
+	tag_marks: HashMap<String, SumTypeId>,
 }
 
 impl PatchNode {
@@ -54,6 +58,7 @@ impl PatchNode {
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
+			tag_marks: HashMap::new(),
 		}
 	}
 }
@@ -64,7 +69,14 @@ impl QueryNode for PatchNode {
 		if let Some(source) = ctx.source.as_ref().or(self.source.as_ref()) {
 			(self.expressions, _) =
 				expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-					expand_sumtype_assignment(ctx, rx, source, alias_expr, expanded)
+					expand_sumtype_assignment(
+						ctx,
+						rx,
+						source,
+						alias_expr,
+						expanded,
+						&mut self.tag_marks,
+					)
 				})?;
 		}
 		if let Some(source) = self.source.as_ref() {
@@ -107,7 +119,7 @@ impl QueryNode for PatchNode {
 			}
 
 			let result = strip_udf_columns(result, &self.udf_names)?;
-			Ok(Some(result))
+			Ok(Some(mark_tag_columns(result, &self.tag_marks)?))
 		} else {
 			Ok(None)
 		}

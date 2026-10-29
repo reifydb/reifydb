@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -12,7 +12,10 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	value::{batch::batch, column::headers::ColumnHeaders},
+	value::{
+		batch::{batch, mark_tag_columns},
+		column::headers::ColumnHeaders,
+	},
 };
 use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::cast_for_write},
@@ -23,7 +26,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions, return_error,
-	value::{column_view::ColumnView, system_columns::user_columns},
+	value::{column_view::ColumnView, sumtype::SumTypeId, system_columns::user_columns},
 };
 use tracing::instrument;
 
@@ -45,6 +48,7 @@ pub(crate) struct ExtendNode {
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
+	tag_marks: HashMap<String, SumTypeId>,
 }
 
 impl ExtendNode {
@@ -57,6 +61,7 @@ impl ExtendNode {
 			udf_names: Vec::new(),
 			headers: None,
 			context: None,
+			tag_marks: HashMap::new(),
 		}
 	}
 
@@ -80,7 +85,19 @@ impl QueryNode for ExtendNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		(self.expressions, self.written) =
 			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+				let tag_column = format!("{}_tag", alias_expr.alias.0.text());
+				let stored = self.source.as_ref().filter(|source| {
+					matches!(alias_expr.expression.as_ref(), Expression::SumTypeConstructor(_))
+						&& source.columns().iter().any(|column| column.name == tag_column)
+				});
+				expand_sumtype_ctor(
+					ctx,
+					rx,
+					ctx.source.as_ref().or(stored),
+					alias_expr,
+					expanded,
+					&mut self.tag_marks,
+				)
 			})?;
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
@@ -137,7 +154,7 @@ impl QueryNode for ExtendNode {
 			}
 
 			let result = strip_udf_columns(result, &self.udf_names)?;
-			return Ok(Some(result));
+			return Ok(Some(mark_tag_columns(result, &self.tag_marks)?));
 		}
 		if self.headers.is_none()
 			&& let Some(input_headers) = self.input.headers()
@@ -210,6 +227,7 @@ pub(crate) struct ExtendWithoutInputNode {
 
 	udf_columns: Option<RecordBatch>,
 	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
+	tag_marks: HashMap<String, SumTypeId>,
 }
 
 impl ExtendWithoutInputNode {
@@ -220,6 +238,7 @@ impl ExtendWithoutInputNode {
 			headers: None,
 			udf_columns: None,
 			context: None,
+			tag_marks: HashMap::new(),
 		}
 	}
 }
@@ -229,7 +248,14 @@ impl QueryNode for ExtendWithoutInputNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		(self.expressions, self.written) =
 			expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-				expand_sumtype_ctor(ctx, rx, ctx.source.as_ref(), alias_expr, expanded)
+				expand_sumtype_ctor(
+					ctx,
+					rx,
+					ctx.source.as_ref(),
+					alias_expr,
+					expanded,
+					&mut self.tag_marks,
+				)
 			})?;
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
@@ -272,7 +298,7 @@ impl QueryNode for ExtendWithoutInputNode {
 			columns: column_names,
 		});
 
-		Ok(Some(batch(new_columns)?))
+		Ok(Some(mark_tag_columns(batch(new_columns)?, &self.tag_marks)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

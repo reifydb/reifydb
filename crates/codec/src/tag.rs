@@ -43,10 +43,11 @@ pub enum ValueKind {
 	Record = 28,
 	Tuple = 29,
 	Digest = 30,
+	Enum = 31,
 }
 
 impl ValueKind {
-	pub const ALL: [ValueKind; 31] = [
+	pub const ALL: [ValueKind; 32] = [
 		ValueKind::None,
 		ValueKind::Boolean,
 		ValueKind::Float4,
@@ -78,6 +79,7 @@ impl ValueKind {
 		ValueKind::Record,
 		ValueKind::Tuple,
 		ValueKind::Digest,
+		ValueKind::Enum,
 	];
 
 	pub const fn byte(self) -> u8 {
@@ -96,7 +98,7 @@ impl ValueKind {
 		match value {
 			Value::Enum {
 				..
-			} => unreachable!("enum type code arrives in P3"),
+			} => ValueKind::Enum,
 			Value::None {
 				..
 			} => ValueKind::None,
@@ -135,7 +137,7 @@ impl ValueKind {
 
 	pub fn of_type(ty: &ValueType) -> ValueKind {
 		match ty {
-			ValueType::Enum(_) => unreachable!("enum type code arrives in P3"),
+			ValueType::Enum(_) => ValueKind::Enum,
 			ValueType::Option(inner) => Self::of_type(inner),
 			ValueType::Boolean => ValueKind::Boolean,
 			ValueType::Float4 => ValueKind::Float4,
@@ -240,6 +242,11 @@ impl TypeTag {
 					"kind {:?} has no standalone value type",
 					self.kind()
 				)));
+			}
+			ValueKind::Enum => {
+				return Err(DecodeError::UnsupportedType(
+					"kind Enum needs its sumtype, which a type tag does not carry".to_string(),
+				));
 			}
 			ValueKind::Digest => {
 				return Err(DecodeError::UnsupportedType(

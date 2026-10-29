@@ -33,6 +33,7 @@ export const TYPE_CODE = {
     Record: 28,
     Tuple: 29,
     Digest: 30,
+    Enum: 31,
 } as const;
 
 export type TypeName = keyof typeof TYPE_CODE;

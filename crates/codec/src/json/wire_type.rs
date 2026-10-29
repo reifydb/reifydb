@@ -4,6 +4,7 @@
 use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	digest::Digest,
+	sumtype::SumTypeId,
 	value_type::ValueType,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError, ser::Error as SerError};
@@ -31,10 +32,10 @@ const TYPE: &str = "type";
 const ACCURACY: &str = "accuracy";
 const PRECISION: &str = "precision";
 const SCALE: &str = "scale";
+const SUMTYPE: &str = "sumtype";
 
 fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 	Some(match ty {
-		ValueType::Enum(_) => unreachable!("enum wire type arrives in P3"),
 		ValueType::Boolean => "Boolean",
 		ValueType::Float4 => "Float4",
 		ValueType::Float8 => "Float8",
@@ -62,6 +63,7 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Decimal {
 			..
 		}
+		| ValueType::Enum(_)
 		| ValueType::Option(_)
 		| ValueType::List(_)
 		| ValueType::Record(_)
@@ -179,6 +181,13 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 			object
 		}
 
+		ValueType::Enum(id) => {
+			let mut object = descriptor("Enum", None);
+			if let JsonValue::Object(fields) = &mut object {
+				fields.insert(SUMTYPE.to_string(), JsonValue::from(id.0));
+			}
+			object
+		}
 		other => descriptor(&other.to_string(), None),
 	}
 }
@@ -253,6 +262,11 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 				accuracy,
 			})
 		}
+		"Enum" => object
+			.get(SUMTYPE)
+			.and_then(JsonValue::as_u64)
+			.map(|id| ValueType::Enum(SumTypeId(id)))
+			.ok_or_else(|| format!("`Enum` needs an unsigned `{SUMTYPE}`: {value}")),
 		unknown => Err(format!("unknown type id `{unknown}`")),
 	}
 }

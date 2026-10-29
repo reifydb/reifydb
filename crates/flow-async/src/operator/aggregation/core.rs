@@ -21,7 +21,7 @@ use reifydb_core::{
 	internal_err,
 	metrics::heap::HeapSize,
 	value::{
-		batch::{batch, batch_with, empty_batch},
+		batch::{batch, batch_with, empty_batch, mark_field},
 		column::{builder::ColumnBuilder, key::extend_value_bytes},
 	},
 };
@@ -528,7 +528,6 @@ impl Aggregation {
 		} else {
 			(None, Vec::new(), Vec::new(), Vec::new(), None)
 		};
-		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
 		let schema_ctx = schema_context(parent_schema.as_ref(), &routines, &runtime_context, &ctx);
 		let slot_types: Vec<Option<ValueType>> = match &slot_kinds {
 			Some(kinds) => kinds
@@ -562,6 +561,8 @@ impl Aggregation {
 				.chain(aggregate_fields)
 				.collect::<Vec<FieldRef>>(),
 		));
+		let group_names: Vec<String> =
+			(0..group_by.len()).map(|index| output_schema.field(index).name().clone()).collect();
 		let mut all_declared = slot_kinds.is_some() && slot_types.iter().all(Option::is_some);
 		for index in 0..group_names.len() {
 			let declared = from_field(output_schema.field(index))?.value_type;
@@ -806,10 +807,17 @@ impl Aggregation {
 		let mut columns: Vec<(FieldRef, ArrayRef)> =
 			Vec::with_capacity(self.group_names.len() + outputs.len() + 4);
 		for (index, name) in self.group_names.iter().enumerate() {
-			let declared = from_field(self.output_schema.field(index))?
+			let field_type = from_field(self.output_schema.field(index))?;
+			let declared = field_type
 				.value_type
 				.filter(|value_type| !matches!(value_type.inner_type(), ValueType::Any));
-			columns.push(typed_column(name, declared, rows.iter().map(|row| &row.group_values[index]))?);
+			let (field, array) =
+				typed_column(name, declared, rows.iter().map(|row| &row.group_values[index]))?;
+			let field = match field_type.sumtype {
+				Some(id) => mark_field(&field, id)?,
+				None => field,
+			};
+			columns.push((field, array));
 		}
 		for ((field, array), name) in outputs.into_iter().zip(&self.aggregate_output_names) {
 			columns.push(optional_named(name, &field, array)?);

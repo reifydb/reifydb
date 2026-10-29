@@ -14,7 +14,7 @@
 pub mod oracle;
 pub mod workload;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_schema::SchemaRef;
 use rand::RngExt;
@@ -161,10 +161,16 @@ fn ringbuffer() -> RingBuffer {
 
 pub fn build(kind: Kind) -> SourceOp {
 	match kind {
-		Kind::Series => SourceOp::Series(SourceOperator::from_columns(SOURCE, &[])),
-		Kind::Table => SourceOp::Table(SourceOperator::from_columns(SOURCE, &table().columns)),
-		Kind::View => SourceOp::View(SourceOperator::from_columns(SOURCE, series_view().columns())),
-		Kind::RingBuffer => SourceOp::RingBuffer(SourceOperator::from_columns(SOURCE, &ringbuffer().columns)),
+		Kind::Series => SourceOp::Series(SourceOperator::from_columns(SOURCE, &[], HashMap::new()).unwrap()),
+		Kind::Table => {
+			SourceOp::Table(SourceOperator::from_columns(SOURCE, &table().columns, HashMap::new()).unwrap())
+		}
+		Kind::View => SourceOp::View(
+			SourceOperator::from_columns(SOURCE, series_view().columns(), HashMap::new()).unwrap(),
+		),
+		Kind::RingBuffer => SourceOp::RingBuffer(
+			SourceOperator::from_columns(SOURCE, &ringbuffer().columns, HashMap::new()).unwrap(),
+		),
 	}
 }
 

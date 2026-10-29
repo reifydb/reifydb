@@ -13,7 +13,7 @@ use reifydb_core::{
 	expression::{CallExpression, ConstantExpression, Expression, name::display_label},
 	metrics::heap::HeapSize,
 	value::{
-		batch::{batch, group_by, take_rows},
+		batch::{batch, group_by, mark_field, take_rows},
 		column::{
 			factory::rename,
 			headers::ColumnHeaders,
@@ -45,7 +45,6 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
-		mark_sumtype_tags::mark_field,
 		query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
 		udf::UdfEvalNode,
 	},

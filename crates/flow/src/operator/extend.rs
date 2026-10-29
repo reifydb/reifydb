@@ -11,7 +11,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	value::{batch::empty_batch, column::factory::rename},
+	value::{batch::empty_batch, column::factory::rename_keeping_tag},
 };
 use reifydb_evaluate::{
 	expression::context::EvalContext,
@@ -117,7 +117,7 @@ impl ExtendOperator {
 
 		for (lowered_expr, label) in lowered_expressions.iter().zip(&self.labels) {
 			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
-			result_columns.push(rename(evaluated_col, label));
+			result_columns.push(rename_keeping_tag(evaluated_col, label));
 		}
 
 		forward_system_columns(&with_system_columns_of(result_columns, columns)?)

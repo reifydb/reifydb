@@ -749,7 +749,7 @@ fn elem_size_for(type_code: ValueKind) -> usize {
 	match type_code {
 		ValueKind::Boolean => 1,
 		ValueKind::Float4 | ValueKind::Int4 | ValueKind::Uint4 | ValueKind::Date => 4,
-		ValueKind::Int1 | ValueKind::Uint1 => 1,
+		ValueKind::Int1 | ValueKind::Uint1 | ValueKind::Enum => 1,
 		ValueKind::Int2 | ValueKind::Uint2 => 2,
 		ValueKind::Float8 | ValueKind::Int8 | ValueKind::Uint8 | ValueKind::DateTime | ValueKind::Time => 8,
 		ValueKind::Int16 | ValueKind::Uint16 => 16,

@@ -180,7 +180,7 @@ fn ensure_no_script_routine_call(plan: &mut QueryPlan, symbols: &SymbolTable) ->
 }
 
 fn resolve_flow_variants(catalog: &Catalog, txn: &mut AdminTransaction, plan: &mut QueryPlan) -> Result<()> {
-	let filter = matches!(plan, QueryPlan::Filter(_));
+	let filter = matches!(plan, QueryPlan::Filter(_) | QueryPlan::Gate(_));
 	let projection = matches!(plan, QueryPlan::Map(_) | QueryPlan::Extend(_));
 	let (expressions, inputs) = plan_expressions_and_inputs(plan);
 	if filter || projection {

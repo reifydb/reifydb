@@ -33,7 +33,7 @@ use reifydb_flow::{
 		first_input,
 		map::MapOperator,
 		sort::SortOperator,
-		source::{catalog_schema, decoded_schema},
+		source::{catalog_schema, decoded_schema, mark_schema, unit_sumtype_tags},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -378,8 +378,11 @@ impl FlowEngineInner {
 		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
 
 		let shape = row_shape_from_columns(family, &columns);
-		let right_schema =
-			decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?;
+		let right_tags = unit_sumtype_tags(&columns, |id| self.catalog.get_sumtype(&mut txn.reborrow(), id))?;
+		let right_schema = mark_schema(
+			&decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?,
+			&right_tags,
+		)?;
 		let left_retention = with.retention.as_ref().map(|retention| retention.duration);
 
 		let operator = LookupOperator::new(LookupConfig {

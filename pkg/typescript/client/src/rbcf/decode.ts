@@ -106,7 +106,14 @@ function decodeColumn(r: BinaryReader): WireColumn {
     let payload: string[];
 
     try {
-        if (kind === TYPE_CODE.Digest) {
+        if (kind === TYPE_CODE.Enum) {
+            if (encoding !== ColumnEncoding.Plain || dataBytes.length !== rowCount) {
+                throw new Error(`enum column must be plain with one tag byte per row`);
+            }
+            const names = decodeEnumVariants(extraBytes);
+            type = 'Utf8' as Type;
+            payload = Array.from(dataBytes, tag => names.get(tag) ?? String(tag));
+        } else if (kind === TYPE_CODE.Digest) {
             if (encoding !== ColumnEncoding.Plain) {
                 throw new Error(`digest column must use plain encoding, found ${ColumnEncoding[encoding] ?? encoding}`);
             }
@@ -138,6 +145,21 @@ function decodeColumn(r: BinaryReader): WireColumn {
     }
 
     return { name, type, payload };
+}
+
+function decodeEnumVariants(extra: Uint8Array): Map<number, string> {
+    const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
+    const decoder = new TextDecoder();
+    const count = view.getUint16(8, true);
+    const names = new Map<number, string>();
+    let pos = 10;
+    for (let i = 0; i < count; i++) {
+        const tag = view.getUint8(pos);
+        const len = view.getUint16(pos + 1, true);
+        names.set(tag, decoder.decode(extra.subarray(pos + 3, pos + 3 + len)));
+        pos += 3 + len;
+    }
+    return names;
 }
 
 function decodeFixedPointColumn(

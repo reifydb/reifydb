@@ -29,5 +29,6 @@
 	"List": 27,
 	"Record": 28,
 	"Tuple": 29,
-	"Digest": 30
+	"Digest": 30,
+	"Enum": 31
 }

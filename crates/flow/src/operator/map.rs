@@ -11,7 +11,10 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	value::{batch::empty_batch, column::factory::rename},
+	value::{
+		batch::empty_batch,
+		column::factory::{rename_keeping_tag, tag_label},
+	},
 };
 use reifydb_evaluate::{
 	expression::context::EvalContext,
@@ -23,7 +26,7 @@ use reifydb_value::{
 	Result,
 	value::value_type::{
 		ValueType,
-		field::{FieldType, to_field},
+		field::{FieldType, is_sumtype_tag, to_field},
 	},
 };
 use tracing::instrument;
@@ -122,7 +125,7 @@ impl MapOperator {
 
 		for (lowered_expr, label) in lowered_expressions.iter().zip(&self.labels) {
 			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
-			result_columns.push(rename(evaluated_col, label));
+			result_columns.push(rename_keeping_tag(evaluated_col, label));
 		}
 
 		forward_system_columns(&with_system_columns_of(result_columns, columns)?)
@@ -141,11 +144,21 @@ pub fn schema_column(
 	};
 	let label = display_label(expression);
 	let parent_field = match (parent, source) {
-		(Some(parent), Expression::Column(column)) => parent.field_with_name(column.0.name.text()).ok(),
+		(Some(parent), Expression::Column(column)) => {
+			let name = column.0.name.text();
+			parent.field_with_name(name).ok().or_else(|| {
+				parent.field_with_name(&format!("{name}_tag"))
+					.ok()
+					.filter(|field| is_sumtype_tag(field))
+			})
+		}
 		_ => None,
 	};
 	match parent_field.cloned().or_else(|| lowered.output_field(ctx).map(|field| field.as_ref().clone())) {
-		Some(field) => Arc::new(field.with_name(label.text())),
+		Some(field) => {
+			let name = tag_label(&field, label.text());
+			Arc::new(field.with_name(name))
+		}
 		None => Arc::new(to_field(label.text(), &FieldType::from(ValueType::Any))),
 	}
 }

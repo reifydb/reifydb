@@ -7,7 +7,7 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_row::Row;
 use arrow_schema::FieldRef;
 use reifydb_core::{
-	error::diagnostic::operation,
+	error::diagnostic::{operation, query},
 	interface::resolved::ResolvedColumn,
 	internal_error,
 	value::{
@@ -19,7 +19,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{column_view::ColumnView, system_columns::user_columns},
+	value::{
+		column_view::ColumnView,
+		system_columns::{sumtype_tag_position, user_columns},
+	},
 };
 use tracing::instrument;
 
@@ -90,14 +93,16 @@ impl DistinctNode {
 			}
 		} else {
 			for column in &self.columns {
-				if let Some(index) =
-					schema.fields().iter().position(|field| field.name() == column.name())
-				{
-					let (field, array) = (&schema.fields()[index], all_columns.column(index));
-					let view = ColumnView::try_from((array, field.as_ref()))?;
-					ensure_distinct_keyable(column.identifier(), &view)?;
-					key_columns.push((field, array));
-				}
+				let index = schema
+					.fields()
+					.iter()
+					.position(|field| field.name() == column.name())
+					.or_else(|| sumtype_tag_position(all_columns, column.name()))
+					.ok_or_else(|| error!(query::column_not_found(column.identifier().clone())))?;
+				let (field, array) = (&schema.fields()[index], all_columns.column(index));
+				let view = ColumnView::try_from((array, field.as_ref()))?;
+				ensure_distinct_keyable(column.identifier(), &view)?;
+				key_columns.push((field, array));
 			}
 		}
 

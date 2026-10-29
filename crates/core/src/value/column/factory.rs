@@ -11,7 +11,7 @@ use arrow_array::{
 	},
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
-use arrow_schema::FieldRef;
+use arrow_schema::{Field, FieldRef};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -41,7 +41,7 @@ use reifydb_value::value::{
 	uuid::{Uuid4, Uuid7},
 	value_type::{
 		ValueType,
-		field::{FieldType, named},
+		field::{FieldType, is_sumtype_tag, named},
 	},
 };
 
@@ -388,6 +388,18 @@ pub fn from_many(name: &str, value: Value, row_count: usize) -> (FieldRef, Array
 pub fn rename(column: (FieldRef, ArrayRef), name: &str) -> (FieldRef, ArrayRef) {
 	let (field, array) = column;
 	(Arc::new(field.as_ref().clone().with_name(name)), array)
+}
+
+pub fn tag_label(field: &Field, label: &str) -> String {
+	match is_sumtype_tag(field) && !label.ends_with("_tag") {
+		true => format!("{label}_tag"),
+		false => label.to_string(),
+	}
+}
+
+pub fn rename_keeping_tag(column: (FieldRef, ArrayRef), label: &str) -> (FieldRef, ArrayRef) {
+	let name = tag_label(&column.0, label);
+	rename(column, &name)
 }
 
 pub(crate) fn with_validity(array: ArrayRef, nulls: NullBuffer) -> ArrayRef {

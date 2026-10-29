@@ -13,6 +13,7 @@ use reifydb_core::{
 			dictionary::Dictionary,
 			id::{TableId, ViewId},
 			object::ObjectId,
+			sumtype::SumType,
 			table::Table,
 			view::View,
 		},
@@ -29,6 +30,7 @@ use reifydb_value::{
 		Value,
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
+		sumtype::SumTypeId,
 	},
 };
 
@@ -208,6 +210,9 @@ impl<T: Lookup> Lookup for TestingTxn<T> {
 			LookupOutcome::Err(error) => Err(error),
 		}
 	}
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+		self.txn.sumtype(id)
+	}
 }
 
 impl<T: Resolve> Resolve for TestingTxn<T> {
@@ -367,6 +372,9 @@ impl Lookup for TestingTx {
 			.get(&id)
 			.unwrap_or_else(|| panic!("table {} is not in the memory transaction", id))
 			.clone())
+	}
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+		panic!("sumtype {} is not in the memory transaction", id)
 	}
 }
 

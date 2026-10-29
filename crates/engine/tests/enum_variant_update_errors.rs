@@ -176,7 +176,6 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 }
 
 fn status_tag(frames: &[Frame]) -> (String, Vec<u8>) {
-	eprintln!("DEBUG columns: {:?}", frames[0].batch.schema().fields().iter().map(|f| (f.name().clone(), f.extension_type_name().map(str::to_string))).collect::<Vec<_>>());
 	let column = frames[0].column("status").unwrap().expect("column status");
 	let tags = (0..column.len())
 		.map(|i| match column.get_value(i) {

@@ -6,10 +6,13 @@ mod fixed;
 mod varlen;
 
 use arrow_buffer::BooleanBuffer;
+use arrow_schema::Field;
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	diff_type::DiffType,
 	frame::frame::Frame,
+	sumtype::SumTypeId,
+	value_type::field::enum_variants,
 };
 use tracing::{Span, instrument};
 
@@ -159,6 +162,13 @@ fn try_encode_with(view: &ColumnView<'_>, desired: Encoding) -> Result<EncodedCo
 			{
 				encode_digest_params(digest_inner, *accuracy, &mut extra)?;
 			}
+			if let ViewData::Enum {
+				id,
+				..
+			} = &view.data
+			{
+				encode_enum_params(*id, view.field, &mut extra)?;
+			}
 			EncodedColumn {
 				type_code: plain.type_code,
 				encoding: Encoding::Plain,
@@ -183,6 +193,18 @@ fn try_encode_with(view: &ColumnView<'_>, desired: Encoding) -> Result<EncodedCo
 	}
 	enc.row_count = row_count;
 	Ok(enc)
+}
+
+fn encode_enum_params(id: SumTypeId, field: &Field, extra: &mut Vec<u8>) -> Result<(), EncodeError> {
+	let variants = enum_variants(field).map_err(|error| EncodeError::UnsupportedType(error.to_string()))?;
+	extra.extend_from_slice(&id.0.to_le_bytes());
+	extra.extend_from_slice(&(variants.len() as u16).to_le_bytes());
+	for (tag, name) in variants {
+		extra.push(tag);
+		extra.extend_from_slice(&(name.len() as u16).to_le_bytes());
+		extra.extend_from_slice(name.as_bytes());
+	}
+	Ok(())
 }
 
 fn write_column(name: &str, enc: &EncodedColumn, buf: &mut Vec<u8>) {

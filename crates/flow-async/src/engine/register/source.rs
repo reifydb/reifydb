@@ -9,7 +9,7 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
-use reifydb_flow::operator::source::SourceOperator;
+use reifydb_flow::operator::source::{SourceOperator, unit_sumtype_tags};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -25,11 +25,12 @@ impl FlowEngineInner {
 		table: TableId,
 	) -> Result<()> {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
+		let tags = unit_sumtype_tags(&table.columns, |id| self.catalog.get_sumtype(&mut txn.reborrow(), id))?;
 
 		self.add_source(flow.id, operator_id, ObjectId::table(table.id));
 		self.operators.insert(
 			(flow.id, operator_id),
-			Box::new(SourceOperator::from_columns(operator_id, &table.columns)),
+			Box::new(SourceOperator::from_columns(operator_id, &table.columns, tags)?),
 		);
 		Ok(())
 	}
@@ -43,10 +44,11 @@ impl FlowEngineInner {
 		ringbuffer: RingBufferId,
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
+		let tags = unit_sumtype_tags(&rb.columns, |id| self.catalog.get_sumtype(&mut txn.reborrow(), id))?;
 		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
 		self.operators.insert(
 			(flow.id, operator_id),
-			Box::new(SourceOperator::from_columns(operator_id, &rb.columns)),
+			Box::new(SourceOperator::from_columns(operator_id, &rb.columns, tags)?),
 		);
 		Ok(())
 	}
@@ -74,10 +76,11 @@ impl FlowEngineInner {
 		view: ViewId,
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
+		let tags = unit_sumtype_tags(view.columns(), |id| self.catalog.get_sumtype(&mut txn.reborrow(), id))?;
 		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));
 		self.operators.insert(
 			(flow.id, operator_id),
-			Box::new(SourceOperator::from_columns(operator_id, view.columns())),
+			Box::new(SourceOperator::from_columns(operator_id, view.columns(), tags)?),
 		);
 		Ok(())
 	}

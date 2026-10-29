@@ -576,7 +576,12 @@ fn unmarshal_column_data(
 			return Err(malformed(format!("guest {type_code:?} column reached the var-len decoder")));
 		}
 		ValueKind::None => none(name, row_count),
-		ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple | ValueKind::Digest => {
+		ValueKind::Type
+		| ValueKind::List
+		| ValueKind::Record
+		| ValueKind::Tuple
+		| ValueKind::Digest
+		| ValueKind::Enum => {
 			return Err(malformed(format!(
 				"guest {type_code:?} column is not supported by the wasm marshal"
 			)));

@@ -3,7 +3,13 @@
 
 use reifydb_value::{
 	util::hex::encode,
-	value::{Value, column_view::ColumnView, diff_type::DiffType, frame::frame::Frame, value_type::ValueType},
+	value::{
+		Value,
+		column_view::ColumnView,
+		diff_type::DiffType,
+		frame::frame::Frame,
+		value_type::{ValueType, field::enum_variants},
+	},
 };
 use serde::ser::Error as _;
 use serde_json::{Error, Value as JsonValue, to_string};
@@ -25,6 +31,10 @@ pub fn value_to_json(value: &Value, declared: &ValueType) -> JsonValue {
 		} => JsonValue::String(none_marker(depth.saturating_sub(peel_options(inner).1 + 1))),
 		Value::Blob(b) => JsonValue::String(b.to_hex()),
 		Value::Digest(digest) => JsonValue::String(format!("0x{}", encode(&digest.encode()))),
+		Value::Enum {
+			tag,
+			..
+		} => JsonValue::String(tag.to_string()),
 		Value::List(items) => {
 			let elem_ty = match peel_options(declared).0 {
 				ValueType::List(inner) => inner.as_ref(),
@@ -67,9 +77,14 @@ pub fn convert_frames(frames: &[Frame]) -> Result<Vec<ResponseFrame>, Error> {
 			let column_data: Vec<JsonValue> =
 				view.iter().map(|value| value_to_json(&value, &column_type)).collect();
 
+			let variants = match column_type.inner_type() {
+				ValueType::Enum(_) => enum_variants(field).map_err(Error::custom)?,
+				_ => Vec::new(),
+			};
 			columns.push(ResponseColumn {
 				name: field.name().clone(),
 				r#type: WireValueType(column_type),
+				variants,
 				payload: column_data,
 			});
 		}

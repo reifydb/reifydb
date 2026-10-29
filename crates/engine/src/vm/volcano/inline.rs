@@ -133,6 +133,7 @@ impl InlineDataNode {
 							ctx.source.as_ref(),
 							alias_expr,
 							&mut expanded,
+							&mut HashMap::new(),
 						)?;
 					}
 					Expression::Column(_) => {
@@ -142,6 +143,7 @@ impl InlineDataNode {
 							ctx.source.as_ref(),
 							alias_expr,
 							&mut expanded,
+							&mut HashMap::new(),
 						)?;
 					}
 					_ => {
@@ -151,6 +153,7 @@ impl InlineDataNode {
 							ctx.source.as_ref(),
 							alias_expr,
 							&mut expanded,
+							&mut HashMap::new(),
 						)?;
 					}
 				}
@@ -219,6 +222,7 @@ pub(crate) fn expand_sumtype_ctor(
 	source: Option<&ResolvedObject>,
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
 ) -> Result<()> {
 	let Expression::SumTypeConstructor(ctor) = alias_expr.expression.as_ref() else {
 		expanded.push(alias_expr);
@@ -229,6 +233,10 @@ pub(crate) fn expand_sumtype_ctor(
 	let variant_name = sumtype.variants[variant].name.to_lowercase();
 
 	expanded.push(tag_alias(source, col_name, sumtype.variants[variant].tag, &alias_expr.fragment));
+	let tag_column = format!("{col_name}_tag");
+	if source.is_some_and(|source| source.columns().iter().any(|column| column.name == tag_column)) {
+		mark_unit_tag(marks, col_name, &sumtype);
+	}
 	for (field_name, field_expr) in &ctor.columns {
 		let phys_col_name = format!("{}_{}_{}", col_name, variant_name, field_name.text().to_lowercase());
 		expanded.push(AliasExpression {
@@ -247,6 +255,7 @@ fn expand_sumtype_none(
 	source: Option<&ResolvedObject>,
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
 ) -> Result<()> {
 	let col_name = alias_expr.alias.0.text();
 	let is_none = matches!(alias_expr.expression.as_ref(), Expression::Constant(ConstantExpression::None { .. }));
@@ -270,6 +279,7 @@ fn expand_sumtype_none(
 		expression: none(),
 		fragment: fragment.clone(),
 	});
+	mark_unit_tag(marks, col_name, &sumtype);
 	for variant in &sumtype.variants {
 		for field in &variant.fields {
 			let phys_col_name =
@@ -291,6 +301,7 @@ pub(crate) fn expand_sumtype_assignment(
 	source: &ResolvedObject,
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
 ) -> Result<()> {
 	match alias_expr.expression.as_ref() {
 		Expression::SumTypeConstructor(ctor) => {
@@ -315,10 +326,13 @@ pub(crate) fn expand_sumtype_assignment(
 				given,
 				&alias_expr.fragment,
 				expanded,
+				marks,
 			);
 			Ok(())
 		}
-		Expression::Column(_) => expand_unit_variant_column(ctx, txn, Some(source), alias_expr, expanded),
+		Expression::Column(_) => {
+			expand_unit_variant_column(ctx, txn, Some(source), alias_expr, expanded, marks)
+		}
 		_ => {
 			expanded.push(alias_expr);
 			Ok(())
@@ -408,8 +422,10 @@ fn push_all_variant_columns(
 	mut given: HashMap<String, Expression>,
 	fragment: &Fragment,
 	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
 ) {
 	expanded.push(tag_alias(Some(source), col_name, sumtype.variants[variant].tag, fragment));
+	mark_unit_tag(marks, col_name, sumtype);
 	for (index, v) in sumtype.variants.iter().enumerate() {
 		for field in &v.fields {
 			let field_name = field.name.to_lowercase();
@@ -426,6 +442,12 @@ fn push_all_variant_columns(
 				fragment: fragment.clone(),
 			});
 		}
+	}
+}
+
+fn mark_unit_tag(marks: &mut HashMap<String, SumTypeId>, col_name: &str, sumtype: &SumType) {
+	if sumtype.variants.iter().all(|variant| variant.fields.is_empty()) {
+		marks.insert(format!("{col_name}_tag"), sumtype.id);
 	}
 }
 
@@ -539,6 +561,7 @@ fn expand_unit_variant_column(
 	source: Option<&ResolvedObject>,
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
 ) -> Result<()> {
 	let (Some(source), Expression::Column(col)) = (source, alias_expr.expression.as_ref()) else {
 		expanded.push(alias_expr);
@@ -566,6 +589,7 @@ fn expand_unit_variant_column(
 		HashMap::new(),
 		&alias_expr.fragment,
 		expanded,
+		marks,
 	);
 	Ok(())
 }
