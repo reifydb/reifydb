@@ -64,7 +64,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function openSocket(token: string, gen: number): Promise<WsClient | undefined> {
+async function openSocket(token: string, gen: number, onAuthError: () => void): Promise<WsClient | undefined> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await Client.connectWs(UPTIME_CONFIG.wsUrl(), {
@@ -72,8 +72,13 @@ async function openSocket(token: string, gen: number): Promise<WsClient | undefi
         format: 'rbcf',
         maxReconnectAttempts: Number.MAX_SAFE_INTEGER,
         reconnectDelayMs: RECONNECT_DELAY_MS,
+        onAuthFailed: () => onAuthError(),
       })
     } catch (err) {
+      if (isAuthError(err)) {
+        onAuthError()
+        return undefined
+      }
       if (!isConnectionFailure(err)) throw err
     }
     await sleep(Math.min(RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS))
@@ -81,28 +86,26 @@ async function openSocket(token: string, gen: number): Promise<WsClient | undefi
   }
 }
 
-export async function connect(token: string, onAuthError: (store: Store) => void): Promise<Store | undefined> {
+export async function connect(token: string, onAuthError: () => void): Promise<Store | undefined> {
   if (client != null && store != null && currentToken === token) return store
   const gen = ++generation
   await teardown()
   if (gen !== generation) return undefined
   currentToken = token
-  const c = await openSocket(token, gen)
+  let authFailed = false
+  const endSession = () => {
+    if (gen !== generation || authFailed) return
+    authFailed = true
+    onAuthError()
+  }
+  const c = await openSocket(token, gen, endSession)
   if (c == null) return undefined
   if (gen !== generation) {
     void c.disconnect()
     return undefined
   }
   client = c
-  let authFailed = false
-  const connected: Store = new Store(
-    watchAuth(c, () => {
-      if (gen !== generation || authFailed) return
-      authFailed = true
-      onAuthError(connected)
-    }),
-    STORE_OPTIONS,
-  )
+  const connected: Store = new Store(watchAuth(c, endSession), STORE_OPTIONS)
   store = connected
   return connected
 }

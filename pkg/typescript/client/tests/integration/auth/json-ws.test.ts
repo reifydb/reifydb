@@ -132,9 +132,8 @@ describe('Auth Login Tests - JSON WebSocket', () => {
             await client.logout();
 
             // Verify the old token is revoked server-side
-            const client2 = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: oldToken});
-            await expect(client2.query('MAP {v: 2}')).rejects.toThrow();
-            client2.disconnect();
+            await expect(Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: oldToken}))
+                .rejects.toMatchObject({code: 'AUTH_FAILED'});
         }, 10000);
 
         it('should handle double logout', async () => {

@@ -83,6 +83,16 @@ export class ScriptedSocket {
         this.onmessage?.({data: new Uint8Array(parts).buffer});
     }
 
+    ackAuth(): void {
+        const request = this.requests('Auth').pop();
+        this.receive({id: request.id, type: 'Auth', payload: {}});
+    }
+
+    failAuth(code: string): void {
+        const request = this.requests('Auth').pop();
+        this.receive({id: request.id, type: 'Err', payload: {diagnostic: {code, message: 'InvalidToken', notes: []}}});
+    }
+
     unsubscribed(): string[][] {
         return this.requests('Unsubscribe').map(request => request.payload.subscription_ids);
     }

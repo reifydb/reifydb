@@ -136,6 +136,39 @@ describe('a websocket auth error', () => {
     expect(signOut).not.toHaveBeenCalled()
     expect(socket.disconnect).not.toHaveBeenCalled()
   })
+
+  it('signs out a user whose token is refused at connect instead of crashing the page', async () => {
+    // The client now rejects connect on a dead token; rethrowing it would replace sign-out with an error page.
+    vi.spyOn(Client, 'connectWs').mockRejectedValue(refusal('AUTH_FAILED', 'InvalidToken'))
+
+    render(
+      <Boundary>
+        <AppLayout />
+      </Boundary>,
+    )
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
+    expect(Client.connectWs).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/^crashed:/)).not.toBeInTheDocument()
+  })
+
+  it('signs out once when a reconnect is refused for auth', async () => {
+    // After a server restart the client closes and reports onAuthFailed; without the hook the page would sit dead.
+    const socket = pendingSocket({ id: 'user-1', name: 'user@example.com', kind: 'user' })
+    let onAuthFailed: ((error: ReifyError) => void) | undefined
+    vi.spyOn(Client, 'connectWs').mockImplementation(async (_url, options) => {
+      onAuthFailed = options?.onAuthFailed
+      return socket as unknown as WsClient
+    })
+
+    renderLayout()
+    expect(await screen.findByTitle('user@example.com')).toBeInTheDocument()
+
+    act(() => onAuthFailed?.(refusal('AUTH_FAILED', 'InvalidToken')))
+    act(() => onAuthFailed?.(refusal('AUTH_FAILED', 'InvalidToken')))
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
+  })
 })
 
 function refusedAfterMe(me: { id: string; name: string; kind: string }) {
@@ -212,7 +245,7 @@ describe('a websocket auth error behind the session gate', () => {
       .mockResolvedValueOnce(first.socket as unknown as WsClient)
       .mockResolvedValueOnce(second as unknown as WsClient)
     const fetch = guestEndpoint()
-    setSessionToken('guest-token')
+    setSessionToken('guest-token', 'guest')
 
     renderGatedLayout()
     expect(await screen.findByText('You are browsing as a guest')).toBeInTheDocument()
@@ -425,7 +458,12 @@ class ScriptedSocket {
   removeEventListener() {}
 
   send(data: string) {
-    this.sent.push(JSON.parse(data))
+    const message = JSON.parse(data)
+    this.sent.push(message)
+    if (message.type === 'Auth' && message.payload?.token) {
+      // A real server answers every session resume; without it the client waits forever before its first request.
+      this.onmessage?.({ data: JSON.stringify({ id: message.id, type: 'Auth', payload: {} }) })
+    }
   }
 
   close() {

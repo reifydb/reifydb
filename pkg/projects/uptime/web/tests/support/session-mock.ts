@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react'
 import { vi } from 'vitest'
 
 let token: string | null = null
+let method: string | undefined = undefined
 let authError: string | null = null
 const listeners = new Set<() => void>()
 
@@ -15,9 +16,10 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-export function setSessionToken(next: string | null): void {
+export function setSessionToken(next: string | null, nextMethod?: string): void {
   // Must notify like the real provider's state, otherwise a layout keyed on the token never sees the change.
   token = next
+  method = nextMethod
   for (const listener of listeners) listener()
 }
 
@@ -34,9 +36,9 @@ export const signOut = vi.fn(async () => {
 
 export const signIn = vi.fn(async (): Promise<void> => undefined)
 
-export const adoptSession = vi.fn((session: { token: string }) => {
+export const adoptSession = vi.fn((session: { token: string; method?: string }) => {
   // Must install the token like the real provider, otherwise a minted guest session never reaches the layout.
-  setSessionToken(session.token)
+  setSessionToken(session.token, session.method)
 })
 
 export function sessionAuthMock() {
@@ -44,9 +46,10 @@ export function sessionAuthMock() {
     readStoredSession: () => null,
     useAuth: () => {
       const current = useSyncExternalStore(subscribe, () => token)
+      const currentMethod = useSyncExternalStore(subscribe, () => method)
       const error = useSyncExternalStore(subscribe, () => authError)
       return {
-        session: current == null ? null : { token: current },
+        session: current == null ? null : { token: current, method: currentMethod },
         status: current == null ? 'disconnected' : 'authenticated',
         error,
         signIn,

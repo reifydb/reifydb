@@ -23,6 +23,9 @@ importers:
       '@fontsource/press-start-2p':
         specifier: ^5.3.0
         version: 5.3.0
+      '@reifydb/auth':
+        specifier: link:../../../typescript/auth
+        version: link:../../../typescript/auth
       '@reifydb/client':
         specifier: link:../../../typescript/client
         version: link:../../../typescript/client

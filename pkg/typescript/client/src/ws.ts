@@ -68,6 +68,8 @@ export interface WsClientOptions {
     onDisconnect?: () => void;
     /** Invoked after a successful reconnection, once all subscriptions are re-established. */
     onReconnect?: () => void;
+    /** Invoked when a reconnection is refused because the server no longer accepts `token`; the client is closed. */
+    onAuthFailed?: (error: ReifyError) => void;
 }
 
 interface SubscriptionState<T = any> extends SubscribeItem<T> {
@@ -199,11 +201,16 @@ export class WsClient {
             throw new Error("AbortError");
         }
 
+        const client = new WsClient(socket, options);
         if (options.token) {
-            socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: options.token}}, WIRE_PASSTHROUGH_KEYS)));
+            try {
+                await client.resumeSession(options.token);
+            } catch (error) {
+                await client.disconnect();
+                throw error;
+            }
         }
-
-        return new WsClient(socket, options);
+        return client;
     }
 
     /**
@@ -606,6 +613,32 @@ export class WsClient {
         return this.login("token", {token});
     }
 
+    private async resumeSession(token: string): Promise<void> {
+        const id = `auth-${this.nextId++}`;
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Session resume timeout"));
+            }, timeoutMs);
+
+            this.pending.set(id, {
+                type: "Auth",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
+            });
+
+            this.socket.send(JSON.stringify(toSnakeCaseKeys({id, type: "Auth", payload: {token}}, WIRE_PASSTHROUGH_KEYS)));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+    }
+
     async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
         const id = `auth-${this.nextId++}`;
 
@@ -880,14 +913,24 @@ export class WsClient {
                 return;
             }
 
-            if (this.options.token) {
-                socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: this.options.token}}, WIRE_PASSTHROUGH_KEYS)));
-            }
-
             this.socket = socket;
             this.setupSocketHandlers();
             this.reconnectAttempts = 0;
             this.isReconnecting = false;
+
+            if (this.options.token) {
+                try {
+                    await this.resumeSession(this.options.token);
+                } catch (error) {
+                    if (error instanceof ReifyError) {
+                        await this.disconnect();
+                        this.options.onAuthFailed?.(error);
+                        return;
+                    }
+                    socket.close();
+                    return;
+                }
+            }
 
             if (await this.resubscribeAll()) {
                 this.options.onReconnect?.();

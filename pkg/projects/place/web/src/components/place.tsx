@@ -3,20 +3,22 @@
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PlaceClient } from '@/client'
-import { commitPending, commitPixels } from '@/commit'
+import { DEFAULT_RETRY, commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
+import type { GuestSession } from '@/session'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
+import { Account } from './account'
 import { ActivityRail } from './activity-feed'
 import { CanvasView } from './canvas-view'
 import { useLive } from './live'
 import { Toolbar } from './toolbar'
 import { Welcome } from './welcome'
 
-export function Place({ client }: { client: PlaceClient }) {
+export function Place({ client, guest }: { client: PlaceClient; guest: GuestSession }) {
   const [message, setMessage] = useState<string | null>(null)
   const { buffer, minimap, activity } = useLive(client, setMessage)
   const pending = useMemo(() => new Pending(), [])
@@ -81,7 +83,7 @@ export function Place({ client }: { client: PlaceClient }) {
       loadStamp(file).then(
         async (loaded) => {
           setCommitting(true)
-          const result = await commitPending(client, pending)
+          const result = await commitPending(client, pending, DEFAULT_RETRY, guest)
           setCommitting(false)
           if (!result.ok) {
             setMessage(`Merge failed, your layer is kept: ${result.message}`)
@@ -95,7 +97,7 @@ export function Place({ client }: { client: PlaceClient }) {
         },
       )
     },
-    [client, pending],
+    [client, pending, guest],
   )
 
   const onPlace = useCallback(
@@ -112,7 +114,7 @@ export function Place({ client }: { client: PlaceClient }) {
       setMessage(null)
       setPlacing(pixels)
       setCommitting(true)
-      commitPixels(client, inside).then((result) => {
+      commitPixels(client, inside, DEFAULT_RETRY, guest).then((result) => {
         setCommitting(false)
         setPlacing(null)
         if (!result.ok) {
@@ -123,7 +125,7 @@ export function Place({ client }: { client: PlaceClient }) {
         setTool((current) => (current === 'image' ? imageReturnRef.current : current))
       })
     },
-    [client, stamp, placing],
+    [client, stamp, placing, guest],
   )
 
   const ghost = useMemo(
@@ -135,7 +137,7 @@ export function Place({ client }: { client: PlaceClient }) {
     setCommitting(true)
     setMessage(null)
     setNotice(null)
-    const result = await commitPending(client, pending)
+    const result = await commitPending(client, pending, DEFAULT_RETRY, guest)
     setCommitting(false)
     if (!result.ok) setMessage(`Merge failed, your layer is kept: ${result.message}`)
   }
@@ -180,6 +182,7 @@ export function Place({ client }: { client: PlaceClient }) {
             message={message}
           />
         )}
+        <Account guest={guest} />
         <Welcome />
       </div>
       <ActivityRail activity={activity} />

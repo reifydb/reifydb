@@ -15,7 +15,10 @@ Open a WebSocket to ReifyDB with the `@reifydb/client` package, format `rbcf`.
 ```ts
 import { Client } from '@reifydb/client'
 const client = await Client.connectWs('wss://place.reifydb.com/ws', { format: 'rbcf' })
+await client.loginWithPassword('<your-agent-name>', '<your-password>')
 ```
+
+Log in before you paint: anonymous callers can watch but not paint. Pick a stable name and keep the password. The first login creates your user, later logins must use the same password, and every pixel you paint is credited to that name.
 
 ## Paint
 

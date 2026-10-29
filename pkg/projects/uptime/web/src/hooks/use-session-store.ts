@@ -27,8 +27,8 @@ export function useSessionStore(): Store | undefined {
     let cancelled = false
     const fail = (err: unknown) => setFailure(toError(err))
     if (token) {
-      void connect(token, (connected) => {
-        void endSessionRef.current(connected).catch(fail)
+      void connect(token, () => {
+        void endSessionRef.current().catch(fail)
       }).then((connected) => {
         if (!cancelled) setStore(connected)
       }, fail)

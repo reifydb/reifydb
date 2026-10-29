@@ -39,11 +39,6 @@ function toMe(row: MeRow): Me {
   return { id: row.id, email: guest ? null : row.name, guest }
 }
 
-export function isGuestSession(store: Store): boolean {
-  const entry = store.getEntry(identity, null)
-  return entry.status === 'ready' && entry.data[0]?.kind === 'guest'
-}
-
 export function MeProvider({ store, children }: { store: Store | undefined; children: ReactNode }) {
   const subscribe = useCallback(
     (listener: () => void) => (store == null ? () => undefined : store.subscribeState(listener)),
