@@ -31,6 +31,7 @@ use reifydb_value::{
 	params::Params,
 	value::{
 		Value,
+		identity::IdentityId,
 		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{partitions, row_numbers},
@@ -64,6 +65,7 @@ pub(crate) fn delete(
 	plan: DeleteTableNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let DeleteTableNode {
 		input,
@@ -92,6 +94,7 @@ pub(crate) fn delete(
 			&resolved_source,
 			&params,
 			returning.is_some(),
+			caller,
 		)?
 	} else {
 		run_table_delete_all(services, txn, &table, returning.is_some())?
@@ -102,7 +105,7 @@ pub(crate) fn delete(
 		let columns = decode_stored_table_rows(&services.catalog, txn, &table, &shape, &returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
 		let columns = with_pre_image(columns.clone(), &columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	delete_table_result(namespace.name(), &table.name, deleted_count)
 }
@@ -152,6 +155,7 @@ fn run_table_delete_with_input(
 	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 	has_returning: bool,
+	caller: IdentityId,
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let context = QueryContext {
 		services: exec.services.clone(),
@@ -159,7 +163,7 @@ fn run_table_delete_with_input(
 		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
-		identity: txn.identity(),
+		identity: caller,
 		memory: query_budget(exec.services),
 	};
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));

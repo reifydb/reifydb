@@ -389,7 +389,7 @@ impl<'a> Vm<'a> {
 		if !self.resolves_to_plain_function(services, tx, func_name)? {
 			return Ok(false);
 		}
-		self.call_plain_function_columnar(services, tx, arity, name, func_name)?;
+		self.call_plain_function_columnar(services, arity, name, func_name)?;
 		Ok(true)
 	}
 
@@ -414,7 +414,6 @@ impl<'a> Vm<'a> {
 	fn call_plain_function_columnar(
 		&mut self,
 		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
 		arity: usize,
 		name: &Fragment,
 		func_name: &str,
@@ -428,7 +427,7 @@ impl<'a> Vm<'a> {
 		function.arity().check(name, arity)?;
 
 		let arg_columns = self.pop_args_as_columns(arity, name)?;
-		let identity = tx.identity();
+		let identity = self.identity;
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
 			identity,
@@ -666,7 +665,7 @@ impl<'a> Vm<'a> {
 				)?;
 			}
 
-			let mut vm = Vm::from_services(func_symbols, services, &EMPTY_PARAMS, tx.identity());
+			let mut vm = Vm::from_services(func_symbols, services, &EMPTY_PARAMS, self.identity);
 			let mut func_result: Vec<Frame> = Vec::new();
 			vm.run(services, tx, body, &mut func_result)?;
 			let result_var = collect_call_result(&mut vm, &mut func_result);
@@ -774,7 +773,7 @@ impl<'a> Vm<'a> {
 				let handler_name = handler_name.clone();
 				if let Some(routine) = ctx.services.routines.get_procedure(&handler_name) {
 					let call_params = Params::Positional(Arc::new(args));
-					let identity = ctx.tx.identity();
+					let identity = self.identity;
 					let mut proc_ctx = RoutineProcedureContext {
 						fragment: name.clone(),
 						identity,
@@ -1056,6 +1055,7 @@ impl<'a> Vm<'a> {
 			ctx.services,
 			&self.symbols,
 			ctx.tx,
+			self.identity,
 			ProcedureCall {
 				routine: &routine,
 				fragment: name,
@@ -1099,7 +1099,7 @@ impl<'a> Vm<'a> {
 				data.finish(&format!("arg{}", i))
 			})
 			.collect();
-		let identity = ctx.tx.identity();
+		let identity = self.identity;
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
 			identity,
@@ -1137,7 +1137,7 @@ impl<'a> Vm<'a> {
 				data.finish(&format!("arg{}", i))
 			})
 			.collect();
-		let identity = ctx.tx.identity();
+		let identity = self.identity;
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
 			identity,

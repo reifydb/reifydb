@@ -33,6 +33,7 @@ use reifydb_value::{
 		Value,
 		column_view::ColumnView,
 		dictionary::DictionaryEntryId,
+		identity::IdentityId,
 		system_columns::{column_view, user_columns},
 		value_type::ValueType,
 	},
@@ -57,6 +58,7 @@ pub(crate) fn insert_dictionary(
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
 	symbols: &mut SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -76,7 +78,7 @@ pub(crate) fn insert_dictionary(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
-		identity: txn.identity(),
+		identity: caller,
 		memory: query_budget(services),
 	});
 
@@ -115,7 +117,7 @@ pub(crate) fn insert_dictionary(
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
 		let value_column = build_value_column(&values, dictionary.value_type);
 		let columns = batch(vec![id_column, value_column])?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 
 	if ids.is_empty() {

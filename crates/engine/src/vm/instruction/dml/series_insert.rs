@@ -101,6 +101,7 @@ pub(crate) fn insert_series(
 	plan: InsertSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let InsertSeriesNode {
 		input,
@@ -118,7 +119,7 @@ pub(crate) fn insert_series(
 		},
 		&params,
 		symbols,
-		txn.identity(),
+		caller,
 	);
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
@@ -320,6 +321,7 @@ pub(crate) fn insert_series(
 		inserted_count,
 		&returning,
 		&returned_rows,
+		caller,
 	)
 }
 
@@ -355,6 +357,7 @@ fn finalize_series_insert(
 	inserted_count: u64,
 	returning: &Option<Vec<Expression>>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let now = services.runtime_context.clock.now();
 	for (partition, metadata) in metadata_by_partition {
@@ -366,7 +369,7 @@ fn finalize_series_insert(
 		let columns = decode_rows_to_columns(shape, returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &series.columns, columns)?;
 		let columns = with_absent_pre_image(columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	insert_series_result(namespace.name(), &series.name, inserted_count)
 }

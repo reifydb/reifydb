@@ -33,7 +33,9 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, partition::Partition, row_number::RowNumber, system_columns::row_numbers},
+	value::{
+		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::row_numbers,
+	},
 };
 
 use super::{
@@ -60,6 +62,7 @@ pub(crate) fn delete_ringbuffer(
 	plan: DeleteRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let DeleteRingBufferNode {
 		input,
@@ -87,6 +90,7 @@ pub(crate) fn delete_ringbuffer(
 			&target_data,
 			&resolved_source,
 			&params,
+			caller,
 		)?)
 	} else {
 		None
@@ -105,7 +109,7 @@ pub(crate) fn delete_ringbuffer(
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, columns)?;
 		let columns = with_pre_image(columns.clone(), &columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	delete_ringbuffer_result(namespace.name(), &ringbuffer.name, deleted_count)
 }
@@ -144,6 +148,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 	target: &RingBufferTarget<'_>,
 	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
+	caller: IdentityId,
 ) -> Result<HashSet<RowNumber>> {
 	let mut row_numbers_to_delete = HashSet::new();
 
@@ -157,7 +162,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			batch_size,
 			params: params.clone(),
 			symbols: exec.symbols.clone(),
-			identity: txn.identity(),
+			identity: caller,
 			memory: query_budget(exec.services),
 		}),
 	);
@@ -168,7 +173,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 		batch_size,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
-		identity: txn.identity(),
+		identity: caller,
 		memory: query_budget(exec.services),
 	};
 	input_node.initialize(txn, &context)?;

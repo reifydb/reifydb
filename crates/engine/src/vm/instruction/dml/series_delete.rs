@@ -77,6 +77,7 @@ pub(crate) fn delete_series(
 	plan: DeleteSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let DeleteSeriesNode {
 		input,
@@ -96,8 +97,16 @@ pub(crate) fn delete_series(
 		symbols,
 	};
 	let input_plan = input.expect("DELETE on a series requires a filter pipeline");
-	let (deleted_by_partition, returned_rows) =
-		run_series_delete_with_input(&exec, txn, *input_plan, &target_data, &params, has_tag, has_returning)?;
+	let (deleted_by_partition, returned_rows) = run_series_delete_with_input(
+		&exec,
+		txn,
+		*input_plan,
+		&target_data,
+		&params,
+		has_tag,
+		has_returning,
+		caller,
+	)?;
 
 	let deleted_count: u64 = deleted_by_partition.values().map(|tally| tally.count).sum();
 	for (partition, tally) in deleted_by_partition {
@@ -122,7 +131,7 @@ pub(crate) fn delete_series(
 		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
 		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;
 		let cols = with_pre_image(cols.clone(), &cols)?;
-		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, cols, caller);
 	}
 	delete_series_result(namespace.name(), &series.name, deleted_count)
 }
@@ -155,8 +164,9 @@ fn run_series_delete_with_input(
 	params: &Params,
 	has_tag: bool,
 	has_returning: bool,
+	caller: IdentityId,
 ) -> Result<SeriesDeleteOutcome> {
-	let context = build_series_delete_query_context(exec, target, params, txn.identity());
+	let context = build_series_delete_query_context(exec, target, params, caller);
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
 }

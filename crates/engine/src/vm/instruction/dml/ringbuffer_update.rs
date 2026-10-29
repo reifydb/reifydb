@@ -73,6 +73,7 @@ pub(crate) fn update_ringbuffer(
 	plan: UpdateRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let UpdateRingBufferNode {
 		input,
@@ -86,7 +87,7 @@ pub(crate) fn update_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let context = build_update_ringbuffer_query_context(services, &target_data, &params, symbols, txn.identity());
+	let context = build_update_ringbuffer_query_context(services, &target_data, &params, symbols, caller);
 
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
@@ -227,7 +228,7 @@ pub(crate) fn update_ringbuffer(
 		let pre_columns = decode_rows_to_columns(&shape, &pre_rows)?;
 		let pre_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, pre_columns)?;
 		let columns = with_pre_image(columns, &pre_columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count)
 }

@@ -78,6 +78,7 @@ pub(crate) fn insert_ringbuffer(
 	plan: InsertRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let InsertRingBufferNode {
 		input,
@@ -89,7 +90,7 @@ pub(crate) fn insert_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols, txn.identity());
+	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols, caller);
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile_and_initialize_input(*input, txn, &context)?;
 
@@ -117,6 +118,7 @@ pub(crate) fn insert_ringbuffer(
 		&partition_metadata_cache,
 		&returned_rows,
 		inserted_count,
+		caller,
 	)
 }
 
@@ -318,6 +320,7 @@ fn finalize_ringbuffer_insert(
 	partition_metadata_cache: &HashMap<Vec<Value>, RingBufferMetadata>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
 	inserted_count: u64,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let ringbuffer = target_data.ringbuffer;
 	save_all_partition_metadata(&services.catalog, txn, ringbuffer, partition_metadata_cache)?;
@@ -337,7 +340,7 @@ fn finalize_ringbuffer_insert(
 		let columns = decode_rows_to_columns(shape, returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, columns)?;
 		let columns = with_absent_pre_image(columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count)
 }

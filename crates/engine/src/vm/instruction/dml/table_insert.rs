@@ -73,6 +73,7 @@ pub(crate) fn insert_table(
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
 	symbols: &mut SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let InsertTableNode {
 		input,
@@ -86,7 +87,7 @@ pub(crate) fn insert_table(
 		table: &table,
 		fragment: target.identifier(),
 	};
-	let context = build_insert_table_query_context(services, &target_data, symbols, txn.identity());
+	let context = build_insert_table_query_context(services, &target_data, symbols, caller);
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
@@ -123,7 +124,7 @@ pub(crate) fn insert_table(
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
 		let columns = with_absent_pre_image(columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
+		return evaluate_returning(services, symbols, returning_exprs, columns, caller);
 	}
 	insert_table_result(namespace.name(), &table.name, total_rows as u64)
 }

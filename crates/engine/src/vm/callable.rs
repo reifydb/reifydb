@@ -10,7 +10,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_policy::error::PolicyError;
 use reifydb_routine_abi::{Procedure as RoutineProcedure, context::ProcedureContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params};
+use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{Result, policy::PolicyEvaluator, vm::services::Services};
 
@@ -33,15 +33,19 @@ pub(crate) fn invoke_procedure_routine(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,
 	tx: &mut Transaction<'_>,
+	caller: IdentityId,
 	call: ProcedureCall<'_>,
 	site: CallSite<'_>,
 ) -> Result<RecordBatch> {
-	enforce_call_policy(services, symbols, tx, call.target, site)?;
+	let prev = tx.identity();
+	tx.set_identity(caller);
+	let checked = enforce_call_policy(services, symbols, tx, call.target, site);
+	tx.set_identity(prev);
+	checked?;
 
-	let identity = tx.identity();
 	let mut ctx = ProcedureContext {
 		fragment: call.fragment.clone(),
-		identity,
+		identity: caller,
 		row_count: 1,
 		runtime_context: &services.runtime_context,
 		tx,

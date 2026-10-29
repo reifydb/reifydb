@@ -100,6 +100,7 @@ pub(crate) fn insert_queue(
 	txn: &mut Transaction<'_>,
 	plan: InsertQueueNode,
 	symbols: &mut SymbolTable,
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let InsertQueueNode {
 		input,
@@ -116,7 +117,7 @@ pub(crate) fn insert_queue(
 		queue: &queue,
 	};
 
-	let context = build_insert_queue_query_context(services, &target_data, symbols, txn.identity());
+	let context = build_insert_queue_query_context(services, &target_data, symbols, caller);
 	let fragments = InputFragments::of(&input);
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
@@ -202,7 +203,7 @@ pub(crate) fn insert_queue(
 	txn.insert_queue(&queue, &rows)?;
 
 	if let Some(returning_exprs) = &returning {
-		return project_returning(services, txn, symbols, &queue, &shape, returning_exprs, &returned);
+		return project_returning(services, txn, symbols, &queue, &shape, returning_exprs, &returned, caller);
 	}
 
 	insert_queue_result(namespace.name(), &queue.name, fresh_count as u64, duplicates as u64)
@@ -326,6 +327,7 @@ fn project_returning(
 	shape: &RowShape,
 	returning_exprs: &[Expression],
 	returned: &[ReturnedRow],
+	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let rows: Vec<(RowNumber, EncodedBytes)> =
 		returned.iter().map(|row| (row.row_number, row.encoded.clone())).collect();
@@ -339,7 +341,7 @@ fn project_returning(
 	user.push(factory::bool(QUEUE_CREATED_COLUMN, returned.iter().map(|row| row.created)));
 	let columns = rebuild_with_user_columns(&columns, user)?;
 
-	evaluate_returning(services, symbols, returning_exprs, columns, txn.identity())
+	evaluate_returning(services, symbols, returning_exprs, columns, caller)
 }
 
 fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {

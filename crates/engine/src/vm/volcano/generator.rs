@@ -91,6 +91,7 @@ impl GeneratorNode {
 					&stored_ctx.services,
 					&stored_ctx.symbols,
 					txn,
+					stored_ctx.identity,
 					ProcedureCall {
 						routine: procedure,
 						fragment: &self.function_name,

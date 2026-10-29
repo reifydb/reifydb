@@ -16,7 +16,10 @@ use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,
-	value::system_columns::{SystemColumn, with_system_column},
+	value::{
+		identity::IdentityId,
+		system_columns::{SystemColumn, with_system_column},
+	},
 };
 
 use crate::{
@@ -40,9 +43,14 @@ impl<'a> Vm<'a> {
 		params: &Params,
 	) -> Result<()> {
 		let mut std_txn = tx.reborrow();
-		if let Some(columns) =
-			run_query_plan(services, &mut std_txn, plan.clone(), params.clone(), &mut self.symbols)?
-		{
+		if let Some(columns) = run_query_plan(
+			services,
+			&mut std_txn,
+			plan.clone(),
+			params.clone(),
+			&mut self.symbols,
+			self.identity,
+		)? {
 			self.stack.push(Variable::columns(columns));
 		}
 		Ok(())
@@ -55,8 +63,8 @@ pub(crate) fn run_query_plan(
 	plan: QueryPlan,
 	params: Params,
 	symbols: &mut SymbolTable,
+	identity: IdentityId,
 ) -> Result<Option<RecordBatch>> {
-	let identity = txn.identity();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,

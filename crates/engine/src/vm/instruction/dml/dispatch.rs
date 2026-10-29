@@ -218,6 +218,7 @@ fn fire_handlers(
 				services,
 				&vm.symbols,
 				tx,
+				vm.identity,
 				ProcedureCall {
 					routine: &native_proc,
 					fragment: &handler_fragment,

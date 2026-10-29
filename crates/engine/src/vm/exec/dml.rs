@@ -7,7 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::internal_error;
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::params::Params;
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::{
 	Result,
@@ -31,12 +31,18 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, Params, &SymbolTable) -> Result<RecordBatch>,
+		F: FnOnce(
+			&Arc<Services>,
+			&mut Transaction<'_>,
+			Params,
+			&SymbolTable,
+			IdentityId,
+		) -> Result<RecordBatch>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		load_flow_diff_need(&services.catalog, &mut txn)?;
-		let columns = handler(services, &mut txn, params.clone(), &self.symbols)?;
+		let columns = handler(services, &mut txn, params.clone(), &self.symbols, self.identity)?;
 		sync_transactional_views(services, txn)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
@@ -49,12 +55,13 @@ impl<'a> Vm<'a> {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, &mut SymbolTable) -> Result<RecordBatch>,
+		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, &mut SymbolTable, IdentityId) -> Result<RecordBatch>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		load_flow_diff_need(&services.catalog, &mut txn)?;
-		let columns = handler(services, &mut txn, &mut self.symbols)?;
+		let caller = self.identity;
+		let columns = handler(services, &mut txn, &mut self.symbols, caller)?;
 		sync_transactional_views(services, txn)?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())

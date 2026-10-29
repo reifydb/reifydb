@@ -610,58 +610,58 @@ impl<'a> Vm<'a> {
 				}
 
 				Instruction::Delete(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						delete(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						delete(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::DeleteRingBuffer(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						delete_ringbuffer(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						delete_ringbuffer(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::DeleteSeries(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						delete_series(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						delete_series(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::Update(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						update_table(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						update_table(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::UpdateRingBuffer(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						update_ringbuffer(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						update_ringbuffer(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::UpdateSeries(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						update_series(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						update_series(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::InsertTable(n) => {
-					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
-						insert_table(s, t, n.clone(), sym)
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym, caller| {
+						insert_table(s, t, n.clone(), sym, caller)
 					})?
 				}
 				Instruction::InsertDictionary(n) => {
-					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
-						insert_dictionary(s, t, n.clone(), sym)
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym, caller| {
+						insert_dictionary(s, t, n.clone(), sym, caller)
 					})?
 				}
 				Instruction::InsertQueue(n) => {
-					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
-						insert_queue(s, t, n.clone(), sym)
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym, caller| {
+						insert_queue(s, t, n.clone(), sym, caller)
 					})?
 				}
 				Instruction::InsertRingBuffer(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						insert_ringbuffer(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						insert_ringbuffer(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 				Instruction::InsertSeries(n) => {
-					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
-						insert_series(s, t, n.clone(), p, sym)
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym, caller| {
+						insert_series(s, t, n.clone(), p, sym, caller)
 					})?
 				}
 
