@@ -113,6 +113,10 @@ pub trait Unlink: Filesystem {
 	fn unlink(&self, path: &Path) -> Result<()>;
 }
 
+pub trait RemoveDir: Filesystem {
+	fn remove_dir(&self, path: &Path) -> Result<()>;
+}
+
 pub trait SyncDir: Filesystem {
 	fn sync_dir(&self, path: &Path) -> Result<()>;
 }
@@ -251,6 +255,18 @@ impl Unlink for Fs {
 			Fs::Memory(fs) => fs.unlink(path),
 			#[cfg(feature = "testing")]
 			Fs::Testing(fs) => fs.unlink(path),
+		}
+	}
+}
+
+impl RemoveDir for Fs {
+	fn remove_dir(&self, path: &Path) -> Result<()> {
+		match self {
+			#[cfg(reifydb_target = "host")]
+			Fs::Host(fs) => fs.remove_dir(path),
+			Fs::Memory(fs) => fs.remove_dir(path),
+			#[cfg(feature = "testing")]
+			Fs::Testing(fs) => fs.remove_dir(path),
 		}
 	}
 }

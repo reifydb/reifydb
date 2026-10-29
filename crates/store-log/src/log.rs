@@ -62,7 +62,6 @@ where
 			index_interval: config.index_interval,
 			segment_age: config.segment_age,
 		};
-		publish(&fs, &dir.join(META_NAME), &meta)?;
 		let writers = (0..partitions)
 			.map(|at| {
 				let partition = Partition::create(
@@ -76,6 +75,7 @@ where
 				Ok(Writer::detached(fs.clone(), partition))
 			})
 			.collect::<Result<Vec<_>>>()?;
+		publish(&fs, &dir.join(META_NAME), &meta)?;
 		Ok(Self {
 			fs,
 			dir: dir.to_path_buf(),

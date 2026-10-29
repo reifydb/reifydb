@@ -11,8 +11,8 @@ use std::{
 
 use crate::{
 	io::fs::{
-		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, Rename, Result,
-		SyncData, SyncDir, Truncate, Unlink,
+		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename,
+		Result, SyncData, SyncDir, Truncate, Unlink,
 		memory::{MemoryFile, MemoryFileMut, MemoryFileState, MemoryFs, SectorMask, sector_span},
 	},
 	sync::mutex::Mutex,
@@ -367,6 +367,13 @@ impl Unlink for TestingFs {
 			}
 			MetaOutcome::Err(error) => Err(error),
 		}
+	}
+}
+
+impl RemoveDir for TestingFs {
+	fn remove_dir(&self, path: &Path) -> Result<()> {
+		self.0.syscall();
+		self.0.inner.remove_dir(path)
 	}
 }
 

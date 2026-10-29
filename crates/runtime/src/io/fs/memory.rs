@@ -11,8 +11,8 @@ use std::{
 
 use crate::{
 	io::fs::{
-		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, Rename, Result,
-		SyncData, SyncDir, Truncate, Unlink,
+		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename,
+		Result, SyncData, SyncDir, Truncate, Unlink,
 	},
 	sync::mutex::Mutex,
 };
@@ -445,6 +445,19 @@ impl Unlink for MemoryFs {
 	}
 }
 
+impl RemoveDir for MemoryFs {
+	fn remove_dir(&self, path: &Path) -> Result<()> {
+		let mut state = self.0.state.lock();
+		if !state.dirs.contains(path) {
+			return Err(FsError::NotFound(path.to_path_buf()));
+		}
+		state.dirs.retain(|dir| !dir.starts_with(path));
+		state.dirty_dirs.retain(|dir| !dir.starts_with(path));
+		state.files.retain(|file, _| !file.starts_with(path));
+		Ok(())
+	}
+}
+
 impl SyncDir for MemoryFs {
 	fn sync_dir(&self, path: &Path) -> Result<()> {
 		let mut state = self.0.state.lock();
@@ -636,6 +649,24 @@ mod tests {
 		assert!(bytes[0..512].iter().all(|byte| *byte == 1));
 		assert!(bytes[512..1024].iter().all(|byte| *byte == 0));
 		assert_eq!(file.sector_states(), vec![SectorState::Durable, SectorState::Unwritten]);
+	}
+
+	#[test]
+	fn remove_dir_takes_every_nested_file_and_dir_and_leaves_siblings() {
+		// A half-created commit log is wiped this way; a survivor inside it would make the rebuild collide.
+		let fs = MemoryFs::new();
+		fs.mkdir(Path::new("/wal")).unwrap();
+		fs.mkdir(Path::new("/wal/p0")).unwrap();
+		fs.create(Path::new("/wal/p0/seg"), 8).unwrap();
+		fs.mkdir(Path::new("/walnut")).unwrap();
+		fs.create(Path::new("/walnut/keep"), 8).unwrap();
+
+		fs.remove_dir(Path::new("/wal")).unwrap();
+
+		assert!(matches!(fs.open(Path::new("/wal/p0/seg")), Err(FsError::NotFound(_))));
+		assert!(matches!(fs.read_dir(Path::new("/wal")), Err(FsError::NotFound(_))));
+		assert!(fs.open(Path::new("/walnut/keep")).is_ok(), "a sibling sharing the name prefix must survive");
+		fs.mkdir(Path::new("/wal")).expect("the removed path is free for a rebuild");
 	}
 
 	#[test]

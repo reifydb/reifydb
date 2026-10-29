@@ -23,13 +23,13 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	context::clock::Clock,
-	io::fs::{Fs, ReadDir, memory::MemoryFs},
+	io::fs::{Fs, ReadDir, RemoveDir, SyncDir, memory::MemoryFs},
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_log::{
 	cursor::Cursor,
 	error::LogError,
-	log::Log,
+	log::{Log, META_NAME},
 	partition::Config,
 	segment::{Scan, Stop},
 };
@@ -180,7 +180,14 @@ pub(crate) const SEGMENT_BYTES: ByteSize = ByteSize::from_mib(64);
 
 pub fn open_wal(fs: Fs, clock: Clock, dir: &Path) -> WalResult<CommitWal> {
 	let parent = dir.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
-	if !fs.read_dir(parent).map_err(LogError::from)?.iter().any(|entry| entry == dir) {
+	let exists = fs.read_dir(parent).map_err(LogError::from)?.iter().any(|entry| entry == dir);
+	let complete =
+		exists && fs.read_dir(dir).map_err(LogError::from)?.iter().any(|entry| entry == &dir.join(META_NAME));
+	if exists && !complete {
+		fs.remove_dir(dir).map_err(LogError::from)?;
+		fs.sync_dir(parent).map_err(LogError::from)?;
+	}
+	if !complete {
 		let config = Config {
 			segment_bytes: SEGMENT_BYTES,
 			..Config::default()

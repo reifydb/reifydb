@@ -9,8 +9,8 @@ use std::{
 };
 
 use crate::io::fs::{
-	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, Rename, Result, SyncData,
-	SyncDir, Truncate, Unlink,
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename, Result,
+	SyncData, SyncDir, Truncate, Unlink,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -106,6 +106,12 @@ impl Rename for HostFs {
 impl Unlink for HostFs {
 	fn unlink(&self, path: &Path) -> Result<()> {
 		fs::remove_file(path).map_err(|err| FsError::from_io(path, err))
+	}
+}
+
+impl RemoveDir for HostFs {
+	fn remove_dir(&self, path: &Path) -> Result<()> {
+		fs::remove_dir_all(path).map_err(|err| FsError::from_io(path, err))
 	}
 }
 
