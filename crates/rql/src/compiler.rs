@@ -403,6 +403,23 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 	}
 }
 
+fn is_write(plan: &PhysicalPlan<'_>) -> bool {
+	matches!(
+		plan,
+		PhysicalPlan::InsertTable(_)
+			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertQueue(_)
+			| PhysicalPlan::InsertDictionary(_)
+			| PhysicalPlan::InsertSeries(_)
+			| PhysicalPlan::Update(_)
+			| PhysicalPlan::UpdateRingBuffer(_)
+			| PhysicalPlan::UpdateSeries(_)
+			| PhysicalPlan::Delete(_)
+			| PhysicalPlan::DeleteRingBuffer(_)
+			| PhysicalPlan::DeleteSeries(_)
+	)
+}
+
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 	materialize_query_plan_with(plan, |kind| query::not_a_query_input(Fragment::None, kind))
 }
@@ -1505,7 +1522,7 @@ impl InstructionCompiler {
 								message: block.message,
 							}));
 						} else {
-							self.compile_value_plan(inner)?;
+							self.compile_bound_plan(inner)?;
 						}
 					}
 					physical::LetValue::EmptyFrame => {
@@ -1520,7 +1537,7 @@ impl InstructionCompiler {
 						self.compile_expression(&expr)?;
 					}
 					physical::AssignValue::Statement(plan) => {
-						self.compile_value_plan(BumpBox::into_inner(plan))?;
+						self.compile_bound_plan(BumpBox::into_inner(plan))?;
 					}
 				}
 				self.emit(Instruction::StoreVar(node.name));
@@ -1843,6 +1860,16 @@ impl InstructionCompiler {
 		};
 		self.compile_branch(branch)?;
 		self.compile_value_plan(value)
+	}
+
+	fn compile_bound_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+		if !is_write(&plan) {
+			return self.compile_value_plan(plan);
+		}
+		self.compile_plan(plan)?;
+		let emit = self.instructions.pop();
+		assert!(matches!(emit, Some(Instruction::Emit)), "a write plan must end in Emit, got {emit:?}");
+		Ok(())
 	}
 
 	fn compile_value_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {

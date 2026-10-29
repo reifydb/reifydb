@@ -105,6 +105,9 @@ impl<'bump> Parser<'bump> {
 				TokenKind::Keyword(Keyword::From)
 					| TokenKind::Keyword(Keyword::Map) | TokenKind::Keyword(Keyword::Extend)
 					| TokenKind::Keyword(Keyword::Assert)
+					| TokenKind::Keyword(Keyword::Insert)
+					| TokenKind::Keyword(Keyword::Update)
+					| TokenKind::Keyword(Keyword::Delete)
 			) || (matches!(token.kind, TokenKind::Variable) && self.has_pipe_ahead()))
 		} else {
 			Ok(false)
