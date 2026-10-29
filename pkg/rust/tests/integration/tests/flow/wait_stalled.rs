@@ -161,7 +161,7 @@ fn waiting_on_a_flow_wedged_inside_an_operator_fails_fast_naming_the_stall() {
 
 	let target = db.watermarks().tx().current().unwrap();
 	let started = Clock::Real.instant();
-	let result = db.watermarks().cdc().wait_for_flow_consumer(target, ValueDuration::from_seconds(30).unwrap());
+	let result = db.watermarks().reader().wait_for_flow_caught_up(target, ValueDuration::from_seconds(30).unwrap());
 	let elapsed = started.elapsed();
 	ticking.store(false, Ordering::SeqCst);
 	ticker.join().unwrap();

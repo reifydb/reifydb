@@ -4,15 +4,11 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::{
 	byte_size::ByteSize,
-	count::Count,
 	value::{datetime::DateTime, duration::Duration},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	common::CommitVersion, fingerprint::RequestFingerprint, interface::catalog::metrics::MetricsId,
-	metrics::execution::StatementMetrics,
-};
+use crate::{common::CommitVersion, fingerprint::RequestFingerprint, metrics::execution::StatementMetrics};
 
 define_event! {
 
@@ -63,36 +59,6 @@ pub struct MultiEviction {
 pub struct MultiPersist {
 	pub key: EncodedKey,
 	pub value_bytes: ByteSize,
-}
-
-define_event! {
-
-	pub struct CdcWrittenEvent {
-		pub entries: Vec<CdcWrite>,
-		pub version: CommitVersion,
-	}
-}
-
-#[derive(Clone, Debug)]
-pub struct CdcWrite {
-	pub key: EncodedKey,
-	pub value_bytes: ByteSize,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CdcEviction {
-	pub id: MetricsId,
-	pub key_bytes: ByteSize,
-	pub value_bytes: ByteSize,
-	pub count: Count,
-}
-
-define_event! {
-
-	pub struct CdcEvictedEvent {
-		pub entries: Vec<CdcEviction>,
-		pub version: CommitVersion,
-	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -69,10 +69,6 @@ mod tests {
 			CommitVersion(u64::MAX)
 		}
 
-		fn consumer_checkpoint(&self) -> CommitVersion {
-			CommitVersion(u64::MAX)
-		}
-
 		fn consumer_position(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
@@ -96,7 +92,7 @@ mod tests {
 		}
 
 		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtl, RetentionClass::CdcTruncate]
+			&[RetentionClass::RowTtl, RetentionClass::QueueRetention]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -122,7 +118,7 @@ mod tests {
 
 		assert_eq!(runs.load(Ordering::SeqCst), 1, "the wrapped task must still run exactly once");
 		assert_eq!(plane.snapshot(RetentionClass::RowTtl).slices, 1);
-		assert_eq!(plane.snapshot(RetentionClass::CdcTruncate).slices, 1);
+		assert_eq!(plane.snapshot(RetentionClass::QueueRetention).slices, 1);
 	}
 
 	#[test]

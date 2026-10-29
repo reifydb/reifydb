@@ -6,9 +6,12 @@ use reifydb::{ConfigKey, GetConfig, Value, embedded, value::value::duration::Dur
 #[test]
 fn test_with_config_applied_at_bootstrap() {
 	let one_hour = Duration::from_hours(1).unwrap();
-	let db = embedded::memory().with_config(ConfigKey::CdcTtlDuration, Value::Duration(one_hour)).build().unwrap();
+	let db = embedded::memory()
+		.with_config(ConfigKey::MetricsSnapshotInterval, Value::Duration(one_hour))
+		.build()
+		.unwrap();
 
-	let value = db.catalog().get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().get_config(ConfigKey::MetricsSnapshotInterval);
 	assert!(matches!(value, Value::Duration(d) if d == one_hour));
 }
 
@@ -17,7 +20,7 @@ fn test_with_configs_applies_multiple() {
 	let db = embedded::memory()
 		.with_configs([
 			(ConfigKey::OracleWindowSize, Value::Uint8(1000)),
-			(ConfigKey::CdcTtlDuration, Value::duration_hours(2)),
+			(ConfigKey::MetricsSnapshotInterval, Value::duration_hours(2)),
 		])
 		.build()
 		.unwrap();
@@ -25,7 +28,7 @@ fn test_with_configs_applies_multiple() {
 	let catalog = db.catalog();
 	assert!(matches!(catalog.get_config(ConfigKey::OracleWindowSize), Value::Uint8(1000)));
 	assert!(matches!(
-		catalog.get_config(ConfigKey::CdcTtlDuration),
+		catalog.get_config(ConfigKey::MetricsSnapshotInterval),
 		Value::Duration(d) if d == Duration::from_hours(2).unwrap()
 	));
 }
@@ -33,14 +36,14 @@ fn test_with_configs_applies_multiple() {
 #[test]
 fn test_invalid_value_fails_at_build() {
 	let zero = Duration::from_seconds(0).unwrap();
-	let result = embedded::memory().with_config(ConfigKey::CdcTtlDuration, Value::Duration(zero)).build();
+	let result = embedded::memory().with_config(ConfigKey::MetricsSnapshotInterval, Value::Duration(zero)).build();
 
-	assert!(result.is_err(), "expected zero CDC TTL to be rejected at bootstrap");
+	assert!(result.is_err(), "expected a zero snapshot interval to be rejected at bootstrap");
 }
 
 #[test]
 fn test_defaults_preserved_when_no_override() {
 	let db = embedded::memory().build().unwrap();
-	let value = db.catalog().get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().get_config(ConfigKey::MetricsSnapshotInterval);
 	assert!(matches!(value, Value::None { .. }));
 }

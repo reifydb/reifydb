@@ -36,20 +36,3 @@ fn storage_current_reports_a_written_table_under_its_object_kind() {
 	);
 	assert!(rows >= 1, "a written table never surfaced in the merged storage table with object_kind 'table'");
 }
-
-#[test]
-fn cdc_current_reports_retained_cdc_bytes_per_object_kind() {
-	// CDC accounting rides the same push chain but has no tier dimension; a written table must
-	// surface its retained cdc bytes as a 'table' row.
-	let db = db_with_fast_metrics();
-	db.admin("create namespace test");
-	db.admin("create table test::t { id: int4 }");
-	db.command("insert test::t [{ id: 1 }]");
-
-	let rows = db.await_row_count(
-		"from system::metrics::cdc::current filter { object_kind == 'table' and total_bytes > 0 }",
-		1,
-		TIMEOUT,
-	);
-	assert!(rows >= 1, "a written table never surfaced in the merged cdc table with object_kind 'table'");
-}

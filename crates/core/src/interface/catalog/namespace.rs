@@ -14,7 +14,7 @@ impl NamespaceId {
 	pub const SYSTEM_CONFIG: NamespaceId = NamespaceId(3);
 	pub const SYSTEM_METRICS: NamespaceId = NamespaceId(4);
 	pub const SYSTEM_METRICS_STORAGE: NamespaceId = NamespaceId(5);
-	pub const SYSTEM_METRICS_CDC: NamespaceId = NamespaceId(6);
+	pub const RETIRED_SYSTEM_METRICS_CDC: NamespaceId = NamespaceId(6);
 	pub const SYSTEM_PROCEDURES: NamespaceId = NamespaceId(7);
 	pub const SYSTEM_BINDINGS: NamespaceId = NamespaceId(8);
 	pub const RQL: NamespaceId = NamespaceId(9);
@@ -54,10 +54,10 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE: NamespaceId = NamespaceId(47);
 	pub const SYSTEM_METRICS_STORE_MULTI_RANGE: NamespaceId = NamespaceId(52);
 	pub const SYSTEM_METRICS_STORE_MULTI_POINT: NamespaceId = NamespaceId(53);
-	pub const SYSTEM_METRICS_STORE_CDC: NamespaceId = NamespaceId(48);
-	pub const SYSTEM_METRICS_STORE_CDC_COMMIT: NamespaceId = NamespaceId(49);
-	pub const SYSTEM_METRICS_STORE_CDC_READ: NamespaceId = NamespaceId(50);
-	pub const SYSTEM_METRICS_STORE_CDC_PERSISTENT: NamespaceId = NamespaceId(51);
+	pub const RETIRED_SYSTEM_METRICS_STORE_CDC: NamespaceId = NamespaceId(48);
+	pub const RETIRED_SYSTEM_METRICS_STORE_CDC_COMMIT: NamespaceId = NamespaceId(49);
+	pub const RETIRED_SYSTEM_METRICS_STORE_CDC_READ: NamespaceId = NamespaceId(50);
+	pub const RETIRED_SYSTEM_METRICS_STORE_CDC_PERSISTENT: NamespaceId = NamespaceId(51);
 	pub const SYSTEM_FLOW: NamespaceId = NamespaceId(54);
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
 	pub const SYSTEM_FLOW_OPERATOR: NamespaceId = NamespaceId(56);

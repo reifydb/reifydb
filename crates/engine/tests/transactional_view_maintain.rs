@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::{
 	durability::Durability,
 	interface::{
 		catalog::object::ObjectId,
-		cdc::Cdc,
 		change::{ChangeOrigin, Diff},
+		commit::CommitEntry,
 	},
 };
-use reifydb_store_cdc::storage::CdcStorage;
+use reifydb_engine::lift::lift_entry_changes;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -133,16 +132,15 @@ fn run_tests_refuses_a_deferred_view_whose_upstream_the_body_wrote() {
 	assert!(rows[0].get::<String>("message").unwrap().unwrap().contains("TXN_015"));
 }
 
-fn cdc_entries(t: &TestEngine) -> Vec<Cdc> {
-	t.await_cdc();
-	t.cdc_store().read_range(Bound::Unbounded, Bound::Unbounded, 10_000).expect("cdc read").items
+fn commit_entries(t: &TestEngine) -> Vec<Arc<CommitEntry>> {
+	t.commit_entries()
 }
 
-fn object_origins(t: &TestEngine, cdc: &Cdc) -> Vec<ObjectId> {
+fn object_origins(t: &TestEngine, entry: &CommitEntry) -> Vec<ObjectId> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
 	let mut origins = Vec::new();
 	for change in
-		lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift")
+		lift_entry_changes(entry, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift")
 	{
 		if let ChangeOrigin::Object(object) = change.origin {
 			origins.push(object);
@@ -164,13 +162,19 @@ fn a_rollback_leaves_the_view_unchanged() {
 }
 
 #[test]
-fn the_commit_cdc_carries_the_view_rows_next_to_the_source_rows() {
-	// A deferred reader of this view (P4) can only see it through CDC.
+fn the_commit_entry_carries_the_view_rows_next_to_the_source_rows() {
+	// A deferred reader of this view (P4) can only see it through the commit stream.
 	let t = setup();
 	t.command("INSERT ns::src [{ id: 2 }]");
-	let origins: Vec<ObjectId> = cdc_entries(&t).iter().flat_map(|cdc| object_origins(&t, cdc)).collect();
-	assert!(origins.iter().any(|o| matches!(o, ObjectId::Table(_))), "no table change in CDC: {origins:?}");
-	assert!(origins.iter().any(|o| matches!(o, ObjectId::View(_))), "no view change in CDC: {origins:?}");
+	let origins: Vec<ObjectId> = commit_entries(&t).iter().flat_map(|entry| object_origins(&t, entry)).collect();
+	assert!(
+		origins.iter().any(|o| matches!(o, ObjectId::Table(_))),
+		"no table change in the commit stream: {origins:?}"
+	);
+	assert!(
+		origins.iter().any(|o| matches!(o, ObjectId::View(_))),
+		"no view change in the commit stream: {origins:?}"
+	);
 }
 
 #[test]
@@ -242,7 +246,7 @@ fn a_row_that_entered_the_view_earlier_in_the_txn_leaves_it_on_delete() {
 }
 
 #[test]
-fn a_sort_value_change_reaches_the_view_cdc_as_one_update_of_its_row() {
+fn a_sort_value_change_reaches_the_view_as_one_update_of_its_row() {
 	// The sort value is in the view key, so an insert and a remove of one row number replay in the wrong order.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
@@ -250,10 +254,10 @@ fn a_sort_value_change_reaches_the_view_cdc_as_one_update_of_its_row() {
 	t.admin("CREATE TRANSACTIONAL VIEW ns::v { id: int4, v: int4 } AS { FROM ns::src | sort { v } }");
 	t.command("INSERT ns::src [{ id: 1, v: 10 }, { id: 2, v: 20 }]");
 	t.command("UPDATE ns::src { v: 90 } FILTER { id == 1 }");
-	let last = cdc_entries(&t).pop().expect("the update must write a cdc record");
+	let last = commit_entries(&t).pop().expect("the update must reach the commit queue");
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
-	let changes = lift_selected_changes(&last, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
-		.expect("lift");
+	let changes =
+		lift_entry_changes(&last, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift");
 	let view = changes
 		.iter()
 		.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))

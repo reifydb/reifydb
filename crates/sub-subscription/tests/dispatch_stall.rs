@@ -26,13 +26,10 @@ use reifydb::{
 	testing::db::TestDb,
 };
 use reifydb_core::{
-	interface::{
-		catalog::{
-			config::ConfigKey,
-			id::SubscriptionId,
-			subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
-		},
-		cdc::CdcConsumerId,
+	interface::catalog::{
+		config::ConfigKey,
+		id::SubscriptionId,
+		subscription::{HydrationConfig, SubscribeOptions, SubscribeOutcome},
 	},
 	value::column::factory::rename,
 };
@@ -133,7 +130,7 @@ fn a_worker_that_never_finishes_a_dispatch_aborts_naming_the_worker() {
 	let insert_version: u64 = announced(&child.stdout, INSERT_VERSION_MARKER);
 	assert_eq!(
 		report_field(&child.stderr, "consumer"),
-		Some(format!("{:?}", CdcConsumerId::subscription_consumer())),
+		Some("subscription".to_string()),
 		"the abort must name the stalled consumer\nstderr:\n{}",
 		child.stderr
 	);
@@ -174,7 +171,7 @@ fn run_stall_child() -> ! {
 			.with_config(ConfigKey::ThreadsCoordination, Value::Uint2(2))
 			.with_config(ConfigKey::SubscriptionWorkerThreads, Value::Uint2(WORKERS as u16))
 			.with_config(
-				ConfigKey::CdcConsumeWaitTimeout,
+				ConfigKey::SubscriptionWaitTimeout,
 				Value::Duration(Duration::from_seconds(1).unwrap()),
 			)
 			.build()

@@ -58,10 +58,6 @@ impl FloorSource for ScriptedWatermark {
 		CommitVersion(u64::MAX)
 	}
 
-	fn consumer_checkpoint(&self) -> CommitVersion {
-		CommitVersion(u64::MAX)
-	}
-
 	fn consumer_position(&self) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}

@@ -12,13 +12,10 @@ use std::{
 use reifydb_core::{
 	commit::{
 		queue::{CommitPull, CommitQueue, CommitQueueFloor},
-		watermark::CdcConsumerWatermark,
+		watermark::ReaderWatermark,
 	},
 	common::CommitVersion,
-	interface::{
-		catalog::config::{ConfigKey, GetConfig},
-		cdc::CdcConsumerId,
-	},
+	interface::catalog::config::{ConfigKey, GetConfig},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -74,7 +71,7 @@ pub struct SubscriptionReader {
 	queue: CommitQueue,
 	floor: CommitQueueFloor,
 	consumer: SubscriptionCdcConsumer,
-	watermark: CdcConsumerWatermark,
+	watermark: ReaderWatermark,
 	clock: Clock,
 	start: CommitVersion,
 }
@@ -85,7 +82,7 @@ impl SubscriptionReader {
 		queue: CommitQueue,
 		floor: CommitQueueFloor,
 		consumer: SubscriptionCdcConsumer,
-		watermark: CdcConsumerWatermark,
+		watermark: ReaderWatermark,
 		start: CommitVersion,
 	) -> Self {
 		let clock = engine.clock().clone();
@@ -105,7 +102,7 @@ impl SubscriptionReader {
 	}
 
 	fn wait_timeout(&self) -> Duration {
-		self.engine.catalog().get_config_duration(ConfigKey::CdcConsumeWaitTimeout)
+		self.engine.catalog().get_config_duration(ConfigKey::SubscriptionWaitTimeout)
 	}
 
 	fn advance(&self, state: &mut SubscriptionReaderState, ctx: &Context<SubscriptionReaderMessage>) {
@@ -260,7 +257,7 @@ impl SubscriptionReader {
 			format!("consume reply not received within {:?}", self.wait_timeout()),
 		)
 		.component("subscription reader")
-		.with("consumer", format!("{:?}", CdcConsumerId::subscription_consumer()))
+		.with("consumer", "subscription")
 		.with("pending", self.consumer.describe_pending())
 		.with("batch", batch)
 		.backtrace(Backtrace::force_capture().to_string()))

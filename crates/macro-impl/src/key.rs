@@ -656,7 +656,6 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		"MigrationEventId" => Some(KeyColumn::MigrationEventId),
 		"PrimaryKeyId" => Some(KeyColumn::PrimaryKeyId),
 		"ColumnBlockId" => Some(KeyColumn::ColumnBlockId),
-		"CdcConsumerId" => Some(KeyColumn::Str),
 		"EncodedKey" => Some(KeyColumn::EscapedBytes),
 		"KeyspaceId" => Some(KeyColumn::KeyspaceId),
 		"EncodedIndexKey" => Some(KeyColumn::RawTail),

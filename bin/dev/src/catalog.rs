@@ -7,7 +7,6 @@ use reifydb::{Database, Params, SqliteConfig, Value, embedded};
 
 pub struct Catalog {
 	pub sources: HashMap<u64, (String, &'static str)>,
-	pub views: HashMap<u64, String>,
 	pub operators: HashMap<u64, (String, String)>,
 }
 
@@ -41,14 +40,12 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 			}
 		}
 	}
-	let mut views: HashMap<u64, String> = HashMap::new();
 	for r in rows(db, "from system::views")? {
 		let (Some(id), Some(name)) = (u64c(&r, "id"), strc(&r, "name")) else {
 			continue;
 		};
 		let qualified = qualify(&namespaces, u64c(&r, "namespace_id"), &name);
-		sources.insert(id, (qualified.clone(), "view"));
-		views.insert(id, qualified);
+		sources.insert(id, (qualified, "view"));
 	}
 
 	let mut flows: HashMap<u64, String> = HashMap::new();
@@ -70,7 +67,6 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 
 	Ok(Catalog {
 		sources,
-		views,
 		operators,
 	})
 }

@@ -11,11 +11,11 @@ use reifydb_value::{Result, error::Error};
 use crate::{common::CommitVersion, error::diagnostic::flow::flow_error, interface::catalog::flow::FlowId};
 
 #[derive(Debug, Clone, Default)]
-pub struct CdcConsumerWatermark {
+pub struct ReaderWatermark {
 	progress: Arc<AtomicU64>,
 }
 
-impl CdcConsumerWatermark {
+impl ReaderWatermark {
 	pub fn new() -> Self {
 		Self {
 			progress: Arc::new(AtomicU64::new(0)),

@@ -31,7 +31,7 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 	// A wall-clock deadline, so a watermark that never advances fails as a timeout, not a hang.
 	let deadline = Clock::Real.instant() + Duration::from_seconds_const(10);
 	loop {
-		let flow_consumer = db.watermarks().cdc().flow_consumer();
+		let flow_consumer = db.watermarks().reader().flow_caught_up();
 		if flow_consumer >= target {
 			break;
 		}

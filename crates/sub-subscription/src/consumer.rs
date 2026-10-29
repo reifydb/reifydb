@@ -6,13 +6,15 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use reifydb_cdc::lift::{entry_lifted_objects, lift_entry_changes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{change::Change, commit::CommitEntry},
 	internal_error,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{
+	engine::StandardEngine,
+	lift::{entry_lifted_objects, lift_entry_changes},
+};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	sync::mutex::Mutex,

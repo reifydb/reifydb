@@ -247,7 +247,7 @@ impl Database {
 			target: self.watermarks().tx().current().unwrap_or(CommitVersion(0)),
 			flow_caught_up: engine.ioc().try_resolve::<FlowCaughtUpWatermark>().map(|w| w.get()),
 			released: engine.commit_released(),
-			subscription: engine.cdc_consumer_watermark(),
+			subscription: engine.reader_watermark(),
 			pending_batches: store.pending_batches(),
 		}
 	}
@@ -330,27 +330,27 @@ impl Database {
 	#[cfg(not(reifydb_dst))]
 	fn reach(&self, target: CommitVersion) -> Result<u32> {
 		let watermarks = self.watermarks();
-		let cdc = watermarks.cdc();
+		let reader = watermarks.reader();
 
 		if self.engine().ioc().try_resolve::<FlowCaughtUpWatermark>().is_some()
-			&& !cdc.wait_for_flow_consumer(target, DEFAULT_WAIT)?
+			&& !reader.wait_for_flow_caught_up(target, DEFAULT_WAIT)?
 		{
 			return Err(Error(Box::new(internal!(
 				"caught_up timed out waiting for deferred flows to materialize version {}: \
-				 flow_caught_up={}, cdc_producer={}, cdc_consumer={}",
+				 flow_caught_up={}, released={}, subscription={}",
 				target.0,
-				cdc.flow_consumer().0,
-				cdc.producer().0,
-				cdc.consumer().0
+				reader.flow_caught_up().0,
+				reader.released().0,
+				reader.subscription().0
 			))));
 		}
-		if !cdc.wait_for_consumer(target, DEFAULT_WAIT) {
+		if !reader.wait_for_subscription(target, DEFAULT_WAIT) {
 			return Err(Error(Box::new(internal!(
-				"caught_up timed out waiting for the cdc consumer to reach version {}: \
-				 cdc_producer={}, cdc_consumer={}",
+				"caught_up timed out waiting for the subscription reader to reach version {}: \
+				 released={}, subscription={}",
 				target.0,
-				cdc.producer().0,
-				cdc.consumer().0
+				reader.released().0,
+				reader.subscription().0
 			))));
 		}
 		Ok(0)

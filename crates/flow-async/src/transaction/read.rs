@@ -62,7 +62,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::Index => ReadFrom::Query,
 			KeyTag::IndexEntry => ReadFrom::Query,
 			KeyTag::ColumnSequence => ReadFrom::Query,
-			KeyTag::CdcConsumer => ReadFrom::Query,
 			KeyTag::OutputFrontier => ReadFrom::Query,
 			KeyTag::View => ReadFrom::Query,
 			KeyTag::NamespaceView => ReadFrom::Query,

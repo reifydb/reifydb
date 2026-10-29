@@ -22,8 +22,6 @@ pub trait FloorSource: Send + Sync + 'static {
 
 	fn lease_min(&self) -> CommitVersion;
 
-	fn consumer_checkpoint(&self) -> CommitVersion;
-
 	fn consumer_position(&self) -> CommitVersion;
 }
 
@@ -55,7 +53,6 @@ impl HorizonLedger {
 			FloorTerm::RetentionHorizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
 			FloorTerm::QueryDoneUntil => Some(Floor::Version(self.source.query_done_until())),
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
-			FloorTerm::ConsumerCheckpoint => Some(Floor::Version(self.source.consumer_checkpoint())),
 			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
 		}
 	}
@@ -116,10 +113,6 @@ impl FloorSource for EngineFloors {
 		self.engine.multi().leases().min_active().unwrap_or(CommitVersion(u64::MAX))
 	}
 
-	fn consumer_checkpoint(&self) -> CommitVersion {
-		self.engine.consumer_watermark()
-	}
-
 	fn consumer_position(&self) -> CommitVersion {
 		self.engine
 			.ioc()
@@ -146,10 +139,6 @@ mod tests {
 		}
 
 		fn lease_min(&self) -> CommitVersion {
-			CommitVersion(u64::MAX)
-		}
-
-		fn consumer_checkpoint(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
 

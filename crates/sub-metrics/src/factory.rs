@@ -8,9 +8,7 @@ use reifydb_core::{
 	event::{
 		EventBus,
 		lifecycle::VersionEpochSampledEvent,
-		metric::{
-			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent,
-		},
+		metric::{MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent},
 	},
 	interface::catalog::config::{ConfigKey, GetConfig},
 	internal,
@@ -26,7 +24,6 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
@@ -43,8 +40,7 @@ use crate::{
 	},
 	framework::{spec::MetricsDomain, surfaces::MetricsSurfaces},
 	listener::{
-		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, MultiSweptListener,
-		RequestMetricsEventListener, VersionEpochSampledListener,
+		MultiCommittedListener, MultiSweptListener, RequestMetricsEventListener, VersionEpochSampledListener,
 	},
 	sampler::{MetricsSamplerActor, SamplerMessage},
 	subsystem::MetricsSubsystem,
@@ -73,10 +69,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let multi_store = ioc.resolve::<MultiStore>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let operator_store = ioc.resolve::<OperatorStore>()?;
-		let cdc_store = ioc.resolve::<CdcStore>()?;
 		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
-
-		registry.register_collectors(cdc_store.metrics_collectors());
 
 		let collectors = Collectors {
 			engine: engine.clone(),
@@ -94,14 +87,13 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&multi_store,
 			&single_store,
 			&operator_store,
-			&cdc_store,
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
 		ioc.register_service(sampler.actor_ref().clone());
 		let flush = Self::wire_accounting(ioc, &engine, &scope, epoch_gauge, sampler.actor_ref().clone())?;
 
-		let store_reader = StoreReader::new(multi_store, single_store, operator_store, cdc_store);
+		let store_reader = StoreReader::new(multi_store, single_store, operator_store);
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors), store_reader, scope, sampler, flush)))
 	}
@@ -118,7 +110,6 @@ impl MetricsSubsystemFactory {
 		multi_store: &MultiStore,
 		single_store: &SingleStore,
 		operator_store: &OperatorStore,
-		cdc_store: &CdcStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<ActorHandle<SamplerMessage>> {
@@ -140,7 +131,6 @@ impl MetricsSubsystemFactory {
 			multi_store.clone(),
 			single_store.clone(),
 			operator_store.clone(),
-			cdc_store.clone(),
 			retention_metrics.clone(),
 			epoch_gauge,
 			surfaces,
@@ -186,8 +176,6 @@ impl MetricsSubsystemFactory {
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
 		event_bus.register::<MultiSweptEvent, _>(MultiSweptListener::new(actor_ref.clone()));
-		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
-		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
 		event_bus.register::<VersionEpochSampledEvent, _>(VersionEpochSampledListener::new(actor_ref));
 	}
 }

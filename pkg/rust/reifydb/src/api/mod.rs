@@ -3,7 +3,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, event::EventBus, interface::catalog::config::GetConfig};
+use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
@@ -11,12 +11,6 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_sqlite::{DbPath, SqliteConfig, SynchronousMode};
-use reifydb_store_cdc::{
-	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
-	storage::CdcStorage,
-	store::CdcStore,
-	tier::read::{CdcReadBufferTier, CdcReadConfig},
-};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
 	MultiStore,
@@ -84,10 +78,6 @@ impl StorageFactory {
 		multi_point: Option<MultiPointConfig>,
 		multi_range: Option<MultiRangeConfig>,
 		operator_range: Option<OperatorRangeConfig>,
-		cdc_commit: CdcCommitConfig,
-		cdc_read: Option<CdcReadConfig>,
-		cdc_wal_autocheckpoint: u32,
-		cdc_memory: bool,
 		operator_wal_autocheckpoint: u32,
 		operator_resident: ResidentLimits,
 		operator_flush_interval: Duration,
@@ -96,12 +86,10 @@ impl StorageFactory {
 		wal_enabled: bool,
 		clock: &Clock,
 		spawner: &ActorSpawner,
-	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
+	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 		match self {
 			StorageFactory::Memory => create_memory_store_with(
 				multi_commit_store,
-				cdc_commit,
-				cdc_read,
 				operator_resident,
 				operator_flush_interval,
 				operator_persistent,
@@ -116,10 +104,6 @@ impl StorageFactory {
 				multi_point,
 				multi_range,
 				operator_range,
-				cdc_commit,
-				cdc_read,
-				cdc_wal_autocheckpoint,
-				cdc_memory,
 				operator_wal_autocheckpoint,
 				operator_resident,
 				operator_flush_interval,
@@ -159,21 +143,6 @@ pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 		path,
 		synchronous_mode: Some(SynchronousMode::Full),
 		wal_autocheckpoint: None,
-		..config.clone()
-	}
-}
-
-/// CDC is written on the commit path, so this is the sole control over how often cdc.db's write-ahead log
-/// is folded back and therefore how often a commit pays an inline checkpoint.
-pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) -> SqliteConfig {
-	let path = match &config.path {
-		DbPath::File(p) => DbPath::File(p.with_extension("").join("cdc.db")),
-		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("cdc.db")),
-		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("cdc.db")),
-	};
-	SqliteConfig {
-		path,
-		wal_autocheckpoint: Some(wal_autocheckpoint),
 		..config.clone()
 	}
 }
@@ -223,8 +192,6 @@ pub(crate) fn commit_wal(factory: &StorageFactory, clock: &Clock, enabled: bool)
 
 fn create_memory_store_with(
 	multi_commit_store: CommitStore,
-	cdc_commit: CdcCommitConfig,
-	cdc_read: Option<CdcReadConfig>,
 	operator_resident: ResidentLimits,
 	operator_flush_interval: Duration,
 	operator_persistent: Option<PersistentTier>,
@@ -232,7 +199,7 @@ fn create_memory_store_with(
 	wal_enabled: bool,
 	clock: &Clock,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
@@ -270,14 +237,6 @@ fn create_memory_store_with(
 		}),
 	};
 
-	let cdc_store = CdcStore::new(CdcStoreConfig {
-		commit: cdc_commit,
-		persistent: CdcPersistentConfig::memory(),
-		read: cdc_read.and_then(CdcReadBufferTier::new),
-		spawner: spawner.clone(),
-		clock: Clock::Real,
-	});
-
 	let saved_lsn = single_store
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
@@ -288,7 +247,7 @@ fn create_memory_store_with(
 	replay_operator(wal, &operator_store, operator_saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
-	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, transaction_single, eventbus)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -298,10 +257,6 @@ fn create_sqlite_store_with(
 	multi_point: Option<MultiPointConfig>,
 	multi_range: Option<MultiRangeConfig>,
 	operator_range: Option<OperatorRangeConfig>,
-	cdc_commit: CdcCommitConfig,
-	cdc_read: Option<CdcReadConfig>,
-	cdc_wal_autocheckpoint: u32,
-	cdc_memory: bool,
 	operator_wal_autocheckpoint: u32,
 	operator_resident: ResidentLimits,
 	operator_flush_interval: Duration,
@@ -311,7 +266,7 @@ fn create_sqlite_store_with(
 	wal_enabled: bool,
 	clock: &Clock,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
@@ -371,19 +326,6 @@ fn create_sqlite_store_with(
 		..OperatorStoreConfig::sqlite(operator_persistent, spawner.clone())
 	});
 
-	let cdc_persistent = if cdc_memory {
-		CdcPersistentConfig::memory()
-	} else {
-		CdcPersistentConfig::sqlite(cdc_sqlite_config(&config, cdc_wal_autocheckpoint))
-	};
-	let cdc_store = CdcStore::new(CdcStoreConfig {
-		commit: cdc_commit,
-		persistent: cdc_persistent,
-		read: cdc_read.and_then(CdcReadBufferTier::new),
-		spawner: spawner.clone(),
-		clock: Clock::Real,
-	});
-
 	let saved_lsn = single_store
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
@@ -394,7 +336,7 @@ fn create_sqlite_store_with(
 	replay_operator(wal, &operator_store, operator_saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
-	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, transaction_single, eventbus)
 }
 
 pub(crate) fn transaction(
@@ -406,15 +348,7 @@ pub(crate) fn transaction(
 	config: Arc<dyn GetConfig>,
 	wal: CommitWal,
 	recovery: Recovery,
-	cdc_store: &CdcStore,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let cdc_head = CdcStorage::max_version(cdc_store)
-		.unwrap_or_else(|err| panic!("cdc head could not be read at boot: {err}"))
-		.unwrap_or(CommitVersion(0));
-	let recovery = Recovery {
-		last: recovery.last.max(cdc_head),
-		..recovery
-	};
 	let multi = MultiTransaction::new(
 		input.0,
 		input.3.clone(),

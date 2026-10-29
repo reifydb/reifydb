@@ -57,8 +57,6 @@ pub enum FloorTerm {
 
 	LeaseMin,
 
-	ConsumerCheckpoint,
-
 	ConsumerPosition,
 
 	RetentionHorizon,
@@ -70,7 +68,6 @@ impl FloorTerm {
 			Self::RowExpiry => "rows younger than their declared ttl",
 			Self::QueryDoneUntil => "an in-flight query reading at its snapshot version",
 			Self::LeaseMin => "a held operator-state lease",
-			Self::ConsumerCheckpoint => "a CDC log consumer that has not yet consumed the version",
 			Self::ConsumerPosition => "a live flow that has not yet consumed the version",
 			Self::RetentionHorizon => "epoch samples still needed to resolve the longest declared ttl",
 		}
@@ -79,23 +76,14 @@ impl FloorTerm {
 	pub fn is_clock_driven(&self) -> bool {
 		match self {
 			Self::RowExpiry => true,
-			Self::QueryDoneUntil
-			| Self::LeaseMin
-			| Self::ConsumerCheckpoint
-			| Self::ConsumerPosition
-			| Self::RetentionHorizon => false,
+			Self::QueryDoneUntil | Self::LeaseMin | Self::ConsumerPosition | Self::RetentionHorizon => {
+				false
+			}
 		}
 	}
 
 	pub fn all() -> &'static [Self] {
-		&[
-			Self::RowExpiry,
-			Self::QueryDoneUntil,
-			Self::LeaseMin,
-			Self::ConsumerCheckpoint,
-			Self::ConsumerPosition,
-			Self::RetentionHorizon,
-		]
+		&[Self::RowExpiry, Self::QueryDoneUntil, Self::LeaseMin, Self::ConsumerPosition, Self::RetentionHorizon]
 	}
 
 	pub fn index(&self) -> usize {
@@ -113,7 +101,6 @@ impl fmt::Display for FloorTerm {
 			Self::RowExpiry => write!(f, "row-expiry"),
 			Self::QueryDoneUntil => write!(f, "query-done-until"),
 			Self::LeaseMin => write!(f, "lease-min"),
-			Self::ConsumerCheckpoint => write!(f, "consumer-checkpoint"),
 			Self::ConsumerPosition => write!(f, "consumer-position"),
 			Self::RetentionHorizon => write!(f, "retention-horizon"),
 		}
@@ -132,8 +119,6 @@ pub enum RetentionClass {
 
 	QueueRetention,
 
-	CdcTruncate,
-
 	EpochLog,
 
 	CommitMerge,
@@ -147,7 +132,6 @@ impl RetentionClass {
 			Self::PersistentFlush,
 			Self::QueueLeaseReap,
 			Self::QueueRetention,
-			Self::CdcTruncate,
 			Self::EpochLog,
 			Self::CommitMerge,
 		]
@@ -160,7 +144,6 @@ impl RetentionClass {
 			Self::PersistentFlush => "persistent-flush",
 			Self::QueueLeaseReap => "queue-lease-reap",
 			Self::QueueRetention => "queue-retention",
-			Self::CdcTruncate => "cdc-truncate",
 			Self::EpochLog => "epoch-log",
 			Self::CommitMerge => "commit-merge",
 		}
@@ -171,7 +154,6 @@ impl RetentionClass {
 			Self::RowTtl
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
-			| Self::CdcTruncate
 			| Self::EpochLog
 			| Self::QueueRetention => true,
 			Self::QueueLeaseReap | Self::CommitMerge => false,
@@ -187,7 +169,6 @@ impl RetentionClass {
 			}
 			Self::QueueLeaseReap | Self::CommitMerge => &[],
 			Self::QueueRetention => &[FloorTerm::RowExpiry],
-			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
 			Self::EpochLog => &[FloorTerm::RetentionHorizon],
 		}
 	}
@@ -240,13 +221,9 @@ mod tests {
 	#[test]
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
-		// watermark with them lets a wedged CDC consumer or a leaked query lease freeze it.
+		// watermark with them lets a wedged reader or a leaked query lease freeze it.
 		{
 			let class = RetentionClass::RowTtl;
-			assert!(
-				!class.constrained_by(FloorTerm::ConsumerCheckpoint),
-				"{class} must not be pinned by a CDC consumer; it reclaims rows no consumer reads"
-			);
 			assert!(
 				!class.constrained_by(FloorTerm::LeaseMin),
 				"{class} must not be pinned by an operator-state lease"
@@ -280,56 +257,18 @@ mod tests {
 		// loudly: a failed acquire triggers a resync, never a silent read of reclaimed history. A
 		// term of its own would let a lagging worker pin buffer history without bound.
 		assert!(
-			!RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::ConsumerCheckpoint),
-			"a CDC log consumer reads cdc.db, not buffer history, and must not pin it"
-		);
-		assert!(
 			RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::LeaseMin),
 			"an in-flight subscription batch protects its reads through its lease, so LeaseMin must stay"
 		);
 	}
 
 	#[test]
-	fn the_flush_floor_tracks_live_positions_while_cdc_truncation_tracks_durable_checkpoints() {
-		// The commit buffer is RAM and empty after a restart, so only a live reader can be harmed by
-		// flushing it. cdc.db is the opposite: a flow resumes from its durable checkpoint, so CDC below
-		// that must survive even with no live reader there. Collapsing the terms stalls buffer drain.
+	fn the_flush_floor_tracks_live_positions() {
+		// The commit buffer is RAM and empty after a restart, so only a live reader can be harmed by flushing
+		// it.
 		assert!(
 			RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerPosition),
 			"flushing the in-memory buffer may only be held back by a reader that is live now"
-		);
-		assert!(
-			!RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerCheckpoint),
-			"a throttled durable checkpoint lags the real read position and must not pin the buffer"
-		);
-
-		assert!(
-			RetentionClass::CdcTruncate.constrained_by(FloorTerm::ConsumerCheckpoint),
-			"cdc.db must retain everything a consumer would replay from after a crash"
-		);
-		assert!(
-			!RetentionClass::CdcTruncate.constrained_by(FloorTerm::ConsumerPosition),
-			"a live position is lost on restart, so it cannot govern durable CDC truncation"
-		);
-	}
-
-	#[test]
-	fn cdc_truncation_is_pinned_only_by_its_consumers() {
-		// CDC must respect the slowest consumer, but inheriting query or lease terms would let an
-		// unrelated stuck query stop cdc.db from ever shrinking.
-		let class = RetentionClass::CdcTruncate;
-
-		assert!(
-			class.constrained_by(FloorTerm::ConsumerCheckpoint),
-			"the slowest CDC log consumer legitimately pins CDC"
-		);
-		assert!(
-			!class.constrained_by(FloorTerm::QueryDoneUntil),
-			"an in-flight query does not read the CDC log"
-		);
-		assert!(
-			!class.constrained_by(FloorTerm::LeaseMin),
-			"an operator-state lease does not read the CDC log"
 		);
 	}
 

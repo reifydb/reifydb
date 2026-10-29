@@ -29,7 +29,7 @@ use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		queue::{CommitQueue, FlowQueueFloor},
-		watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
+		watermark::{FlowCaughtUpWatermark, ReaderWatermark},
 	},
 	durability::Durability,
 	event::operator::OperatorLoadedEvent,
@@ -121,7 +121,7 @@ impl FlowSubsystem {
 				Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 			CommitHandle::new(begin)
 		});
-		let poll_frontier = CdcConsumerWatermark::default();
+		let poll_frontier = ReaderWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(
 			flow_tracker.clone(),

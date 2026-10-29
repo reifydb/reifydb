@@ -25,14 +25,10 @@ pub enum MetricsDomain {
 	StoreSinglePersistent,
 	StoreOperatorRangeKeyspace,
 	StoreOperatorPersistent,
-	StoreCdcCommit,
-	StoreCdcRead,
-	StoreCdcPersistent,
 	Instruments,
 	Epoch,
 	Lifecycle,
 	Storage,
-	Cdc,
 	ProfilerSpans,
 	FlowState,
 }
@@ -242,7 +238,7 @@ fn long_spec(domain: MetricsDomain, namespace: NamespaceId, has_total: bool) -> 
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 28] = [
+	pub const ALL: [MetricsDomain; 24] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -261,14 +257,10 @@ impl MetricsDomain {
 		MetricsDomain::StoreSinglePersistent,
 		MetricsDomain::StoreOperatorRangeKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
-		MetricsDomain::StoreCdcCommit,
-		MetricsDomain::StoreCdcRead,
-		MetricsDomain::StoreCdcPersistent,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
 		MetricsDomain::Lifecycle,
 		MetricsDomain::Storage,
-		MetricsDomain::Cdc,
 		MetricsDomain::ProfilerSpans,
 		MetricsDomain::FlowState,
 	];
@@ -276,7 +268,6 @@ impl MetricsDomain {
 	pub fn push_kind(self) -> PushKind {
 		match self {
 			MetricsDomain::Storage
-			| MetricsDomain::Cdc
 			| MetricsDomain::FlowState
 			| MetricsDomain::ProcProcessIo
 			| MetricsDomain::ProcProcessMemory
@@ -296,9 +287,6 @@ impl MetricsDomain {
 			| MetricsDomain::StoreSinglePersistent
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
-			| MetricsDomain::StoreCdcCommit
-			| MetricsDomain::StoreCdcRead
-			| MetricsDomain::StoreCdcPersistent
 			| MetricsDomain::Instruments
 			| MetricsDomain::Epoch
 			| MetricsDomain::Lifecycle
@@ -315,7 +303,6 @@ impl MetricsDomain {
 			MetricsDomain::Epoch => Some("system::metrics::epoch::snapshots"),
 			MetricsDomain::Lifecycle => Some("system::metrics::lifecycle::snapshots"),
 			MetricsDomain::Storage => Some("system::metrics::storage::snapshots"),
-			MetricsDomain::Cdc => Some("system::metrics::cdc::snapshots"),
 			MetricsDomain::ProfilerSpans => Some("system::metrics::profiler::spans::snapshots"),
 			MetricsDomain::FlowState => Some("system::metrics::flow::state::snapshots"),
 			MetricsDomain::ProcProcessIo
@@ -332,10 +319,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
 			| MetricsDomain::StoreOperatorRangeKeyspace
-			| MetricsDomain::StoreOperatorPersistent
-			| MetricsDomain::StoreCdcCommit
-			| MetricsDomain::StoreCdcRead
-			| MetricsDomain::StoreCdcPersistent => None,
+			| MetricsDomain::StoreOperatorPersistent => None,
 		}
 	}
 
@@ -616,49 +600,7 @@ impl MetricsDomain {
 				],
 				has_total: true,
 			},
-			MetricsDomain::StoreCdcCommit => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_COMMIT,
-				shape: DomainShape::Wide,
-				dimensions: Vec::new(),
-				measures: vec![
-					level("resident_bytes", ValueType::Uint8),
-					level("entries", ValueType::Uint8),
-					counter("blocks_cut", ValueType::Uint8),
-					counter("stalls", ValueType::Uint8),
-				],
-				has_total: true,
-			},
-			MetricsDomain::StoreCdcRead => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_READ,
-				shape: DomainShape::Wide,
-				dimensions: vec![dim("shard", ValueType::Uint2)],
-				measures: vec![
-					level("used", ValueType::Uint8),
-					level("limit", ValueType::Uint8),
-					level("blocks", ValueType::Uint8),
-					counter("hits", ValueType::Uint8),
-					counter("misses", ValueType::Uint8),
-					counter("insertions", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-				],
-				has_total: true,
-			},
-			MetricsDomain::StoreCdcPersistent => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_PERSISTENT,
-				shape: DomainShape::Wide,
-				dimensions: Vec::new(),
-				measures: vec![
-					level("blocks", ValueType::Uint8),
-					level("stored_bytes", ValueType::Uint8),
-					counter("appends", ValueType::Uint8),
-					counter("loads", ValueType::Uint8),
-					counter("drops", ValueType::Uint8),
-				],
-				has_total: true,
-			},
+
 			MetricsDomain::Epoch => DomainSpec {
 				domain: self,
 				namespace: NamespaceId::SYSTEM_METRICS_EPOCH,
@@ -735,23 +677,7 @@ impl MetricsDomain {
 				],
 				has_total: false,
 			},
-			MetricsDomain::Cdc => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_CDC,
-				shape: DomainShape::Wide,
-				dimensions: vec![
-					dim("object_kind", ValueType::Utf8),
-					dim("id", ValueType::Uint8),
-					dim("namespace_id", ValueType::Uint8),
-				],
-				measures: vec![
-					level("key_bytes", ValueType::Uint8),
-					level("value_bytes", ValueType::Uint8),
-					level("total_bytes", ValueType::Uint8),
-					level("count", ValueType::Uint8),
-				],
-				has_total: false,
-			},
+
 			MetricsDomain::ProfilerSpans => DomainSpec {
 				domain: self,
 				namespace: NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,

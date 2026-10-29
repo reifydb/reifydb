@@ -18,17 +18,15 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_cdc::produce::{
-	producer::{CdcProducerEventListener, spawn_cdc_producer},
-	watermark::CdcProducerWatermark,
-};
 use reifydb_core::{
-	actors::cdc::CdcProduceHandle,
-	commit::queue::{CommitQueue, FlowQueueFloor},
+	commit::queue::{CommitPull, CommitQueue, FlowQueueFloor},
 	common::{CommitVersion, TimeSource},
 	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::catalog::{config::ConfigKey, id::NamespaceId},
+	interface::{
+		catalog::{config::ConfigKey, id::NamespaceId},
+		commit::CommitEntry,
+	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
@@ -37,7 +35,7 @@ use reifydb_routine::{function::default_in_process_functions, procedure::default
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
-	actor::system::{ActorSpawner, ActorSystem},
+	actor::system::ActorSystem,
 	context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -48,12 +46,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store_cdc::{
-	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
-	store::CdcStore,
-	tier::read::{CdcReadBufferTier, CdcReadConfig},
-};
+use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
@@ -75,6 +68,7 @@ use reifydb_value::{
 pub struct TestEngine {
 	engine: StandardEngine,
 	mock_clock: MockClock,
+	queue_seed: CommitVersion,
 	_runtime: Runtime,
 	_operator_guard: SqliteTempPathGuard,
 }
@@ -99,7 +93,7 @@ impl Default for TestEngine {
 
 impl TestEngine {
 	pub fn new() -> Self {
-		Self::builder().with_cdc().build()
+		Self::builder().with_commit_queue().build()
 	}
 
 	pub fn builder() -> TestEngineBuilder {
@@ -193,33 +187,45 @@ impl TestEngine {
 		self.mock_clock.clone()
 	}
 
+	pub fn commit_entries(&self) -> Vec<Arc<CommitEntry>> {
+		let released = self.await_released();
+		let queue = self.engine.ioc().resolve::<CommitQueue>().expect("commit_entries needs with_commit_queue");
+		match queue.pull(self.queue_seed, released, ByteSize::from_bytes(u64::MAX)) {
+			CommitPull::Hit {
+				entries,
+				..
+			} => entries,
+			CommitPull::Behind => {
+				panic!("the unadopted flow floor holds every commit since {:?}", self.queue_seed)
+			}
+		}
+	}
+
 	#[cfg(not(reifydb_dst))]
 	#[allow(clippy::disallowed_types)]
-	pub fn await_cdc(&self) -> CommitVersion {
+	pub fn await_released(&self) -> CommitVersion {
 		let target = self.engine.current_version().expect("current version");
-		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
 		for _ in 0..400 {
-			if producer.get() >= target && self.engine.done_until() >= target {
+			if self.engine.commit_released() >= target && self.engine.done_until() >= target {
 				return target;
 			}
 			sleep(StdDuration::from_millis(5));
 		}
 		panic!(
-			"CDC never caught up to {target:?} within 2s: producer={:?}, done_until={:?}",
-			producer.get(),
+			"the commit queue never released {target:?} within 2s: released={:?}, done_until={:?}",
+			self.engine.commit_released(),
 			self.engine.done_until()
 		)
 	}
 
 	#[cfg(reifydb_dst)]
-	pub fn await_cdc(&self) -> CommitVersion {
+	pub fn await_released(&self) -> CommitVersion {
 		let target = self.engine.current_version().expect("current version");
 		self.engine.spawner().system().run_until_idle();
-		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
 		assert!(
-			producer.get() >= target && self.engine.done_until() >= target,
-			"CDC did not reach {target:?} once the actors went idle: producer={:?}, done_until={:?}",
-			producer.get(),
+			self.engine.commit_released() >= target && self.engine.done_until() >= target,
+			"the commit queue did not release {target:?} once the actors went idle: released={:?}, done_until={:?}",
+			self.engine.commit_released(),
 			self.engine.done_until()
 		);
 		target
@@ -252,11 +258,9 @@ impl AsEngine for TestEngine {
 
 #[derive(Default)]
 pub struct TestEngineBuilder {
-	cdc: bool,
+	commit_queue: bool,
 	routines: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator>>,
 	wal: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator>>,
-	#[cfg(not(target_arch = "wasm32"))]
-	sqlite_cdc: Option<SqliteConfig>,
 	github_client_secret: Option<String>,
 }
 
@@ -282,15 +286,8 @@ impl TestEngineBuilder {
 		self
 	}
 
-	pub fn with_cdc(mut self) -> Self {
-		self.cdc = true;
-		self
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	pub fn with_sqlite_cdc(mut self, config: SqliteConfig) -> Self {
-		self.cdc = true;
-		self.sqlite_cdc = Some(config);
+	pub fn with_commit_queue(mut self) -> Self {
+		self.commit_queue = true;
 		self
 	}
 
@@ -339,29 +336,10 @@ impl TestEngineBuilder {
 		ioc = ioc.register(operator_store.clone());
 		ioc = ioc.register(eventbus.clone());
 
-		#[cfg(not(target_arch = "wasm32"))]
-		let cdc_persistent = match self.sqlite_cdc {
-			Some(config) => CdcPersistentConfig::sqlite(config),
-			None => CdcPersistentConfig::memory(),
-		};
-		#[cfg(target_arch = "wasm32")]
-		let cdc_persistent = CdcPersistentConfig::memory();
-		let cdc_store = CdcStore::new(CdcStoreConfig {
-			commit: CdcCommitConfig::default(),
-			persistent: cdc_persistent,
-			read: CdcReadBufferTier::new(CdcReadConfig::default()),
-			spawner: spawner.clone(),
-			clock: clock.clone(),
-		});
-		ioc = ioc.register(cdc_store.clone());
-
-		let cdc_producer_watermark = CdcProducerWatermark::new();
-		ioc = ioc.register(cdc_producer_watermark.clone());
-
 		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus)
 			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
-		let ioc_for_cdc = ioc.clone();
+		let ioc_for_queue = ioc.clone();
 
 		let engine = StandardEngine::new(
 			multi,
@@ -394,31 +372,25 @@ impl TestEngineBuilder {
 			},
 		);
 
-		if self.cdc {
+		let queue_seed = engine.multi().current_version().unwrap();
+		if self.commit_queue {
 			let commit_queue = CommitQueue::new(
 				ByteSize::from_bytes(
 					engine.multi().config().get_config_uint8(ConfigKey::CommitQueueBytes),
 				),
 				wal_enabled,
-				engine.multi().current_version().unwrap(),
+				queue_seed,
 			);
-			ioc_for_cdc.register_service(FlowQueueFloor(commit_queue.floor("flow")));
-			ioc_for_cdc.register_service(commit_queue.clone());
-			ioc_for_cdc.register_service(flow_wal(engine.multi().wal()));
-			register_cdc_producer(
-				&spawner,
-				clock.clone(),
-				cdc_store,
-				&eventbus,
-				ioc_for_cdc,
-				cdc_producer_watermark,
-			);
+			ioc_for_queue.register_service(FlowQueueFloor(commit_queue.floor("flow")));
+			ioc_for_queue.register_service(commit_queue.clone());
+			ioc_for_queue.register_service(flow_wal(engine.multi().wal()));
 			eventbus.register::<PostCommitEvent, _>(commit_queue);
 		}
 
 		TestEngine {
 			engine,
 			mock_clock,
+			queue_seed,
 			_runtime: runtime,
 			_operator_guard: operator_guard,
 		}
@@ -441,23 +413,6 @@ fn make_test_runtime(mock_clock: &MockClock) -> Runtime {
 		async_threads: 2,
 	};
 	Runtime::from_config(config, pools)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn register_cdc_producer(
-	spawner: &ActorSpawner,
-	clock: Clock,
-	cdc_store: CdcStore,
-	eventbus: &EventBus,
-	ioc_for_cdc: IocContainer,
-	watermark: CdcProducerWatermark,
-) {
-	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark);
-	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
-		cdc_handle.actor_ref().clone(),
-		clock.clone(),
-	));
-	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 
 pub fn create_test_admin_transaction() -> AdminTransaction {

@@ -54,7 +54,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 	// reaching `target` is the only observable proof that the idle flow advanced.
 	let deadline = Clock::Real.instant() + Duration::from_seconds_const(5);
 	loop {
-		let caught_up = db.watermarks().cdc().flow_consumer();
+		let caught_up = db.watermarks().reader().flow_caught_up();
 		if caught_up >= target {
 			break;
 		}
@@ -118,7 +118,7 @@ fn every_later_unrelated_write_advances_the_idle_flow_again() {
 
 		let deadline = Clock::Real.instant() + Duration::from_seconds_const(5);
 		loop {
-			let caught_up = db.watermarks().cdc().flow_consumer();
+			let caught_up = db.watermarks().reader().flow_caught_up();
 			if caught_up >= target {
 				break;
 			}

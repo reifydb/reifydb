@@ -37,8 +37,7 @@ pub fn is_commit_excluded(kind: KeyTag) -> bool {
 	matches!(
 		kind,
 		KeyTag::OperatorState
-			| KeyTag::CdcConsumer | KeyTag::Metric
-			| KeyTag::SystemSequence
+			| KeyTag::Metric | KeyTag::SystemSequence
 			| KeyTag::RowSequence | KeyTag::ColumnSequence
 			| KeyTag::SystemVersion
 			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
@@ -172,7 +171,6 @@ mod exclusion_tests {
 			KeyTag::Index => {}
 			KeyTag::IndexEntry => {}
 			KeyTag::ColumnSequence => {}
-			KeyTag::CdcConsumer => {}
 			KeyTag::View => {}
 			KeyTag::NamespaceView => {}
 			KeyTag::PrimaryKey => {}
@@ -272,11 +270,6 @@ mod exclusion_tests {
 	#[test]
 	fn test_exclude_operator_state() {
 		assert!(is_commit_excluded(KeyTag::OperatorState));
-	}
-
-	#[test]
-	fn test_exclude_cdc_consumer() {
-		assert!(is_commit_excluded(KeyTag::CdcConsumer));
 	}
 
 	#[test]

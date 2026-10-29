@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
 		class::RetentionClass,
@@ -20,7 +19,6 @@ use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	version_epoch::{BUCKET_WIDTH, EpochRetention, EpochSpan},
 };
-use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
@@ -28,7 +26,6 @@ use tracing::{info, warn};
 
 use crate::{
 	actor::LifecycleActor,
-	cdc::ttl::task::CdcTtlTask,
 	gc::{
 		epoch::durable::{EpochLogTask, hydrate},
 		historical::actor::HistoricalGcTask,
@@ -41,7 +38,6 @@ use crate::{
 };
 
 const NO_FLUSH_ENGINE: &str = "store has no flush engine";
-const NO_CDC_STORE: &str = "no cdc store registered";
 
 pub struct LifecycleSubsystemFactory;
 
@@ -161,25 +157,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			HistoricalGcTask::new(store, plane.clone(), engine.clock().clone(), config),
 			plane.clone(),
 		)));
-
-		if let Some(cdc_store) = ioc.try_resolve::<CdcStore>() {
-			let event_bus = ioc.resolve::<EventBus>()?;
-			registry.register(Box::new(Measured::new(
-				Gated::new(
-					CdcTtlTask::new(
-						cdc_store,
-						engine.clone(),
-						event_bus,
-						engine.clock().clone(),
-						Some(engine.checkpoint_floor()),
-					),
-					gate.clone(),
-				),
-				plane.clone(),
-			)));
-		} else {
-			coverage.absent(RetentionClass::CdcTruncate, NO_CDC_STORE);
-		}
 
 		let tasks = registry.take();
 		let task_names: Vec<&'static str> = tasks.iter().map(|task| task.name()).collect();

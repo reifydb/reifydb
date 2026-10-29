@@ -36,7 +36,6 @@ pub use health::HealthMonitor;
 pub use reifydb_allocator as allocator;
 pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
-pub use reifydb_cdc as cdc;
 pub use reifydb_codec as codec;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
@@ -85,7 +84,6 @@ pub use reifydb_runtime::{
 pub use reifydb_sdk as sdk;
 pub use reifydb_sqlite as sqlite;
 pub use reifydb_sqlite::SqliteConfig;
-pub use reifydb_store_cdc as cdc_storage;
 pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_single as single_storage;

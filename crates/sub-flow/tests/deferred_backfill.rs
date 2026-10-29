@@ -3,7 +3,6 @@
 
 use std::{
 	collections::BTreeSet,
-	ops::Bound,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -21,7 +20,6 @@ use reifydb::{
 	},
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
-use reifydb_cdc::lift::changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
@@ -37,7 +35,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	value::column::factory::rename,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, lift::entry_changed_objects};
 use reifydb_flow::backfill::testing::{InstalledScanHooks, Outcome, ScanHooks};
 use reifydb_runtime::{
 	RuntimeConfig,
@@ -54,7 +52,6 @@ use reifydb_sdk::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 };
-use reifydb_store_cdc::storage::{CdcStorage, Cutoff};
 use reifydb_value::{
 	config::ExtensionParams,
 	error::{Diagnostic, Error},
@@ -100,7 +97,7 @@ fn memory() -> TestDb {
 }
 
 fn memory_with(batch: u16) -> TestDb {
-	let db = TestDb::from(
+	let mut db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(runtime())
 			.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(batch))
@@ -108,6 +105,7 @@ fn memory_with(batch: u16) -> TestDb {
 			.build()
 			.expect("build memory db with flow"),
 	);
+	db.hold_commits();
 	tables(&db);
 	db
 }
@@ -206,10 +204,10 @@ fn settle(db: &TestDb) {
 }
 
 fn stop_without_flow(db: &mut TestDb) {
-	// A stop with no flow never drains the cdc producer, so an unproduced write is lost to the next life.
+	// A stop right after a write must not race that write's own release into the commit queue.
 	let head = db.engine().current_version().expect("the current version after the last write");
-	poll_until(|| (db.engine().cdc_producer_watermark() >= head).then_some(()), TIMEOUT)
-		.expect("the cdc of the last write was never written before the stop");
+	poll_until(|| (db.engine().commit_released() >= head).then_some(()), TIMEOUT)
+		.expect("the last write was never released before the stop");
 	db.stop();
 }
 
@@ -319,20 +317,11 @@ fn view_object(db: &TestDb, name: &str) -> ObjectId {
 }
 
 fn stamps(db: &TestDb, object: ObjectId) -> Vec<ChangeVersion> {
-	// Without a retry, a commit racing the read fails the truncation check on a read that was complete.
-	let batch = poll_until(
-		|| {
-			let batch = db
-				.engine()
-				.cdc_store()
-				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
-				.expect("a full cdc read");
-			(!batch.has_more).then_some(batch)
-		},
-		TIMEOUT,
-	)
-	.expect("a truncated cdc read would hide commits");
-	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version).collect()
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&object))
+		.map(|entry| entry.version)
+		.collect()
 }
 
 fn operators(db: &TestDb, flow: FlowId) -> Vec<OperatorId> {
@@ -363,23 +352,6 @@ fn refused() -> Error {
 		message: "refused deferred backfill scan".to_string(),
 		..Default::default()
 	}))
-}
-
-fn sealed(db: &TestDb) -> CommitVersion {
-	let cdc = db.engine().cdc_store();
-	let head = db.engine().current_version().expect("the current version");
-	let produced = await_value(true, TIMEOUT, || {
-		cdc.max_version().expect("the cdc max version").is_some_and(|max| max >= head)
-	});
-	assert!(produced, "the cdc must hold every commit up to {head:?} before it is sealed");
-	assert!(cdc.flush_pending(), "the cdc history must be sealed before it can be truncated");
-	head
-}
-
-fn evict_before(db: &TestDb, cutoff: CommitVersion) -> CommitVersion {
-	let cdc = db.engine().cdc_store();
-	cdc.drop_before(Cutoff::Version(cutoff), usize::MAX).expect("drop the cdc history");
-	cdc.truncated_before().expect("the cdc truncation floor")
 }
 
 struct Recorder {
@@ -1312,7 +1284,7 @@ fn a_late_view_reads_a_producer_past_v_when_the_producer_commits_a_write_at_or_b
 		open: Mutex::new(opened),
 	});
 	let function = gate.clone();
-	let db = TestDb::from(
+	let mut db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(runtime())
 			.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(4))
@@ -1321,6 +1293,7 @@ fn a_late_view_reads_a_producer_past_v_when_the_producer_commits_a_write_at_or_b
 			.build()
 			.expect("build memory db with flow and the gate function"),
 	);
+	db.hold_commits();
 	tables(&db);
 	let reader = "{ id: int4, v: int4 } AS { FROM bf::p | filter { v > 20 } | map { id, v } }";
 	db.admin(&format!(
@@ -1384,7 +1357,7 @@ fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_keeps_v_and_equa
 		released: Mutex::new(Vec::new()),
 		release: Mutex::new(parked),
 	});
-	let db = TestDb::from(
+	let mut db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(runtime())
 			.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(4))
@@ -1393,6 +1366,7 @@ fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_keeps_v_and_equa
 			.build()
 			.expect("build memory db with flow and the scan hooks"),
 	);
+	db.hold_commits();
 	tables(&db);
 	db.admin("CREATE TABLE bf::level { pool: utf8, px: int8 }");
 	db.admin("CREATE TABLE bf::snap { pool: utf8 }");
@@ -1470,58 +1444,6 @@ fn follows_the_source(db: &TestDb, view: &str, source: &str, cols: Cols, step: &
 	let want = rows(db, source, cols);
 	let got = await_value(want.clone(), TIMEOUT, || rows(db, &format!("FROM {view}"), cols));
 	assert_eq!(got, want, "{view} diverged from {source} {step}");
-}
-
-fn full_after_eviction(db: &TestDb, floor: CommitVersion, first_kept: CommitVersion) {
-	let full = sorted(&[
-		"g=1,id=1,sym=a,v=60",
-		"g=2,id=2,sym=b,v=80",
-		"g=2,id=4,sym=d,v=30",
-		"g=3,id=5,sym=e,v=70",
-		"g=3,id=7,sym=g,v=25",
-	]);
-	assert_eq!(rows(db, "FROM bf::src", Cols::User), full, "the eviction must not touch the table itself");
-	assert!(floor <= first_kept, "the eviction went further than asked: floor {floor:?}, kept from {first_kept:?}");
-	db.admin(&format!("CREATE DEFERRED VIEW bf::late {{ {COLUMNS} }} AS {{ FROM bf::src }}"));
-	await_rows(db, "FROM bf::late", Cols::User, &full, "right after a create over evicted history");
-	follows_the_source(
-		db,
-		"bf::late",
-		"FROM bf::src",
-		Cols::WithRownum,
-		"right after a create over evicted history",
-	);
-	for rql in later("bf::src") {
-		db.command(&rql);
-		follows_the_source(db, "bf::late", "FROM bf::src", Cols::WithRownum, &format!("after: {rql}"));
-	}
-}
-
-#[test]
-fn a_view_created_after_every_cdc_entry_of_its_rows_was_evicted_is_full() {
-	// Replaying CDC to build the view silently drops every row whose history is gone.
-	let db = memory();
-	run(&db, &history("bf::src"));
-	let head = sealed(&db);
-	let floor = evict_before(&db, CommitVersion(head.0 + 1));
-	assert!(floor > head, "precondition: every history commit must be evicted, floor {floor:?}, head {head:?}");
-	full_after_eviction(&db, floor, CommitVersion(head.0 + 1));
-}
-
-#[test]
-fn a_view_created_after_part_of_its_cdc_history_was_evicted_is_full() {
-	// A replay of only the retained tail keeps later updates but loses the rows they update.
-	let db = memory();
-	let statements = history("bf::src");
-	run(&db, &statements[..3]);
-	let evicted = sealed(&db);
-	run(&db, &statements[3..4]);
-	let first_kept = db.engine().current_version().expect("the current version");
-	run(&db, &statements[4..]);
-	sealed(&db);
-	let floor = evict_before(&db, CommitVersion(evicted.0 + 1));
-	assert!(floor > evicted, "precondition: the first commits must be evicted, floor {floor:?}");
-	full_after_eviction(&db, floor, first_kept);
 }
 
 fn rolling(name: &str, table: &str) -> String {
@@ -2121,7 +2043,7 @@ fn a_source_write_committed_with_the_create_is_counted_exactly_once() {
 		},
 		TIMEOUT,
 	)
-	.expect("the create commit never reached the cdc store");
+	.expect("the create commit never reached the commit queue");
 	assert_eq!(created.len(), 1, "precondition: the writes and the create must share one commit: {created:?}");
 	let seen = await_value(1, TIMEOUT, || probe.seen.lock().len());
 	assert_eq!(seen, 1, "precondition: the backfill must open its one source exactly once");
@@ -2142,8 +2064,9 @@ fn floor(db: &TestDb) -> Option<CommitVersion> {
 }
 
 #[test]
-fn a_backfill_holds_the_cdc_floor_at_v_until_its_checkpoint_commits() {
-	// With no floor at V between the snapshot and the checkpoint, cdc retention can reap the changes after V.
+fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
+	// With no floor at V between the snapshot and the checkpoint, commit log retention can reap the changes after
+	// V.
 	let db = memory();
 	run(&db, &bulk("bf::src"));
 	let floors = Arc::new(Floors {
@@ -2182,7 +2105,7 @@ fn a_backfill_holds_the_cdc_floor_at_v_until_its_checkpoint_commits() {
 
 	let late = view_object(&db, "late");
 	let first = poll_until(|| stamps(&db, late).first().copied(), TIMEOUT)
-		.expect("the backfill commit never reached the cdc");
+		.expect("the backfill commit never reached the commit queue");
 	let v = CommitVersion(first.source.0);
 	assert!(committed >= v, "precondition: the checkpoint {committed:?} must be at or past V {v:?}");
 	let seen = floors.seen.lock().clone();

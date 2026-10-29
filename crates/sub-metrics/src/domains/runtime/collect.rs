@@ -8,7 +8,6 @@ use reifydb_core::metrics::{registry::MetricsRegistry, sample::MetricsSample};
 use reifydb_engine::engine::StandardEngine;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::memory::global_memory_used;
-use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::byte_size::ByteSize;
 
@@ -35,7 +34,6 @@ pub fn collect_memory(c: &Collectors) -> Vec<MetricsSample> {
 	push_subsystem_samples(c, &mut out);
 	push_operator_rollup(c, &mut out);
 	push_operator_resident(c, &mut out);
-	push_cdc_resident(c, &mut out);
 	push_sqlite_samples(&mut out);
 	let named_heap = out.iter().filter_map(|sample| sample.reading.heap_bytes()).sum::<u64>();
 	push_derived_samples(&mut out, named_heap, &proc_mem, &jemalloc, &alloc);
@@ -121,36 +119,6 @@ fn push_operator_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
 }
 
 #[inline]
-fn push_cdc_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
-	let Some(store) = c.engine.ioc().try_resolve::<CdcStore>() else {
-		return;
-	};
-
-	let commit = store.commit_metrics();
-	out.push(MetricsSample::heap("cdc_commit", "resident_bytes", commit.resident_bytes));
-	out.push(MetricsSample::count("cdc_commit", "entries", commit.entries.as_u64()));
-	out.push(MetricsSample::count("cdc_commit", "blocks_cut", commit.blocks_cut));
-	out.push(MetricsSample::count("cdc_commit", "stalls", commit.stalls));
-
-	let shards = store.read_buffer_shard_metrics();
-	let used = shards.iter().map(|s| s.used.as_bytes()).sum::<u64>();
-	let limit = shards.iter().map(|s| s.limit.as_bytes()).sum::<u64>();
-	let blocks = shards.iter().map(|s| s.blocks as u64).sum::<u64>();
-	out.push(MetricsSample::heap("cdc_read", "resident_bytes", ByteSize::from_bytes(used)));
-	out.push(MetricsSample::bytes("cdc_read", "limit_bytes", ByteSize::from_bytes(limit)));
-	out.push(MetricsSample::count("cdc_read", "blocks", blocks));
-
-	let persistent = store.persistent_metrics();
-	if store.persistent_is_resident() {
-		out.push(MetricsSample::heap("cdc_persistent", "stored_bytes", persistent.stored_bytes));
-	} else {
-		out.push(MetricsSample::bytes("cdc_persistent", "stored_bytes", persistent.stored_bytes));
-	}
-	out.push(MetricsSample::count("cdc_persistent", "blocks", persistent.blocks));
-	out.push(MetricsSample::count("cdc_persistent", "drops", persistent.drops));
-}
-
-#[inline]
 fn push_derived_samples(
 	out: &mut Vec<MetricsSample>,
 	named_heap: u64,
@@ -212,7 +180,6 @@ fn collect_dictionary(c: &Collectors, out: &mut Vec<MetricsSample>) {
 pub fn collect_watermarks(c: &Collectors) -> Vec<MetricsSample> {
 	let mut out = Vec::with_capacity(9);
 	collect_mvcc(c, &mut out);
-	collect_cdc(c, &mut out);
 	out
 }
 
@@ -231,18 +198,6 @@ fn collect_mvcc(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.push(MetricsSample::version("mvcc", "watermark_lag", last.saturating_sub(query)));
 	out.push(MetricsSample::version("mvcc", "query_command_skew", commit.saturating_sub(query)));
 	out.push(MetricsSample::count("mvcc", "oracle_window_count", c.engine.oracle_window_count() as u64));
-}
-
-fn collect_cdc(c: &Collectors, out: &mut Vec<MetricsSample>) {
-	let producer = c.engine.cdc_producer_watermark().0;
-	let consumer = c.engine.cdc_consumer_watermark().0;
-	out.push(MetricsSample::version("cdc", "cdc_producer_watermark", producer));
-	out.push(MetricsSample::version("cdc", "cdc_consumer_watermark", consumer));
-	out.push(MetricsSample::version("cdc", "cdc_lag", producer.saturating_sub(consumer)));
-	if let Some(store) = c.engine.ioc().try_resolve::<CdcStore>() {
-		let truncated = store.truncated_before().expect("cdc truncation floor");
-		out.push(MetricsSample::version("cdc", "cdc_truncated_before", truncated.0));
-	}
 }
 
 struct AllocMem {

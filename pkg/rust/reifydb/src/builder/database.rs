@@ -15,18 +15,10 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	system::SystemCatalog,
 };
-use reifydb_cdc::{
-	CdcVersion,
-	produce::{
-		producer::{CdcProducerEventListener, spawn_cdc_producer},
-		watermark::CdcProducerWatermark,
-	},
-};
 #[cfg(feature = "sub_flow")]
 use reifydb_core::commit::queue::{FlowQueueFloor, SubscriptionQueueFloor};
 use reifydb_core::{
 	CoreVersion,
-	actors::cdc::CdcProduceHandle,
 	commit::queue::CommitQueue,
 	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -56,7 +48,6 @@ use reifydb_routine::{function::default_in_process_functions, procedure::default
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
-use reifydb_store_cdc::{CdcStoreVersion, store::CdcStore};
 #[cfg(feature = "column")]
 use reifydb_store_column::store::ColumnStore;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
@@ -122,7 +113,6 @@ pub struct DatabaseBuilder {
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
 	operator_store: Option<OperatorStore>,
-	cdc_store: Option<CdcStore>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
@@ -179,7 +169,6 @@ impl DatabaseBuilder {
 			multi_store: None,
 			single_store: None,
 			operator_store: None,
-			cdc_store: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
@@ -233,17 +222,10 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_stores(
-		mut self,
-		multi: MultiStore,
-		single: SingleStore,
-		operator: OperatorStore,
-		cdc: CdcStore,
-	) -> Self {
+	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore, operator: OperatorStore) -> Self {
 		self.multi_store = Some(multi);
 		self.single_store = Some(single);
 		self.operator_store = Some(operator);
-		self.cdc_store = Some(cdc);
 		self
 	}
 
@@ -447,20 +429,7 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(tokio_handle.clone());
 		}
 
-		let cdc_store = self.cdc_store.clone().expect("CdcStore must be set via with_stores()");
-		self.ioc = self.ioc.register(cdc_store.clone());
-
-		// Shared CDC producer commit watermark. Producer advances it after
-		// processing each PostCommitEvent; the compactor caps its eligible
-		// range by it so no in-flight write can land at a version already
-		// covered by a packed block. Registered in IoC so consumers can
-		// observe "producer caught up to V" - the watermark advances even
-		// for commits that produce no CDC row (e.g. ConfigStorage-only
-		// commits filtered out by `should_exclude_from_cdc`).
-		let cdc_producer_watermark = CdcProducerWatermark::new();
 		let resumed_at = multi.current_version()?;
-		cdc_producer_watermark.seed(resumed_at);
-		self.ioc = self.ioc.register(cdc_producer_watermark.clone());
 
 		let commit_queue = CommitQueue::new(
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
@@ -554,8 +523,6 @@ impl DatabaseBuilder {
 			Arc::new(registry)
 		};
 
-		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
-		// commits produce CDC entries (PostCommitEvent is captured).
 		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
@@ -589,17 +556,8 @@ impl DatabaseBuilder {
 		);
 		self.ioc = self.ioc.register(auth_service.clone());
 
-		// Spawn CDC producer and register PostCommitEvent listener BEFORE
-		// bootstrap so that bootstrap commits generate CDC entries.
-		let cdc_handle = spawn_cdc_producer(&spawner, cdc_store, eventbus.clone(), cdc_producer_watermark);
-		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
-			cdc_handle.actor_ref().clone(),
-			clock.clone(),
-		));
-		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 		eventbus.register::<PostCommitEvent, _>(commit_queue);
 
-		// Bootstrap AFTER CDC producer is active so commits are captured.
 		bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
 		apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
 
@@ -634,11 +592,9 @@ impl DatabaseBuilder {
 			MultiStoreVersion.version(),
 			SingleStoreVersion.version(),
 			OperatorStoreVersion.version(),
-			CdcStoreVersion.version(),
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
-			CdcVersion.version(),
 		];
 
 		// IMPORTANT: order matters for shutdown - subsystems are stopped in REVERSE order.

@@ -28,7 +28,6 @@ arrow-ord = { workspace = true }
 arrow-row = { workspace = true }
 arrow-schema = { workspace = true }
 reifydb-auth = { workspace = true }
-reifydb-cdc = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
@@ -40,7 +39,6 @@ reifydb-flow-sync = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-store-cdc = { workspace = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }

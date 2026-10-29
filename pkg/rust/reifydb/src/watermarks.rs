@@ -13,7 +13,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::Database;
@@ -35,8 +34,8 @@ impl<'a> Watermarks<'a> {
 		}
 	}
 
-	pub fn cdc(&self) -> CdcWatermarks<'a> {
-		CdcWatermarks {
+	pub fn reader(&self) -> ReaderWatermarks<'a> {
+		ReaderWatermarks {
 			db: self.db,
 			clock: Clock::Real,
 		}
@@ -63,16 +62,16 @@ impl<'a> Watermarks<'a> {
 	/// The only fallible read is `tx().current()`.
 	pub fn snapshot(&self) -> Result<WatermarkSnapshot> {
 		let tx = self.tx();
-		let cdc = self.cdc();
+		let reader = self.reader();
 		Ok(WatermarkSnapshot {
 			tx: TxSnapshot {
 				current: tx.current()?,
 				done_until: tx.done_until(),
 			},
-			cdc: CdcSnapshot {
-				producer: cdc.producer(),
-				max: cdc.max(),
-				consumer: cdc.consumer(),
+			reader: ReaderSnapshot {
+				released: reader.released(),
+				subscription: reader.subscription(),
+				flow_caught_up: reader.flow_caught_up(),
 			},
 			flow: self.flow().map(|f| f.all()),
 		})
@@ -84,47 +83,40 @@ pub struct TxWatermarks<'a> {
 }
 
 impl TxWatermarks<'_> {
-	/// Highest committed version on the engine. Advances on every successful
-	/// commit, regardless of CDC.
+	/// Highest committed version on the engine. Advances on every successful commit.
 	pub fn current(&self) -> Result<CommitVersion> {
 		self.db.engine().current_version()
 	}
 
 	/// Largest version V such that every commit `<= V` has finished. Safe
-	/// boundary for CDC consumers and snapshot reads.
+	/// boundary for commit readers and snapshot reads.
 	pub fn done_until(&self) -> CommitVersion {
 		self.db.engine().done_until()
 	}
 }
 
-pub struct CdcWatermarks<'a> {
+pub struct ReaderWatermarks<'a> {
 	db: &'a Database,
 	clock: Clock,
 }
 
-impl CdcWatermarks<'_> {
-	/// Highest commit version processed by the CDC producer. Advances even for
-	/// commits whose deltas are entirely filtered out by `should_exclude_from_cdc`,
-	/// so it is the correct frontier for "producer is caught up to the engine".
-	pub fn producer(&self) -> CommitVersion {
-		self.db.engine().cdc_producer_watermark()
+impl ReaderWatermarks<'_> {
+	/// Highest commit version the commit queue has released in order. Advances even for commits
+	/// whose deltas are all excluded by `is_commit_excluded`, so it is the frontier every reader
+	/// is measured against.
+	pub fn released(&self) -> CommitVersion {
+		self.db.engine().commit_released()
 	}
 
-	/// Largest version that has a row in the CDC store. Permanently lags by the commits whose
-	/// deltas were entirely excluded from CDC (e.g. `ConfigStorage`-only ones); use `producer()`
-	/// to ask whether the producer is caught up.
-	pub fn max(&self) -> CommitVersion {
-		self.db.engine().cdc_store().max_version().expect("cdc max version").unwrap_or(CommitVersion(0))
-	}
-
-	pub fn consumer(&self) -> CommitVersion {
-		self.db.engine().cdc_consumer_watermark()
+	/// How far the subscription reader has read the commit queue.
+	pub fn subscription(&self) -> CommitVersion {
+		self.db.engine().reader_watermark()
 	}
 
 	/// The version up to which every deferred flow has materialized its output, for chains of any
 	/// depth: a hop's cursor passing a version is not enough, every flow must also have consumed
 	/// the output any flow produced from it. `0` when no flow subsystem is running.
-	pub fn flow_consumer(&self) -> CommitVersion {
+	pub fn flow_caught_up(&self) -> CommitVersion {
 		self.db.engine()
 			.ioc()
 			.try_resolve::<FlowCaughtUpWatermark>()
@@ -132,44 +124,44 @@ impl CdcWatermarks<'_> {
 			.unwrap_or(CommitVersion(0))
 	}
 
-	/// Waits for the CDC consumer to reach `version`, returning whether it got there.
+	/// Waits for the subscription reader to reach `version`, returning whether it got there.
 	///
 	/// `timeout` is wall-clock, deliberately not the database clock: a caller that builds with
 	/// `RuntimeConfig::seeded(..)` gets a frozen `MockClock`, and a deadline derived from it can
 	/// never be reached, turning a watermark that never arrives into a permanent hang instead of
 	/// a bounded `false`.
-	pub fn wait_for_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
-		if self.consumer() >= version {
+	pub fn wait_for_subscription(&self, version: CommitVersion, timeout: Duration) -> bool {
+		if self.subscription() >= version {
 			return true;
 		}
 		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
-			if self.consumer() >= version {
+			if self.subscription() >= version {
 				return true;
 			}
 			if self.clock.instant() >= deadline {
-				return self.consumer() >= version;
+				return self.subscription() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
 	}
 
 	/// Waits for every deferred flow to have materialized output covering `version`, returning
-	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_consumer`].
-	pub fn wait_for_flow_consumer(&self, version: CommitVersion, timeout: Duration) -> Result<bool> {
-		if self.flow_consumer() >= version {
+	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_subscription`].
+	pub fn wait_for_flow_caught_up(&self, version: CommitVersion, timeout: Duration) -> Result<bool> {
+		if self.flow_caught_up() >= version {
 			return Ok(true);
 		}
 		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
-			if self.flow_consumer() >= version {
+			if self.flow_caught_up() >= version {
 				return Ok(true);
 			}
 			if let Some(watermark) = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>() {
 				watermark.ensure_healthy()?;
 			}
 			if self.clock.instant() >= deadline {
-				return Ok(self.flow_consumer() >= version);
+				return Ok(self.flow_caught_up() >= version);
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
@@ -206,7 +198,7 @@ impl SubscriptionWatermarks<'_> {
 #[derive(Debug, Clone)]
 pub struct WatermarkSnapshot {
 	pub tx: TxSnapshot,
-	pub cdc: CdcSnapshot,
+	pub reader: ReaderSnapshot,
 	pub flow: Option<Vec<FlowWatermarkRow>>,
 }
 
@@ -217,8 +209,8 @@ pub struct TxSnapshot {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CdcSnapshot {
-	pub producer: CommitVersion,
-	pub max: CommitVersion,
-	pub consumer: CommitVersion,
+pub struct ReaderSnapshot {
+	pub released: CommitVersion,
+	pub subscription: CommitVersion,
+	pub flow_caught_up: CommitVersion,
 }

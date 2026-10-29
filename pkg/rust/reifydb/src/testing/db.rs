@@ -7,9 +7,15 @@ use std::{
 	ops::{Deref, DerefMut},
 	path::{Path, PathBuf},
 	process,
+	sync::Arc,
 	thread::sleep,
 };
 
+use reifydb_core::{
+	commit::queue::{CommitPull, CommitQueue, CommitQueueFloor},
+	common::CommitVersion,
+	interface::commit::{CommitEntry, FlowWal},
+};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	RuntimeConfig,
@@ -18,13 +24,18 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_test_harness::engine::AsEngine;
-use reifydb_value::value::{datetime::DateTime, duration::Duration as ValueDuration};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration as ValueDuration},
+};
+use reifydb_wal::lsn::Lsn;
 
 use crate::{Database, Frame, Result, SqliteConfig, embedded};
 
 pub struct TestDb {
 	db: Database,
 	_guard: Option<SqliteTempPathGuard>,
+	held: Option<(CommitQueueFloor, CommitVersion)>,
 }
 
 impl TestDb {
@@ -34,6 +45,44 @@ impl TestDb {
 
 	pub fn memory() -> Self {
 		Self::builder().memory()
+	}
+
+	pub fn hold_commits(&mut self) {
+		let queue =
+			self.db.engine()
+				.ioc()
+				.resolve::<CommitQueue>()
+				.expect("the builder registers the commit queue");
+		let start = queue.released_through();
+		self.held = Some((queue.floor("test-history"), start));
+	}
+
+	pub fn commit_history(&self) -> Vec<Arc<CommitEntry>> {
+		let queue =
+			self.db.engine()
+				.ioc()
+				.resolve::<CommitQueue>()
+				.expect("the builder registers the commit queue");
+		let released = queue.released_through();
+		let Some((_, start)) = self.held.as_ref() else {
+			let wal =
+				self.db.engine()
+					.ioc()
+					.resolve::<FlowWal>()
+					.expect("the builder registers the flow wal");
+			return wal
+				.log
+				.read((CommitVersion(0), Lsn::new(0)), released, ByteSize::from_bytes(u64::MAX))
+				.expect("a database without hold_commits reads its history from the commit log")
+				.entries;
+		};
+		match queue.pull(*start, released, ByteSize::from_bytes(u64::MAX)) {
+			CommitPull::Hit {
+				entries,
+				..
+			} => entries,
+			CommitPull::Behind => panic!("the test-history floor holds every commit after {start:?}"),
+		}
 	}
 
 	pub fn mock_clock(&self) -> &MockClock {
@@ -56,6 +105,7 @@ impl TestDb {
 		Self {
 			db,
 			_guard: guard,
+			held: None,
 		}
 	}
 
@@ -116,8 +166,8 @@ impl TestDb {
 		let watermarks = self.db.watermarks();
 		let target = watermarks.tx().current().expect("current commit version");
 		watermarks
-			.cdc()
-			.wait_for_flow_consumer(target, timeout.into())
+			.reader()
+			.wait_for_flow_caught_up(target, timeout.into())
 			.unwrap_or_else(|e| panic!("awaiting deferred flows failed: {e}"))
 	}
 

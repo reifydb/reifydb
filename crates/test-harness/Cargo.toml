@@ -29,11 +29,9 @@ reifydb-sdk = { workspace = true, optional = true }
 reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-flow-async = { workspace = true, optional = true, features = ["runtime"] }
-reifydb-cdc = { workspace = true, optional = true }
 reifydb-extension = { workspace = true, optional = true }
 reifydb-routine = { workspace = true, optional = true }
 reifydb-routine-abi = { workspace = true, optional = true }
-reifydb-store-cdc = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true, optional = true }
 reifydb-store-operator = { workspace = true, optional = true }
 reifydb-store-single = { workspace = true, optional = true }
@@ -45,14 +43,12 @@ engine = [
     "dep:reifydb-auth",
     "dep:reifydb-engine",
     "dep:reifydb-catalog",
-    "dep:reifydb-cdc",
     "dep:reifydb-core",
     "dep:reifydb-extension",
     "dep:reifydb-routine",
     "dep:reifydb-routine-abi",
     "dep:reifydb-runtime",
     "dep:reifydb-sqlite",
-    "dep:reifydb-store-cdc",
     "dep:reifydb-store-multi",
     "dep:reifydb-store-operator",
     "dep:reifydb-store-single",

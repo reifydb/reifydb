@@ -7,7 +7,6 @@ use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
 
 pub mod authentication;
 pub mod bindings;
-pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
 pub mod configs;
@@ -59,7 +58,6 @@ pub mod windowed_view_groups;
 
 use authentication::{credentials::authentication_credentials, methods::authentication_methods};
 use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
-use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
 use configs::configs;
@@ -113,15 +111,6 @@ use crate::system::{queue_partitions::queue_partitions, queues::queues, ringbuff
 
 pub mod ids {
 	pub mod columns {
-		pub mod cdc_consumers {
-			use reifydb_core::interface::catalog::id::ColumnId;
-
-			pub const CONSUMER_ID: ColumnId = ColumnId(1);
-			pub const CHECKPOINT: ColumnId = ColumnId(2);
-
-			pub const ALL: [ColumnId; 2] = [CONSUMER_ID, CHECKPOINT];
-		}
-
 		pub mod sequences {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -900,7 +889,6 @@ pub mod ids {
 		pub const PRIMARY_KEYS: VTableId = VTableId(7);
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
-		pub const CDC_CONSUMERS: VTableId = VTableId(10);
 		pub const OPERATOR_LIBRARIES: VTableId = VTableId(12);
 		pub const OPERATORS: VTableId = VTableId(13);
 		pub const FLOW_EDGES: VTableId = VTableId(14);
@@ -962,17 +950,7 @@ pub mod ids {
 		pub const METRICS_STORAGE_OPERATOR: VTableId = VTableId(1031);
 		pub const METRICS_STORAGE_SYSTEM: VTableId = VTableId(1032);
 
-		pub const METRICS_CDC_TABLE: VTableId = VTableId(1033);
-		pub const METRICS_CDC_VIEW: VTableId = VTableId(1034);
-		pub const METRICS_CDC_TABLE_VIRTUAL: VTableId = VTableId(1035);
-		pub const METRICS_CDC_RINGBUFFER: VTableId = VTableId(1036);
-		pub const METRICS_CDC_DICTIONARY: VTableId = VTableId(1037);
-		pub const METRICS_CDC_SERIES: VTableId = VTableId(1038);
-		pub const METRICS_CDC_FLOW: VTableId = VTableId(1039);
-		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
-		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
-
-		pub const ALL: [VTableId; 76] = [
+		pub const ALL: [VTableId; 66] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -984,7 +962,6 @@ pub mod ids {
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
-			CDC_CONSUMERS,
 			OPERATOR_LIBRARIES,
 			OPERATORS,
 			FLOW_EDGES,
@@ -1040,15 +1017,6 @@ pub mod ids {
 			METRICS_STORAGE_FLOW,
 			METRICS_STORAGE_OPERATOR,
 			METRICS_STORAGE_SYSTEM,
-			METRICS_CDC_TABLE,
-			METRICS_CDC_VIEW,
-			METRICS_CDC_TABLE_VIRTUAL,
-			METRICS_CDC_RINGBUFFER,
-			METRICS_CDC_DICTIONARY,
-			METRICS_CDC_SERIES,
-			METRICS_CDC_FLOW,
-			METRICS_CDC_OPERATOR,
-			METRICS_CDC_SYSTEM,
 		];
 	}
 }
@@ -1138,10 +1106,6 @@ impl SystemCatalog {
 
 	pub fn get_system_versions_table() -> Arc<VTable> {
 		versions()
-	}
-
-	pub fn get_system_cdc_consumers_table() -> Arc<VTable> {
-		cdc_consumers()
 	}
 
 	pub fn get_system_operator_libraries_table() -> Arc<VTable> {

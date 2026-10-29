@@ -72,7 +72,7 @@ fn queue(db: &TestDb) -> CommitQueue {
 fn wait_for_consumer_caught_up(db: &TestDb) -> CommitVersion {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
-	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
+	if !db.watermarks().reader().wait_for_subscription(target, timeout) {
 		panic!("subscription reader did not reach {:?} within {:?}", target, timeout);
 	}
 	target

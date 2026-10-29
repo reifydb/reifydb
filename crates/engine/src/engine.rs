@@ -22,9 +22,8 @@ use reifydb_catalog::{
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark};
 use reifydb_core::{
-	commit::{queue::CommitQueue, watermark::CdcConsumerWatermark},
+	commit::{queue::CommitQueue, watermark::ReaderWatermark},
 	common::CommitVersion,
 	durability::Durability,
 	error::diagnostic::engine::read_only_rejection,
@@ -53,7 +52,6 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 #[cfg(feature = "column")]
@@ -378,20 +376,6 @@ impl StandardEngine {
 	}
 }
 
-impl CdcHost for StandardEngine {
-	fn begin_command(&self) -> Result<CommandTransaction> {
-		StandardEngine::begin_command(self, IdentityId::system(), Durability::Async)
-	}
-
-	fn begin_query(&self) -> Result<QueryTransaction> {
-		StandardEngine::begin_query(self, IdentityId::system())
-	}
-
-	fn catalog(&self) -> &Catalog {
-		&self.catalog
-	}
-}
-
 impl Clone for StandardEngine {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
@@ -647,11 +631,6 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn cdc_store(&self) -> CdcStore {
-		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
-	}
-
-	#[inline]
 	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
 	where
 		ActorRef<M>: Send + Sync,
@@ -665,13 +644,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn cdc_producer_watermark(&self) -> CommitVersion {
-		self.executor.ioc.try_resolve::<CdcProducerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
-	}
-
-	#[inline]
-	pub fn cdc_consumer_watermark(&self) -> CommitVersion {
-		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
+	pub fn reader_watermark(&self) -> CommitVersion {
+		self.executor.ioc.try_resolve::<ReaderWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
 	pub fn set_read_only(&self) {

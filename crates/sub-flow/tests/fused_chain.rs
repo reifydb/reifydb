@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-
 use reifydb::{
 	SqliteConfig, WithSubsystem, embedded,
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
-use reifydb_cdc::lift::changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{CommitVersion, WindowRequirements, WindowSizeDomain},
@@ -22,6 +19,7 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	operator_with::ApplyWith,
 };
+use reifydb_engine::lift::entry_changed_objects;
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
@@ -32,7 +30,6 @@ use reifydb_sdk::{
 	},
 	row,
 };
-use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_value::{
 	config::ExtensionParams,
 	value::{
@@ -62,10 +59,10 @@ fn settle(db: &TestDb) {
 }
 
 fn stop_without_flow(db: &mut TestDb) {
-	// A stop with no flow never drains the cdc producer, so an unproduced write is lost to the next life.
+	// A stop right after a write must not race that write's own release into the commit queue.
 	let head = db.engine().current_version().expect("the current version after the last write");
-	poll_until(|| (db.engine().cdc_producer_watermark() >= head).then_some(()), TIMEOUT)
-		.expect("the cdc of the last write was never written before the stop");
+	poll_until(|| (db.engine().commit_released() >= head).then_some(()), TIMEOUT)
+		.expect("the last write was never released before the stop");
 	db.stop();
 }
 
@@ -98,20 +95,11 @@ fn checkpoint(db: &TestDb, view: &str) -> Option<CommitVersion> {
 }
 
 fn commits(db: &TestDb, object: ObjectId) -> Vec<CommitVersion> {
-	// Without a retry, a commit racing the read fails the truncation check on a read that was complete.
-	let batch = poll_until(
-		|| {
-			let batch = db
-				.engine()
-				.cdc_store()
-				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
-				.expect("a full cdc read");
-			(!batch.has_more).then_some(batch)
-		},
-		TIMEOUT,
-	)
-	.expect("a truncated cdc read would hide commits");
-	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version.commit).collect()
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&object))
+		.map(|entry| entry.version.commit)
+		.collect()
 }
 
 fn groups(frames: &[Frame]) -> Vec<(i32, i64, i32)> {
@@ -360,7 +348,7 @@ fn sym_ids(db: &TestDb) -> Vec<(i32, i64)> {
 
 #[test]
 fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids() {
-	// A fused child fed the parent's text where a cdc child gets entry ids fails every id read of that column.
+	// A fused child fed the parent's text where an unfused child gets entry ids fails every id read of that column.
 	let path = TempDbPath::new("fused_chain_dictionary_ids");
 	{
 		let mut db = open_with_sym_ids(&path);
@@ -583,9 +571,9 @@ fn a_chain_of_three_deferred_views_commits_once_per_source_version() {
 }
 
 #[test]
-fn dictionary_columns_reach_a_fused_child_as_they_reach_a_cdc_child() {
-	// A cdc child sees the parent's dictionary ids decoded to text; a fused child fed ids would filter and show
-	// ids.
+fn dictionary_columns_reach_a_fused_child_as_they_reach_an_unfused_child() {
+	// An unfused child sees the parent's dictionary ids decoded to text; a fused child fed ids would filter and
+	// show ids.
 	let path = TempDbPath::new("fused_chain_dictionary");
 	{
 		let mut db = open(&path, false);

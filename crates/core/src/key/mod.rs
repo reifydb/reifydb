@@ -7,7 +7,6 @@ use tag::KeyTag;
 pub mod any;
 pub mod bound;
 pub mod catalog;
-pub mod cdc;
 pub mod column;
 pub mod config;
 #[cfg(test)]

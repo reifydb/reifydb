@@ -11,7 +11,6 @@ members = [
     "crates/routine",
     "crates/routine-abi",
     "crates/catalog",
-    "crates/cdc",
     "crates/codec",
     "crates/core",
     "crates/engine",
@@ -32,7 +31,6 @@ members = [
     "crates/rql-graphql",
     "crates/sqlite",
     "crates/store",
-    "crates/store-cdc",
     "crates/store-column",
     "crates/store-commit",
     "crates/store-log",
@@ -106,7 +104,6 @@ default-members = [
     "crates/auth",
     "crates/routine",
     "crates/catalog",
-    "crates/cdc",
     "crates/codec",
     "crates/core",
     "crates/engine",
@@ -127,7 +124,6 @@ default-members = [
     "crates/rql-graphql",
     "crates/sqlite",
     "crates/store",
-    "crates/store-cdc",
     "crates/store-column",
     "crates/store-commit",
     "crates/store-log",
@@ -263,7 +259,6 @@ reifydb-node = { version = "0.10.1", path = "pkg/rust/reifydb-node" }
 reifydb-auth = { version = "0.10.1", path = "crates/auth" }
 reifydb-routine = { version = "0.10.1", path = "crates/routine" }
 reifydb-catalog = { version = "0.10.1", path = "crates/catalog" }
-reifydb-cdc = { version = "0.10.1", path = "crates/cdc" }
 reifydb-codec = { version = "0.10.1", path = "crates/codec" }
 reifydb-core = { version = "0.10.1", path = "crates/core" }
 reifydb-engine = { version = "0.10.1", path = "crates/engine" }
@@ -282,7 +277,6 @@ reifydb-rql = { version = "0.10.1", path = "crates/rql" }
 reifydb-rql-graphql = { version = "0.10.1", path = "crates/rql-graphql" }
 reifydb-sqlite = { version = "0.10.1", path = "crates/sqlite" }
 reifydb-store = { version = "0.10.1", path = "crates/store" }
-reifydb-store-cdc = { version = "0.10.1", path = "crates/store-cdc" }
 reifydb-store-column = { version = "0.10.1", path = "crates/store-column" }
 reifydb-store-commit = { version = "0.10.1", path = "crates/store-commit" }
 reifydb-store-log = { version = "0.10.1", path = "crates/store-log" }

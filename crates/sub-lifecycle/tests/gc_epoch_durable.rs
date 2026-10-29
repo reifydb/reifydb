@@ -7,14 +7,8 @@
 //! instant. These tests pin the map itself: samples reaching storage, hydration covering instants older than this
 //! process, and pruning bounded by the longest declared ttl rather than by a buffer size.
 
-use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
-	common::CommitVersion,
-	durability::Durability,
-	interface::{
-		catalog::config::{ConfigKey, GetConfig},
-		cdc::{CdcConsumerId, ConsumerClass},
-	},
+	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{any::TaggedKey, system::VersionEpochKey},
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
@@ -28,18 +22,38 @@ use reifydb_sub_lifecycle::gc::epoch::{
 	log::EpochLog,
 };
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::multi::RangeScope;
-use reifydb_value::value::{duration::Duration, identity::IdentityId};
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration, identity::IdentityId},
+};
 
 const MINUTE_SECS: u64 = 60;
 
 /// Advances the head commit version; the epoch only records a sample once the head has moved.
 fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("system command transaction");
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(at), ConsumerClass::Ephemeral)
-		.expect("checkpoint write");
-	txn.commit().expect("commit");
+	// The sample under test only needs the head to move, so the write itself carries no meaning.
+	let mut query = engine.begin_query(IdentityId::system()).expect("system query transaction");
+	let exists = engine
+		.catalog()
+		.find_namespace_by_name(&mut Transaction::Query(&mut query), "epoch")
+		.expect("namespace lookup")
+		.is_some();
+	drop(query);
+	if !exists {
+		let created = engine.admin_as(
+			IdentityId::system(),
+			"CREATE NAMESPACE epoch; CREATE TABLE epoch::ticks { consumer: utf8, at: uint8 }",
+			Params::None,
+		);
+		assert!(created.error.is_none(), "the tick table must be created: {:?}", created.error);
+	}
+	let inserted = engine.command_as(
+		IdentityId::system(),
+		&format!("INSERT epoch::ticks [{{ consumer: '{consumer}', at: {at} }}]"),
+		Params::None,
+	);
+	assert!(inserted.error.is_none(), "the tick insert must commit: {:?}", inserted.error);
 }
 
 /// Reads the durable keyspace directly, so a test asserts what reached storage rather than what the RAM map

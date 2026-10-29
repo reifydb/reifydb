@@ -51,7 +51,7 @@ fn a_live_subscription_carries_rownum_it_never_names() {
 	db.command("INSERT app::t [{id: 10, qty: 1}, {id: 20, qty: 2}]");
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
-		db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap()),
+		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
 		"the subscription consumer must finish the insert"
 	);
 

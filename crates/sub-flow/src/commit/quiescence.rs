@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_core::{commit::watermark::CdcConsumerWatermark, common::CommitVersion};
+use reifydb_core::{commit::watermark::ReaderWatermark, common::CommitVersion};
 
 use crate::progress::tracker::FlowPositionTracker;
 
@@ -16,14 +16,14 @@ pub struct FlowMaterialization {
 }
 
 struct FlowMaterializationInner {
-	poll_frontier: CdcConsumerWatermark,
+	poll_frontier: ReaderWatermark,
 	flows: FlowPositionTracker,
 	output_frontier: AtomicU64,
 	latch: AtomicU64,
 }
 
 impl FlowMaterialization {
-	pub fn new(poll_frontier: CdcConsumerWatermark, flows: FlowPositionTracker) -> Self {
+	pub fn new(poll_frontier: ReaderWatermark, flows: FlowPositionTracker) -> Self {
 		Self {
 			inner: Arc::new(FlowMaterializationInner {
 				poll_frontier,
@@ -67,8 +67,8 @@ mod tests {
 
 	use super::*;
 
-	fn parts() -> (CdcConsumerWatermark, FlowPositionTracker, FlowMaterialization) {
-		let poll = CdcConsumerWatermark::new();
+	fn parts() -> (ReaderWatermark, FlowPositionTracker, FlowMaterialization) {
+		let poll = ReaderWatermark::new();
 		let flows = FlowPositionTracker::new();
 		let materialization = FlowMaterialization::new(poll.clone(), flows.clone());
 		(poll, flows, materialization)

@@ -82,12 +82,8 @@ pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 	})
 }
 
-pub fn configs() -> [(ConfigKey, Value); 3] {
-	[
-		(ConfigKey::CdcTtlDuration, Value::Duration(Duration::from_seconds_const(60))),
-		(ConfigKey::CdcTtlScanInterval, Value::Duration(Duration::from_seconds_const(10))),
-		(ConfigKey::RetentionStartupGrace, Value::Duration(Duration::from_seconds_const(10))),
-	]
+pub fn configs() -> [(ConfigKey, Value); 1] {
+	[(ConfigKey::RetentionStartupGrace, Value::Duration(Duration::from_seconds_const(10)))]
 }
 
 pub struct TileEdit {

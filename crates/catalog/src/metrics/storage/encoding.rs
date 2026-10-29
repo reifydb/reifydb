@@ -7,11 +7,8 @@ use reifydb_core::{
 		catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
 		store::Tier,
 	},
-	key::metric::{MetricCdcKey, MetricStorageKey},
+	key::metric::MetricStorageKey,
 };
-use reifydb_value::{byte_size::ByteSize, count::Count};
-
-use crate::metrics::storage::cdc::CdcMetrics;
 
 pub fn encode_storage_stats_key(tier: Tier, id: MetricsId) -> EncodedKey {
 	MetricStorageKey::encoded(tier, id)
@@ -21,21 +18,9 @@ pub fn storage_stats_key_prefix() -> EncodedKey {
 	MetricStorageKey::prefix()
 }
 
-pub fn encode_cdc_stats_key(id: MetricsId) -> EncodedKey {
-	MetricCdcKey::encoded(id)
-}
-
-pub fn cdc_stats_key_prefix() -> EncodedKey {
-	MetricCdcKey::prefix()
-}
-
 pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricsId)> {
 	let key = MetricStorageKey::decode(&EncodedKey::new(key))?;
 	Some((key.tier, key.id))
-}
-
-pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricsId> {
-	MetricCdcKey::decode(&EncodedKey::new(key)).map(|key| key.id)
 }
 
 pub const STORAGE_STATS_SIZE: usize = 48;
@@ -60,25 +45,6 @@ pub fn decode_storage_stats(bytes: &[u8]) -> Option<MultiStorageMetrics> {
 		estimated_historical_value_bytes: r.u64().ok()?,
 		estimated_current_count: r.u64().ok()?,
 		estimated_historical_count: r.u64().ok()?,
-	})
-}
-
-pub const CDC_STATS_SIZE: usize = 24;
-
-pub fn encode_cdc_stats(stats: &CdcMetrics) -> Vec<u8> {
-	let mut buf = Vec::with_capacity(CDC_STATS_SIZE);
-	buf.extend_from_slice(&stats.key_bytes.as_bytes().to_le_bytes());
-	buf.extend_from_slice(&stats.value_bytes.as_bytes().to_le_bytes());
-	buf.extend_from_slice(&stats.entry_count.as_u64().to_le_bytes());
-	buf
-}
-
-pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcMetrics> {
-	let mut r = Reader::new(bytes);
-	Some(CdcMetrics {
-		key_bytes: ByteSize::from_bytes(r.u64().ok()?),
-		value_bytes: ByteSize::from_bytes(r.u64().ok()?),
-		entry_count: Count::new(r.u64().ok()?),
 	})
 }
 
@@ -132,22 +98,7 @@ pub mod tests {
 			let (decoded_tier, decoded_id) = decode_storage_stats_key(&storage_key).unwrap();
 			assert_eq!(decoded_tier, Tier::Buffer);
 			assert_eq!(decoded_id, id);
-
-			let cdc_key = encode_cdc_stats_key(id);
-			let decoded_cdc_id = decode_cdc_stats_key(&cdc_key).unwrap();
-			assert_eq!(decoded_cdc_id, id);
 		}
-	}
-
-	#[test]
-	fn test_cdc_stats_key_roundtrip() {
-		let object_id = ObjectId::Table(TableId(12345));
-		let id = MetricsId::Object(object_id);
-
-		let key = encode_cdc_stats_key(id);
-		let decoded = decode_cdc_stats_key(&key).unwrap();
-
-		assert_eq!(decoded, id);
 	}
 
 	#[test]
@@ -169,31 +120,10 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_cdc_stats_roundtrip() {
-		let stats = CdcMetrics {
-			key_bytes: ByteSize::from_bytes(100),
-			value_bytes: ByteSize::from_bytes(500),
-			entry_count: Count::new(25),
-		};
-
-		let encoded = encode_cdc_stats(&stats);
-		assert_eq!(encoded.len(), CDC_STATS_SIZE);
-
-		let decoded = decode_cdc_stats(&encoded).unwrap();
-		assert_eq!(decoded, stats);
-	}
-
-	#[test]
 	fn test_key_prefixes() {
 		let storage_prefix = storage_stats_key_prefix();
-		let cdc_prefix = cdc_stats_key_prefix();
 
 		let storage_key = encode_storage_stats_key(Tier::Buffer, MetricsId::System);
 		assert!(storage_key.starts_with(&storage_prefix));
-
-		let cdc_key = encode_cdc_stats_key(MetricsId::System);
-		assert!(cdc_key.starts_with(&cdc_prefix));
-
-		assert_ne!(storage_prefix, cdc_prefix);
 	}
 }

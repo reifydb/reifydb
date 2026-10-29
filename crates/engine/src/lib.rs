@@ -16,6 +16,7 @@ pub mod environment;
 pub mod error;
 pub mod flow_check;
 pub mod flow_sync;
+pub mod lift;
 pub mod partition;
 pub mod policy;
 pub mod queue;

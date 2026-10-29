@@ -1291,37 +1291,35 @@ impl Actor for FlowActor {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod pull_protocol {
-	use std::{collections::HashMap, ops::Bound, sync::mpsc, thread::sleep};
+	use std::{collections::HashMap, sync::mpsc, thread::sleep};
 
-	use reifydb_cdc::lift::{changed_objects, lift_selected_changes, row_target};
-	use reifydb_codec::{
-		key::encoded::EncodedKey,
-		row::{bytes::EncodedBytes, pod::EncodedPodRow},
-	};
+	use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::Pending},
 		commit::{
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 			queue::{CommitQueueFloor, FlowQueueFloor},
-			watermark::CdcConsumerWatermark,
+			watermark::ReaderWatermark,
 		},
+		delta::{Delta, RemoveAnnounce, SetPre},
 		durability::Durability,
 		interface::{
 			catalog::{
 				flow::OperatorId,
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
-			cdc::{Cdc, CdcChange},
 			change::{Change, ChangeOrigin, Diff},
-			commit::FlowWal,
+			commit::{CommitEntry, FlowWal},
 		},
 		key::{
+			any::TaggedKey,
 			bound::TaggedKeyBoundRange,
 			operator::state::{KeyspaceId, OperatorStateKey},
 			tag::KeyTag,
 		},
 		metrics::{collect::MetricsCollector, sample::Reading},
 	};
+	use reifydb_engine::lift::{entry_changed_objects, lift_entry_changes, tagged_row_target};
 	use reifydb_flow_async::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
@@ -1329,7 +1327,6 @@ mod pull_protocol {
 		},
 	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
-	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -1378,7 +1375,7 @@ mod pull_protocol {
 	}
 
 	fn harness_with(table_rql: &str, view_rql: &str) -> Harness {
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		let engine = te.inner().clone();
 
 		{
@@ -1424,7 +1421,7 @@ mod pull_protocol {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
 			tracker.clone(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
 		let begin_engine = engine.clone();
@@ -1612,15 +1609,13 @@ mod pull_protocol {
 		}
 
 		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
-			self.engine
-				.cdc_store()
-				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
-				.expect("read range")
-				.items
+			self.logged_entries()
 				.iter()
-				.filter(|cdc| cdc.version.commit > up_to)
-				.filter(|cdc| {
-					changed_objects(cdc).iter().any(|object| matches!(object, ObjectId::View(_)))
+				.filter(|entry| entry.version.commit > up_to)
+				.filter(|entry| {
+					entry_changed_objects(entry)
+						.iter()
+						.any(|object| matches!(object, ObjectId::View(_)))
 				})
 				.count()
 		}
@@ -1731,23 +1726,23 @@ mod pull_protocol {
 			persist(store, &advanced);
 		}
 
-		fn cdc_records(&self) -> Vec<Cdc> {
-			self.engine
-				.cdc_store()
-				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
-				.expect("read cdc range")
-				.items
+		fn logged_entries(&self) -> Vec<Arc<CommitEntry>> {
+			let released = self.te.await_released();
+			let wal = self.engine.ioc().resolve::<FlowWal>().expect("the harness registers the flow wal");
+			wal.log.read((CommitVersion(0), Lsn::new(0)), released, ByteSize::from_bytes(u64::MAX))
+				.expect("read the commit log")
+				.entries
 		}
 
 		fn view_change_beyond(&self, floor: CommitVersion) -> Option<Change> {
 			let catalog = self.engine.catalog();
 			let mut query = self.engine.begin_query(IdentityId::system()).expect("query transaction");
 			let mut txn = Transaction::Query(&mut query);
-			self.cdc_records()
+			self.logged_entries()
 				.into_iter()
-				.filter(|cdc| cdc.version.commit > floor)
-				.flat_map(|cdc| {
-					lift_selected_changes(&cdc, &catalog, &mut txn, |_| true).expect("lift changes")
+				.filter(|entry| entry.version.commit > floor)
+				.flat_map(|entry| {
+					lift_entry_changes(&entry, &catalog, &mut txn, |_| true).expect("lift changes")
 				})
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
@@ -2465,31 +2460,37 @@ mod pull_protocol {
 
 		let (evicted_key, evicted_pre) = h
 			.poll_until(seconds(10), || {
-				h.cdc_records()
+				h.logged_entries()
 					.into_iter()
-					.filter(|cdc| cdc.version.commit > pre_tick)
-					.flat_map(|cdc| cdc.changes.clone())
-					.find_map(|sc| match sc {
-						CdcChange::Delete {
+					.filter(|entry| entry.version.commit > pre_tick)
+					.flat_map(|entry| entry.deltas.clone())
+					.find_map(|delta| match delta {
+						Delta::Remove {
 							key,
-							pre,
-							..
-						} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some((key, pre)),
+							announce:
+								RemoveAnnounce::Announced {
+									pre,
+								}
+								| RemoveAnnounce::Unobserved {
+									pre,
+								},
+						} if key.kind() == KeyTag::Row => Some((key, Some(pre))),
 						_ => None,
 					})
 			})
 			.expect("the tick commit must delete the expired ring row");
 
 		let inserted_post = h
-			.cdc_records()
+			.logged_entries()
 			.into_iter()
-			.filter(|cdc| cdc.version.commit <= pre_tick)
-			.flat_map(|cdc| cdc.changes.clone())
-			.find_map(|sc| match sc {
-				CdcChange::Insert {
+			.filter(|entry| entry.version.commit <= pre_tick)
+			.flat_map(|entry| entry.deltas.clone())
+			.find_map(|delta| match delta {
+				Delta::Set {
 					key,
-					post,
-				} if key == evicted_key => Some(post),
+					bytes,
+					pre: SetPre::Absent,
+				} if key == evicted_key => Some(bytes),
 				_ => None,
 			})
 			.expect("the wake's slice commit must have inserted the ring row the tick later evicts");
@@ -2556,17 +2557,24 @@ mod pull_protocol {
 
 		let deletes = h
 			.poll_until(seconds(10), || {
-				let found: Vec<(EncodedKey, Option<EncodedBytes>, bool)> = h
-					.cdc_records()
+				let found: Vec<(TaggedKey, Option<EncodedBytes>, bool)> = h
+					.logged_entries()
 					.into_iter()
-					.filter(|cdc| cdc.version.commit > stable)
-					.flat_map(|cdc| cdc.changes.clone())
-					.filter_map(|sc| match sc {
-						CdcChange::Delete {
+					.filter(|entry| entry.version.commit > stable)
+					.flat_map(|entry| entry.deltas.clone())
+					.filter_map(|delta| match delta {
+						Delta::Remove {
 							key,
-							pre,
-							visible,
-						} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some((key, pre, visible)),
+							announce: RemoveAnnounce::Announced {
+								pre,
+							},
+						} if key.kind() == KeyTag::Row => Some((key, Some(pre), true)),
+						Delta::Remove {
+							key,
+							announce: RemoveAnnounce::Unobserved {
+								pre,
+							},
+						} if key.kind() == KeyTag::Row => Some((key, Some(pre), false)),
 						_ => None,
 					})
 					.collect();
@@ -2578,16 +2586,17 @@ mod pull_protocol {
 			deletes.iter().all(|(_, pre, visible)| pre.is_some() && !*visible),
 			"both ttl expiries are hidden and keep their pre-image for replication"
 		);
-		let overwrites: Vec<EncodedKey> = h
-			.cdc_records()
+		let overwrites: Vec<TaggedKey> = h
+			.logged_entries()
 			.into_iter()
-			.filter(|cdc| cdc.version.commit > stable)
-			.flat_map(|cdc| cdc.changes.clone())
-			.filter_map(|sc| match sc {
-				CdcChange::Update {
+			.filter(|entry| entry.version.commit > stable)
+			.flat_map(|entry| entry.deltas.clone())
+			.filter_map(|delta| match delta {
+				Delta::Set {
 					key,
+					pre: SetPre::Present(_),
 					..
-				} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some(key),
+				} if key.kind() == KeyTag::Row => Some(key),
 				_ => None,
 			})
 			.collect();
@@ -2597,11 +2606,11 @@ mod pull_protocol {
 		let mut query = h.engine.begin_query(IdentityId::system()).expect("query transaction");
 		let mut txn = Transaction::Query(&mut query);
 		let lifted: Vec<Diff> = h
-			.cdc_records()
+			.logged_entries()
 			.into_iter()
-			.filter(|cdc| cdc.version.commit > stable)
-			.flat_map(|cdc| {
-				lift_selected_changes(&cdc, &catalog, &mut txn, |_| true).expect("lift changes")
+			.filter(|entry| entry.version.commit > stable)
+			.flat_map(|entry| {
+				lift_entry_changes(&entry, &catalog, &mut txn, |_| true).expect("lift changes")
 			})
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.flat_map(|change| change.diffs)
@@ -2617,7 +2626,7 @@ mod pull_protocol {
 		};
 		assert_eq!(
 			row_numbers(pre).expect("#rownum").to_vec(),
-			vec![row_target(&overwrites[0]).expect("row target").row],
+			vec![tagged_row_target(&overwrites[0]).expect("row target").row],
 			"the lifted update names the overwritten slot"
 		);
 		drop(actor);
@@ -2669,13 +2678,13 @@ mod pull_protocol {
 		}
 		drop(query);
 
-		let cdc_state_keys = h
-			.cdc_records()
+		let logged_state_keys = h
+			.logged_entries()
 			.into_iter()
-			.flat_map(|cdc| cdc.changes.clone())
-			.filter(|change| matches!(KeyTag::of(change.key()), Some(KeyTag::OperatorState)))
+			.flat_map(|entry| entry.deltas.clone())
+			.filter(|delta| delta.key().kind() == KeyTag::OperatorState)
 			.count();
-		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");
+		assert_eq!(logged_state_keys, 0, "no logged commit entry may carry an OperatorState key either");
 
 		let stopped = Arc::new(WaiterHandle::new());
 		let notify = Arc::clone(&stopped);
@@ -2698,7 +2707,7 @@ mod pull_protocol {
 		);
 		let committer2 = Committer::new(
 			h.tracker.clone(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			operators2.clone(),
 		);
 		let begin_engine = h.engine.clone();
@@ -3212,7 +3221,7 @@ mod tick_failures {
 	}
 
 	fn unit_actor(rows: Arc<AtomicUsize>) -> (TestEngine, FlowActor) {
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 
 		te.admin("CREATE NAMESPACE app");
@@ -3350,7 +3359,7 @@ mod tick_failures {
 		operator: &str,
 		committer: impl FnOnce(&StandardEngine) -> ActorRef<CommitterMessage>,
 	) -> (TestEngine, FlowHealthRegistry, FlowActor) {
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 
 		te.admin("CREATE NAMESPACE app");

@@ -21,13 +21,6 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	system::SystemCatalog,
 };
-use reifydb_cdc::{
-	CdcVersion,
-	produce::{
-		producer::{CdcProducerEventListener, spawn_cdc_producer},
-		watermark::CdcProducerWatermark,
-	},
-};
 use reifydb_core::{
 	CoreVersion,
 	commit::queue::{CommitQueue, FlowQueueFloor},
@@ -54,7 +47,6 @@ use reifydb_runtime::{
 	shutdown::{Shutdown, ShutdownErrors},
 	version_epoch::VersionEpoch,
 };
-use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
@@ -137,12 +129,6 @@ impl Bridge {
 		ioc = ioc.register(single_store.clone());
 		ioc = ioc.register(operator_store.clone());
 
-		let cdc_store = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), clock.clone()));
-		ioc = ioc.register(cdc_store.clone());
-
-		let cdc_producer_watermark = CdcProducerWatermark::new();
-		ioc = ioc.register(cdc_producer_watermark.clone());
-
 		ioc = ioc.register(RetentionMetrics::new());
 
 		let ioc_ref = ioc.clone();
@@ -184,15 +170,7 @@ impl Bridge {
 			},
 		);
 
-		eprintln!("[WASI] Spawning CDC producer actor...");
-		let cdc_producer_handle =
-			spawn_cdc_producer(&spawner, cdc_store, eventbus_clone.clone(), cdc_producer_watermark);
-
-		let cdc_listener =
-			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
-		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		eventbus_clone.register::<PostCommitEvent, _>(commit_queue);
-		eprintln!("[WASI] CDC producer actor registered!");
 
 		let flow_config = FlowConfig {
 			operators_dir: None,
@@ -219,7 +197,6 @@ impl Bridge {
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
-			CdcVersion.version(),
 			flow_subsystem.version(),
 		];
 
@@ -247,9 +224,6 @@ impl Bridge {
 		}
 		if let Some(operator_store) = ioc.try_resolve::<OperatorStore>() {
 			errors.step("operator store", operator_store.shutdown());
-		}
-		if let Some(cdc_store) = ioc.try_resolve::<CdcStore>() {
-			errors.step("cdc store", cdc_store.shutdown());
 		}
 		errors.step("engine", self.engine.shutdown());
 		errors.finish()

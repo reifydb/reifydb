@@ -6,11 +6,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	bootstrap::metric::REQUEST_HISTORY_CAPACITY,
-	metrics::storage::{
-		cdc::{CdcMetrics, CdcMetricsWriter},
-		metrics::MetricsReader,
-		multi::StorageMetricsWriter,
-	},
+	metrics::storage::{metrics::MetricsReader, multi::StorageMetricsWriter},
 	vtable::system::metrics::MetricsObject,
 };
 use reifydb_codec::key::encoded::EncodedKey;
@@ -20,8 +16,8 @@ use reifydb_core::{
 	event::{
 		EventBus,
 		metric::{
-			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiEviction,
-			MultiPersist, MultiSweptEvent, MultiWrite, PriorSize, Request, RequestExecutedEvent,
+			MultiCommittedEvent, MultiDelete, MultiEviction, MultiPersist, MultiSweptEvent, MultiWrite,
+			PriorSize, Request, RequestExecutedEvent,
 		},
 		store::MetricsProcessedEvent,
 	},
@@ -235,26 +231,6 @@ impl MetricsFlushActor {
 		}
 		Ok(pre_sizes)
 	}
-
-	fn process_cdc_written(&self, state: &mut MetricsFlushActorState, event: CdcWrittenEvent) {
-		let version = *event.version();
-		let entries = event.entries();
-		trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
-		for entry in entries {
-			state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes);
-		}
-		advance_max_version(&mut state.max_version, version);
-	}
-
-	fn process_cdc_evicted(&self, state: &mut MetricsFlushActorState, event: CdcEvictedEvent) {
-		let version = *event.version();
-		let entries = event.entries();
-		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
-		for entry in entries {
-			state.cdc_writer.record_compaction(entry.id, entry.key_bytes, entry.value_bytes, entry.count);
-		}
-		advance_max_version(&mut state.max_version, version);
-	}
 }
 
 fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
@@ -305,7 +281,6 @@ fn advance_max_version(max_version: &mut CommitVersion, version: CommitVersion) 
 
 pub struct MetricsFlushActorState {
 	storage_writer: StorageMetricsWriter<SingleStore>,
-	cdc_writer: CdcMetricsWriter<SingleStore>,
 	max_version: CommitVersion,
 	pending: Vec<RequestExecutedEvent>,
 }
@@ -314,7 +289,6 @@ impl MetricsFlushActor {
 	#[inline]
 	fn flush(&self, state: &mut MetricsFlushActorState) {
 		state.storage_writer.flush().expect("metrics flush must persist storage stats");
-		state.cdc_writer.flush().expect("metrics flush must persist cdc stats");
 		let pending = mem::take(&mut state.pending);
 		self.drain_request_history(pending)
 			.expect("metrics flush must append system::metrics::request_history");
@@ -341,13 +315,6 @@ impl MetricsFlushActor {
 			surface: Surface::Current,
 			rows: storage,
 		});
-		let cdc =
-			cdc_rows(&reader, &mut txn).expect("cdc census must complete; a partial one evicts live rows");
-		let _ = sampler.send(SamplerMessage::Push {
-			domain: MetricsDomain::Cdc,
-			surface: Surface::Current,
-			rows: cdc,
-		});
 		let flow_state = flow_state_rows(engine, &mut txn)
 			.expect("flow state census must complete; a partial one evicts live rows");
 		let _ = sampler.send(SamplerMessage::Push {
@@ -373,7 +340,6 @@ impl Actor for MetricsFlushActor {
 
 		MetricsFlushActorState {
 			storage_writer: StorageMetricsWriter::new(self.single_store.clone()),
-			cdc_writer: CdcMetricsWriter::new(self.single_store.clone()),
 			max_version: CommitVersion(0),
 			pending: Vec::new(),
 		}
@@ -386,8 +352,6 @@ impl Actor for MetricsFlushActor {
 			MetricsMessage::RequestExecuted(event) => state.pending.push(event),
 			MetricsMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricsMessage::MultiSwept(event) => self.process_multi_swept(state, event),
-			MetricsMessage::CdcWritten(event) => self.process_cdc_written(state, event),
-			MetricsMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
 			MetricsMessage::VersionEpochSampled(event) => {
 				if let Some(gauge) = &self.epoch_gauge {
 					gauge.record(*event.durable_samples(), *event.pruned());
@@ -613,29 +577,6 @@ fn storage_row(
 			level_bytes("estimated_superseded_bytes", storage.estimated_historical_bytes()),
 			level_count("estimated_superseded_count", storage.estimated_historical_count),
 			level_bytes("estimated_total_bytes", storage.estimated_total_bytes()),
-		],
-	}
-}
-
-fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
-	let mut rows = Vec::new();
-	for (metric_id, metrics) in reader.cdc_reader().scan_all()? {
-		let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
-			continue;
-		};
-		rows.push(cdc_row(resolved.object.name(), resolved.id, resolved.namespace_id, &metrics));
-	}
-	Ok(rows)
-}
-
-fn cdc_row(object_kind: &'static str, id: u64, namespace_id: u64, metrics: &CdcMetrics) -> MetricsRow {
-	MetricsRow {
-		dimensions: vec![Value::Utf8(object_kind.to_string()), Value::Uint8(id), Value::Uint8(namespace_id)],
-		measures: vec![
-			level_bytes("key_bytes", metrics.key_bytes.as_bytes()),
-			level_bytes("value_bytes", metrics.value_bytes.as_bytes()),
-			level_bytes("total_bytes", metrics.total_bytes().as_bytes()),
-			level_count("count", metrics.entry_count.as_u64()),
 		],
 	}
 }

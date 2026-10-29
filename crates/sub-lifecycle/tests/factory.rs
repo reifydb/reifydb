@@ -17,7 +17,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{actor::system::ActorSpawner, sync::waiter::WaiterHandle};
+use reifydb_runtime::sync::waiter::WaiterHandle;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_lifecycle::{
 	actor::LifecycleMessage, factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem,
@@ -31,9 +31,8 @@ const ALWAYS_ON: [&str; 5] =
 	["retention-evict-silent", "historical-gc", "epoch-log", "queue-lease-reap", "queue-retention"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
-/// exempts it from the coverage assertion below. Persistent-flush needs a flush engine the memory store lacks
-/// and cdc-truncate needs a CdcStore in the IoC.
-const CONDITIONAL: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::CdcTruncate];
+/// exempts it from the coverage assertion below. Persistent-flush needs a flush engine the memory store lacks.
+const CONDITIONAL: [RetentionClass; 1] = [RetentionClass::PersistentFlush];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
 	subsystem
@@ -50,33 +49,6 @@ fn task_names(subsystem: &dyn Subsystem) -> Vec<String> {
 
 fn create(ioc: &IocContainer) -> Box<dyn Subsystem> {
 	Box::new(LifecycleSubsystemFactory).create(ioc).expect("the lifecycle subsystem must always start")
-}
-
-#[test]
-fn registers_every_always_on_class_plus_cdc_truncation_when_a_cdc_store_exists() {
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine
-		.ioc()
-		.clone()
-		.register(engine.clone())
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
-
-	let names = task_names(create(&ioc).as_ref());
-
-	for expected in ALWAYS_ON {
-		assert!(
-			names.iter().any(|n| n == expected),
-			"'{expected}' must register on every boot - a missing always-on class is exactly the \
-			 silently-not-running defect this subsystem exists to prevent; registered: {names:?}"
-		);
-	}
-	assert!(
-		names.iter().any(|n| n == "cdc-ttl"),
-		"cdc-ttl must register when a CdcStore is resolvable, otherwise cdc.db grows without bound; \
-		 registered: {names:?}"
-	);
 }
 
 #[test]
@@ -99,36 +71,6 @@ fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
 		"epoch-log must register on every boot; without it no ttl in the system can resolve a cutoff after a \
 		 restart; registered: {names:?}"
 	);
-}
-
-#[test]
-fn omits_cdc_truncation_when_no_cdc_store_is_present_without_dropping_any_always_on_class() {
-	// The always-on set must not be coupled to an optional component: building the whole task list inside one
-	// `if let Some(cdc_store)` block is how a conditional dependency takes unrelated classes down with it.
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
-
-	let ioc = IocContainer::new()
-		.register(engine.clone())
-		.register(spawner)
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
-
-	let names = task_names(create(&ioc).as_ref());
-
-	assert!(
-		!names.iter().any(|n| n == "cdc-ttl"),
-		"cdc-ttl must NOT register without a CdcStore - registering it would panic or truncate nothing; \
-		 registered: {names:?}"
-	);
-	for expected in ALWAYS_ON {
-		assert!(
-			names.iter().any(|n| n == expected),
-			"'{expected}' must still register when CDC is absent - the always-on set may not depend on \
-			 an optional component; registered: {names:?}"
-		);
-	}
 }
 
 #[test]
@@ -306,50 +248,6 @@ fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
 			"{class} has no executor here - declaring it absent must not fake one"
 		);
 	}
-}
-
-#[test]
-fn an_ioc_without_a_cdc_store_declares_cdc_truncate_absent() {
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
-	let coverage = RetentionCoverage::new();
-	let ioc = IocContainer::new()
-		.register(engine.clone())
-		.register(spawner)
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new())
-		.register(coverage.clone());
-
-	create(&ioc);
-
-	assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
-	assert!(!coverage.is_covered(RetentionClass::CdcTruncate));
-}
-
-#[test]
-fn a_cdc_store_makes_cdc_truncate_covered_rather_than_absent() {
-	// The paired direction, and the one that catches a blanket declaration: an absence recorded outside the
-	// skip branch would still satisfy the test above while excusing a lane that is present and expected to
-	// run, turning a genuinely stalled cdc-truncate into an info line.
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let coverage = RetentionCoverage::new();
-	let ioc = engine
-		.ioc()
-		.clone()
-		.register(engine.clone())
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new())
-		.register(coverage.clone());
-
-	create(&ioc);
-
-	assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-ttl"));
-	assert!(
-		coverage.absence(RetentionClass::CdcTruncate).is_none(),
-		"cdc-truncate has a registered executor here, so excusing it would hide a stall behind an absence"
-	);
 }
 
 #[test]

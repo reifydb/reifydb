@@ -41,9 +41,6 @@ current_value_bytes: 0
 historical_count: 3
 historical_key_bytes: 90
 historical_value_bytes: 3
-cdc_count: 0
-cdc_key_bytes: 0
-cdc_value_bytes: 0
 total_bytes: 123
 
 # Removing an already-removed key is just another write on top of a tombstone: the v4 tombstone
@@ -62,10 +59,4 @@ current_value_bytes: 0
 historical_count: 4
 historical_key_bytes: 120
 historical_value_bytes: 3
-cdc_count: 0
-cdc_key_bytes: 0
-cdc_value_bytes: 0
 total_bytes: 153
-
-# A silent removal is invisible to CDC by construction, which is why every cdc_* counter
-# above stayed at zero across both removals.

@@ -8,7 +8,6 @@ use std::{
 };
 
 use arrow_array::{Array, RecordBatch, TimestampNanosecondArray};
-use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::Pending,
@@ -36,7 +35,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
 };
-use reifydb_engine::{backfill::run, engine::StandardEngine};
+use reifydb_engine::{backfill::run, engine::StandardEngine, lift::entry_changed_objects};
 use reifydb_flow::txn::Batch;
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
@@ -382,7 +381,7 @@ fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64> {
 mod tests {
 	use std::sync::{Arc, mpsc};
 
-	use reifydb_core::{commit::watermark::CdcConsumerWatermark, durability::Durability};
+	use reifydb_core::{commit::watermark::ReaderWatermark, durability::Durability};
 	use reifydb_flow_async::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::substrate::FlowSubstrate,
@@ -439,7 +438,7 @@ mod tests {
 			.expect("compute backfill");
 		drop(snapshot);
 
-		let materialization = FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new());
+		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
 		let committer =
 			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
 		let begin_engine = engine.clone();
@@ -472,7 +471,7 @@ mod tests {
 	fn a_backfill_over_existing_rows_commits_them_and_advances_the_output_frontier() {
 		// A new view's readers wait on the output frontier; a backfill that stores rows without moving it
 		// leaves them waiting for rows that are already there.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}, {id: 3, val: 30}]");

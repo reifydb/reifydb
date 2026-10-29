@@ -9,7 +9,6 @@ use reifydb_value::{params::Params, value::column_view::ColumnView};
 use super::{
 	authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
 	bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
-	cdc_consumers::SystemCdcConsumers,
 	column_properties::SystemColumnProperties,
 	columns::SystemColumnsTable,
 	configs::SystemConfigs,
@@ -84,7 +83,6 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemPrimaryKeyColumns::new()),
 		Box::new(SystemColumnProperties::new()),
 		Box::new(SystemVersions::new(ioc.clone())),
-		Box::new(SystemCdcConsumers::new()),
 		Box::new(SystemOperatorLibraries::new(operators.clone())),
 		Box::new(SystemOperatorLibraryInputs::new(operators.clone())),
 		Box::new(SystemOperatorLibraryOutputs::new(operators.clone())),
@@ -186,7 +184,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 53, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 52, "expected every system vtable handler to be exercised");
 }
 
 #[test]

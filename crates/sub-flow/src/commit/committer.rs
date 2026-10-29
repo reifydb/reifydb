@@ -561,7 +561,8 @@ mod commit_integration {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		commit::watermark::CdcConsumerWatermark,
+		commit::watermark::ReaderWatermark,
+		delta::{Delta, RemoveAnnounce, SetPre},
 		durability::Durability,
 		interface::{
 			catalog::{
@@ -570,7 +571,7 @@ mod commit_integration {
 				object::ObjectId,
 				storage::StorageId,
 			},
-			cdc::CdcChange,
+			commit::CommitEntry,
 			operator::OperatorStateWrite,
 			store::WalFloorCheckpoint,
 		},
@@ -578,7 +579,6 @@ mod commit_integration {
 		key::{
 			any::TaggedKey,
 			catalog::IndexEntryKey,
-			cdc::CdcConsumerKey,
 			operator::state::{GroupStateKey, OperatorStateKey, unmanaged_key},
 			row::RowKey,
 			series::SeriesRowKey,
@@ -588,7 +588,6 @@ mod commit_integration {
 		wal::{CommitRecord, WalRecord},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
-	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_store_operator::{
 		actor::resident_flush::flush_now,
 		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
@@ -598,9 +597,7 @@ mod commit_integration {
 		types::OperatorWrite,
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{
-		commit::CommitBegin, counting::OpCounts, multi::RangeScope, transaction::Transaction, wal::CommitWal,
-	};
+	use reifydb_transaction::{commit::CommitBegin, counting::OpCounts, transaction::Transaction, wal::CommitWal};
 	use reifydb_value::{
 		byte_size::ByteSize,
 		util::cowvec::CowVec,
@@ -680,7 +677,7 @@ mod commit_integration {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
 			tracker.clone(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
 		let handle = engine
@@ -704,7 +701,7 @@ mod commit_integration {
 
 	#[test]
 	fn each_slice_commits_in_its_own_version() {
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: CommitBegin =
@@ -730,10 +727,10 @@ mod commit_integration {
 	}
 
 	#[test]
-	fn a_committed_slice_writes_its_checkpoint_to_the_operator_store_and_no_consumer_row_to_the_multi_store() {
+	fn a_committed_slice_writes_its_checkpoint_to_the_operator_store() {
 		// the checkpoint has one home now, and a second copy in the multi store would drift from the state it
 		// is supposed to pair with
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: CommitBegin =
@@ -743,25 +740,6 @@ mod commit_integration {
 		let replies = SliceReplies::new(2);
 		send_slices(&handle, &replies, 2);
 		replies.wait();
-
-		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
-		let mut consumers: Vec<String> = Vec::new();
-		for multi in Transaction::Query(&mut query)
-			.range(CdcConsumerKey::full_scan(), RangeScope::All, 1024)
-			.expect("scan consumer checkpoints")
-		{
-			let multi = multi.expect("consumer checkpoint row");
-			if let TaggedKey::CdcConsumer(key) = &multi.key {
-				consumers.push(key.consumer.as_ref().to_string());
-			}
-		}
-
-		assert!(
-			!consumers.iter().any(|consumer| consumer.starts_with("flow:")),
-			"a committed slice must leave no per-flow consumer checkpoint in the multi store; a row here \
-			 is a second copy of the checkpoint that no longer moves with the operator state, so a crash \
-			 can leave it ahead of that state: {consumers:?}"
-		);
 
 		for flow in 1..=2u64 {
 			assert_eq!(
@@ -795,7 +773,7 @@ mod commit_integration {
 	#[test]
 	fn a_failed_commit_leaves_the_operator_state_untouched() {
 		// Operator state is written in the completion, so a failed commit must write none of it.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin: CommitBegin = Arc::new(|| Err(internal_error!("commit could not begin")));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
@@ -837,7 +815,7 @@ mod commit_integration {
 	#[test]
 	fn operator_state_becomes_visible_only_with_the_commit() {
 		// Operator state must never appear before the commit completes, falsified by applying at submission.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: CommitBegin =
@@ -925,7 +903,7 @@ mod commit_integration {
 	#[test]
 	fn slices_of_one_source_queued_together_commit_in_one_version() {
 		// Queued slices of one source must share a commit, or every flow pays its own commit.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (handle, committer, release) = gated_committer_actor(&engine);
 
@@ -968,7 +946,7 @@ mod commit_integration {
 	#[test]
 	fn a_group_queued_after_a_flush_still_commits() {
 		// Every group must get its own flush, or slices queued after the first flush never commit.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: CommitBegin =
@@ -987,7 +965,7 @@ mod commit_integration {
 	#[test]
 	fn slices_of_different_sources_never_share_a_version() {
 		// A commit carries exactly one source stamp, so slices of different sources must never share one.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (handle, _committer, release) = gated_committer_actor(&engine);
 
@@ -1010,7 +988,7 @@ mod commit_integration {
 	#[test]
 	fn a_checkpoint_delete_commits_after_the_slices_queued_before_it() {
 		// A delete that overtakes its flow's queued slice lets that slice write the stopped flow back.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (handle, committer, release) = gated_committer_actor(&engine);
 
@@ -1040,7 +1018,7 @@ mod commit_integration {
 	#[test]
 	fn a_slice_that_cannot_commit_fails_alone_and_its_group_still_commits() {
 		// One bad slice must not fail the healthy flows grouped with it, or they get poisoned for its error.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (handle, committer, release) = gated_committer_actor(&engine);
 
@@ -1091,7 +1069,7 @@ mod commit_integration {
 	fn a_slice_that_emitted_without_writing_records_output() {
 		// No sink emits without writing today, so only this test sees the emitted half of the output rule; a
 		// rule that lost it would hide output from readers once a sink announces rows it did not store.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: CommitBegin =
@@ -1146,23 +1124,49 @@ mod commit_integration {
 		txn.commit().expect("commit seed");
 	}
 
-	fn commit_pending(te: &TestEngine, pending: &Pending) -> (OpCounts, Vec<CdcChange>) {
+	fn commit_pending(te: &TestEngine, pending: &Pending) -> (OpCounts, Vec<Delta>) {
 		let engine = te.inner();
 		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("begin");
 		apply_pending_writes(&mut txn, pending).expect("apply pending writes");
 		let counts = txn.op_counts();
 		let version = txn.commit().expect("commit");
-		te.await_cdc();
-		let cdc =
-			engine.cdc_store().read(version).expect("read cdc").expect("the commit must write a cdc entry");
-		(counts, cdc.changes.clone())
+		let entry: Arc<CommitEntry> = te
+			.commit_entries()
+			.into_iter()
+			.find(|entry| entry.version.commit == version)
+			.expect("the commit must reach the commit queue");
+		(counts, entry.deltas.clone())
 	}
 
-	fn delete(key: EncodedKey, tag: u8, visible: bool) -> CdcChange {
-		CdcChange::Delete {
-			key,
-			pre: Some(payload(tag)),
-			visible,
+	fn insert(key: EncodedKey, tag: u8) -> Delta {
+		Delta::Set {
+			key: tagged(&key),
+			bytes: payload(tag),
+			pre: SetPre::Absent,
+		}
+	}
+
+	fn update(key: EncodedKey, pre: u8, post: u8) -> Delta {
+		Delta::Set {
+			key: tagged(&key),
+			bytes: payload(post),
+			pre: SetPre::Present(payload(pre)),
+		}
+	}
+
+	fn delete(key: EncodedKey, tag: u8, visible: bool) -> Delta {
+		let pre = payload(tag);
+		Delta::Remove {
+			key: tagged(&key),
+			announce: if visible {
+				RemoveAnnounce::Announced {
+					pre,
+				}
+			} else {
+				RemoveAnnounce::Unobserved {
+					pre,
+				}
+			},
 		}
 	}
 
@@ -1170,7 +1174,7 @@ mod commit_integration {
 	fn a_slice_reads_every_remove_pre_image_in_one_batch_and_announces_the_same_deletes() {
 		// A point read per remove makes a slice commit cost grow with every evicted or retracted row, and the
 		// batch must still give each delete the pre-image and visibility the per-key reads gave it.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		seed(
 			te.inner(),
 			&[
@@ -1205,15 +1209,8 @@ mod commit_integration {
 		assert_eq!(
 			changes,
 			vec![
-				CdcChange::Insert {
-					key: row(5),
-					post: payload(15),
-				},
-				CdcChange::Update {
-					key: index_entry(104),
-					pre: payload(34),
-					post: payload(44),
-				},
+				insert(row(5), 15),
+				update(index_entry(104), 34, 44),
 				delete(row(1), 11, true),
 				delete(series_row(1), 21, true),
 				delete(index_entry(101), 31, true),
@@ -1258,10 +1255,10 @@ mod commit_integration {
 	}
 
 	#[test]
-	fn a_slice_reaches_cdc_in_the_order_its_flows_wrote_it() {
+	fn a_slice_reaches_the_commit_entry_in_the_order_its_flows_wrote_it() {
 		// A version's changes are published in write order, so regrouping a slice's sets and removes changes
 		// the bytes every consumer reads for that version.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		seed(te.inner(), &[(row(2), 12), (series_row(1), 21)]);
 
 		let mut pending = Pending::new();
@@ -1276,20 +1273,11 @@ mod commit_integration {
 		assert_eq!(
 			changes,
 			vec![
-				CdcChange::Insert {
-					key: row(1),
-					post: payload(1),
-				},
+				insert(row(1), 1),
 				delete(row(2), 12, true),
-				CdcChange::Insert {
-					key: row(3),
-					post: payload(3),
-				},
+				insert(row(3), 3),
 				delete(series_row(1), 21, false),
-				CdcChange::Insert {
-					key: index_entry(1),
-					post: payload(5),
-				},
+				insert(index_entry(1), 5),
 			]
 		);
 	}
@@ -1328,7 +1316,7 @@ mod commit_integration {
 	fn a_slice_whose_state_sizing_fails_fails_alone_and_the_rest_of_its_group_commits() {
 		// A sizing error must fail only its own member before the commit, never panic after the rows are
 		// durable.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let failing = OperatorId(9);
 		let healthy = OperatorId(10);
@@ -1375,7 +1363,7 @@ mod commit_integration {
 
 		let committer = Committer::new(
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			store.clone(),
 		);
 		let begin_engine = engine.clone();
@@ -1421,7 +1409,7 @@ mod commit_integration {
 	}
 
 	fn logged_engine() -> TestEngine {
-		TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build()
+		TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build()
 	}
 
 	fn logged_handle(engine: &StandardEngine) -> CommitHandle {
@@ -1449,7 +1437,7 @@ mod commit_integration {
 	fn plain_committer(store: OperatorStore) -> Committer {
 		Committer::new(
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			store,
 		)
 	}

@@ -3,20 +3,19 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	ops::Bound,
+	sync::Arc,
 };
 
-use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::{
 	common::CommitVersion,
 	durability::Durability,
 	interface::{
 		catalog::{config::ConfigKey, object::ObjectId},
-		cdc::Cdc,
 		change::{ChangeOrigin, Diff},
+		commit::CommitEntry,
 	},
 };
-use reifydb_store_cdc::storage::CdcStorage;
+use reifydb_engine::lift::lift_entry_changes;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -234,22 +233,18 @@ fn view_object(t: &TestEngine, name: &str) -> ObjectId {
 	ObjectId::View(view.id())
 }
 
-fn cdc_at(t: &TestEngine, version: CommitVersion) -> Cdc {
-	t.await_cdc();
-	t.cdc_store()
-		.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
-		.expect("cdc read")
-		.items
+fn entry_at(t: &TestEngine, version: CommitVersion) -> Arc<CommitEntry> {
+	t.commit_entries()
 		.into_iter()
-		.find(|cdc| cdc.version.commit == version)
-		.unwrap_or_else(|| panic!("no cdc record for commit {version:?}"))
+		.find(|entry| entry.version.commit == version)
+		.unwrap_or_else(|| panic!("no commit entry for commit {version:?}"))
 }
 
-fn inserted_rows_per_object(t: &TestEngine, cdc: &Cdc) -> BTreeMap<ObjectId, usize> {
+fn inserted_rows_per_object(t: &TestEngine, entry: &CommitEntry) -> BTreeMap<ObjectId, usize> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
 	let mut counts = BTreeMap::new();
 	for change in
-		lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift")
+		lift_entry_changes(entry, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift")
 	{
 		let ChangeOrigin::Object(object) = change.origin else {
 			continue;
@@ -553,7 +548,7 @@ fn a_late_chain_over_a_source_larger_than_the_batch_is_complete() {
 
 #[test]
 fn a_late_create_commits_its_backfill_in_one_version_and_leaves_other_views_alone() {
-	// A side commit adds a version; running every flow on the snapshot puts the early view in the CDC.
+	// A side commit adds a version; running every flow on the snapshot puts the early view in the commit stream.
 	let t = engine();
 	create(&t, "bf::early", COLUMNS, "FROM bf::src | filter { v > 50 }");
 	for rql in history("bf::src") {
@@ -563,7 +558,7 @@ fn a_late_create_commits_its_backfill_in_one_version_and_leaves_other_views_alon
 	create(&t, "bf::late", COLUMNS, "FROM bf::src | filter { v > 50 }");
 	let created = t.current_version().expect("current version");
 	assert_eq!(created, CommitVersion(before.0 + 1), "the create and its backfill must be one commit");
-	let counts = inserted_rows_per_object(&t, &cdc_at(&t, created));
+	let counts = inserted_rows_per_object(&t, &entry_at(&t, created));
 	assert_eq!(counts, BTreeMap::from([(view_object(&t, "late"), 3)]));
 }
 

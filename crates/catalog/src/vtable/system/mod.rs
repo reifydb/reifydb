@@ -5,7 +5,6 @@ use reifydb_value::value::constraint::{Constraint, TypeConstraint};
 
 pub mod authentication;
 pub mod bindings;
-pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
 pub mod configs;

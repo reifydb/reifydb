@@ -66,7 +66,6 @@ impl VTableRegistry {
 				Some(SystemCatalog::get_system_windowed_view_group_members_table())
 			}
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
-			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
 			FLOWS => Some(SystemCatalog::get_system_flows_table()),
 			OPERATOR_LIBRARIES => Some(SystemCatalog::get_system_operator_libraries_table()),
 			OPERATORS => Some(SystemCatalog::get_system_operators_table()),
@@ -120,7 +119,6 @@ impl VTableRegistry {
 			SystemCatalog::get_system_windowed_view_groups_table(),
 			SystemCatalog::get_system_windowed_view_group_members_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),
 			SystemCatalog::get_system_operator_libraries_table(),
 			SystemCatalog::get_system_operators_table(),

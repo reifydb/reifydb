@@ -79,7 +79,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				let instance = self.instance.as_ref().ok_or("No instance available")?;
 				let watermarks = instance.watermarks();
 				let target = watermarks.tx().current()?;
-				if !watermarks.cdc().wait_for_flow_consumer(
+				if !watermarks.reader().wait_for_flow_caught_up(
 					target,
 					ValueDuration::from_nanos_infallible(10_000_000_000),
 				)? {

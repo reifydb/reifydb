@@ -5,7 +5,6 @@ use crate::event::EventBus;
 
 pub mod auth;
 pub mod catalog;
-pub mod cdc;
 pub mod change;
 pub mod commit;
 pub mod consolidate;

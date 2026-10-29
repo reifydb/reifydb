@@ -8,7 +8,6 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	interface::{
@@ -16,6 +15,7 @@ use reifydb_core::{
 		commit::CommitEntry,
 	},
 };
+use reifydb_engine::lift::entry_changed_objects;
 use reifydb_value::reifydb_assertions;
 use rustc_hash::FxHashSet;
 

@@ -6,9 +6,7 @@ use reifydb_core::{
 	event::{
 		EventListener,
 		lifecycle::VersionEpochSampledEvent,
-		metric::{
-			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent,
-		},
+		metric::{MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent},
 	},
 };
 use reifydb_runtime::actor::mailbox::ActorRef;
@@ -67,48 +65,6 @@ impl MultiSweptListener {
 impl EventListener<MultiSweptEvent> for MultiSweptListener {
 	fn on(&self, event: &MultiSweptEvent) {
 		let _ = self.actor_ref.send(MetricsMessage::MultiSwept(event.clone()));
-	}
-}
-
-#[derive(Clone)]
-pub struct CdcWrittenListener {
-	actor_ref: ActorRef<MetricsMessage>,
-}
-
-impl CdcWrittenListener {
-	pub fn new(actor_ref: ActorRef<MetricsMessage>) -> Self {
-		Self {
-			actor_ref,
-		}
-	}
-}
-
-impl EventListener<CdcWrittenEvent> for CdcWrittenListener {
-	fn on(&self, event: &CdcWrittenEvent) {
-		if !event.entries().is_empty() {
-			let _ = self.actor_ref.send(MetricsMessage::CdcWritten(event.clone()));
-		}
-	}
-}
-
-#[derive(Clone)]
-pub struct CdcEvictedListener {
-	actor_ref: ActorRef<MetricsMessage>,
-}
-
-impl CdcEvictedListener {
-	pub fn new(actor_ref: ActorRef<MetricsMessage>) -> Self {
-		Self {
-			actor_ref,
-		}
-	}
-}
-
-impl EventListener<CdcEvictedEvent> for CdcEvictedListener {
-	fn on(&self, event: &CdcEvictedEvent) {
-		if !event.entries().is_empty() {
-			let _ = self.actor_ref.send(MetricsMessage::CdcEvicted(event.clone()));
-		}
 	}
 }
 

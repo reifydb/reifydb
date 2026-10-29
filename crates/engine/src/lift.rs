@@ -4,35 +4,25 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, read_fingerprint},
-		shape::{RowShape, fingerprint::RowShapeFingerprint},
-	},
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	shape::{RowShape, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	common::ChangeVersion,
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{
 		catalog::object::ObjectId,
-		cdc::{Cdc, CdcChange, CdcLift, ObjectLift},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 		commit::{CommitEntry, CommitLift, CommitObjectLift},
 	},
 	internal_error,
-	key::{
-		any::TaggedKey,
-		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-		tag::KeyTag,
-	},
+	key::any::TaggedKey,
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
-	error::Error,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -68,48 +58,6 @@ struct Bucket {
 	post: Vec<EncodedBytes>,
 }
 
-pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
-	match KeyTag::of(key)? {
-		KeyTag::Row => {
-			let row_key = RowKey::decode(key)?;
-			Some(RowTarget {
-				object: ObjectId::from(row_key.storage),
-				row: row_key.row,
-			})
-		}
-		KeyTag::SeriesRow => {
-			let series_key = SeriesRowKey::decode(key)?;
-			Some(RowTarget {
-				object: ObjectId::from(series_key.storage),
-				row: RowNumber(series_key.sequence),
-			})
-		}
-		KeyTag::PartitionedRow => {
-			let partitioned = PartitionedRowKey::decode(key)?;
-			Some(RowTarget {
-				object: ObjectId::from(partitioned.storage),
-				row: partitioned.row,
-			})
-		}
-		KeyTag::PartitionedSeriesRow => {
-			let partitioned = PartitionedSeriesRowKey::decode(key)?;
-			Some(RowTarget {
-				object: ObjectId::from(partitioned.storage),
-				row: RowNumber(partitioned.sequence),
-			})
-		}
-		KeyTag::SortedViewRow => Some(RowTarget {
-			object: ObjectId::from(SortedViewRowKey::storage_of(key)?),
-			row: SortedViewRowKey::row_of(key)?,
-		}),
-		KeyTag::PartitionedSortedViewRow => Some(RowTarget {
-			object: ObjectId::from(PartitionedSortedViewRowKey::storage_of(key)?),
-			row: PartitionedSortedViewRowKey::row_of(key)?,
-		}),
-		_ => None,
-	}
-}
-
 pub fn tagged_row_target(key: &TaggedKey) -> Option<RowTarget> {
 	let (storage, row) = match key {
 		TaggedKey::Row(key) => (key.storage, key.row),
@@ -126,10 +74,6 @@ pub fn tagged_row_target(key: &TaggedKey) -> Option<RowTarget> {
 	})
 }
 
-fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
-	untracked_queue(row_target(key)?)
-}
-
 fn tracked_tagged_target(key: &TaggedKey) -> Option<RowTarget> {
 	untracked_queue(tagged_row_target(key)?)
 }
@@ -139,52 +83,6 @@ fn untracked_queue(target: RowTarget) -> Option<RowTarget> {
 		return None;
 	}
 	Some(target)
-}
-
-fn lift_index(cdc: &Cdc) -> &CdcLift {
-	cdc.lift_with(|cdc| {
-		let mut objects: BTreeMap<ObjectId, ObjectLift> = BTreeMap::new();
-		for (index, cdc_change) in cdc.changes.iter().enumerate() {
-			let Some(target) = tracked_target(cdc_change.key()) else {
-				continue;
-			};
-			let object = objects.entry(target.object).or_default();
-			match cdc_change {
-				CdcChange::Delete {
-					visible: false,
-					..
-				} => {}
-				CdcChange::Delete {
-					pre: None,
-					visible: true,
-					..
-				} => {
-					object.first_missing_pre.get_or_insert(index);
-				}
-				_ => object.rows.push((index, target.row)),
-			}
-		}
-		CdcLift {
-			objects,
-		}
-	})
-}
-
-fn first_missing_pre<'a>(objects: impl Iterator<Item = &'a ObjectLift>, cdc: &Cdc) -> Result<()> {
-	match objects.filter_map(|object| object.first_missing_pre).min() {
-		Some(index) => Err(missing_pre_image(cdc.changes[index].key(), cdc)),
-		None => Ok(()),
-	}
-}
-
-pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
-	cdc.changed_objects_with(|cdc| lift_index(cdc).objects.keys().copied().collect())
-}
-
-pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
-	let index = lift_index(cdc);
-	first_missing_pre(index.objects.values(), cdc)?;
-	Ok(index.objects.iter().filter(|(_, object)| !object.rows.is_empty()).map(|(id, _)| *id).collect())
 }
 
 fn entry_lift_index(entry: &CommitEntry) -> &CommitLift {
@@ -323,69 +221,6 @@ fn lift_entry_object(
 	lift_rows(object, rows, entry.version, entry.at, catalog, txn)
 }
 
-pub fn lift_selected_changes(
-	cdc: &Cdc,
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	accept: impl Fn(ObjectId) -> bool,
-) -> Result<Vec<Change>> {
-	let index = lift_index(cdc);
-	let accepted: Vec<(ObjectId, &ObjectLift)> =
-		index.objects.iter().filter(|(id, _)| accept(**id)).map(|(id, object)| (*id, object)).collect();
-	first_missing_pre(accepted.iter().map(|(_, object)| *object), cdc)?;
-
-	let mut changes: Vec<Change> = Vec::with_capacity(accepted.len());
-	for (id, object) in accepted {
-		let lifted = match object.change.get() {
-			Some(lifted) => lifted,
-			None => {
-				let lifted = lift_object(cdc, id, &object.rows, catalog, txn)?;
-				object.change.get_or_init(|| lifted)
-			}
-		};
-		if let Some(change) = lifted {
-			changes.push(change.clone());
-		}
-	}
-	Ok(changes)
-}
-
-fn lift_object(
-	cdc: &Cdc,
-	object: ObjectId,
-	indexed: &[(usize, RowNumber)],
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-) -> Result<Option<Change>> {
-	let mut rows: Vec<LiftedRow> = Vec::with_capacity(indexed.len());
-	for (index, row) in indexed {
-		let (pre, post) = match &cdc.changes[*index] {
-			CdcChange::Insert {
-				post,
-				..
-			} => (None, Some(post.clone())),
-			CdcChange::Update {
-				pre,
-				post,
-				..
-			} => (Some(pre.clone()), Some(post.clone())),
-			CdcChange::Delete {
-				pre,
-				..
-			} => (pre.clone(), None),
-		};
-		rows.push(LiftedRow {
-			target: RowTarget {
-				object,
-				row: *row,
-			},
-			pre,
-			post,
-		});
-	}
-	lift_rows(object, rows, cdc.version, cdc.timestamp, catalog, txn)
-}
-
 fn lift_rows(
 	object: ObjectId,
 	mut rows: Vec<LiftedRow>,
@@ -467,14 +302,6 @@ fn lift_rows(
 	}))
 }
 
-fn missing_pre_image(key: &EncodedKey, cdc: &Cdc) -> Error {
-	internal_error!(
-		"CDC delete for key {:?} at version {} carries no pre-image, so its change cannot be lifted",
-		key.as_slice(),
-		cdc.version.commit.0
-	)
-}
-
 fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 	let mut inserts: BTreeMap<(ObjectId, RowNumber), usize> = BTreeMap::new();
 	for (index, row) in rows.iter().enumerate() {
@@ -495,12 +322,13 @@ fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 
 fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, fingerprint: RowShapeFingerprint) -> Result<RowShape> {
 	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
-		internal_error!("RowShape with fingerprint {:?} not found while lifting CDC changes", fingerprint)
+		internal_error!("RowShape with fingerprint {:?} not found while lifting commit changes", fingerprint)
 	})
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::catalog::{
 			id::{SeriesId, TableId, ViewId},
@@ -515,23 +343,27 @@ mod tests {
 
 	use super::*;
 
+	fn decoded_target(key: &EncodedKey) -> Option<RowTarget> {
+		tagged_row_target(&TaggedKey::decode(key)?)
+	}
+
 	#[test]
 	fn test_row_key_maps_to_its_storage_object() {
-		let target = row_target(&RowKey::encoded(StorageId::table(3), RowNumber(9))).expect("row target");
+		let target = decoded_target(&RowKey::encoded(StorageId::table(3), RowNumber(9))).expect("row target");
 		assert_eq!(target.object, ObjectId::Table(TableId(3)));
 		assert_eq!(target.row, RowNumber(9));
 	}
 
 	#[test]
 	fn test_view_row_key_maps_to_the_view_and_never_to_its_former_backing_table() {
-		let target = row_target(&RowKey::encoded(StorageId::view(42), RowNumber(1))).expect("row target");
+		let target = decoded_target(&RowKey::encoded(StorageId::view(42), RowNumber(1))).expect("row target");
 		assert_eq!(target.object, ObjectId::View(ViewId(42)));
 	}
 
 	#[test]
 	fn test_partitioned_row_key_maps_to_its_storage_object() {
 		let key = PartitionedRowKey::encoded(StorageId::view(8), Partition(5), RowNumber(2));
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::View(ViewId(8)));
 		assert_eq!(target.row, RowNumber(2));
 	}
@@ -547,7 +379,7 @@ mod tests {
 		}
 		.encode();
 		assert!(RowKey::decode(&key).is_none(), "a series row key must no longer decode as a plain row key");
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
 		assert_eq!(target.row, RowNumber(7));
 	}
@@ -562,7 +394,7 @@ mod tests {
 			sequence: 11,
 		}
 		.encode();
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::Series(SeriesId(9)));
 		assert_eq!(target.row, RowNumber(11));
 	}
@@ -578,7 +410,7 @@ mod tests {
 			sequence: 7,
 		}
 		.encode();
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::View(ViewId(8)));
 		assert_eq!(target.row, RowNumber(7));
 	}
@@ -588,7 +420,7 @@ mod tests {
 		// The partitioned series kind carries its row identity in the sequence, exactly like the unpartitioned
 		// one; taking the series key instead would invent RowNumber(1_000) and misjoin every pre-image.
 		let key = PartitionedSeriesRowKey::encoded(StorageId::series(4), Partition(1), None, 1_000, 7);
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
 		assert_eq!(target.row, RowNumber(7));
 	}
@@ -597,13 +429,13 @@ mod tests {
 	fn test_partitioned_series_row_key_on_a_view_storage_maps_to_the_view() {
 		// Same widening as the unpartitioned case: the storage id decides the object, not the key kind.
 		let key = PartitionedSeriesRowKey::encoded(StorageId::view(8), Partition(1), Some(2), 5, 3);
-		let target = row_target(&key).expect("row target");
+		let target = decoded_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::View(ViewId(8)));
 		assert_eq!(target.row, RowNumber(3));
 	}
 
 	#[test]
 	fn test_catalog_keys_are_skipped() {
-		assert!(row_target(&EncodedKey::new(b"not a row key")).is_none());
+		assert!(decoded_target(&EncodedKey::new(b"not a row key")).is_none());
 	}
 }

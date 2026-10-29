@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, ops::Bound};
+use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::{
 	durability::Durability,
 	interface::{
 		catalog::object::ObjectId,
-		cdc::Cdc,
 		change::{ChangeOrigin, Diff},
+		commit::CommitEntry,
 	},
 };
-use reifydb_store_cdc::storage::CdcStorage;
+use reifydb_engine::lift::lift_entry_changes;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -87,15 +86,13 @@ fn pairs(frames: &[Frame]) -> Vec<(i32, i32)> {
 	pairs
 }
 
-fn last_cdc(t: &TestEngine) -> Cdc {
-	t.await_cdc();
-	let mut entries = t.cdc_store().read_range(Bound::Unbounded, Bound::Unbounded, 10_000).expect("cdc read").items;
-	entries.pop().expect("the commit must write a cdc record")
+fn last_entry(t: &TestEngine) -> Arc<CommitEntry> {
+	t.commit_entries().pop().expect("the commit must reach the commit queue")
 }
 
-fn view_origins(t: &TestEngine, cdc: &Cdc) -> BTreeSet<ObjectId> {
+fn view_origins(t: &TestEngine, entry: &CommitEntry) -> BTreeSet<ObjectId> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
-	lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
+	lift_entry_changes(entry, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
 		.expect("lift")
 		.into_iter()
 		.filter_map(|change| match change.origin {
@@ -105,10 +102,10 @@ fn view_origins(t: &TestEngine, cdc: &Cdc) -> BTreeSet<ObjectId> {
 		.collect()
 }
 
-fn view_inserted_rows(t: &TestEngine, cdc: &Cdc) -> Vec<usize> {
+fn view_inserted_rows(t: &TestEngine, entry: &CommitEntry) -> Vec<usize> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
 	let mut counts: Vec<usize> =
-		lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
+		lift_entry_changes(entry, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
 			.expect("lift")
 			.into_iter()
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
@@ -188,12 +185,12 @@ fn a_rollback_leaves_both_views_unchanged() {
 }
 
 #[test]
-fn the_commit_cdc_carries_a_change_for_each_view() {
-	// A deferred reader of b sees b only through CDC, so the second hop must reach it too.
+fn the_commit_entry_carries_a_change_for_each_view() {
+	// A deferred reader of b sees b only through the commit stream, so the second hop must reach it too.
 	let t = chain();
 	t.command("INSERT ns::src [{ id: 2, v: 50 }]");
-	let last = last_cdc(&t);
-	assert_eq!(view_origins(&t, &last).len(), 2, "expected a change for a and for b in the insert's CDC");
+	let last = last_entry(&t);
+	assert_eq!(view_origins(&t, &last).len(), 2, "expected a change for a and for b in the insert's commit entry");
 }
 
 #[test]
@@ -264,7 +261,7 @@ fn a_diamond_commit_emits_each_branch_row_once() {
 	// lo and hi carry one row each and both carries exactly two; a double feed shows as more.
 	let t = diamond();
 	t.command("INSERT ns::src [{ id: 2, v: 30 }]");
-	let last = last_cdc(&t);
+	let last = last_entry(&t);
 	assert_eq!(view_inserted_rows(&t, &last), vec![1, 1, 2]);
 }
 

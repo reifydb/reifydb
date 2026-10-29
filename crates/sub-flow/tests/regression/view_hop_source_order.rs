@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-
 use reifydb::{
 	SqliteConfig, Value, WithSubsystem, embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_cdc::lift::changed_objects;
 use reifydb_core::{
 	common::{ChangeVersion, SourceVersion},
 	interface::catalog::{
@@ -15,8 +12,8 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
+use reifydb_engine::lift::entry_changed_objects;
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
-use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_value::value::duration::Duration;
 
 const SETTLE: Duration = Duration::from_seconds_const(10);
@@ -27,13 +24,15 @@ fn disarmed() -> RuntimeConfig {
 }
 
 fn memory_db() -> TestDb {
-	TestDb::from(
+	let mut db = TestDb::from(
 		embedded::memory()
 			.with_runtime_config(disarmed())
 			.with_flow(|f| f)
 			.build()
 			.expect("build memory db with flow"),
-	)
+	);
+	db.hold_commits();
+	db
 }
 
 fn sqlite_db(config: &SqliteConfig) -> TestDb {
@@ -171,14 +170,11 @@ fn view(db: &TestDb, name: &str) -> ObjectId {
 }
 
 fn stamps(db: &TestDb, object: ObjectId) -> Vec<ChangeVersion> {
-	let head = db.engine().current_version().expect("the current version before the read");
-	let batch = db
-		.engine()
-		.cdc_store()
-		.read_range(Bound::Unbounded, Bound::Included(head), 10_000)
-		.expect("the cdc store must answer a full read");
-	assert!(!batch.has_more, "a truncated read would hide commits and pass a count check it should fail");
-	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version).collect()
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&object))
+		.map(|entry| entry.version)
+		.collect()
 }
 
 fn await_level_commits(db: &TestDb, want: usize) -> Vec<ChangeVersion> {
@@ -190,7 +186,7 @@ fn await_level_commits(db: &TestDb, want: usize) -> Vec<ChangeVersion> {
 		},
 		SETTLE,
 	)
-	.expect("the level commits never reached the cdc store, so a replay would not see them together")
+	.expect("the level commits never reached the commit stream, so a replay would not see them together")
 }
 
 fn create_curve_and_cost(db: &TestDb) {
@@ -516,10 +512,10 @@ fn a_view_with_downstream_readers_commits_once_per_source_version() {
 		let mut db = sqlite_db_without_flow(&config);
 		insert_rung(&db, "a", 10);
 		insert_rung(&db, "b", 30);
-		// A stop with no flow never drains the cdc producer, so an unwritten rung would miss the backlog.
+		// A stop right after the rungs must not race their release into the commit queue.
 		let head = db.engine().current_version().expect("the current version after the rungs");
-		poll_until(|| (db.engine().cdc_producer_watermark() >= head).then_some(()), SETTLE)
-			.expect("the rung cdc was never written before the stop");
+		poll_until(|| (db.engine().commit_released() >= head).then_some(()), SETTLE)
+			.expect("the rungs were never released before the stop");
 		db.stop();
 	}
 
@@ -559,7 +555,7 @@ fn a_view_with_no_readers_folds_its_backlog_into_one_commit() {
 
 	let sources: Vec<SourceVersion> =
 		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
-	let v = *sources.first().expect("the backfill commit never reached the cdc store");
+	let v = *sources.first().expect("the backfill commit never reached the commit stream");
 	assert_eq!(sources, vec![v], "both rungs must land in one backfill commit stamped with its snapshot version V");
 	assert!(
 		v >= SourceVersion::from(level[1].commit),

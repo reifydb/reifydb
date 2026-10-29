@@ -564,7 +564,7 @@ mod tests {
 		// across the others.
 		let metrics = RetentionMetrics::new();
 
-		metrics.record_reclamation(RetentionClass::CdcTruncate, None, 0, 0);
+		metrics.record_reclamation(RetentionClass::QueueRetention, None, 0, 0);
 		metrics.record_reclamation(
 			RetentionClass::RowTtl,
 			Some((Floor::Version(CommitVersion(5)), FloorTerm::QueryDoneUntil)),
@@ -572,9 +572,9 @@ mod tests {
 			0,
 		);
 
-		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).stuck_slices, 1);
+		assert_eq!(metrics.snapshot(RetentionClass::QueueRetention).stuck_slices, 1);
 		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).stuck_slices, 0);
-		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).work_done, 0);
+		assert_eq!(metrics.snapshot(RetentionClass::QueueRetention).work_done, 0);
 		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).work_done, 3);
 	}
 

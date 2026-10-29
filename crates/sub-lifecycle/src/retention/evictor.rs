@@ -779,14 +779,14 @@ impl LifecycleTask for RetentionEvictTask {
 mod tests {
 	use std::{
 		sync::atomic::{AtomicBool, Ordering},
-		thread::{scope, sleep},
+		thread::scope,
 	};
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
-	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::CommitVersion,
+		delta::Delta,
 		durability::Durability,
 		interface::{
 			catalog::{
@@ -796,13 +796,11 @@ mod tests {
 				series::SeriesPartitionMetadata,
 				view::View,
 			},
-			cdc::CdcChange,
 			store::MultiVersionRow,
 		},
 		key::ringbuffer::RingBufferMetadataKey,
 	};
-	use reifydb_runtime::{context::clock::Clock, version_epoch::EpochSpan};
-	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
+	use reifydb_runtime::version_epoch::EpochSpan;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
@@ -976,18 +974,6 @@ mod tests {
 		txn.commit().unwrap();
 	}
 
-	fn wait_cdc_watermark(engine: &StandardEngine, version: CommitVersion) {
-		let watermark = engine.ioc().try_resolve::<CdcProducerWatermark>().unwrap();
-		let deadline = Clock::Real.instant() + ValueDuration::from_seconds_const(5);
-		while watermark.get() < version {
-			assert!(
-				Clock::Real.instant() < deadline,
-				"the cdc producer did not reach version {version:?} within the deadline"
-			);
-			sleep(ValueDuration::from_milliseconds_const(10).to_std());
-		}
-	}
-
 	#[test]
 	fn two_rows_a_millisecond_apart_expire_independently() {
 		// Expiry anchors on each row's own updated_at, not a quantised epoch sample, so a cutoff
@@ -1063,14 +1049,13 @@ mod tests {
 		assert_eq!(row_count(&test, "from test::t"), 0);
 		assert!(after > before, "silent eviction must still be a real commit");
 
-		wait_cdc_watermark(&test, after);
-		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
-		for version in (before.0 + 1)..=after.0 {
-			assert!(
-				cdc.read(CommitVersion(version)).unwrap().is_none(),
-				"silent eviction of a keyed table must not write any CDC record"
-			);
-		}
+		let leaked: Vec<CommitVersion> = test
+			.commit_entries()
+			.iter()
+			.map(|entry| entry.version.commit)
+			.filter(|version| *version > before && *version <= after)
+			.collect();
+		assert!(leaked.is_empty(), "silent eviction of a keyed table must reach no reader: {leaked:?}");
 	}
 
 	fn series_storage_by_name(engine: &StandardEngine, name: &str) -> StorageId {
@@ -1115,21 +1100,18 @@ mod tests {
 		assert!(after > before, "the eviction must be a real commit");
 		assert!(stored_rows(test, keyspaces).is_empty(), "every expired row must be gone");
 
-		wait_cdc_watermark(test, after);
-		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
 		let mut deletes = Vec::new();
-		for version in (before.0 + 1)..=after.0 {
-			let Some(record) = cdc.read(CommitVersion(version)).unwrap() else {
+		for entry in test.commit_entries() {
+			if entry.version.commit <= before || entry.version.commit > after {
 				continue;
-			};
-			for change in &record.changes {
-				if let CdcChange::Delete {
+			}
+			for delta in &entry.deltas {
+				if let Delta::Remove {
 					key,
-					pre,
-					visible,
-				} = change
+					announce,
+				} = delta && announce.announces()
 				{
-					deletes.push((TaggedKey::decode(key).unwrap(), pre.clone(), *visible));
+					deletes.push((key.clone(), announce.pre().cloned(), announce.visible()));
 				}
 			}
 		}
@@ -1298,8 +1280,9 @@ mod tests {
 	}
 
 	#[test]
-	fn table_drop_mode_evicts_rows_silently_without_cdc() {
-		// Row eviction must commit without emitting CDC, otherwise every expiry leaks downstream as a delete.
+	fn table_drop_mode_evicts_rows_silently_without_a_commit_entry() {
+		// Row eviction must commit without a reader-visible change, otherwise every expiry leaks downstream as
+		// a delete.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
@@ -1314,14 +1297,13 @@ mod tests {
 		assert_eq!(row_count(&test, "from test::t"), 0);
 		assert!(after > before, "silent eviction must still be a real commit");
 
-		wait_cdc_watermark(&test, after);
-		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
-		for version in (before.0 + 1)..=after.0 {
-			assert!(
-				cdc.read(CommitVersion(version)).unwrap().is_none(),
-				"silent eviction of a plain table must not write any CDC record"
-			);
-		}
+		let leaked: Vec<CommitVersion> = test
+			.commit_entries()
+			.iter()
+			.map(|entry| entry.version.commit)
+			.filter(|version| *version > before && *version <= after)
+			.collect();
+		assert!(leaked.is_empty(), "silent eviction of a plain table must reach no reader: {leaked:?}");
 	}
 
 	#[test]

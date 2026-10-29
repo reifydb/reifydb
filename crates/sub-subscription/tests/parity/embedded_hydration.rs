@@ -59,7 +59,7 @@ fn drain_collect(sub: &Subscription) -> Vec<StagedBatch> {
 fn wait_caught_up(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
-		db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap()),
+		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
 		"CDC consumer did not catch up to {:?}",
 		target
 	);

@@ -19,7 +19,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	commit::{
 		queue::{CommitQueue, SubscriptionQueueFloor},
-		watermark::CdcConsumerWatermark,
+		watermark::ReaderWatermark,
 	},
 	interface::{
 		catalog::{
@@ -79,7 +79,7 @@ impl SubscriptionSubsystem {
 		floor: SubscriptionQueueFloor,
 		store: Arc<SubscriptionStore>,
 		_runtime_context: RuntimeContext,
-		consumer_watermark: CdcConsumerWatermark,
+		consumer_watermark: ReaderWatermark,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
 	) -> Result<Self> {
@@ -273,8 +273,8 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let runtime_context = RuntimeContext::with_clock(clock);
 		let store = Arc::new(SubscriptionStore::new(1024));
 
-		let consumer_watermark = CdcConsumerWatermark::new();
-		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());
+		let consumer_watermark = ReaderWatermark::new();
+		ioc.register_service::<ReaderWatermark>(consumer_watermark.clone());
 
 		let source_tracker = SubscriptionSourceTracker::new();
 		let position_tracker = SubscriptionPositionTracker::new();

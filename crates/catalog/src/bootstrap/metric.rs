@@ -77,24 +77,6 @@ pub fn bootstrap_metric_ringbuffers(
 		storage_snapshot_columns(),
 		&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
 	)?;
-	let cdc_ns = ensure_namespace(
-		&catalog_api,
-		&mut admin,
-		NamespaceId::SYSTEM_METRICS_CDC,
-		"system::metrics::cdc",
-		"cdc",
-		NamespaceId::SYSTEM_METRICS,
-	)?;
-	ensure_snapshot_series(
-		&catalog_api,
-		&mut admin,
-		cdc_ns,
-		"system::metrics::cdc",
-		SeriesId::CDC_SNAPSHOTS,
-		cdc_snapshot_columns(),
-		&ColumnId::CDC_SNAPSHOTS_COLUMNS,
-	)?;
-
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
 	{
 		catalog_api.create_ringbuffer_with_id(
@@ -244,18 +226,5 @@ fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("estimated_superseded_bytes", ValueType::Uint8),
 		series_col("estimated_superseded_count", ValueType::Uint8),
 		series_col("estimated_total_bytes", ValueType::Uint8),
-	]
-}
-
-fn cdc_snapshot_columns() -> Vec<SeriesColumnToCreate> {
-	vec![
-		series_col("ts", ValueType::DateTime),
-		series_col("object_kind", ValueType::Utf8),
-		series_col("id", ValueType::Uint8),
-		series_col("namespace_id", ValueType::Uint8),
-		series_col("key_bytes", ValueType::Uint8),
-		series_col("value_bytes", ValueType::Uint8),
-		series_col("total_bytes", ValueType::Uint8),
-		series_col("count", ValueType::Uint8),
 	]
 }

@@ -11,13 +11,12 @@ use std::{
 	},
 };
 
-use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
 		loader::CommitLoaderMessage,
 		queue::{CommitPull, CommitQueue, CommitQueueFloor},
-		watermark::CdcConsumerWatermark,
+		watermark::ReaderWatermark,
 	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},
@@ -33,7 +32,7 @@ use reifydb_core::{
 		operator::FlowCheckpoint,
 	},
 };
-use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
+use reifydb_engine::{engine::StandardEngine, lift::entry_changed_objects, vm::flow_lineage::ViewLineage};
 use reifydb_flow::analyzer::FlowGraphAnalyzer;
 use reifydb_flow_async::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
 use reifydb_runtime::{
@@ -129,7 +128,7 @@ pub struct FlowSupervisorParams {
 	pub loader: ActorRef<CommitLoaderMessage>,
 	pub floor: Arc<dyn CommitFloor>,
 	pub control: ControlFrontier,
-	pub poll_frontier: CdcConsumerWatermark,
+	pub poll_frontier: ReaderWatermark,
 	pub view_lineage: ViewLineage,
 	pub tracker: ObjectVersionTracker,
 	pub flow_tracker: FlowPositionTracker,
@@ -155,7 +154,7 @@ pub struct FlowSupervisor {
 	loader: ActorRef<CommitLoaderMessage>,
 	floor: Arc<dyn CommitFloor>,
 	control: ControlFrontier,
-	poll_frontier: CdcConsumerWatermark,
+	poll_frontier: ReaderWatermark,
 	view_lineage: ViewLineage,
 	tracker: ObjectVersionTracker,
 	flow_tracker: FlowPositionTracker,

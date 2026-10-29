@@ -563,7 +563,7 @@ mod pending_override_tripwire_tests {
 		// legitimate construction-time reads of non-overridden keys impossible.
 		let cache = CatalogCache::new();
 		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferTotalBytes]);
-		let _ = cache.get_config(ConfigKey::CdcTtlDuration);
+		let _ = cache.get_config(ConfigKey::MetricsSnapshotInterval);
 	}
 
 	#[test]
@@ -585,18 +585,18 @@ mod config_validation_tests {
 	use super::{CatalogCache, CatalogError, CommitVersion};
 
 	#[test]
-	fn test_set_cdc_ttl_zero_is_rejected() {
+	fn test_set_optional_duration_zero_is_rejected() {
 		let catalog = CatalogCache::new();
 		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
 
-		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), zero).unwrap_err();
+		let err = catalog.set_config(ConfigKey::MetricsSnapshotInterval, CommitVersion(1), zero).unwrap_err();
 		let msg = format!("{err}");
-		assert!(msg.contains("CDC_TTL_DURATION"), "expected key in error: {msg}");
+		assert!(msg.contains("METRICS_SNAPSHOT_INTERVAL"), "expected key in error: {msg}");
 		assert!(msg.contains("greater than zero"), "expected reason in error: {msg}");
 
 		// A rejected set leaves the typed-none default in place.
 		assert!(matches!(
-			catalog.get_config(ConfigKey::CdcTtlDuration),
+			catalog.get_config(ConfigKey::MetricsSnapshotInterval),
 			Value::None {
 				inner: ValueType::Duration
 			}
@@ -604,38 +604,39 @@ mod config_validation_tests {
 	}
 
 	#[test]
-	fn test_set_cdc_ttl_negative_is_rejected() {
+	fn test_set_optional_duration_negative_is_rejected() {
 		let catalog = CatalogCache::new();
 		let negative = Value::Duration(TypeDuration::from_seconds(-30).unwrap());
-		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), negative).unwrap_err();
+		let err =
+			catalog.set_config(ConfigKey::MetricsSnapshotInterval, CommitVersion(1), negative).unwrap_err();
 		assert_eq!(err.code, "CA_053");
 	}
 
 	#[test]
-	fn test_set_cdc_ttl_positive_is_accepted_and_visible() {
+	fn test_set_optional_duration_positive_is_accepted_and_visible() {
 		let catalog = CatalogCache::new();
 		let ten_sec = Value::Duration(TypeDuration::from_seconds(10).unwrap());
 
-		catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), ten_sec.clone()).unwrap();
-		assert_eq!(catalog.get_config(ConfigKey::CdcTtlDuration), ten_sec);
+		catalog.set_config(ConfigKey::MetricsSnapshotInterval, CommitVersion(1), ten_sec.clone()).unwrap();
+		assert_eq!(catalog.get_config(ConfigKey::MetricsSnapshotInterval), ten_sec);
 
-		let opt = catalog.get_config_duration_opt(ConfigKey::CdcTtlDuration);
+		let opt = catalog.get_config_duration_opt(ConfigKey::MetricsSnapshotInterval);
 		assert_eq!(opt, Some(TypeDuration::from_seconds(10).unwrap()));
 	}
 
 	#[test]
-	fn test_set_cdc_ttl_to_typed_null_is_accepted() {
-		// Operators unset the TTL by writing none, restoring forever-retention.
+	fn test_set_optional_duration_to_typed_null_is_accepted() {
+		// Operators unset an optional duration by writing none, which must restore the unset state.
 		let catalog = CatalogCache::new();
 		catalog.set_config(
-			ConfigKey::CdcTtlDuration,
+			ConfigKey::MetricsSnapshotInterval,
 			CommitVersion(1),
 			Value::Duration(TypeDuration::from_seconds(30).unwrap()),
 		)
 		.unwrap();
 
 		catalog.set_config(
-			ConfigKey::CdcTtlDuration,
+			ConfigKey::MetricsSnapshotInterval,
 			CommitVersion(2),
 			Value::None {
 				inner: ValueType::Duration,
@@ -643,16 +644,16 @@ mod config_validation_tests {
 		)
 		.unwrap();
 
-		assert_eq!(catalog.get_config_duration_opt(ConfigKey::CdcTtlDuration), None);
+		assert_eq!(catalog.get_config_duration_opt(ConfigKey::MetricsSnapshotInterval), None);
 	}
 
 	#[test]
-	fn test_set_cdc_ttl_wrong_type_returns_type_mismatch_not_validate_error() {
+	fn test_set_optional_duration_wrong_type_returns_type_mismatch_not_validate_error() {
 		// A non-numeric, non-Duration value cannot coerce to ValueType::Duration
 		// and must surface as ConfigTypeMismatch.
 		let catalog = CatalogCache::new();
 		let bad = Value::Boolean(true);
-		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), bad).unwrap_err();
+		let err = catalog.set_config(ConfigKey::MetricsSnapshotInterval, CommitVersion(1), bad).unwrap_err();
 		assert_eq!(err.code, "CA_052", "expected ConfigTypeMismatch (CA_052)");
 	}
 

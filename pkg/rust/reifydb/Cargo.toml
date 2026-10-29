@@ -14,7 +14,6 @@ doctest = false
 reifydb-allocator = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
-reifydb-cdc = { workspace = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
@@ -33,7 +32,6 @@ reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store = { workspace = true }
-reifydb-store-cdc = { workspace = true }
 reifydb-store-commit = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }

@@ -16,7 +16,6 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 use reifydb_store_operator::{persistent::PersistentTier, range::OperatorRangeConfig, resident::ResidentLimits};
@@ -41,9 +40,6 @@ type PoolConfigSources = (
 	Option<MultiRangeConfig>,
 	Option<OperatorRangeConfig>,
 	u32,
-	CdcCommitConfig,
-	Option<CdcReadConfig>,
-	u32,
 	ResidentLimits,
 	Duration,
 	Duration,
@@ -54,7 +50,6 @@ type PoolConfigSources = (
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-	cdc_memory: bool,
 	wal_enabled: bool,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
@@ -66,7 +61,7 @@ fn pool_config_from_sources(
 	};
 	let wal = commit_wal(factory, clock, wal_enabled);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
-	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
+	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
@@ -77,9 +72,6 @@ fn pool_config_from_sources(
 		resolved.multi_point,
 		resolved.multi_range,
 		resolved.operator_range,
-		resolved.cdc_wal_autocheckpoint,
-		resolved.cdc_commit,
-		resolved.cdc_read,
 		resolved.operator_wal_autocheckpoint,
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
@@ -127,7 +119,6 @@ pub struct EmbeddedBuilder {
 	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
-	cdc_memory: bool,
 	operator_persistent: Option<PersistentTier>,
 }
 
@@ -155,18 +146,12 @@ impl EmbeddedBuilder {
 			migrations: None,
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
-			cdc_memory: false,
 			operator_persistent: None,
 		}
 	}
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
-		self
-	}
-
-	pub fn with_cdc_memory(mut self) -> Self {
-		self.cdc_memory = true;
 		self
 	}
 
@@ -293,22 +278,13 @@ impl EmbeddedBuilder {
 			multi_point_buffer,
 			multi_range_buffer,
 			operator_range_buffer,
-			cdc_wal_autocheckpoint,
-			cdc_commit,
-			cdc_read,
 			operator_wal_autocheckpoint,
 			operator_resident,
 			operator_flush_interval,
 			sync_interval,
 			wal,
 			recovery,
-		) = pool_config_from_sources(
-			&self.storage_factory,
-			&self.bootstrap_configs,
-			self.cdc_memory,
-			wal_enabled,
-			&boot_clock,
-		)?;
+		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, wal_enabled, &boot_clock)?;
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		let column_dir = match &self.storage_factory {
 			StorageFactory::Sqlite(config) => Some(api::column_dir(config)),
@@ -322,17 +298,13 @@ impl EmbeddedBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		let (multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus) =
+		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_commit_store(
 				multi_commit_store,
 				multi_persistent,
 				multi_point_buffer,
 				multi_range_buffer,
 				operator_range_buffer,
-				cdc_commit,
-				cdc_read,
-				cdc_wal_autocheckpoint,
-				self.cdc_memory,
 				operator_wal_autocheckpoint,
 				operator_resident,
 				operator_flush_interval,
@@ -353,7 +325,6 @@ impl EmbeddedBuilder {
 			Arc::new(catalog_cache.clone()),
 			wal,
 			recovery,
-			&cdc_store,
 		);
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
@@ -361,7 +332,7 @@ impl EmbeddedBuilder {
 			.with_wal_enabled(wal_enabled)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
-			.with_stores(multi_store, single_store, operator_store, cdc_store);
+			.with_stores(multi_store, single_store, operator_store);
 
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		{

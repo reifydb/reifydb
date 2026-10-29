@@ -59,14 +59,6 @@ pub enum ConfigKey {
 	MaxRetentionHorizonFloor,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
-	CdcTtlDuration,
-	CdcTtlScanInterval,
-	CdcTtlScanBatchSize,
-	CdcWalAutocheckpoint,
-	CdcCommitBufferBytes,
-	CdcBlockCutBytes,
-	CdcReadBufferTotalBytes,
-	CdcReadBufferShards,
 	MultiPointBufferTotalBytes,
 	MultiRangeBufferTotalBytes,
 	OperatorRangeTierBytes,
@@ -89,7 +81,7 @@ pub enum ConfigKey {
 	CommitQueueBytes,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
-	CdcConsumeWaitTimeout,
+	SubscriptionWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
 	ThreadsCoordination,
@@ -123,14 +115,6 @@ impl ConfigKey {
 			Self::MaxRetentionHorizonFloor,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
-			Self::CdcTtlDuration,
-			Self::CdcTtlScanInterval,
-			Self::CdcTtlScanBatchSize,
-			Self::CdcWalAutocheckpoint,
-			Self::CdcCommitBufferBytes,
-			Self::CdcBlockCutBytes,
-			Self::CdcReadBufferTotalBytes,
-			Self::CdcReadBufferShards,
 			Self::MultiPointBufferTotalBytes,
 			Self::MultiRangeBufferTotalBytes,
 			Self::OperatorRangeTierBytes,
@@ -153,7 +137,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
-			Self::CdcConsumeWaitTimeout,
+			Self::SubscriptionWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
 			Self::ThreadsCoordination,
@@ -205,14 +189,6 @@ impl ConfigKey {
 			Self::MaxRetentionHorizonFloor => Value::Duration(default::retention::MAX_HORIZON_FLOOR),
 			Self::HistoricalGcBatchSize => Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE),
 			Self::HistoricalGcInterval => Value::Duration(default::retention::HISTORICAL_GC_INTERVAL),
-			Self::CdcTtlDuration => Self::duration_or_none(default::cdc::TTL),
-			Self::CdcTtlScanInterval => Value::Duration(default::cdc::TTL_SCAN_INTERVAL),
-			Self::CdcTtlScanBatchSize => Value::Uint8(default::cdc::TTL_SCAN_BATCH_SIZE),
-			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES),
-			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER.as_bytes()),
-			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT.as_bytes()),
-			Self::CdcReadBufferTotalBytes => Value::Uint8(default::cdc::READ_BUFFER.as_bytes()),
-			Self::CdcReadBufferShards => Value::Uint2(default::cdc::READ_BUFFER_SHARDS),
 			Self::MultiPointBufferTotalBytes => {
 				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL.as_bytes())
 			}
@@ -243,7 +219,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
-			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT),
+			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC),
 			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION),
@@ -285,14 +261,6 @@ impl ConfigKey {
 			Self::HistoricalGcInterval => {
 				Value::Duration(default::retention::HISTORICAL_GC_INTERVAL_TESTING)
 			}
-			Self::CdcTtlDuration => Self::duration_or_none(default::cdc::TTL_TESTING),
-			Self::CdcTtlScanInterval => Value::Duration(default::cdc::TTL_SCAN_INTERVAL_TESTING),
-			Self::CdcTtlScanBatchSize => Value::Uint8(default::cdc::TTL_SCAN_BATCH_SIZE_TESTING),
-			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES_TESTING),
-			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER_TESTING.as_bytes()),
-			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT_TESTING.as_bytes()),
-			Self::CdcReadBufferTotalBytes => Value::Uint8(default::cdc::READ_BUFFER_TESTING.as_bytes()),
-			Self::CdcReadBufferShards => Value::Uint2(default::cdc::READ_BUFFER_SHARDS_TESTING),
 			Self::MultiPointBufferTotalBytes => {
 				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL_TESTING.as_bytes())
 			}
@@ -333,7 +301,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
-			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT_TESTING),
+			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT_TESTING),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE_TESTING),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC_TESTING),
 			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION_TESTING),
@@ -396,46 +364,6 @@ impl ConfigKey {
 			}
 			Self::HistoricalGcInterval => {
 				"How often the historical-version GC actor sweeps __historical for versions older than the oracle read watermark."
-			}
-			Self::CdcTtlDuration => {
-				"Maximum age of CDC entries before eviction. When unset, CDC is retained forever; \
-				 when set, must be > 0 and entries older than this duration are evicted regardless \
-				 of consumer state."
-			}
-			Self::CdcTtlScanInterval => {
-				"How often the CDC producer actor scans for and evicts expired CDC entries."
-			}
-			Self::CdcTtlScanBatchSize => {
-				"Max CDC entries deleted per transaction during a CDC TTL eviction tick."
-			}
-			Self::CdcWalAutocheckpoint => {
-				"WAL frame threshold (SQLite wal_autocheckpoint PRAGMA) for the CDC log's SQLite tier. \
-				 CDC has no explicit checkpoint of its own, so this is the sole control over how often \
-				 cdc.db's WAL is checkpointed into the main file. Higher values checkpoint less often with \
-				 a larger WAL; since CDC is written on the commit path, this also bounds how often a commit \
-				 pays an inline auto-checkpoint. Read once at boot; changing it requires a restart."
-			}
-			Self::CdcCommitBufferBytes => {
-				"Upper bound on unflushed CDC bytes held in the commit buffer. A writer that would push the \
-				 buffer past this stalls until the flusher drains it, so this is the back-pressure point \
-				 between the commit path and the persistent tier. Read once at boot."
-			}
-			Self::CdcBlockCutBytes => {
-				"Target size of one CDC block. The commit buffer cuts a block once its pending bytes reach \
-				 this, and that block is the unit of flush, of persistent storage, and of read-cache \
-				 residency. Larger blocks compress better but coarsen retention, which drops whole blocks. \
-				 Read once at boot."
-			}
-			Self::CdcReadBufferTotalBytes => {
-				"Total resident byte budget of the CDC read cache of decoded blocks, split evenly across \
-				 CDC_READ_BUFFER_SHARDS. Must be at least the shard count. None disables the cache outright, \
-				 so every miss below the commit buffer decodes a block straight from the persistent tier. \
-				 Read once at boot; changing it requires a restart."
-			}
-			Self::CdcReadBufferShards => {
-				"Number of lock-striped shards the CDC read cache total budget is split across. Raising it \
-				 divides the same memory into more, smaller shards. Must be >= 1. Read once at boot; \
-				 changing it requires a restart."
 			}
 			Self::MultiPointBufferTotalBytes => {
 				"Total resident byte budget of the multi-version point cache, split evenly across \
@@ -509,8 +437,8 @@ impl ConfigKey {
 				"How often the operator-state flush actor drains dirty resident state into the operator \
 				 store's SQLite tier. Operator state stays resident after a flush and is freed \
 				 separately by eviction, so memory pressure alone can leave state unflushed \
-				 indefinitely, which holds the durable checkpoint back and with it the CDC pinning \
-				 watermark. Read once at boot; changing it requires a restart."
+				 indefinitely, which holds the durable checkpoint back and with it the commit log floor. \
+				 Read once at boot; changing it requires a restart."
 			}
 			Self::OperatorWalAutocheckpoint => {
 				"WAL frame threshold for the operator store's SQLite tier: sets the SQLite \
@@ -554,17 +482,17 @@ impl ConfigKey {
 				 restart."
 			}
 			Self::FlowPullBatchBytes => {
-				"Byte budget a flow actor applies per pull from the CDC backlog. A flow that has fallen \
+				"Byte budget a reader applies per pull from the commit queue. A reader that has fallen \
 				 behind receives up to this many bytes of decoded changes in one slice, so catch-up is \
 				 vectorized instead of per-version."
 			}
 			Self::FlowLoadBatchBytes => {
-				"Byte budget of one catch-up loader read from the CDC log on behalf of flows that are \
-				 behind the in-memory backlog. Identical concurrent requests share a single read."
+				"Byte budget of one catch-up loader read from the commit log on behalf of flows that are \
+				 behind the in-memory commit queue. Identical concurrent requests share a single read."
 			}
-			Self::CdcConsumeWaitTimeout => {
-				"Backstop timeout for the CDC consumer's wait for a consume reply from the downstream \
-				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the \
+			Self::SubscriptionWaitTimeout => {
+				"Backstop timeout for the subscription reader's wait for a dispatch reply from the \
+				 subscription workers. A lost reply would otherwise wedge the reader forever; on timeout the \
 				 process aborts with a report naming the consumer, the pending work and the batch. \
 				 Must be > 0."
 			}
@@ -601,13 +529,13 @@ impl ConfigKey {
 				 the slowest task delay every other one. Must be >= 1. Changes require restart."
 			}
 			Self::SubscriptionWorkerThreads => {
-				"Number of subscription worker actors that fan out CDC changes to ephemeral \
+				"Number of subscription worker actors that fan out committed changes to ephemeral \
 				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
 				 raise fan-out parallelism for many concurrent subscriptions. Changes require restart."
 			}
 			Self::MetricsFlushInterval => {
-				"How often the metric collector flushes accumulated storage and CDC accounting into the \
-				 system::metrics KV store that backs the storage and cdc views. Must be > 0."
+				"How often the metric collector flushes accumulated storage accounting into the \
+				 system::metrics KV store that backs the storage views. Must be > 0."
 			}
 			Self::MetricsSampleInterval => {
 				"How often the metrics sampler polls every domain, rolls the window and publishes the \
@@ -653,14 +581,6 @@ impl ConfigKey {
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => true,
-			Self::CdcTtlDuration => false,
-			Self::CdcTtlScanInterval => true,
-			Self::CdcTtlScanBatchSize => false,
-			Self::CdcWalAutocheckpoint => true,
-			Self::CdcCommitBufferBytes => true,
-			Self::CdcBlockCutBytes => true,
-			Self::CdcReadBufferTotalBytes => true,
-			Self::CdcReadBufferShards => true,
 			Self::MultiPointBufferTotalBytes => true,
 			Self::MultiRangeBufferTotalBytes => true,
 			Self::OperatorRangeTierBytes => true,
@@ -683,7 +603,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
-			Self::CdcConsumeWaitTimeout => false,
+			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsCoordination => true,
@@ -717,14 +637,6 @@ impl ConfigKey {
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
-			Self::CdcTtlDuration => &[ValueType::Duration],
-			Self::CdcTtlScanInterval => &[ValueType::Duration],
-			Self::CdcTtlScanBatchSize => &[ValueType::Uint8],
-			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
-			Self::CdcCommitBufferBytes => &[ValueType::Uint8],
-			Self::CdcBlockCutBytes => &[ValueType::Uint8],
-			Self::CdcReadBufferTotalBytes => &[ValueType::Uint8],
-			Self::CdcReadBufferShards => &[ValueType::Uint2],
 			Self::MultiPointBufferTotalBytes => &[ValueType::Uint8],
 			Self::MultiRangeBufferTotalBytes => &[ValueType::Uint8],
 			Self::OperatorRangeTierBytes => &[ValueType::Uint8],
@@ -747,7 +659,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
-			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
+			Self::SubscriptionWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
 			Self::ThreadsCoordination => &[ValueType::Uint2],
@@ -781,14 +693,6 @@ impl ConfigKey {
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
-			Self::CdcTtlDuration => true,
-			Self::CdcTtlScanInterval => false,
-			Self::CdcTtlScanBatchSize => false,
-			Self::CdcWalAutocheckpoint => false,
-			Self::CdcCommitBufferBytes => false,
-			Self::CdcBlockCutBytes => false,
-			Self::CdcReadBufferTotalBytes => true,
-			Self::CdcReadBufferShards => false,
 			Self::MultiPointBufferTotalBytes => true,
 			Self::MultiRangeBufferTotalBytes => true,
 			Self::OperatorRangeTierBytes => true,
@@ -811,7 +715,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
-			Self::CdcConsumeWaitTimeout => false,
+			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsCoordination => false,
@@ -834,19 +738,6 @@ impl ConfigKey {
 
 	fn validate_canonical(&self, value: &Value) -> Result<(), String> {
 		match self {
-			Self::CdcTtlDuration => match value {
-				Value::None {
-					..
-				} => Ok(()),
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("CDC_TTL_DURATION must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
 			Self::EpochBucketInterval => match value {
 				Value::Duration(d) if !d.is_positive() => {
 					Err("EPOCH_BUCKET_INTERVAL must be greater than zero".to_string())
@@ -922,25 +813,6 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("MULTI_RANGE_BUFFER_SHARDS must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::CdcReadBufferShards => match value {
-				Value::Uint2(0) => Err("CDC_READ_BUFFER_SHARDS must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::CdcCommitBufferBytes => match value {
-				Value::Uint8(0) => Err("CDC_COMMIT_BUFFER_BYTES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::CdcBlockCutBytes => match value {
-				Value::Uint8(0) => Err("CDC_BLOCK_CUT_BYTES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::CdcReadBufferTotalBytes => match value {
-				Value::Uint8(0) => Err(
-					"CDC_READ_BUFFER_TOTAL_BYTES must be greater than zero; use none to disable the block cache"
-						.to_string(),
-				),
-				_ => Ok(()),
-			},
 			Self::MultiFlushInterval => match value {
 				Value::Duration(d) if d.is_positive() => Ok(()),
 				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
@@ -988,10 +860,6 @@ impl ConfigKey {
 				Value::Uint8(0) => {
 					Err("OPERATOR_WAL_AUTOCHECKPOINT must be greater than zero".to_string())
 				}
-				_ => Ok(()),
-			},
-			Self::CdcWalAutocheckpoint => match value {
-				Value::Uint8(0) => Err("CDC_WAL_AUTOCHECKPOINT must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::HistoricalGcBatchSize => match value {
@@ -1049,12 +917,12 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("FLOW_COMMITTER_SHARDS must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::CdcConsumeWaitTimeout => match value {
+			Self::SubscriptionWaitTimeout => match value {
 				Value::Duration(d) => {
 					if d.is_positive() {
 						Ok(())
 					} else {
-						Err("CDC_CONSUME_WAIT_TIMEOUT must be greater than zero".to_string())
+						Err("SUBSCRIPTION_WAIT_TIMEOUT must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -1172,14 +1040,6 @@ impl fmt::Display for ConfigKey {
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
-			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
-			Self::CdcTtlScanInterval => write!(f, "CDC_TTL_SCAN_INTERVAL"),
-			Self::CdcTtlScanBatchSize => write!(f, "CDC_TTL_SCAN_BATCH_SIZE"),
-			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
-			Self::CdcCommitBufferBytes => write!(f, "CDC_COMMIT_BUFFER_BYTES"),
-			Self::CdcBlockCutBytes => write!(f, "CDC_BLOCK_CUT_BYTES"),
-			Self::CdcReadBufferTotalBytes => write!(f, "CDC_READ_BUFFER_TOTAL_BYTES"),
-			Self::CdcReadBufferShards => write!(f, "CDC_READ_BUFFER_SHARDS"),
 			Self::MultiPointBufferTotalBytes => write!(f, "MULTI_POINT_BUFFER_TOTAL_BYTES"),
 			Self::MultiRangeBufferTotalBytes => write!(f, "MULTI_RANGE_BUFFER_TOTAL_BYTES"),
 			Self::OperatorRangeTierBytes => write!(f, "OPERATOR_RANGE_TIER_BYTES"),
@@ -1202,7 +1062,7 @@ impl fmt::Display for ConfigKey {
 			Self::CommitQueueBytes => write!(f, "COMMIT_QUEUE_BYTES"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
-			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
+			Self::SubscriptionWaitTimeout => write!(f, "SUBSCRIPTION_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsCoordination => write!(f, "THREADS_COORDINATION"),
@@ -1240,14 +1100,6 @@ impl FromStr for ConfigKey {
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
-			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
-			"CDC_TTL_SCAN_INTERVAL" => Ok(Self::CdcTtlScanInterval),
-			"CDC_TTL_SCAN_BATCH_SIZE" => Ok(Self::CdcTtlScanBatchSize),
-			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
-			"CDC_COMMIT_BUFFER_BYTES" => Ok(Self::CdcCommitBufferBytes),
-			"CDC_BLOCK_CUT_BYTES" => Ok(Self::CdcBlockCutBytes),
-			"CDC_READ_BUFFER_TOTAL_BYTES" => Ok(Self::CdcReadBufferTotalBytes),
-			"CDC_READ_BUFFER_SHARDS" => Ok(Self::CdcReadBufferShards),
 			"MULTI_POINT_BUFFER_TOTAL_BYTES" => Ok(Self::MultiPointBufferTotalBytes),
 			"MULTI_RANGE_BUFFER_TOTAL_BYTES" => Ok(Self::MultiRangeBufferTotalBytes),
 			"OPERATOR_RANGE_TIER_BYTES" => Ok(Self::OperatorRangeTierBytes),
@@ -1270,7 +1122,7 @@ impl FromStr for ConfigKey {
 			"COMMIT_QUEUE_BYTES" => Ok(Self::CommitQueueBytes),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
-			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
+			"SUBSCRIPTION_WAIT_TIMEOUT" => Ok(Self::SubscriptionWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_COORDINATION" => Ok(Self::ThreadsCoordination),
@@ -1369,9 +1221,10 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_cdc_ttl_default_is_typed_null() {
-		// Defaulting to Value::None means "TTL not configured" - producer skips cleanup.
-		let default = ConfigKey::CdcTtlDuration.default_value();
+	fn test_optional_duration_default_is_typed_null() {
+		// Defaulting to Value::None means no snapshot cadence is configured; a zero default would roll every
+		// sample.
+		let default = ConfigKey::MetricsSnapshotInterval.default_value();
 		assert!(matches!(
 			default,
 			Value::None {
@@ -1381,27 +1234,27 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_ttl_accept_passes_typed_null() {
+	fn test_optional_duration_accept_passes_typed_null() {
 		let none = Value::None {
 			inner: ValueType::Duration,
 		};
-		let v = ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap();
+		let v = ConfigKey::MetricsSnapshotInterval.accept(none.clone()).unwrap();
 		assert_eq!(v, none);
 	}
 
 	#[test]
-	fn test_cdc_ttl_accept_passes_positive_duration() {
+	fn test_optional_duration_accept_passes_positive_duration() {
 		let one_sec = Value::duration_seconds(1);
-		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_sec.clone()).unwrap(), one_sec);
+		assert_eq!(ConfigKey::MetricsSnapshotInterval.accept(one_sec.clone()).unwrap(), one_sec);
 
 		let one_hour = Value::duration_seconds(3600);
-		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_hour.clone()).unwrap(), one_hour);
+		assert_eq!(ConfigKey::MetricsSnapshotInterval.accept(one_hour.clone()).unwrap(), one_hour);
 	}
 
 	#[test]
-	fn test_cdc_ttl_accept_rejects_zero() {
+	fn test_optional_duration_accept_rejects_zero() {
 		let zero = Value::duration_seconds(0);
-		match ConfigKey::CdcTtlDuration.accept(zero).unwrap_err() {
+		match ConfigKey::MetricsSnapshotInterval.accept(zero).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
 			}
@@ -1410,9 +1263,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_ttl_accept_rejects_negative() {
+	fn test_optional_duration_accept_rejects_negative() {
 		let negative = Value::duration_seconds(-5);
-		assert!(matches!(ConfigKey::CdcTtlDuration.accept(negative), Err(AcceptError::InvalidValue(_))));
+		assert!(matches!(
+			ConfigKey::MetricsSnapshotInterval.accept(negative),
+			Err(AcceptError::InvalidValue(_))
+		));
 	}
 
 	#[test]
@@ -1421,15 +1277,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_ttl_round_trips_through_display_and_from_str() {
-		let key: ConfigKey = "CDC_TTL_DURATION".parse().unwrap();
-		assert_eq!(key, ConfigKey::CdcTtlDuration);
-		assert_eq!(format!("{}", ConfigKey::CdcTtlDuration), "CDC_TTL_DURATION");
+	fn test_optional_duration_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "METRICS_SNAPSHOT_INTERVAL".parse().unwrap();
+		assert_eq!(key, ConfigKey::MetricsSnapshotInterval);
+		assert_eq!(format!("{}", ConfigKey::MetricsSnapshotInterval), "METRICS_SNAPSHOT_INTERVAL");
 	}
 
 	#[test]
-	fn test_cdc_ttl_in_all() {
-		assert!(ConfigKey::all().contains(&ConfigKey::CdcTtlDuration));
+	fn test_optional_duration_in_all() {
+		assert!(ConfigKey::all().contains(&ConfigKey::MetricsSnapshotInterval));
 	}
 
 	#[test]
@@ -1459,7 +1315,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 59);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1471,17 +1327,10 @@ mod tests {
 		assert!(all.contains(&ConfigKey::OperatorFlushSliceBytes));
 		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
+		assert!(all.contains(&ConfigKey::SubscriptionWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
-		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
-		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
 		assert!(all.contains(&ConfigKey::MaxRetentionHorizonFloor));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
-		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
-		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
-		assert!(all.contains(&ConfigKey::CdcReadBufferTotalBytes));
-		assert!(all.contains(&ConfigKey::CdcReadBufferShards));
 		assert!(all.contains(&ConfigKey::OperatorRangeTierBytes));
 		assert!(all.contains(&ConfigKey::OperatorDirtyBytes));
 		assert!(all.contains(&ConfigKey::OperatorFlushSliceBytes));
@@ -1861,13 +1710,13 @@ mod tests {
 		let none = Value::None {
 			inner: ValueType::Duration,
 		};
-		assert_eq!(ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap(), none);
+		assert_eq!(ConfigKey::MetricsSnapshotInterval.accept(none.clone()).unwrap(), none);
 	}
 
 	#[test]
 	fn test_accept_rejects_wrong_inner_type_typed_null_for_optional_key() {
 		// Optional key still rejects typed-null whose inner doesn't match expected_types.
-		let err = ConfigKey::CdcTtlDuration
+		let err = ConfigKey::MetricsSnapshotInterval
 			.accept(Value::None {
 				inner: ValueType::Uint8,
 			})

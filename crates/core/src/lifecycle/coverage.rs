@@ -67,9 +67,9 @@ mod tests {
 		// as unreclaimed on every boot - an error indistinguishable from a genuinely dead lane.
 		let coverage = RetentionCoverage::new();
 		coverage.cover(RetentionClass::RowTtl, "retention-evict-silent");
-		coverage.cover(RetentionClass::CdcTruncate, "cdc-subsystem");
+		coverage.cover(RetentionClass::QueueRetention, "queue-subsystem");
 
-		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-subsystem"));
+		assert_eq!(coverage.owner(RetentionClass::QueueRetention), Some("queue-subsystem"));
 		assert!(coverage.is_covered(RetentionClass::RowTtl));
 		assert!(
 			!coverage.is_covered(RetentionClass::EpochLog),
@@ -82,10 +82,10 @@ mod tests {
 		// Registration order across subsystems is a builder detail; keeping the first registrant makes
 		// the reported owner stable when subsystems are reordered.
 		let coverage = RetentionCoverage::new();
-		coverage.cover(RetentionClass::CdcTruncate, "cdc-truncate");
-		coverage.cover(RetentionClass::CdcTruncate, "someone-else");
+		coverage.cover(RetentionClass::QueueRetention, "queue-retention");
+		coverage.cover(RetentionClass::QueueRetention, "someone-else");
 
-		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-truncate"));
+		assert_eq!(coverage.owner(RetentionClass::QueueRetention), Some("queue-retention"));
 		assert_eq!(coverage.len(), 1, "a second claim must not create a second entry");
 	}
 
@@ -107,14 +107,14 @@ mod tests {
 		// prints an executor name, and would fold the class into the covered set that liveness assertions
 		// read - a lane nothing ever runs would then be expected to record slices.
 		let coverage = RetentionCoverage::new();
-		coverage.absent(RetentionClass::CdcTruncate, "no cdc store registered");
+		coverage.absent(RetentionClass::QueueRetention, "no queue store registered");
 
-		assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
+		assert_eq!(coverage.absence(RetentionClass::QueueRetention), Some("no queue store registered"));
 		assert!(
-			!coverage.is_covered(RetentionClass::CdcTruncate),
+			!coverage.is_covered(RetentionClass::QueueRetention),
 			"an absent lane has no executor, so it must not count as covered"
 		);
-		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), None);
+		assert_eq!(coverage.owner(RetentionClass::QueueRetention), None);
 	}
 
 	#[test]
@@ -135,9 +135,9 @@ mod tests {
 		// Same stability contract as the owner: declaration order across subsystems is a builder detail,
 		// and a reason that changes with it makes the boot report unreproducible.
 		let coverage = RetentionCoverage::new();
-		coverage.absent(RetentionClass::CdcTruncate, "no cdc store registered");
-		coverage.absent(RetentionClass::CdcTruncate, "some later excuse");
+		coverage.absent(RetentionClass::QueueRetention, "no queue store registered");
+		coverage.absent(RetentionClass::QueueRetention, "some later excuse");
 
-		assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
+		assert_eq!(coverage.absence(RetentionClass::QueueRetention), Some("no queue store registered"));
 	}
 }

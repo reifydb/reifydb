@@ -23,7 +23,7 @@ fn await_caught_up(db: &TestDb) {
 	// early, so a sleep interval hands the chain enough time to finish and hides it.
 	let target = db.watermarks().tx().current().expect("current commit version");
 	let deadline = Clock::Real.instant() + BARRIER_TIMEOUT;
-	while db.watermarks().cdc().flow_consumer() < target {
+	while db.watermarks().reader().flow_caught_up() < target {
 		assert!(
 			Clock::Real.instant() < deadline,
 			"the caught-up watermark never reached committed version {} - the materialization gate is \

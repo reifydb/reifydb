@@ -12,20 +12,16 @@ use reifydb_value::value::{
 };
 
 use crate::{
-	interface::{
-		catalog::{
-			config::ConfigKey,
-			flow::{FlowEdgeId, FlowId, OperatorId},
-			id::{
-				BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId,
-				MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId,
-				RelationshipId, RingBufferId, SequenceId, SeriesId, SinkId, SourceId, TableId, ViewId,
-				WindowedViewGroupId,
-			},
-			object::ObjectId,
-			storage::StorageId,
+	interface::catalog::{
+		config::ConfigKey,
+		flow::{FlowEdgeId, FlowId, OperatorId},
+		id::{
+			BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId, MigrationEventId,
+			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId,
+			SequenceId, SeriesId, SinkId, SourceId, TableId, ViewId, WindowedViewGroupId,
 		},
-		cdc::CdcConsumerId,
+		object::ObjectId,
+		storage::StorageId,
 	},
 	key::{
 		catalog::{
@@ -33,7 +29,6 @@ use crate::{
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
 			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
 		},
-		cdc::CdcConsumerKey,
 		column::{
 			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
 			TableColumnBlockKey,
@@ -81,7 +76,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 96;
+const DECLARED_KINDS: usize = 95;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -149,10 +144,6 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::ColumnSequence => ColumnSequenceKey {
 			object: ObjectId::table(TableId(1)),
 			column: ColumnId(1),
-		}
-		.encode(),
-		KeyTag::CdcConsumer => CdcConsumerKey {
-			consumer: CdcConsumerId::new("probe"),
 		}
 		.encode(),
 		KeyTag::View => ViewKey {

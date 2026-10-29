@@ -9,7 +9,6 @@ use reifydb_catalog::vtable::{
 	system::{
 		authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
 		bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
-		cdc_consumers::SystemCdcConsumers,
 		column_properties::SystemColumnProperties,
 		columns::SystemColumnsTable,
 		configs::SystemConfigs,
@@ -147,7 +146,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		}
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
-		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),

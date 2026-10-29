@@ -14,7 +14,6 @@ use crate::{
 };
 
 const SUBKEY_STORAGE: u8 = 0x01;
-const SUBKEY_CDC: u8 = 0x02;
 
 const ID_OBJECT: u8 = 0x00;
 const ID_SYSTEM: u8 = 0x01;
@@ -67,52 +66,6 @@ impl MetricStorageKey {
 
 		Some(Self {
 			tier,
-			id,
-		})
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MetricCdcKey {
-	pub id: MetricsId,
-}
-
-impl MetricCdcKey {
-	pub fn new(id: MetricsId) -> Self {
-		Self {
-			id,
-		}
-	}
-
-	pub fn encoded(id: MetricsId) -> EncodedKey {
-		Self::new(id).encode()
-	}
-
-	pub fn prefix() -> EncodedKey {
-		subkey_prefix(SUBKEY_CDC)
-	}
-}
-
-impl MetricCdcKey {
-	pub const TAG: KeyTag = KeyTag::Metric;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(12);
-		serializer.extend_u8(Self::TAG as u8).extend_u8(SUBKEY_CDC);
-		extend_metrics_id(&mut serializer, self.id);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		read_subkey(&mut de, Self::TAG, SUBKEY_CDC)?;
-
-		let id = read_metrics_id(&mut de)?;
-		if !de.is_empty() {
-			return None;
-		}
-
-		Some(Self {
 			id,
 		})
 	}
@@ -191,14 +144,6 @@ impl KeyFields for MetricStorageKey {
 	}
 }
 
-impl KeyFields for MetricCdcKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		let mut out: SmallVec<[Field<'_>; 6]> = smallvec![Field::UDesc(Width::U8, SUBKEY_CDC as u128)];
-		extend_metrics_id_fields(&mut out, self.id);
-		out
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::decode_u8;
@@ -218,14 +163,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_key_is_classified_as_metric() {
-		// Same misclassification: metric CDC keys sorted inside the namespace block.
-		let key = MetricCdcKey::encoded(MetricsId::System);
-		assert_eq!(KeyTag::of(&key), Some(KeyTag::Metric));
-		assert_eq!(decode_u8(key.as_slice()[0]), KeyTag::Metric as u8);
-	}
-
-	#[test]
 	fn test_storage_key_roundtrip() {
 		for tier in [Tier::Buffer, Tier::Persistent] {
 			for id in [MetricsId::System, MetricsId::Object(ObjectId::Table(TableId(12345)))] {
@@ -236,32 +173,17 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_key_roundtrip() {
-		for id in [MetricsId::System, MetricsId::Object(ObjectId::Table(TableId(12345)))] {
-			let key = MetricCdcKey::encoded(id);
-			assert_eq!(MetricCdcKey::decode(&key), Some(MetricCdcKey::new(id)));
-		}
-	}
-
-	#[test]
-	fn test_subkeys_do_not_decode_into_each_other() {
-		// Both sub-families share one kind byte; only the sub-key byte keeps them apart.
-		let storage = MetricStorageKey::encoded(Tier::Buffer, MetricsId::System);
-		let cdc = MetricCdcKey::encoded(MetricsId::System);
-
-		assert!(MetricCdcKey::decode(&storage).is_none());
-		assert!(MetricStorageKey::decode(&cdc).is_none());
-	}
-
-	#[test]
 	fn test_prefixes_match_their_own_family_only() {
 		let storage = MetricStorageKey::encoded(Tier::Persistent, MetricsId::System);
-		let cdc = MetricCdcKey::encoded(MetricsId::System);
-
 		assert!(storage.as_slice().starts_with(MetricStorageKey::prefix().as_slice()));
-		assert!(cdc.as_slice().starts_with(MetricCdcKey::prefix().as_slice()));
-		assert!(!storage.as_slice().starts_with(MetricCdcKey::prefix().as_slice()));
-		assert!(!cdc.as_slice().starts_with(MetricStorageKey::prefix().as_slice()));
+	}
+
+	#[test]
+	fn the_retired_cdc_metric_subkey_never_decodes_as_a_storage_key() {
+		// Sub-key 0x02 held cdc metrics; old rows keep it, so reusing it would read them as another counter.
+		let retired = EncodedKey::new(vec![KeyTag::Metric as u8, 0x02, 0x00]);
+		assert!(MetricStorageKey::decode(&retired).is_none());
+		assert!(!retired.as_slice().starts_with(MetricStorageKey::prefix().as_slice()));
 	}
 
 	#[test]
@@ -288,7 +210,6 @@ mod tests {
 		];
 		let mut keys: Vec<MetricKey> = Vec::new();
 		for id in ids {
-			keys.push(MetricKey::Cdc(MetricCdcKey::new(id)));
 			for tier in [Tier::Buffer, Tier::Persistent] {
 				keys.push(MetricKey::Storage(MetricStorageKey::new(tier, id)));
 			}

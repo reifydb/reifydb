@@ -17,7 +17,6 @@ use crate::{
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
 			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
 		},
-		cdc::CdcConsumerKey,
 		column::{
 			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
 			TableColumnBlockKey,
@@ -28,7 +27,7 @@ use crate::{
 			AuthenticationKey, AuthenticationMethodKey, GrantedRoleKey, IdentityAttributeKey,
 			IdentityAttributeValueKey, IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 		},
-		metric::{MetricCdcKey, MetricStorageKey},
+		metric::MetricStorageKey,
 		namespace::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 			NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
@@ -64,7 +63,6 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetricKey {
-	Cdc(MetricCdcKey),
 	Storage(MetricStorageKey),
 }
 
@@ -83,7 +81,6 @@ pub enum TaggedKey {
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	ColumnSequence(ColumnSequenceKey),
-	CdcConsumer(CdcConsumerKey),
 	View(ViewKey),
 	NamespaceView(NamespaceViewKey),
 	PrimaryKey(PrimaryKeyKey),
@@ -184,7 +181,6 @@ impl TaggedKey {
 			Self::Index(_) => KeyTag::Index,
 			Self::IndexEntry(_) => KeyTag::IndexEntry,
 			Self::ColumnSequence(_) => KeyTag::ColumnSequence,
-			Self::CdcConsumer(_) => KeyTag::CdcConsumer,
 			Self::View(_) => KeyTag::View,
 			Self::NamespaceView(_) => KeyTag::NamespaceView,
 			Self::PrimaryKey(_) => KeyTag::PrimaryKey,
@@ -285,7 +281,6 @@ impl TaggedKey {
 			Self::Index(key) => key.encode(),
 			Self::IndexEntry(key) => key.encode(),
 			Self::ColumnSequence(key) => key.encode(),
-			Self::CdcConsumer(key) => key.encode(),
 			Self::View(key) => key.encode(),
 			Self::NamespaceView(key) => key.encode(),
 			Self::PrimaryKey(key) => key.encode(),
@@ -307,7 +302,6 @@ impl TaggedKey {
 			Self::DictionaryEntry(key) => key.encode(),
 			Self::DictionaryEntryIndex(key) => key.encode(),
 			Self::NamespaceDictionary(key) => key.encode(),
-			Self::Metric(MetricKey::Cdc(key)) => key.encode(),
 			Self::Metric(MetricKey::Storage(key)) => key.encode(),
 			Self::FlowVersion(key) => key.encode(),
 			Self::RowShape(key) => key.encode(),
@@ -387,7 +381,6 @@ impl TaggedKey {
 			KeyTag::Index => IndexKey::decode(key).map(Self::Index),
 			KeyTag::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
 			KeyTag::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::ColumnSequence),
-			KeyTag::CdcConsumer => CdcConsumerKey::decode(key).map(Self::CdcConsumer),
 			KeyTag::View => ViewKey::decode(key).map(Self::View),
 			KeyTag::NamespaceView => NamespaceViewKey::decode(key).map(Self::NamespaceView),
 			KeyTag::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
@@ -495,10 +488,7 @@ impl TaggedKey {
 }
 
 fn decode_metric(key: &EncodedKey) -> Option<TaggedKey> {
-	MetricStorageKey::decode(key)
-		.map(MetricKey::Storage)
-		.or_else(|| MetricCdcKey::decode(key).map(MetricKey::Cdc))
-		.map(TaggedKey::Metric)
+	MetricStorageKey::decode(key).map(MetricKey::Storage).map(TaggedKey::Metric)
 }
 
 impl From<NamespaceKey> for TaggedKey {
@@ -576,12 +566,6 @@ impl From<IndexEntryKey> for TaggedKey {
 impl From<ColumnSequenceKey> for TaggedKey {
 	fn from(key: ColumnSequenceKey) -> Self {
 		Self::ColumnSequence(key)
-	}
-}
-
-impl From<CdcConsumerKey> for TaggedKey {
-	fn from(key: CdcConsumerKey) -> Self {
-		Self::CdcConsumer(key)
 	}
 }
 
@@ -1083,12 +1067,6 @@ impl From<MetricStorageKey> for TaggedKey {
 	}
 }
 
-impl From<MetricCdcKey> for TaggedKey {
-	fn from(key: MetricCdcKey) -> Self {
-		Self::Metric(MetricKey::Cdc(key))
-	}
-}
-
 fn desc<T: Ord + ?Sized>(left: &T, right: &T) -> Ordering {
 	right.cmp(left)
 }
@@ -1122,9 +1100,6 @@ fn metrics_id_cmp(left: &MetricsId, right: &MetricsId) -> Ordering {
 impl Ord for MetricKey {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Self::Cdc(left), Self::Cdc(right)) => metrics_id_cmp(&left.id, &right.id),
-			(Self::Cdc(_), Self::Storage(_)) => Ordering::Less,
-			(Self::Storage(_), Self::Cdc(_)) => Ordering::Greater,
 			(Self::Storage(left), Self::Storage(right)) => {
 				desc(&tier_byte(left.tier), &tier_byte(right.tier))
 					.then_with(|| metrics_id_cmp(&left.id, &right.id))
@@ -1248,7 +1223,6 @@ pub trait KeyFields {
 impl KeyFields for MetricKey {
 	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
 		match self {
-			Self::Cdc(key) => key.fields(),
 			Self::Storage(key) => key.fields(),
 		}
 	}
@@ -1270,7 +1244,6 @@ impl KeyFields for TaggedKey {
 			Self::Index(key) => key.fields(),
 			Self::IndexEntry(key) => key.fields(),
 			Self::ColumnSequence(key) => key.fields(),
-			Self::CdcConsumer(key) => key.fields(),
 			Self::View(key) => key.fields(),
 			Self::NamespaceView(key) => key.fields(),
 			Self::PrimaryKey(key) => key.fields(),
@@ -1373,7 +1346,6 @@ impl Ord for TaggedKey {
 			(Self::Index(left), Self::Index(right)) => left.cmp_fields(right),
 			(Self::IndexEntry(left), Self::IndexEntry(right)) => left.cmp_fields(right),
 			(Self::ColumnSequence(left), Self::ColumnSequence(right)) => left.cmp_fields(right),
-			(Self::CdcConsumer(left), Self::CdcConsumer(right)) => left.cmp_fields(right),
 			(Self::View(left), Self::View(right)) => left.cmp_fields(right),
 			(Self::NamespaceView(left), Self::NamespaceView(right)) => left.cmp_fields(right),
 			(Self::PrimaryKey(left), Self::PrimaryKey(right)) => left.cmp_fields(right),
@@ -1490,7 +1462,7 @@ mod tests {
 	};
 	use smallvec::SmallVec;
 
-	use super::{Field, KeyFields, MetricCdcKey, MetricKey, MetricStorageKey, RawEncoding, TaggedKey};
+	use super::{Field, KeyFields, MetricKey, MetricStorageKey, RawEncoding, TaggedKey};
 	use crate::{
 		interface::{
 			catalog::{
@@ -1506,7 +1478,6 @@ mod tests {
 				object::ObjectId,
 				storage::StorageId,
 			},
-			cdc::CdcConsumerId,
 			store::Tier,
 		},
 		key::{
@@ -1517,7 +1488,6 @@ mod tests {
 				SinkKey, SourceKey, SumTypeKey, TableKey, VariantHandlerKey, ViewKey,
 				WindowedViewGroupKey,
 			},
-			cdc::CdcConsumerKey,
 			column::{
 				ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
 				TableColumnBlockKey,
@@ -1605,12 +1575,6 @@ mod tests {
 		}
 	}
 
-	fn consumer(name: &str) -> CdcConsumerKey {
-		CdcConsumerKey {
-			consumer: CdcConsumerId::new(name),
-		}
-	}
-
 	#[test]
 	fn test_cross_kind_order_reverses_the_discriminant() {
 		// Deriving Ord sorts by declaration index, which is the exact inverse of the encoded order
@@ -1623,8 +1587,6 @@ mod tests {
 				storage: StorageId::table(1),
 				row: RowNumber(1),
 			}),
-			probe_encodable(consumer("a")),
-			probe(MetricCdcKey::new(MetricsId::System)),
 			probe(MetricStorageKey::new(Tier::Buffer, MetricsId::System)),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(1))),
 			probe(PartitionedSortedViewRowKey::new(
@@ -1689,18 +1651,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_consumer_name_sorts_descending() {
-		// CdcConsumerKey derives Ord over its String while encoding through extend_str, which
-		// reverses; delegating to that derive returns the consumer list back to front.
-		assert_ascending(&[
-			probe_encodable(consumer("c")),
-			probe_encodable(consumer("b")),
-			probe_encodable(consumer("ab")),
-			probe_encodable(consumer("a")),
-		]);
-	}
-
-	#[test]
 	fn test_config_key_sorts_by_its_rendered_name_not_its_discriminant() {
 		// ConfigKey derives Ord over declaration order but encodes through its Display string.
 		assert_ascending(&[
@@ -1724,9 +1674,6 @@ mod tests {
 		// Both families share one kind byte and are told apart by a sub-key written descending, so
 		// 0x02 (cdc) has to sort ahead of 0x01 (storage).
 		assert_ascending(&[
-			probe(MetricCdcKey::new(MetricsId::System)),
-			probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(2)))),
-			probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(1)))),
 			probe(MetricStorageKey::new(Tier::Persistent, MetricsId::System)),
 			probe(MetricStorageKey::new(Tier::Buffer, MetricsId::System)),
 			probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::table(1)))),
@@ -1814,9 +1761,6 @@ mod tests {
 				IndexId::primary(PrimaryKeyId(1)),
 				EncodedIndexKey::new([0x01u8, 0x02]),
 			)),
-			probe_encodable(consumer("a")),
-			probe_encodable(consumer("ab")),
-			probe_encodable(consumer("b")),
 			probe(dictionary_entry(1, 0x00)),
 			probe(dictionary_entry(1, 0xFF)),
 			probe(dictionary_entry(2, 0x00)),
@@ -1862,8 +1806,6 @@ mod tests {
 				SortRun::new([0x10u8]),
 				RowNumber(1),
 			)),
-			probe(MetricCdcKey::new(MetricsId::System)),
-			probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(1)))),
 			probe(MetricStorageKey::new(Tier::Buffer, MetricsId::System)),
 			probe(MetricStorageKey::new(Tier::Persistent, MetricsId::System)),
 			probe(SystemVersionKey {
@@ -2068,14 +2010,6 @@ mod tests {
 		);
 		assert_projection_matches_bytes(
 			vec![
-				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("a"))),
-				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("b"))),
-				probe_encodable(CdcConsumerKey::new(CdcConsumerId::new("ab"))),
-			],
-			"CdcConsumerKey",
-		);
-		assert_projection_matches_bytes(
-			vec![
 				probe_encodable(ConfigStorageKey::new(ConfigKey::QueryRowBatchSize)),
 				probe_encodable(ConfigStorageKey::new(ConfigKey::OracleWindowSize)),
 			],
@@ -2198,9 +2132,6 @@ mod tests {
 				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::table(1)))),
 				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::table(2)))),
 				probe(MetricStorageKey::new(Tier::Buffer, MetricsId::Object(ObjectId::view(1)))),
-				probe(MetricCdcKey::new(MetricsId::System)),
-				probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(1)))),
-				probe(MetricCdcKey::new(MetricsId::Object(ObjectId::table(2)))),
 			],
 			"MetricKey",
 		);
@@ -2254,9 +2185,6 @@ mod tests {
 			probe(ColumnSequenceKey {
 				object: ObjectId::table(18),
 				column: ColumnId(19),
-			}),
-			probe_encodable(CdcConsumerKey {
-				consumer: CdcConsumerId::new("consumer"),
 			}),
 			probe(ViewKey {
 				view: ViewId(20),
@@ -2319,7 +2247,6 @@ mod tests {
 				dictionary: DictionaryId(43),
 			}),
 			probe(MetricStorageKey::new(Tier::Persistent, MetricsId::Object(ObjectId::table(44)))),
-			probe(MetricCdcKey::new(MetricsId::System)),
 			probe(FlowVersionKey {
 				flow: FlowId(45),
 			}),
@@ -2662,16 +2589,14 @@ mod tests {
 		let mut kinds: Vec<u8> = all_probes().iter().map(|(key, _)| key.kind() as u8).collect();
 		kinds.sort_unstable();
 		kinds.dedup();
-		assert_eq!(kinds.len(), 89);
+		assert_eq!(kinds.len(), 88);
 	}
 
 	#[test]
 	fn test_metric_sub_families_decode_into_their_own_variant() {
 		// Both families share kind 0x22; the wrong pick loses the tier and reads another counter.
 		let storage = MetricStorageKey::new(Tier::Persistent, MetricsId::System);
-		let cdc = MetricCdcKey::new(MetricsId::System);
 		assert_eq!(TaggedKey::decode(&storage.encode()), Some(TaggedKey::Metric(MetricKey::Storage(storage))));
-		assert_eq!(TaggedKey::decode(&cdc.encode()), Some(TaggedKey::Metric(MetricKey::Cdc(cdc))));
 	}
 
 	#[test]

@@ -5,7 +5,6 @@ use std::{collections::BTreeSet, iter::once, sync::Arc};
 
 use arrow_array::{Array, RecordBatch, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::lift::{entry_changed_objects, lift_entry_changes};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::{ChangeVersion, CommitVersion},
@@ -19,7 +18,10 @@ use reifydb_core::{
 	internal_err,
 	value::batch::batch,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{
+	engine::StandardEngine,
+	lift::{entry_changed_objects, lift_entry_changes},
+};
 use reifydb_flow::operator::sink::table::dictionary_lookup_view_columns;
 use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
@@ -768,7 +770,7 @@ mod integration {
 		actors::pending::PendingWrite,
 		commit::{
 			queue::{CommitPull, CommitQueue},
-			watermark::CdcConsumerWatermark,
+			watermark::ReaderWatermark,
 		},
 		common::TimeDomain,
 		durability::Durability,
@@ -822,7 +824,7 @@ mod integration {
 	fn spawn_committer(engine: &StandardEngine) -> CommitterHandle {
 		let committer = Committer::new(
 			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
 		let begin_engine = engine.clone();
@@ -948,7 +950,7 @@ mod integration {
 	fn a_quiet_flow_still_holds_a_frontier_from_state_restored_before_any_change_arrives() {
 		// A producer with no incoming rows must still claim its frontier at startup, or its consumer stays
 		// pinned at the epoch forever.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let mut flow_engine = build_flow_engine(&engine);
 		let flow = FlowId(1);
@@ -997,7 +999,7 @@ mod integration {
 		// The threshold is load-bearing twice over: at or below the lag an idle flow must not
 		// commit on every batch, and beyond it its durable checkpoint must move, because CDC
 		// compaction is gated on the minimum durable checkpoint across flows.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let mut flow_engine = build_flow_engine(&engine);
 		let computer = SliceComputer::new(engine.clone());
@@ -1061,7 +1063,7 @@ mod integration {
 
 	#[test]
 	fn deferred_view_materializes_through_slice_step() {
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1157,7 +1159,7 @@ mod integration {
 	fn pinned_slice_reads_prior_commit_from_the_store() {
 		// Output rows commit above the version pinning the next slice, so a store read that misses them loses
 		// the flow's own rows.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1274,7 +1276,7 @@ mod integration {
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
 		// A Query-routed write is read back through the query pinned at the cursor, which never sees the flow's
 		// own later commit.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
@@ -1413,7 +1415,7 @@ mod integration {
 	#[test]
 	fn a_step_whose_operators_emit_nothing_skips_the_commit_until_the_checkpoint_is_due() {
 		// A no-output step must skip its commit, yet past the checkpoint lag it must persist one or CDC stalls.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin(
@@ -1577,7 +1579,7 @@ mod integration {
 	fn a_flow_with_readers_takes_one_source_version_per_step() {
 		// A reader merges its producers by source version, so a step that spans two of them would let one
 		// producer run ahead of the other inside a single commit and reorder what the reader sees.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1631,7 +1633,7 @@ mod integration {
 	fn a_flow_with_no_readers_folds_every_pending_source_version_into_one_step() {
 		// Nothing reads this flow's output by source version, so a flow that fell behind must catch up in
 		// one step; cutting per source version caps it at one commit per source version forever.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		let inserted = three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1690,7 +1692,7 @@ mod integration {
 	fn a_flow_with_no_readers_that_merges_two_sources_still_takes_one_source_version_per_step() {
 		// A flow that merges two inputs pairs them by source version inside its own join, so folding would let
 		// one input run ahead of the other within a step even though nothing downstream reads this flow.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1738,7 +1740,7 @@ mod integration {
 	}
 
 	fn spawn_observed_committer(engine: &StandardEngine) -> (CommitterHandle, FlowMaterialization) {
-		let materialization = FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new());
+		let materialization = FlowMaterialization::new(ReaderWatermark::new(), FlowPositionTracker::new());
 		let committer =
 			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
 		let begin_engine = engine.clone();
@@ -1790,7 +1792,7 @@ mod integration {
 	fn a_step_that_writes_view_rows_commits_and_advances_the_output_frontier() {
 		// Readers of the view wait on the output frontier; a commit of view rows that does not move it leaves
 		// them waiting for rows that are already stored.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1815,7 +1817,7 @@ mod integration {
 	fn a_step_that_writes_only_operator_state_still_commits() {
 		// State an operator wrote is what its next step reads; skipping the commit because nothing reached the
 		// view loses that state, and the next step computes from what was there before.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4 }");
 		te.admin(
@@ -1841,7 +1843,7 @@ mod integration {
 	fn a_ringbuffer_step_whose_capacity_skips_rows_commits_only_the_rows_that_fit() {
 		// Rows that never fit are announced but never written; the step must still commit the rows that do
 		// fit, and none of the skipped ones may reach the view.
-		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin(
@@ -1869,7 +1871,7 @@ mod integration {
 	#[test]
 	fn two_flows_reading_one_backlog_entry_share_its_decoded_columns() {
 		// Flow actors lift the backlog's shared commit, so lifting a copy of it would decode it once per flow.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE TABLE app::u { id: int4, label: utf8 }");
@@ -1984,7 +1986,7 @@ mod integration {
 	#[test]
 	fn a_frontier_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
 		// A cache keyed on publishes alone would freeze a quiet flow's watermark until some unrelated publish.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (flow, mut flow_engine) = producer_fed_flow(&engine);
 		let computer = SliceComputer::new(engine.clone());
@@ -2033,7 +2035,7 @@ mod integration {
 	#[test]
 	fn a_cached_hold_check_never_hides_a_due_checkpoint() {
 		// Without the checkpoint check ahead of the cache an idle flow never moves its durable cursor.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (flow, mut flow_engine) = producer_fed_flow(&engine);
 		let computer = SliceComputer::new(engine.clone());
@@ -2076,7 +2078,7 @@ mod integration {
 	#[test]
 	fn an_empty_pull_with_unchanged_frontiers_reuses_the_cached_holds() {
 		// A sentinel hold proves the cached result was returned instead of rebuilding the hold check.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (flow, mut flow_engine) = producer_fed_flow(&engine);
 		let computer = SliceComputer::new(engine.clone());

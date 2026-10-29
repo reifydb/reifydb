@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod admin;
-pub mod cdc;
 pub mod flow;
 pub mod metrics;
 pub mod pending;

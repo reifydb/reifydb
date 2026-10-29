@@ -29,7 +29,6 @@ reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-routine = {workspace = true}
 reifydb-routine-abi = { workspace = true }
-reifydb-store-cdc = { workspace = true }
 reifydb-store-commit = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }
@@ -41,7 +40,6 @@ reifydb-auth = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-flow = { workspace = true }
-reifydb-cdc = { workspace = true }
 reifydb-rql = { workspace = true }
 
 wasm-bindgen = { workspace = true }

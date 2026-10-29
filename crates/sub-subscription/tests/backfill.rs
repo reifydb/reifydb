@@ -112,7 +112,7 @@ fn settle_flows(db: &TestDb) {
 fn settle(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
-		db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap()),
+		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
 		"the subscription consumer did not reach {target:?}"
 	);
 }
