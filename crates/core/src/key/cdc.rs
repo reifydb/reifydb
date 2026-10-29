@@ -6,7 +6,7 @@ use reifydb_macro::KeyCodec;
 
 use super::KeyTag;
 use crate::{
-	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
+	interface::cdc::CdcConsumerId,
 	key::{
 		any::{ByteEncoding, Field, KeyFields},
 		bound::TaggedKeyBoundRange,
@@ -28,12 +28,6 @@ impl ToConsumerKey for CdcConsumerId {
 		CdcConsumerKey {
 			consumer: self.clone(),
 		}
-	}
-}
-
-impl ToConsumerKey for FlowId {
-	fn to_consumer_key(&self) -> CdcConsumerKey {
-		CdcConsumerKey::new(CdcConsumerId::new(format!("flow:{}", self.0)))
 	}
 }
 
@@ -59,8 +53,8 @@ impl CdcConsumerKey {
 pub mod cdc_consumer_key_tests {
 	use std::ops::RangeBounds;
 
-	use super::{CdcConsumerKey, ToConsumerKey};
-	use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
+	use super::CdcConsumerKey;
+	use crate::interface::cdc::CdcConsumerId;
 
 	#[test]
 	fn test_encode_decode_cdc_consumer() {
@@ -96,28 +90,6 @@ pub mod cdc_consumer_key_tests {
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
 		assert!(range.contains(&key3), "consumer-z key should be in range");
-	}
-
-	#[test]
-	fn test_flow_id_to_consumer_key() {
-		let flow_id = FlowId(42);
-		let encoded = flow_id.to_consumer_key().encode();
-
-		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
-		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
-	}
-
-	#[test]
-	fn test_flow_id_keys_within_range() {
-		let flow1 = FlowId(1).to_consumer_key().encode();
-		let flow2 = FlowId(100).to_consumer_key().encode();
-		let flow3 = FlowId(999).to_consumer_key().encode();
-
-		let range = CdcConsumerKey::full_scan().encode();
-
-		assert!(range.contains(&flow1), "flow:1 key should be in range");
-		assert!(range.contains(&flow2), "flow:100 key should be in range");
-		assert!(range.contains(&flow3), "flow:999 key should be in range");
 	}
 }
 

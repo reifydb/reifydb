@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
+	interface::catalog::flow::FlowId,
 	key::{
-		cdc::CdcConsumerKey,
 		flow::{FlowKey, FlowVersionKey},
 		namespace::NamespaceFlowKey,
 	},
@@ -30,10 +29,6 @@ impl CatalogStore {
 			}
 
 			txn.remove(vec![(FlowVersionKey::new(flow_id).into(), None)])?;
-			txn.remove(vec![(
-				CdcConsumerKey::new(CdcConsumerId::new(format!("flow:{}", flow_id.0))).into(),
-				None,
-			)])?;
 
 			txn.remove(vec![(NamespaceFlowKey::new(flow.namespace, flow_id).into(), None)])?;
 

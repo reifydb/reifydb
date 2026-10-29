@@ -12,7 +12,7 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-	common::{ChangeVersion, CommitVersion},
+	common::ChangeVersion,
 	interface::{catalog::object::ObjectId, change::Change},
 };
 
@@ -210,12 +210,6 @@ impl<'de> Deserialize<'de> for Cdc {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConsumerState {
-	pub consumer_id: CdcConsumerId,
-	pub checkpoint: CommitVersion,
-}
-
 #[derive(Debug, Clone)]
 pub struct CdcBatch {
 	pub items: Vec<Cdc>,
@@ -241,7 +235,7 @@ mod tests {
 	use std::cell::Cell;
 
 	use super::*;
-	use crate::interface::catalog::id::TableId;
+	use crate::{common::CommitVersion, interface::catalog::id::TableId};
 
 	#[test]
 	fn changed_objects_are_computed_once_per_commit() {

@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_cdc::consume::watermark::compute_pinning_watermark;
-use reifydb_core::{
-	common::CommitVersion,
-	lifecycle::watermark::{EvictionWatermark, QueryWatermark},
-};
+use reifydb_core::{common::CommitVersion, lifecycle::watermark::QueryWatermark};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
 use tracing::error;
@@ -17,12 +14,6 @@ impl QueryWatermark for StandardEngine {
 		let qdu = self.query_done_until();
 		let lease_min = self.multi().leases().min_active().unwrap_or(CommitVersion(u64::MAX));
 		qdu.min(lease_min)
-	}
-}
-
-impl EvictionWatermark for StandardEngine {
-	fn watermark(&self) -> CommitVersion {
-		self.effective_gc_cutoff().min(self.consumer_watermark())
 	}
 }
 

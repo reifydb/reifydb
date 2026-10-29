@@ -3,38 +3,9 @@
 
 use reifydb_core::error::diagnostic::flow::{
 	extern_abi_tag_mismatch, extern_create_failed, extern_library_load_failed, extern_library_not_loaded,
-	extern_operator_not_found, extern_symbol_not_found, flow_catch_up_read_failed,
+	extern_operator_not_found, extern_symbol_not_found,
 };
-use reifydb_store_cdc::error::CdcError;
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
-
-#[derive(Debug, thiserror::Error)]
-pub enum FlowLoadError {
-	#[error("cdc catch-up read for versions ({from}, {up_to}] failed: {cause}")]
-	Read {
-		from: u64,
-		up_to: u64,
-		cause: CdcError,
-	},
-}
-
-impl IntoDiagnostic for FlowLoadError {
-	fn into_diagnostic(self) -> Diagnostic {
-		match self {
-			FlowLoadError::Read {
-				from,
-				up_to,
-				cause,
-			} => flow_catch_up_read_failed(from, up_to, &cause.to_string()),
-		}
-	}
-}
-
-impl From<FlowLoadError> for Error {
-	fn from(err: FlowLoadError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
-	}
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExternOperatorError {

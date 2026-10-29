@@ -30,7 +30,6 @@ reifydb-extension = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-flow-async = { workspace = true, features = ["runtime"] }
 reifydb-store-operator = { workspace = true }
-reifydb-store-cdc = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true, features = ["mount"] }
@@ -52,6 +51,7 @@ libloading = { workspace = true }
 reifydb-workspace-hack = { workspace = true }
 
 [dev-dependencies]
+reifydb-store-cdc = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-testing-sdk = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
