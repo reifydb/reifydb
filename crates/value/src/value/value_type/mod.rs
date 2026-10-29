@@ -27,6 +27,7 @@ use crate::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		sumtype::SumTypeId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -99,6 +100,8 @@ pub enum ValueType {
 		inner: Box<ValueType>,
 		accuracy: u32,
 	},
+
+	Enum(SumTypeId),
 }
 
 impl ValueType {
@@ -297,6 +300,7 @@ impl ValueType {
 			ValueType::Digest {
 				..
 			} => 8,
+			ValueType::Enum(_) => 1,
 		}
 	}
 
@@ -336,6 +340,7 @@ impl ValueType {
 			ValueType::Digest {
 				..
 			} => 4,
+			ValueType::Enum(_) => 1,
 		}
 	}
 }
@@ -409,6 +414,8 @@ impl Display for ValueType {
 					write!(f, "Digest({inner}, {whole}.{})", fraction.trim_end_matches('0'))
 				}
 			}
+
+			ValueType::Enum(id) => write!(f, "Enum({id})"),
 		}
 	}
 }
@@ -457,6 +464,10 @@ impl From<&Value> for ValueType {
 				inner: Box::new(digest.inner().clone()),
 				accuracy: digest.accuracy(),
 			},
+			Value::Enum {
+				id,
+				..
+			} => ValueType::Enum(*id),
 		}
 	}
 }

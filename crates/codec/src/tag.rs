@@ -94,6 +94,9 @@ impl ValueKind {
 
 	pub fn of_value(value: &Value) -> ValueKind {
 		match value {
+			Value::Enum {
+				..
+			} => unreachable!("enum type code arrives in P3"),
 			Value::None {
 				..
 			} => ValueKind::None,
@@ -132,6 +135,7 @@ impl ValueKind {
 
 	pub fn of_type(ty: &ValueType) -> ValueKind {
 		match ty {
+			ValueType::Enum(_) => unreachable!("enum type code arrives in P3"),
 			ValueType::Option(inner) => Self::of_type(inner),
 			ValueType::Boolean => ValueKind::Boolean,
 			ValueType::Float4 => ValueKind::Float4,

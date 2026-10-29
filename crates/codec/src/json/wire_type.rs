@@ -34,6 +34,7 @@ const SCALE: &str = "scale";
 
 fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 	Some(match ty {
+		ValueType::Enum(_) => unreachable!("enum wire type arrives in P3"),
 		ValueType::Boolean => "Boolean",
 		ValueType::Float4 => "Float4",
 		ValueType::Float8 => "Float8",

@@ -133,6 +133,9 @@ pub fn prefix_apply(
 		return Ok(column.clone());
 	}
 	unary_op_unwrap_option(column, |column| match &ColumnView::try_from(column)?.data {
+		ViewData::Enum {
+			..
+		} => unreachable!("enum columns are only made at the result edge"),
 		ViewData::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
 				let negated = not(container).map_err(|err| CoreError::FrameError {

@@ -344,6 +344,10 @@ impl HeapSize for ColumnView<'_> {
 			ViewData::Int4(a) => primitive::heap_size(*a),
 			ViewData::Int8(a) => primitive::heap_size(*a),
 			ViewData::Uint1(a) => primitive::heap_size(*a),
+			ViewData::Enum {
+				container,
+				..
+			} => primitive::heap_size(*container),
 			ViewData::Uint2(a) => primitive::heap_size(*a),
 			ViewData::Uint4(a) => primitive::heap_size(*a),
 			ViewData::Uint8(a) => primitive::heap_size(*a),

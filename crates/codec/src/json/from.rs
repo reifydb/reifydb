@@ -205,6 +205,7 @@ fn strip_options(ty: &ValueType, layers: u32) -> ValueType {
 
 fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 	match base {
+		ValueType::Enum(_) => unreachable!("enum json form arrives in P3"),
 		ValueType::Boolean => text.parse().ok().map(Value::Boolean),
 		ValueType::Float4 => parse_float4(text).map(Value::Float4),
 		ValueType::Float8 => parse_float8(text).map(Value::Float8),
@@ -448,6 +449,7 @@ fn convert_list_or_record_column(
 
 fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Result<(ValueType, ArrayRef), DecodeError> {
 	let array: ArrayRef = match base {
+		ValueType::Enum(_) => unreachable!("enum json form arrives in P3"),
 		ValueType::Option(inner) => return base_column(name, inner, rows),
 		ValueType::Boolean => Arc::new(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?)),
 		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| {

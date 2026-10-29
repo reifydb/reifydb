@@ -514,6 +514,10 @@ fn view_data_size(view: &ColumnView<'_>) -> usize {
 		ViewData::Int4(a) => primitive_size(*a),
 		ViewData::Int8(a) => primitive_size(*a),
 		ViewData::Uint1(a) => primitive_size(*a),
+		ViewData::Enum {
+			container,
+			..
+		} => primitive_size(*container),
 		ViewData::Uint2(a) => primitive_size(*a),
 		ViewData::Uint4(a) => primitive_size(*a),
 		ViewData::Uint8(a) => primitive_size(*a),

@@ -88,6 +88,7 @@ fn fixed_max(value: ValueType) -> &'static str {
 		ValueType::Digest {
 			..
 		} => unreachable!(),
+		ValueType::Enum(_) => unreachable!(),
 	}
 }
 
@@ -129,6 +130,7 @@ fn fixed_range(value: ValueType) -> &'static str {
 		ValueType::Digest {
 			..
 		} => unreachable!(),
+		ValueType::Enum(_) => unreachable!(),
 	}
 }
 

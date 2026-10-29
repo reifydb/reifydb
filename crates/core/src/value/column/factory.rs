@@ -276,6 +276,7 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 
 pub fn default_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef) {
 	match ty {
+		ValueType::Enum(_) => unreachable!("enum columns are only made at the result edge"),
 		ValueType::Boolean => bool(name, vec![false; len]),
 		ValueType::Float4 => float4(name, vec![0.0f32; len]),
 		ValueType::Float8 => float8(name, vec![0.0f64; len]),
@@ -331,6 +332,9 @@ pub fn from_one(name: &str, value: Value) -> (FieldRef, ArrayRef) {
 
 pub fn from_many(name: &str, value: Value, row_count: usize) -> (FieldRef, ArrayRef) {
 	match value {
+		Value::Enum {
+			..
+		} => unreachable!("enum columns are only made at the result edge"),
 		Value::Boolean(v) => bool(name, vec![v; row_count]),
 		Value::Float4(v) => float4(name, vec![v.value(); row_count]),
 		Value::Float8(v) => float8(name, vec![v.value(); row_count]),

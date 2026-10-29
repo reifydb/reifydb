@@ -48,6 +48,7 @@ use crate::vm::volcano::{
 	generator::GeneratorNode,
 	inline::InlineDataNode,
 	lookup::UnsupportedLookupNode,
+	mark_sumtype_tags::MarkSumtypeTagsNode,
 	partition_parameter::{choose_partition, choose_partitions},
 	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode, choose_row_lookup},
@@ -195,63 +196,83 @@ pub(crate) fn compile<'a>(
 			}
 		}
 
-		RqlQueryPlan::TableScan(node) => match rx.layout() {
-			ScanLayout::Row => {
-				Box::new(TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
-			}
-			#[cfg(feature = "column")]
-			ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(format!(
-				"a partition scan of table '{}'",
-				node.source.fully_qualified_name()
-			))),
-			#[cfg(feature = "column")]
-			ScanLayout::Column => Box::new(ColumnTableScanNode::new(node.source.clone(), context)),
-			#[cfg(not(feature = "column"))]
-			ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
-		},
+		RqlQueryPlan::TableScan(node) => {
+			let columns = node.source.columns().to_vec();
+			let scan: Box<dyn QueryNode> = match rx.layout() {
+				ScanLayout::Row => Box::new(
+					TableScanNode::new(node.source.clone(), node.partition, context, rx).unwrap(),
+				),
+				#[cfg(feature = "column")]
+				ScanLayout::Column if node.partition.is_some() => Box::new(UnsupportedColumnScanNode::new(format!(
+					"a partition scan of table '{}'",
+					node.source.fully_qualified_name()
+				))),
+				#[cfg(feature = "column")]
+				ScanLayout::Column => Box::new(ColumnTableScanNode::new(node.source.clone(), context)),
+				#[cfg(not(feature = "column"))]
+				ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
+			};
+			MarkSumtypeTagsNode::wrap(scan, &columns)
+		}
 		RqlQueryPlan::ViewScan(node) if node.source.def().storage_kind() == ViewStorageKind::RingBuffer => {
-			Box::new(RingBufferScan::for_view(node.source.clone(), node.partition, context, rx).unwrap())
+			MarkSumtypeTagsNode::wrap(
+				Box::new(RingBufferScan::for_view(node.source.clone(), node.partition, context, rx).unwrap()),
+				node.source.columns(),
+			)
 		}
-		RqlQueryPlan::ViewScan(node) => {
-			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
-		}
-		RqlQueryPlan::RingBufferScan(node) => {
-			Box::new(RingBufferScan::new(node.source.clone(), node.partition, context, rx).unwrap())
-		}
-		RqlQueryPlan::QueueScan(node) => Box::new(QueueScan::new(node.source.clone(), context, rx).unwrap()),
+		RqlQueryPlan::ViewScan(node) => MarkSumtypeTagsNode::wrap(
+			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap()),
+			node.source.columns(),
+		),
+		RqlQueryPlan::RingBufferScan(node) => MarkSumtypeTagsNode::wrap(
+			Box::new(RingBufferScan::new(node.source.clone(), node.partition, context, rx).unwrap()),
+			node.source.columns(),
+		),
+		RqlQueryPlan::QueueScan(node) => MarkSumtypeTagsNode::wrap(
+			Box::new(QueueScan::new(node.source.clone(), context, rx).unwrap()),
+			node.source.columns(),
+		),
 		RqlQueryPlan::DictionaryScan(node) => {
 			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
-		RqlQueryPlan::SeriesScan(node) => match rx.layout() {
-			ScanLayout::Row => Box::new(
-				VolcanoSeriesScanNode::new(
+		RqlQueryPlan::SeriesScan(node) => {
+			let columns = node.source.columns().to_vec();
+			let scan: Box<dyn QueryNode> = match rx.layout() {
+				ScanLayout::Row => Box::new(
+					VolcanoSeriesScanNode::new(
+						node.source.clone(),
+						node.key_range_start,
+						node.key_range_end,
+						node.variant_tag,
+						node.partition,
+						context,
+					)
+					.unwrap(),
+				),
+				#[cfg(feature = "column")]
+				ScanLayout::Column => Box::new(ColumnSeriesScanNode::new(
 					node.source.clone(),
 					node.key_range_start,
 					node.key_range_end,
 					node.variant_tag,
 					node.partition,
 					context,
-				)
-				.unwrap(),
-			),
-			#[cfg(feature = "column")]
-			ScanLayout::Column => Box::new(ColumnSeriesScanNode::new(
-				node.source.clone(),
-				node.key_range_start,
-				node.key_range_end,
-				node.variant_tag,
-				node.partition,
-				context,
-			)),
-			#[cfg(not(feature = "column"))]
-			ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
-		},
+				)),
+				#[cfg(not(feature = "column"))]
+				ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
+			};
+			MarkSumtypeTagsNode::wrap(scan, &columns)
+		}
 		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();
 			let Some(pk) = table.primary_key.clone() else {
 				unimplemented!()
 			};
-			Box::new(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
+			let columns = table.columns.clone();
+			MarkSumtypeTagsNode::wrap(
+				Box::new(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap()),
+				&columns,
+			)
 		}
 		RqlQueryPlan::RemoteScan(node) => {
 			Box::new(RemoteFetchNode::new(node.address, node.token, node.remote_rql, node.variables))
@@ -262,20 +283,28 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
+			let columns = source.columns().to_vec();
 			let resolved_source = source;
-			Box::new(
-				RowPointLookupNode::new(resolved_source, row_number, context)
-					.expect("Failed to create RowPointLookupNode"),
+			MarkSumtypeTagsNode::wrap(
+				Box::new(
+					RowPointLookupNode::new(resolved_source, row_number, context)
+						.expect("Failed to create RowPointLookupNode"),
+				),
+				&columns,
 			)
 		}
 		RqlQueryPlan::RowListLookup(RqlRowListLookupNode {
 			source,
 			row_numbers,
 		}) => {
+			let columns = source.columns().to_vec();
 			let resolved_source = source;
-			Box::new(
-				RowListLookupNode::new(resolved_source, row_numbers, context)
-					.expect("Failed to create RowListLookupNode"),
+			MarkSumtypeTagsNode::wrap(
+				Box::new(
+					RowListLookupNode::new(resolved_source, row_numbers, context)
+						.expect("Failed to create RowListLookupNode"),
+				),
+				&columns,
 			)
 		}
 		RqlQueryPlan::RowRangeScan(RqlRowRangeScanNode {
@@ -283,10 +312,14 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
+			let columns = source.columns().to_vec();
 			let resolved_source = source;
-			Box::new(
-				RowRangeScanNode::new(resolved_source, start, end, context)
-					.expect("Failed to create RowRangeScanNode"),
+			MarkSumtypeTagsNode::wrap(
+				Box::new(
+					RowRangeScanNode::new(resolved_source, start, end, context)
+						.expect("Failed to create RowRangeScanNode"),
+				),
+				&columns,
 			)
 		}
 

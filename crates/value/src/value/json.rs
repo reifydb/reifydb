@@ -60,6 +60,9 @@ impl Value {
 			}
 			Value::Tuple(items) => JsonValue::Array(items.iter().map(|v| v.to_json_value()).collect()),
 			Value::Digest(digest) => JsonValue::String(format!("0x{}", encode(&digest.encode()))),
+			Value::Enum {
+				..
+			} => unreachable!("enum json form arrives in P3"),
 		}
 	}
 }

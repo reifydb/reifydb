@@ -184,6 +184,7 @@ impl PrimaryKeyEncoder {
 				} => {
 					unreachable!("IndexShape::new rejects a Digest primary key column");
 				}
+				ValueType::Enum(_) => unreachable!("enum is stored split, never as one value"),
 			}
 		}
 		index_key

@@ -40,6 +40,9 @@ pub fn encode_value(value: &Value) -> Result<Vec<u8>, EncodeError> {
 pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
 	buf.push(ValueKind::of_value(value).byte());
 	match value {
+		Value::Enum {
+			..
+		} => unreachable!("enum value encoding arrives in P3"),
 		Value::None {
 			inner,
 		} => encode_value_type(inner, buf)?,

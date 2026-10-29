@@ -256,6 +256,9 @@ impl KeySerializer {
 
 	pub fn try_extend_value(&mut self, value: &Value) -> Result<&mut Self> {
 		match value {
+			Value::Enum {
+				..
+			} => unreachable!("enum is stored split, never as one value"),
 			Value::None {
 				inner,
 				..

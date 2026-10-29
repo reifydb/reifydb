@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
 	value::{
-		batch::{append, batch, single_row},
+		batch::{append, batch, batch_with, single_row},
 		column::{builder::ColumnBuilder, factory},
 	},
 };
@@ -12,7 +15,15 @@ use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, frame::frame::Frame, system_columns::user_columns},
+	value::{
+		Value,
+		frame::frame::Frame,
+		system_columns::user_columns,
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, to_field},
+		},
+	},
 };
 
 use crate::{Result, vm::vm::Vm};
@@ -95,7 +106,7 @@ impl<'a> Vm<'a> {
 				batch: c,
 				..
 			} => {
-				result.push(Frame::from(c));
+				result.push(Frame::from(rebuild_enums(c)?));
 			}
 			Variable::Closure(_) => {
 				result.push(Frame::from(single_row([("value", Value::none())])?));
@@ -169,4 +180,25 @@ impl<'a> Vm<'a> {
 
 fn format_column_list(names: &[String]) -> String {
 	format!("[{}]", names.join(", "))
+}
+
+fn rebuild_enums(batch: RecordBatch) -> Result<RecordBatch> {
+	let schema = batch.schema();
+	let mut columns = Vec::with_capacity(batch.num_columns());
+	for (field, array) in schema.fields().iter().zip(batch.columns()) {
+		let field_type = from_field(field)?;
+		let field = match field_type.sumtype {
+			Some(id) => {
+				let value_type = match field_type.value_type {
+					Some(ValueType::Option(_)) => ValueType::Option(Box::new(ValueType::Enum(id))),
+					_ => ValueType::Enum(id),
+				};
+				let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
+				Arc::new(to_field(name, &FieldType::from(value_type)).with_nullable(field.is_nullable()))
+			}
+			None => field.clone(),
+		};
+		columns.push((field, array.clone()));
+	}
+	batch_with(&schema, columns, batch.num_rows())
 }

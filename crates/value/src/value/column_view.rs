@@ -34,6 +34,7 @@ use crate::{
 		dictionary::DictionaryId,
 		duration::Duration,
 		identity::IdentityId,
+		sumtype::SumTypeId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::{
@@ -86,6 +87,10 @@ pub enum ViewData<'a> {
 		container: &'a LargeBinaryArray,
 		inner: ValueType,
 		accuracy: u32,
+	},
+	Enum {
+		container: &'a UInt8Array,
+		id: SumTypeId,
 	},
 	None {
 		array: &'a NullArray,
@@ -187,6 +192,10 @@ fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>> 
 			inner: *inner,
 			accuracy,
 		},
+		ValueType::Enum(id) => ViewData::Enum {
+			container: downcast(array, field)?,
+			id,
+		},
 		ValueType::Option(_) => {
 			return Err(field_error(format!("column {} has a nested Option type", field.name())));
 		}
@@ -224,6 +233,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int8(a) => *a,
 			ViewData::Int16(a) => *a,
 			ViewData::Uint1(a) => *a,
+			ViewData::Enum {
+				container,
+				..
+			} => *container,
 			ViewData::Uint2(a) => *a,
 			ViewData::Uint4(a) => *a,
 			ViewData::Uint8(a) => *a,
@@ -302,6 +315,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int8(_) => ValueType::Int8,
 			ViewData::Int16(_) => ValueType::Int16,
 			ViewData::Uint1(_) => ValueType::Uint1,
+			ViewData::Enum {
+				id,
+				..
+			} => ValueType::Enum(*id),
 			ViewData::Uint2(_) => ValueType::Uint2,
 			ViewData::Uint4(_) => ValueType::Uint4,
 			ViewData::Uint8(_) => ValueType::Uint8,
@@ -430,6 +447,14 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int8(a) => primitive::get_value(*a, index),
 			ViewData::Int16(a) => wide_int_array::get_value::<i128>(a, index),
 			ViewData::Uint1(a) => primitive::get_value(*a, index),
+			ViewData::Enum {
+				container,
+				id,
+			} => Value::Enum {
+				id: *id,
+				tag: container.value(index),
+				fields: Vec::new(),
+			},
 			ViewData::Uint2(a) => primitive::get_value(*a, index),
 			ViewData::Uint4(a) => primitive::get_value(*a, index),
 			ViewData::Uint8(a) => primitive::get_value(*a, index),
@@ -498,6 +523,14 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int8(a) => collect!(|i| primitive::get_value(*a, i)),
 			ViewData::Int16(a) => collect!(|i| wide_int_array::get_value::<i128>(a, i)),
 			ViewData::Uint1(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Enum {
+				container,
+				id,
+			} => collect!(|i| Value::Enum {
+				id: *id,
+				tag: container.value(i),
+				fields: Vec::new(),
+			}),
 			ViewData::Uint2(a) => collect!(|i| primitive::get_value(*a, i)),
 			ViewData::Uint4(a) => collect!(|i| primitive::get_value(*a, i)),
 			ViewData::Uint8(a) => collect!(|i| primitive::get_value(*a, i)),
@@ -575,6 +608,9 @@ impl<'a> ColumnView<'a> {
 			ViewData::Int8(a) => primitive::as_string(*a, index),
 			ViewData::Int16(a) => wide_int_array::as_string::<i128>(a, index),
 			ViewData::Uint1(a) => primitive::as_string(*a, index),
+			ViewData::Enum {
+				..
+			} => self.get_value(index).to_string(),
 			ViewData::Uint2(a) => primitive::as_string(*a, index),
 			ViewData::Uint4(a) => primitive::as_string(*a, index),
 			ViewData::Uint8(a) => primitive::as_string(*a, index),

@@ -12,6 +12,9 @@ use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType
 
 fn to_json(value: &Value) -> String {
 	match value {
+		Value::Enum {
+			..
+		} => unreachable!("enum columns are only made at the result edge"),
 		Value::None {
 			..
 		} => "null".to_string(),

@@ -19,6 +19,7 @@ use crate::{
 			temporal_array::{DATETIME_TIMEZONE, datetime_data_type},
 		},
 		dictionary::DictionaryId,
+		sumtype::SumTypeId,
 		value_type::ValueType,
 	},
 };
@@ -29,6 +30,7 @@ pub struct FieldType {
 	pub max_bytes: Option<MaxBytes>,
 	pub dictionary_id: Option<DictionaryId>,
 	pub declared_type: Option<ValueType>,
+	pub sumtype: Option<SumTypeId>,
 }
 
 impl From<ValueType> for FieldType {
@@ -65,7 +67,10 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 		ValueType::Int2 => field(DataType::Int16),
 		ValueType::Int4 => field(DataType::Int32),
 		ValueType::Int8 => field(DataType::Int64),
-		ValueType::Uint1 => field(DataType::UInt8),
+		ValueType::Uint1 => match field_type.sumtype {
+			Some(id) => field(DataType::UInt8).with_extension_type(SumTypeTagTag(id)),
+			None => field(DataType::UInt8),
+		},
 		ValueType::Uint2 => field(DataType::UInt16),
 		ValueType::Uint4 => field(DataType::UInt32),
 		ValueType::Uint8 => field(DataType::UInt64),
@@ -101,6 +106,7 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 			inner: inner.as_ref().clone(),
 			accuracy: *accuracy,
 		})),
+		ValueType::Enum(id) => field(DataType::UInt8).with_extension_type(EnumTag(*id)),
 		ValueType::Option(_) => {
 			panic!("field {name}: a nested Option has no arrow field, found {field_type:?}")
 		}
@@ -144,6 +150,11 @@ pub fn from_field(field: &Field) -> Result<FieldType> {
 				accuracy: metadata.accuracy,
 			}
 		}
+		Some(EnumTag::NAME) => ValueType::Enum(tagged::<EnumTag>(field)?.0),
+		Some(SumTypeTagTag::NAME) => {
+			field_type.sumtype = Some(tagged::<SumTypeTagTag>(field)?.0);
+			ValueType::Uint1
+		}
 		Some(name) => {
 			return Err(field_error(format!("field {} has unknown extension type {name}", field.name())));
 		}
@@ -159,13 +170,14 @@ pub fn from_field(field: &Field) -> Result<FieldType> {
 fn details_fit(bare: Option<&ValueType>, field_type: &FieldType) -> bool {
 	let max_bytes_fit = field_type.max_bytes.is_none() || matches!(bare, Some(ValueType::Utf8 | ValueType::Blob));
 	let dictionary_fit = field_type.dictionary_id.is_none() || matches!(bare, Some(ValueType::DictionaryId));
+	let sumtype_fit = field_type.sumtype.is_none() || matches!(bare, Some(ValueType::Uint1));
 	let declared_fit = match bare {
 		Some(any @ (ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))) => {
 			field_type.declared_type.as_ref().unwrap_or(&ValueType::Any) == any
 		}
 		_ => field_type.declared_type.is_none(),
 	};
-	max_bytes_fit && dictionary_fit && declared_fit
+	max_bytes_fit && dictionary_fit && sumtype_fit && declared_fit
 }
 
 fn untagged(field: &Field) -> Result<ValueType> {
@@ -287,6 +299,8 @@ tag!(
 );
 tag!(AnyTag, "reifydb.any", Option<ValueType>, DataType::LargeBinary, write_declared_type, read_declared_type);
 tag!(DigestTag, "reifydb.digest", DigestMetadata, DataType::LargeBinary, write_digest, read_digest);
+tag!(EnumTag, "reifydb.enum", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
+tag!(SumTypeTagTag, "reifydb.sumtype_tag", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
 
 #[derive(Deserialize)]
 struct MaxBytesMetadata {
@@ -301,6 +315,11 @@ struct DictionaryMetadata {
 #[derive(Deserialize)]
 struct DeclaredTypeMetadata {
 	declared_type: ValueType,
+}
+
+#[derive(Deserialize)]
+struct SumTypeMetadata {
+	sumtype_id: u64,
 }
 
 #[derive(Deserialize)]
@@ -357,6 +376,16 @@ fn read_declared_type(name: &str, metadata: Option<&str>) -> StdResult<Option<Va
 
 fn write_digest(digest: &DigestMetadata) -> Option<String> {
 	Some(json!({ "inner": digest.inner, "accuracy": digest.accuracy }).to_string())
+}
+
+fn write_sumtype(id: &SumTypeId) -> Option<String> {
+	Some(json!({ "sumtype_id": id.0 }).to_string())
+}
+
+fn read_sumtype(name: &str, metadata: Option<&str>) -> StdResult<SumTypeId, ArrowError> {
+	let text = metadata
+		.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its sumtype_id metadata")))?;
+	parse::<SumTypeMetadata>(name, text).map(|parsed| SumTypeId(parsed.sumtype_id))
 }
 
 fn read_digest(name: &str, metadata: Option<&str>) -> StdResult<DigestMetadata, ArrowError> {
@@ -691,6 +720,7 @@ mod tests {
 				max_bytes: None,
 				dictionary_id: None,
 				declared_type: None,
+				sumtype: None,
 			}
 		);
 		assert_eq!(FieldType::from(ValueType::Int4), plain(ValueType::Int4));

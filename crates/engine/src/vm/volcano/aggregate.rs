@@ -34,7 +34,10 @@ use reifydb_value::{
 	error::{Error, FunctionErrorKind, TypeError},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{digest::DigestError, system_columns::column_view, value_type::ValueType},
+	value::{
+		digest::DigestError,
+		value_type::field::{FieldType, from_field},
+	},
 };
 use tracing::instrument;
 
@@ -42,6 +45,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
+		mark_sumtype_tags::mark_field,
 		query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
 		udf::UdfEvalNode,
 	},
@@ -143,14 +147,17 @@ impl AggregateNode {
 		ctx: &mut QueryContext,
 		aggregation: &mut Aggregation,
 		dict: &mut GroupKeyDict,
-		key_types: &mut Vec<Option<ValueType>>,
+		key_types: &mut Vec<Option<FieldType>>,
 	) -> Result<()> {
 		let keys: Vec<&str> = aggregation.keys.iter().map(String::as_str).collect();
 		let mut charged = 0usize;
 		while let Some(columns) = input.next(rx, ctx)? {
 			if key_types.is_empty() {
 				for key in &keys {
-					key_types.push(column_view(&columns, key)?.map(|view| view.get_type()));
+					key_types.push(match columns.schema_ref().index_of(key) {
+						Ok(index) => Some(from_field(columns.schema_ref().field(index))?),
+						Err(_) => None,
+					});
 				}
 				let aliases =
 					aggregation.projections.iter().filter_map(|projection| match projection {
@@ -163,7 +170,8 @@ impl AggregateNode {
 						} => None,
 					});
 				for (key_type, alias) in key_types.iter().zip(aliases) {
-					if let Some(ty) = key_type
+					if let Some(ty) =
+						key_type.as_ref().and_then(|field_type| field_type.value_type.as_ref())
 						&& !ty.is_scalar()
 					{
 						return Err(error!(operation::aggregate_group_by_unkeyable(
@@ -202,7 +210,7 @@ impl AggregateNode {
 		slots: Vec<AggregateSlot>,
 		keys: &[&str],
 		dict: &GroupKeyDict,
-		key_types: &[Option<ValueType>],
+		key_types: &[Option<FieldType>],
 		ctx: &QueryContext,
 	) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let slot_columns = slots
@@ -221,11 +229,17 @@ impl AggregateNode {
 					..
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
-					result_columns.push(dict.key_column(
+					let key_type = key_types.get(col_idx).cloned().flatten();
+					let (field, array) = dict.key_column(
 						col_idx,
-						key_types.get(col_idx).cloned().flatten(),
+						key_type.as_ref().and_then(|field_type| field_type.value_type.clone()),
 						alias.fragment(),
-					)?);
+					)?;
+					let field = match key_type.and_then(|field_type| field_type.sumtype) {
+						Some(id) => mark_field(&field, id)?,
+						None => field,
+					};
+					result_columns.push((field, array));
 				}
 				Projection::Computed {
 					alias,

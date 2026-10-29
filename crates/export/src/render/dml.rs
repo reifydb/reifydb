@@ -87,7 +87,11 @@ fn render_enum_value(
 		})?
 		.qualified_name;
 
-	let tag = match cell(index, row, &column.tag_column) {
+	let tag = match cell(index, row, &column.logical_name).or_else(|| cell(index, row, &column.tag_column)) {
+		Some(Value::Enum {
+			tag,
+			..
+		}) => *tag,
 		None
 		| Some(Value::None {
 			..
