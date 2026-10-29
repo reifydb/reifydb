@@ -72,8 +72,14 @@ describe('WS caller identity', () => {
         }
     }, 10000);
 
+    it('connecting with a bad token is refused', async () => {
+        // Otherwise a dead token would hand back a client that silently runs with no identity.
+        await expect(Client.connectWs(WS_URL, {timeoutMs: 10000, token: `not_a_real_token_${suffix}`}))
+            .rejects.toThrow('AUTH_FAILED');
+    }, 10000);
+
     it('a failed authentication must not subscribe as root', async () => {
-        // The client sends Auth fire-and-forget, so a bad token leaves the socket open with the server identity cleared to None.
+        // A failed resume on an open socket clears the server identity to none, which must never fall back to root.
         const denied = `denied_${suffix}`;
         await root.admin(`CREATE TABLE ${ns}::${denied} { id: int4 }`, {}, []);
         // Denies every non-privileged read, so any row reaching the subscriber proves it ran privileged.
@@ -83,8 +89,10 @@ describe('WS caller identity', () => {
         const control = await root.query(`from ${ns}::${denied}`, {}, [Shape.object({id: Shape.number()})]);
         expect(control[0]).toHaveLength(1);
 
-        const rogue = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: `not_a_real_token_${suffix}`});
+        const rogue = await Client.connectWs(WS_URL, {timeoutMs: 10000});
         try {
+            // Without awaiting the reply, subscribe could race ahead of the failed auth.
+            await expect((rogue as any).resumeSession(`not_a_real_token_${suffix}`)).rejects.toThrow('AUTH_FAILED');
             const received: any[] = [];
             const sink = (rows: any[]) => received.push(...rows);
             // The server refuses the subscription outright rather than opening one that starves, so the
