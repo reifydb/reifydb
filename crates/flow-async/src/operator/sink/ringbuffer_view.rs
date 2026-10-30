@@ -1368,8 +1368,7 @@ mod tests {
 
 	#[test]
 	fn partial_expiry_decrements_count_and_keeps_the_write_cycle() {
-		// Rewinding the cycle on expiry would make the next insert overwrite a live row instead of the oldest
-		// slot.
+		// Expiry must never rewind the cycle, otherwise the next insert overwrites a live row.
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
 
@@ -1406,8 +1405,8 @@ mod tests {
 
 	#[test]
 	fn an_expired_row_behind_a_live_head_waits_until_the_head_expires() {
-		// Expiry walks from the oldest slot and stops at the first live row, so an out-of-order old stamp
-		// stays.
+		// Expiry must stop at the first live row, and the row it stopped at must still go once the head
+		// expires.
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
 
@@ -1421,6 +1420,11 @@ mod tests {
 		assert!(out.is_none(), "the head row is live, so nothing expires");
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2);
+
+		fire(&engine, &mut op, &base("us"), AFTER + HOUR + 1_000_000_000);
+
+		assert!(metadata(&engine, &base("us")).is_none(), "once the head expires both rows are reclaimed");
+		assert_eq!(row_entry_count(&engine, &op, &base("us")), 0);
 	}
 
 	fn build_capped(partitioned: bool, capacity: u64) -> SinkRingBufferViewOperator {
@@ -1478,8 +1482,7 @@ mod tests {
 	}
 
 	fn reads_no_more(more: &StorageCounts, fewer: &StorageCounts) -> bool {
-		// The ttl timer reads the head slot once unless this apply already holds it, so fewer rows may read one
-		// more.
+		// The ttl re-arm may read the head slot once per partition, never once per row.
 		more.gets <= fewer.gets
 			&& more.get_many_calls <= fewer.get_many_calls
 			&& more.state_fetch_calls <= fewer.state_fetch_calls
