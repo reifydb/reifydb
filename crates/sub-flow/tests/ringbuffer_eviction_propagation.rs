@@ -112,7 +112,7 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 
 #[test]
 fn a_delete_in_the_same_commit_never_lets_an_insert_skip_the_write_cycle() {
-	// Holes refill in cycle order, so n=3 overwrites the oldest slot even when n=2's delete lands in the same commit.
+	// n=3 must overwrite the oldest slot even when n=2's delete lands in the same commit.
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \

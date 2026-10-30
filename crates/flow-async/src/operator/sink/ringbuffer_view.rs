@@ -82,7 +82,7 @@ use reifydb_value::{
 		duration::Duration,
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{created_at, require_row_numbers},
+		system_columns::{created_at, require_row_numbers, sequences},
 	},
 };
 
@@ -428,6 +428,14 @@ fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 	})
 }
 
+fn split_by_sequence(pre: &RecordBatch, post: &RecordBatch) -> Result<(Vec<usize>, Vec<usize>)> {
+	let (pre_sequences, post_sequences) = (sequences(pre)?, sequences(post)?);
+	if pre_sequences.is_empty() || pre_sequences.len() != post_sequences.len() {
+		return Ok(((0..post.num_rows()).collect(), Vec::new()));
+	}
+	Ok((0..post.num_rows()).partition(|&row_idx| pre_sequences[row_idx] == post_sequences[row_idx]))
+}
+
 fn with_sequence(bytes: EncodedBytes, sequence: u64) -> EncodedBytes {
 	let mut row = EncodedRingBufferRow::from(bytes).thaw();
 	row.set_sequence(sequence);
@@ -487,7 +495,34 @@ impl DurableSink for SinkRingBufferViewOperator {
 					pre,
 					post,
 					..
-				} => self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?,
+				} => {
+					let (kept, replaced) = split_by_sequence(pre, post)?;
+					if replaced.is_empty() {
+						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
+					} else {
+						self.apply_ringbuffer_update(
+							txn,
+							view,
+							&JoinedColumnsBuilder::retain_rows(pre, &kept)?,
+							&JoinedColumnsBuilder::retain_rows(post, &kept)?,
+							&mut touched,
+						)?;
+						self.apply_ringbuffer_remove(
+							txn,
+							view,
+							&mut ring,
+							&JoinedColumnsBuilder::retain_rows(pre, &replaced)?,
+							&mut touched,
+						)?;
+						self.apply_ringbuffer_insert(
+							txn,
+							view,
+							&mut ring,
+							&JoinedColumnsBuilder::retain_rows(post, &replaced)?,
+							&mut touched,
+						)?;
+					}
+				}
 				Diff::Remove {
 					pre,
 					..
