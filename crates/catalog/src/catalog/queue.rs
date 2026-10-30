@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowFamily;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -11,7 +11,6 @@ use reifydb_core::{
 		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 	},
 	internal,
-	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalQueueChanges,
@@ -81,6 +80,11 @@ impl From<QueueToCreate> for StoreQueueToCreate {
 }
 
 impl Catalog {
+	pub fn get_or_create_queue_shape(&self, txn: &mut Transaction<'_>, queue: &Queue) -> Result<RowShape> {
+		let fields = self.column_shape_fields(txn, &queue.columns)?;
+		self.get_or_create_row_shape(txn, RowFamily::Queue, fields)
+	}
+
 	#[instrument(name = "catalog::queue::find", level = "trace", skip(self, txn))]
 	pub fn find_queue(&self, txn: &mut Transaction<'_>, id: QueueId) -> Result<Option<Queue>> {
 		match txn.reborrow() {
@@ -243,12 +247,7 @@ impl Catalog {
 		let queue = CatalogStore::create_queue(txn, to_create.into())?;
 		txn.track_queue_created(queue.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::Queue, queue.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Queue,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_queue_shape(&mut Transaction::Admin(&mut *txn), &queue)?;
 
 		Ok(queue)
 	}
@@ -263,12 +262,7 @@ impl Catalog {
 		let queue = CatalogStore::create_queue_with_id(txn, queue_id, to_create.into(), column_ids)?;
 		txn.track_queue_created(queue.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::Queue, queue.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Queue,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_queue_shape(&mut Transaction::Admin(&mut *txn), &queue)?;
 
 		Ok(queue)
 	}

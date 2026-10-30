@@ -257,7 +257,7 @@ impl Catalog {
 	}
 
 	fn series_shape_fields(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<Vec<RowShapeField>> {
-		let mut fields = Vec::with_capacity(1 + series.columns.len());
+		let mut fields = Vec::with_capacity(series.columns.len());
 
 		let key_column = series.key.column();
 		let key_col = series.columns.iter().find(|c| c.name == key_column);
@@ -265,18 +265,7 @@ impl Catalog {
 			.map(|c| c.constraint.clone())
 			.unwrap_or_else(|| TypeConstraint::unconstrained(ValueType::Int8));
 		fields.push(RowShapeField::new(key_column.to_string(), key_type));
-		for col in series.data_columns() {
-			let constraint = if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = self.find_dictionary(txn, dict_id)? {
-					TypeConstraint::dictionary(dict_id, dict.id_type)
-				} else {
-					col.constraint.clone()
-				}
-			} else {
-				col.constraint.clone()
-			};
-			fields.push(RowShapeField::new(col.name.clone(), constraint));
-		}
+		fields.extend(self.column_shape_fields(txn, series.data_columns())?);
 		Ok(fields)
 	}
 

@@ -78,9 +78,7 @@ use crate::{
 			primary_key::{Violation, get_primary_key},
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::{assign_series_keys, series_batch_partitions, write_inserted_series_metadata},
-			shape::{
-				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
-			},
+			shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape},
 			table_insert::{EncodedTableRows, table_batch_partitions, write_table_rows},
 			time::{RowTime, populator_index},
 		},
@@ -475,7 +473,7 @@ fn execute_table_insert<V: ValidationMode>(
 ) -> Result<TableInsertResult> {
 	let catalog = writer.catalog;
 	let (namespace, table) = resolve_table(catalog, txn, pending)?;
-	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
+	let shape = catalog.get_or_create_table_shape(&mut Transaction::Command(txn), &table)?;
 	let (columns, _) =
 		coerce_columns(&pending.rows, &pending.batches, &table.columns, None, &table.name, &writer.coercer)?;
 	let rows = pending.row_count();

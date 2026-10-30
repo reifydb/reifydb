@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowFamily;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -13,7 +13,6 @@ use reifydb_core::{
 		table::Table,
 	},
 	internal,
-	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
@@ -84,6 +83,11 @@ impl From<TableToCreate> for StoreTableToCreate {
 }
 
 impl Catalog {
+	pub fn get_or_create_table_shape(&self, txn: &mut Transaction<'_>, table: &Table) -> Result<RowShape> {
+		let fields = self.column_shape_fields(txn, &table.columns)?;
+		self.get_or_create_row_shape(txn, RowFamily::Table, fields)
+	}
+
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
 	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
 		match txn.reborrow() {
@@ -309,12 +313,7 @@ impl Catalog {
 		pk_columns: Option<Vec<String>>,
 	) -> Result<Table> {
 		txn.track_table_created(table.clone())?;
-		let shape = row_shape_from_columns(RowFamily::Table, table.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Table,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_table_shape(&mut Transaction::Admin(&mut *txn), &table)?;
 
 		let Some(pk_columns) = pk_columns else {
 			return Ok(table);

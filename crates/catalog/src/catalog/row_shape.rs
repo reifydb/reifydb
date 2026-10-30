@@ -11,10 +11,11 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
+	interface::catalog::column::Column,
 	key::row::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::{error::Error, value::constraint::TypeConstraint};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -130,5 +131,24 @@ impl Catalog {
 
 	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Option<RowShape> {
 		self.cache.find_row_shape(fingerprint)
+	}
+
+	pub(crate) fn column_shape_fields<'a>(
+		&self,
+		txn: &mut Transaction<'_>,
+		columns: impl IntoIterator<Item = &'a Column>,
+	) -> Result<Vec<RowShapeField>> {
+		let mut fields = Vec::new();
+		for col in columns {
+			let constraint = match col.dictionary_id {
+				Some(dict_id) => match self.find_dictionary(txn, dict_id)? {
+					Some(dict) => TypeConstraint::dictionary(dict_id, dict.id_type),
+					None => col.constraint.clone(),
+				},
+				None => col.constraint.clone(),
+			};
+			fields.push(RowShapeField::new(col.name.clone(), constraint));
+		}
+		Ok(fields)
 	}
 }

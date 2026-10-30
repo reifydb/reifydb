@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowFamily;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -12,7 +12,6 @@ use reifydb_core::{
 		storage::StorageId,
 	},
 	internal,
-	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalRingBufferChanges,
@@ -81,6 +80,15 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 }
 
 impl Catalog {
+	pub fn get_or_create_ringbuffer_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBuffer,
+	) -> Result<RowShape> {
+		let fields = self.column_shape_fields(txn, &ringbuffer.columns)?;
+		self.get_or_create_row_shape(txn, RowFamily::RingBuffer, fields)
+	}
+
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self, txn))]
 	pub fn find_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<Option<RingBuffer>> {
 		match txn.reborrow() {
@@ -259,12 +267,7 @@ impl Catalog {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::RingBuffer,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_ringbuffer_shape(&mut Transaction::Admin(&mut *txn), &ringbuffer)?;
 
 		Ok(ringbuffer)
 	}
@@ -280,12 +283,7 @@ impl Catalog {
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::RingBuffer,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_ringbuffer_shape(&mut Transaction::Admin(&mut *txn), &ringbuffer)?;
 
 		Ok(ringbuffer)
 	}

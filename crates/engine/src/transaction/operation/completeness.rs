@@ -25,10 +25,7 @@ use crate::{
 	Result,
 	partition::row_key_from_partition,
 	transaction::operation::table::{TableInsert, TableOperations, load_stored_shape},
-	vm::instruction::dml::{
-		primary_key::{PrimaryKeyEncoder, get_primary_key, primary_key_index},
-		shape::get_or_create_table_shape,
-	},
+	vm::instruction::dml::primary_key::{PrimaryKeyEncoder, get_primary_key, primary_key_index},
 };
 
 pub struct CompletenessWriterImpl {
@@ -51,7 +48,7 @@ impl CompletenessWriter for CompletenessWriterImpl {
 		let Some(pk) = get_primary_key(&self.catalog, tx, &table)? else {
 			return Err(internal_error!("{} has no primary key", table.name));
 		};
-		let shape = get_or_create_table_shape(&self.catalog, &table, tx)?;
+		let shape = self.catalog.get_or_create_table_shape(tx, &table)?;
 		let encoder = PrimaryKeyEncoder::new(&pk, &table)?;
 		let key_columns = encoder.key_columns();
 		let through = column_index(&table, ColumnId::SOURCE_COMPLETENESS_COMPLETE_THROUGH)?;

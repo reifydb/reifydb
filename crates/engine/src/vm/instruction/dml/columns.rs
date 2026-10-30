@@ -575,10 +575,7 @@ mod tests {
 	use crate::{
 		transaction::operation::dictionary::DictionaryOperations,
 		vm::{
-			instruction::dml::{
-				coerce::{InputFragments, coerce_value_to_column_type},
-				shape::get_or_create_table_shape,
-			},
+			instruction::dml::coerce::{InputFragments, coerce_value_to_column_type},
 			services::Services,
 			volcano::query::{QueryContext, query_budget},
 		},
@@ -939,8 +936,8 @@ mod tests {
 				},
 			)
 			.unwrap();
-		let shape = get_or_create_table_shape(&services.catalog, &table, &mut Transaction::Admin(&mut txn))
-			.unwrap();
+		let shape =
+			services.catalog.get_or_create_table_shape(&mut Transaction::Admin(&mut txn), &table).unwrap();
 		let resolved_namespace = ResolvedNamespace::new(Fragment::internal("ns"), namespace);
 		let context = QueryContext {
 			services: services.clone(),

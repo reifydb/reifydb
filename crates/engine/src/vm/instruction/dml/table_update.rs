@@ -64,7 +64,6 @@ use super::{
 		decode_returning_dictionaries, decode_rows_to_columns, decode_stored_table_rows, evaluate_returning,
 		with_pre_image,
 	},
-	shape::get_or_create_table_shape,
 	table_insert::cast_partitions,
 };
 use crate::{
@@ -101,7 +100,7 @@ pub(crate) fn update_table(
 	} = plan;
 	let target = target.expect("Cannot infer target table from pipeline - no table found");
 	let (namespace, table) = resolve_update_table_target(services, txn, &target)?;
-	let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
+	let shape = services.catalog.get_or_create_table_shape(txn, &table)?;
 	let target_data = TableTarget {
 		namespace: &namespace,
 		table: &table,
