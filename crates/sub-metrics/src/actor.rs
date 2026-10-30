@@ -5,6 +5,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::{
+	bootstrap::metric::REQUEST_HISTORY_CAPACITY,
 	metrics::storage::{
 		cdc::{CdcMetrics, CdcMetricsWriter},
 		metrics::MetricsReader,
@@ -407,9 +408,13 @@ impl MetricsFlushActor {
 		if pending.is_empty() {
 			return Ok(());
 		}
-		let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-		builder.ringbuffer("system::metrics::request_history").batch(request_history_batch(&pending)?).done();
-		builder.execute()?;
+		for chunk in pending.chunks(REQUEST_HISTORY_CAPACITY as usize) {
+			let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
+			builder.ringbuffer("system::metrics::request_history")
+				.batch(request_history_batch(chunk)?)
+				.done();
+			builder.execute()?;
+		}
 		Ok(())
 	}
 

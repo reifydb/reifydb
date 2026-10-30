@@ -34,7 +34,7 @@ use crate::{
 	},
 };
 
-const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
+pub const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
 const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 
 pub fn bootstrap_metric_ringbuffers(
