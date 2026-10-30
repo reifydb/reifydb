@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use reifydb_catalog::cache::CatalogCache;
 use reifydb_core::interface::catalog::subscription::{HydrationConfig, SubscribeOptions};
 use reifydb_sub_server::{
 	format::WireFormat,
@@ -157,19 +158,22 @@ pub enum SubscribeDecodeError {
 }
 
 impl SubscribeRequest {
-	pub fn into_queries(self) -> Result<Vec<(String, Params, SubscribeOptions)>, SubscribeDecodeError> {
+	pub fn into_queries(
+		self,
+		catalog: &CatalogCache,
+	) -> Result<Vec<(String, Params, SubscribeOptions)>, SubscribeDecodeError> {
 		self.subscriptions
 			.into_iter()
 			.enumerate()
 			.map(|(index, subscription)| {
 				let params = match subscription.params {
 					None => Params::None,
-					Some(wire) => {
-						wire.into_params().map_err(|e| SubscribeDecodeError::InvalidParams {
+					Some(wire) => wire.into_params(catalog).map_err(|e| {
+						SubscribeDecodeError::InvalidParams {
 							index,
 							message: format!("subscription {index}: {e}"),
-						})?
-					}
+						}
+					})?,
 				};
 				let options = match subscription.options {
 					None => SubscribeOptions::default(),
@@ -198,6 +202,7 @@ pub struct CallRequest {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_catalog::cache::CatalogCache;
 	use reifydb_value::{params::Params, value::Value};
 	use serde_json::from_str;
 
@@ -216,7 +221,7 @@ mod tests {
 		let queries = subscribe(
 			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}}},{"rql":"from b","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}}]}}"#,
 		)
-		.into_queries()
+		.into_queries(&CatalogCache::new())
 		.unwrap();
 
 		assert_eq!(queries.len(), 2);
@@ -232,7 +237,7 @@ mod tests {
 		let queries = subscribe(
 			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":[{"type":{"id":"Int4"},"value":"7"}]}]}}"#,
 		)
-		.into_queries()
+		.into_queries(&CatalogCache::new())
 		.unwrap();
 
 		assert_eq!(queries[0].1, Params::None);
@@ -245,7 +250,7 @@ mod tests {
 		let queries = subscribe(
 			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b"}]}}"#,
 		)
-		.into_queries()
+		.into_queries(&CatalogCache::new())
 		.unwrap();
 
 		assert_eq!(queries.len(), 2);
@@ -261,7 +266,7 @@ mod tests {
 		let err = subscribe(
 			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
 		)
-		.into_queries()
+		.into_queries(&CatalogCache::new())
 		.unwrap_err();
 
 		assert_eq!(

@@ -525,7 +525,7 @@ fn parse_wire_params(request_id: &str, params: Option<WireParams>, state: &AppSt
 	match params {
 		None => Ok(Params::None),
 		Some(wp) => wp
-			.into_params_with(state.engine().catalog().cache())
+			.into_params(state.engine().catalog().cache())
 			.map_err(|e| WsResponse::Text(build_error(request_id, "INVALID_PARAMS", &e))),
 	}
 }
@@ -787,7 +787,7 @@ fn parse_call_params(
 	let params = match params {
 		None => Params::None,
 		Some(wp) => wp
-			.into_params_with(state.engine().catalog().cache())
+			.into_params(state.engine().catalog().cache())
 			.map_err(|e| build_error(request_id, "INVALID_PARAMS", &e))?,
 	};
 	match &params {

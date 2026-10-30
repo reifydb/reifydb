@@ -131,7 +131,7 @@ pub enum WireParams {
 	Named(HashMap<String, WireValue>),
 }
 
-fn wire_value_to_value(parameter: &str, wire: WireValue, catalog: Option<&CatalogCache>) -> Result<Value, String> {
+fn wire_value_to_value(parameter: &str, wire: WireValue, catalog: &CatalogCache) -> Result<Value, String> {
 	let Some(sumtype) = wire.sumtype else {
 		return parse_json_value(&wire.r#type.0, &wire.value)
 			.map_err(|e| format!("parameter {parameter}: {e}"));
@@ -139,8 +139,6 @@ fn wire_value_to_value(parameter: &str, wire: WireValue, catalog: Option<&Catalo
 	let variant = wire.value.as_str().ok_or_else(|| {
 		format!("parameter {parameter}: an `Enum` param needs a variant name, got {}", wire.value)
 	})?;
-	let catalog =
-		catalog.ok_or_else(|| format!("parameter {parameter}: an `Enum` param by name needs the catalog"))?;
 	resolve_enum(catalog, &sumtype, variant).map_err(|e| format!("parameter {parameter}: {e}"))
 }
 
@@ -170,15 +168,7 @@ impl WireValue {
 }
 
 impl WireParams {
-	pub fn into_params(self) -> Result<Params, String> {
-		self.resolve(None)
-	}
-
-	pub fn into_params_with(self, catalog: &CatalogCache) -> Result<Params, String> {
-		self.resolve(Some(catalog))
-	}
-
-	fn resolve(self, catalog: Option<&CatalogCache>) -> Result<Params, String> {
+	pub fn into_params(self, catalog: &CatalogCache) -> Result<Params, String> {
 		match self {
 			WireParams::Positional(items) => {
 				let mut values = Vec::with_capacity(items.len());
@@ -208,11 +198,11 @@ mod tests {
 	use super::*;
 
 	fn positional(json: &str) -> Result<Params, String> {
-		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params(&CatalogCache::new())
 	}
 
 	fn named(json: &str) -> Result<Params, String> {
-		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params(&CatalogCache::new())
 	}
 
 	fn option(inner: ValueType) -> ValueType {
@@ -284,7 +274,7 @@ mod tests {
 	#[test]
 	fn a_named_error_names_the_parameter_and_the_type() {
 		let params = from_str::<WireParams>(r#"{"id":{"type":{"id":"Int4"},"value":"⟪none⟫"}}"#).unwrap();
-		let err = params.into_params().unwrap_err();
+		let err = params.into_params(&CatalogCache::new()).unwrap_err();
 		assert_eq!(err, "parameter $id: invalid data: none marker for non-Option type Int4");
 	}
 }

@@ -36,7 +36,7 @@ pub(crate) async fn handle_subscribe(
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
 	let format = req.format;
-	let queries = match req.into_queries() {
+	let queries = match req.into_queries(conn.state.engine().catalog().cache()) {
 		Ok(queries) => queries,
 		Err(e) => return Ok(Some(decode_error_to_response(request_id, e))),
 	};
@@ -196,6 +196,7 @@ fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap
 
 #[cfg(test)]
 mod tests {
+	use reifydb_catalog::cache::CatalogCache;
 	use reifydb_sub_core::{errors::CreateSubscriptionError, handler::SubscribeError};
 	use reifydb_sub_server::execute::ExecuteError;
 	use reifydb_value::value::identity::IdentityId;
@@ -263,7 +264,7 @@ mod tests {
 		let RequestPayload::Subscribe(subscribe) = request.payload else {
 			panic!("expected a subscribe payload");
 		};
-		let err = subscribe.into_queries().unwrap_err();
+		let err = subscribe.into_queries(&CatalogCache::new()).unwrap_err();
 
 		let payload = payload(&decode_error_to_response("s", err));
 		assert_eq!(payload["index"], 1, "{payload}");

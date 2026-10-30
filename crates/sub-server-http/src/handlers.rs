@@ -342,7 +342,7 @@ fn build_request_context(
 	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
-		Some(wp) => wp.into_params_with(state.engine().catalog().cache()).map_err(AppError::InvalidParams)?,
+		Some(wp) => wp.into_params(state.engine().catalog().cache()).map_err(AppError::InvalidParams)?,
 	};
 	Ok(RequestContext {
 		identity,

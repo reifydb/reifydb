@@ -149,7 +149,7 @@ fn parse_params(params: Option<ParamsInput>, catalog: &CatalogCache) -> Result<P
 				.collect::<Result<_>>()?,
 		),
 	};
-	wire.into_params_with(catalog).map_err(NapiError::from_reason)
+	wire.into_params(catalog).map_err(NapiError::from_reason)
 }
 
 fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
