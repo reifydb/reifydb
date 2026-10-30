@@ -220,13 +220,13 @@ const VIEWS: [View; 3] = [
 		name: "running",
 		kind: FrameKind::Duration,
 		with_min: false,
-		with: "duration: 10m, lateness: 1h",
+		with: "duration: 10m, pane: 1ms, lateness: 1h",
 	},
 	View {
 		name: "sealed",
 		kind: FrameKind::Duration,
 		with_min: true,
-		with: "duration: 10m, lateness: 1h, immutable: 5m",
+		with: "duration: 10m, pane: 1ms, lateness: 1h, immutable: 5m",
 	},
 	View {
 		name: "counted",

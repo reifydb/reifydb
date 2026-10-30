@@ -34,7 +34,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -86,7 +86,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -141,7 +141,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -179,7 +179,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -211,7 +211,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -250,7 +250,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 
@@ -343,7 +343,7 @@ fn a_rolling_percentile_across_separate_commits_reads_one_digest_over_every_row_
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, lateness: 5m",
+		"duration: 1h, pane: 1ms, lateness: 5m",
 	);
 
 	let slots = [("12:00:00", [1.0, 2.0, 3.0]), ("12:01:00", [40.0, 50.0, 60.0]), ("12:02:00", [7.0, 80.0, 90.0])];
@@ -389,7 +389,7 @@ fn a_row_too_late_to_admit_leaves_the_rolling_percentile_intact() {
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, lateness: 5m",
+		"duration: 1h, pane: 1ms, lateness: 5m",
 	);
 
 	insert(&db, &[(1, 1, 10.0, "12:00:00")]);
@@ -413,7 +413,7 @@ fn retracting_a_row_that_already_left_the_frame_leaves_the_rolling_percentile_in
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01)",
 		"p50: Option(float8)",
-		"duration: 1h, lateness: 5m",
+		"duration: 1h, pane: 1ms, lateness: 5m",
 	);
 
 	insert(&db, &[(1, 1, 1.0, "11:30:00")]);
@@ -439,7 +439,7 @@ fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_th
 		&db,
 		"p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)",
 		"p50: Option(float8), lo: Option(float8)",
-		"duration: 1h, lateness: 1h, immutable: 5m",
+		"duration: 1h, pane: 1ms, lateness: 1h, immutable: 5m",
 	);
 	let columns = ["p50", "lo"];
 
@@ -485,7 +485,7 @@ fn a_row_behind_the_watermark_reaches_no_subscriber_of_a_rolling_view() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h, lateness: 5m }
+					with { duration: 1h, pane: 1ms, lateness: 5m }
 					by { g }
 		}"#);
 	let sub = db
@@ -519,7 +519,7 @@ fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_exp
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { duration: 1h }
+					with { duration: 1h, pane: 1ms }
 					by { g }
 		}"#);
 

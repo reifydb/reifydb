@@ -76,7 +76,7 @@ fn a_session_window_one_hour_past_the_epoch_rotates_across_its_gap() {
 
 #[test]
 fn a_rolling_window_retains_a_row_coordinated_at_the_epoch() {
-	let db = setup(r#"window rolling { total: math::sum(v) } with { duration: 1h, lateness: 5m }"#);
+	let db = setup(r#"window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, lateness: 5m }"#);
 	insert(&db, 1, 10.0, EPOCH);
 	await_total(&db, 10.0, "rolling");
 }

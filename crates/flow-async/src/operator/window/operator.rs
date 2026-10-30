@@ -154,6 +154,17 @@ impl WindowOperator {
 		self.kind.size().and_then(|m| m.as_count())
 	}
 
+	pub fn rolling_pane(&self) -> Option<Duration> {
+		match &self.kind {
+			WindowKind::Rolling {
+				size: WindowSize::Duration(_),
+				pane: Some(pane),
+				..
+			} if !pane.is_zero() => Some(*pane),
+			_ => None,
+		}
+	}
+
 	pub fn rolling_lag(&self) -> Duration {
 		if self.is_count_based() {
 			return Duration::default();

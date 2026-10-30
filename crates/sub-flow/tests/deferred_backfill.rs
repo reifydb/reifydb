@@ -1548,7 +1548,7 @@ fn a_view_created_after_part_of_its_cdc_history_was_evicted_is_full() {
 
 fn rolling(name: &str, table: &str) -> String {
 	format!(
-		"CREATE DEFERRED VIEW {name} {{ g: int4, total: float8 }} AS {{ FROM {table} | window rolling {{ total: math::sum(v) }} with {{ duration: 1h, lateness: 5m }} by {{ g }} }}"
+		"CREATE DEFERRED VIEW {name} {{ g: int4, total: float8 }} AS {{ FROM {table} | window rolling {{ total: math::sum(v) }} with {{ duration: 1h, pane: 1ms, lateness: 5m }} by {{ g }} }}"
 	)
 }
 

@@ -108,7 +108,7 @@ fn a_deferred_view_with_a_natural_join_on_a_rolling_window_output_fills_in() -> 
 	let db = make_db();
 	db.admin("CREATE TABLE app::p { a: int4, b: int4, v: float8 } with { time: processing }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::p | window rolling { total: math::sum(v) } with { duration: 1h, lateness: 5m } by { a } } AS s }",
+		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_total: float8 } AS { FROM app::t NATURAL JOIN { FROM app::p | window rolling { total: math::sum(v) } with { duration: 1h, pane: 1ms, lateness: 5m } by { a } } AS s }",
 	);
 	db.command("INSERT app::t [{ a: 2, b: 20 }]");
 	db.command("INSERT app::p [{ a: 2, b: 99, v: 1.5 }]");

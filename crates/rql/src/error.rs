@@ -93,6 +93,26 @@ pub enum RqlError {
 		window_value: String,
 	},
 
+	#[error("Rolling window needs a pane")]
+	WindowPaneRequired {
+		fragment: Fragment,
+		window_value: String,
+	},
+
+	#[error("Pane must not be larger than the window")]
+	WindowPaneLargerThanWindow {
+		fragment: Fragment,
+		pane_value: String,
+		window_value: String,
+	},
+
+	#[error("Pane must divide the window evenly")]
+	WindowPaneNotDividingWindow {
+		fragment: Fragment,
+		pane_value: String,
+		window_value: String,
+	},
+
 	#[error("UPDATE requires an assignments block")]
 	UpdateMissingAssignmentsBlock {
 		fragment: Fragment,
@@ -455,6 +475,55 @@ impl IntoDiagnostic for RqlError {
 					"An immutable at or beyond the window's own span can never seal anything before the window closes".to_string(),
 					"Immutable is how long a row may still be updated or deleted before the accumulator folds it away".to_string(),
 					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, immutable: 15s }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowPaneRequired { fragment, window_value } => Diagnostic {
+				code: "WINDOW_011".to_string(),
+				rql: None,
+				message: format!("Rolling window ({}) needs a pane", window_value),
+				column: None,
+				fragment,
+				label: Some("pane missing".to_string()),
+				help: Some("Add a pane that divides the duration, e.g. pane: 1m for 60 panes in 1h".to_string()),
+				notes: vec![
+					"A rolling window keeps one aggregate per pane, so the pane bounds its state to duration / pane".to_string(),
+					"The pane is also the step in which an event enters and leaves the window".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, lateness: 20s }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowPaneLargerThanWindow { fragment, pane_value, window_value } => Diagnostic {
+				code: "WINDOW_012".to_string(),
+				rql: None,
+				message: format!("Pane ({}) must not be larger than the window ({})", pane_value, window_value),
+				column: None,
+				fragment,
+				label: Some("pane too large".to_string()),
+				help: Some("Use a pane at most the window duration".to_string()),
+				notes: vec![
+					"A pane wider than the window cannot fit inside it even once".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 1h, pane: 1m, lateness: 20s }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowPaneNotDividingWindow { fragment, pane_value, window_value } => Diagnostic {
+				code: "WINDOW_013".to_string(),
+				rql: None,
+				message: format!("Pane ({}) must divide the window ({}) evenly", pane_value, window_value),
+				column: None,
+				fragment,
+				label: Some("pane does not fit".to_string()),
+				help: Some("Pick a pane that fits a whole number of times into the duration".to_string()),
+				notes: vec![
+					"A window made of whole panes enters and leaves each pane as one step".to_string(),
+					"Example: WINDOW ROLLING { count(*) } WITH { duration: 3m, pane: 1m, lateness: 20s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

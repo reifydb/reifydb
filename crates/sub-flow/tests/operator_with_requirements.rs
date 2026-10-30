@@ -545,7 +545,10 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_top_k_operator() {
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(refused_code(&db, "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"), "FLOW_075");
+	assert_eq!(
+		refused_code(&db, "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+		"WINDOW_011"
+	);
 }
 
 #[test]
@@ -556,7 +559,7 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_plain_operator() {
 
 	assert_eq!(
 		refused_code(&db, "rolling_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
-		"FLOW_075"
+		"WINDOW_011"
 	);
 }
 
@@ -645,7 +648,7 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 		("AST_005", "slot_window_probe{} WITH { window: tumbling, slots: 4, lateness: 30s }"),
 		("FLOW_071", "nostate_probe{} WITH { lateness: 2s }"),
 		("FLOW_072", "managed_probe{}"),
-		("FLOW_075", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+		("WINDOW_011", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
 		("FLOW_078", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
 		("FLOW_079", "time_window_probe{} WITH { window: session, gap: 0s }"),
 		("FLOW_080", "unmanaged_probe{} WITH { retention: 1h }"),

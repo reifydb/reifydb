@@ -189,7 +189,7 @@ fn a_rolling_window_is_refused_a_boundary_at_define_time() {
 			r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
 				FROM app::t
 					| window rolling { n: math::count(), s: window::start() }
-						by { g } with { duration: 60s }
+						by { g } with { duration: 60s, pane: 1ms }
 			}"#,
 		)
 		.expect_err("a rolling window must not accept window::start");
@@ -205,7 +205,7 @@ fn a_rolling_window_still_answers_window_last() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime } AS {
 			FROM app::t
 				| window rolling { n: math::count(), l: window::last() }
-					by { g } with { duration: 60s }
+					by { g } with { duration: 60s, pane: 1ms }
 		}"#);
 
 	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");

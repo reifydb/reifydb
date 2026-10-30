@@ -50,7 +50,7 @@ fn a_window_refused_in_a_batch_query_points_at_the_window_keyword() {
 	let t = setup();
 	let diagnostic = window_refusal(
 		&t,
-		"FROM test::t | window rolling { total: math::sum(v) } with { duration: 1h } by { g }",
+		"FROM test::t | window rolling { total: math::sum(v) } with { duration: 1h, pane: 1m } by { g }",
 	);
 	assert_points_at_window(&diagnostic, 1, 16);
 }
@@ -61,7 +61,7 @@ fn a_window_refused_on_a_later_line_points_at_that_line() {
 	let t = setup();
 	let diagnostic = window_refusal(
 		&t,
-		"FROM test::t\n| window rolling { total: math::sum(v) } with { duration: 1h } by { g }",
+		"FROM test::t\n| window rolling { total: math::sum(v) } with { duration: 1h, pane: 1m } by { g }",
 	);
 	assert_points_at_window(&diagnostic, 2, 3);
 }

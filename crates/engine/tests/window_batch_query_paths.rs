@@ -7,7 +7,7 @@ use reifydb_core::execution::ExecutionResult;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{error::Diagnostic, params::Params};
 
-const WINDOW: &str = "FROM test::t | window rolling { total: math::sum(v) } with { duration: 1h } by { g }";
+const WINDOW: &str = "FROM test::t | window rolling { total: math::sum(v) } with { duration: 1h, pane: 1m } by { g }";
 
 fn setup() -> TestEngine {
 	let t = TestEngine::new();
@@ -88,7 +88,7 @@ fn a_window_in_a_procedure_body_reports_an_error_instead_of_panicking() {
 	// A procedure body runs as a batch query when called, so its window must be refused, never panic.
 	let t = setup();
 	t.admin(
-		"CREATE PROCEDURE test::windowed AS { FROM test::t window rolling { total: math::sum(v) } with { duration: 1h } by { g } }",
+		"CREATE PROCEDURE test::windowed AS { FROM test::t window rolling { total: math::sum(v) } with { duration: 1h, pane: 1m } by { g } }",
 	);
 	assert_window_rejected(&t, "CALL test::windowed()");
 }
@@ -109,7 +109,7 @@ fn a_window_in_a_udf_body_reports_an_error_instead_of_panicking() {
 fn a_window_without_input_reports_an_error_instead_of_panicking() {
 	// A window with no input still reaches the batch operators and must be refused, never panic.
 	let t = setup();
-	assert_window_rejected(&t, "window rolling { total: math::sum(v) } with { duration: 1h } by { g }");
+	assert_window_rejected(&t, "window rolling { total: math::sum(v) } with { duration: 1h, pane: 1m } by { g }");
 }
 
 #[test]

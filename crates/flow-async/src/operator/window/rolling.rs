@@ -68,7 +68,7 @@ pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Se
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
 
-	fn slot(row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> Self;
+	fn slot(operator: &WindowOperator, row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> Self;
 
 	fn slot_key(slot: Self, row_number: u64) -> WindowSlotKey;
 
@@ -94,7 +94,12 @@ impl RollingDomain for OrdinalCoord {
 		)
 	}
 
-	fn slot(row_numbers: &[RowNumber], row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
+	fn slot(
+		_operator: &WindowOperator,
+		row_numbers: &[RowNumber],
+		row_idx: usize,
+		_timestamps: &[DateTime],
+	) -> OrdinalCoord {
 		OrdinalCoord::from_row_number(row_numbers[row_idx])
 	}
 
@@ -122,13 +127,18 @@ impl RollingDomain for DateTime {
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Duration) -> RollingEviction<DateTime> {
 		match rolling_over_time(operator, lag).eviction_cutoff(ledger) {
-			Some(cutoff) => RollingEviction::Before(cutoff),
+			Some(cutoff) => RollingEviction::Before(floor_to_pane(operator, cutoff)),
 			None => RollingEviction::Nothing,
 		}
 	}
 
-	fn slot(_row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> DateTime {
-		timestamps[row_idx]
+	fn slot(
+		operator: &WindowOperator,
+		_row_numbers: &[RowNumber],
+		row_idx: usize,
+		timestamps: &[DateTime],
+	) -> DateTime {
+		floor_to_pane(operator, timestamps[row_idx])
 	}
 
 	fn slot_key(slot: DateTime, row_number: u64) -> WindowSlotKey {
@@ -136,8 +146,18 @@ impl RollingDomain for DateTime {
 	}
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
-		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
-			.seal_horizon(ledger, operator.lateness().unwrap_or_else(Duration::zero)))
+		Some(floor_to_pane(
+			operator,
+			rolling_over_time(operator, Self::lag(operator.rolling_lag()))
+				.seal_horizon(ledger, operator.lateness().unwrap_or_else(Duration::zero)),
+		))
+	}
+}
+
+fn floor_to_pane(operator: &WindowOperator, at: DateTime) -> DateTime {
+	match operator.rolling_pane() {
+		Some(pane) => at.floor_to(pane),
+		None => at,
 	}
 }
 
@@ -288,7 +308,7 @@ fn route_rolling_columns<S: RollingDomain>(
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	let views = operator.core.slot_views(columns, &slot_cols)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let slot = S::slot(row_numbers, row_idx, &timestamps);
+		let slot = S::slot(operator, row_numbers, row_idx, &timestamps);
 		let slot_key = S::slot_key(slot, row_numbers[row_idx].0);
 		let contribution =
 			(slot_key, views.contribution(row_idx, timestamps.get(row_idx).copied().unwrap_or_default()));
@@ -580,7 +600,7 @@ pub fn seal_rolling_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
 	operator.advance_seal_ledger(host, fired)?;
-	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
+	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts).map(|cutoff| floor_to_pane(operator, cutoff));
 	let runnable = rolling_runnable(operator, &kinds);
 	let armed_before = rolling_earliest_expiry::<DateTime>(operator, host, runnable, lag)?;
 

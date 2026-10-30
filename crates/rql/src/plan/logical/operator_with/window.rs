@@ -22,7 +22,7 @@ use crate::{
 	},
 };
 
-const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, lateness, or immutable";
+const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, lateness, or immutable";
 
 #[derive(Debug, Default)]
 pub(super) struct ParsedConfig {
@@ -104,6 +104,10 @@ impl<'bump> Compiler<'bump> {
 			"lag" => {
 				config.lag =
 					Some(declared_duration(literal(entry)?, "'lag'", DurationBound::AllowZero)?);
+			}
+			"pane" => {
+				config.pane =
+					Some(declared_duration(literal(entry)?, "'pane'", DurationBound::Positive)?);
 			}
 			"lateness" => {
 				config.lateness = Some(declared_duration(
@@ -207,6 +211,40 @@ impl<'bump> Compiler<'bump> {
 			fragment: immutable.fragment.clone(),
 		}
 		.into())
+	}
+
+	fn reject_pane_not_fitting(parsed: &ParsedConfig, window: Duration) -> Result<()> {
+		let window_value = Self::declared_text(parsed.duration.as_ref().map(|declared| &declared.fragment));
+		let Some(pane) = parsed.pane.as_ref() else {
+			return Err(RqlError::WindowPaneRequired {
+				fragment: parsed
+					.duration
+					.as_ref()
+					.map(|declared| declared.fragment.clone())
+					.unwrap_or_else(|| parsed.window.clone()),
+				window_value,
+			}
+			.into());
+		};
+		let pane_nanos = pane.value.as_nanos()?;
+		let window_nanos = window.as_nanos()?;
+		if pane_nanos > window_nanos {
+			return Err(RqlError::WindowPaneLargerThanWindow {
+				fragment: pane.fragment.clone(),
+				pane_value: pane.fragment.text().to_string(),
+				window_value,
+			}
+			.into());
+		}
+		if window_nanos % pane_nanos != 0 {
+			return Err(RqlError::WindowPaneNotDividingWindow {
+				fragment: pane.fragment.clone(),
+				pane_value: pane.fragment.text().to_string(),
+				window_value,
+			}
+			.into());
+		}
+		Ok(())
 	}
 
 	fn declared_slide(parsed: &ParsedConfig) -> Option<Fragment> {
@@ -379,6 +417,9 @@ impl<'bump> Compiler<'bump> {
 						fragment: pane.fragment.clone(),
 					}
 					.into());
+				}
+				if let WindowSize::Duration(window) = size {
+					Self::reject_pane_not_fitting(parsed, window)?;
 				}
 				Ok(WindowKind::Rolling {
 					size,
@@ -793,6 +834,90 @@ mod tests {
 		assert!(
 			parse_window_config(r#"window tumbling { count(*) } with { interval: 5m }"#).is_err(),
 			"interval was renamed to duration and must not be silently accepted"
+		);
+	}
+
+	fn build_rolling(source: &str) -> Result<WindowKind> {
+		let parsed = parse_window_config(source)?;
+		Compiler::<'static>::build_window_kind(AstWindowKind::Rolling, &parsed)
+	}
+
+	#[test]
+	fn a_duration_rolling_window_without_a_pane_is_rejected() {
+		// Without a pane every event time becomes its own pane, so the window's state and the work per call
+		// grow with the duration instead of staying at duration / pane.
+		let err = build_rolling(r#"window rolling { count(*) } with { duration: 1h }"#)
+			.expect_err("a rolling window without a pane has no bound on its panes");
+		assert_eq!(err.fragment.text(), "1h", "the duration is the setting that lacks its pane");
+		assert_eq!(err.diagnostic().code, "WINDOW_011");
+	}
+
+	#[test]
+	fn a_pane_larger_than_the_window_is_rejected() {
+		// A pane wider than the window cannot fit even once, so the window would never hold a whole pane.
+		let err = build_rolling(r#"window rolling { count(*) } with { duration: 1m, pane: 2m }"#)
+			.expect_err("a pane wider than the window must be refused");
+		assert_eq!(err.fragment.text(), "2m", "the pane is what the author must change");
+		assert_eq!(err.diagnostic().code, "WINDOW_012");
+	}
+
+	#[test]
+	fn a_pane_that_does_not_divide_the_window_is_rejected() {
+		// 3m / 2m leaves a partial pane, so an event would leave the window part way through its pane.
+		let err = build_rolling(r#"window rolling { count(*) } with { duration: 3m, pane: 2m }"#)
+			.expect_err("a pane that does not divide the window must be refused");
+		assert_eq!(err.fragment.text(), "2m", "the pane is what the author must change");
+		assert_eq!(err.diagnostic().code, "WINDOW_013");
+	}
+
+	#[test]
+	fn a_pane_that_divides_the_window_is_accepted_and_carried() {
+		// Equal and whole-multiple panes are the valid shapes; the pane must reach the kind or the engine
+		// falls back to one pane per event time.
+		for (source, pane) in [
+			(
+				r#"window rolling { count(*) } with { duration: 3m, pane: 1m }"#,
+				Duration::from_minutes(1).unwrap(),
+			),
+			(
+				r#"window rolling { count(*) } with { duration: 3m, pane: 3m }"#,
+				Duration::from_minutes(3).unwrap(),
+			),
+			(
+				r#"window rolling { count(*) } with { duration: 1d, pane: 24m }"#,
+				Duration::from_minutes(24).unwrap(),
+			),
+			(
+				r#"window rolling { count(*) } with { duration: 1h, pane: 60s }"#,
+				Duration::from_seconds(60).unwrap(),
+			),
+		] {
+			let kind =
+				build_rolling(source).unwrap_or_else(|err| panic!("{source} must be accepted: {err}"));
+			let WindowKind::Rolling {
+				pane: carried,
+				..
+			} = kind
+			else {
+				panic!("not a rolling kind: {source}")
+			};
+			assert_eq!(carried, Some(pane), "the declared pane must reach the kind: {source}");
+		}
+	}
+
+	#[test]
+	fn a_count_rolling_window_still_needs_no_pane() {
+		// Count-sized rolling windows have no time width to divide; the pane rules must not reach them.
+		build_rolling(r#"window rolling { count(*) } with { count: 10 }"#)
+			.expect("a count-sized rolling window keeps compiling without a pane");
+	}
+
+	#[test]
+	fn a_zero_pane_is_rejected_before_it_can_divide_by_zero() {
+		// The fit check divides the window by the pane, so a zero pane must never reach it.
+		assert!(
+			parse_window_config(r#"window rolling { count(*) } with { duration: 1h, pane: 0s }"#).is_err(),
+			"a zero pane must be refused at parse"
 		);
 	}
 }

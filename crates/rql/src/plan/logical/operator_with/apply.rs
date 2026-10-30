@@ -630,4 +630,17 @@ mod tests {
 			.to_string();
 		assert!(err.contains("expected a key the rolling window reads, got lag"), "got: {err}");
 	}
+
+	#[test]
+	fn a_rolling_apply_window_follows_the_shared_pane_rules() {
+		// Native and apply rolling windows run on one engine, so both must refuse the shapes it cannot bound.
+		for (source, code) in [
+			("apply op { } with { window: rolling, duration: 1h }", "WINDOW_011"),
+			("apply op { } with { window: rolling, duration: 1m, pane: 2m }", "WINDOW_012"),
+			("apply op { } with { window: rolling, duration: 3m, pane: 2m }", "WINDOW_013"),
+		] {
+			let err = apply_with(source).expect_err(&format!("must be rejected: {source}"));
+			assert_eq!(err.diagnostic().code, code, "wrong diagnostic for: {source}");
+		}
+	}
 }
