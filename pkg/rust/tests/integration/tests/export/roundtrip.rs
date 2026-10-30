@@ -67,6 +67,22 @@ INSERT rt::rb [{ id: 1, msg: 'a' }, { id: 2, msg: 'b' }, { id: 3, msg: 'c' }, { 
 }
 
 #[test]
+fn a_wrapped_ringbuffer_pushes_out_the_same_oldest_row_after_a_roundtrip() {
+	// Export must write ring rows oldest first, otherwise the re-imported ring evicts its newest row next.
+	let setup = r#"
+CREATE NAMESPACE rt;
+CREATE RINGBUFFER rt::rb { id: int4, msg: utf8 } WITH { capacity: 3 };
+INSERT rt::rb [{ id: 1, msg: 'a' }, { id: 2, msg: 'b' }, { id: 3, msg: 'c' }, { id: 4, msg: 'd' }, { id: 5, msg: 'e' }];
+"#;
+	let (a, b, dump) = prepare(setup);
+	a.admin("INSERT rt::rb [{ id: 6, msg: 'f' }]");
+	b.admin("INSERT rt::rb [{ id: 6, msg: 'f' }]");
+	let ids = "from rt::rb sort { id: asc } map { id }";
+	assert_eq!(rows(&a.query(ids)), rows(&b.query(ids)), "dump:\n{dump}");
+	assert_eq!(rows(&b.query(ids)).len(), 3, "dump:\n{dump}");
+}
+
+#[test]
 fn series_datetime_roundtrip() {
 	let setup = r#"
 CREATE NAMESPACE rt;

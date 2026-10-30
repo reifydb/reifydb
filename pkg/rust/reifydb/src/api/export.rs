@@ -297,7 +297,7 @@ impl Database {
 		let mut table_exports = Vec::with_capacity(tables.len());
 		for (table, row) in tables {
 			let rows = if include_data {
-				Some(self.read_object_rows(&resolver, table.namespace.0, &table.name)?)
+				Some(self.read_object_rows(&resolver, table.namespace.0, &table.name, false)?)
 			} else {
 				None
 			};
@@ -311,7 +311,12 @@ impl Database {
 		let mut ringbuffer_exports = Vec::with_capacity(ringbuffers.len());
 		for (ringbuffer, row) in ringbuffers {
 			let rows = if include_data {
-				Some(self.read_object_rows(&resolver, ringbuffer.namespace.0, &ringbuffer.name)?)
+				Some(self.read_object_rows(
+					&resolver,
+					ringbuffer.namespace.0,
+					&ringbuffer.name,
+					true,
+				)?)
 			} else {
 				None
 			};
@@ -336,7 +341,7 @@ impl Database {
 				None => None,
 			};
 			let rows = if include_data {
-				Some(self.read_object_rows(&resolver, s.namespace.0, &s.name)?)
+				Some(self.read_object_rows(&resolver, s.namespace.0, &s.name, false)?)
 			} else {
 				None
 			};
@@ -360,11 +365,22 @@ impl Database {
 		})
 	}
 
-	fn read_object_rows(&self, resolver: &NameResolver, namespace_id: u64, name: &str) -> Result<ObjectRows> {
+	fn read_object_rows(
+		&self,
+		resolver: &NameResolver,
+		namespace_id: u64,
+		name: &str,
+		ring: bool,
+	) -> Result<ObjectRows> {
 		let ns = resolver.namespaces.get(&namespace_id).ok_or_else(|| {
 			Error(Box::new(internal!("namespace id {} not resolvable for export", namespace_id)))
 		})?;
-		let frames = self.query_as_root(&format!("from {}::{}", ns, name), Params::None)?;
+		let query = if ring {
+			format!("from {}::{} sort {{ #sequence: asc }}", ns, name)
+		} else {
+			format!("from {}::{}", ns, name)
+		};
+		let frames = self.query_as_root(&query, Params::None)?;
 
 		let mut columns: Vec<String> = Vec::new();
 		let mut rows: Vec<Vec<Value>> = Vec::new();
@@ -376,7 +392,7 @@ impl Database {
 				rows.push(row.into_iter().map(|(_, v)| v).collect());
 			}
 		}
-		if let Some(idx) = columns.iter().position(|c| c == "#rownum") {
+		if let (false, Some(idx)) = (ring, columns.iter().position(|c| c == "#rownum")) {
 			rows.sort_by_key(|row| match &row[idx] {
 				Value::Uint8(n) => *n,
 				other => panic!("#rownum must be uint8 in export, got {:?}", other),
