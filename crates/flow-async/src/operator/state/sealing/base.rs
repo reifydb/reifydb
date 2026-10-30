@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem};
 
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
@@ -96,6 +96,11 @@ impl<S: Slot, V> SealingBase<S, V> {
 
 	pub fn remove(&mut self, slot: &S) {
 		self.tail.remove(slot);
+	}
+
+	pub fn drain_tail(&mut self) -> BTreeMap<S, V> {
+		self.sealed_count += self.tail.len() as u64;
+		mem::take(&mut self.tail)
 	}
 
 	pub fn tail(&self) -> &BTreeMap<S, V> {

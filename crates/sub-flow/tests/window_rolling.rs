@@ -431,9 +431,8 @@ fn retracting_a_row_that_already_left_the_frame_leaves_the_rolling_percentile_in
 }
 
 #[test]
-fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_the_min_beside_it() {
-	// V31: rows in one rolling slot share a timestamp, so the min never seals and the frame is rebuilt from the
-	// rows left.
+fn a_retraction_inside_immutable_applies_to_a_rolling_percentile_and_the_min_beside_it_and_one_past_it_is_dropped() {
+	// A retraction inside immutable must rebuild p50 and min from the rows left; one past it must change nothing.
 	let db = setup();
 	percentile_view(
 		&db,
@@ -444,15 +443,15 @@ fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_th
 	let columns = ["p50", "lo"];
 
 	insert(&db, &[(1, 1, 1.0, "12:00:00"), (2, 1, 50.0, "12:00:00")]);
-	insert(&db, &[(3, 1, 20.0, "12:30:00")]);
-	insert(&db, &[(4, 1, 30.0, "12:40:00")]);
+	insert(&db, &[(3, 1, 20.0, "12:02:00")]);
+	insert(&db, &[(4, 1, 30.0, "12:04:00")]);
 	await_group(
 		&db,
 		"app::r",
 		1,
 		&columns,
 		vec![vec![median(&[1.0, 50.0, 20.0, 30.0]), Value::float8(1.0)]],
-		"four rows forty minutes apart",
+		"four rows two minutes apart",
 	);
 
 	db.command("DELETE app::t FILTER { id == 1 }");
@@ -462,7 +461,7 @@ fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_th
 		1,
 		&columns,
 		vec![vec![median(&[50.0, 20.0, 30.0]), Value::float8(20.0)]],
-		"a delete forty minutes older than the newest row",
+		"a delete four minutes older than the newest row",
 	);
 
 	db.command("UPDATE app::t { v: 2.0 } FILTER { id == 2 }");
@@ -472,7 +471,28 @@ fn a_late_retraction_older_than_immutable_applies_to_a_rolling_percentile_and_th
 		1,
 		&columns,
 		vec![vec![median(&[2.0, 20.0, 30.0]), Value::float8(2.0)]],
-		"an update forty minutes older than the newest row",
+		"an update four minutes older than the newest row",
+	);
+
+	insert(&db, &[(5, 1, 40.0, "12:40:00")]);
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&columns,
+		vec![vec![median(&[2.0, 20.0, 30.0, 40.0]), Value::float8(2.0)]],
+		"a row forty minutes later",
+	);
+
+	db.command("DELETE app::t FILTER { id == 3 }");
+	assert!(db.await_all_flows(TIMEOUT), "the flows must process the delete past immutable");
+	await_group(
+		&db,
+		"app::r",
+		1,
+		&columns,
+		vec![vec![median(&[2.0, 20.0, 30.0, 40.0]), Value::float8(2.0)]],
+		"a delete thirty eight minutes older than the newest row",
 	);
 }
 
@@ -530,9 +550,9 @@ fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_exp
 		]"#,
 	);
 	assert_eq!(
-		await_value(1, TIMEOUT, || keyspace_keys(&db, "WINDOW_META")),
+		await_value(1, TIMEOUT, || keyspace_keys(&db, "ROLLING_META")),
 		1,
-		"the group's high water must be visible"
+		"the group's row must be visible"
 	);
 
 	db.command("DELETE app::t FILTER { id == 2 }");
@@ -541,8 +561,8 @@ fn a_rolling_group_whose_newest_row_was_removed_frees_its_meta_once_the_rest_exp
 	assert!(db.await_all_flows(TIMEOUT), "the advance must drain");
 
 	assert_eq!(
-		await_value(0, TIMEOUT, || keyspace_keys(&db, "WINDOW_META")),
+		await_value(0, TIMEOUT, || keyspace_keys(&db, "ROLLING_META")),
 		0,
-		"the group left the frame, so its high water row must be freed"
+		"the group left the frame, so its row must be freed"
 	);
 }

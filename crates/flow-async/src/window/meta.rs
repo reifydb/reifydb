@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::{
@@ -74,19 +74,26 @@ impl HeapSize for EngineMeta {
 }
 
 #[operator_state]
-#[derive(Clone, Default)]
-pub struct RollingMeta {
-	pub group_hash: u128,
+#[derive(Clone, Debug, PartialEq)]
+pub struct RollingPublished<K, O> {
 	pub row_number: u64,
-	pub group_values: Vec<Value>,
-	pub last_value: Vec<Value>,
+	pub key: K,
+	pub last_value: O,
 }
 
-impl HeapSize for RollingMeta {
+impl<K: HeapSize, O: HeapSize> HeapSize for RollingPublished<K, O> {
 	fn heap_size(&self) -> usize {
-		(self.group_values.capacity() + self.last_value.capacity()) * size_of::<Value>()
-			+ self.group_values.iter().map(|v| v.heap_size()).sum::<usize>()
-			+ self.last_value.iter().map(|v| v.heap_size()).sum::<usize>()
+		self.key.heap_size() + self.last_value.heap_size()
+	}
+}
+
+#[operator_state]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoKey;
+
+impl HeapSize for NoKey {
+	fn heap_size(&self) -> usize {
+		0
 	}
 }
 
@@ -358,23 +365,6 @@ impl WindowMeta {
 				},
 			)],
 		)
-	}
-
-	pub fn rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<RollingMeta>> {
-		Ok(get_classified(store, from_ref(&RollingMetaKey(group)))?.remove(0))
-	}
-
-	pub fn put_rolling_meta(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: GroupId,
-		meta: RollingMeta,
-	) -> Result<()> {
-		set(store, vec![(RollingMetaKey(group), meta)])
-	}
-
-	pub fn drop_rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-		remove(store, from_ref(&RollingMetaKey(group)))
 	}
 }
 

@@ -597,6 +597,15 @@ impl AggregateSlot {
 		}
 	}
 
+	fn compact(&mut self) {
+		match self {
+			AggregateSlot::Min(set) => set.keep_min(),
+			AggregateSlot::Max(set) => set.keep_max(),
+			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.seal_tail(),
+			_ => {}
+		}
+	}
+
 	fn finalize(&self) -> Value {
 		match self {
 			AggregateSlot::Count {
@@ -691,6 +700,12 @@ impl RowAccumulator {
 		self.rows = self.rows.checked_sub(other.rows).unwrap_or_else(|| {
 			panic!("RowAccumulator unmerge of {} rows from {} rows", other.rows, self.rows)
 		});
+	}
+
+	pub fn compact(&mut self) {
+		for slot in &mut self.slots {
+			slot.compact();
+		}
 	}
 
 	fn run(&mut self, events: &[AccumulatorEvent<Contribution>]) {
@@ -793,6 +808,10 @@ impl WindowAccumulator for RowAccumulator {
 impl MergeAccumulator for RowAccumulator {
 	fn merge(&mut self, other: &Self) {
 		RowAccumulator::merge(self, other);
+	}
+
+	fn compact(&mut self) {
+		RowAccumulator::compact(self);
 	}
 }
 

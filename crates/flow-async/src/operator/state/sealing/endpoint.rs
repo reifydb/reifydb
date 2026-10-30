@@ -58,6 +58,12 @@ impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
 		}
 	}
 
+	pub fn seal_tail(&mut self) {
+		for (c, v) in self.base.drain_tail() {
+			self.seal(c, v);
+		}
+	}
+
 	fn seal(&mut self, c: S, v: V) {
 		self.sealed_open = Some(match self.sealed_open.take() {
 			Some((sc, sv)) if sc <= c => (sc, sv),

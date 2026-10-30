@@ -317,8 +317,8 @@ fn late_window_event_accepted_while_lateness_is_open() {
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-	assert!(!out.diffs.is_empty(), "ungated rolling driver accepts late events");
+	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 58, 99.0)).build()).expect("apply");
+	assert!(!out.diffs.is_empty(), "a late event inside the window and the lateness must be accepted");
 }
 
 #[test]

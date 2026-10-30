@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	ops::Bound,
-};
+use std::{collections::HashMap, ops::Bound};
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{operator::state::decode, pod::EncodedPodRow},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	state::{
@@ -27,7 +21,6 @@ use reifydb_value::{
 use crate::{
 	operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome, test_utils::test::inner_bytes},
 	timer::Timer,
-	window::accumulator::WindowAccumulator,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,8 +56,6 @@ pub(crate) struct MockStore {
 	timers: Option<Vec<RecordedTimer>>,
 	flow_watermark: Option<DateTime>,
 	rows_visited: usize,
-	calls: HashMap<&'static str, Vec<usize>>,
-	incomplete_sweeps: bool,
 }
 
 impl MockStore {
@@ -111,46 +102,8 @@ impl MockStore {
 		self.keyspace_count(KeyspaceId::BUFFER)
 	}
 
-	pub(crate) fn buffer_coord_count<A: WindowAccumulator>(&mut self) -> usize {
-		self.data
-			.iter()
-			.filter(|(k, _)| {
-				OperatorStateKey::decode_inner(k)
-					.is_some_and(|(_, found, _)| found == KeyspaceId::BUFFER)
-			})
-			.map(|(_, bytes)| {
-				decode::<BTreeMap<u64, A>>(bytes).expect("persisted window buffer must decode").len()
-			})
-			.sum()
-	}
-
-	pub(crate) fn with_incomplete_sweeps(mut self) -> Self {
-		self.incomplete_sweeps = true;
-		self
-	}
-
-	pub(crate) fn calls(&self, name: &str) -> usize {
-		self.sizes(name).len()
-	}
-
-	pub(crate) fn sizes(&self, name: &str) -> Vec<usize> {
-		self.calls.get(name).cloned().unwrap_or_default()
-	}
-
-	fn count_call(&mut self, name: &'static str, size: usize) {
-		self.calls.entry(name).or_default().push(size);
-	}
-
 	pub(crate) fn pane_count(&mut self) -> usize {
 		self.keyspace_count(KeyspaceId::ROLLING_PANE)
-	}
-
-	pub(crate) fn running_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::RUNNING)
-	}
-
-	pub(crate) fn meta_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::WINDOW_META)
 	}
 
 	pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
@@ -262,6 +215,35 @@ impl StateStore for MockStore {
 	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 	}
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		let range = inner_bytes(range);
+		let last = self
+			.data
+			.iter()
+			.filter(|(k, _)| {
+				let after_start = match &range.start {
+					Bound::Included(s) => k.as_slice() >= s.as_bytes(),
+					Bound::Excluded(s) => k.as_slice() > s.as_bytes(),
+					Bound::Unbounded => true,
+				};
+				let before_end = match &range.end {
+					Bound::Included(e) => k.as_slice() <= e.as_bytes(),
+					Bound::Excluded(e) => k.as_slice() < e.as_bytes(),
+					Bound::Unbounded => true,
+				};
+				after_start && before_end
+			})
+			.max_by(|a, b| a.0.cmp(b.0))
+			.map(|(k, v)| (k.clone(), v.clone()));
+		Ok(last.map(|(k, v)| {
+			self.rows_visited += 1;
+			(
+				GroupStateKey::from_framed(EncodedKey::new(k))
+					.expect("fake store holds an unframed state key"),
+				v,
+			)
+		}))
+	}
 	fn state_page_inner(
 		&mut self,
 		range: GroupStateRange,
@@ -311,7 +293,6 @@ impl StateStore for MockStore {
 	}
 
 	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		self.count_call("state_remove", keys.len());
 		for key in keys {
 			self.data.remove(key.as_slice());
 		}
@@ -327,13 +308,6 @@ impl StateStore for MockStore {
 	}
 
 	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		self.count_call("state_set", rows.len());
-		if rows.iter().any(|(key, _)| {
-			OperatorStateKey::decode_inner(key.as_slice())
-				.is_some_and(|(_, found, _)| found == KeyspaceId::ROLLING_PANE)
-		}) {
-			self.count_call("pane_set", rows.len());
-		}
 		for (key, payload) in rows {
 			self.data.insert(key.as_slice().to_vec(), payload);
 		}
@@ -341,10 +315,7 @@ impl StateStore for MockStore {
 	}
 
 	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
-		self.count_call("group_sweep", groups.len());
-		let mut sweep = per_key::group_sweep(self, groups, limit, keyspaces)?;
-		sweep.complete &= !self.incomplete_sweeps;
-		Ok(sweep)
+		per_key::group_sweep(self, groups, limit, keyspaces)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {

@@ -55,6 +55,8 @@ pub struct Applied {
 
 pub trait MergeAccumulator: WindowAccumulator {
 	fn merge(&mut self, other: &Self);
+
+	fn compact(&mut self) {}
 }
 
 pub trait UnmergeAccumulator: MergeAccumulator {

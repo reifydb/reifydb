@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod config;
+pub mod daba;
+pub mod pane;
 pub mod publish;
-pub mod rolling;
 pub mod rolling_top_k;
 pub mod session;
 pub mod sliding;
@@ -11,7 +12,11 @@ pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;
 
-use std::{collections::HashMap, ops::Bound, slice::from_ref};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+	slice::from_ref,
+};
 
 use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey},
@@ -63,6 +68,8 @@ pub enum AccumulatorEvent<Contribution> {
 	Add(Contribution),
 	Remove(Contribution),
 }
+
+pub type RollingBuckets<G, S, Contribution> = BTreeMap<(G, S), Vec<AccumulatorEvent<Contribution>>>;
 
 fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
 	if expired >= expire_batch {
@@ -332,43 +339,42 @@ impl IntoGroupStateKey for &RunningKey {
 	}
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct PaneKey {
 	pub group: GroupId,
-	pub slot: EncodedKey,
 	pub pane: u64,
 }
 
 impl PaneKey {
-	pub fn new(group: GroupId, slot: EncodedKey, pane: u64) -> Self {
+	pub fn new(group: GroupId, pane: u64) -> Self {
 		Self {
 			group,
-			slot,
 			pane,
 		}
 	}
 
-	pub fn decode(key: &GroupStateKey) -> Option<(GroupId, &[u8], u64)> {
+	pub fn decode(key: &GroupStateKey) -> Option<(GroupId, u64)> {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())?;
 		if keyspace != KeyspaceId::ROLLING_PANE {
 			return None;
 		}
-		let (slot, pane) = suffix.split_at(suffix.len().checked_sub(8)?);
-		Some((group, slot, decode_u64_asc(pane.try_into().ok()?)))
+		Some((group, decode_u64_asc(suffix.try_into().ok()?)))
 	}
 }
 
 impl HeapSize for PaneKey {
 	fn heap_size(&self) -> usize {
-		self.slot.heap_size()
+		0
 	}
 }
 
 impl IntoGroupStateKey for &PaneKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		let mut suffix = self.slot.as_bytes().to_vec();
-		suffix.extend_from_slice(&encode_u64_asc(self.pane));
-		OperatorStateKey::inner_encoded(self.group, KeyspaceId::ROLLING_PANE, suffix)
+		OperatorStateKey::inner_encoded(
+			self.group,
+			KeyspaceId::ROLLING_PANE,
+			encode_u64_asc(self.pane).to_vec(),
+		)
 	}
 }
 

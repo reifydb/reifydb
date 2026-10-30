@@ -18,7 +18,7 @@ use reifydb_value::{
 use crate::{
 	operator::state::seal::{
 		coord::Coord,
-		gate::rearm_seal,
+		gate::{EvictionGate, rearm_seal},
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
@@ -50,6 +50,13 @@ pub trait SealDomain: Coord {
 		after: Option<u64>,
 	) -> Result<()>;
 
+	fn rearm_decay(
+		store: &mut (impl StateStore + TimerStore),
+		size: Self::Span,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()>;
+
 	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>> {
 		with.reject_retention()?;
 		Ok(None)
@@ -57,6 +64,8 @@ pub trait SealDomain: Coord {
 }
 
 const ROLLING_DEAD_TIMER_KEY: &[u8] = b"rolling-dead";
+
+const ROLLING_DECAY_TIMER_KEY: &[u8] = b"rolling-decay";
 
 impl SealDomain for DateTime {
 	type SealSpan = Duration;
@@ -142,6 +151,15 @@ impl SealDomain for DateTime {
 			before,
 			after,
 		)
+	}
+
+	fn rearm_decay(
+		store: &mut (impl StateStore + TimerStore),
+		size: Duration,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()> {
+		EvictionGate::new(size).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
 	}
 }
 

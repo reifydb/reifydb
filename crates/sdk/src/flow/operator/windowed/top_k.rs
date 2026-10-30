@@ -19,9 +19,8 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent,
-			rolling::{RollingBuckets, RollingBuffer},
-			rolling_top_k::{RollingTopKEngine, TopKEmit},
+			AccumulatorEvent, RollingBuckets,
+			rolling_top_k::{RollingBuffer, RollingTopKEngine, TopKEmit},
 		},
 		settings::WindowSettings,
 		span::WindowSpan,

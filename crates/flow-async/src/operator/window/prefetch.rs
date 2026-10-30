@@ -144,6 +144,10 @@ impl StateStore for Prefetched<'_> {
 		self.store.group_sweep(groups, limit, keyspaces)
 	}
 
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		self.store.state_last(range)
+	}
+
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.store.get_or_create_row_numbers(group, keys)
 	}

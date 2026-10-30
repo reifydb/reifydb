@@ -346,7 +346,7 @@ fn a_row_older_than_the_seal_horizon_is_dropped_and_a_recent_one_is_kept() {
 	// Sealing is by pane time; if it never fired, late rows would silently reopen closed panes.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
-	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 95, 2.0)).build()).expect("apply");
+	let kept = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 99, 2.0)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(110)).expect("watermark");
 
 	let dropped = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 50, 4.0)).build()).expect("apply");
@@ -419,15 +419,16 @@ fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
 }
 
 #[test]
-fn a_dead_rolling_group_arms_its_timer_one_size_past_the_seal() {
-	// The timer must wait one size past the seal, otherwise it frees a group whose window still holds live panes.
+fn a_rolling_group_arms_its_decay_timer_one_size_past_its_oldest_pane() {
+	// A timer earlier than oldest + size frees a pane still in the window; a later one keeps a dead pane in the
+	// output.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 5.0)).build()).expect("apply");
 
-	let dead: Vec<(DateTime, TimerKind)> =
-		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
-	assert_eq!(dead, vec![(DateTime::from_millis(117), TimerKind::Seal)]);
+	let decay: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-decay").map(|t| (t.due, t.kind)).collect();
+	assert_eq!(decay, vec![(DateTime::from_millis(103), TimerKind::Seal)]);
 }
 
 #[test]
@@ -448,15 +449,19 @@ fn a_dead_rolling_group_is_removed_on_its_timer_with_its_last_value() {
 
 #[test]
 fn a_group_revived_inside_its_window_keeps_its_old_panes() {
-	// A group must live one size past its horizon, otherwise a revived row loses the panes still in its window.
+	// A pane still above clock - size must survive a quiet spell; one below it is gone and takes no late row.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 10)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
-	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
+	h.advance_watermark(DateTime::from_millis(102)).expect("watermark");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 2.0)).build()).expect("apply");
 
 	let trace: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
 	assert_eq!(trace, vec![(DiffType::Update, 3.0)]);
+
+	h.advance_watermark(DateTime::from_millis(110)).expect("watermark");
+	let late = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 104, 4.0)).build()).expect("apply");
+	assert!(render(&late).is_empty(), "a row into a pane at or below clock - size must be dropped");
 }
 
 #[test]
@@ -473,19 +478,19 @@ fn a_quiet_stream_frees_every_dead_group() {
 		.expect("apply");
 	let applied = h.history_len();
 
-	h.advance_watermark(DateTime::from_millis(125)).expect("watermark");
-	let dead: Vec<(DateTime, TimerKind)> =
-		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
+	h.advance_watermark(DateTime::from_millis(106)).expect("watermark");
+	let decay: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-decay").map(|t| (t.due, t.kind)).collect();
 	assert_eq!(
-		dead,
-		vec![(DateTime::from_millis(127), TimerKind::Seal)],
+		decay,
+		vec![(DateTime::from_millis(113), TimerKind::Seal)],
 		"the timer must re-arm on B after A dies"
 	);
 
-	assert_eq!(
-		h.advance_watermark(DateTime::from_millis(130)).expect("watermark"),
-		1,
-		"only B's dead timer is due"
+	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
+	assert!(
+		!h.armed_timers().iter().any(|t| t.key == b"rolling-decay"),
+		"B's own decay timer must free it and leave nothing armed"
 	);
 
 	let freed: Vec<(DiffType, f64)> = (applied..h.history_len())

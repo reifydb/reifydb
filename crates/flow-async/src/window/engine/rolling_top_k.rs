@@ -34,18 +34,35 @@ use crate::{
 		state_access::{get_classified, remove, set},
 	},
 	window::{
-		accumulator::WindowAccumulator,
+		accumulator::{MergeAccumulator, WindowAccumulator},
 		engine::{
-			BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
-			config::WindowEngineConfig,
-			group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped, persist_batch_meta,
-			rolling::{RollingBuckets, coord_max_key},
+			BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep, RollingBuckets,
+			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped,
+			persist_batch_meta,
 		},
 		span::{Slot, SlotSpan},
 	},
 };
 
 pub type RollingTopKBuffer<S, Accumulator> = BTreeMap<S, Accumulator>;
+
+pub type RollingBuffer<S, Accumulator> = BTreeMap<S, Accumulator>;
+
+pub(crate) fn coord_max_key<S: Slot, A>(buffer: &RollingBuffer<S, A>) -> Option<u64> {
+	buffer.keys().next_back().map(|c| c.order_key().to_order())
+}
+
+pub fn merge_panes<S: Slot, A: MergeAccumulator>(buffer: &RollingBuffer<S, A>) -> A {
+	let mut merged = A::default();
+	for accumulator in buffer.values() {
+		if merged.is_empty() {
+			merged = accumulator.clone();
+		} else {
+			merged.merge(accumulator);
+		}
+	}
+	merged
+}
 
 pub type RollingTopKEmit<SK, Output> = BTreeMap<SK, Output>;
 
@@ -578,7 +595,7 @@ mod tests {
 		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
 			accumulator::mock::SumAccumulator,
-			engine::{AccumulatorEvent, config::WindowEngineConfig, rolling::RollingBuckets},
+			engine::{AccumulatorEvent, RollingBuckets, config::WindowEngineConfig},
 		},
 	};
 
@@ -1082,5 +1099,69 @@ mod tests {
 			})
 			.collect();
 		assert_eq!(values, vec![105, 106]);
+	}
+}
+
+#[cfg(test)]
+mod merge_panes_tests {
+	use std::collections::BTreeMap;
+
+	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
+
+	use super::{RollingBuffer, merge_panes};
+	use crate::window::accumulator::{WindowAccumulator, invertible::last_value::LastValue, mock::SumAccumulator};
+
+	fn sum_pane(contributions: &[i64]) -> SumAccumulator {
+		let mut pane = SumAccumulator::default();
+		for contribution in contributions {
+			pane.add(contribution);
+		}
+		pane
+	}
+
+	#[test]
+	fn merge_panes_over_one_pane_equals_that_pane() {
+		// A merge that alters a lone pane would change every rolling window with a single bucket.
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[3, 4]));
+
+		let merged = merge_panes(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[3, 4]).finalize());
+		assert_eq!(merged.finalize(), Some(7));
+	}
+
+	#[test]
+	fn merge_panes_over_three_panes_equals_one_accumulator_fed_the_same_contributions() {
+		// The engine merge must equal the flat fold the guest used to do, or rolling values shift.
+		let mut buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+		buffer.insert(at_millis(10), sum_pane(&[1]));
+		buffer.insert(at_millis(20), sum_pane(&[2, 3]));
+		buffer.insert(at_millis(30), sum_pane(&[4]));
+
+		let merged = merge_panes(&buffer);
+		assert_eq!(merged.finalize(), sum_pane(&[1, 2, 3, 4]).finalize());
+	}
+
+	#[test]
+	fn merge_panes_merges_panes_oldest_first() {
+		// A last-value window keeps the newest pane's value only if panes merge oldest first.
+		let mut buffer: RollingBuffer<DateTime, LastValue<i64>> = BTreeMap::new();
+		for (millis, value) in [(30, 3), (10, 1), (20, 2)] {
+			let mut pane: LastValue<i64> = LastValue::default();
+			pane.add(&value);
+			buffer.insert(at_millis(millis), pane);
+		}
+
+		assert_eq!(merge_panes(&buffer).finalize(), Some(3));
+	}
+
+	#[test]
+	fn merge_panes_over_an_empty_buffer_is_the_default_accumulator() {
+		// An empty window must fold to nothing, not to a stale or garbage value.
+		let buffer: RollingBuffer<DateTime, SumAccumulator> = BTreeMap::new();
+
+		let merged = merge_panes(&buffer);
+		assert!(merged.is_empty());
+		assert_eq!(merged.finalize(), SumAccumulator::default().finalize());
 	}
 }

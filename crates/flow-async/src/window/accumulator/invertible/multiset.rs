@@ -66,6 +66,20 @@ impl<V: Ord + Clone> Multiset<V> {
 		}
 	}
 
+	pub fn keep_min(&mut self) {
+		if let Some(min) = self.counts.keys().next().cloned() {
+			*self = Self::default();
+			self.add(min);
+		}
+	}
+
+	pub fn keep_max(&mut self) {
+		if let Some(max) = self.counts.keys().next_back().cloned() {
+			*self = Self::default();
+			self.add(max);
+		}
+	}
+
 	pub fn min(&self) -> Option<&V> {
 		self.counts.keys().next()
 	}

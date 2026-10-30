@@ -29,10 +29,6 @@ impl RollingOverTime {
 	pub fn eviction_cutoff(&self, ledger: DateTime) -> Option<DateTime> {
 		ledger.checked_sub_span(self.span())
 	}
-
-	pub fn seal_horizon(&self, ledger: DateTime, lateness: Duration) -> DateTime {
-		ledger.saturating_sub_span(self.seal_rule(lateness).admissible().duration())
-	}
 }
 
 #[cfg(test)]
@@ -62,7 +58,6 @@ mod tests {
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
 		assert_eq!(rolling.eviction_cutoff(at_millis(8_000)), Some(at_millis(3_000)));
-		assert_eq!(rolling.seal_horizon(at_millis(8_000), ms(200)), at_millis(2_800));
 	}
 
 	#[test]
@@ -77,25 +72,5 @@ mod tests {
 			Some(at_millis(0)),
 			"a span that has exactly elapsed yields a cutoff at the epoch"
 		);
-		assert_eq!(rolling.seal_horizon(at_millis(1_000), ms(200)), at_millis(-4_200));
-	}
-
-	#[test]
-	fn the_seal_horizon_never_sits_later_than_the_eviction_cutoff() {
-		// Sealing decides what may still be amended, eviction what is still stored. A horizon later
-		// than the cutoff declares a window sealed while its rows are still retained, refusing a late
-		// row the window could have accepted.
-		for lag in [ms(0), ms(1), ms(9_000)] {
-			for lateness in [ms(0), ms(1), ms(9_000)] {
-				let rolling = RollingOverTime::new(ms(5_000), lag);
-				let cutoff = rolling
-					.eviction_cutoff(at_millis(60_000))
-					.expect("a ledger well past the span must yield a cutoff");
-				assert!(
-					rolling.seal_horizon(at_millis(60_000), lateness) <= cutoff,
-					"horizon passed the cutoff at lag {lag:?} lateness {lateness:?}"
-				);
-			}
-		}
 	}
 }

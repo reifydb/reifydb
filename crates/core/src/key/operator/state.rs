@@ -393,7 +393,7 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
-const WINDOWED_KEYSPACES: [KeyspaceId; 12] = [
+const WINDOWED_KEYSPACES: [KeyspaceId; 14] = [
 	KeyspaceId::GUEST_ACCUMULATOR,
 	KeyspaceId::GUEST_BUFFER,
 	KeyspaceId::GUEST_RUNNING,
@@ -406,6 +406,8 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 12] = [
 	KeyspaceId::GUEST_WINDOW_PUBLISH,
 	KeyspaceId::GUEST_RETAINED_ENTRY,
 	KeyspaceId::GUEST_ROW_MAPPING,
+	KeyspaceId::ROLLING_META,
+	KeyspaceId::ROLLING_PANE,
 ];
 
 const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;
@@ -1706,6 +1708,7 @@ mod tests {
 			[
 				KeyspaceId::EMIT,
 				KeyspaceId::ROLLING_EXPIRY,
+				KeyspaceId::ROLLING_META,
 				KeyspaceId::WINDOW_META,
 				KeyspaceId::SEAL_LEDGER,
 				KeyspaceId::REAP_QUEUE,
@@ -1715,6 +1718,7 @@ mod tests {
 				KeyspaceId::TUMBLING_EXPIRY,
 				KeyspaceId::GUEST_WINDOW_PUBLISH,
 				KeyspaceId::GUEST_RETAINED_ENTRY,
+				KeyspaceId::ROLLING_PANE,
 				KeyspaceId::GUEST_ROW_MAPPING,
 			]
 		);

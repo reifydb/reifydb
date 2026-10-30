@@ -9,7 +9,7 @@ use reifydb_flow_async::{
 	operator::state::seal::domain::SealDomain,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator},
-		engine::rolling::{RollingBuffer, merge_panes},
+		engine::rolling_top_k::{RollingBuffer, merge_panes},
 		settings::WindowSettings,
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -135,6 +135,10 @@ pub trait KindSet<T: Emit> {
 	const ROLLING: bool;
 
 	fn merge_panes(buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator;
+
+	fn merge(target: &mut T::Accumulator, other: &T::Accumulator);
+
+	fn compact(accumulator: &mut T::Accumulator);
 }
 
 impl<T: Emit> KindSet<T> for AllKinds
@@ -146,12 +150,28 @@ where
 	fn merge_panes(buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator {
 		merge_panes(buffer)
 	}
+
+	fn merge(target: &mut T::Accumulator, other: &T::Accumulator) {
+		target.merge(other);
+	}
+
+	fn compact(accumulator: &mut T::Accumulator) {
+		accumulator.compact();
+	}
 }
 
 impl<T: Emit> KindSet<T> for NoRolling {
 	const ROLLING: bool = false;
 
 	fn merge_panes(_buffer: &RollingBuffer<T::Coord, T::Accumulator>) -> T::Accumulator {
+		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
+	}
+
+	fn merge(_target: &mut T::Accumulator, _other: &T::Accumulator) {
+		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
+	}
+
+	fn compact(_accumulator: &mut T::Accumulator) {
 		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
 	}
 }

@@ -213,6 +213,15 @@ impl SealDomain for OrdinalCoord {
 	) -> Result<()> {
 		Ok(())
 	}
+
+	fn rearm_decay(
+		_store: &mut (impl StateStore + TimerStore),
+		_size: RowSpan,
+		_before: Option<u64>,
+		_after: Option<u64>,
+	) -> Result<()> {
+		Ok(())
+	}
 }
 
 impl Slot for OrdinalCoord {

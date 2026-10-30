@@ -1,29 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap, HashSet},
-	hash::Hash,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	interface::change::{Change, Diff},
-	key::operator::state::{GroupStateKey, IntoGroupStateKey},
-	metrics::heap::HeapSize,
-	state::timer::{StateStore, TimerKind},
-};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 use tracing::{Span, instrument};
 
 use super::{
-	operator::{RollingEngineSlot, WindowOperator, required_row_numbers},
+	operator::{WindowOperator, required_row_numbers},
 	prefetch::Prefetched,
 };
 use crate::{
@@ -31,89 +23,37 @@ use crate::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			core::{EmitRow, SlotRow},
-			engine::{WindowGroups, distinct_row_runs, group_of, intern_window_groups},
+			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
-		state::{
-			seal::{
-				coord::Coord, domain::SealDomain, gate::EvictionGate, ledger::FiredAt, rule::is_sealed,
-			},
-			store,
-		},
+		state::seal::{coord::Coord, gate::EvictionGate, ledger::FiredAt},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind,
-			rolling::{
-				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
-				RollingResult,
-			},
+			daba::Merge,
+			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
 		},
 		kind::rolling::RollingOverTime,
-		meta::{RollingMeta, RollingMetaKey},
-		span::WindowAnchor,
 	},
 };
 
-pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Send + Sync {
-	fn engine(
-		operator: &mut WindowOperator,
-		runnable: bool,
-		lag: Self::Span,
-	) -> &mut RollingEngine<Hash128, Self, RowAccumulator>;
+pub(crate) type NativePaneEngine = PaneEngine<Hash128, DateTime, RowAccumulator>;
 
-	fn lag(declared: Duration) -> Self::Span;
+type Contribution = (WindowSlotKey, SlotRow);
 
-	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
+type NativeEmit = RollingEmit<Hash128, Vec<Value>, Vec<Value>>;
 
-	fn slot(operator: &WindowOperator, row_numbers: &[RowNumber], row_idx: usize, timestamps: &[DateTime]) -> Self;
-
-	fn slot_key(slot: Self, row_number: u64) -> WindowSlotKey;
-
-	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<Self>;
-}
-
-impl RollingDomain for DateTime {
-	fn engine(
-		operator: &mut WindowOperator,
-		runnable: bool,
-		lag: Duration,
-	) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
-		timed_row_engine(operator, runnable, lag)
-	}
-
-	fn lag(declared: Duration) -> Duration {
-		declared
-	}
-
-	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Duration) -> RollingEviction<DateTime> {
-		match rolling_over_time(operator, lag).eviction_cutoff(ledger) {
-			Some(cutoff) => RollingEviction::Before(floor_to_pane(operator, cutoff)),
-			None => RollingEviction::Nothing,
-		}
-	}
-
-	fn slot(
-		operator: &WindowOperator,
-		_row_numbers: &[RowNumber],
-		row_idx: usize,
-		timestamps: &[DateTime],
-	) -> DateTime {
-		floor_to_pane(operator, timestamps[row_idx])
-	}
-
-	fn slot_key(slot: DateTime, row_number: u64) -> WindowSlotKey {
-		WindowSlotKey::new(slot, row_number)
-	}
-
-	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
-		Some(floor_to_pane(
-			operator,
-			rolling_over_time(operator, Self::lag(operator.rolling_lag()))
-				.seal_horizon(ledger, operator.lateness().unwrap_or_else(Duration::zero)),
-		))
-	}
+pub(crate) fn rolling_runs_on_running_total(kinds: &[SlotKind]) -> bool {
+	kinds.iter().all(|kind| {
+		matches!(
+			kind,
+			SlotKind::Count { .. }
+				| SlotKind::Sum | SlotKind::Avg
+				| SlotKind::WindowStart | SlotKind::WindowEnd
+				| SlotKind::WindowDuration | SlotKind::Digest { .. }
+		)
+	})
 }
 
 fn floor_to_pane(operator: &WindowOperator, at: DateTime) -> DateTime {
@@ -123,17 +63,35 @@ fn floor_to_pane(operator: &WindowOperator, at: DateTime) -> DateTime {
 	}
 }
 
-fn rolling_over_time(operator: &WindowOperator, lag: Duration) -> RollingOverTime {
-	RollingOverTime::new(operator.size_duration().unwrap_or_default(), lag)
+fn rolling_over_time(operator: &WindowOperator) -> RollingOverTime {
+	RollingOverTime::new(operator.size_duration().unwrap_or_default(), operator.rolling_lag())
 }
 
-fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
-	rolling_over_time(operator, lag).span()
+fn expiry_cutoff(operator: &WindowOperator, clock: DateTime) -> Option<DateTime> {
+	rolling_over_time(operator).eviction_cutoff(clock).map(|cutoff| floor_to_pane(operator, cutoff))
 }
 
-type RollingEngineBuckets<S> = RollingBuckets<Hash128, S, (WindowSlotKey, SlotRow)>;
+fn rolling_spans(operator: &WindowOperator) -> PaneSpans<Duration> {
+	let lateness = operator.lateness().unwrap_or_else(Duration::zero);
+	PaneSpans {
+		size: operator.size_duration().unwrap_or_default(),
+		lag: operator.rolling_lag(),
+		lateness,
+		retract: operator.immutable().unwrap_or(lateness),
+	}
+}
 
-type RollingPriors = HashMap<Hash128, Option<RollingMeta>>;
+fn pane_engine<'o>(operator: &'o mut WindowOperator, kinds: &[SlotKind]) -> &'o mut NativePaneEngine {
+	let config = operator.engine_config();
+	let spans = rolling_spans(operator);
+	operator.rolling_engine_slot().get_or_insert_with(|| {
+		Box::new(if rolling_runs_on_running_total(kinds) {
+			NativePaneEngine::running(config, spans)
+		} else {
+			NativePaneEngine::queue(config, spans, Merge::of())
+		})
+	})
+}
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
 fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
@@ -141,130 +99,122 @@ fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 	intern_window_groups(&partitions)
 }
 
-fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
-	RowAccumulator::invertible(kinds, operator.immutable())
+struct RoutedRow {
+	group: Hash128,
+	group_values: Vec<Value>,
+	pane: DateTime,
+	contribution: Contribution,
 }
 
-fn timed_row_engine(
-	operator: &mut WindowOperator,
-	runnable: bool,
-	lag: Duration,
-) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
-	let config = operator.engine_config();
-	let slot = operator.rolling_engine_slot();
-	if !matches!(slot, Some(RollingEngineSlot::TimedRow(_))) {
-		let engine = if runnable {
-			RollingEngine::new_runnable(config).with_lag(lag)
-		} else {
-			RollingEngine::new(config)
-		};
-		*slot = Some(RollingEngineSlot::TimedRow(Box::new(engine)));
-	}
-	match slot {
-		Some(RollingEngineSlot::TimedRow(engine)) => engine.as_mut(),
-		_ => unreachable!("an event-time rolling window must hold an instant-keyed engine"),
-	}
-}
-
-fn load_rolling_priors(
-	operator: &mut WindowOperator,
-	state: &mut dyn StateStore,
-	touched: &[Hash128],
-	groups: &WindowGroups,
-) -> Result<RollingPriors> {
-	let mut priors = RollingPriors::with_capacity(touched.len());
-	for hash in touched {
-		let meta = operator.meta_slot().rolling_meta(state, group_of(groups, *hash, 0))?;
-		priors.insert(*hash, meta);
-	}
-	Ok(priors)
-}
-
-fn published_prior<S: RollingDomain>(
-	priors: &RollingPriors,
-	group: &Hash128,
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] buffer: &RollingBuffer<S, RowAccumulator>,
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] kinds: &[SlotKind],
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] lag: S::Span,
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] immutable: Option<Duration>,
-) -> Option<Vec<Value>> {
-	let prior = priors
-		.get(group)
-		.expect("every touched rolling group has its published meta loaded")
-		.as_ref()
-		.map(|meta| meta.last_value.clone());
-	reifydb_assertions! {
-		let recombined = combine_rolling::<S>(buffer, kinds, lag, immutable);
-		assert!(
-			prior == recombined,
-			"a rolling group last published {prior:?} but its stored panes recombine to {recombined:?}; \
-			 a prior taken from the publish would then withdraw or update a row the panes disagree with"
-		);
-	}
-	prior
-}
-
-fn combine_rolling<S: RollingDomain>(
-	buffer: &RollingBuffer<S, RowAccumulator>,
-	kinds: &[SlotKind],
-	lag: S::Span,
-	immutable: Option<Duration>,
-) -> Option<Vec<Value>> {
-	let (&newest, _) = buffer.iter().next_back()?;
-	let aggregate_cutoff = newest.saturating_sub_span(lag);
-	let mut merged = RowAccumulator::new(kinds, immutable);
-	let mut any = false;
-	for (_coord, accumulator) in buffer.range(..=aggregate_cutoff) {
-		merged.merge(accumulator);
-		any = true;
-	}
-	if any {
-		merged.finalize()
-	} else {
-		None
-	}
-}
-
-#[allow(clippy::too_many_arguments)]
-fn route_rolling_columns<S: RollingDomain>(
-	operator: &WindowOperator,
-	columns: &RecordBatch,
-	is_add: bool,
-	buckets: &mut RollingEngineBuckets<S>,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	touched: &mut Vec<Hash128>,
-	touched_set: &mut HashSet<Hash128>,
-) -> Result<()> {
+fn routed_rows(operator: &WindowOperator, columns: &RecordBatch) -> Result<Vec<RoutedRow>> {
 	let row_count = columns.num_rows();
 	if row_count == 0 {
-		return Ok(());
+		return Ok(Vec::new());
 	}
 	let groups = operator.core.compute_groups(columns)?;
 	let row_numbers = required_row_numbers(columns)?;
-	let timestamps = if S::arms_timer() || operator.core.needs_event_time() {
-		operator.row_times(columns, row_count)?
-	} else {
-		Vec::new()
-	};
+	let timestamps = operator.row_times(columns, row_count)?;
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	let views = operator.core.slot_views(columns, &slot_cols)?;
+	let mut rows = Vec::with_capacity(row_count);
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let slot = S::slot(operator, row_numbers, row_idx, &timestamps);
-		let slot_key = S::slot_key(slot, row_numbers[row_idx].0);
-		let contribution =
-			(slot_key, views.contribution(row_idx, timestamps.get(row_idx).copied().unwrap_or_default()));
-		let event = if is_add {
-			AccumulatorEvent::Add(contribution)
-		} else {
-			AccumulatorEvent::Remove(contribution)
-		};
-		buckets.entry((*hash, slot)).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.to_vec());
-		if touched_set.insert(*hash) {
-			touched.push(*hash);
+		let pane = floor_to_pane(operator, timestamps[row_idx]);
+		rows.push(RoutedRow {
+			group: *hash,
+			group_values: gvals.to_vec(),
+			pane,
+			contribution: (
+				WindowSlotKey::new(pane, row_numbers[row_idx].0),
+				views.contribution(row_idx, timestamps[row_idx]),
+			),
+		});
+	}
+	Ok(rows)
+}
+
+#[derive(Default)]
+struct Routing {
+	events: BTreeMap<Hash128, Vec<PaneEvent<DateTime, Contribution>>>,
+	group_values: HashMap<Hash128, Vec<Value>>,
+	touched: Vec<Hash128>,
+}
+
+impl Routing {
+	fn push(&mut self, group: Hash128, group_values: Vec<Value>, event: PaneEvent<DateTime, Contribution>) {
+		if !self.events.contains_key(&group) {
+			self.touched.push(group);
+		}
+		self.events.entry(group).or_default().push(event);
+		self.group_values.entry(group).or_insert(group_values);
+	}
+}
+
+fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> {
+	let mut routing = Routing::default();
+	for diff in change.diffs.iter() {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => {
+				for row in routed_rows(operator, post)? {
+					routing.push(
+						row.group,
+						row.group_values,
+						PaneEvent::Insert(row.pane, row.contribution),
+					);
+				}
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => {
+				for row in routed_rows(operator, pre)? {
+					routing.push(
+						row.group,
+						row.group_values,
+						PaneEvent::Remove(row.pane, row.contribution),
+					);
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				for (before, after) in
+					routed_rows(operator, pre)?.into_iter().zip(routed_rows(operator, post)?)
+				{
+					if before.group == after.group {
+						routing.push(
+							after.group,
+							after.group_values,
+							PaneEvent::Update {
+								pre: (before.pane, before.contribution),
+								post: (after.pane, after.contribution),
+							},
+						);
+					} else {
+						routing.push(
+							before.group,
+							before.group_values,
+							PaneEvent::Remove(before.pane, before.contribution),
+						);
+						routing.push(
+							after.group,
+							after.group_values,
+							PaneEvent::Insert(after.pane, after.contribution),
+						);
+					}
+				}
+			}
 		}
 	}
-	Ok(())
+	Ok(routing)
+}
+
+fn finalize_rolling(_group: &Hash128, _newest: DateTime, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
+	accumulator.finalize()
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
@@ -273,251 +223,86 @@ pub fn apply_rolling_engine(
 	host: &mut dyn HostContext,
 	change: Change,
 ) -> Result<Change> {
-	apply_rolling::<DateTime>(operator, host, change)
-}
-
-fn apply_rolling<S: RollingDomain>(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	change: Change,
-) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let immutable = operator.immutable();
-	let lag = S::lag(operator.rolling_lag());
-
-	let mut buckets: RollingEngineBuckets<S> = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut touched: Vec<Hash128> = Vec::new();
-	let mut touched_set: HashSet<Hash128> = HashSet::new();
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => route_rolling_columns::<S>(
-				operator,
-				post,
-				true,
-				&mut buckets,
-				&mut group_values,
-				&mut touched,
-				&mut touched_set,
-			)?,
-			Diff::Remove {
-				pre,
-				..
-			} => route_rolling_columns::<S>(
-				operator,
-				pre,
-				false,
-				&mut buckets,
-				&mut group_values,
-				&mut touched,
-				&mut touched_set,
-			)?,
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				for (pre, post) in distinct_row_runs(pre, post)? {
-					route_rolling_columns::<S>(
-						operator,
-						&pre,
-						false,
-						&mut buckets,
-						&mut group_values,
-						&mut touched,
-						&mut touched_set,
-					)?;
-					route_rolling_columns::<S>(
-						operator,
-						&post,
-						true,
-						&mut buckets,
-						&mut group_values,
-						&mut touched,
-						&mut touched_set,
-					)?;
-				}
-			}
-		}
-	}
-
-	if buckets.is_empty() {
+	let routing = route_rolling(operator, &change)?;
+	if routing.events.is_empty() {
 		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
 
 	let ledger = operator.seal_ledger(host)?.at();
-	let frontier = host.flow_watermark()?.map_or(ledger, |watermark| ledger.max(watermark));
-	let eviction = S::eviction(operator, frontier, lag);
+	let clock = host.flow_watermark()?.map_or(ledger, |watermark| ledger.max(watermark));
+	let cutoff = expiry_cutoff(operator, clock);
 
-	if let Some(horizon) = S::seal_horizon(operator, frontier) {
-		let mut dropped = 0u64;
-		buckets.retain(|&(_, slot), events| {
-			if is_sealed(slot, horizon) {
-				dropped += events.len() as u64;
-				false
-			} else {
-				true
-			}
-		});
-		operator.note_sealed_drops(dropped);
-		let admitted: HashSet<Hash128> = buckets.keys().map(|(hash, _)| *hash).collect();
-		touched.retain(|hash| admitted.contains(hash));
-		if buckets.is_empty() {
-			return Ok(Change::from_flow(
-				operator.core.operator,
-				change.version,
-				Vec::new(),
-				change.changed_at,
-			));
-		}
+	let groups = intern_partitions(&routing.touched);
+	let mut pane_groups: PaneGroups<Hash128, DateTime, Contribution> = BTreeMap::new();
+	for (hash, events) in routing.events {
+		pane_groups.insert(hash, (group_of(&groups, hash, 0), events));
 	}
 
-	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
-
-	let groups = intern_partitions(&touched);
-	let mut keys: Vec<GroupStateKey> = touched
-		.iter()
-		.map(|hash| (&RollingMetaKey(group_of(&groups, *hash, 0))).into_group_state_key())
-		.collect();
-	keys.extend(S::engine(operator, runnable, lag)
-		.state_keys(&buckets, |hash| (group_of(&groups, *hash, 0), store::empty_key()))?);
+	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
+	let keys = pane_engine(operator, &kinds).state_keys(&pane_groups);
 	let mut state = Prefetched::read(host, keys)?;
-	let mut priors = load_rolling_priors(operator, &mut state, &touched, &groups)?;
-	let results = if runnable {
-		let engine = S::engine(operator, true, lag);
-		engine.apply_running(
-			&mut state,
-			buckets,
-			eviction,
-			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
-			|| RowAccumulator::new(&kinds, immutable),
-		)?
-	} else {
-		let engine = S::engine(operator, false, lag);
-		engine.apply_evicting_with_prior(
-			&mut state,
-			buckets,
-			eviction,
-			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
-			|| RowAccumulator::new(&kinds, immutable),
-			|group, buffer| published_prior::<S>(&priors, group, buffer, &kinds, lag, immutable),
-			|_g, buffer| combine_rolling::<S>(buffer, &kinds, lag, immutable),
-		)?
-	};
-	let diffs =
-		finish_rolling_results(operator, &mut state, &change, &results, &group_values, &groups, &mut priors)?;
+	let group_values = routing.group_values;
+	let applied = pane_engine(operator, &kinds).apply(
+		&mut state,
+		pane_groups,
+		cutoff,
+		&|| RowAccumulator::new(&kinds, None),
+		&|hash: &Hash128| group_values.get(hash).cloned().unwrap_or_default(),
+		&finalize_rolling,
+	)?;
 	state.write()?;
+	operator.note_sealed_drops(applied.sealed_drops);
+	operator.note_stale_retractions(applied.stale_retractions);
 
-	rearm_rolling_seal::<S>(operator, host, armed_before, runnable, lag)?;
-	arm_stranded_meta_seals::<S>(operator, host, runnable, lag)?;
+	rearm_rolling_seal(operator, host, &kinds, armed_before)?;
+	let diffs = rolling_diffs(operator, applied.emits, change.changed_at)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn rolling_earliest_expiry<S: RollingDomain>(
+fn rearm_rolling_seal(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
-	runnable: bool,
-	lag: S::Span,
-) -> Result<Option<S>> {
-	Ok(S::engine(operator, runnable, lag).earliest_expiry(host)?.map(S::from_order))
-}
-
-fn rearm_rolling_seal<S: RollingDomain>(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	before: Option<S>,
-	runnable: bool,
-	lag: S::Span,
+	kinds: &[SlotKind],
+	before: Option<u64>,
 ) -> Result<()> {
-	if !S::arms_timer() {
-		return Ok(());
-	}
-	let after = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
+	let after = pane_engine(operator, kinds).earliest_expiry(host)?;
 	if before == after {
 		return Ok(());
 	}
-	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	gate.rearm(host, &EncodedKey::new(Vec::new()), before.map(S::to_order), after.map(S::to_order))
+	let gate = EvictionGate::new(rolling_over_time(operator).span());
+	gate.rearm(host, &EncodedKey::new(Vec::new()), before, after)
 }
 
-fn arm_stranded_meta_seals<S: RollingDomain>(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	runnable: bool,
-	lag: S::Span,
-) -> Result<()> {
-	let stranded = S::engine(operator, runnable, lag).take_stranded();
-	if !S::arms_timer() {
-		return Ok(());
+fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Value>) -> EmitRow {
+	EmitRow {
+		group_values,
+		slot_values: last_value,
+		row_number: *published,
+		span: None,
 	}
-	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	let moves: Vec<_> = stranded
-		.into_iter()
-		.map(|(group, high_water)| {
-			gate.eviction_move(EncodedKey::new(group.0.to_be_bytes()), None, Some(high_water))
-		})
-		.collect();
-	host.rearm_timers(TimerKind::Seal, &moves)
 }
 
-fn finish_rolling_results(
-	operator: &mut WindowOperator,
-	state: &mut dyn StateStore,
-	change: &Change,
-	results: &[RollingResult<Hash128, Vec<Value>>],
-	group_values: &HashMap<Hash128, Vec<Value>>,
-	groups: &WindowGroups,
-	priors: &mut RollingPriors,
-) -> Result<Vec<Diff>> {
+fn rolling_diffs(operator: &mut WindowOperator, emits: Vec<NativeEmit>, changed_at: DateTime) -> Result<Vec<Diff>> {
 	let mut inserts = Vec::new();
 	let mut updates = Vec::new();
 	let mut removes = Vec::new();
-	for r in results {
-		let group_id = group_of(groups, r.group, 0);
-		let prior = match priors.remove(&r.group) {
-			Some(loaded) => loaded,
-			None => operator.meta_slot().rolling_meta(state, group_id)?,
-		};
-		if matches!(r.kind, EmitKind::Remove) {
-			if let Some(m) = prior {
-				removes.push(EmitRow {
-					group_values: m.group_values,
-					slot_values: m.last_value,
-					row_number: RowNumber(m.row_number),
-					span: None,
-				});
-				operator.meta_slot().drop_rolling_meta(state, group_id)?;
+	for emit in emits {
+		match (emit.prior, emit.post) {
+			(None, Some(post)) => {
+				inserts.push(emit_row(&RowNumber(post.row_number), post.key, post.last_value))
 			}
-			continue;
+			(Some(prior), Some(post)) => updates.push((
+				emit_row(&RowNumber(prior.row_number), prior.key, prior.last_value),
+				emit_row(&RowNumber(post.row_number), post.key, post.last_value),
+			)),
+			(Some(prior), None) => {
+				removes.push(emit_row(&RowNumber(prior.row_number), prior.key, prior.last_value))
+			}
+			(None, None) => {}
 		}
-		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
-		let emit = |slot_values: Vec<Value>| EmitRow {
-			group_values: gvals.clone(),
-			slot_values,
-			row_number: r.row_number,
-			span: None,
-		};
-		match (r.kind, prior) {
-			(EmitKind::Insert, _) => inserts.push(emit(r.value.clone())),
-			(_, Some(m)) => updates.push((emit(m.last_value), emit(r.value.clone()))),
-			(_, None) => updates.push((emit(r.value.clone()), emit(r.value.clone()))),
-		}
-		operator.meta_slot().put_rolling_meta(
-			state,
-			group_id,
-			RollingMeta {
-				group_hash: r.group.0,
-				row_number: r.row_number.0,
-				group_values: gvals,
-				last_value: r.value.clone(),
-			},
-		)?;
 	}
-	operator.core.emit_diffs(inserts, updates, removes, change.changed_at)
+	operator.core.emit_diffs(inserts, updates, removes, changed_at)
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
@@ -532,85 +317,18 @@ pub fn seal_rolling_engine(
 	if size.is_zero() {
 		return Ok(Vec::new());
 	}
-	let lag = <DateTime as RollingDomain>::lag(operator.rolling_lag());
-	let immutable = operator.immutable();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
 	operator.advance_seal_ledger(host, fired)?;
-	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts).map(|cutoff| floor_to_pane(operator, cutoff));
-	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<DateTime>(operator, host, runnable, lag)?;
-
-	let expiries = match cutoff {
-		Some(cutoff) => {
-			let expiries = if runnable {
-				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
-				engine.expire_before_running(host, cutoff)?
-			} else {
-				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
-				engine.expire_before(host, cutoff, |_g, buffer| {
-					combine_rolling::<DateTime>(buffer, &kinds, lag, immutable)
-				})?
-			};
-			<DateTime as RollingDomain>::engine(operator, runnable, lag)
-				.expire_meta(host, cutoff.to_order().saturating_add(1))?;
-			expiries
-		}
+	let cutoff = expiry_cutoff(operator, ts);
+	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
+	let emits = match cutoff {
+		Some(cutoff) => pane_engine(operator, &kinds).expire(host, cutoff, &finalize_rolling)?,
 		None => Vec::new(),
 	};
-	Span::current().record("expired", expiries.len());
-	rearm_rolling_seal::<DateTime>(operator, host, armed_before, runnable, lag)?;
-
-	let mut updates = Vec::new();
-	let mut removes = Vec::new();
-	for expiry in expiries {
-		match expiry {
-			RollingExpiry::Update {
-				row_number,
-				group: _,
-				group_id,
-				value,
-			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
-					continue;
-				};
-				let emit = |slot_values: Vec<Value>| EmitRow {
-					group_values: meta.group_values.clone(),
-					slot_values,
-					row_number,
-					span: None,
-				};
-				updates.push((emit(meta.last_value.clone()), emit(value.clone())));
-				operator.meta_slot().put_rolling_meta(
-					host,
-					group_id,
-					RollingMeta {
-						group_hash: meta.group_hash,
-						row_number: meta.row_number,
-						group_values: meta.group_values,
-						last_value: value,
-					},
-				)?;
-			}
-			RollingExpiry::Remove {
-				row_number,
-				group: _,
-				group_id,
-			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
-					continue;
-				};
-				removes.push(EmitRow {
-					group_values: meta.group_values,
-					slot_values: meta.last_value,
-					row_number,
-					span: None,
-				});
-				operator.meta_slot().drop_rolling_meta(host, group_id)?;
-			}
-		}
-	}
-	operator.core.emit_diffs(Vec::new(), updates, removes, ts)
+	Span::current().record("expired", emits.len());
+	rearm_rolling_seal(operator, host, &kinds, armed_before)?;
+	rolling_diffs(operator, emits, ts)
 }
 
 #[cfg(test)]
@@ -618,13 +336,10 @@ mod tests {
 	use std::{
 		collections::{BTreeMap as TestBTreeMap, HashMap as TestHashMap},
 		ops::Bound,
-		sync::Arc,
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
-		common::{WindowKind, WindowSize},
-		interface::catalog::flow::OperatorId,
 		key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 		state::{
 			batch::StateBatch,
@@ -632,9 +347,6 @@ mod tests {
 			timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 		},
 	};
-	use reifydb_flow::context::FlowContext;
-	use reifydb_routine_abi::registry::Routines;
-	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_value::{
 		Result as ValueResult,
 		value::{datetime::DateTime, digest::Digest, value_type::ValueType},
@@ -648,7 +360,6 @@ mod tests {
 				seal::{coord::Coord, rule::EvictionRule},
 				test_utils::test::inner_bytes,
 			},
-			window::operator::{WindowConfig, WindowOperator},
 		},
 		window::engine::config::WindowEngineConfig,
 	};
@@ -841,10 +552,6 @@ mod tests {
 		}
 	}
 
-	fn group_key(hash: &Hash128) -> (GroupId, EncodedKey) {
-		(GroupId::ROOT, EncodedKey::builder().u128(hash.0).build())
-	}
-
 	const PPM: u32 = 10_000;
 
 	type TimeKey = (u64, u64);
@@ -875,30 +582,6 @@ mod tests {
 		SlotKind::Digest {
 			accuracy: Some(PPM),
 		}
-	}
-
-	fn rolling_operator(size: WindowSize, immutable: Option<Duration>) -> WindowOperator {
-		WindowOperator::new(WindowConfig {
-			parent_schema: None,
-			operator: OperatorId(1),
-			kind: WindowKind::Rolling {
-				size,
-				lag: None,
-				pane: None,
-			},
-			group_by: Vec::new(),
-			aggregations: Vec::new(),
-			runtime_context: RuntimeContext::testing(0, 1),
-			routines: Routines::empty(),
-			lateness: None,
-			immutable,
-			ctx: Arc::new(FlowContext::default()),
-		})
-		.expect("the window operator must build")
-	}
-
-	fn minute() -> WindowSize {
-		WindowSize::Duration(Duration::from_seconds(60).unwrap())
 	}
 
 	fn inputs(kinds: &[SlotKind], latency: Option<f64>) -> SlotRow {
@@ -942,39 +625,87 @@ mod tests {
 		live.get(group).map(|rows| rows.values().copied().collect()).unwrap_or_default()
 	}
 
-	fn drive_time_frame(kinds: &[SlotKind], immutable: Option<Duration>, runnable: bool, seed: u64) {
+	struct Frame {
+		live: TestBTreeMap<Hash128, TestBTreeMap<TimeKey, Option<f64>>>,
+		newest: TestHashMap<Hash128, u64>,
+		lateness: u64,
+		retract: u64,
+	}
+
+	impl Frame {
+		fn admits(&self, group: &Hash128, ms: u64, cutoff: Option<u64>, retraction: bool) -> bool {
+			if cutoff.is_some_and(|cutoff| ms <= cutoff) {
+				return false;
+			}
+			let line = if retraction {
+				self.retract
+			} else {
+				self.lateness
+			};
+			self.newest.get(group).is_none_or(|newest| ms >= newest.saturating_sub(line))
+		}
+
+		fn forget_empty(&mut self) {
+			let empty: Vec<Hash128> =
+				self.live.iter().filter(|(_, rows)| rows.is_empty()).map(|(group, _)| *group).collect();
+			for group in empty {
+				self.live.remove(&group);
+				self.newest.remove(&group);
+			}
+		}
+	}
+
+	fn millis(ms: u64) -> DateTime {
+		DateTime::from_millis(i64::try_from(ms).expect("test millis fit in i64"))
+	}
+
+	fn drive_time_frame(kinds: &[SlotKind], immutable_ms: Option<u64>, seed: u64) {
+		let lateness_ms = 3u64;
+		let lateness = Duration::from_milliseconds(lateness_ms as i64).unwrap();
+		let retract_ms = immutable_ms.unwrap_or(lateness_ms);
+		let retract = Duration::from_milliseconds(retract_ms as i64).unwrap();
+		let spans = PaneSpans {
+			size: Duration::from_seconds(60).unwrap(),
+			lag: Duration::zero(),
+			lateness,
+			retract,
+		};
 		let config = WindowEngineConfig::builder().build();
-		let mut engine = if runnable {
-			RollingEngine::<Hash128, DateTime, RowAccumulator>::new_runnable(config)
+		let mut engine = if rolling_runs_on_running_total(kinds) {
+			NativePaneEngine::running(config, spans)
 		} else {
-			RollingEngine::<Hash128, DateTime, RowAccumulator>::new(config)
+			NativePaneEngine::queue(config, spans, Merge::of())
 		};
 		let mut store = MockStore::default();
-		let new_accumulator = || RowAccumulator::new(kinds, immutable);
-		let combine = |_group: &Hash128, buffer: &RollingBuffer<DateTime, RowAccumulator>| {
-			combine_rolling::<DateTime>(buffer, kinds, Duration::zero(), immutable)
-		};
+		let new_accumulator = || RowAccumulator::new(kinds, None);
 		let mut rng = Lcg(seed);
-		let mut live: TestBTreeMap<Hash128, TestBTreeMap<TimeKey, Option<f64>>> = TestBTreeMap::new();
+		let mut frame = Frame {
+			live: TestBTreeMap::new(),
+			newest: TestHashMap::new(),
+			lateness: lateness_ms,
+			retract: retract_ms,
+		};
 		let mut evicted: Vec<(Hash128, TimeKey, Option<f64>)> = Vec::new();
 		let mut cutoff: Option<u64> = None;
-		let (mut base, mut seq, mut checked, mut shared_slots, mut evictions) =
-			(1_000u64, 0u64, 0usize, 0usize, 0usize);
+		let (mut base, mut seq, mut checked, mut shared_slots, mut evictions, mut dropped) =
+			(1_000u64, 0u64, 0usize, 0usize, 0usize, 0u64);
 
 		for round in 0..300u64 {
 			let mut plan: Vec<(Hash128, TimeKey, Option<f64>, bool)> = Vec::new();
 			if round % 3 == 2 {
+				let held: Vec<(Hash128, TimeKey, Option<f64>)> = frame
+					.live
+					.iter()
+					.flat_map(|(g, rows)| rows.iter().map(move |(k, v)| (*g, *k, *v)))
+					.collect();
 				for _ in 0..=rng.below(2) {
-					let held: Vec<(Hash128, TimeKey)> = live
-						.iter()
-						.flat_map(|(g, rows)| rows.keys().map(move |k| (*g, *k)))
-						.collect();
 					if held.is_empty() {
 						break;
 					}
-					let (group, key) = held[rng.below(held.len() as u64) as usize];
-					let value = live.get_mut(&group).unwrap().remove(&key).unwrap();
-					plan.push((group, key, value, false));
+					let (group, key, value) = held[rng.below(held.len() as u64) as usize];
+					if !plan.iter().any(|(g, k, _, _)| *g == group && *k == key) {
+						plan.push((group, key, value, false));
+					}
 				}
 			}
 			if round % 7 == 6 && !evicted.is_empty() {
@@ -985,60 +716,71 @@ mod tests {
 				seq += 1;
 				let group = rng.group();
 				let key = (base + rng.below(6), seq);
-				let value = rng.latency();
-				let rows = live.entry(group).or_default();
-				if rows.keys().any(|(ms, _)| *ms == key.0) {
-					shared_slots += 1;
-				}
-				rows.insert(key, value);
-				plan.push((group, key, value, true));
+				plan.push((group, key, rng.latency(), true));
 			}
 
-			let mut buckets: RollingEngineBuckets<DateTime> = TestBTreeMap::new();
+			let mut groups: PaneGroups<Hash128, DateTime, Contribution> = TestBTreeMap::new();
+			let mut admitted: Vec<(Hash128, TimeKey, Option<f64>, bool)> = Vec::new();
+			let mut round_dropped = 0u64;
 			for (group, (ms, seq), value, is_add) in &plan {
-				let ms_nanos = i64::try_from(*ms).expect("test slot millis fits in i64");
-				let contribution = (
-					WindowSlotKey::new(DateTime::from_millis(ms_nanos), *seq),
-					inputs(kinds, *value),
-				);
+				let contribution = (WindowSlotKey::new(millis(*ms), *seq), inputs(kinds, *value));
 				let event = if *is_add {
-					AccumulatorEvent::Add(contribution)
+					PaneEvent::Insert(millis(*ms), contribution)
 				} else {
-					AccumulatorEvent::Remove(contribution)
+					PaneEvent::Remove(millis(*ms), contribution)
 				};
-				buckets.entry((*group, DateTime::from_millis(ms_nanos))).or_default().push(event);
+				groups.entry(*group)
+					.or_insert_with(|| (GroupId::hashed(*group), Vec::new()))
+					.1
+					.push(event);
+				if frame.admits(group, *ms, cutoff, !*is_add) {
+					admitted.push((*group, (*ms, *seq), *value, *is_add));
+				} else {
+					round_dropped += 1;
+				}
 			}
-			let eviction = match cutoff {
-				Some(cutoff) => RollingEviction::Before(DateTime::from_millis(
-					i64::try_from(cutoff).expect("test cutoff fits in i64 milliseconds"),
-				)),
-				None => RollingEviction::Nothing,
-			};
-			let results = if runnable {
-				engine.apply_running(&mut store, buckets, eviction, group_key, &new_accumulator)
-					.unwrap()
-			} else {
-				engine.apply_evicting(
+			for (group, key, value, is_add) in admitted {
+				let rows = frame.live.entry(group).or_default();
+				if is_add {
+					if rows.keys().any(|(ms, _)| *ms == key.0) {
+						shared_slots += 1;
+					}
+					rows.insert(key, value);
+				} else {
+					rows.remove(&key);
+				}
+				let newest = frame.newest.entry(group).or_insert(key.0);
+				*newest = (*newest).max(key.0);
+			}
+			frame.forget_empty();
+
+			let applied = engine
+				.apply(
 					&mut store,
-					buckets,
-					eviction,
-					group_key,
+					groups,
+					cutoff.map(millis),
 					&new_accumulator,
-					&combine,
+					&|_: &Hash128| Vec::<Value>::new(),
+					&finalize_rolling,
 				)
-				.unwrap()
-			};
-			for result in &results {
-				let frame = time_frame_of(&live, &result.group);
-				match result.kind {
-					EmitKind::Remove => assert!(
-						frame.is_empty(),
+				.unwrap();
+			dropped += round_dropped;
+			assert_eq!(
+				applied.sealed_drops + applied.stale_retractions,
+				round_dropped,
+				"the engine dropped a different number of late rows than the seal and retract lines allow at round {round}"
+			);
+			for emit in &applied.emits {
+				let rows = time_frame_of(&frame.live, &emit.group);
+				match &emit.post {
+					None => assert!(
+						rows.is_empty(),
 						"a group with rows in its frame was withdrawn at apply round {round}"
 					),
-					_ => assert_frame(
+					Some(post) => assert_frame(
 						kinds,
-						&result.value,
-						&frame,
+						&post.last_value,
+						&rows,
 						&format!("apply round {round}"),
 					),
 				}
@@ -1048,38 +790,28 @@ mod tests {
 			if round % 5 == 4 {
 				let next = base.saturating_sub(20);
 				cutoff = Some(next);
-				let at = DateTime::from_millis(
-					i64::try_from(next).expect("test expiry bound fits in i64 milliseconds"),
-				);
-				let expiries = if runnable {
-					engine.expire_before_running(&mut store, at).unwrap()
-				} else {
-					engine.expire_before(&mut store, at, combine).unwrap()
-				};
-				for (group, rows) in live.iter_mut() {
+				let expiries = engine
+					.expire::<Vec<Value>, Vec<Value>>(&mut store, millis(next), &finalize_rolling)
+					.unwrap();
+				for (group, rows) in frame.live.iter_mut() {
 					let kept = rows.split_off(&(next + 1, 0));
 					evictions += rows.len();
 					evicted.extend(rows.iter().map(|(key, value)| (*group, *key, *value)));
 					*rows = kept;
 				}
+				frame.forget_empty();
 				for expiry in &expiries {
-					match expiry {
-						RollingExpiry::Update {
-							group,
-							value,
-							..
-						} => assert_frame(
-							kinds,
-							value,
-							&time_frame_of(&live, group),
-							&format!("expiry round {round}"),
-						),
-						RollingExpiry::Remove {
-							group,
-							..
-						} => assert!(
-							time_frame_of(&live, group).is_empty(),
+					let rows = time_frame_of(&frame.live, &expiry.group);
+					match &expiry.post {
+						None => assert!(
+							rows.is_empty(),
 							"a group with rows in its frame expired at round {round}"
+						),
+						Some(post) => assert_frame(
+							kinds,
+							&post.last_value,
+							&rows,
+							&format!("expiry round {round}"),
 						),
 					}
 					checked += 1;
@@ -1088,16 +820,11 @@ mod tests {
 			base += rng.below(4) + 1;
 		}
 
-		let past_every_slot = DateTime::from_millis(
-			i64::try_from(base + 1_000_000).expect("test drain bound fits in i64 milliseconds"),
-		);
-		let drained = if runnable {
-			engine.expire_before_running(&mut store, past_every_slot).unwrap()
-		} else {
-			engine.expire_before(&mut store, past_every_slot, combine).unwrap()
-		};
+		let drained = engine
+			.expire::<Vec<Value>, Vec<Value>>(&mut store, millis(base + 1_000_000), &finalize_rolling)
+			.unwrap();
 		assert!(
-			drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
+			drained.iter().all(|emit| emit.post.is_none()),
 			"draining past every slot must withdraw every group"
 		);
 		assert!(checked > 500, "the churn must check the frame often, checked {checked}");
@@ -1107,27 +834,24 @@ mod tests {
 		);
 		assert!(
 			evictions > 200,
-			"slots must leave the frame, or unmerge is never exercised, evicted {evictions}"
+			"slots must leave the frame, or a pane is never subtracted or popped, evicted {evictions}"
 		);
+		assert!(dropped > 20, "late rows must reach the seal and retract lines, dropped {dropped}");
 	}
 
 	#[test]
-	fn a_digest_slot_takes_the_running_path_unless_a_sealed_min_or_max_sends_it_to_recombine() {
-		// A sealed extreme on the running path unmerges a slot that cannot unmerge, so it must recombine.
-		let immutable = Some(Duration::from_seconds(30).unwrap());
+	fn a_digest_slot_takes_the_running_path_unless_a_min_or_max_sends_it_to_the_queue() {
+		// A min or max on the running path would unmerge a slot that cannot unmerge, so it must take the queue.
 		let cases = [
-			(minute(), None, vec![digest_kind()], true),
-			(minute(), None, vec![SlotKind::Min, digest_kind()], true),
-			(minute(), immutable, vec![digest_kind()], true),
-			(minute(), immutable, vec![SlotKind::Min, digest_kind()], false),
-			(minute(), immutable, vec![digest_kind(), SlotKind::Max], false),
+			(vec![digest_kind()], true),
+			(vec![SlotKind::Min, digest_kind()], false),
+			(vec![digest_kind(), SlotKind::Max], false),
 		];
-		for (size, immutable, kinds, runnable) in cases {
-			let operator = rolling_operator(size.clone(), immutable);
+		for (kinds, running) in cases {
 			assert_eq!(
-				rolling_runnable(&operator, &kinds),
-				runnable,
-				"{kinds:?} over {size:?} with immutable {immutable:?}"
+				rolling_runs_on_running_total(&kinds),
+				running,
+				"{kinds:?} picks the wrong rolling fold"
 			);
 		}
 	}
@@ -1136,19 +860,18 @@ mod tests {
 	fn a_running_digest_equals_a_digest_rebuilt_from_the_time_frame_across_seeded_add_evict_churn() {
 		// A merge or unmerge that drifts from the frame reports percentiles of rows that already left it.
 		let kinds = [digest_kind()];
-		let runnable = rolling_runnable(&rolling_operator(minute(), None), &kinds);
-		assert!(runnable, "a lone digest slot must take the running path");
-		drive_time_frame(&kinds, None, runnable, 0xD16E_5744_0001);
+		assert!(rolling_runs_on_running_total(&kinds), "a lone digest slot must take the running path");
+		drive_time_frame(&kinds, None, 0xD16E_5744_0001);
 	}
 
 	#[test]
-	fn a_digest_next_to_a_min_equals_a_rebuild_of_the_time_frame_on_the_running_and_the_recombine_path() {
-		// Recombine beside a sealed min must answer from exactly the frame the running path answers from.
+	fn a_digest_next_to_a_min_on_the_queue_equals_a_rebuild_of_the_time_frame() {
+		// The queue must answer from exactly the frame a rebuild answers from, with and without an immutable
+		// line.
 		let kinds = [SlotKind::Min, digest_kind()];
-		for (immutable, expected) in [(None, true), (Some(Duration::from_milliseconds(15).unwrap()), false)] {
-			let runnable = rolling_runnable(&rolling_operator(minute(), immutable), &kinds);
-			assert_eq!(runnable, expected, "immutable {immutable:?} picks the wrong rolling path");
-			drive_time_frame(&kinds, immutable, runnable, 0xD16E_5744_0002);
+		assert!(!rolling_runs_on_running_total(&kinds), "a min beside a digest must take the queue");
+		for immutable in [None, Some(15)] {
+			drive_time_frame(&kinds, immutable, 0xD16E_5744_0002);
 		}
 	}
 }
