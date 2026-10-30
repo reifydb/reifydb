@@ -312,6 +312,12 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 			statement(&node.as_clause, scope.in_view())?;
 			Ok(Found::default())
 		}
+		PhysicalPlan::CreateDeferredWindowedViewGroup(node) => {
+			for member in &node.members {
+				statement(&member.as_clause, scope.in_view())?;
+			}
+			Ok(Found::default())
+		}
 		PhysicalPlan::CreateTransactionalView(node) => {
 			statement(&node.as_clause, scope.in_view())?;
 			Ok(Found::default())

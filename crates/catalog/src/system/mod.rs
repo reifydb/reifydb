@@ -54,6 +54,8 @@ pub mod types;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
+pub mod windowed_view_group_members;
+pub mod windowed_view_groups;
 
 use authentication::{credentials::authentication_credentials, methods::authentication_methods};
 use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
@@ -104,6 +106,8 @@ use types::types;
 use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
+use windowed_view_group_members::windowed_view_group_members;
+use windowed_view_groups::windowed_view_groups;
 
 use crate::system::{queue_partitions::queue_partitions, queues::queues, ringbuffers::ringbuffers};
 
@@ -481,6 +485,26 @@ pub mod ids {
 			];
 		}
 
+		pub mod windowed_view_groups {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const FLOW_ID: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, FLOW_ID];
+		}
+
+		pub mod windowed_view_group_members {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const GROUP_ID: ColumnId = ColumnId(1);
+			pub const VIEW_ID: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [GROUP_ID, VIEW_ID];
+		}
+
 		pub mod relationships {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -830,8 +854,9 @@ pub mod ids {
 		pub const IDENTITY_ATTRIBUTE: SequenceId = SequenceId(23);
 		pub const RELATIONSHIP: SequenceId = SequenceId(24);
 		pub const AUTHENTICATION_METHOD: SequenceId = SequenceId(25);
+		pub const WINDOWED_VIEW_GROUP: SequenceId = SequenceId(26);
 
-		pub const ALL: [(SequenceId, &str); 25] = [
+		pub const ALL: [(SequenceId, &str); 26] = [
 			(NAMESPACE, "namespace"),
 			(SOURCE, "source"),
 			(COLUMN, "column"),
@@ -857,6 +882,7 @@ pub mod ids {
 			(IDENTITY_ATTRIBUTE, "identity_attribute"),
 			(RELATIONSHIP, "relationship"),
 			(AUTHENTICATION_METHOD, "authentication_method"),
+			(WINDOWED_VIEW_GROUP, "windowed_view_group"),
 		];
 	}
 
@@ -922,6 +948,8 @@ pub mod ids {
 		pub const RELATIONSHIPS: VTableId = VTableId(64);
 		pub const FLOW_UNITS: VTableId = VTableId(65);
 		pub const AUTHENTICATION_METHODS: VTableId = VTableId(66);
+		pub const WINDOWED_VIEW_GROUPS: VTableId = VTableId(67);
+		pub const WINDOWED_VIEW_GROUP_MEMBERS: VTableId = VTableId(68);
 
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -943,7 +971,7 @@ pub mod ids {
 		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 74] = [
+		pub const ALL: [VTableId; 76] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -983,6 +1011,8 @@ pub mod ids {
 			BINDINGS_GRPC,
 			BINDINGS_WS,
 			RELATIONSHIPS,
+			WINDOWED_VIEW_GROUPS,
+			WINDOWED_VIEW_GROUP_MEMBERS,
 			HANDLERS,
 			SERIES,
 			IDENTITIES,
@@ -1087,6 +1117,14 @@ impl SystemCatalog {
 
 	pub fn get_system_relationships_table() -> Arc<VTable> {
 		relationships()
+	}
+
+	pub fn get_system_windowed_view_groups_table() -> Arc<VTable> {
+		windowed_view_groups()
+	}
+
+	pub fn get_system_windowed_view_group_members_table() -> Arc<VTable> {
+		windowed_view_group_members()
 	}
 
 	pub fn get_system_primary_key_columns_table() -> Arc<VTable> {

@@ -24,3 +24,4 @@ mod sumtype;
 mod table;
 mod test;
 mod view;
+mod windowed_view_group;

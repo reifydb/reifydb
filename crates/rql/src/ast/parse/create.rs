@@ -17,15 +17,16 @@ use crate::{
 		ast::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
 			AstColumnSettings, AstColumnToCreate, AstCreate, AstCreateColumnProperty,
-			AstCreateDeferredView, AstCreateDictionary, AstCreateEvent, AstCreateHandler,
-			AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey, AstCreateProcedure,
-			AstCreateQueue, AstCreateRelationship, AstCreateRemoteNamespace, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTest, AstCreateTransactionalView,
-			AstIndexColumn, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
-			AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry,
-			AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings, AstSeriesEncoding,
-			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstTypeParameter,
-			AstVariant, AstViewStorageKind, AstViewWithClause,
+			AstCreateDeferredView, AstCreateDeferredWindowedViewGroup, AstCreateDictionary, AstCreateEvent,
+			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
+			AstCreateProcedure, AstCreateQueue, AstCreateRelationship, AstCreateRemoteNamespace,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTest,
+			AstCreateTransactionalView, AstIndexColumn, AstOperatorWithEntry, AstOperatorWithKey,
+			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate,
+			AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
+			AstRelationshipJunction, AstRowSettings, AstSeriesEncoding, AstStatement, AstTimeDeclaration,
+			AstTimestampPrecision, AstTtl, AstType, AstTypeParameter, AstVariant, AstViewStorageKind,
+			AstViewWithClause, AstWindowedViewGroupMember,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -38,6 +39,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment},
 	duration::FOREVER,
+	error::RqlError,
 	token::{
 		keyword::{
 			Keyword,
@@ -217,6 +219,11 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
+			if self.consume_word("windowed")? {
+				self.consume_keyword(View)?;
+				self.expect_word("group")?;
+				return self.parse_deferred_windowed_view_group(token);
+			}
 			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 				self.consume_keyword(View)?;
 				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::RingBuffer);
@@ -1053,6 +1060,149 @@ impl<'bump> Parser<'bump> {
 			},
 			settings,
 		}))
+	}
+
+	pub(crate) fn consume_word(&mut self, word: &str) -> Result<bool> {
+		if self.is_eof() {
+			return Ok(false);
+		}
+		let current = self.current()?;
+		if current.kind == TokenKind::Identifier && current.fragment.text().eq_ignore_ascii_case(word) {
+			self.advance()?;
+			return Ok(true);
+		}
+		Ok(false)
+	}
+
+	pub(crate) fn expect_word(&mut self, word: &str) -> Result<()> {
+		if self.consume_word(word)? {
+			return Ok(());
+		}
+		Err(unexpected_option(&self.current()?, &format!("'{}'", word)))
+	}
+
+	fn parse_deferred_windowed_view_group(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let group = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
+		let columns = self.parse_columns()?;
+
+		self.consume_keyword(Keyword::With)?;
+		let members = self.parse_windowed_view_group_members()?;
+
+		let as_start = self.position;
+		let Some(first) = self.parse_view_as_clause()? else {
+			return Err(unexpected_option(&self.current()?, "'as'"));
+		};
+		let as_end = self.position;
+		let mut as_clauses = vec![first];
+		for _ in 1..members.len() {
+			self.position = as_start;
+			let Some(copy) = self.parse_view_as_clause()? else {
+				return Err(unexpected_option(&self.current()?, "'as'"));
+			};
+			as_clauses.push(copy);
+		}
+		self.position = as_end;
+
+		Ok(AstCreate::DeferredWindowedViewGroup(AstCreateDeferredWindowedViewGroup {
+			token,
+			group,
+			columns,
+			members,
+			as_clauses,
+		}))
+	}
+
+	fn parse_windowed_view_group_members(&mut self) -> Result<Vec<AstWindowedViewGroupMember<'bump>>> {
+		self.consume_operator(Operator::OpenCurly)?;
+		self.skip_new_line()?;
+		let key = self.consume_identifier()?;
+		if key.fragment.text() != "members" {
+			return Err(unexpected_option(&key, "'members'"));
+		}
+		self.consume_operator(Operator::Colon)?;
+		self.consume_operator(Operator::OpenBracket)?;
+		let mut members = Vec::new();
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseBracket) {
+				break;
+			}
+			members.push(self.parse_windowed_view_group_member()?);
+			self.skip_new_line()?;
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+		self.consume_operator(Operator::CloseBracket)?;
+		self.skip_new_line()?;
+		self.consume_if(TokenKind::Separator(Comma))?;
+		self.skip_new_line()?;
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(members)
+	}
+
+	fn parse_windowed_view_group_member(&mut self) -> Result<AstWindowedViewGroupMember<'bump>> {
+		let token = self.consume_operator(Operator::OpenCurly)?;
+		let mut view = None;
+		let mut duration = None;
+		let mut immutable = None;
+		let mut settings = None;
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+			let key = self.consume_identifier()?;
+			self.consume_operator(Operator::Colon)?;
+			let duplicate = match key.fragment.text() {
+				"view" => {
+					let mut segments = self.parse_double_colon_separated_identifiers()?;
+					let name = segments.pop().unwrap().into_fragment();
+					let namespace: Vec<_> =
+						segments.into_iter().map(|s| s.into_fragment()).collect();
+					view.replace(
+						MaybeQualifiedDeferredViewIdentifier::new(name)
+							.with_namespace(namespace),
+					)
+					.is_some()
+				}
+				"duration" => duration.replace(self.parse_member_with_entry(key.clone())?).is_some(),
+				"immutable" => immutable.replace(self.parse_member_with_entry(key.clone())?).is_some(),
+				"row" => settings.replace(self.parse_row_config()?).is_some(),
+				_ => return Err(unexpected_option(&key, "'view', 'duration', 'immutable', or 'row'")),
+			};
+			if duplicate {
+				return Err(RqlError::OperatorWithDuplicateKey {
+					key: key.fragment.text().to_string(),
+					fragment: key.fragment.to_owned(),
+				}
+				.into());
+			}
+			self.skip_new_line()?;
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+		let Some(view) = view else {
+			return Err(unexpected_option(&token, "a member with 'view'"));
+		};
+		let Some(duration) = duration else {
+			return Err(unexpected_option(&token, "a member with 'duration'"));
+		};
+		Ok(AstWindowedViewGroupMember {
+			token,
+			view,
+			duration,
+			immutable,
+			settings,
+		})
+	}
+
+	fn parse_member_with_entry(&mut self, key: Token<'bump>) -> Result<AstOperatorWithEntry<'bump>> {
+		Ok(AstOperatorWithEntry {
+			key: AstOperatorWithKey::Word(key),
+			value: Some(self.parse_operator_with_value()?),
+		})
 	}
 
 	fn parse_deferred_view_with_storage(

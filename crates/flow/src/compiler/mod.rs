@@ -21,6 +21,7 @@ use reifydb_core::{
 		id::SubscriptionId,
 		view::View,
 	},
+	internal_err,
 	row::OperatorRetention,
 };
 use reifydb_routine_abi::registry::Routines;
@@ -57,6 +58,18 @@ pub fn compile_flow(
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
 
+pub fn compile_group_flow(
+	catalog: &Catalog,
+	routines: &Routines,
+	txn: &mut AdminTransaction,
+	prefix: QueryPlan,
+	members: Vec<(QueryPlan, View)>,
+	flow_id: FlowId,
+) -> Result<FlowDag> {
+	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
+	compiler.compile_group(&mut Transaction::Admin(txn), prefix, members)
+}
+
 pub fn compile_subscription_flow_ephemeral(
 	catalog: &Catalog,
 	routines: &Routines,
@@ -78,6 +91,8 @@ pub(crate) struct FlowCompiler {
 
 	pub(crate) sink: Option<View>,
 
+	shared_input: Option<OperatorId>,
+
 	ephemeral: bool,
 
 	local_node_counter: u64,
@@ -92,6 +107,7 @@ impl FlowCompiler {
 			routines,
 			builder: FlowDag::builder(flow_id),
 			sink: None,
+			shared_input: None,
 			ephemeral: false,
 			local_node_counter: 0,
 			local_edge_counter: 0,
@@ -106,6 +122,7 @@ impl FlowCompiler {
 			routines,
 			builder,
 			sink: None,
+			shared_input: None,
 			ephemeral: true,
 			local_node_counter: 0,
 			local_edge_counter: 0,
@@ -178,6 +195,26 @@ impl FlowCompiler {
 			self.attach_sink_node(txn, sink_view, &root_node_id)?;
 		}
 
+		self.build_validated_flow()
+	}
+
+	pub(crate) fn compile_group(
+		mut self,
+		txn: &mut Transaction<'_>,
+		prefix: QueryPlan,
+		members: Vec<(QueryPlan, View)>,
+	) -> Result<FlowDag> {
+		if contains_sort(&prefix) {
+			return Err(Error(Box::new(flow_sort_must_be_terminal())));
+		}
+		let prefix_node = self.compile_plan(txn, prefix)?;
+		self.shared_input = Some(prefix_node);
+		for (plan, view) in members {
+			validate_sort_terminal(&plan)?;
+			self.sink = Some(view.clone());
+			let root_node_id = self.compile_plan(txn, plan)?;
+			self.attach_sink_node(txn, &view, &root_node_id)?;
+		}
 		self.build_validated_flow()
 	}
 
@@ -315,6 +352,10 @@ impl FlowCompiler {
 			QueryPlan::CallFunction(_) => {
 				panic!("CallFunction is not supported in flow graphs");
 			}
+			QueryPlan::SharedInput => match self.shared_input {
+				Some(operator_id) => Ok(operator_id),
+				None => internal_err!("shared input reached without a compiled prefix"),
+			},
 		}
 	}
 }
@@ -402,7 +443,8 @@ pub fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		| QueryPlan::Variable(_)
 		| QueryPlan::Environment(_)
 		| QueryPlan::RunTests(_)
-		| QueryPlan::CallFunction(_) => vec![],
+		| QueryPlan::CallFunction(_)
+		| QueryPlan::SharedInput => vec![],
 	}
 }
 

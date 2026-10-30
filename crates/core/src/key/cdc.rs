@@ -213,6 +213,8 @@ pub mod primary_key_tests {
 			KeyTag::NamespaceSource => {}
 			KeyTag::Sink => {}
 			KeyTag::NamespaceSink => {}
+			KeyTag::WindowedViewGroup => {}
+			KeyTag::NamespaceWindowedViewGroup => {}
 			KeyTag::RowSettings => {}
 			KeyTag::Procedure => {}
 			KeyTag::NamespaceProcedure => {}

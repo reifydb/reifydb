@@ -35,6 +35,7 @@ pub mod table;
 pub mod test;
 pub mod view;
 pub mod vtable;
+pub mod windowed_view_group;
 
 use std::sync::Arc;
 

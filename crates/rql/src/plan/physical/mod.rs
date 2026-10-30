@@ -45,7 +45,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	return_error,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -80,6 +80,7 @@ use crate::{
 #[derive(Debug)]
 pub enum PhysicalPlan<'bump> {
 	CreateDeferredView(CreateDeferredViewNode<'bump>),
+	CreateDeferredWindowedViewGroup(CreateDeferredWindowedViewGroupNode<'bump>),
 	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
 	CreateNamespace(CreateNamespaceNode),
 	CreateRemoteNamespace(nodes::CreateRemoteNamespaceNode),
@@ -115,6 +116,7 @@ pub enum PhysicalPlan<'bump> {
 	DropSeries(nodes::DropSeriesNode),
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
+	DropWindowedViewGroup(nodes::DropWindowedViewGroupNode),
 	DropProcedure(nodes::DropProcedureNode),
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
@@ -222,6 +224,25 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub ttl_eviction: EvictionVisibility,
+}
+
+#[derive(Debug)]
+pub struct CreateDeferredWindowedViewGroupNode<'bump> {
+	pub namespace: Namespace,
+	pub group: Fragment,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub members: Vec<WindowedViewGroupMember<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct WindowedViewGroupMember<'bump> {
+	pub namespace: Namespace,
+	pub view: Fragment,
+	pub duration: Duration,
+	pub ttl: Option<Ttl>,
+	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
+	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1899,6 +1920,10 @@ impl<'bump> Compiler<'bump> {
 				return Ok(self.compile_create_deferred(rx, create)?);
 			}
 
+			LogicalPlan::CreateDeferredWindowedViewGroup(create) => {
+				return Ok(self.compile_create_deferred_windowed_view_group(rx, create)?);
+			}
+
 			LogicalPlan::CreateTransactionalView(create) => {
 				return Ok(self.compile_create_transactional(rx, create)?);
 			}
@@ -2087,6 +2112,9 @@ impl<'bump> Compiler<'bump> {
 			}
 			LogicalPlan::DropSink(drop) => {
 				return Ok(self.compile_drop_sink(rx, drop)?);
+			}
+			LogicalPlan::DropWindowedViewGroup(drop) => {
+				return Ok(self.compile_drop_windowed_view_group(rx, drop)?);
 			}
 			LogicalPlan::DropProcedure(drop) => {
 				return Ok(self.compile_drop_procedure(rx, drop)?);

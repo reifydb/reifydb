@@ -298,6 +298,16 @@ impl PrePublishInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_sink(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.windowed_view_group {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|g| g.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_windowed_view_group(id, version, change.post.clone());
+		}
+
 		for change in &ctx.changes.config {
 			let key = change
 				.post

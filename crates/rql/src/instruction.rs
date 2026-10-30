@@ -8,13 +8,14 @@ use reifydb_value::{
 
 use crate::{
 	nodes::{
-		self, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode, CreateDictionaryNode,
-		CreateEventNode, CreateMigrationNode, CreateNamespaceNode, CreatePrimaryKeyNode, CreateProcedureNode,
-		CreateQueueNode, CreateRemoteNamespaceNode, CreateRingBufferNode, CreateSeriesNode, CreateSumTypeNode,
-		CreateTableNode, CreateTestNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
-		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertQueueNode,
-		InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode,
-		UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		self, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode,
+		CreateDeferredWindowedViewGroupNode, CreateDictionaryNode, CreateEventNode, CreateMigrationNode,
+		CreateNamespaceNode, CreatePrimaryKeyNode, CreateProcedureNode, CreateQueueNode,
+		CreateRemoteNamespaceNode, CreateRingBufferNode, CreateSeriesNode, CreateSumTypeNode, CreateTableNode,
+		CreateTestNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode,
+		DispatchNode, FunctionParameter, InsertDictionaryNode, InsertQueueNode, InsertRingBufferNode,
+		InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode, UpdateRingBufferNode,
+		UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -139,6 +140,7 @@ pub enum Instruction {
 	CreateQueue(CreateQueueNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDeferredView(CreateDeferredViewNode),
+	CreateDeferredWindowedViewGroup(CreateDeferredWindowedViewGroupNode),
 	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
@@ -173,6 +175,7 @@ pub enum Instruction {
 	DropSeries(nodes::DropSeriesNode),
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
+	DropWindowedViewGroup(nodes::DropWindowedViewGroupNode),
 	DropProcedure(nodes::DropProcedureNode),
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),

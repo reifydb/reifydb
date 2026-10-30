@@ -108,6 +108,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId
@@ -169,6 +170,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId

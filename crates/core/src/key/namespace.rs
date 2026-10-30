@@ -11,7 +11,7 @@ use crate::{
 		flow::FlowId,
 		id::{
 			BindingId, HandlerId, NamespaceId, ProcedureId, QueueId, RingBufferId, SeriesId, SinkId,
-			SourceId, TableId, ViewId,
+			SourceId, TableId, ViewId, WindowedViewGroupId,
 		},
 	},
 	key::{
@@ -591,6 +591,75 @@ pub mod namespace_sink_key_tests {
 		let key3 = NamespaceSinkKey {
 			namespace: NamespaceId::DEFAULT,
 			sink: SinkId(0),
+		};
+
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+		let encoded3 = key3.encode();
+
+		assert!(encoded3 < encoded2, "ordering not preserved");
+		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = NamespaceWindowedViewGroup)]
+pub struct NamespaceWindowedViewGroupKey {
+	pub namespace: NamespaceId,
+	pub windowed_view_group: WindowedViewGroupId,
+}
+
+impl NamespaceWindowedViewGroupKey {
+	pub fn new(namespace: impl Into<NamespaceId>, windowed_view_group: impl Into<WindowedViewGroupId>) -> Self {
+		Self {
+			namespace: namespace.into(),
+			windowed_view_group: windowed_view_group.into(),
+		}
+	}
+
+	pub fn encoded(
+		namespace: impl Into<NamespaceId>,
+		windowed_view_group: impl Into<WindowedViewGroupId>,
+	) -> EncodedKey {
+		Self::new(namespace, windowed_view_group).encode()
+	}
+
+	pub fn full_scan(namespace: NamespaceId) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, namespace.0 as u128)])
+	}
+}
+
+#[cfg(test)]
+pub mod namespace_windowed_view_group_key_tests {
+	use super::NamespaceWindowedViewGroupKey;
+	use crate::interface::catalog::id::{NamespaceId, WindowedViewGroupId};
+
+	#[test]
+	fn test_encode_decode() {
+		let key = NamespaceWindowedViewGroupKey {
+			namespace: NamespaceId(0xABCD),
+			windowed_view_group: WindowedViewGroupId(0x123456789ABCDEF0),
+		};
+		let encoded = key.encode();
+		let decoded = NamespaceWindowedViewGroupKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.namespace, NamespaceId(0xABCD));
+		assert_eq!(decoded.windowed_view_group, WindowedViewGroupId(0x123456789ABCDEF0));
+		assert_eq!(key, decoded);
+	}
+
+	#[test]
+	fn test_order_preserving() {
+		let key1 = NamespaceWindowedViewGroupKey {
+			namespace: NamespaceId::SYSTEM,
+			windowed_view_group: WindowedViewGroupId(100),
+		};
+		let key2 = NamespaceWindowedViewGroupKey {
+			namespace: NamespaceId::SYSTEM,
+			windowed_view_group: WindowedViewGroupId(200),
+		};
+		let key3 = NamespaceWindowedViewGroupKey {
+			namespace: NamespaceId::DEFAULT,
+			windowed_view_group: WindowedViewGroupId(0),
 		};
 
 		let encoded1 = key1.encode();

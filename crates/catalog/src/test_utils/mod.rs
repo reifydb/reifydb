@@ -8,7 +8,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		flow::{Flow, FlowEdge, FlowId, FlowStatus, OperatorId},
 		handler::Handler,
-		id::{RingBufferId, TableId},
+		id::{RingBufferId, TableId, ViewId},
 		namespace::Namespace,
 		property::ColumnPropertyKind,
 		ringbuffer::RingBuffer,
@@ -17,6 +17,7 @@ use reifydb_core::{
 		sumtype::{SumType, SumTypeKind, Variant},
 		table::Table,
 		view::View,
+		windowed_view_group::WindowedViewGroup,
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -40,6 +41,7 @@ use crate::{
 		source::create::SourceToCreate,
 		table::create::{TableColumnToCreate, TableToCreate},
 		view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
+		windowed_view_group::create::WindowedViewGroupToCreate,
 	},
 };
 
@@ -392,6 +394,27 @@ pub fn create_sink(txn: &mut AdminTransaction, namespace: &str, name: &str, conn
 			source_name: "source_table".to_string(),
 			connector: connector.to_string(),
 			config: vec![("key".to_string(), "value".to_string())],
+		},
+	)
+	.unwrap()
+}
+
+pub fn create_windowed_view_group(
+	txn: &mut AdminTransaction,
+	namespace: &str,
+	name: &str,
+	members: &[ViewId],
+) -> WindowedViewGroup {
+	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
+	CatalogStore::create_windowed_view_group(
+		txn,
+		WindowedViewGroupToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace.id(),
+			flow: FlowId(1),
+			members: members.to_vec(),
 		},
 	)
 	.unwrap()

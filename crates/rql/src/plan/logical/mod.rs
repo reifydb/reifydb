@@ -369,6 +369,7 @@ impl<'bump> Compiler<'bump> {
 #[derive(Debug)]
 pub enum LogicalPlan<'bump> {
 	CreateDeferredView(CreateDeferredViewNode<'bump>),
+	CreateDeferredWindowedViewGroup(CreateDeferredWindowedViewGroupNode<'bump>),
 	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
 	CreateNamespace(CreateNamespaceNode<'bump>),
 	CreateRemoteNamespace(CreateRemoteNamespaceNode<'bump>),
@@ -406,6 +407,7 @@ pub enum LogicalPlan<'bump> {
 	DropSeries(DropSeriesNode<'bump>),
 	DropSource(DropSourceNode<'bump>),
 	DropSink(DropSinkNode<'bump>),
+	DropWindowedViewGroup(DropWindowedViewGroupNode<'bump>),
 	DropProcedure(DropProcedureNode<'bump>),
 	DropHandler(DropHandlerNode<'bump>),
 	DropTest(DropTestNode<'bump>),
@@ -592,6 +594,23 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub ttl_eviction: EvictionVisibility,
+}
+
+#[derive(Debug)]
+pub struct CreateDeferredWindowedViewGroupNode<'bump> {
+	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub members: Vec<WindowedViewGroupMember<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct WindowedViewGroupMember<'bump> {
+	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
+	pub duration: Duration,
+	pub ttl: Option<Ttl>,
+	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
+	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1224,6 +1243,12 @@ pub struct DropSourceNode<'bump> {
 	pub source: MaybeQualifiedSourceIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropWindowedViewGroupNode<'bump> {
+	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug)]

@@ -48,6 +48,10 @@ use crate::store::{
 	table::shape::{table::SHAPE as TABLE_SHAPE, table_namespace::SHAPE as TABLE_NAMESPACE_SHAPE},
 	token::shape::token::SHAPE as TOKEN_SHAPE,
 	view::shape::{view::SHAPE as VIEW_SHAPE, view_namespace::SHAPE as VIEW_NAMESPACE_SHAPE},
+	windowed_view_group::shape::{
+		windowed_view_group::SHAPE as WINDOWED_VIEW_GROUP_SHAPE,
+		windowed_view_group_namespace::SHAPE as WINDOWED_VIEW_GROUP_NAMESPACE_SHAPE,
+	},
 };
 
 type Pin = (&'static str, &'static RowShape, u64, &'static [&'static str]);
@@ -398,6 +402,18 @@ fn pinned() -> Vec<Pin> {
 			],
 		),
 		("view::view_namespace", &*VIEW_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		(
+			"windowed_view_group::windowed_view_group",
+			&*WINDOWED_VIEW_GROUP_SHAPE,
+			0xf0a0f692ba7625ea,
+			&["id", "namespace", "name", "flow", "members"],
+		),
+		(
+			"windowed_view_group::windowed_view_group_namespace",
+			&*WINDOWED_VIEW_GROUP_NAMESPACE_SHAPE,
+			0x4ba761281fac062e,
+			&["id", "name"],
+		),
 	]
 }
 
@@ -427,7 +443,7 @@ fn the_pin_table_covers_every_catalog_shape() {
 fn structurally_identical_shapes_share_one_fingerprint() {
 	let id_name: Vec<&str> =
 		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x4ba761281fac062e).map(|(n, ..)| *n).collect();
-	assert_eq!(id_name.len(), 14, "the id/name index shapes must stay interchangeable by fingerprint");
+	assert_eq!(id_name.len(), 15, "the id/name index shapes must stay interchangeable by fingerprint");
 
 	let flow_id: Vec<&str> =
 		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x511118ba66efb6ed).map(|(n, ..)| *n).collect();

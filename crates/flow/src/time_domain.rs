@@ -77,11 +77,16 @@ fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> 
 		return Err(Error(Box::new(internal!("view {} has no catalog entry", view.0))));
 	};
 
-	let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? else {
+	if let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? {
+		return catalog.get_flow_dag(&mut txn.reborrow(), flow.id);
+	}
+
+	let dags = catalog.list_flow_dags_asc(&mut txn.reborrow())?;
+	let Some(dag) = dags.into_iter().find(|dag| dag.sink_views().any(|sink| sink == view)) else {
 		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
 	};
 
-	catalog.get_flow_dag(&mut txn.reborrow(), flow.id)
+	Ok(dag)
 }
 
 fn upstream_view_domain(

@@ -16,6 +16,7 @@ use reifydb_core::{
 		id::{
 			BindingId, ColumnBlockId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId,
 			QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			WindowedViewGroupId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -38,6 +39,7 @@ use reifydb_core::{
 		table::Table,
 		test::Test,
 		view::View,
+		windowed_view_group::WindowedViewGroup,
 	},
 	row::{OperatorRetention, RowSettings},
 };
@@ -63,6 +65,7 @@ pub trait TransactionalChanges:
 	+ TransactionalPolicyChanges
 	+ TransactionalSeriesChanges
 	+ TransactionalSinkChanges
+	+ TransactionalWindowedViewGroupChanges
 	+ TransactionalSourceChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
@@ -332,6 +335,14 @@ pub trait TransactionalSinkChanges {
 	fn is_sink_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
+pub trait TransactionalWindowedViewGroupChanges {
+	fn find_windowed_view_group(&self, id: WindowedViewGroupId) -> Option<&WindowedViewGroup>;
+
+	fn find_windowed_view_group_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&WindowedViewGroup>;
+
+	fn is_windowed_view_group_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
 pub trait TransactionalMigrationChanges {
 	fn find_migration_by_name(&self, name: &str) -> Option<&Migration>;
 }
@@ -394,6 +405,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub view: Vec<Change<View>>,
 
+	pub windowed_view_group: Vec<Change<WindowedViewGroup>>,
+
 	pub row_settings: Vec<Change<(StorageId, RowSettings)>>,
 
 	pub operator_retention: Vec<Change<(OperatorId, OperatorRetention)>>,
@@ -432,6 +445,7 @@ pub struct CatalogChangesSavepoint {
 	identity_attribute_value_len: usize,
 	policy_len: usize,
 	view_len: usize,
+	windowed_view_group_len: usize,
 	row_settings_len: usize,
 	operator_retention_len: usize,
 	primary_key_len: usize,
@@ -469,6 +483,7 @@ impl TransactionalCatalogChanges {
 			identity_attribute_value_len: self.identity_attribute_value.len(),
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
+			windowed_view_group_len: self.windowed_view_group.len(),
 			row_settings_len: self.row_settings.len(),
 			operator_retention_len: self.operator_retention.len(),
 			primary_key_len: self.primary_key.len(),
@@ -505,6 +520,7 @@ impl TransactionalCatalogChanges {
 		self.identity_attribute_value.truncate(sp.identity_attribute_value_len);
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
+		self.windowed_view_group.truncate(sp.windowed_view_group_len);
 		self.row_settings.truncate(sp.row_settings_len);
 		self.operator_retention.truncate(sp.operator_retention_len);
 		self.primary_key.truncate(sp.primary_key_len);
@@ -746,6 +762,21 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.sink.push(change);
 		self.log.push(Operation::Sink {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_windowed_view_group_change(&mut self, change: Change<WindowedViewGroup>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|g| g.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.windowed_view_group.push(change);
+		self.log.push(Operation::WindowedViewGroup {
 			id,
 			op,
 		});
@@ -1123,6 +1154,10 @@ pub enum Operation {
 		id: ViewId,
 		op: OperationType,
 	},
+	WindowedViewGroup {
+		id: WindowedViewGroupId,
+		op: OperationType,
+	},
 	Ttl {
 		object: ObjectId,
 		op: OperationType,
@@ -1169,6 +1204,7 @@ impl TransactionalCatalogChanges {
 			identity_attribute_value: Vec::new(),
 			policy: Vec::new(),
 			view: Vec::new(),
+			windowed_view_group: Vec::new(),
 			row_settings: Vec::new(),
 			operator_retention: Vec::new(),
 			primary_key: Vec::new(),
@@ -1264,6 +1300,7 @@ impl TransactionalCatalogChanges {
 		self.granted_role.clear();
 		self.policy.clear();
 		self.view.clear();
+		self.windowed_view_group.clear();
 		self.log.clear();
 	}
 }

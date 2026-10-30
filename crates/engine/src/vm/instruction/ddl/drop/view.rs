@@ -25,6 +25,21 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 
 	let def = services.catalog.get_view(&mut Transaction::Admin(txn), view_id)?;
 
+	if let Some(group) = services
+		.catalog
+		.list_windowed_view_groups_all(&mut Transaction::Admin(txn))?
+		.into_iter()
+		.find(|group| group.members.contains(&view_id))
+	{
+		let group_namespace = services.catalog.get_namespace(&mut Transaction::Admin(txn), group.namespace)?;
+		return Err(CatalogError::WindowedViewGroupMember {
+			view: plan.view_name.text().to_string(),
+			group: format!("{}::{}", group_namespace.name(), group.name),
+			fragment: plan.view_name.clone(),
+		}
+		.into());
+	}
+
 	let dags = services.catalog.list_flow_dags_asc(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let own_flow_id = flows.iter().find(|f| f.namespace == def.namespace() && f.name == def.name()).map(|f| f.id);

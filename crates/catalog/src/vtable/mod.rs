@@ -61,6 +61,10 @@ impl VTableRegistry {
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			RELATIONSHIPS => Some(SystemCatalog::get_system_relationships_table()),
+			WINDOWED_VIEW_GROUPS => Some(SystemCatalog::get_system_windowed_view_groups_table()),
+			WINDOWED_VIEW_GROUP_MEMBERS => {
+				Some(SystemCatalog::get_system_windowed_view_group_members_table())
+			}
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
 			FLOWS => Some(SystemCatalog::get_system_flows_table()),
@@ -113,6 +117,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_relationships_table(),
+			SystemCatalog::get_system_windowed_view_groups_table(),
+			SystemCatalog::get_system_windowed_view_group_members_table(),
 			SystemCatalog::get_system_versions_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),

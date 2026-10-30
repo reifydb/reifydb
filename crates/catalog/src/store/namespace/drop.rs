@@ -8,6 +8,7 @@ use reifydb_core::{
 		namespace::{
 			NamespaceDictionaryKey, NamespaceFlowKey, NamespaceKey, NamespaceQueueKey,
 			NamespaceRingBufferKey, NamespaceSumTypeKey, NamespaceTableKey, NamespaceViewKey,
+			NamespaceWindowedViewGroupKey,
 		},
 	},
 };
@@ -17,6 +18,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		Self::drop_namespace_windowed_view_groups(txn, namespace)?;
 		Self::drop_namespace_tables(txn, namespace)?;
 		Self::drop_namespace_views(txn, namespace)?;
 		Self::drop_namespace_ringbuffers(txn, namespace)?;
@@ -25,6 +27,24 @@ impl CatalogStore {
 		Self::drop_namespace_dictionaries(txn, namespace)?;
 		Self::drop_namespace_sumtypes(txn, namespace)?;
 		txn.remove(vec![(NamespaceKey::new(namespace).into(), None)])?;
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_windowed_view_groups(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceWindowedViewGroupKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut group_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let TaggedKey::NamespaceWindowedViewGroup(key) = &entry.key {
+				group_ids.push(key.windowed_view_group);
+			}
+		}
+		drop(stream);
+		for group_id in group_ids {
+			Self::drop_windowed_view_group(txn, group_id)?;
+		}
 		Ok(())
 	}
 

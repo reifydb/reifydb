@@ -35,5 +35,6 @@ pub mod sumtype;
 pub mod table;
 pub mod test;
 pub mod view;
+pub mod windowed_view_group;
 
 impl CatalogTrackChangeOperations for AdminTransaction {}

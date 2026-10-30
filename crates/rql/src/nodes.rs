@@ -80,6 +80,25 @@ pub struct CreateDeferredViewNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateDeferredWindowedViewGroupNode {
+	pub namespace: Namespace,
+	pub group: Fragment,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub members: Vec<WindowedViewGroupMember>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowedViewGroupMember {
+	pub namespace: Namespace,
+	pub view: Fragment,
+	pub duration: Duration,
+	pub ttl: Option<Ttl>,
+	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
+	pub as_clause: QueryPlan,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateTransactionalViewNode {
 	pub namespace: Namespace, // FIXME REsolvedNamespace
 	pub view: Fragment,
@@ -285,6 +304,13 @@ pub struct DropSourceNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropWindowedViewGroupNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub group: Fragment,
 }
 
 #[derive(Debug, Clone)]

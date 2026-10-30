@@ -116,7 +116,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstOperatorWithKey::Word(self.consume_identifier()?))
 	}
 
-	fn parse_operator_with_value(&mut self) -> Result<AstOperatorWithValue<'bump>> {
+	pub(crate) fn parse_operator_with_value(&mut self) -> Result<AstOperatorWithValue<'bump>> {
 		let current = self.current()?;
 		if current.is_operator(Operator::OpenCurly) {
 			return Ok(AstOperatorWithValue::Block(self.parse_operator_with_block(Level::Block)?));

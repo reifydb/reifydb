@@ -100,6 +100,8 @@ pub enum KeyTag {
 	TableEviction = 0x5F,
 	SeriesEviction = 0x60,
 	AuthenticationMethod = 0x61,
+	WindowedViewGroup = 0x62,
+	NamespaceWindowedViewGroup = 0x63,
 }
 
 impl KeyTag {
@@ -214,6 +216,8 @@ impl TryFrom<u8> for KeyTag {
 			0x5F => Ok(Self::TableEviction),
 			0x60 => Ok(Self::SeriesEviction),
 			0x61 => Ok(Self::AuthenticationMethod),
+			0x62 => Ok(Self::WindowedViewGroup),
+			0x63 => Ok(Self::NamespaceWindowedViewGroup),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

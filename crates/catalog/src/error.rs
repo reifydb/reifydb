@@ -44,6 +44,7 @@ pub enum CatalogObjectKind {
 	Binding,
 	Relationship,
 	AuthenticationMethod,
+	WindowedViewGroup,
 }
 
 impl Display for CatalogObjectKind {
@@ -74,6 +75,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Binding => f.write_str("binding"),
 			CatalogObjectKind::Relationship => f.write_str("relationship"),
 			CatalogObjectKind::AuthenticationMethod => f.write_str("authentication method"),
+			CatalogObjectKind::WindowedViewGroup => f.write_str("windowed view group"),
 		}
 	}
 }
@@ -221,6 +223,20 @@ pub enum CatalogError {
 		namespace: String,
 		name: String,
 		column: String,
+		fragment: Fragment,
+	},
+
+	#[error("view `{view}` is a member of windowed view group `{group}`")]
+	WindowedViewGroupMember {
+		view: String,
+		group: String,
+		fragment: Fragment,
+	},
+
+	#[error("namespace `{namespace}` holds members of windowed view group `{group}`")]
+	NamespaceHasWindowedViewGroupMember {
+		namespace: String,
+		group: String,
 		fragment: Fragment,
 	},
 
@@ -536,6 +552,11 @@ impl IntoDiagnostic for CatalogError {
 						"authentication method",
 						"use ALTER AUTHENTICATION METHOD to change it, or drop it first",
 					),
+					CatalogObjectKind::WindowedViewGroup => (
+						"CA_134",
+						"windowed view group",
+						"choose a different name, drop the existing windowed view group or create it in a different namespace",
+					),
 				};
 				let message = if matches!(
 					kind,
@@ -693,6 +714,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_118",
 						"authentication method",
 						format!("declare it first with `CREATE AUTHENTICATION METHOD {} WITH {{ ttl: ... }}`", name),
+					),
+					CatalogObjectKind::WindowedViewGroup => (
+						"CA_135",
+						"windowed view group",
+						"ensure the windowed view group exists or create it first using `CREATE DEFERRED WINDOWED VIEW GROUP`".to_string(),
 					),
 				};
 				let message = match kind {
@@ -1156,6 +1182,43 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("invalid config value".to_string()),
 				help: None,
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::WindowedViewGroupMember {
+				view,
+				group,
+				fragment,
+			} => Diagnostic {
+				code: "CA_132".to_string(),
+				rql: None,
+				message: format!("view '{}' is a member of windowed view group '{}'", view, group),
+				fragment,
+				label: Some("member of a windowed view group".to_string()),
+				help: Some(format!("drop the group instead: drop windowed view group {}", group)),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::NamespaceHasWindowedViewGroupMember {
+				namespace,
+				group,
+				fragment,
+			} => Diagnostic {
+				code: "CA_133".to_string(),
+				rql: None,
+				message: format!(
+					"namespace '{}' holds members of windowed view group '{}'",
+					namespace, group
+				),
+				fragment,
+				label: Some("namespace holds windowed view group members".to_string()),
+				help: Some(format!("drop the group first: drop windowed view group {}", group)),
 				column: None,
 				notes: vec![],
 				cause: None,

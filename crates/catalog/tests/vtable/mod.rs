@@ -2,3 +2,4 @@
 // Copyright (c) 2026 ReifyDB
 
 mod relationship;
+mod windowed_view_group;

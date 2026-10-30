@@ -113,6 +113,37 @@ pub enum RqlError {
 		window_value: String,
 	},
 
+	#[error("Windowed view group members must have distinct durations")]
+	WindowedViewGroupDuplicateDuration {
+		duration: String,
+		fragment: Fragment,
+	},
+
+	#[error("Windowed view group needs exactly one window")]
+	WindowedViewGroupRequiresOneWindow {
+		fragment: Fragment,
+	},
+
+	#[error("Windowed view group window must not set duration")]
+	WindowedViewGroupWindowHasDuration {
+		fragment: Fragment,
+	},
+
+	#[error("Windowed view group needs at least one member")]
+	WindowedViewGroupNoMembers {
+		fragment: Fragment,
+	},
+
+	#[error("Windowed view group window must not set immutable")]
+	WindowedViewGroupWindowHasImmutable {
+		fragment: Fragment,
+	},
+
+	#[error("Windowed view group window must be on the main chain")]
+	WindowedViewGroupWindowNotOnMainChain {
+		fragment: Fragment,
+	},
+
 	#[error("UPDATE requires an assignments block")]
 	UpdateMissingAssignmentsBlock {
 		fragment: Fragment,
@@ -524,6 +555,96 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"A window made of whole panes enters and leaves each pane as one step".to_string(),
 					"Example: WINDOW ROLLING { count(*) } WITH { duration: 3m, pane: 1m, lateness: 20s }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupDuplicateDuration { duration, fragment } => Diagnostic {
+				code: "WINDOW_014".to_string(),
+				rql: None,
+				message: format!("Windowed view group members must have distinct durations; {} is given more than once", duration),
+				column: None,
+				fragment,
+				label: Some("duration given twice".to_string()),
+				help: Some("Give every member its own duration".to_string()),
+				notes: vec![
+					"Each member is one window duration; two members with one duration would compute the same window twice".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupRequiresOneWindow { fragment } => Diagnostic {
+				code: "WINDOW_015".to_string(),
+				rql: None,
+				message: "Windowed view group needs exactly one window (a windowed apply or a window operator)".to_string(),
+				column: None,
+				fragment,
+				label: Some("no single window".to_string()),
+				help: Some("Write exactly one windowed apply or window operator in the AS block".to_string()),
+				notes: vec![
+					"The member durations are applied to that one window".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupWindowHasDuration { fragment } => Diagnostic {
+				code: "WINDOW_016".to_string(),
+				rql: None,
+				message: "Windowed view group window must not set duration; each member sets its own".to_string(),
+				column: None,
+				fragment,
+				label: Some("duration on the window".to_string()),
+				help: Some("Remove duration from the window and set it on each member".to_string()),
+				notes: vec![
+					"Example: members: [ { view: ns::v1m, duration: 1m } ]".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupNoMembers { fragment } => Diagnostic {
+				code: "WINDOW_017".to_string(),
+				rql: None,
+				message: "Windowed view group needs at least one member".to_string(),
+				column: None,
+				fragment,
+				label: Some("no members".to_string()),
+				help: Some("List at least one member in WITH { members: [ ... ] }".to_string()),
+				notes: vec![
+					"Each member names its view and its duration".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupWindowHasImmutable { fragment } => Diagnostic {
+				code: "WINDOW_018".to_string(),
+				rql: None,
+				message: "Windowed view group window must not set immutable; set it on the members that need it".to_string(),
+				column: None,
+				fragment,
+				label: Some("immutable on the window".to_string()),
+				help: Some("Remove immutable from the window and set it on each member that needs it".to_string()),
+				notes: vec![
+					"A member without immutable keeps every row for the life of its window".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupWindowNotOnMainChain { fragment } => Diagnostic {
+				code: "WINDOW_019".to_string(),
+				rql: None,
+				message: "Windowed view group window must be on the main chain of the AS block, not inside a join, lookup or subquery".to_string(),
+				column: None,
+				fragment,
+				label: Some("window off the main chain".to_string()),
+				help: Some("Move the window to the top level of the AS block".to_string()),
+				notes: vec![
+					"The member durations are applied to the top-level window only".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

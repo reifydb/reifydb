@@ -14,7 +14,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstCreateDeferredView, AstViewStorageKind},
+	ast::ast::{AstColumnProperty, AstColumnToCreate, AstCreateDeferredView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{
@@ -30,11 +30,76 @@ impl<'bump> Compiler<'bump> {
 		ast: AstCreateDeferredView<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
-		let mut columns: Vec<ViewColumnToCreate> = vec![];
-
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
+		let columns = self.compile_view_columns(ast.columns, &view_ns_segments, tx)?;
 
-		for col in ast.columns.into_iter() {
+		let partition_by: &[String] = match &ast.storage_kind {
+			AstViewStorageKind::Table {
+				partition_by,
+			} => partition_by,
+			AstViewStorageKind::RingBuffer {
+				partition_by,
+				..
+			} => partition_by,
+			AstViewStorageKind::Series {
+				partition_by,
+				..
+			} => partition_by,
+		};
+
+		for pb_col in partition_by {
+			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
+				return Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Column,
+					namespace: view_ns_segments.join("::"),
+					name: pb_col.clone(),
+					fragment: Fragment::internal(pb_col.as_str()),
+				}
+				.into());
+			}
+		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			partition_by,
+		)?;
+
+		let view = ast.view;
+
+		let with = if let Some(as_statement) = ast.as_clause {
+			self.compile(as_statement, tx)?
+		} else {
+			BumpVec::new_in(self.bump)
+		};
+
+		let (ttl, persistent, ttl_eviction) = match ast.settings {
+			Some(settings) => (
+				settings.ttl.map(Self::compile_ttl).transpose()?,
+				settings.persistent.is_none_or(|p| p.value),
+				settings.ttl_eviction,
+			),
+			None => (None, true, EvictionVisibility::Silent),
+		};
+
+		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
+			view,
+			if_not_exists: false,
+			columns,
+			as_clause: with,
+			storage_kind: ast.storage_kind,
+			ttl,
+			persistent,
+			ttl_eviction,
+		}))
+	}
+
+	pub(crate) fn compile_view_columns(
+		&self,
+		ast_columns: Vec<AstColumnToCreate<'bump>>,
+		view_ns_segments: &[&str],
+		tx: &mut Transaction<'_>,
+	) -> Result<Vec<ViewColumnToCreate>> {
+		let mut columns: Vec<ViewColumnToCreate> = vec![];
+		for col in ast_columns.into_iter() {
 			reject_reserved_column_name(&col.name.to_owned())?;
 			let column_name = col.name.text().to_string();
 			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
@@ -49,7 +114,7 @@ impl<'bump> Compiler<'bump> {
 			for property in &col.properties {
 				if let AstColumnProperty::Dictionary(dict_ident) = property {
 					let dict_ns_segments: Vec<&str> = if dict_ident.namespace.is_empty() {
-						view_ns_segments.clone()
+						view_ns_segments.to_vec()
 					} else {
 						dict_ident.namespace.iter().map(|n| n.text()).collect()
 					};
@@ -109,62 +174,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		let partition_by: &[String] = match &ast.storage_kind {
-			AstViewStorageKind::Table {
-				partition_by,
-			} => partition_by,
-			AstViewStorageKind::RingBuffer {
-				partition_by,
-				..
-			} => partition_by,
-			AstViewStorageKind::Series {
-				partition_by,
-				..
-			} => partition_by,
-		};
-
-		for pb_col in partition_by {
-			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
-				return Err(CatalogError::NotFound {
-					kind: CatalogObjectKind::Column,
-					namespace: view_ns_segments.join("::"),
-					name: pb_col.clone(),
-					fragment: Fragment::internal(pb_col.as_str()),
-				}
-				.into());
-			}
-		}
-		reject_digest_partition_columns(
-			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
-			partition_by,
-		)?;
-
-		let view = ast.view;
-
-		let with = if let Some(as_statement) = ast.as_clause {
-			self.compile(as_statement, tx)?
-		} else {
-			BumpVec::new_in(self.bump)
-		};
-
-		let (ttl, persistent, ttl_eviction) = match ast.settings {
-			Some(settings) => (
-				settings.ttl.map(Self::compile_ttl).transpose()?,
-				settings.persistent.is_none_or(|p| p.value),
-				settings.ttl_eviction,
-			),
-			None => (None, true, EvictionVisibility::Silent),
-		};
-
-		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
-			view,
-			if_not_exists: false,
-			columns,
-			as_clause: with,
-			storage_kind: ast.storage_kind,
-			ttl,
-			persistent,
-			ttl_eviction,
-		}))
+		Ok(columns)
 	}
 }

@@ -55,6 +55,8 @@ pub mod types;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
+pub mod windowed_view_group_members;
+pub mod windowed_view_groups;
 
 #[cfg(test)]
 mod schema_conformance_tests;

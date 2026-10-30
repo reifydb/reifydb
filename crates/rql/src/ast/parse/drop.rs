@@ -12,15 +12,16 @@ use crate::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure, AstDropQueue,
 			AstDropRelationship, AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource,
-			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstPolicyTargetType,
+			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstDropWindowedViewGroup,
+			AstPolicyTargetType,
 		},
 		identifier::{
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier,
-			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedQueueIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
+			MaybeQualifiedHandlerIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedProcedureIdentifier, MaybeQualifiedQueueIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -40,6 +41,11 @@ impl<'bump> Parser<'bump> {
 				return self.parse_drop_policy(token, AstPolicyTargetType::Table);
 			}
 			return self.parse_drop_table(token);
+		}
+		if self.consume_word("windowed")? {
+			self.consume_keyword(Keyword::View)?;
+			self.expect_word("group")?;
+			return self.parse_drop_windowed_view_group(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::View))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
@@ -224,6 +230,18 @@ impl<'bump> Parser<'bump> {
 				})
 			},
 		)
+	}
+
+	fn parse_drop_windowed_view_group(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		let if_exists = self.parse_if_exists()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		Ok(AstDrop::WindowedViewGroup(AstDropWindowedViewGroup {
+			token,
+			if_exists,
+			group: MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace),
+		}))
 	}
 
 	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {

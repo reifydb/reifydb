@@ -46,6 +46,27 @@ pub(crate) fn drop_namespace(
 		}
 	}
 
+	let all_views = services.catalog.list_views_all(&mut Transaction::Admin(txn))?;
+	for group in services.catalog.list_windowed_view_groups_all(&mut Transaction::Admin(txn))? {
+		let group_inside = descendant_ids.contains(&group.namespace);
+		let split = group.members.iter().any(|member| {
+			all_views
+				.iter()
+				.find(|view| view.id() == *member)
+				.is_some_and(|view| descendant_ids.contains(&view.namespace()) != group_inside)
+		});
+		if split {
+			let group_namespace =
+				services.catalog.get_namespace(&mut Transaction::Admin(txn), group.namespace)?;
+			return Err(CatalogError::NamespaceHasWindowedViewGroupMember {
+				namespace: def.name().to_string(),
+				group: format!("{}::{}", group_namespace.name(), group.name),
+				fragment: plan.namespace_name.clone(),
+			}
+			.into());
+		}
+	}
+
 	let mut dependents = Vec::new();
 
 	let mut dictionaries = Vec::new();
@@ -93,7 +114,6 @@ pub(crate) fn drop_namespace(
 	}
 
 	let all_tables = services.catalog.list_tables(&mut Transaction::Admin(txn))?;
-	let all_views = services.catalog.list_views_all(&mut Transaction::Admin(txn))?;
 	let all_ringbuffers = services.catalog.list_ringbuffers(&mut Transaction::Admin(txn))?;
 	let table_ids: HashSet<_> =
 		all_tables.iter().filter(|t| descendant_ids.contains(&t.namespace)).map(|t| t.id).collect();

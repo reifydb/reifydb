@@ -59,6 +59,8 @@ use reifydb_catalog::vtable::{
 		versions::SystemVersions,
 		views::SystemViews,
 		virtual_table_columns::SystemVirtualTableColumns,
+		windowed_view_group_members::SystemWindowedViewGroupMembers,
+		windowed_view_groups::SystemWindowedViewGroups,
 	},
 	tables::VTables,
 };
@@ -139,6 +141,10 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"primary_keys" => VTables::PrimaryKeys(SystemPrimaryKeys::new()),
 		"primary_key_columns" => VTables::PrimaryKeyColumns(SystemPrimaryKeyColumns::new()),
 		"relationships" => VTables::Relationships(SystemRelationships::new()),
+		"windowed_view_groups" => VTables::WindowedViewGroups(SystemWindowedViewGroups::new()),
+		"windowed_view_group_members" => {
+			VTables::WindowedViewGroupMembers(SystemWindowedViewGroupMembers::new())
+		}
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),

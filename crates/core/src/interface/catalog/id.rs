@@ -1924,6 +1924,74 @@ impl<'de> Deserialize<'de> for SinkId {
 	}
 }
 
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct WindowedViewGroupId(pub u64);
+
+impl Display for WindowedViewGroupId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for WindowedViewGroupId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for WindowedViewGroupId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<WindowedViewGroupId> for u64 {
+	fn from(value: WindowedViewGroupId) -> Self {
+		value.0
+	}
+}
+
+impl From<u64> for WindowedViewGroupId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for WindowedViewGroupId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for WindowedViewGroupId {
+	fn deserialize<D>(deserializer: D) -> Result<WindowedViewGroupId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = WindowedViewGroupId;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+				Ok(WindowedViewGroupId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
 const RESERVED_NAMESPACE_IDS: [u64; 54] = [

@@ -116,6 +116,8 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::NamespaceSource => ReadFrom::Query,
 			KeyTag::Sink => ReadFrom::Query,
 			KeyTag::NamespaceSink => ReadFrom::Query,
+			KeyTag::WindowedViewGroup => ReadFrom::Query,
+			KeyTag::NamespaceWindowedViewGroup => ReadFrom::Query,
 			KeyTag::RowSettings => ReadFrom::Query,
 			KeyTag::OperatorRetention => ReadFrom::Query,
 			KeyTag::Procedure => ReadFrom::Query,

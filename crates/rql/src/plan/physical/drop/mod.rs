@@ -459,6 +459,29 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
+	pub(crate) fn compile_drop_windowed_view_group(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropWindowedViewGroupNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.group.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.group.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		Ok(PhysicalPlan::DropWindowedViewGroup(nodes::DropWindowedViewGroupNode {
+			if_exists: drop.if_exists,
+			namespace,
+			group: self.interner.intern_fragment(&drop.group.name),
+		}))
+	}
+
 	pub(crate) fn compile_drop_handler(
 		&mut self,
 		rx: &mut Transaction<'_>,

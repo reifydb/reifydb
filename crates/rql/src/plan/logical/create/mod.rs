@@ -23,6 +23,7 @@ pub mod table;
 pub mod test;
 pub mod transactional;
 pub mod ttl;
+pub mod windowed_view_group;
 
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
@@ -53,6 +54,9 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
+			AstCreate::DeferredWindowedViewGroup(node) => {
+				self.compile_deferred_windowed_view_group(node, tx)
+			}
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
 			AstCreate::RemoteNamespace(node) => self.compile_create_remote_namespace(node),

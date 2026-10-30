@@ -20,3 +20,4 @@ pub mod sumtype;
 pub mod table;
 pub mod test;
 pub mod transactional;
+pub mod windowed_view_group;

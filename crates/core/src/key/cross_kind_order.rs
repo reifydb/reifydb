@@ -20,6 +20,7 @@ use crate::{
 				BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId,
 				MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId,
 				RelationshipId, RingBufferId, SequenceId, SeriesId, SinkId, SourceId, TableId, ViewId,
+				WindowedViewGroupId,
 			},
 			object::ObjectId,
 			storage::StorageId,
@@ -30,7 +31,7 @@ use crate::{
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
-			SumTypeKey, TableKey, VariantHandlerKey, ViewKey,
+			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
 		},
 		cdc::CdcConsumerKey,
 		column::{
@@ -47,7 +48,7 @@ use crate::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 			NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
 			NamespaceSeriesKey, NamespaceSinkKey, NamespaceSourceKey, NamespaceSumTypeKey,
-			NamespaceTableKey, NamespaceViewKey,
+			NamespaceTableKey, NamespaceViewKey, NamespaceWindowedViewGroupKey,
 		},
 		operator::{
 			key::{OperatorByFlowKey, OperatorKey},
@@ -79,7 +80,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 91;
+const DECLARED_KINDS: usize = 93;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -345,6 +346,15 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::NamespaceSink => NamespaceSinkKey {
 			namespace: NamespaceId(1),
 			sink: SinkId(1),
+		}
+		.encode(),
+		KeyTag::WindowedViewGroup => WindowedViewGroupKey {
+			windowed_view_group: WindowedViewGroupId(1),
+		}
+		.encode(),
+		KeyTag::NamespaceWindowedViewGroup => NamespaceWindowedViewGroupKey {
+			namespace: NamespaceId(1),
+			windowed_view_group: WindowedViewGroupId(1),
 		}
 		.encode(),
 		KeyTag::RowSettings => RowSettingsKey {

@@ -589,6 +589,23 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						write_statement(buf, stmt);
 					}
 				}
+				AstCreate::DeferredWindowedViewGroup(n) => {
+					buf.write_u8(0x1e);
+					for ns in &n.group.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.group.name.text());
+					write_column_defs(buf, &n.columns);
+					for member in &n.members {
+						for ns in &member.view.namespace {
+							buf.write_str(ns.text());
+						}
+						buf.write_str(member.view.name.text());
+					}
+					if let Some(stmt) = n.as_clauses.first() {
+						write_statement(buf, stmt);
+					}
+				}
 				AstCreate::TransactionalView(n) => {
 					buf.write_u8(0x04);
 					for ns in &n.view.namespace {
@@ -993,6 +1010,13 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						buf.write_str(ns.text());
 					}
 					buf.write_str(n.source.name.text());
+				}
+				AstDrop::WindowedViewGroup(n) => {
+					buf.write_u8(0x16);
+					for ns in &n.group.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.group.name.text());
 				}
 				AstDrop::Sink(n) => {
 					buf.write_u8(0x0E);

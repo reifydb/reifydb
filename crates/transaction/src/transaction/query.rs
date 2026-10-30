@@ -18,7 +18,7 @@ use reifydb_core::{
 			handler::Handler,
 			id::{
 				BindingId, ColumnBlockId, HandlerId, NamespaceId, ProcedureId, QueueId, RelationshipId,
-				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId, WindowedViewGroupId,
 			},
 			identity::{
 				GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue,
@@ -39,6 +39,7 @@ use reifydb_core::{
 			table::Table,
 			test::Test,
 			view::View,
+			windowed_view_group::WindowedViewGroup,
 		},
 		store::MultiVersionRow,
 	},
@@ -71,7 +72,7 @@ use crate::{
 		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
 		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
 		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalViewChanges, TransactionalWindowedViewGroupChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -626,6 +627,20 @@ impl TransactionalSinkChanges for QueryTransaction {
 	}
 
 	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalWindowedViewGroupChanges for QueryTransaction {
+	fn find_windowed_view_group(&self, _id: WindowedViewGroupId) -> Option<&WindowedViewGroup> {
+		None
+	}
+
+	fn find_windowed_view_group_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&WindowedViewGroup> {
+		None
+	}
+
+	fn is_windowed_view_group_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

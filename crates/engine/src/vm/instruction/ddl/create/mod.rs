@@ -99,6 +99,7 @@ pub mod sumtype;
 pub mod table;
 pub mod test;
 pub mod transactional;
+pub mod windowed_view_group;
 
 fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, Vec<&mut QueryPlan>) {
 	match plan {
@@ -156,7 +157,39 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		| QueryPlan::RowRangeScan(_)
 		| QueryPlan::Variable(_)
 		| QueryPlan::Environment(_)
-		| QueryPlan::RunTests(_) => (Vec::new(), Vec::new()),
+		| QueryPlan::RunTests(_)
+		| QueryPlan::SharedInput => (Vec::new(), Vec::new()),
+	}
+}
+
+pub(crate) fn count_windowed_nodes(plan: &mut QueryPlan) -> usize {
+	let own = usize::from(is_windowed_node(plan));
+	let (_, inputs) = plan_expressions_and_inputs(plan);
+	own + inputs.into_iter().map(count_windowed_nodes).sum::<usize>()
+}
+
+pub(crate) fn split_at_windowed_node(plan: &mut QueryPlan) -> Option<Option<QueryPlan>> {
+	match plan {
+		QueryPlan::Apply(node) if node.with.window.is_some() => {
+			return Some(node.input.replace(Box::new(QueryPlan::SharedInput)).map(|prefix| *prefix));
+		}
+		QueryPlan::Window(node) => {
+			return Some(node.input.replace(Box::new(QueryPlan::SharedInput)).map(|prefix| *prefix));
+		}
+		_ => {}
+	}
+	let (_, mut inputs) = plan_expressions_and_inputs(plan);
+	if inputs.len() != 1 {
+		return None;
+	}
+	split_at_windowed_node(inputs.pop()?)
+}
+
+fn is_windowed_node(plan: &QueryPlan) -> bool {
+	match plan {
+		QueryPlan::Apply(node) => node.with.window.is_some(),
+		QueryPlan::Window(_) => true,
+		_ => false,
 	}
 }
 
@@ -293,6 +326,32 @@ fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith)
 	with.check_session_window()
 }
 
+pub(crate) fn prepare_flow_plan(
+	operators: &OperatorLibrary,
+	symbols: &SymbolTable,
+	plan: &mut QueryPlan,
+) -> Result<()> {
+	ensure_no_script_routine_call(plan, symbols)?;
+	ensure_apply_operators_registered(plan, operators)
+}
+
+pub(crate) fn check_flow_dag(
+	catalog: &Catalog,
+	operators: &OperatorLibrary,
+	txn: &mut AdminTransaction,
+	dag: &FlowDag,
+	ioc: &IocContainer,
+) -> Result<()> {
+	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
+	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
+	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), dag, operators)?;
+	check_operator_with_requirements(dag, operators)?;
+	if let Some(registration) = ioc.try_resolve::<FlowRegistrationCheckRef>() {
+		registration.check(txn, dag)?;
+	}
+	Ok(())
+}
+
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
@@ -303,17 +362,10 @@ pub(crate) fn create_deferred_view_flow(
 	mut plan: QueryPlan,
 	ioc: &IocContainer,
 ) -> Result<()> {
-	ensure_no_script_routine_call(&mut plan, symbols)?;
-	ensure_apply_operators_registered(&mut plan, operators)?;
+	prepare_flow_plan(operators, symbols, &mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
-	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
-	check_operator_with_requirements(&dag, operators)?;
-	if let Some(registration) = ioc.try_resolve::<FlowRegistrationCheckRef>() {
-		registration.check(txn, &dag)?;
-	}
+	check_flow_dag(catalog, operators, txn, &dag, ioc)?;
 	catalog.create_flow(
 		txn,
 		FlowToCreate {

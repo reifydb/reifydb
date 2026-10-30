@@ -31,6 +31,7 @@ use crate::{
 		table::Table,
 		test::Test,
 		view::View,
+		windowed_view_group::WindowedViewGroup,
 	},
 	row::{OperatorRetention, RowSettings},
 };
@@ -217,6 +218,12 @@ pub trait CatalogTrackSinkChangeOperations {
 	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()>;
 }
 
+pub trait CatalogTrackWindowedViewGroupChangeOperations {
+	fn track_windowed_view_group_created(&mut self, group: WindowedViewGroup) -> Result<()>;
+
+	fn track_windowed_view_group_deleted(&mut self, group: WindowedViewGroup) -> Result<()>;
+}
+
 pub trait CatalogTrackRowSettingsChangeOperations {
 	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
 }
@@ -258,6 +265,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackIdentityAttributeChangeOperations
 	+ CatalogTrackIdentityAttributeValueChangeOperations
 	+ CatalogTrackViewChangeOperations
+	+ CatalogTrackWindowedViewGroupChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowSettingsChangeOperations
 	+ CatalogTrackOperatorRetentionChangeOperations

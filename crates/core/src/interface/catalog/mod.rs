@@ -37,3 +37,4 @@ pub mod test;
 pub mod token;
 pub mod view;
 pub mod vtable;
+pub mod windowed_view_group;

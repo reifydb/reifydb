@@ -427,6 +427,7 @@ pub(crate) fn compile<'a>(
 		}
 		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
+		RqlQueryPlan::SharedInput => unimplemented!("shared input only exists in flow compilation"),
 
 		RqlQueryPlan::Window(node) => Box::new(UnsupportedWindowNode::new(node.fragment)),
 		RqlQueryPlan::Append(node) => Box::new(UnsupportedAppendNode::new(node.fragment)),

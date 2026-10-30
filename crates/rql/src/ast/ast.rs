@@ -332,6 +332,7 @@ impl<'bump> Index<usize> for AstInline<'bump> {
 #[derive(Debug)]
 pub enum AstCreate<'bump> {
 	DeferredView(AstCreateDeferredView<'bump>),
+	DeferredWindowedViewGroup(AstCreateDeferredWindowedViewGroup<'bump>),
 	TransactionalView(AstCreateTransactionalView<'bump>),
 	Namespace(AstCreateNamespace<'bump>),
 	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
@@ -400,6 +401,7 @@ pub enum AstAlterTableAction<'bump> {
 pub enum AstDrop<'bump> {
 	Table(AstDropTable<'bump>),
 	View(AstDropView<'bump>),
+	WindowedViewGroup(AstDropWindowedViewGroup<'bump>),
 	RingBuffer(AstDropRingBuffer<'bump>),
 	Queue(AstDropQueue<'bump>),
 	Namespace(AstDropNamespace<'bump>),
@@ -427,6 +429,13 @@ pub struct AstDropTable<'bump> {
 	pub if_exists: bool,
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropWindowedViewGroup<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -682,6 +691,24 @@ pub struct AstCreateDeferredView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub settings: Option<AstRowSettings<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateDeferredWindowedViewGroup<'bump> {
+	pub token: Token<'bump>,
+	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
+	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub members: Vec<AstWindowedViewGroupMember<'bump>>,
+	pub as_clauses: Vec<AstStatement<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstWindowedViewGroupMember<'bump> {
+	pub token: Token<'bump>,
+	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
+	pub duration: AstOperatorWithEntry<'bump>,
+	pub immutable: Option<AstOperatorWithEntry<'bump>>,
 	pub settings: Option<AstRowSettings<'bump>>,
 }
 
@@ -1053,6 +1080,7 @@ macro_rules! impl_token_for_enum {
 
 impl_token_for_enum!(AstCreate, 'bump,
 	DeferredView(AstCreateDeferredView<'bump>),
+	DeferredWindowedViewGroup(AstCreateDeferredWindowedViewGroup<'bump>),
 	TransactionalView(AstCreateTransactionalView<'bump>),
 	Namespace(AstCreateNamespace<'bump>),
 	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
@@ -1094,6 +1122,7 @@ impl_token_for_enum!(AstAlter, 'bump,
 impl_token_for_enum!(AstDrop, 'bump,
 	Table(AstDropTable<'bump>),
 	View(AstDropView<'bump>),
+	WindowedViewGroup(AstDropWindowedViewGroup<'bump>),
 	RingBuffer(AstDropRingBuffer<'bump>),
 	Queue(AstDropQueue<'bump>),
 	Namespace(AstDropNamespace<'bump>),

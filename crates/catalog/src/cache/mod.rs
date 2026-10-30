@@ -33,6 +33,7 @@ pub mod sumtype;
 pub mod table;
 pub mod test;
 pub mod view;
+pub mod windowed_view_group;
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -57,7 +58,7 @@ use reifydb_core::{
 		id::{
 			BindingId, ColumnBlockId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId,
 			ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId,
-			TestId, ViewId,
+			TestId, ViewId, WindowedViewGroupId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -81,6 +82,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 		vtable::{VTable, VTableId},
+		windowed_view_group::WindowedViewGroup,
 	},
 	row::{OperatorRetention, RowSettings},
 	util::multi::MultiVersionContainer,
@@ -129,6 +131,7 @@ pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionAuthenticationMethod = MultiVersionContainer<AuthenticationMethod>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
+pub type MultiVersionWindowedViewGroup = MultiVersionContainer<WindowedViewGroup>;
 pub type MultiVersionRowSettings = MultiVersionContainer<RowSettings>;
 pub type MultiVersionOperatorRetention = MultiVersionContainer<OperatorRetention>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
@@ -271,6 +274,10 @@ pub struct CatalogCacheInner {
 
 	pub(crate) sinks_by_name: SkipMap<(NamespaceId, String), SinkId>,
 
+	pub(crate) windowed_view_groups: SkipMap<WindowedViewGroupId, MultiVersionWindowedViewGroup>,
+
+	pub(crate) windowed_view_groups_by_name: SkipMap<(NamespaceId, String), WindowedViewGroupId>,
+
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTable>>,
 
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
@@ -369,6 +376,8 @@ impl CatalogCache {
 			sources_by_name: SkipMap::new(),
 			sinks: SkipMap::new(),
 			sinks_by_name: SkipMap::new(),
+			windowed_view_groups: SkipMap::new(),
+			windowed_view_groups_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 			row_shapes: SkipMap::new(),

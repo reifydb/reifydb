@@ -11,6 +11,7 @@ pub mod row;
 pub mod sink;
 pub mod source;
 pub mod system;
+pub mod windowed_view_group;
 
 use reifydb_core::interface::catalog::id::{NamespaceId, SequenceId};
 

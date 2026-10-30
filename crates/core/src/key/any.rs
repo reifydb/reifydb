@@ -15,7 +15,7 @@ use crate::{
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
-			SumTypeKey, TableKey, VariantHandlerKey, ViewKey,
+			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
 		},
 		cdc::CdcConsumerKey,
 		column::{
@@ -33,7 +33,7 @@ use crate::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 			NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
 			NamespaceSeriesKey, NamespaceSinkKey, NamespaceSourceKey, NamespaceSumTypeKey,
-			NamespaceTableKey, NamespaceViewKey,
+			NamespaceTableKey, NamespaceViewKey, NamespaceWindowedViewGroupKey,
 		},
 		operator::{
 			key::{OperatorByFlowKey, OperatorKey},
@@ -132,6 +132,8 @@ pub enum TaggedKey {
 	NamespaceSource(NamespaceSourceKey),
 	Sink(SinkKey),
 	NamespaceSink(NamespaceSinkKey),
+	WindowedViewGroup(WindowedViewGroupKey),
+	NamespaceWindowedViewGroup(NamespaceWindowedViewGroupKey),
 	RowSettings(RowSettingsKey),
 	Procedure(ProcedureKey),
 	NamespaceProcedure(NamespaceProcedureKey),
@@ -228,6 +230,8 @@ impl TaggedKey {
 			Self::NamespaceSource(_) => KeyTag::NamespaceSource,
 			Self::Sink(_) => KeyTag::Sink,
 			Self::NamespaceSink(_) => KeyTag::NamespaceSink,
+			Self::WindowedViewGroup(_) => KeyTag::WindowedViewGroup,
+			Self::NamespaceWindowedViewGroup(_) => KeyTag::NamespaceWindowedViewGroup,
 			Self::RowSettings(_) => KeyTag::RowSettings,
 			Self::Procedure(_) => KeyTag::Procedure,
 			Self::NamespaceProcedure(_) => KeyTag::NamespaceProcedure,
@@ -325,6 +329,8 @@ impl TaggedKey {
 			Self::NamespaceSource(key) => key.encode(),
 			Self::Sink(key) => key.encode(),
 			Self::NamespaceSink(key) => key.encode(),
+			Self::WindowedViewGroup(key) => key.encode(),
+			Self::NamespaceWindowedViewGroup(key) => key.encode(),
 			Self::RowSettings(key) => key.encode(),
 			Self::Procedure(key) => key.encode(),
 			Self::NamespaceProcedure(key) => key.encode(),
@@ -431,6 +437,10 @@ impl TaggedKey {
 			KeyTag::NamespaceSource => NamespaceSourceKey::decode(key).map(Self::NamespaceSource),
 			KeyTag::Sink => SinkKey::decode(key).map(Self::Sink),
 			KeyTag::NamespaceSink => NamespaceSinkKey::decode(key).map(Self::NamespaceSink),
+			KeyTag::WindowedViewGroup => WindowedViewGroupKey::decode(key).map(Self::WindowedViewGroup),
+			KeyTag::NamespaceWindowedViewGroup => {
+				NamespaceWindowedViewGroupKey::decode(key).map(Self::NamespaceWindowedViewGroup)
+			}
 			KeyTag::RowSettings => RowSettingsKey::decode(key).map(Self::RowSettings),
 			KeyTag::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyTag::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
@@ -845,6 +855,18 @@ impl From<SinkKey> for TaggedKey {
 impl From<NamespaceSinkKey> for TaggedKey {
 	fn from(key: NamespaceSinkKey) -> Self {
 		Self::NamespaceSink(key)
+	}
+}
+
+impl From<WindowedViewGroupKey> for TaggedKey {
+	fn from(key: WindowedViewGroupKey) -> Self {
+		Self::WindowedViewGroup(key)
+	}
+}
+
+impl From<NamespaceWindowedViewGroupKey> for TaggedKey {
+	fn from(key: NamespaceWindowedViewGroupKey) -> Self {
+		Self::NamespaceWindowedViewGroup(key)
 	}
 }
 
@@ -1265,6 +1287,8 @@ impl KeyFields for TaggedKey {
 			Self::NamespaceSource(key) => key.fields(),
 			Self::Sink(key) => key.fields(),
 			Self::NamespaceSink(key) => key.fields(),
+			Self::WindowedViewGroup(key) => key.fields(),
+			Self::NamespaceWindowedViewGroup(key) => key.fields(),
 			Self::RowSettings(key) => key.fields(),
 			Self::Procedure(key) => key.fields(),
 			Self::NamespaceProcedure(key) => key.fields(),
@@ -1365,6 +1389,10 @@ impl Ord for TaggedKey {
 			(Self::NamespaceSource(left), Self::NamespaceSource(right)) => left.cmp_fields(right),
 			(Self::Sink(left), Self::Sink(right)) => left.cmp_fields(right),
 			(Self::NamespaceSink(left), Self::NamespaceSink(right)) => left.cmp_fields(right),
+			(Self::WindowedViewGroup(left), Self::WindowedViewGroup(right)) => left.cmp_fields(right),
+			(Self::NamespaceWindowedViewGroup(left), Self::NamespaceWindowedViewGroup(right)) => {
+				left.cmp_fields(right)
+			}
 			(Self::RowSettings(left), Self::RowSettings(right)) => left.cmp_fields(right),
 			(Self::Procedure(left), Self::Procedure(right)) => left.cmp_fields(right),
 			(Self::NamespaceProcedure(left), Self::NamespaceProcedure(right)) => left.cmp_fields(right),
@@ -1431,7 +1459,7 @@ mod tests {
 					BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId,
 					MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId,
 					RelationshipId, RingBufferId, SequenceId, SeriesId, SinkId, SourceId, TableId,
-					ViewId,
+					ViewId, WindowedViewGroupId,
 				},
 				metrics::MetricsId,
 				object::ObjectId,
@@ -1446,6 +1474,7 @@ mod tests {
 				BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey,
 				DictionaryKey, HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey,
 				SinkKey, SourceKey, SumTypeKey, TableKey, VariantHandlerKey, ViewKey,
+				WindowedViewGroupKey,
 			},
 			cdc::CdcConsumerKey,
 			column::{
@@ -1462,7 +1491,7 @@ mod tests {
 				NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
 				NamespaceKey, NamespaceProcedureKey, NamespaceQueueKey, NamespaceRingBufferKey,
 				NamespaceSeriesKey, NamespaceSinkKey, NamespaceSourceKey, NamespaceSumTypeKey,
-				NamespaceTableKey, NamespaceViewKey,
+				NamespaceTableKey, NamespaceViewKey, NamespaceWindowedViewGroupKey,
 			},
 			operator::{
 				key::{OperatorByFlowKey, OperatorKey},
@@ -1909,6 +1938,17 @@ mod tests {
 				}),
 			],
 			"SinkKey",
+		);
+		assert_projection_matches_bytes(
+			vec![
+				probe(WindowedViewGroupKey {
+					windowed_view_group: WindowedViewGroupId(1),
+				}),
+				probe(WindowedViewGroupKey {
+					windowed_view_group: WindowedViewGroupId(2),
+				}),
+			],
+			"WindowedViewGroupKey",
 		);
 		assert_projection_matches_bytes(
 			vec![
@@ -2443,6 +2483,13 @@ mod tests {
 				SortRun::new([0x10u8]),
 				RowNumber(133),
 			)),
+			probe(WindowedViewGroupKey {
+				windowed_view_group: WindowedViewGroupId(135),
+			}),
+			probe(NamespaceWindowedViewGroupKey {
+				namespace: NamespaceId(136),
+				windowed_view_group: WindowedViewGroupId(137),
+			}),
 		]
 	}
 
@@ -2574,7 +2621,7 @@ mod tests {
 		let mut kinds: Vec<u8> = all_probes().iter().map(|(key, _)| key.kind() as u8).collect();
 		kinds.sort_unstable();
 		kinds.dedup();
-		assert_eq!(kinds.len(), 87);
+		assert_eq!(kinds.len(), 89);
 	}
 
 	#[test]

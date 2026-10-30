@@ -8,7 +8,8 @@ use crate::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
 		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
 		DropQueueNode, DropRelationshipNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode,
-		DropSourceNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
+		DropSourceNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, DropWindowedViewGroupNode,
+		LogicalPlan,
 	},
 };
 
@@ -86,6 +87,12 @@ impl<'bump> Compiler<'bump> {
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),
+			AstDrop::WindowedViewGroup(node) => {
+				Ok(LogicalPlan::DropWindowedViewGroup(DropWindowedViewGroupNode {
+					group: node.group,
+					if_exists: node.if_exists,
+				}))
+			}
 			AstDrop::Sink(node) => Ok(LogicalPlan::DropSink(DropSinkNode {
 				sink: node.sink,
 				if_exists: node.if_exists,

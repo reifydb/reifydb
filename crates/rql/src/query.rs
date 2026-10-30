@@ -66,6 +66,8 @@ pub enum QueryPlan {
 	RunTests(RunTestsNode),
 
 	CallFunction(CallFunctionNode),
+
+	SharedInput,
 }
 
 impl QueryPlan {
@@ -109,6 +111,7 @@ impl QueryPlan {
 			QueryPlan::Environment(_) => "environment",
 			QueryPlan::RunTests(_) => "run_tests",
 			QueryPlan::CallFunction(_) => "call_function",
+			QueryPlan::SharedInput => "shared_input",
 		}
 	}
 }

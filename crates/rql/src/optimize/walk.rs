@@ -217,6 +217,11 @@ pub fn walk_expressions_mut(
 		PhysicalPlan::UpdateRingBuffer(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::UpdateSeries(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::CreateDeferredView(n) => walk_expressions_mut(&mut n.as_clause, internal, projection),
+		PhysicalPlan::CreateDeferredWindowedViewGroup(n) => {
+			for member in n.members.iter_mut() {
+				walk_expressions_mut(&mut member.as_clause, internal, projection);
+			}
+		}
 		PhysicalPlan::CreateTransactionalView(n) => {
 			walk_expressions_mut(&mut n.as_clause, internal, projection)
 		}
@@ -272,6 +277,7 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::DropSeries(_)
 		| PhysicalPlan::DropSource(_)
 		| PhysicalPlan::DropSink(_)
+		| PhysicalPlan::DropWindowedViewGroup(_)
 		| PhysicalPlan::DropProcedure(_)
 		| PhysicalPlan::DropRelationship(_)
 		| PhysicalPlan::DropHandler(_)

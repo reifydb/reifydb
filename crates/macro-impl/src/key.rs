@@ -37,6 +37,7 @@ pub enum KeyColumn {
 	ViewId,
 	SeriesId,
 	SinkId,
+	WindowedViewGroupId,
 	SourceId,
 	QueueId,
 	RingBufferId,
@@ -95,6 +96,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId
@@ -194,6 +196,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId
@@ -241,6 +244,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId
@@ -308,6 +312,7 @@ impl KeyColumn {
 			| KeyColumn::ViewId
 			| KeyColumn::SeriesId
 			| KeyColumn::SinkId
+			| KeyColumn::WindowedViewGroupId
 			| KeyColumn::SourceId
 			| KeyColumn::QueueId
 			| KeyColumn::RingBufferId
@@ -628,6 +633,7 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		| "TokenId" => Some(KeyColumn::U64),
 		"ViewId" => Some(KeyColumn::ViewId),
 		"SinkId" => Some(KeyColumn::SinkId),
+		"WindowedViewGroupId" => Some(KeyColumn::WindowedViewGroupId),
 		"SourceId" => Some(KeyColumn::SourceId),
 		"BindingId" => Some(KeyColumn::BindingId),
 		"DictionaryId" => Some(KeyColumn::DictionaryId),

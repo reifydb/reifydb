@@ -44,12 +44,14 @@ use super::{
 				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
 				source::create_source, sumtype::create_sumtype, table::create_table, test::create_test,
 				transactional::create_transactional_view,
+				windowed_view_group::create_deferred_windowed_view_group,
 			},
 			drop::{
 				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
 				procedure::drop_procedure, queue::drop_queue, relationship::drop_relationship,
 				ringbuffer::drop_ringbuffer, series::drop_series, sink::drop_sink, source::drop_source,
 				sumtype::drop_sumtype, table::drop_table, view::drop_view,
+				windowed_view_group::drop_windowed_view_group,
 			},
 		},
 		dml::{
@@ -456,6 +458,11 @@ impl<'a> Vm<'a> {
 						create_deferred_view(s, t, sym, n.clone())
 					})?
 				}
+				Instruction::CreateDeferredWindowedViewGroup(n) => {
+					self.exec_ddl_with_symbols(services, tx, |s, t, sym| {
+						create_deferred_windowed_view_group(s, t, sym, n.clone())
+					})?
+				}
 				Instruction::CreateTransactionalView(n) => {
 					self.exec_ddl_with_symbols(services, tx, |s, t, sym| {
 						create_transactional_view(s, t, sym, n.clone())
@@ -567,6 +574,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropSink(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_sink(s, t, n.clone()))?
+				}
+				Instruction::DropWindowedViewGroup(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_windowed_view_group(s, t, n.clone()))?
 				}
 				Instruction::DropProcedure(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_procedure(s, t, n.clone()))?

@@ -600,6 +600,7 @@ fn materialize_query_plan_with(
 fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 	match plan {
 		PhysicalPlan::CreateDeferredView(_) => "CREATE DEFERRED VIEW",
+		PhysicalPlan::CreateDeferredWindowedViewGroup(_) => "CREATE DEFERRED WINDOWED VIEW GROUP",
 		PhysicalPlan::CreateTransactionalView(_) => "CREATE TRANSACTIONAL VIEW",
 		PhysicalPlan::CreateNamespace(_) => "CREATE NAMESPACE",
 		PhysicalPlan::CreateRemoteNamespace(_) => "CREATE REMOTE NAMESPACE",
@@ -631,6 +632,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::DropSeries(_) => "DROP SERIES",
 		PhysicalPlan::DropSource(_) => "DROP SOURCE",
 		PhysicalPlan::DropSink(_) => "DROP SINK",
+		PhysicalPlan::DropWindowedViewGroup(_) => "DROP WINDOWED VIEW GROUP",
 		PhysicalPlan::DropProcedure(_) => "DROP PROCEDURE",
 		PhysicalPlan::DropHandler(_) => "DROP HANDLER",
 		PhysicalPlan::DropTest(_) => "DROP TEST",
@@ -1204,6 +1206,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropSource(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::DropWindowedViewGroup(node) => {
+				self.emit(Instruction::DropWindowedViewGroup(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::DropSink(node) => {
 				self.emit(Instruction::DropSink(node));
 				self.emit(Instruction::Emit);
@@ -1308,6 +1314,31 @@ impl InstructionCompiler {
 					persistent: node.persistent,
 					ttl_eviction: node.ttl_eviction,
 				}));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateDeferredWindowedViewGroup(node) => {
+				let mut members = Vec::with_capacity(node.members.len());
+				for member in node.members {
+					members.push(nodes::WindowedViewGroupMember {
+						namespace: member.namespace,
+						view: member.view,
+						duration: member.duration,
+						ttl: member.ttl,
+						persistent: member.persistent,
+						ttl_eviction: member.ttl_eviction,
+						as_clause: materialize_as_clause_plan(BumpBox::into_inner(
+							member.as_clause,
+						))?,
+					});
+				}
+				self.emit(Instruction::CreateDeferredWindowedViewGroup(
+					nodes::CreateDeferredWindowedViewGroupNode {
+						namespace: node.namespace,
+						group: node.group,
+						columns: node.columns,
+						members,
+					},
+				));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateTransactionalView(node) => {

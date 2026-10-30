@@ -30,6 +30,7 @@ pub mod source;
 pub mod sumtype;
 pub mod table;
 pub mod view;
+pub mod windowed_view_group;
 
 use authentication::load_authentications;
 use authentication_method::load_authentication_methods;
@@ -61,6 +62,7 @@ use source::load_sources;
 use sumtype::load_sumtypes;
 use table::load_tables;
 use view::load_views;
+use windowed_view_group::load_windowed_view_groups;
 
 use super::CatalogCache;
 use crate::Result;
@@ -95,6 +97,7 @@ impl CatalogCacheLoader {
 
 		load_sources(rx, catalog)?;
 		load_sinks(rx, catalog)?;
+		load_windowed_view_groups(rx, catalog)?;
 
 		load_identities(rx, catalog)?;
 		load_authentications(rx, catalog)?;

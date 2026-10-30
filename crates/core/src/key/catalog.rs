@@ -21,7 +21,7 @@ use crate::{
 	interface::catalog::{
 		id::{
 			BindingId, ColumnId, ColumnPropertyId, HandlerId, IndexId, NamespaceId, PrimaryKeyId,
-			RelationshipId, SinkId, SourceId, TableId, ViewId,
+			RelationshipId, SinkId, SourceId, TableId, ViewId, WindowedViewGroupId,
 		},
 		object::ObjectId,
 	},
@@ -1227,6 +1227,41 @@ pub mod sink_key_tests {
 		let encoded = key.encode();
 		let decoded = SinkKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.sink, SinkId(0x1234));
+		assert_eq!(key, decoded);
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = WindowedViewGroup)]
+pub struct WindowedViewGroupKey {
+	pub windowed_view_group: WindowedViewGroupId,
+}
+
+impl WindowedViewGroupKey {
+	pub fn new(windowed_view_group: impl Into<WindowedViewGroupId>) -> Self {
+		Self {
+			windowed_view_group: windowed_view_group.into(),
+		}
+	}
+
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
+	}
+}
+
+#[cfg(test)]
+pub mod windowed_view_group_key_tests {
+	use super::WindowedViewGroupKey;
+	use crate::interface::catalog::id::WindowedViewGroupId;
+
+	#[test]
+	fn test_encode_decode() {
+		let key = WindowedViewGroupKey {
+			windowed_view_group: WindowedViewGroupId(0x1234),
+		};
+		let encoded = key.encode();
+		let decoded = WindowedViewGroupKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.windowed_view_group, WindowedViewGroupId(0x1234));
 		assert_eq!(key, decoded);
 	}
 }
