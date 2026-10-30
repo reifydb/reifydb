@@ -448,7 +448,7 @@ async fn handle_admin(request_id: &str, a: AdminRequest, conn: &mut ConnectionCo
 		Ok(id) => id,
 		Err(resp) => return Some(resp),
 	};
-	let params = match parse_wire_params(request_id, a.params) {
+	let params = match parse_wire_params(request_id, a.params, conn.state) {
 		Ok(p) => p,
 		Err(resp) => return Some(resp),
 	};
@@ -472,7 +472,7 @@ async fn handle_query(request_id: &str, q: QueryRequest, conn: &mut ConnectionCo
 		Ok(id) => id,
 		Err(resp) => return Some(resp),
 	};
-	let params = match parse_wire_params(request_id, q.params) {
+	let params = match parse_wire_params(request_id, q.params, conn.state) {
 		Ok(p) => p,
 		Err(resp) => return Some(resp),
 	};
@@ -496,7 +496,7 @@ async fn handle_command(request_id: &str, c: CommandRequest, conn: &mut Connecti
 		Ok(id) => id,
 		Err(resp) => return Some(resp),
 	};
-	let params = match parse_wire_params(request_id, c.params) {
+	let params = match parse_wire_params(request_id, c.params, conn.state) {
 		Ok(p) => p,
 		Err(resp) => return Some(resp),
 	};
@@ -521,12 +521,12 @@ fn require_identity(request_id: &str, identity: &Option<IdentityId>) -> Result<I
 	}
 }
 
-fn parse_wire_params(request_id: &str, params: Option<WireParams>) -> Result<Params, WsResponse> {
+fn parse_wire_params(request_id: &str, params: Option<WireParams>, state: &AppState) -> Result<Params, WsResponse> {
 	match params {
 		None => Ok(Params::None),
-		Some(wp) => {
-			wp.into_params().map_err(|e| WsResponse::Text(build_error(request_id, "INVALID_PARAMS", &e)))
-		}
+		Some(wp) => wp
+			.into_params_with(state.engine().catalog().cache())
+			.map_err(|e| WsResponse::Text(build_error(request_id, "INVALID_PARAMS", &e))),
 	}
 }
 
@@ -746,7 +746,7 @@ async fn handle_call(
 ) -> Result<WsResponse, String> {
 	let (binding, procedure, namespace) = resolve_call_target(request_id, conn.state, &req.name)?;
 	let requested_format = req.format;
-	let params = parse_call_params(request_id, req.params, &procedure)?;
+	let params = parse_call_params(request_id, req.params, &procedure, conn.state)?;
 	let (frames, meta) = dispatch_call(request_id, conn, &namespace, &procedure, params, identity).await?;
 	let format = requested_format.map(wire_to_binding_format).unwrap_or(binding.format);
 	encode_call_response(request_id, format, frames, meta)
@@ -778,10 +778,17 @@ fn resolve_call_target(request_id: &str, state: &AppState, name: &str) -> Result
 }
 
 #[inline]
-fn parse_call_params(request_id: &str, params: Option<WireParams>, procedure: &Procedure) -> Result<Params, String> {
+fn parse_call_params(
+	request_id: &str,
+	params: Option<WireParams>,
+	procedure: &Procedure,
+	state: &AppState,
+) -> Result<Params, String> {
 	let params = match params {
 		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| build_error(request_id, "INVALID_PARAMS", &e))?,
+		Some(wp) => wp
+			.into_params_with(state.engine().catalog().cache())
+			.map_err(|e| build_error(request_id, "INVALID_PARAMS", &e))?,
 	};
 	match &params {
 		Params::None => {

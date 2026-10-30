@@ -17,6 +17,7 @@ use napi_derive::napi;
 use reifydb::{
 	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
 	auth::service::AuthResponse,
+	catalog::cache::CatalogCache,
 	core::{
 		actors::server::method_not_enabled_reason,
 		interface::catalog::{
@@ -26,8 +27,8 @@ use reifydb::{
 	},
 	embedded,
 };
-use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
-use reifydb_sub_server::wire::{WireParams, WireValue, resolve_type};
+use reifydb_codec::json::to::convert_frames;
+use reifydb_sub_server::wire::{WireParams, WireValue};
 use reifydb_value::{
 	params::Params,
 	value::{
@@ -130,7 +131,7 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
 
 type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 
-fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
+fn parse_params(params: Option<ParamsInput>, catalog: &CatalogCache) -> Result<Params> {
 	let wire = match params {
 		None => return Ok(Params::None),
 		Some(Either::A(items)) => WireParams::Positional(
@@ -148,17 +149,12 @@ fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
 				.collect::<Result<_>>()?,
 		),
 	};
-	wire.into_params().map_err(NapiError::from_reason)
+	wire.into_params_with(catalog).map_err(NapiError::from_reason)
 }
 
 fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
-	let r#type = resolve_type(&param.r#type, &param.value)
-		.map(WireValueType::from)
-		.map_err(|e| NapiError::from_reason(format!("parameter {parameter}: unknown type: {e}")))?;
-	Ok(WireValue {
-		r#type,
-		value: param.value,
-	})
+	WireValue::parse(&param.r#type, param.value)
+		.map_err(|e| NapiError::from_reason(format!("parameter {parameter}: unknown type: {e}")))
 }
 
 fn parse_options(options: Option<SubscribeOptionsInput>) -> Result<SubscribeOptions> {
@@ -298,7 +294,7 @@ impl ReifydbNode {
 			.map(|subscription| {
 				Ok((
 					subscription.query,
-					parse_params(subscription.params)?,
+					parse_params(subscription.params, self.db.catalog().cache())?,
 					parse_options(subscription.options)?,
 				))
 			})
@@ -351,35 +347,35 @@ impl ReifydbNode {
 
 impl ReifydbNode {
 	fn admin_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.admin_as_root(&rql, params))
 	}
 
 	fn command_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.command_as_root(&rql, params))
 	}
 
 	fn query_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.query_as_root(&rql, params))
 	}
 
 	fn admin_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.admin_as(identity, &rql, params))
 	}
 
 	fn command_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.command_as(identity, &rql, params))
 	}
 
 	fn query_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params)?;
+		let params = parse_params(params, self.db.catalog().cache())?;
 		render(self.db.query_as(identity, &rql, params))
 	}
 

@@ -279,6 +279,48 @@ pub fn primary_key_invalid_type(fragment: Fragment, column: &str, ty: ValueType)
 	}
 }
 
+pub fn enum_value_expected(fragment: Fragment, column: &str, sumtype: &str, actual: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "CA_105".to_string(),
+		rql: None,
+		message: format!(
+			"`{}` has type `{}`, but column `{}` holds the enum `{}`",
+			fragment.text(),
+			actual,
+			column,
+			sumtype
+		),
+		fragment,
+		label: Some("not a value of this enum".to_string()),
+		help: Some(format!("send an `Enum` param of `{}` with a variant name", sumtype)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn enum_value_with_fields(fragment: Fragment, column: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_106".to_string(),
+		rql: None,
+		message: format!(
+			"`{}` is an enum value with fields, which cannot be written to `{}` from a param yet",
+			fragment.text(),
+			column
+		),
+		fragment,
+		label: Some("enum value with fields".to_string()),
+		help: Some(
+			"write the variant with its fields as a literal, or send a variant without fields".to_string()
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_023".to_string(),

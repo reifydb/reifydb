@@ -12,16 +12,19 @@ use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::{
-		catalog::{column_not_sumtype, namespace_not_found, sumtype_not_found, sumtype_variant_not_found},
+		catalog::{
+			column_not_sumtype, enum_value_expected, enum_value_with_fields, namespace_not_found,
+			sumtype_not_found, sumtype_variant_not_found,
+		},
 		query::{column_not_found, duplicate_field},
 	},
 	expression::{
-		AliasExpression, CastExpression, ConstantExpression, Expression, IdentExpression,
+		AliasExpression, CastExpression, ConstantExpression, Expression, IdentExpression, ParameterExpression,
 		SumTypeConstructorExpression, TypeExpression, name::display_label,
 	},
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedObject},
 	value::{
-		batch::{batch, empty_batch},
+		batch::{batch, empty_batch, is_scalar, scalar_value},
 		column::{
 			builder::ColumnBuilder,
 			cast::cast_column_data,
@@ -31,7 +34,10 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
+use reifydb_evaluate::{
+	expression::{context::EvalContext, eval::evaluate},
+	stack::Variable,
+};
 use reifydb_rql::expression::variant::for_each_is_variant;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -147,14 +153,24 @@ impl InlineDataNode {
 						)?;
 					}
 					_ => {
-						expand_sumtype_none(
+						let mut marks = HashMap::new();
+						if let Some(alias_expr) = expand_enum_param(
 							&ctx,
 							txn,
 							ctx.source.as_ref(),
 							alias_expr,
 							&mut expanded,
-							&mut HashMap::new(),
-						)?;
+							&mut marks,
+						)? {
+							expand_sumtype_none(
+								&ctx,
+								txn,
+								ctx.source.as_ref(),
+								alias_expr,
+								&mut expanded,
+								&mut marks,
+							)?;
+						}
 					}
 				}
 				written.resize(expanded.len(), name);
@@ -175,6 +191,7 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 				alias_expr.expression.as_ref(),
 				Expression::SumTypeConstructor(_)
 					| Expression::Column(_) | Expression::Constant(ConstantExpression::None { .. })
+					| Expression::Parameter(_) | Expression::Variable(_)
 			) {
 				return true;
 			}
@@ -334,7 +351,11 @@ pub(crate) fn expand_sumtype_assignment(
 			expand_unit_variant_column(ctx, txn, Some(source), alias_expr, expanded, marks)
 		}
 		_ => {
-			expanded.push(alias_expr);
+			if let Some(alias_expr) =
+				expand_enum_param(ctx, txn, Some(source), alias_expr, expanded, marks)?
+			{
+				expanded.push(alias_expr);
+			}
 			Ok(())
 		}
 	}
@@ -553,6 +574,109 @@ fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTyp
 		Some(Constraint::SumType(id)) => Some(*id),
 		_ => None,
 	}
+}
+
+fn expand_enum_param(
+	ctx: &QueryContext,
+	txn: &mut Transaction<'_>,
+	source: Option<&ResolvedObject>,
+	alias_expr: AliasExpression,
+	expanded: &mut Vec<AliasExpression>,
+	marks: &mut HashMap<String, SumTypeId>,
+) -> Result<Option<AliasExpression>> {
+	let col_name = alias_expr.alias.0.text().to_string();
+	let (Some(source), Some(symbol)) = (source, param_symbol(alias_expr.expression.as_ref())) else {
+		return Ok(Some(alias_expr));
+	};
+	let Some(declared) = declared_sumtype_id(source, &col_name) else {
+		return Ok(Some(alias_expr));
+	};
+	let Some(value) = symbol_scalar(ctx, symbol)? else {
+		return Ok(Some(alias_expr));
+	};
+	let sumtype = ctx.services.catalog.get_sumtype(txn, declared)?;
+	let fragment = alias_expr.expression.full_fragment_owned();
+	let tag = match value {
+		Value::None {
+			..
+		} => {
+			let none = AliasExpression {
+				expression: Box::new(Expression::Constant(ConstantExpression::None {
+					fragment: alias_expr.fragment.clone(),
+				})),
+				..alias_expr
+			};
+			expand_sumtype_none(ctx, txn, Some(source), none, expanded, marks)?;
+			return Ok(None);
+		}
+		Value::Enum {
+			id,
+			tag,
+			fields,
+		} if id == declared => {
+			if !fields.is_empty() {
+				return_error!(enum_value_with_fields(fragment, &col_name));
+			}
+			tag
+		}
+		other => return_error!(enum_value_expected(fragment, &col_name, &sumtype.name, other.get_type())),
+	};
+
+	expanded.push(tag_alias(Some(source), &col_name, tag, &alias_expr.fragment));
+	mark_unit_tag(marks, &col_name, &sumtype);
+	let field_types = ctx.source.is_none().then_some(source);
+	for variant in &sumtype.variants {
+		for field in &variant.fields {
+			let phys_col_name =
+				format!("{}_{}_{}", col_name, variant.name.to_lowercase(), field.name.to_lowercase());
+			let none = Expression::Constant(ConstantExpression::None {
+				fragment: alias_expr.fragment.clone(),
+			});
+			expanded.push(AliasExpression {
+				expression: Box::new(cast_to_stored_type(
+					field_types,
+					&phys_col_name,
+					none,
+					&alias_expr.fragment,
+				)),
+				alias: IdentExpression(Fragment::internal(phys_col_name)),
+				fragment: alias_expr.fragment.clone(),
+			});
+		}
+	}
+	Ok(None)
+}
+
+fn param_symbol(expression: &Expression) -> Option<&str> {
+	match expression {
+		Expression::Parameter(
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			},
+		) => Some(fragment.text().strip_prefix('$').unwrap_or(fragment.text())),
+		Expression::Variable(variable) => Some(variable.name()),
+		_ => None,
+	}
+}
+
+fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Value>> {
+	let Some(Variable::Columns {
+		batch,
+	}) = ctx.symbols.get(name)
+	else {
+		return Ok(None);
+	};
+	if !is_scalar(batch) {
+		return Ok(None);
+	}
+	let mut value = scalar_value(batch)?;
+	while let Value::Any(inner) = value {
+		value = *inner;
+	}
+	Ok(Some(value))
 }
 
 fn expand_unit_variant_column(
