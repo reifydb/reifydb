@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
-	if has_cross_kind_overlap(&diffs)? {
+	if has_foldable_overlap(&diffs)? {
 		consolidate_keyed(diffs)
 	} else {
 		merge_adjacent(diffs)
@@ -39,12 +39,19 @@ pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	consolidate_keyed(diffs)
 }
 
-fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
+fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool> {
 	let mut first_kind: Option<DiffType> = None;
 	let mut mixed = false;
+	let mut updates = 0usize;
 	for diff in diffs {
 		if diff.row_count() == 0 {
 			continue;
+		}
+		if diff.kind() == DiffType::Update {
+			updates += 1;
+			if updates > 1 {
+				break;
+			}
 		}
 		match first_kind {
 			None => first_kind = Some(diff.kind()),
@@ -55,13 +62,13 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 			Some(_) => {}
 		}
 	}
-	if !mixed {
+	if !mixed && updates < 2 {
 		return Ok(false);
 	}
 	if !all_row_keyed(diffs.iter().filter(|diff| diff.row_count() > 0))? {
 		return Ok(false);
 	}
-	if !kind_ranges_meet(diffs)? {
+	if !foldable_ranges_meet(diffs)? {
 		return Ok(false);
 	}
 	let mut seen: HashMap<(Option<&ChangeOrigin>, RowNumber), u8> = HashMap::new();
@@ -73,7 +80,7 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 		let origin = diff.origin();
 		for &row in key_rows(diff)? {
 			let mask = seen.entry((origin, row)).or_insert(0);
-			if *mask & !bit != 0 {
+			if *mask & !bit != 0 || (*mask & bit != 0 && diff.kind() == DiffType::Update) {
 				return Ok(true);
 			}
 			*mask |= bit;
@@ -84,7 +91,7 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 
 type KindRanges<'a> = (Option<&'a ChangeOrigin>, [Option<(RowNumber, RowNumber)>; 3]);
 
-fn kind_ranges_meet(diffs: &[Diff]) -> Result<bool> {
+fn foldable_ranges_meet(diffs: &[Diff]) -> Result<bool> {
 	let mut first: Option<KindRanges> = None;
 	let mut rest: Vec<KindRanges> = Vec::new();
 	for diff in diffs {
@@ -107,18 +114,16 @@ fn kind_ranges_meet(diffs: &[Diff]) -> Result<bool> {
 		};
 		let (low, high) = tail.iter().fold((lead, lead), |(low, high), &row| (low.min(row), high.max(row)));
 		let kind = kind_rank(diff.kind());
-		let range = ranges[kind]
-			.map_or((low, high), |(known_low, known_high)| (known_low.min(low), known_high.max(high)));
-		ranges[kind] = Some(range);
+		let same_kind_folds = diff.kind() == DiffType::Update;
 		let meets = ranges.iter().enumerate().any(|(other, known)| {
-			other != kind
-				&& known.is_some_and(|(known_low, known_high)| {
-					known_low <= range.1 && range.0 <= known_high
-				})
+			(other != kind || same_kind_folds)
+				&& known.is_some_and(|(known_low, known_high)| known_low <= high && low <= known_high)
 		});
 		if meets {
 			return Ok(true);
 		}
+		ranges[kind] = Some(ranges[kind]
+			.map_or((low, high), |(known_low, known_high)| (known_low.min(low), known_high.max(high))));
 	}
 	Ok(false)
 }
@@ -909,5 +914,137 @@ mod tests {
 	fn a_mismatched_update_in_canonical_input_still_trips_the_row_number_check() {
 		// The canonical pre-check must key updates through the checked path, or a bad pre row comes back.
 		let _ = consolidate_diffs(vec![update(&[(1, 10)], &[(2, 20)])]);
+	}
+
+	fn wide(rows: &[(u64, i32)]) -> RecordBatch {
+		let rns: Vec<u64> = rows.iter().map(|&(rn, _)| rn).collect();
+		let vals: Vec<i32> = rows.iter().map(|&(_, v)| v).collect();
+		with_system_column(
+			batch(vec![int4("v", vals.clone()), int4("w", vals)]).unwrap(),
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(rns)),
+		)
+		.unwrap()
+	}
+
+	#[test]
+	fn update_update_overlap_folds() {
+		// two updates of one row in one batch must reach the operator as exactly one update, first pre and last
+		// post
+		let out = coalesce_diffs(vec![update(&[(1, 10)], &[(1, 20)]), update(&[(1, 20)], &[(1, 30)])]).unwrap();
+		assert_eq!(out.len(), 1, "same-row updates must fold, got {} diffs", out.len());
+		match &out[0] {
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				assert_eq!(rows_of(pre), vec![(1, 10)]);
+				assert_eq!(rows_of(post), vec![(1, 30)]);
+			}
+			other => panic!("expected update, got {:?}", other.kind()),
+		}
+	}
+
+	#[test]
+	fn update_update_overlap_across_column_sets_folds() {
+		// a row whose two updates carry different column sets must still fold, otherwise it reaches the
+		// operator twice
+		let out = coalesce_diffs(vec![
+			update(&[(1, 10)], &[(1, 20)]),
+			Diff::update(wide(&[(1, 20)]), wide(&[(1, 30)])),
+		])
+		.unwrap();
+		assert_eq!(out.len(), 1, "same-row updates must fold across column sets, got {} diffs", out.len());
+		match &out[0] {
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				assert_eq!(rows_of(pre), vec![(1, 10)]);
+				assert_eq!(rows_of(post), vec![(1, 30)]);
+			}
+			other => panic!("expected update, got {:?}", other.kind()),
+		}
+	}
+
+	#[test]
+	fn disjoint_updates_keep_the_fast_path() {
+		// updates on distinct rows must never pay the keyed fold, which would regroup interleaved column sets
+		let out = coalesce_diffs(vec![
+			update(&[(1, 10)], &[(1, 11)]),
+			Diff::update(wide(&[(2, 20)]), wide(&[(2, 21)])),
+			update(&[(3, 30)], &[(3, 31)]),
+		])
+		.unwrap();
+		assert_eq!(
+			out.len(),
+			3,
+			"disjoint updates must keep their order and boundaries, got {} diffs",
+			out.len()
+		);
+		let firsts: Vec<(u64, i32)> = out.iter().flat_map(|diff| rows_of(diff.post().unwrap())).collect();
+		assert_eq!(firsts, vec![(1, 11), (2, 21), (3, 31)]);
+	}
+
+	#[test]
+	fn remove_remove_overlap_stays_unfolded() {
+		// a repeated remove of one row must reach the operator twice, take counts copies per row number
+		let out = coalesce_diffs(vec![remove(&[(1, 10)]), remove(&[(1, 10)])]).unwrap();
+		assert_eq!(out.len(), 1);
+		match &out[0] {
+			Diff::Remove {
+				pre,
+				..
+			} => assert_eq!(rows_of(pre), vec![(1, 10), (1, 10)]),
+			other => panic!("expected remove, got {:?}", other.kind()),
+		}
+	}
+
+	#[test]
+	fn merge_folds_a_join_shaped_inbox_to_one_update_per_row() {
+		// a join emits each joined row twice per commit, left then right driven; merge must hand the operator
+		// exactly one
+		use reifydb_value::value::datetime::DateTime;
+
+		use crate::{
+			common::{ChangeVersion, CommitVersion},
+			interface::{catalog::flow::OperatorId, change::Change},
+		};
+
+		let rows: [u64; 6] = [67, 126, 124, 41, 123, 125];
+		let value = |row: u64, step: i32| (row, row as i32 * 10 + step);
+		let mut diffs: Vec<Diff> = rows.iter().map(|&row| update(&[value(row, 0)], &[value(row, 1)])).collect();
+		diffs.extend(rows.iter().map(|&row| Diff::update(wide(&[value(row, 1)]), wide(&[value(row, 2)]))));
+		let inbox = Change::from_flow(
+			OperatorId(389),
+			ChangeVersion::from(CommitVersion(1)),
+			diffs,
+			DateTime::default(),
+		);
+
+		let merged = Change::merge(vec![inbox]).unwrap();
+
+		assert_eq!(merged.row_count(), rows.len(), "every joined row must reach the operator once");
+		let mut seen: Vec<(u64, i32, i32)> = Vec::new();
+		for diff in &merged.diffs {
+			let Diff::Update {
+				pre,
+				post,
+				..
+			} = diff
+			else {
+				panic!("expected only updates, got {:?}", diff.kind());
+			};
+			for ((row, before), (_, after)) in rows_of(pre).into_iter().zip(rows_of(post)) {
+				seen.push((row, before, after));
+			}
+		}
+		seen.sort();
+		let mut expected: Vec<(u64, i32, i32)> =
+			rows.iter().map(|&row| (row, value(row, 0).1, value(row, 2).1)).collect();
+		expected.sort();
+		assert_eq!(seen, expected, "each row keeps its first pre and its last post");
 	}
 }
