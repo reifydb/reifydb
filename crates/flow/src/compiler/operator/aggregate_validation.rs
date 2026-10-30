@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::WindowKind,
 	error::diagnostic::flow::{
 		flow_digest_accuracy_not_a_literal, flow_digest_accuracy_not_whole_ppm,
 		flow_digest_accuracy_out_of_range, flow_percentile_argument_count, flow_percentile_not_a_literal,
@@ -47,7 +47,7 @@ pub(crate) fn validate_flow_aggregations(
 		if (needs_span && !bounded_span(window)) || (needs_event_time && !time_based(window)) {
 			return Err(Error(Box::new(flow_window_span_unavailable(
 				&output,
-				window.map(span_label).unwrap_or("grouped"),
+				window.map(WindowKind::name).unwrap_or("grouped"),
 			))));
 		}
 	}
@@ -96,46 +96,9 @@ fn accuracy_diagnostic(output: &str, function: &str, error: DigestError) -> Diag
 }
 
 fn time_based(window: Option<&WindowKind>) -> bool {
-	match window {
-		Some(WindowKind::Tumbling {
-			size,
-		}) => matches!(size, WindowSize::Duration(_)),
-		Some(WindowKind::Sliding {
-			size,
-			..
-		}) => matches!(size, WindowSize::Duration(_)),
-		Some(WindowKind::Rolling {
-			size,
-			..
-		}) => matches!(size, WindowSize::Duration(_)),
-		Some(WindowKind::Session {
-			..
-		}) => true,
-		None => false,
-	}
+	window.is_some()
 }
 
 fn bounded_span(window: Option<&WindowKind>) -> bool {
 	!matches!(window, Some(WindowKind::Rolling { .. })) && time_based(window)
-}
-
-fn span_label(window: &WindowKind) -> &'static str {
-	match window {
-		WindowKind::Tumbling {
-			..
-		} => "row-counted tumbling",
-		WindowKind::Sliding {
-			..
-		} => "row-counted sliding",
-		WindowKind::Rolling {
-			size: WindowSize::Count(_),
-			..
-		} => "row-counted rolling",
-		WindowKind::Session {
-			..
-		} => "session",
-		WindowKind::Rolling {
-			..
-		} => "rolling",
-	}
 }

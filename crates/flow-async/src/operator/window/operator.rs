@@ -44,7 +44,6 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
-		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
 		meta::WindowMeta,
 	},
@@ -66,7 +65,6 @@ pub struct WindowConfig {
 }
 
 pub(crate) enum RollingEngineSlot {
-	CountedRow(Box<RollingEngine<Hash128, OrdinalCoord, RowAccumulator>>),
 	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
 }
 
@@ -94,6 +92,9 @@ impl WindowOperator {
 			AggregateContext::Windowed,
 			config.ctx,
 		)?;
+		if config.kind.size().is_some_and(WindowSize::is_count) {
+			return internal_err!("a native window must be sized by duration");
+		}
 		Ok(Self {
 			core,
 			kind: config.kind,
@@ -118,24 +119,12 @@ impl WindowOperator {
 		WindowEngineConfig::builder().build()
 	}
 
-	pub fn is_count_based(&self) -> bool {
-		self.kind.size().is_some_and(|m| m.is_count())
-	}
-
 	pub fn lateness(&self) -> Option<Duration> {
-		if self.is_count_based() {
-			None
-		} else {
-			self.lateness
-		}
+		self.lateness
 	}
 
 	pub fn immutable(&self) -> Option<Duration> {
-		if self.is_count_based() {
-			None
-		} else {
-			self.immutable
-		}
+		self.immutable
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
@@ -150,10 +139,6 @@ impl WindowOperator {
 		self.kind.size().and_then(|m| m.as_duration())
 	}
 
-	pub fn size_count(&self) -> Option<u64> {
-		self.kind.size().and_then(|m| m.as_count())
-	}
-
 	pub fn rolling_pane(&self) -> Option<Duration> {
 		match &self.kind {
 			WindowKind::Rolling {
@@ -166,9 +151,6 @@ impl WindowOperator {
 	}
 
 	pub fn rolling_lag(&self) -> Duration {
-		if self.is_count_based() {
-			return Duration::default();
-		}
 		match &self.kind {
 			WindowKind::Rolling {
 				lag: Some(lag),

@@ -43,7 +43,6 @@ use crate::{
 	},
 	window::{
 		accumulator::WindowAccumulator,
-		coord::{OrdinalCoord, RowSpan},
 		engine::{
 			AccumulatorEvent, EmitKind,
 			rolling::{
@@ -51,7 +50,7 @@ use crate::{
 				RollingResult,
 			},
 		},
-		kind::rolling::{RollingOverRows, RollingOverTime},
+		kind::rolling::RollingOverTime,
 		meta::{RollingMeta, RollingMetaKey},
 		span::WindowAnchor,
 	},
@@ -73,43 +72,6 @@ pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Se
 	fn slot_key(slot: Self, row_number: u64) -> WindowSlotKey;
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<Self>;
-}
-
-impl RollingDomain for OrdinalCoord {
-	fn engine(
-		operator: &mut WindowOperator,
-		runnable: bool,
-		lag: RowSpan,
-	) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
-		counted_row_engine(operator, runnable, lag)
-	}
-
-	fn lag(_declared: Duration) -> RowSpan {
-		RowSpan::ZERO
-	}
-
-	fn eviction(operator: &WindowOperator, _ledger: DateTime, _lag: RowSpan) -> RollingEviction<OrdinalCoord> {
-		RollingEviction::Capacity(
-			RollingOverRows::new(RowSpan::of(operator.size_count().unwrap_or(0))).capacity(),
-		)
-	}
-
-	fn slot(
-		_operator: &WindowOperator,
-		row_numbers: &[RowNumber],
-		row_idx: usize,
-		_timestamps: &[DateTime],
-	) -> OrdinalCoord {
-		OrdinalCoord::from_row_number(row_numbers[row_idx])
-	}
-
-	fn slot_key(_slot: OrdinalCoord, row_number: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTime::default(), row_number)
-	}
-
-	fn seal_horizon(_operator: &WindowOperator, _ledger: DateTime) -> Option<OrdinalCoord> {
-		None
-	}
 }
 
 impl RollingDomain for DateTime {
@@ -181,27 +143,6 @@ fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
 	RowAccumulator::invertible(kinds, operator.immutable())
-}
-
-fn counted_row_engine(
-	operator: &mut WindowOperator,
-	runnable: bool,
-	lag: RowSpan,
-) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
-	let config = operator.engine_config();
-	let slot = operator.rolling_engine_slot();
-	if !matches!(slot, Some(RollingEngineSlot::CountedRow(_))) {
-		let engine = if runnable {
-			RollingEngine::new_runnable(config).with_lag(lag)
-		} else {
-			RollingEngine::new(config)
-		};
-		*slot = Some(RollingEngineSlot::CountedRow(Box::new(engine)));
-	}
-	match slot {
-		Some(RollingEngineSlot::CountedRow(engine)) => engine.as_mut(),
-		_ => unreachable!("a count-based rolling window must hold a row-numbered engine"),
-	}
 }
 
 fn timed_row_engine(
@@ -332,11 +273,7 @@ pub fn apply_rolling_engine(
 	host: &mut dyn HostContext,
 	change: Change,
 ) -> Result<Change> {
-	if operator.is_count_based() {
-		apply_rolling::<OrdinalCoord>(operator, host, change)
-	} else {
-		apply_rolling::<DateTime>(operator, host, change)
-	}
+	apply_rolling::<DateTime>(operator, host, change)
 }
 
 fn apply_rolling<S: RollingDomain>(
@@ -716,33 +653,12 @@ mod tests {
 		window::engine::config::WindowEngineConfig,
 	};
 
-	fn ordinal(value: u64) -> OrdinalCoord {
-		OrdinalCoord::from_arrival_counter(value)
-	}
-
 	fn order(millis: i64) -> u64 {
 		DateTime::from_millis(millis).to_order()
 	}
 
 	fn evict_instant(oldest: u64, span: Duration) -> DateTime {
 		EvictionRule::rolling(span).eviction_instant_from_order(oldest).at()
-	}
-
-	#[test]
-	fn a_count_window_never_seals_and_never_arms_a_timer() {
-		// A count window's coordinate is a row number, not an instant, and nothing errors if one
-		// is fed to duration arithmetic: the timer lands just past the epoch, fires at once and
-		// rearms forever. A count window evicts on capacity and has no notion of closed.
-		assert!(
-			!<OrdinalCoord as SealDomain>::arms_timer(),
-			"a row number is not an instant to arm a timer at"
-		);
-		assert!(<DateTime as SealDomain>::arms_timer(), "an event-time window does seal on the wheel");
-
-		assert!(
-			!<OrdinalCoord as SealDomain>::arms_timer(),
-			"a count window buckets by arrival order, so event time must not reach its coordinate"
-		);
 	}
 
 	#[test]
@@ -766,25 +682,6 @@ mod tests {
 		assert!(
 			evict_instant(order(5_001), span).to_order() > watermark,
 			"one millisecond newer is still inside the window and must not be armed yet"
-		);
-	}
-
-	#[test]
-	fn a_count_window_reports_no_lag_even_when_one_is_declared() {
-		// lag is a duration, and in the count domain the coordinate is a row number: subtracting
-		// milliseconds from it would demand 30000 rows of headroom for a 30s lag. The guard lives
-		// in the domain rather than in whoever remembers to check the count case first.
-		let declared = Duration::from_seconds(30).expect("representable span");
-
-		assert_eq!(
-			<OrdinalCoord as RollingDomain>::lag(declared),
-			RowSpan::ZERO,
-			"a row count has no millisecond lag"
-		);
-		assert_eq!(
-			<DateTime as RollingDomain>::lag(declared),
-			declared,
-			"the time domain honours the lag it was given"
 		);
 	}
 
@@ -944,188 +841,13 @@ mod tests {
 		}
 	}
 
-	fn kinds() -> Vec<SlotKind> {
-		vec![SlotKind::Sum, SlotKind::Sum, SlotKind::Sum]
-	}
-
 	fn group_key(hash: &Hash128) -> (GroupId, EncodedKey) {
 		(GroupId::ROOT, EncodedKey::builder().u128(hash.0).build())
-	}
-
-	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, SlotRow) {
-		let slot_key = WindowSlotKey::new(DateTime::from_epoch_secs(seq as i64).unwrap(), seq);
-		(slot_key, slot_row(dollars.iter().map(|d| Some(Value::float8(*d))).collect()))
-	}
-
-	fn assert_rows_close(legacy: &[Value], runnable: &[Value], context: &str) {
-		assert_eq!(legacy.len(), runnable.len(), "row width diverged: {context}");
-		for (l, r) in legacy.iter().zip(runnable.iter()) {
-			let (Value::Float8(lf), Value::Float8(rf)) = (l, r) else {
-				assert_eq!(l, r, "non-float slot diverged: {context}");
-				continue;
-			};
-			let tolerance = lf.value().abs().max(1.0) * 1e-9;
-			assert!(
-				(lf.value() - rf.value()).abs() <= tolerance,
-				"float slot diverged beyond tolerance: legacy={} runnable={} ({context})",
-				lf.value(),
-				rf.value()
-			);
-		}
-	}
-
-	#[test]
-	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
-		// Pure-sum rolling views run on the running-accumulator engine, so any divergence from
-		// the recombining engine on the same workload changes what those views publish.
-		let config = || WindowEngineConfig::builder().build();
-		let mut legacy_store = MockStore::default();
-		let mut runnable_store = MockStore::default();
-		let mut legacy = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new(config());
-		let mut runnable = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new_runnable(config());
-		let slot_kinds = kinds();
-
-		let mut state = 0x0123_4567_89AB_CDEFu64;
-		let mut roll = |bound: u64| {
-			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-			(state >> 33) % bound
-		};
-		let mut slot_base = 1_000u64;
-		let mut cutoff = 0u64;
-		let mut added: Vec<(Hash128, u64, [f64; 3])> = Vec::new();
-
-		for round in 0..150u64 {
-			let mut plan: Vec<(Hash128, u64, [f64; 3], bool)> = Vec::new();
-			for _ in 0..=roll(2) {
-				let group = Hash128((roll(4) + 1) as u128);
-				let slot = slot_base + roll(30);
-				let dollars = [
-					(roll(1_000_000_000) as f64) / 100.0,
-					(roll(1_000_000) as f64) / 100.0,
-					(roll(100) as f64) / 100.0,
-				];
-				plan.push((group, slot, dollars, true));
-				added.push((group, slot, dollars));
-			}
-			if round % 3 == 2 && !added.is_empty() {
-				let (group, slot, dollars) = added.remove(roll(added.len() as u64) as usize);
-				plan.push((group, slot, dollars, false));
-			}
-			let build = |plan: &[(Hash128, u64, [f64; 3], bool)]| {
-				let mut buckets: RollingEngineBuckets<OrdinalCoord> = TestBTreeMap::new();
-				for (group, slot, dollars, is_add) in plan {
-					let c = contribution(*slot, *dollars);
-					let event = if *is_add {
-						AccumulatorEvent::Add(c)
-					} else {
-						AccumulatorEvent::Remove(c)
-					};
-					buckets.entry((*group, ordinal(*slot))).or_default().push(event);
-				}
-				buckets
-			};
-			let sk = slot_kinds.clone();
-			let legacy_out = legacy
-				.apply_evicting(
-					&mut legacy_store,
-					build(&plan),
-					RollingEviction::Before(ordinal(cutoff)),
-					group_key,
-					|| RowAccumulator::new(&sk, None),
-					|_g, buffer| combine_rolling(buffer, &sk, RowSpan::ZERO, None),
-				)
-				.unwrap();
-			let sk = slot_kinds.clone();
-			let runnable_out = runnable
-				.apply_running(
-					&mut runnable_store,
-					build(&plan),
-					RollingEviction::Before(ordinal(cutoff)),
-					group_key,
-					|| RowAccumulator::new(&sk, None),
-				)
-				.unwrap();
-			assert_eq!(legacy_out.len(), runnable_out.len(), "apply cardinality diverged at round {round}");
-			for (l, r) in legacy_out.iter().zip(runnable_out.iter()) {
-				assert_eq!(l.group, r.group, "apply group order diverged at round {round}");
-				assert_eq!(l.kind, r.kind, "apply emit kind diverged at round {round}");
-				assert_rows_close(&l.value, &r.value, &format!("apply round {round}"));
-			}
-
-			if round % 5 == 4 {
-				cutoff = slot_base.saturating_sub(20);
-				let sk = slot_kinds.clone();
-				let legacy_exp = legacy
-					.expire_before(&mut legacy_store, ordinal(cutoff), |_g, buffer| {
-						combine_rolling(buffer, &sk, RowSpan::ZERO, None)
-					})
-					.unwrap();
-				let runnable_exp =
-					runnable.expire_before_running(&mut runnable_store, ordinal(cutoff)).unwrap();
-				assert_eq!(
-					legacy_exp.len(),
-					runnable_exp.len(),
-					"expiry cardinality diverged at round {round}"
-				);
-				for (l, r) in legacy_exp.iter().zip(runnable_exp.iter()) {
-					match (l, r) {
-						(
-							RollingExpiry::Update {
-								group: lg,
-								value: lv,
-								..
-							},
-							RollingExpiry::Update {
-								group: rg,
-								value: rv,
-								..
-							},
-						) => {
-							assert_eq!(lg, rg, "expiry group diverged at round {round}");
-							assert_rows_close(lv, rv, &format!("expiry round {round}"));
-						}
-						(
-							RollingExpiry::Remove {
-								group: lg,
-								..
-							},
-							RollingExpiry::Remove {
-								group: rg,
-								..
-							},
-						) => {
-							assert_eq!(lg, rg, "terminal remove diverged at round {round}");
-						}
-						_ => panic!("expiry kind diverged at round {round}"),
-					}
-				}
-				added.retain(|(_, slot, _)| *slot > cutoff);
-			}
-			slot_base += roll(10) + 1;
-		}
-
-		// Draining to empty must terminally remove every group in both engines, leaving no
-		// buffers, running entries or index entries behind.
-		let sk = slot_kinds.clone();
-		let legacy_final = legacy
-			.expire_before(&mut legacy_store, ordinal(u64::MAX - 1), |_g, buffer| {
-				combine_rolling(buffer, &sk, RowSpan::ZERO, None)
-			})
-			.unwrap();
-		let runnable_final =
-			runnable.expire_before_running(&mut runnable_store, ordinal(u64::MAX - 1)).unwrap();
-		assert_eq!(legacy_final.len(), runnable_final.len(), "terminal drain cardinality diverged");
-		assert!(
-			runnable_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
-			"draining past every coord must terminally remove all groups"
-		);
 	}
 
 	const PPM: u32 = 10_000;
 
 	type TimeKey = (u64, u64);
-
-	type RoundEvents = TestBTreeMap<(Hash128, u64), Vec<(Option<f64>, bool)>>;
 
 	struct Lcg(u64);
 
@@ -1399,7 +1121,6 @@ mod tests {
 			(minute(), immutable, vec![digest_kind()], true),
 			(minute(), immutable, vec![SlotKind::Min, digest_kind()], false),
 			(minute(), immutable, vec![digest_kind(), SlotKind::Max], false),
-			(WindowSize::Count(8), None, vec![digest_kind()], true),
 		];
 		for (size, immutable, kinds, runnable) in cases {
 			let operator = rolling_operator(size.clone(), immutable);
@@ -1428,138 +1149,6 @@ mod tests {
 			let runnable = rolling_runnable(&rolling_operator(minute(), immutable), &kinds);
 			assert_eq!(runnable, expected, "immutable {immutable:?} picks the wrong rolling path");
 			drive_time_frame(&kinds, immutable, runnable, 0xD16E_5744_0002);
-		}
-	}
-
-	#[test]
-	fn a_count_frame_digest_equals_a_digest_rebuilt_from_the_rows_it_holds_across_seeded_churn() {
-		// A retraction or update that miscounts a capacity frame reports rows the frame no longer holds.
-		const CAPACITY: usize = 6;
-		for kinds in [vec![digest_kind()], vec![SlotKind::Min, digest_kind()]] {
-			assert!(
-				rolling_runnable(&rolling_operator(WindowSize::Count(CAPACITY as u64), None), &kinds),
-				"a count frame must take the running path {kinds:?}"
-			);
-			let mut engine = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new_runnable(
-				WindowEngineConfig::builder().build(),
-			)
-			.with_lag(RowSpan::ZERO);
-			let mut store = MockStore::default();
-			let new_accumulator = || RowAccumulator::new(&kinds, None);
-			let mut rng = Lcg(0xD16E_5744_0003);
-			let mut table: TestBTreeMap<u64, (Hash128, Option<f64>)> = TestBTreeMap::new();
-			let mut frames: TestBTreeMap<Hash128, TestBTreeMap<u64, Vec<Option<f64>>>> =
-				TestBTreeMap::new();
-			let (mut next_row, mut checked, mut evictions, mut reentries) = (0u64, 0usize, 0usize, 0usize);
-
-			for round in 0..400u64 {
-				let mut events: RoundEvents = TestBTreeMap::new();
-				for _ in 0..=rng.below(3) {
-					next_row += 1;
-					let (group, value) = (rng.group(), rng.latency());
-					table.insert(next_row, (group, value));
-					events.entry((group, next_row)).or_default().push((value, true));
-				}
-				if round % 3 == 2 {
-					let row = *table.keys().nth(rng.below(table.len() as u64) as usize).unwrap();
-					let (group, value) = table.remove(&row).unwrap();
-					events.entry((group, row)).or_default().push((value, false));
-				}
-				if round % 4 == 3 {
-					let row = *table.keys().nth(rng.below(table.len() as u64) as usize).unwrap();
-					let (group, value) = table[&row];
-					let moved = if rng.below(3) == 0 {
-						rng.group()
-					} else {
-						group
-					};
-					let updated = rng.latency();
-					events.entry((group, row)).or_default().push((value, false));
-					events.entry((moved, row)).or_default().push((updated, true));
-					table.insert(row, (moved, updated));
-				}
-
-				let mut buckets: RollingEngineBuckets<OrdinalCoord> = TestBTreeMap::new();
-				for ((group, row), row_events) in &events {
-					let frame = frames.entry(*group).or_default();
-					let mut held = frame.remove(row).unwrap_or_default();
-					let mut touched = false;
-					for (value, is_add) in row_events {
-						let contribution = (
-							WindowSlotKey::new(DateTime::default(), *row),
-							inputs(&kinds, *value),
-						);
-						let slot = OrdinalCoord::from_row_number(RowNumber(*row));
-						if *is_add {
-							if held.is_empty()
-								&& frame.first_key_value()
-									.is_some_and(|(oldest, _)| oldest > row)
-							{
-								reentries += 1;
-							}
-							held.push(*value);
-							touched = true;
-							buckets.entry((*group, slot))
-								.or_default()
-								.push(AccumulatorEvent::Add(contribution));
-						} else {
-							buckets.entry((*group, slot))
-								.or_default()
-								.push(AccumulatorEvent::Remove(contribution));
-							if held.is_empty() {
-								continue;
-							}
-							let at = held
-								.iter()
-								.position(|v| v == value)
-								.expect("a retraction names the value its row holds");
-							held.swap_remove(at);
-							touched = true;
-						}
-					}
-					if !held.is_empty() {
-						frame.insert(*row, held);
-					}
-					if touched {
-						while frame.len() > CAPACITY {
-							frame.pop_first();
-							evictions += 1;
-						}
-					}
-				}
-
-				let results = engine
-					.apply_running(
-						&mut store,
-						buckets,
-						RollingEviction::Capacity(CAPACITY),
-						group_key,
-						&new_accumulator,
-					)
-					.unwrap();
-				for result in &results {
-					let frame: Vec<Option<f64>> = frames
-						.get(&result.group)
-						.map(|rows| rows.values().flatten().copied().collect())
-						.unwrap_or_default();
-					match result.kind {
-						EmitKind::Remove => assert!(
-							frame.is_empty(),
-							"a group with rows in its frame was withdrawn at round {round}"
-						),
-						_ => assert_frame(
-							&kinds,
-							&result.value,
-							&frame,
-							&format!("{kinds:?} round {round}"),
-						),
-					}
-					checked += 1;
-				}
-			}
-			assert!(checked > 500, "the churn must check the frame often, checked {checked}");
-			assert!(evictions > 200, "rows must leave the frame by capacity, evicted {evictions}");
-			assert!(reentries > 0, "an evicted row updated back into a short frame must be exercised");
 		}
 	}
 }

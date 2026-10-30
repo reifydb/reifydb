@@ -24,12 +24,11 @@ use crate::{
 		},
 	},
 	window::{
-		coord::{EventCoord, OrdinalCoord, RowSpan},
+		coord::EventCoord,
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
-			sliding::{SlidingOverRows, SlidingOverTime},
-			tumbling::TumblingOverRows,
+			sliding::SlidingOverTime,
 		},
 		mint::Mint,
 		span::WindowSpan,
@@ -38,8 +37,6 @@ use crate::{
 
 pub(super) struct SlidingBound {
 	over_time: Option<SlidingOverTime>,
-	over_rows: Option<SlidingOverRows>,
-	count_based: bool,
 }
 
 impl SlidingBound {
@@ -47,25 +44,12 @@ impl SlidingBound {
 		let over_time = self.over_time.as_ref().map(|kind| {
 			kind.anchors(EventCoord::of(&<DateTime as Coord>::from_order(timestamp_or_row_index)))
 		});
-		let over_rows = match over_time {
-			Some(_) => None,
-			None => self
-				.over_rows
-				.as_ref()
-				.map(|kind| kind.anchors(OrdinalCoord::from_arrival_counter(timestamp_or_row_index))),
-		};
-		let neither = (over_time.is_none() && over_rows.is_none()).then_some(0);
-		over_time.into_iter().flatten().chain(over_rows.into_iter().flatten()).chain(neither)
+		let neither = over_time.is_none().then_some(0);
+		over_time.into_iter().flatten().chain(neither)
 	}
 
 	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		if self.count_based {
-			return ordinal_window_span(anchor);
-		}
-		self.over_time.as_ref().map_or_else(
-			|| TumblingOverRows::holding(RowSpan::of(1)).span(OrdinalCoord::from_arrival_counter(anchor)),
-			|kind| kind.span(anchor),
-		)
+		self.over_time.as_ref().map_or_else(|| ordinal_window_span(anchor), |kind| kind.span(anchor))
 	}
 }
 
@@ -136,22 +120,9 @@ impl WindowOperator {
 		}
 	}
 
-	fn sliding_over_rows(&self) -> Option<SlidingOverRows> {
-		match &self.kind {
-			WindowKind::Sliding {
-				size: WindowSize::Count(size),
-				slide: WindowSize::Count(slide),
-				..
-			} => SlidingOverRows::by_count(RowSpan::of(*size), RowSpan::of(*slide)),
-			_ => None,
-		}
-	}
-
 	pub(super) fn sliding_bound(&self) -> SlidingBound {
 		SlidingBound {
 			over_time: self.sliding_over_time(),
-			over_rows: self.sliding_over_rows(),
-			count_based: self.is_count_based(),
 		}
 	}
 
@@ -168,17 +139,6 @@ impl WindowOperator {
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).record_membership(store, group, row_number, window_id)
-	}
-
-	pub(super) fn store_row_indexes(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		row_number: RowNumber,
-		window_ids: &[u64],
-	) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).record_memberships(store, group, row_number, window_ids)
 	}
 
 	pub(super) fn withdraw_row_index(
@@ -230,15 +190,6 @@ impl WindowOperator {
 		row_number: RowNumber,
 	) -> Result<()> {
 		self.meta_slot().drop_session_member(store, GroupId::window(group_hash, session_id), row_number)
-	}
-
-	pub fn get_and_increment_global_count(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-	) -> Result<OrdinalCoord> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).ordinal(store, group)
 	}
 
 	pub(super) fn seal_ledger(&mut self, host: &mut dyn HostContext) -> Result<SealedThrough> {

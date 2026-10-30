@@ -3,10 +3,7 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::{
-	operator::state::seal::{coord::Coord, rule::SealRule},
-	window::coord::RowSpan,
-};
+use crate::operator::state::seal::{coord::Coord, rule::SealRule};
 
 pub struct RollingOverTime {
 	size: Duration,
@@ -38,22 +35,6 @@ impl RollingOverTime {
 	}
 }
 
-pub struct RollingOverRows {
-	capacity: RowSpan,
-}
-
-impl RollingOverRows {
-	pub fn new(capacity: RowSpan) -> Self {
-		Self {
-			capacity,
-		}
-	}
-
-	pub fn capacity(&self) -> usize {
-		self.capacity.rows() as usize
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use reifydb_value::factory::time::at_millis;
@@ -62,16 +43,6 @@ mod tests {
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
-	}
-
-	#[test]
-	fn a_row_capacity_has_no_lag_no_lateness_and_no_horizon_to_ask_for() {
-		// A rolling window over ROWS always has a current value, so there is no lag, lateness or seal
-		// instant to ask for. Lag and lateness are milliseconds, and subtracting them from a row number
-		// would drop rows in proportion to the lag; the type carries no such method to answer wrongly.
-		let rows = RollingOverRows::new(RowSpan::of(64));
-
-		assert_eq!(rows.capacity(), 64);
 	}
 
 	#[test]

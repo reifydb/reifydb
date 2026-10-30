@@ -24,6 +24,8 @@ use crate::{
 
 const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, lateness, or immutable";
 
+const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, lateness, or immutable";
+
 #[derive(Debug, Default)]
 pub(super) struct ParsedConfig {
 	pub duration: Option<Declared<Duration>>,
@@ -46,7 +48,6 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<WindowWith> {
 		let parsed = Self::parse_config(with, window)?;
 		let kind = Self::build_window_kind(kind, &parsed)?;
-		Self::reject_time_only_config(&parsed, &kind)?;
 		Self::reject_immutable_not_smaller_than_lateness(&parsed)?;
 		Self::reject_immutable_not_smaller_than_window(&parsed, &kind)?;
 		Ok(WindowWith {
@@ -62,7 +63,17 @@ impl<'bump> Compiler<'bump> {
 			..Default::default()
 		};
 		for entry in entries(with) {
+			if entry.key.word() == Some("count") {
+				return Err(unknown_key(entry, NATIVE_WINDOW_CONFIG_KEYS));
+			}
 			Self::parse_config_item(entry, &mut parsed)?;
+		}
+		if let Some(slide) = parsed.slide_count.as_ref() {
+			return Err(AstError::UnexpectedToken {
+				expected: "duration literal".to_string(),
+				fragment: slide.fragment.clone(),
+			}
+			.into());
 		}
 		Ok(parsed)
 	}
@@ -136,29 +147,6 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			_ => return Err(unknown_key(entry, WINDOW_CONFIG_KEYS)),
-		}
-		Ok(())
-	}
-
-	fn reject_time_only_config(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
-		if !kind.size().is_some_and(|size| size.is_count()) {
-			return Ok(());
-		}
-		if let Some(declared) = &parsed.lateness {
-			return Err(AstError::UnexpectedToken {
-				expected: "no lateness on count-based windows (lateness needs a time domain)"
-					.to_string(),
-				fragment: declared.fragment.clone(),
-			}
-			.into());
-		}
-		if let Some(declared) = &parsed.immutable {
-			return Err(AstError::UnexpectedToken {
-				expected: "no immutable on count-based windows (immutable needs a time domain)"
-					.to_string(),
-				fragment: declared.fragment.clone(),
-			}
-			.into());
 		}
 		Ok(())
 	}
@@ -504,8 +492,7 @@ mod tests {
 	#[test]
 	fn a_slide_outside_a_sliding_window_is_rejected() {
 		// Only the sliding arm reads the slide, so every other kind compiles a window that advances at a rate
-		// the author declared and nothing applies. Both spellings must be refused: `slide: 1m` lands in
-		// slide_duration and `slide: 10` in slide_count, and a guard reading one lets the other through.
+		// the author declared and nothing applies.
 		for (source, kind, span) in [
 			(
 				r#"window tumbling { count(*) } with { duration: 5m, slide: 1m }"#,
@@ -518,11 +505,6 @@ mod tests {
 				"1m",
 			),
 			(r#"window session { count(*) } with { gap: 5m, slide: 1m }"#, AstWindowKind::Session, "1m"),
-			(
-				r#"window tumbling { count(*) } with { count: 100, slide: 10 }"#,
-				AstWindowKind::Tumbling,
-				"10",
-			),
 		] {
 			let parsed = parse_window_config(source).unwrap();
 			let err = Compiler::<'static>::build_window_kind(kind, &parsed)
@@ -580,21 +562,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_sized_in_both_duration_and_count_is_rejected() {
-		// The measure reads duration first and drops the count on the floor, so the author gets a five minute
-		// window where they asked for a hundred rows and nothing anywhere says which key won.
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, count: 100 }"#)
-			.unwrap();
-
-		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
-		assert!(
-			err.message.contains("duration and count cannot both be specified"),
-			"the two-measure guard must be the one that fires"
-		);
-		assert_eq!(err.fragment.text(), "100", "the count is the second measure the author must drop");
-	}
-
-	#[test]
 	fn a_slide_at_least_as_large_as_the_window_is_rejected() {
 		// A slide equal to the size is a tumbling window, and a larger slide leaves coordinates covered by no
 		// window at all - the operator has no defined answer for a row in one of those gaps and silently
@@ -602,8 +569,6 @@ mod tests {
 		for source in [
 			r#"window sliding { count(*) } with { duration: 1m, slide: 5m }"#,
 			r#"window sliding { count(*) } with { duration: 1m, slide: 1m }"#,
-			r#"window sliding { count(*) } with { count: 10, slide: 10 }"#,
-			r#"window sliding { count(*) } with { count: 10, slide: 25 }"#,
 		] {
 			let parsed = parse_window_config(source).unwrap();
 			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
@@ -616,11 +581,8 @@ mod tests {
 	fn a_zero_slide_is_rejected_before_it_can_divide_by_zero() {
 		// Every sliding anchor computation divides by the slide, so a zero slide panics inside the operator
 		// and takes the flow down. The `slide >= size` guard does not catch it, since `0 >= size` is false for
-		// every real size, and both domains divide.
-		for (source, code) in [
-			(r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#, "AST_005"),
-			(r#"window sliding { count(*) } with { count: 10, slide: 0 }"#, "WINDOW_008"),
-		] {
+		// every real size.
+		for (source, code) in [(r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#, "AST_005")] {
 			let err = match parse_window_config(source) {
 				Err(err) => err,
 				Ok(parsed) => Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
@@ -637,10 +599,7 @@ mod tests {
 		// "must be smaller than the window duration" is true of a zero slide, so it tells the author to do
 		// what they already did. Shrink-the-slide and make-it-positive are different fixes and need different
 		// diagnostics.
-		for source in [
-			r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#,
-			r#"window sliding { count(*) } with { count: 10, slide: 0 }"#,
-		] {
+		for source in [r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#] {
 			let err = match parse_window_config(source) {
 				Err(err) => err,
 				Ok(parsed) => Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
@@ -652,33 +611,6 @@ mod tests {
 				"a zero slide is not a slide that is too large: {source}"
 			);
 		}
-	}
-
-	#[test]
-	fn a_slide_measured_in_a_different_unit_than_the_window_is_rejected() {
-		// `duration` buckets by event time and `count` by arrival ordinal, so a window cannot be sized in one
-		// and advanced in the other. A mixed pair misses both arms of the anchor mapping and puts every row
-		// of the flow in window 0 - one window, never sealed, unbounded, with no error anywhere.
-		for source in [
-			r#"window sliding { count(*) } with { duration: 5m, slide: 3 }"#,
-			r#"window sliding { count(*) } with { count: 100, slide: 1m }"#,
-		] {
-			let parsed = parse_window_config(source).unwrap();
-			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
-				.expect_err(&format!("a slide in the wrong domain must be refused: {source}"));
-			assert_eq!(err.diagnostic().code, "WINDOW_004", "wrong diagnostic for: {source}");
-		}
-	}
-
-	#[test]
-	fn a_mismatched_slide_points_at_the_slide_the_author_declared() {
-		// The author has to change the slide to match the window's unit, so the span must land on the slide
-		// value rather than the window token.
-		let parsed =
-			parse_window_config(r#"window sliding { count(*) } with { duration: 5m, slide: 3 }"#).unwrap();
-
-		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
-		assert_eq!(err.fragment.text(), "3", "the offending slide value is what the author must change");
 	}
 
 	#[test]
@@ -903,13 +835,6 @@ mod tests {
 			};
 			assert_eq!(carried, Some(pane), "the declared pane must reach the kind: {source}");
 		}
-	}
-
-	#[test]
-	fn a_count_rolling_window_still_needs_no_pane() {
-		// Count-sized rolling windows have no time width to divide; the pane rules must not reach them.
-		build_rolling(r#"window rolling { count(*) } with { count: 10 }"#)
-			.expect("a count-sized rolling window keeps compiling without a pane");
 	}
 
 	#[test]

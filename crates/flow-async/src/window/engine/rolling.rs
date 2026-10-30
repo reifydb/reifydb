@@ -63,7 +63,6 @@ pub struct RollingResult<G, Output> {
 }
 
 pub enum RollingEviction<S: Slot> {
-	Capacity(usize),
 	Span(SlotSpan<S>),
 	Before(S),
 	Nothing,
@@ -80,7 +79,6 @@ impl IndexedPane {
 		match eviction {
 			RollingEviction::Before(_) | RollingEviction::Nothing => Some(Self::Oldest),
 			RollingEviction::Span(_) => Some(Self::Newest),
-			RollingEviction::Capacity(_) => None,
 		}
 	}
 
@@ -241,28 +239,6 @@ where
 
 	pub fn take_stranded(&mut self) -> Vec<(Hash128, u64)> {
 		mem::take(&mut self.stranded)
-	}
-
-	pub fn apply<K, CB, Output>(
-		&mut self,
-		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
-		capacity: usize,
-		row_key: K,
-		combine: CB,
-	) -> Result<Vec<RollingResult<G, Output>>>
-	where
-		K: Fn(&G) -> (GroupId, EncodedKey),
-		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
-	{
-		self.apply_evicting(
-			store,
-			buckets,
-			RollingEviction::Capacity(capacity),
-			row_key,
-			Accumulator::default,
-			combine,
-		)
 	}
 
 	pub fn apply_evicting<K, NA, CB, Output>(
@@ -444,11 +420,6 @@ where
 				continue;
 			}
 			match eviction {
-				RollingEviction::Capacity(cap) => {
-					while group_slot.buffer.len() > *cap {
-						group_slot.buffer.pop_first();
-					}
-				}
 				RollingEviction::Span(size) => {
 					let cutoff = group_slot
 						.buffer
@@ -917,12 +888,11 @@ where
 			);
 		}
 		let indexed = IndexedPane::of(&eviction);
-		let (evict_cutoff, capacity) = match eviction {
-			RollingEviction::Before(cutoff) => (Some(cutoff), None),
-			RollingEviction::Nothing => (None, None),
-			RollingEviction::Capacity(capacity) => (None, Some(capacity)),
+		let evict_cutoff = match eviction {
+			RollingEviction::Before(cutoff) => Some(cutoff),
+			RollingEviction::Nothing => None,
 			RollingEviction::Span(_) => {
-				unimplemented!("apply_running supports Before, Capacity and Nothing eviction")
+				unimplemented!("apply_running supports Before and Nothing eviction")
 			}
 		};
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
@@ -1003,16 +973,6 @@ where
 				group_slot.buffer.insert(slot, accumulator);
 			}
 			group_slot.dirty.insert(slot);
-			if let Some(capacity) = capacity {
-				while group_slot.buffer.len() > capacity {
-					let Some((evicted_slot, evicted)) = group_slot.buffer.pop_first() else {
-						break;
-					};
-					if is_merged_coord(evicted_slot.order_key(), group_slot.old_frontier) {
-						group_slot.running.unmerge(&evicted);
-					}
-				}
-			}
 			group_slot.buffer_changed = true;
 
 			meta.observe(slot);
@@ -1644,89 +1604,6 @@ mod tests {
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred group");
 		assert!(matches!(&second[0], RollingExpiry::Remove { group, .. } if *group == 1));
 		assert_eq!(store.index_entry_count(), 0);
-	}
-
-	#[test]
-	fn withdrawn_value_is_reconstructed_after_restart() {
-		// `prior_output` is never persisted, so the terminal Remove's value is recomputed as
-		// `combine(buffer)` from the persisted buffer. That reconstruction is exact only because
-		// `combine` is a pure function of the buffer; a combine reading non-persisted state breaks it.
-		let mut store = MockStore::default();
-
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		let published: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-		assert_eq!(published.len(), 1);
-		assert!(matches!(published[0].kind, EmitKind::Insert));
-		assert_eq!(published[0].value, 5);
-
-		// A brand new engine with no in-memory GroupSlot or prior_output, reading only the
-		// persisted buffer left behind by the first engine.
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-
-		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
-		assert!(
-			matches!(withdrawn[0].kind, EmitKind::Remove),
-			"the group emptied under retraction, so the last published row must be withdrawn"
-		);
-		assert_eq!(
-			withdrawn[0].value, 5,
-			"the withdrawn value is the reconstructed last-published output, not a stale or zeroed value"
-		);
-		assert_eq!(
-			withdrawn[0].row_number, published[0].row_number,
-			"the withdrawal targets the same row that was published"
-		);
-	}
-
-	#[test]
-	fn buffer_survives_lru_eviction() {
-		// The other way a read reaches the store is LRU eviction, with no restart: the cache holds
-		// 8 groups, so tracking more evicts the oldest and the next access re-reads it. Same
-		// persist/reload path as the restart test, inside one long-lived engine.
-		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-
-		let mut published_group_1: Vec<RollingResult<u32, i64>> = Vec::new();
-		for group in 1u32..=11u32 {
-			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out: Vec<RollingResult<u32, i64>> =
-				engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-			if group == 1 {
-				published_group_1 = out;
-			}
-		}
-		assert_eq!(published_group_1.len(), 1);
-		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
-		assert_eq!(published_group_1[0].value, 1);
-
-		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
-		// re-read its buffer from the store to apply this retraction.
-		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn: Vec<RollingResult<u32, i64>> =
-			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-
-		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
-		assert!(
-			matches!(withdrawn[0].kind, EmitKind::Remove),
-			"the evicted group emptied under retraction, so the last published row must be withdrawn"
-		);
-		assert_eq!(
-			withdrawn[0].value, 1,
-			"the withdrawn value is reconstructed from the evicted group's persisted buffer"
-		);
-		assert_eq!(
-			withdrawn[0].row_number, published_group_1[0].row_number,
-			"the withdrawal targets the same row that was published for group 1"
-		);
 	}
 
 	fn describe(results: &[RollingResult<u32, i64>]) -> Vec<(u32, EmitKind, i64)> {
@@ -2542,33 +2419,5 @@ mod tests {
 		};
 
 		assert!(err.to_string().contains("a rolling expiry row names a group with no buffer"), "{err}");
-	}
-
-	#[test]
-	fn a_due_row_behind_its_newest_pane_is_an_error() {
-		// A row behind its newest pane means the index went stale; it must fail loud, never re-index.
-		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let mut first: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		first.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
-		engine.apply_evicting(
-			&mut store,
-			first,
-			RollingEviction::Span(millis(100)),
-			row_key,
-			SumAccumulator::default,
-			sum_combine,
-		)
-		.unwrap();
-		let mut later: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		later.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
-		engine.apply(&mut store, later, 10, row_key, sum_combine).unwrap();
-
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		let Err(err) = engine.expire_dead(&mut store, at_millis(10), sum_combine) else {
-			panic!("a due row must be an error")
-		};
-
-		assert!(err.to_string().contains("a rolling expiry row lags its group's newest pane"), "{err}");
 	}
 }

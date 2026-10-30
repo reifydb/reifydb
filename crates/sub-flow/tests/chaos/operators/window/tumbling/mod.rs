@@ -16,7 +16,6 @@ use crate::{
 	framework::{fuzz, harness::Harness, workload::WindowWorkload},
 	operators::window::{
 		WindowSpec, build, build_immutable,
-		count::{CountOracle, Ordinals},
 		grid::{Fold, Grid, GridOracle},
 	},
 };
@@ -137,94 +136,6 @@ pub fn drive_random(seed: u64) {
 	let run = params.clone();
 	run_reported("window_tumbling_random_chaos", sequence_seed, &params, || {
 		drive(sequence_seed, run);
-	});
-}
-
-#[derive(Debug, Clone)]
-pub struct CountParams {
-	pub size_count: u64,
-	pub groups: i32,
-	pub steps: u32,
-	pub max_batch: u32,
-	pub coord_span_ms: u64,
-	pub remove_pct: u32,
-	pub update_pct: u32,
-}
-
-struct TumblingOrdinals {
-	size_count: u64,
-}
-
-impl Ordinals for TumblingOrdinals {
-	fn windows_of(&self, ordinal: u64) -> Vec<u64> {
-		vec![ordinal / self.size_count]
-	}
-}
-
-pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
-	drive_count_folded(seed, params, Fold::Sum)
-}
-
-pub fn drive_count_folded(seed: u64, params: CountParams, fold: Fold) -> Corpus {
-	let spec = WindowSpec {
-		kind: WindowKind::Tumbling {
-			size: WindowSize::Count(params.size_count),
-		},
-		group_by: "g",
-		aggregations: fold.rql(),
-		// A count window forces the lateness absent through its own accessor, so it is never a knob here.
-		lateness: None,
-	};
-
-	let mut harness = Harness::new(|runtime| build(&spec, runtime));
-	let workload = WindowWorkload {
-		groups: params.groups,
-		coord_span_ms: params.coord_span_ms,
-	};
-	let mut model = CountOracle::new(TumblingOrdinals {
-		size_count: params.size_count,
-	})
-	.with_fold(fold);
-
-	driver::drive(
-		seed,
-		// Nothing seals, so a tick can only be a no-op. Spending steps on it would shrink
-		// the corpus for no coverage.
-		Scenario::windowed(params.steps, params.max_batch, params.coord_span_ms, params.coord_span_ms)
-			.with_mix(params.remove_pct, params.update_pct, 0),
-		&mut harness,
-		&workload,
-		&mut model,
-	)
-	.assert_clean()
-	.corpus
-}
-
-/// Deliberately includes 1: a window of one row per bucket puts every row in its own window and is
-/// where any off-by-one in the ordinal division shows up first.
-const SIZE_COUNTS: [u64; 5] = [1, 2, 4, 8, 16];
-
-pub fn random_count_params(seed: u64) -> (u64, CountParams) {
-	let (mut rng, sequence_seed) = split(seed);
-	let size_count = pick(&mut rng, &SIZE_COUNTS);
-	let mix = fuzz::mix(&mut rng);
-	let params = CountParams {
-		size_count,
-		groups: mix.groups,
-		steps: mix.steps,
-		max_batch: mix.max_batch,
-		coord_span_ms: 400_000,
-		remove_pct: mix.remove_pct,
-		update_pct: mix.update_pct,
-	};
-	(sequence_seed, params)
-}
-
-pub fn drive_count_random(seed: u64) {
-	let (sequence_seed, params) = random_count_params(seed);
-	let run = params.clone();
-	run_reported("window_tumbling_count_random_chaos", sequence_seed, &params, || {
-		drive_count(sequence_seed, run);
 	});
 }
 

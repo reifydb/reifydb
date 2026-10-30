@@ -48,8 +48,6 @@ pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
 pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTime, DateTime)>;
 
-pub(crate) type EarliestTimes = HashMap<(Hash128, WindowSpan<DateTime>), DateTime>;
-
 pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTime>), Option<EngineMeta>>;
 
 type WindowKey = (Hash128, WindowSpan<DateTime>);
@@ -58,7 +56,6 @@ struct RoutedWindow {
 	key: WindowKey,
 	events: Vec<AccumulatorEvent<(WindowSlotKey, SlotRow)>>,
 	latest: Option<DateTime>,
-	earliest: Option<DateTime>,
 }
 
 #[derive(Default)]
@@ -73,7 +70,6 @@ pub(crate) struct Routed {
 	pub group_values: HashMap<Hash128, Vec<Value>>,
 	pub arrival: Vec<WindowKey>,
 	pub window_max_ts: HashMap<WindowKey, DateTime>,
-	pub window_min_ts: EarliestTimes,
 }
 
 impl Routing {
@@ -94,7 +90,6 @@ impl Routing {
 					key,
 					events: Vec::new(),
 					latest: None,
-					earliest: None,
 				});
 				*slot.insert(self.windows.len() - 1)
 			}
@@ -102,7 +97,6 @@ impl Routing {
 		let window = &mut self.windows[index];
 		if matches!(event, AccumulatorEvent::Add(_)) {
 			window.latest = Some(window.latest.unwrap_or_default().max(event_ts));
-			window.earliest = Some(window.earliest.map_or(event_ts, |first| first.min(event_ts)));
 		}
 		window.events.push(event);
 	}
@@ -113,15 +107,11 @@ impl Routing {
 			group_values: self.group_values,
 			arrival: Vec::with_capacity(self.windows.len()),
 			window_max_ts: HashMap::with_capacity(self.windows.len()),
-			window_min_ts: HashMap::with_capacity(self.windows.len()),
 		};
 		for window in self.windows {
 			routed.arrival.push(window.key);
 			if let Some(latest) = window.latest {
 				routed.window_max_ts.insert(window.key, latest);
-			}
-			if let Some(earliest) = window.earliest {
-				routed.window_min_ts.insert(window.key, earliest);
 			}
 			routed.buckets.insert(window.key, window.events);
 		}
@@ -133,7 +123,6 @@ pub(crate) enum Stamp<'a> {
 	SpanStart,
 	Latest,
 	Session(Duration, &'a SessionBounds, &'a GatedMeta),
-	Earliest(&'a EarliestTimes),
 }
 
 fn prior_engine_meta(
@@ -147,7 +136,7 @@ fn prior_engine_meta(
 			.get(window)
 			.cloned()
 			.expect("the seal gate reads the engine meta of every session window it admits")),
-		Stamp::SpanStart | Stamp::Latest | Stamp::Earliest(_) => {
+		Stamp::SpanStart | Stamp::Latest => {
 			Ok(get_classified::<_, EngineMeta>(store, from_ref(&EngineMetaKey(group)))?.remove(0))
 		}
 	}
@@ -274,7 +263,7 @@ pub(crate) fn finish_tumbling_engine(
 				(&SessionKey(group_of(groups, r.group, r.span.start.to_order()))).into_group_state_key()
 			})
 			.collect(),
-		Stamp::SpanStart | Stamp::Latest | Stamp::Earliest(_) => arrival
+		Stamp::SpanStart | Stamp::Latest => arrival
 			.iter()
 			.map(|(hash, span)| {
 				(&EngineMetaKey(group_of(groups, *hash, span.start.to_order()))).into_group_state_key()
@@ -291,12 +280,6 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_meta = prior_engine_meta(&mut store, &stamp, &(r.group, r.span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
-		let batch_first = match stamp {
-			Stamp::Earliest(earliest) => earliest.get(&(r.group, r.span)).map(|ts| ts.to_order()),
-			Stamp::SpanStart | Stamp::Latest | Stamp::Session(..) => None,
-		};
-		let first = prior_first.into_iter().chain(batch_first).min();
 		let latest = prior_last.max(window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order()));
 		match r.kind {
 			EmitKind::Remove => {}
@@ -314,7 +297,6 @@ pub(crate) fn finish_tumbling_engine(
 				});
 				let meta = EngineMeta {
 					last_event_time: last_event_time.unwrap_or_default(),
-					first_event_time: first.unwrap_or_default(),
 				};
 				set(&mut store, vec![(EngineMetaKey(group), meta)])?;
 			}
@@ -334,25 +316,6 @@ pub(crate) fn finish_tumbling_engine(
 					EmitKind::Update => (at(prior_last), at(latest)),
 					EmitKind::Remove => (at(prior_last), at(prior_last)),
 				}
-			}
-			Stamp::Earliest(_) => {
-				let pre = match r.kind {
-					EmitKind::Insert => first,
-					EmitKind::Update | EmitKind::Remove => prior_first,
-				};
-				let (Some(pre), Some(now)) = (pre, first) else {
-					panic!(
-						"row-counted window {window_start}: a published window has no earliest event time"
-					);
-				};
-				let span = |first: u64| {
-					let start = <DateTime as Coord>::from_order(first);
-					WindowSpan {
-						start,
-						end: start,
-					}
-				};
-				(span(pre), span(now))
 			}
 			Stamp::Session(gap, bounds, _) => {
 				let before =
@@ -403,12 +366,6 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_meta = prior_engine_meta(&mut store, &stamp, &(*hash, *span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
-		let batch_first = match stamp {
-			Stamp::Earliest(earliest) => earliest.get(&(*hash, *span)).map(|ts| ts.to_order()),
-			Stamp::SpanStart | Stamp::Latest | Stamp::Session(..) => None,
-		};
-		let first = prior_first.into_iter().chain(batch_first).min();
 		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
 		let last_event_time = prior_last.max(batch_max);
 		let new_index = anchor.of(window_start, last_event_time);
@@ -422,7 +379,6 @@ pub(crate) fn finish_tumbling_engine(
 		});
 		let meta = EngineMeta {
 			last_event_time: last_event_time.unwrap_or_default(),
-			first_event_time: first.unwrap_or_default(),
 		};
 		set(&mut store, vec![(EngineMetaKey(group), meta)])?;
 	}

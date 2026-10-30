@@ -127,12 +127,6 @@ fn window_kinds() -> Vec<(&'static str, WindowKind)> {
 			},
 		),
 		(
-			"tumbling over count",
-			WindowKind::Tumbling {
-				size: WindowSize::Count(10),
-			},
-		),
-		(
 			"sliding",
 			WindowKind::Sliding {
 				size: WindowSize::Duration(minute),
@@ -143,14 +137,6 @@ fn window_kinds() -> Vec<(&'static str, WindowKind)> {
 			"rolling over time",
 			WindowKind::Rolling {
 				size: WindowSize::Duration(minute),
-				lag: None,
-				pane: None,
-			},
-		),
-		(
-			"rolling over count",
-			WindowKind::Rolling {
-				size: WindowSize::Count(10),
 				lag: None,
 				pane: None,
 			},

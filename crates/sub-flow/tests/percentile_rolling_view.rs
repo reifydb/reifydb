@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	ops::Range,
-	sync::Arc,
-};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
 use arrow_schema::Schema;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
@@ -41,7 +37,6 @@ const CHUNK: usize = 200;
 const PER_STEP: usize = 4;
 const STEP_SECS: usize = 5;
 const FRAME_STEPS: i64 = 120;
-const CAPACITY: usize = 40;
 
 const CALLS: &str = "n: math::count(latency), p50: stats::approx_percentile(latency, 0.5, 0.01), p99: stats::approx_percentile(latency, 0.99, 0.01)";
 
@@ -205,7 +200,6 @@ fn a_rolling_percentile_is_read_from_one_frame_digest_never_from_per_slot_percen
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum FrameKind {
 	Duration,
-	Count,
 }
 
 struct View {
@@ -215,7 +209,7 @@ struct View {
 	with: &'static str,
 }
 
-const VIEWS: [View; 3] = [
+const VIEWS: [View; 2] = [
 	View {
 		name: "running",
 		kind: FrameKind::Duration,
@@ -227,12 +221,6 @@ const VIEWS: [View; 3] = [
 		kind: FrameKind::Duration,
 		with_min: true,
 		with: "duration: 10m, pane: 1ms, lateness: 1h, immutable: 5m",
-	},
-	View {
-		name: "counted",
-		kind: FrameKind::Count,
-		with_min: false,
-		with: "count: 40",
 	},
 ];
 
@@ -257,49 +245,7 @@ impl View {
 #[derive(Default)]
 struct Model {
 	table: BTreeMap<usize, (i32, Option<f64>)>,
-	counted: BTreeMap<i32, BTreeSet<usize>>,
 	newest_step: usize,
-	reentries: usize,
-}
-
-impl Model {
-	fn commit(&mut self, events: BTreeMap<(i32, usize), Vec<bool>>) {
-		for ((group, id), adds) in events {
-			let frame = self.counted.entry(group).or_default();
-			let mut held = usize::from(frame.remove(&id));
-			let mut touched = false;
-			let mut reentered = false;
-			for add in adds {
-				if add {
-					reentered |= held == 0 && frame.first().is_some_and(|oldest| *oldest > id);
-					held += 1;
-					touched = true;
-				} else if held > 0 {
-					held -= 1;
-					touched = true;
-				}
-			}
-			if held > 0 {
-				frame.insert(id);
-			}
-			if touched {
-				while frame.len() > CAPACITY {
-					frame.pop_first();
-				}
-			}
-			if reentered && frame.contains(&id) {
-				self.reentries += 1;
-			}
-		}
-	}
-
-	fn count_frame_rows(&self) -> Vec<(usize, i32, Option<f64>)> {
-		self.counted
-			.iter()
-			.flat_map(|(group, ids)| ids.iter().map(move |id| (*id, *group)))
-			.map(|(id, group)| (id, group, self.table[&id].1))
-			.collect()
-	}
 }
 
 fn runtime() -> RuntimeConfig {
@@ -349,25 +295,18 @@ fn insert(db: &TestDb, model: &mut Model, ids: Range<usize>, rng: &mut StdRng) {
 			})
 			.collect();
 		db.command(&format!("INSERT app::t [{}]", literals.join(", ")));
-		let mut events: BTreeMap<(i32, usize), Vec<bool>> = BTreeMap::new();
 		for (id, group, latency) in chunk {
 			model.table.insert(*id, (*group, *latency));
 			model.newest_step = model.newest_step.max(id / PER_STEP);
-			events.entry((*group, *id)).or_default().push(true);
 		}
-		model.commit(events);
 	}
 }
 
 fn delete(db: &TestDb, model: &mut Model, ids: Range<usize>) {
 	db.command(&format!("DELETE app::t FILTER {{ id >= {} and id < {} }}", ids.start, ids.end));
-	let mut events: BTreeMap<(i32, usize), Vec<bool>> = BTreeMap::new();
 	for id in ids {
-		if let Some((group, _)) = model.table.remove(&id) {
-			events.entry((group, id)).or_default().push(false);
-		}
+		if let Some((group, _)) = model.table.remove(&id) {}
 	}
-	model.commit(events);
 }
 
 fn update_latency(db: &TestDb, model: &mut Model, ids: Range<usize>, latency: Option<f64>) {
@@ -377,14 +316,11 @@ fn update_latency(db: &TestDb, model: &mut Model, ids: Range<usize>, latency: Op
 		ids.start,
 		ids.end
 	));
-	let mut events: BTreeMap<(i32, usize), Vec<bool>> = BTreeMap::new();
 	for id in ids {
 		if let Some((group, held)) = model.table.get_mut(&id) {
 			*held = latency;
-			events.entry((*group, id)).or_default().extend([false, true]);
 		}
 	}
-	model.commit(events);
 }
 
 fn move_group(db: &TestDb, model: &mut Model, ids: Range<usize>, from: i32, to: i32) {
@@ -392,17 +328,13 @@ fn move_group(db: &TestDb, model: &mut Model, ids: Range<usize>, from: i32, to: 
 		"UPDATE app::t {{ g: {to} }} FILTER {{ g == {from} and id >= {} and id < {} }}",
 		ids.start, ids.end
 	));
-	let mut events: BTreeMap<(i32, usize), Vec<bool>> = BTreeMap::new();
 	for id in ids {
 		if let Some((group, _)) = model.table.get_mut(&id)
 			&& *group == from
 		{
 			*group = to;
-			events.entry((from, id)).or_default().push(false);
-			events.entry((to, id)).or_default().push(true);
 		}
 	}
-	model.commit(events);
 }
 
 fn keyed(frames: &[Frame], values: &[&str]) -> Vec<(String, Vec<Value>)> {
@@ -427,7 +359,6 @@ fn declare(db: &TestDb, kind: FrameKind) {
 	db.admin(
 		"CREATE TABLE app::t { id: int4, g: int4, step: int4, ts: datetime, latency: Option(float8) } with { time: event(ts) }",
 	);
-	db.admin("CREATE TABLE app::frame { id: int4, g: int4, latency: Option(float8) }");
 	for view in VIEWS.iter().filter(|view| view.kind == kind) {
 		let columns = view
 			.names()
@@ -447,29 +378,17 @@ fn declare(db: &TestDb, kind: FrameKind) {
 	}
 }
 
-fn frame_source(db: &TestDb, model: &Model, kind: FrameKind) -> String {
+fn frame_source(model: &Model, kind: FrameKind) -> String {
 	match kind {
 		FrameKind::Duration => {
 			format!("FROM app::t | filter {{ step > {} }}", model.newest_step as i64 - FRAME_STEPS)
-		}
-		FrameKind::Count => {
-			db.command("DELETE app::frame FILTER { id >= 0 }");
-			let rows: Vec<String> = model
-				.count_frame_rows()
-				.iter()
-				.map(|(id, group, latency)| {
-					format!("{{ id: {id}, g: {group}, latency: {} }}", literal(*latency))
-				})
-				.collect();
-			db.command(&format!("INSERT app::frame [{}]", rows.join(", ")));
-			"FROM app::frame".to_string()
 		}
 	}
 }
 
 fn assert_views_match_the_frame(db: &TestDb, model: &Model, kind: FrameKind, step: &str) {
 	assert!(db.await_all_flows(TIMEOUT), "{step}: the flows must process every change");
-	let source = frame_source(db, model, kind);
+	let source = frame_source(model, kind);
 	for view in VIEWS.iter().filter(|view| view.kind == kind) {
 		let names = view.names();
 		let batch = format!("{source} | aggregate {{ {} }} by {{ g }}", view.calls());
@@ -512,20 +431,10 @@ fn rolling_lifecycle(kind: FrameKind) {
 
 	insert(&db, &mut model, 1600..2000, &mut rng);
 	assert_views_match_the_frame(&db, &model, kind, "insert past the frame");
-
-	if kind == FrameKind::Count {
-		assert!(model.reentries > 0, "an evicted row updated back into a short count frame must be exercised");
-	}
 }
 
 #[test]
 fn a_duration_rolling_percentile_view_equals_batch_over_the_frame_through_inserts_deletes_and_updates() {
 	// A running digest that misses an eviction or a retraction answers from rows the frame no longer holds.
 	rolling_lifecycle(FrameKind::Duration);
-}
-
-#[test]
-fn a_count_rolling_percentile_view_equals_batch_over_the_rows_it_holds_through_inserts_deletes_and_updates() {
-	// A digest that misses a capacity eviction or a re-entry answers from rows the count frame does not hold.
-	rolling_lifecycle(FrameKind::Count);
 }

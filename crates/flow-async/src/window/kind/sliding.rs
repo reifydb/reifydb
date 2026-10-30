@@ -7,16 +7,8 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
 	operator::state::seal::coord::Coord,
-	window::{
-		coord::{EventCoord, OrdinalCoord, RowSpan},
-		kind::ordinal_window_span,
-		span::WindowSpan,
-	},
+	window::{coord::EventCoord, span::WindowSpan},
 };
-
-fn fits(size: u64, slide: u64) -> Option<(u64, u64)> {
-	(size > 0 && slide > 0 && slide < size).then_some((size, slide))
-}
 
 fn fits_span(size: Duration, slide: Duration) -> Option<(Duration, Duration)> {
 	(size.is_positive() && slide.is_positive() && slide < size).then_some((size, slide))
@@ -53,41 +45,6 @@ impl SlidingOverTime {
 	}
 }
 
-pub struct SlidingOverRows {
-	size: RowSpan,
-	slide: RowSpan,
-}
-
-impl SlidingOverRows {
-	pub fn by_count(size: RowSpan, slide: RowSpan) -> Option<Self> {
-		let (size, slide) = fits(size.rows(), slide.rows())?;
-		Some(Self {
-			size: RowSpan::of(size),
-			slide: RowSpan::of(slide),
-		})
-	}
-
-	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		ordinal_window_span(anchor)
-	}
-
-	pub fn anchors(&self, coord: OrdinalCoord) -> impl Iterator<Item = u64> + use<> {
-		let row = coord.value() + 1;
-		let size = self.size.rows();
-		let slide = self.slide.rows();
-		let lowest = if row > size {
-			(row - size) / slide
-		} else {
-			0
-		};
-		let highest = (row - 1) / slide;
-		(lowest..=highest).filter(move |window| {
-			let first = window * slide + 1;
-			row >= first && row < first + size
-		})
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -105,18 +62,12 @@ mod tests {
 		SlidingOverTime::by_duration(ms(1_000), ms(250)).expect("a 250ms slide fits inside a 1000ms window")
 	}
 
-	fn counted() -> SlidingOverRows {
-		SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(2))
-			.expect("a slide of 2 fits inside a window of 4")
-	}
-
 	#[test]
 	fn a_zero_slide_cannot_be_constructed_at_all() {
 		// Every anchor path divides by the slide. RQL rejects `slide >= size`, which lets `slide: 0`
 		// through, so a zero slide reaches the arithmetic and panics the whole flow from a plain
 		// user query.
 		assert!(SlidingOverTime::by_duration(ms(1_000), ms(0)).is_none());
-		assert!(SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(0)).is_none());
 	}
 
 	#[test]
@@ -124,8 +75,6 @@ mod tests {
 		// A slide at or above the size makes the windows disjoint or gapped - tumbling at best,
 		// row-dropping at worst. RQL rejects matched pairs; refusing here closes every other route.
 		assert!(SlidingOverTime::by_duration(ms(1_000), ms(1_000)).is_none());
-		assert!(SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(9)).is_none());
-		assert!(SlidingOverRows::by_count(RowSpan::of(0), RowSpan::of(0)).is_none());
 	}
 
 	#[test]
@@ -153,16 +102,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_ordinal_lands_in_every_window_still_accepting_rows() {
-		// The count domain is 1-based where the time domain is 0-based: window 0 holds rows 1..=size,
-		// so ordinal 0 is row 1. That offset shifts every count window by one row for the operator's
-		// whole life, and nothing downstream can tell.
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(0)).collect::<Vec<_>>(), vec![0]);
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(3)).collect::<Vec<_>>(), vec![0, 1]);
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(4)).collect::<Vec<_>>(), vec![1, 2]);
-	}
-
-	#[test]
 	fn no_coordinate_ever_lands_in_zero_windows() {
 		// A row that maps to no anchor is silently dropped - it reaches no accumulator and is absent
 		// from every aggregate with nothing logged.
@@ -170,12 +109,6 @@ mod tests {
 			assert!(
 				timed().anchors(event_coord_at_millis(instant)).next().is_some(),
 				"instant {instant} joined no window"
-			);
-		}
-		for ordinal in 0..500 {
-			assert!(
-				counted().anchors(OrdinalCoord::from_arrival_counter(ordinal)).next().is_some(),
-				"ordinal {ordinal} joined no window"
 			);
 		}
 	}

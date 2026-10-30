@@ -9,10 +9,7 @@
 use std::sync::Arc;
 
 use arrow_schema::Schema;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{operator::state::decode, pod::EncodedPodRow},
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
@@ -21,12 +18,8 @@ use reifydb_core::{
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::{
-	operator::{
-		state::seal::coord::Coord,
-		window::operator::{WindowConfig, WindowOperator},
-	},
+	operator::window::operator::{WindowConfig, WindowOperator},
 	timer::Timer,
-	window::meta::EngineMeta,
 };
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
@@ -73,18 +66,16 @@ fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
 
 /// What one run leaves behind: every state key, the value bytes of every data-keyspace row (the
 /// rows the operator itself writes; identity rows carry substrate bookkeeping stamps and are
-/// compared by key only), the decoded EngineMeta last-event times, and the armed timer count.
+/// compared by key only), and the armed timer count.
 struct Snapshot {
 	keys: Vec<Vec<u8>>,
 	data_values: Vec<(Vec<u8>, Vec<u8>)>,
-	metas: Vec<u64>,
 	armed_timers: usize,
 }
 
 fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 	let mut keys = Vec::new();
 	let mut data_values = Vec::new();
-	let mut metas = Vec::new();
 	let mut armed_timers = 0usize;
 	for (key, row) in h.state_items().expect("the state range reads") {
 		keys.push(key.to_vec());
@@ -94,10 +85,6 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 		if keyspace == KeyspaceId::TIMER_WHEEL {
 			armed_timers += 1;
 		}
-		if keyspace == KeyspaceId::ENGINE_META {
-			let meta: EngineMeta = decode(&EncodedPodRow::from(row.clone())).expect("engine meta decodes");
-			metas.push(meta.last_event_time);
-		}
 		if keyspace.is_data() {
 			data_values.push((key.to_vec(), row.to_vec()));
 		}
@@ -105,7 +92,6 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 	Snapshot {
 		keys,
 		data_values,
-		metas,
 		armed_timers,
 	}
 }
@@ -163,62 +149,5 @@ fn sealing_is_identical_under_wildly_different_wall_clocks() {
 	assert_eq!(
 		live.data_values, replay.data_values,
 		"the persisted window state must be byte-identical across replays"
-	);
-}
-
-fn drive_count(clock_ms: u64) -> (String, Snapshot) {
-	let kind = WindowKind::Tumbling {
-		size: WindowSize::Count(2),
-	};
-	let mut h = harness(kind, clock_ms);
-	let emitted = format!(
-		"{:?}",
-		h.apply(generator::insert(vec![
-			generator::row(RowNumber(1), GROUP, 5, at_millis(40_000)),
-			generator::row(RowNumber(2), GROUP, 7, at_millis(41_000)),
-			generator::row(RowNumber(3), GROUP, 9, at_millis(39_000)),
-		]))
-		.expect("the count rows apply")
-	);
-	let snap = snapshot(&mut h);
-	(emitted, snap)
-}
-
-#[test]
-fn count_window_meta_takes_the_max_row_time_never_the_clock() {
-	// A count window has no time column driving its spans, which historically made its
-	// EngineMeta.last_event_time a wall-clock stamp - the last clock read that reached persisted
-	// window state. It must instead derive from row time, and per BUCKET rather than per batch:
-	// a batch-max stamp is clock-free but changes with batch boundaries, which the replay
-	// determinism gate forbids. Rows 1 and 2 (40_000, 41_000) fill the first count-2 bucket, so
-	// its meta reads 41_000; row 3 (39_000) opens the second, so its meta reads 39_000. Both
-	// mock clocks sit far away so a clock read cannot masquerade as the right answer.
-	let (_, live) = drive_count(CLOCK_LIVE_MS);
-
-	assert!(!live.metas.is_empty(), "no EngineMeta row was persisted, so last_event_time was never exercised");
-	let mut metas = live.metas.clone();
-	metas.sort_unstable();
-	assert_eq!(
-		metas,
-		vec![at_millis(39_000).to_order(), at_millis(41_000).to_order()],
-		"last_event_time must be each bucket's max row time, never the clock ({CLOCK_LIVE_MS}) and \
-		 never the batch max (41_000 everywhere)"
-	);
-}
-
-#[test]
-fn count_window_state_is_byte_identical_across_clocks() {
-	// The state-byte half of the count-window contract: identical inputs under a live clock and
-	// a century-later replay clock must leave byte-identical persisted window state and identical
-	// emitted diffs, or replaying a recorded stream would diverge.
-	let (live_emitted, live) = drive_count(CLOCK_LIVE_MS);
-	let (replay_emitted, replay) = drive_count(CLOCK_REPLAY_MS);
-
-	assert!(!live.data_values.is_empty(), "no data-keyspace state survived, so the byte comparison is vacuous");
-	assert_eq!(live_emitted, replay_emitted, "the emitted diffs must not depend on the wall clock");
-	assert_eq!(live.keys, replay.keys, "the state keys must derive from row data, not the clock");
-	assert_eq!(
-		live.data_values, replay.data_values,
-		"the persisted count-window state must be byte-identical across replays"
 	);
 }

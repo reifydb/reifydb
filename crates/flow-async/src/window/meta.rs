@@ -8,8 +8,8 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::window::{
-				Count, EngineMeta as EngineMetaSpace, RollingMeta as RollingMetaSpace, RowIndex,
-				Session, SessionMember,
+				EngineMeta as EngineMetaSpace, RollingMeta as RollingMetaSpace, RowIndex, Session,
+				SessionMember,
 			},
 			state::{GroupId, GroupStateKey, IntoGroupStateKey},
 		},
@@ -34,18 +34,6 @@ use crate::{
 	},
 	window::kind::session::SessionTracker,
 };
-
-#[operator_state]
-#[derive(Clone, Default)]
-pub struct CountState {
-	pub value: u64,
-}
-
-impl HeapSize for CountState {
-	fn heap_size(&self) -> usize {
-		0
-	}
-}
 
 #[operator_state]
 #[derive(Clone, Default)]
@@ -77,7 +65,6 @@ impl HeapSize for SessionState {
 #[derive(Clone, Default)]
 pub struct EngineMeta {
 	pub last_event_time: u64,
-	pub first_event_time: u64,
 }
 
 impl HeapSize for EngineMeta {
@@ -115,21 +102,6 @@ impl HeapSize for SealLedgerKey {
 impl IntoGroupStateKey for &SealLedgerKey {
 	fn into_group_state_key(self) -> GroupStateKey {
 		seal_ledger_key()
-	}
-}
-
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct CountKey(pub GroupId);
-
-impl HeapSize for CountKey {
-	fn heap_size(&self) -> usize {
-		0
-	}
-}
-
-impl IntoGroupStateKey for &CountKey {
-	fn into_group_state_key(self) -> GroupStateKey {
-		typed_key::<Count>(self.0, &())
 	}
 }
 
@@ -236,21 +208,6 @@ impl WindowMeta {
 			)?;
 		}
 		Ok(())
-	}
-
-	pub fn get_and_increment_count(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<u64> {
-		let key = CountKey(group);
-		let current = get::<_, CountState>(store, from_ref(&key))?.remove(0).unwrap_or_default().value;
-		set(
-			store,
-			vec![(
-				key,
-				CountState {
-					value: current + 1,
-				},
-			)],
-		)?;
-		Ok(current)
 	}
 
 	pub fn lookup_row_index(
@@ -439,7 +396,7 @@ mod tests {
 	};
 	use reifydb_value::{factory::time::at_millis, util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
+	use super::{RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
 	use crate::{operator::state::mock::MockStore, window::kind::session::SessionTracker};
 
 	fn group_id() -> GroupId {
@@ -466,7 +423,6 @@ mod tests {
 		// partition forever, so it lives in the partition group's data range instead
 		let range = group_data_inner_range(group_id());
 		for key in [
-			(&CountKey(group_id())).into_group_state_key(),
 			(&SessionKey(group_id())).into_group_state_key(),
 			(&RowIndexKey(group_id(), RowNumber(7))).into_group_state_key(),
 		] {
@@ -486,23 +442,6 @@ mod tests {
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::ROOT);
 		assert!(!contains(&group_data_inner_range(group_id()), key.as_bytes()));
-	}
-
-	#[test]
-	fn count_and_session_share_a_group_and_are_told_apart_only_by_the_keyspace() {
-		// Both are a bare partition group with an empty suffix, so the keyspace byte is all that
-		// separates them. Reading one as the other deserializes happily - two u64 payloads - and
-		// corrupts session assignment with an event ordinal.
-		let count = (&CountKey(group_id())).into_group_state_key();
-		let session = (&SessionKey(group_id())).into_group_state_key();
-		assert_ne!(count, session, "count and session must not share a key");
-
-		let (count_group, count_ks, count_suffix) = OperatorStateKey::decode_inner(count.as_bytes()).unwrap();
-		let (session_group, session_ks, session_suffix) =
-			OperatorStateKey::decode_inner(session.as_bytes()).unwrap();
-		assert_eq!(count_group, session_group, "both belong to the same partition");
-		assert_ne!(count_ks, session_ks, "only the keyspace may distinguish them");
-		assert!(count_suffix.is_empty() && session_suffix.is_empty());
 	}
 
 	#[test]

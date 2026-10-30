@@ -240,8 +240,6 @@ impl KeyspaceId {
 
 	pub const ROLLING_EXPIRY: Self = Self(0x04);
 
-	pub const COUNT: Self = Self(0x05);
-
 	pub const ROW_INDEX: Self = Self(0x06);
 
 	pub const SESSION: Self = Self(0x07);
@@ -334,7 +332,6 @@ impl KeyspaceId {
 			Self::RUNNING => "RUNNING",
 			Self::EMIT => "EMIT",
 			Self::ROLLING_EXPIRY => "ROLLING_EXPIRY",
-			Self::COUNT => "COUNT",
 			Self::ROW_INDEX => "ROW_INDEX",
 			Self::SESSION => "SESSION",
 			Self::ROLLING_META => "ROLLING_META",
@@ -1011,7 +1008,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 52] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 51] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1024,7 +1021,6 @@ mod tests {
 		("RUNNING", KeyspaceId::RUNNING, Phase::Data, true),
 		("EMIT", KeyspaceId::EMIT, Phase::Data, true),
 		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, true),
-		("COUNT", KeyspaceId::COUNT, Phase::Data, true),
 		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, true),
 		("SESSION", KeyspaceId::SESSION, Phase::Data, true),
 		("ROLLING_META", KeyspaceId::ROLLING_META, Phase::Data, true),

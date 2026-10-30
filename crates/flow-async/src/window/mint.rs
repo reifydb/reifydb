@@ -5,7 +5,7 @@ use reifydb_core::{key::operator::state::GroupId, state::timer::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{
-	coord::{EventCoord, OrdinalCoord, TimeStamped},
+	coord::{EventCoord, TimeStamped},
 	meta::WindowMeta,
 };
 
@@ -22,10 +22,6 @@ impl<'a> Mint<'a> {
 
 	pub fn event(row: &impl TimeStamped) -> EventCoord {
 		EventCoord::of(row)
-	}
-
-	pub fn ordinal(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<OrdinalCoord> {
-		Ok(OrdinalCoord::from_arrival_counter(self.meta.get_and_increment_count(store, group)?))
 	}
 
 	pub fn membership(
@@ -94,36 +90,6 @@ mod tests {
 
 	fn meta() -> WindowMeta {
 		WindowMeta::new()
-	}
-
-	#[test]
-	fn the_arrival_counter_starts_at_zero_and_never_repeats_within_a_group() {
-		// The ordinal IS the coordinate for a count window, so a repeat aliases two rows onto one
-		// slot and a skip leaves a hole the sweep never reaches. The counter is read-then-increment,
-		// so starting at 1 would shift every window boundary by one row.
-		let mut meta = meta();
-		let mut mint = Mint::new(&mut meta);
-		let mut store = MockStore::default();
-
-		let minted: Vec<u64> =
-			(0..4).map(|_| mint.ordinal(&mut store, group()).unwrap().value()).collect::<Vec<_>>();
-
-		assert_eq!(minted, vec![0, 1, 2, 3]);
-	}
-
-	#[test]
-	fn each_group_counts_independently() {
-		// A count window holds the last N rows per group. One shared counter would let a busy group
-		// shove a quiet group's rows across a boundary they never crossed.
-		let mut meta = meta();
-		let mut mint = Mint::new(&mut meta);
-		let mut store = MockStore::default();
-
-		mint.ordinal(&mut store, group()).unwrap();
-		mint.ordinal(&mut store, group()).unwrap();
-
-		assert_eq!(mint.ordinal(&mut store, other()).unwrap().value(), 0);
-		assert_eq!(mint.ordinal(&mut store, group()).unwrap().value(), 2);
 	}
 
 	#[test]

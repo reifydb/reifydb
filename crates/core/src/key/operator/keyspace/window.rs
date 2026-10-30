@@ -40,11 +40,6 @@ pub struct RunningKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct CountKey {
-	pub group: Desc<GroupId>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct SessionKey {
 	pub group: Desc<GroupId>,
 }
@@ -202,28 +197,6 @@ impl Keyspace for Running {
 
 	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		RunningKey {
-			group: Desc(group),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Count;
-
-impl Keyspace for Count {
-	const ID: KeyspaceId = KeyspaceId::COUNT;
-	const NAME: &'static str = "COUNT";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = CountKey;
-	type Suffix = ();
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, ())
-	}
-
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
-		CountKey {
 			group: Desc(group),
 		}
 	}

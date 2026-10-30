@@ -195,25 +195,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_parse_tumbling_count_window() {
-		let bump = Bump::new();
-		let source = r#"window tumbling { sum(value) } with { count: 100 }"#;
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse().unwrap();
-
-		assert_eq!(result.len(), 1);
-		let Some(Ast::Window(window)) = result[0].nodes.first() else {
-			panic!("not window")
-		};
-
-		assert_eq!(window.kind, AstWindowKind::Tumbling);
-		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
-		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("count"));
-		assert_eq!(window.aggregations.len(), 1);
-	}
-
-	#[test]
 	fn test_parse_sliding_window() {
 		let bump = Bump::new();
 		let source = r#"window sliding { count(*), avg(value) } with { duration: 5m, slide: 1m }"#;
@@ -286,26 +267,6 @@ pub mod tests {
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 2);
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 3);
-	}
-
-	#[test]
-	fn test_parse_rolling_count_window() {
-		let bump = Bump::new();
-		let source = r#"window rolling { count(*), avg(value) } with { count: 10 } by { user_id }"#;
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let result = parser.parse().unwrap();
-
-		assert_eq!(result.len(), 1);
-		let Some(Ast::Window(window)) = result[0].nodes.first() else {
-			panic!("not window")
-		};
-
-		assert_eq!(window.kind, AstWindowKind::Rolling);
-		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
-		assert_eq!(window.with.as_ref().unwrap().entries[0].key.word(), Some("count"));
-		assert_eq!(window.group_by.len(), 1);
-		assert_eq!(window.aggregations.len(), 2);
 	}
 
 	#[test]

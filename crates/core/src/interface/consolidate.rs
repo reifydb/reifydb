@@ -614,12 +614,17 @@ mod tests {
 	use arrow_array::UInt64Array;
 	use reifydb_value::value::{
 		Value,
+		datetime::DateTime,
 		system_columns::{SystemColumn, column_view, with_system_column},
 	};
 
 	use super::*;
 	use crate::{
-		interface::catalog::{id::TableId, object::ObjectId},
+		common::{ChangeVersion, CommitVersion},
+		interface::{
+			catalog::{flow::OperatorId, id::TableId, object::ObjectId},
+			change::Change,
+		},
 		value::{
 			batch::{batch, empty_batch},
 			column::factory::int4,
@@ -1006,13 +1011,6 @@ mod tests {
 	fn merge_folds_a_join_shaped_inbox_to_one_update_per_row() {
 		// a join emits each joined row twice per commit, left then right driven; merge must hand the operator
 		// exactly one
-		use reifydb_value::value::datetime::DateTime;
-
-		use crate::{
-			common::{ChangeVersion, CommitVersion},
-			interface::{catalog::flow::OperatorId, change::Change},
-		};
-
 		let rows: [u64; 6] = [67, 126, 124, 41, 123, 125];
 		let value = |row: u64, step: i32| (row, row as i32 * 10 + step);
 		let mut diffs: Vec<Diff> = rows.iter().map(|&row| update(&[value(row, 0)], &[value(row, 1)])).collect();

@@ -85,28 +85,6 @@ fn rows_left_after_churn(kind: WindowKind, count: u64) -> usize {
 }
 
 #[test]
-fn a_count_tumbling_window_keeps_no_state_per_removed_row() {
-	// Count-based, not duration: a duration window derives its window from the coordinate and never
-	// records membership at all, so the same test over one would pass with the cleanup deleted.
-	// Measured - it did.
-	//
-	// Ten times the rows through the same window must not leave ten times the state: every one of
-	// them was withdrawn, so what remains describes the window, not its history.
-	let kind = WindowKind::Tumbling {
-		size: WindowSize::Count(1_000),
-	};
-
-	let few = rows_left_after_churn(kind.clone(), 2);
-	let many = rows_left_after_churn(kind, 20);
-
-	assert_eq!(
-		few, many,
-		"state left behind grew from {few} to {many} rows when the corpus grew tenfold; a removed row is \
-		 still holding a membership record"
-	);
-}
-
-#[test]
 fn a_sliding_window_keeps_no_state_per_removed_row() {
 	// The sliding engine records one membership entry per window a row joined, so a leak here is
 	// wider than tumbling's rather than merely a copy of it.

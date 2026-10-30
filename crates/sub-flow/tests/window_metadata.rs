@@ -332,80 +332,6 @@ fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
 }
 
 #[test]
-fn a_row_counted_tumbling_window_stamps_its_earliest_event_time() {
-	// #time must come from the rows, never the window ordinal near the epoch that downstream windows bucket on.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
-			FROM app::t
-				| window tumbling { n: math::count() } by { g } with { count: 2 }
-		}"#);
-
-	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
-	insert(&db, 3, 1, 7, "2026-01-01T00:02:05Z");
-	insert(&db, 4, 1, 7, "2026-01-01T00:02:30Z");
-	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
-
-	let frames = query_internal(&db, "FROM app::w");
-	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
-	stamped.sort();
-	assert_eq!(
-		stamped,
-		vec!["2026-01-01T00:01:10.000000000Z".to_string(), "2026-01-01T00:02:05.000000000Z".to_string()]
-	);
-}
-
-#[test]
-fn a_row_counted_sliding_window_stamps_its_earliest_event_time() {
-	// Each overlapping window must stamp its own earliest row, otherwise all three collapse onto the epoch.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
-			FROM app::t
-				| window sliding { n: math::count() } by { g } with { count: 2, slide: 1 }
-		}"#);
-
-	insert(&db, 1, 1, 7, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 7, "2026-01-01T00:01:20Z");
-	insert(&db, 3, 1, 7, "2026-01-01T00:01:30Z");
-	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
-	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
-
-	let frames = query_internal(&db, "FROM app::w");
-	let mut stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
-	stamped.sort();
-	assert_eq!(
-		stamped,
-		vec![
-			"2026-01-01T00:01:10.000000000Z".to_string(),
-			"2026-01-01T00:01:20.000000000Z".to_string(),
-			"2026-01-01T00:01:30.000000000Z".to_string(),
-		]
-	);
-}
-
-#[test]
-fn a_late_earlier_row_moves_a_row_counted_window_stamp_back() {
-	// A late row older than every row so far must pull #time back, otherwise the stamp postdates a row it counts.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8 } AS {
-			FROM app::t
-				| window tumbling { n: math::count() } by { g } with { count: 3 }
-		}"#);
-
-	insert(&db, 1, 1, 7, "2026-01-01T00:01:20Z");
-	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
-	insert(&db, 2, 1, 7, "2026-01-01T00:01:10Z");
-	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
-
-	let frames = query_internal(&db, "FROM app::w");
-	let stamped: Vec<String> = timed_rows(&frames).into_iter().map(|row| row.time.to_string()).collect();
-	assert_eq!(stamped, vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
-}
-
-#[test]
 fn an_update_moving_time_back_inside_a_sliding_window_takes_back_the_old_time() {
 	// Taking the old row back under its new time misses the stored entry, so 01:20 and v 9 would linger.
 	let db = setup();
@@ -460,29 +386,6 @@ fn an_update_moving_time_out_of_a_sliding_window_leaves_it_and_joins_the_new_one
 	db.command("DELETE app::t FILTER { id == 2 }");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
 	assert_eq!(windows(&db), vec![window("00:30"), window("01:00")]);
-}
-
-#[test]
-fn a_row_counted_sliding_window_keeps_an_updated_row_in_place_when_its_time_moves() {
-	// Row-counted windows place rows by arrival, so re-routing by time would give 2, 6, 8, 12.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
-			FROM app::t
-				| window sliding { x: math::sum(v) } by { g } with { count: 2, slide: 1 }
-		}"#);
-
-	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
-	insert(&db, 3, 1, 4, "2026-01-01T00:01:30Z");
-	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
-	db.command(r#"UPDATE app::t { v: 8, ts: "2026-01-01T00:01:05Z" } FILTER { id == 1 }"#);
-	db.await_row_count("FROM app::w | filter { x >= 8 }", 1, TIMEOUT);
-
-	let frames = db.query("FROM app::w");
-	let mut sums = text(&column_values(&frames[0], "x"));
-	sums.sort();
-	assert_eq!(sums, vec!["10".to_string(), "4".to_string(), "6".to_string()]);
 }
 
 #[test]
@@ -643,56 +546,6 @@ fn an_update_changing_the_group_moves_a_row_to_the_new_groups_sliding_windows() 
 }
 
 #[test]
-fn an_update_changing_the_group_appends_a_row_to_the_new_groups_row_counted_sliding_windows() {
-	// Placing the moved row by time would skip the new group's count, so row 4 would share its window.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
-			FROM app::t
-				| window sliding { x: math::sum(v) } by { g } with { count: 2, slide: 1 }
-		}"#);
-
-	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
-	insert(&db, 3, 1, 4, "2026-01-01T00:01:30Z");
-	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
-	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
-	insert(&db, 4, 2, 8, "2026-01-01T00:01:40Z");
-	db.await_exact_row_count("FROM app::w", 5, TIMEOUT);
-
-	let frames = db.query("FROM app::w");
-	let mut rows: Vec<(String, String)> =
-		text(&column_values(&frames[0], "g")).into_iter().zip(text(&column_values(&frames[0], "x"))).collect();
-	rows.sort();
-	let row = |g: &str, x: &str| (g.to_string(), x.to_string());
-	assert_eq!(rows, vec![row("1", "2"), row("1", "4"), row("1", "6"), row("2", "8"), row("2", "9")]);
-}
-
-#[test]
-fn an_update_changing_the_group_appends_a_row_to_the_new_groups_row_counted_tumbling_window() {
-	// Keeping the row in its old group's window would publish 3 for g 1 and leave g 2 at 4.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
-			FROM app::t
-				| window tumbling { x: math::sum(v) } by { g } with { count: 2 }
-		}"#);
-
-	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
-	insert(&db, 3, 2, 4, "2026-01-01T00:01:30Z");
-	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
-	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
-	db.await_row_count("FROM app::w | filter { x == 6 }", 1, TIMEOUT);
-
-	let frames = db.query("FROM app::w");
-	let mut rows: Vec<(String, String)> =
-		text(&column_values(&frames[0], "g")).into_iter().zip(text(&column_values(&frames[0], "x"))).collect();
-	rows.sort();
-	assert_eq!(rows, vec![("1".to_string(), "1".to_string()), ("2".to_string(), "6".to_string())]);
-}
-
-#[test]
 fn an_update_changing_the_group_moves_a_row_into_the_new_groups_session() {
 	// Only the new group's tracker can stretch g 2 back to 01:20; the old group's session must lose the row.
 	let db = setup();
@@ -781,31 +634,6 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_sliding_windows() {
 	rows.sort();
 	let window = |s: &str| ("1".to_string(), format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
 	assert_eq!(rows, vec![window("00:30"), window("01:00")]);
-}
-
-#[test]
-fn a_row_moved_to_another_group_and_back_leaves_no_stale_row_counted_tumbling_window() {
-	// A stale old-group index would still name the first window, so the delete would take row 2 out of it.
-	let db = setup();
-	source(&db);
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, x: int4 } AS {
-			FROM app::t
-				| window tumbling { x: math::sum(v) } by { g } with { count: 2 }
-		}"#);
-
-	insert(&db, 1, 1, 1, "2026-01-01T00:01:10Z");
-	insert(&db, 2, 1, 2, "2026-01-01T00:01:20Z");
-	db.await_row_count("FROM app::w | filter { x == 3 }", 1, TIMEOUT);
-	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
-	db.await_row_count("FROM app::w | filter { g == 2 }", 1, TIMEOUT);
-	db.command("UPDATE app::t { g: 1 } FILTER { id == 2 }");
-	db.await_row_count("FROM app::w | filter { g == 1 and x == 2 }", 1, TIMEOUT);
-	db.command("DELETE app::t FILTER { id == 2 }");
-	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
-
-	let frames = db.query("FROM app::w");
-	assert_eq!(text(&column_values(&frames[0], "g")), vec!["1".to_string()]);
-	assert_eq!(text(&column_values(&frames[0], "x")), vec!["1".to_string()]);
 }
 
 #[test]
