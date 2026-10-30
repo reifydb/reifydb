@@ -31,17 +31,25 @@ struct CachedBuilder {
 	builder: Arc<JoinedColumnsBuilder>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SequenceColumn {
+	Forward,
+	Drop,
+}
+
 pub(crate) struct JoinedColumnsCache {
 	alias: Option<String>,
 	natural: bool,
+	sequence: SequenceColumn,
 	builders: RefCell<Vec<CachedBuilder>>,
 }
 
 impl JoinedColumnsCache {
-	pub(crate) fn new(alias: Option<String>, natural: bool) -> Self {
+	pub(crate) fn new(alias: Option<String>, natural: bool, sequence: SequenceColumn) -> Self {
 		Self {
 			alias,
 			natural,
+			sequence,
 			builders: RefCell::new(Vec::new()),
 		}
 	}
@@ -54,7 +62,8 @@ impl JoinedColumnsCache {
 		{
 			return cached.builder.clone();
 		}
-		let builder = Arc::new(JoinedColumnsBuilder::new(left, right, &self.alias, self.natural));
+		let builder =
+			Arc::new(JoinedColumnsBuilder::new(left, right, &self.alias, self.natural, self.sequence));
 		builders.push(CachedBuilder {
 			left: left.clone(),
 			right: right.clone(),
@@ -72,10 +81,18 @@ pub(crate) struct JoinedColumnsBuilder {
 	right_column_names: Vec<String>,
 
 	included_right_cols: Vec<usize>,
+
+	sequence: SequenceColumn,
 }
 
 impl JoinedColumnsBuilder {
-	pub(crate) fn new(left: &Schema, right: &Schema, alias: &Option<String>, natural: bool) -> Self {
+	pub(crate) fn new(
+		left: &Schema,
+		right: &Schema,
+		alias: &Option<String>,
+		natural: bool,
+		sequence: SequenceColumn,
+	) -> Self {
 		let left_names: Vec<String> = left
 			.fields()
 			.iter()
@@ -121,6 +138,7 @@ impl JoinedColumnsBuilder {
 		Self {
 			right_column_names,
 			included_right_cols,
+			sequence,
 		}
 	}
 
@@ -148,7 +166,7 @@ impl JoinedColumnsBuilder {
 		}
 
 		let left_rows = vec![left_idx; right_count];
-		Self::assemble(row_numbers, left, &left_rows, self.right_columns(right), row_times(right)?)
+		self.assemble(row_numbers, left, &left_rows, self.right_columns(right), row_times(right)?)
 	}
 
 	pub(crate) fn join_many_to_one(
@@ -167,7 +185,7 @@ impl JoinedColumnsBuilder {
 		let right_rows = vec![right_idx; left_count];
 		let right_time = row_times(right)?.get(right_idx).copied().flatten();
 		let right_columns = self.right_columns(&take_rows(right, &right_rows)?);
-		Self::assemble(row_numbers, left, &left_rows, right_columns, vec![right_time; left_count])
+		self.assemble(row_numbers, left, &left_rows, right_columns, vec![right_time; left_count])
 	}
 
 	pub(crate) fn retain_rows(columns: &RecordBatch, keep: &[usize]) -> Result<RecordBatch> {
@@ -199,14 +217,14 @@ impl JoinedColumnsBuilder {
 			let left_count = left_indices.len();
 			let time = right_times.get(*right_idx).copied().flatten();
 			let right_columns = self.right_columns(&gather(right, &vec![*right_idx; left_count])?);
-			return Self::assemble(row_numbers, left, left_indices, right_columns, vec![time; left_count]);
+			return self.assemble(row_numbers, left, left_indices, right_columns, vec![time; left_count]);
 		}
 		let left_rows: Vec<usize> =
 			left_indices.iter().flat_map(|&left_idx| repeat_n(left_idx, right_count)).collect();
 		let right_rows: Vec<usize> = left_indices.iter().flat_map(|_| right_indices.iter().copied()).collect();
 		let times = right_rows.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
 		let right_columns = self.right_columns(&gather(right, &right_rows)?);
-		Self::assemble(row_numbers, left, &left_rows, right_columns, times)
+		self.assemble(row_numbers, left, &left_rows, right_columns, times)
 	}
 
 	pub(crate) fn join_pairs(
@@ -226,7 +244,7 @@ impl JoinedColumnsBuilder {
 		let times =
 			right_indices.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
 		let right_columns = self.right_columns(&gather(right, right_indices)?);
-		Self::assemble(row_numbers, left, left_indices, right_columns, times)
+		self.assemble(row_numbers, left, left_indices, right_columns, times)
 	}
 
 	pub(crate) fn unmatched_left(
@@ -242,7 +260,7 @@ impl JoinedColumnsBuilder {
 		}
 
 		let right_columns = self.unmatched_right(right_shape, count)?;
-		Self::assemble(row_numbers, left, left_indices, right_columns, Vec::new())
+		self.assemble(row_numbers, left, left_indices, right_columns, Vec::new())
 	}
 
 	fn right_columns(&self, right: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
@@ -264,6 +282,7 @@ impl JoinedColumnsBuilder {
 	}
 
 	fn assemble(
+		&self,
 		row_numbers: &[RowNumber],
 		left: &RecordBatch,
 		left_rows: &[usize],
@@ -275,6 +294,9 @@ impl JoinedColumnsBuilder {
 			user_columns(&gathered).map(|(field, array)| (field.clone(), array.clone())).collect();
 		columns.extend(right_columns);
 		for column in SystemColumn::ALL {
+			if column == SystemColumn::Sequence && self.sequence == SequenceColumn::Drop {
+				continue;
+			}
 			let array = match column {
 				SystemColumn::RowNumbers => Some(Arc::new(UInt64Array::from_iter_values(
 					row_numbers.iter().map(|number| number.value()),

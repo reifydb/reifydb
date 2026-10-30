@@ -59,7 +59,7 @@ use crate::{
 	operator::{
 		HostOperator,
 		host::HostContext,
-		join::column::{JoinedColumnsBuilder, JoinedColumnsCache},
+		join::column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
 		row_times,
 		state::seal::ledger::FiredAt,
 		state_access::{RowNumberReserve, mint_row_numbers},
@@ -202,7 +202,7 @@ impl LookupOperator {
 			.map(|expression| LoweredExpr::new(expression.clone(), "lookup_key"))
 			.collect();
 		let expiry = LookupExpiry::new(config.left_retention);
-		let columns = JoinedColumnsCache::new(config.alias.clone(), false);
+		let columns = JoinedColumnsCache::new(config.alias.clone(), false, SequenceColumn::Forward);
 		Ok(Self {
 			config,
 			lowered_left,

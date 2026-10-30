@@ -54,7 +54,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	column::{JoinedColumnsBuilder, JoinedColumnsCache},
+	column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
 	kept::dictionary_columns,
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
@@ -225,7 +225,7 @@ impl JoinOperator {
 			right_node,
 			lowered_left_exprs,
 			lowered_right_exprs,
-			columns: JoinedColumnsCache::new(alias.clone(), natural),
+			columns: JoinedColumnsCache::new(alias.clone(), natural, SequenceColumn::Drop),
 			alias,
 			left_schema,
 			right_schema,
@@ -906,8 +906,13 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
-		let builder =
-			JoinedColumnsBuilder::new(&self.left_schema, &self.right_schema, &self.alias, self.natural);
+		let builder = JoinedColumnsBuilder::new(
+			&self.left_schema,
+			&self.right_schema,
+			&self.alias,
+			self.natural,
+			SequenceColumn::Drop,
+		);
 		Some(builder.schema(&self.left_schema, &self.right_schema))
 	}
 
@@ -2203,5 +2208,105 @@ mod seal_tests {
 			 before the left side is read again"
 		);
 		assert_eq!(four, one, "four expiring rights must not cost four enumerations of the same left side");
+	}
+
+	fn sequenced(keys: &[i32], numbers: &[u64], sequences: &[u64], at: DateTime) -> RecordBatch {
+		with_system_column(
+			rows(keys, numbers, at),
+			SystemColumn::Sequence,
+			Arc::new(UInt64Array::from(sequences.to_vec())),
+		)
+		.unwrap()
+	}
+
+	fn column_names(diffs: &[Diff]) -> Vec<Vec<String>> {
+		diffs.iter()
+			.flat_map(|diff| diff.pre().into_iter().chain(diff.post()))
+			.map(|batch| batch.schema_ref().fields().iter().map(|field| field.name().clone()).collect())
+			.collect()
+	}
+
+	fn carries_sequence(diffs: &[Diff]) -> bool {
+		column_names(diffs).iter().any(|names| names.iter().any(|name| name == SystemColumn::Sequence.name()))
+	}
+
+	#[test]
+	fn a_right_driven_update_emits_no_sequence() {
+		// a joined row must never carry a sequence, even when its left row is rebuilt from join state
+		let engine = TestEngine::new();
+		let mut op = join(1, None, None);
+		let mut txn = txn_at(&engine, 100);
+		insert(&mut op, &mut txn, JoinSide::Left, &sequenced(&[7], &[1], &[11], at_millis(5_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[100], at_millis(5_000)));
+
+		let out = update(
+			&mut op,
+			&mut txn,
+			JoinSide::Right,
+			&rows(&[7], &[100], at_millis(5_000)),
+			&rows(&[7], &[100], at_millis(6_000)),
+		);
+
+		assert!(!out.is_empty(), "the right update must reach the joined row or this test proves nothing");
+		assert!(
+			!carries_sequence(&out),
+			"a joined row must never carry a sequence, got {:?}",
+			column_names(&out)
+		);
+	}
+
+	#[test]
+	fn a_left_driven_update_emits_no_sequence() {
+		// a joined row must never carry a sequence, even when the incoming left batch has one
+		let engine = TestEngine::new();
+		let mut op = join(1, None, None);
+		let mut txn = txn_at(&engine, 100);
+		insert(&mut op, &mut txn, JoinSide::Left, &sequenced(&[7], &[1], &[11], at_millis(5_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[100], at_millis(5_000)));
+
+		let out = update(
+			&mut op,
+			&mut txn,
+			JoinSide::Left,
+			&sequenced(&[7], &[1], &[11], at_millis(5_000)),
+			&sequenced(&[7], &[1], &[12], at_millis(6_000)),
+		);
+
+		assert!(!out.is_empty(), "the left update must reach the joined row or this test proves nothing");
+		assert!(
+			!carries_sequence(&out),
+			"a joined row must never carry a sequence, got {:?}",
+			column_names(&out)
+		);
+	}
+
+	#[test]
+	fn left_and_right_driven_updates_emit_one_column_set() {
+		// otherwise one joined row has two column sets, which splits batches and breaks same-row folding
+		let engine = TestEngine::new();
+		let mut op = join(1, None, None);
+		let mut txn = txn_at(&engine, 100);
+		insert(&mut op, &mut txn, JoinSide::Left, &sequenced(&[7], &[1], &[11], at_millis(5_000)));
+		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[100], at_millis(5_000)));
+
+		let left = update(
+			&mut op,
+			&mut txn,
+			JoinSide::Left,
+			&sequenced(&[7], &[1], &[11], at_millis(5_000)),
+			&sequenced(&[7], &[1], &[12], at_millis(6_000)),
+		);
+		let right = update(
+			&mut op,
+			&mut txn,
+			JoinSide::Right,
+			&rows(&[7], &[100], at_millis(5_000)),
+			&rows(&[7], &[100], at_millis(7_000)),
+		);
+
+		let mut sets = column_names(&left);
+		sets.extend(column_names(&right));
+		sets.dedup();
+		assert_eq!(sets.len(), 1, "left and right driven output must share one column set, got {sets:?}");
 	}
 }
