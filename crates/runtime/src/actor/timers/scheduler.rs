@@ -310,13 +310,13 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 			TimerKind::Once {
 				callback,
 			} => {
-				run_once_guarded(callback);
+				callback();
 			}
 			TimerKind::Repeat {
 				callback,
 				interval,
 			} => {
-				if run_repeat_guarded(&callback) == Repeat::Cancel {
+				if callback() == Repeat::Cancel {
 					entry.cancelled.store(true, Ordering::SeqCst);
 				}
 
@@ -335,16 +335,6 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 			}
 		}
 	}
-}
-
-#[inline]
-fn run_once_guarded(callback: Box<dyn FnOnce() + Send>) {
-	callback()
-}
-
-#[inline]
-fn run_repeat_guarded(callback: &Arc<dyn Fn() -> Repeat + Send + Sync>) -> Repeat {
-	callback()
 }
 
 #[cfg(test)]

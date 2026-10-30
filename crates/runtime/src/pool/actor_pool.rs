@@ -220,7 +220,7 @@ impl ActorPool {
 fn worker_loop(me: Arc<Worker>, siblings: Vec<Arc<Worker>>, shutdown: Arc<AtomicBool>) {
 	loop {
 		match next_item(&me, &siblings, &shutdown) {
-			Some(item) => run_guarded(item),
+			Some(item) => item.run(),
 			None => return,
 		}
 	}
@@ -280,10 +280,6 @@ fn wake_one_sleeping<'a>(mut workers: impl Iterator<Item = &'a Arc<Worker>>) {
 
 fn steal(siblings: &[Arc<Worker>]) -> Option<Arc<dyn Runnable>> {
 	siblings.iter().find_map(|sibling| sibling.try_steal())
-}
-
-fn run_guarded(item: Arc<dyn Runnable>) {
-	item.run()
 }
 
 #[cfg(test)]
