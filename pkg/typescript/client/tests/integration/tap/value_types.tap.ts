@@ -298,4 +298,33 @@ describe('Value Types', () => {
         expect(frames[0]).toEqual([{'#rownum': 1, id: 1, cbool: true, cint1: -128, cint2: -32768, cint4: -2147483648, cint8: -9223372036854775808n, cint16: -170141183460469231731687303715884105728n, cuint1: 0, cuint2: 0, cuint4: 0, cuint8: 0n, cuint16: 0n, cfloat4: 1.5, cfloat8: 0.5, cdecimal: '12345678901234567890.1234567890', cdecimalscaled: '12345678901234567890.123', cutf8: '', cblob: new Uint8Array([]), cdate: new Date('2024-02-29T00:00:00.000Z'), ctime: '00:00:00.000000000', cdatetime: new Date('2024-02-29T12:34:56.789Z'), cduration: '1d2h30m', cuuid4: '550e8400-e29b-41d4-a716-446655440000', cuuid7: '018fad5d-f37a-7c94-a716-446655440000', cidentityid: '018fad5d-f37a-7c94-a716-446655440001', coptint4: Option.some(7), coptutf8: Option.none('Utf8')}, {'#rownum': 2, id: 2, cbool: false, cint1: 127, cint2: 32767, cint4: 2147483647, cint8: 9223372036854775807n, cint16: 170141183460469231731687303715884105727n, cuint1: 255, cuint2: 65535, cuint4: 4294967295, cuint8: 18446744073709551615n, cuint16: 340282366920938463463374607431768211455n, cfloat4: 0, cfloat8: 0, cdecimal: '1.5000000000', cdecimalscaled: '1.500', cutf8: 'héllo wörld', cblob: new Uint8Array([0x00, 0xff, 0x10]), cdate: new Date('1970-01-01T00:00:00.000Z'), ctime: '23:59:59.999999999', cdatetime: new Date('1970-01-01T00:00:00.000Z'), cduration: '0s', cuuid4: '550e8400-e29b-41d4-a716-446655440000', cuuid7: '018fad5d-f37a-7c94-a716-446655440000', cidentityid: '018fad5d-f37a-7c94-a716-446655440001', coptint4: Option.none('Int4'), coptutf8: Option.some('x')}, {'#rownum': 3, id: 3, cbool: true, cint1: -128, cint2: -32768, cint4: -2147483648, cint8: -9223372036854775808n, cint16: -170141183460469231731687303715884105728n, cuint1: 0, cuint2: 0, cuint4: 0, cuint8: 0n, cuint16: 0n, cfloat4: Math.fround(0.000001), cfloat8: 1e-12, cdecimal: '-0.2500000000', cdecimalscaled: '-0.250', cutf8: '日本語', cblob: new Uint8Array([]), cdate: new Date('2024-02-29T00:00:00.000Z'), ctime: '00:00:00.000000000', cdatetime: new Date('2024-02-29T12:34:56.789Z'), cduration: '1d2h30m', cuuid4: '550e8400-e29b-41d4-a716-446655440000', cuuid7: '018fad5d-f37a-7c94-a716-446655440000', cidentityid: '018fad5d-f37a-7c94-a716-446655440001', coptint4: Option.some(7), coptutf8: Option.none('Utf8')}]);
     });
 
+    it('enum_unit_variants', async () => {
+        const frames = await client.admin(
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_variants CASCADE; CREATE NAMESPACE vt_ws_enum_unit_variants; CREATE ENUM vt_ws_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_variants::t { id: int4, v: vt_ws_enum_unit_variants::status }; INSERT vt_ws_enum_unit_variants::t [{ id: 1, v: vt_ws_enum_unit_variants::status::Todo }, { id: 2, v: vt_ws_enum_unit_variants::status::Doing }, { id: 3, v: vt_ws_enum_unit_variants::status::Done }, { id: 4, v: vt_ws_enum_unit_variants::status::Todo }]; OUTPUT FROM vt_ws_enum_unit_variants::t SORT { id: asc }",
+            null,
+            [Shape.object({id: Shape.int4(), v: Shape.utf8()})]
+        );
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, v: 'todo'}, {'#rownum': 2, id: 2, v: 'doing'}, {'#rownum': 3, id: 3, v: 'done'}, {'#rownum': 4, id: 4, v: 'todo'}]);
+    });
+
+    it('enum_unit_optional', async () => {
+        const frames = await client.admin(
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_optional CASCADE; CREATE NAMESPACE vt_ws_enum_unit_optional; CREATE ENUM vt_ws_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_optional::t { id: int4, v: Option(vt_ws_enum_unit_optional::status) }; INSERT vt_ws_enum_unit_optional::t [{ id: 1, v: vt_ws_enum_unit_optional::status::Doing }, { id: 2, v: none }, { id: 3, v: vt_ws_enum_unit_optional::status::Done }]; OUTPUT FROM vt_ws_enum_unit_optional::t SORT { id: asc }",
+            null,
+            [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
+        );
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('doing')}, {'#rownum': 2, id: 2, v: Option.none('Utf8')}, {'#rownum': 3, id: 3, v: Option.some('done')}]);
+    });
+
+    it('enum_with_fields', async () => {
+        const frames = await client.admin(
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_with_fields CASCADE; CREATE NAMESPACE vt_ws_enum_with_fields; CREATE ENUM vt_ws_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_ws_enum_with_fields::t { id: int4, v: vt_ws_enum_with_fields::shape }; INSERT vt_ws_enum_with_fields::t [{ id: 1, v: vt_ws_enum_with_fields::shape::Point }, { id: 2, v: vt_ws_enum_with_fields::shape::Circle { radius: 1.5 } }, { id: 3, v: vt_ws_enum_with_fields::shape::Rect { w: 2.0, h: 3.0 } }]; OUTPUT FROM vt_ws_enum_with_fields::t SORT { id: asc }",
+            null,
+            [Shape.object({id: Shape.int4(), v_tag: Shape.uint1(), v_circle_radius: Shape.option(Shape.float8()), v_rect_w: Shape.option(Shape.float8()), v_rect_h: Shape.option(Shape.float8())})]
+        );
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, vTag: 0, vCircleRadius: Option.none('Float8'), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 2, id: 2, vTag: 1, vCircleRadius: Option.some(1.5), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 3, id: 3, vTag: 2, vCircleRadius: Option.none('Float8'), vRectW: Option.some(2), vRectH: Option.some(3)}]);
+    });
 });

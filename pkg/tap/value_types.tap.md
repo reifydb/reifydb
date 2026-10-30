@@ -506,3 +506,61 @@ expected:
     |     3     |  3   |  true   |  -128   |  -32768  |  -2147483648  |  -9223372036854775808  |  -170141183460469231731687303715884105728  |    0     |    0     |      0       |           0            |                     0                     |  0.000001  |  0.000000000001  |           -0.2500000000           |           -0.250           |    日本語     |     0x     |  2024-02-29  |  00:00:00.000000000  |  2024-02-29T12:34:56.789000000Z  |   1d2h30m   |  550e8400-e29b-41d4-a716-446655440000  |  018fad5d-f37a-7c94-a716-446655440000  |  018fad5d-f37a-7c94-a716-446655440001  |     7      |    none    |
     +-----------+------+---------+---------+----------+---------------+------------------------+--------------------------------------------+----------+----------+--------------+------------------------+-------------------------------------------+------------+------------------+-----------------------------------+----------------------------+---------------+------------+--------------+----------------------+----------------------------------+-------------+----------------------------------------+----------------------------------------+----------------------------------------+------------+------------+
 ```
+
+### enum_unit_variants
+```yaml
+operation: admin
+statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_variants CASCADE; CREATE NAMESPACE vt_enum_unit_variants; CREATE ENUM vt_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_variants::t { id: int4, v: vt_enum_unit_variants::status }; INSERT vt_enum_unit_variants::t [{ id: 1, v: vt_enum_unit_variants::status::Todo }, { id: 2, v: vt_enum_unit_variants::status::Doing }, { id: 3, v: vt_enum_unit_variants::status::Done }, { id: 4, v: vt_enum_unit_variants::status::Todo }]; OUTPUT FROM vt_enum_unit_variants::t SORT { id: asc }"
+params: null
+expected:
+  status: success
+  shape: Shape.utf8()
+  values: ['todo', 'doing', 'done', 'todo']
+  output: |
+    +-----------+------+---------+
+    |  #rownum  |  id  |    v    |
+    +-----------+------+---------+
+    |     1     |  1   |  todo   |
+    |     2     |  2   |  doing  |
+    |     3     |  3   |  done   |
+    |     4     |  4   |  todo   |
+    +-----------+------+---------+
+```
+
+### enum_unit_optional
+```yaml
+operation: admin
+statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_optional CASCADE; CREATE NAMESPACE vt_enum_unit_optional; CREATE ENUM vt_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_optional::t { id: int4, v: Option(vt_enum_unit_optional::status) }; INSERT vt_enum_unit_optional::t [{ id: 1, v: vt_enum_unit_optional::status::Doing }, { id: 2, v: none }, { id: 3, v: vt_enum_unit_optional::status::Done }]; OUTPUT FROM vt_enum_unit_optional::t SORT { id: asc }"
+params: null
+expected:
+  status: success
+  shape: Shape.option(Shape.utf8())
+  values: [Option.some('doing'), Option.none('Utf8'), Option.some('done')]
+  output: |
+    +-----------+------+---------+
+    |  #rownum  |  id  |    v    |
+    +-----------+------+---------+
+    |     1     |  1   |  doing  |
+    |     2     |  2   |  none   |
+    |     3     |  3   |  done   |
+    +-----------+------+---------+
+```
+
+### enum_with_fields
+```yaml
+operation: admin
+statement: "DROP NAMESPACE IF EXISTS vt_enum_with_fields CASCADE; CREATE NAMESPACE vt_enum_with_fields; CREATE ENUM vt_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_enum_with_fields::t { id: int4, v: vt_enum_with_fields::shape }; INSERT vt_enum_with_fields::t [{ id: 1, v: vt_enum_with_fields::shape::Point }, { id: 2, v: vt_enum_with_fields::shape::Circle { radius: 1.5 } }, { id: 3, v: vt_enum_with_fields::shape::Rect { w: 2.0, h: 3.0 } }]; OUTPUT FROM vt_enum_with_fields::t SORT { id: asc }"
+params: null
+expected:
+  status: success
+  shape: split: v_tag Shape.uint1(), fields Shape.option(Shape.float8())
+  values: see the TS row objects
+  output: |
+    +-----------+------+---------+-------------------+------------+------------+
+    |  #rownum  |  id  |  v_tag  |  v_circle_radius  |  v_rect_w  |  v_rect_h  |
+    +-----------+------+---------+-------------------+------------+------------+
+    |     1     |  1   |    0    |       none        |    none    |    none    |
+    |     2     |  2   |    1    |        1.5        |    none    |    none    |
+    |     3     |  3   |    2    |       none        |     2      |     3      |
+    +-----------+------+---------+-------------------+------------+------------+
+```

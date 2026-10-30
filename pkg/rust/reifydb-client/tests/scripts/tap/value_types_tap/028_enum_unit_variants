@@ -1,0 +1,14 @@
+# Generated from: value_types.tap.md#enum_unit_variants
+# Test: store and read back an enum with several unit variants
+
+admin 'DROP NAMESPACE IF EXISTS vt_enum_unit_variants CASCADE; CREATE NAMESPACE vt_enum_unit_variants; CREATE ENUM vt_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_variants::t { id: int4, v: vt_enum_unit_variants::status }; INSERT vt_enum_unit_variants::t [{ id: 1, v: vt_enum_unit_variants::status::Todo }, { id: 2, v: vt_enum_unit_variants::status::Doing }, { id: 3, v: vt_enum_unit_variants::status::Done }, { id: 4, v: vt_enum_unit_variants::status::Todo }]; OUTPUT FROM vt_enum_unit_variants::t SORT { id: asc }'
+---
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |  todo   |
+> |     2     |  2   |  doing  |
+> |     3     |  3   |  done   |
+> |     4     |  4   |  todo   |
+> +-----------+------+---------+
+>

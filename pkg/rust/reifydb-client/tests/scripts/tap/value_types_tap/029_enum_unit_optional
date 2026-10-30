@@ -1,0 +1,13 @@
+# Generated from: value_types.tap.md#enum_unit_optional
+# Test: store and read back Option of an enum with a none row
+
+admin 'DROP NAMESPACE IF EXISTS vt_enum_unit_optional CASCADE; CREATE NAMESPACE vt_enum_unit_optional; CREATE ENUM vt_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_optional::t { id: int4, v: Option(vt_enum_unit_optional::status) }; INSERT vt_enum_unit_optional::t [{ id: 1, v: vt_enum_unit_optional::status::Doing }, { id: 2, v: none }, { id: 3, v: vt_enum_unit_optional::status::Done }]; OUTPUT FROM vt_enum_unit_optional::t SORT { id: asc }'
+---
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |  doing  |
+> |     2     |  2   |  none   |
+> |     3     |  3   |  done   |
+> +-----------+------+---------+
+>
