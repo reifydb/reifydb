@@ -235,6 +235,8 @@ impl Write for MemoryRows {
 
 const REMOVE_CHUNK: usize = 4096;
 
+const SEEK_AFTER: usize = 16;
+
 fn collect_versions(
 	rows: &RowMap,
 	keys: &[EncodedKey],
@@ -245,8 +247,14 @@ fn collect_versions(
 	let mut range = rows.range(bounds).peekable();
 	for &index in order {
 		let key: &[u8] = keys[index].as_ref();
+		let mut steps = 0;
 		while range.peek().is_some_and(|(held, _)| AsRef::<[u8]>::as_ref(*held) < key) {
+			if steps == SEEK_AFTER {
+				range = rows.range((Bound::Included(key), bounds.1)).peekable();
+				break;
+			}
 			range.next();
+			steps += 1;
 		}
 		if let Some((held, found)) = range.peek()
 			&& AsRef::<[u8]>::as_ref(*held) == key
