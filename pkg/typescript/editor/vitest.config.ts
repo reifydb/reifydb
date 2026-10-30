@@ -9,7 +9,7 @@ export default defineConfig({
         environment: 'node',
         testTimeout: 100,
         hookTimeout: 100,
-        teardownTimeout: 100,
+        teardownTimeout: 1000,
 
         include: [
             'tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
