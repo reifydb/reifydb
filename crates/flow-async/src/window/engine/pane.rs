@@ -331,9 +331,12 @@ where
 	A: WindowAccumulator,
 	RollingPane<A>: OperatorState,
 {
-	fn value(&mut self, pane: u64) -> Result<A> {
+	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A> {
 		match self.get(pane)? {
-			Some(row) => Ok(row.pane),
+			Some(mut row) => {
+				(merge.compact)(&mut row.pane);
+				Ok(row.pane)
+			}
 			None => internal_err!("the rolling queue names pane {pane}, which holds no row"),
 		}
 	}
@@ -347,10 +350,11 @@ where
 		}
 	}
 
-	fn set_partial(&mut self, pane: u64, partial: A) -> Result<()> {
+	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<()> {
 		let Some(mut row) = self.get(pane)? else {
 			return internal_err!("the rolling queue converts pane {pane}, which holds no row");
 		};
+		(merge.compact)(&mut row.pane);
 		row.partial = Some(partial);
 		self.put(pane, Some(row));
 		Ok(())
@@ -735,13 +739,6 @@ where
 					PaneFold::Queue => {
 						let mut compacted = value.pane;
 						(self.merge.compact)(&mut compacted);
-						view.put(
-							pane,
-							Some(RollingPane {
-								pane: compacted.clone(),
-								partial: None,
-							}),
-						);
 						row.queue.push(self.merge, &mut view, pane, &compacted)?;
 					}
 				}
@@ -857,16 +854,20 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::{BTreeMap, HashMap};
+	use std::{
+		collections::{BTreeMap, HashMap},
+		ops::Bound::Unbounded,
+	};
 
-	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize};
+	use reifydb_codec::row::operator::state::decode;
+	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
 		util::hash::Hash128,
 		value::{datetime::DateTime, duration::Duration},
 	};
 
-	use super::{PaneEngine, PaneEvent, PaneGroups, PaneSpans};
+	use super::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingPane, pane_of, pane_range};
 	use crate::{
 		operator::state::mock::MockStore,
 		window::{
@@ -1209,5 +1210,105 @@ mod tests {
 			let worst = visited[100..].iter().max().copied().unwrap();
 			assert!(worst <= 16, "running {running}: one call visited {worst} pane rows out of 2000");
 		}
+	}
+
+	#[operator_state]
+	#[derive(Clone, Debug, Default, PartialEq)]
+	struct Tally {
+		n: u64,
+		sum: i64,
+		raw: Vec<i64>,
+	}
+
+	impl HeapSize for Tally {
+		fn heap_size(&self) -> usize {
+			0
+		}
+	}
+
+	impl WindowAccumulator for Tally {
+		type Contribution = (u64, i64);
+		type Output = i64;
+
+		fn add(&mut self, contribution: &(u64, i64)) {
+			self.n += 1;
+			self.sum += contribution.1;
+			self.raw.push(contribution.1);
+		}
+
+		fn remove(&mut self, contribution: &(u64, i64)) {
+			self.n -= 1;
+			self.sum -= contribution.1;
+			if let Some(at) = self.raw.iter().position(|value| *value == contribution.1) {
+				self.raw.remove(at);
+			}
+		}
+
+		fn finalize(&self) -> Option<i64> {
+			(self.n > 0).then_some(self.sum)
+		}
+
+		fn is_empty(&self) -> bool {
+			self.n == 0
+		}
+	}
+
+	impl MergeAccumulator for Tally {
+		fn merge(&mut self, other: &Self) {
+			self.n += other.n;
+			self.sum += other.sum;
+			self.raw.extend_from_slice(&other.raw);
+		}
+
+		fn compact(&mut self) {
+			self.raw.clear();
+		}
+	}
+
+	#[test]
+	fn queued_panes_are_compacted_by_their_partial_write_and_never_rewritten_on_queue_entry() {
+		// A raw partial means a missed compaction; no raw queued row means a queue entry rewrite.
+		let spans = PaneSpans {
+			size: span(60),
+			lag: span(0),
+			lateness: span(4),
+			retract: span(4),
+		};
+		let mut engine: PaneEngine<u32, DateTime, Tally> =
+			PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of());
+		let mut store = MockStore::default();
+		let group = GroupId::hashed(Hash128(7));
+		let mut rng = Lcg(5);
+		let (mut partials, mut raw_queued) = (0usize, 0usize);
+		for pane in 1_000..1_400u64 {
+			let mut events = Vec::new();
+			for row in 0..=rng.below(3) {
+				events.push(PaneEvent::Insert(ms(pane), (pane * 10 + row, rng.below(50) as i64)));
+			}
+			let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
+			groups.insert(1, (group, events));
+			engine.apply(&mut store, groups, None, &Tally::default, &|_| NoKey, &|_, _, t: &Tally| {
+				t.finalize()
+			})
+			.unwrap();
+			let queue_line = engine.lines(ms(pane)).queue.unwrap_or(0);
+			for (key, row) in store.state_page(pane_range(group, Unbounded, Unbounded), None).unwrap() {
+				let stored = pane_of(&key).unwrap();
+				let row = decode::<RollingPane<Tally>>(&row).unwrap();
+				match &row.partial {
+					Some(partial) => {
+						partials += 1;
+						assert!(
+							row.pane.raw.is_empty() && partial.raw.is_empty(),
+							"pane {stored}: a stored partial sits next to raw samples"
+						);
+					}
+					None if stored <= queue_line && !row.pane.raw.is_empty() => raw_queued += 1,
+					None => {}
+				}
+			}
+		}
+		assert!(partials > 1_000, "the queue must convert panes often, saw {partials} partial rows");
+		assert!(raw_queued > 0, "every queued pane was rewritten compacted before its partial write");
 	}
 }

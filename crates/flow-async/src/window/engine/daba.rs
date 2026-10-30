@@ -10,11 +10,11 @@ use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 const STEPS_PER_OPERATION: usize = 2;
 
 pub trait DabaPanes<A> {
-	fn value(&mut self, pane: u64) -> Result<A>;
+	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A>;
 
 	fn partial(&mut self, pane: u64) -> Result<A>;
 
-	fn set_partial(&mut self, pane: u64, partial: A) -> Result<()>;
+	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<()>;
 
 	fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>>;
 }
@@ -175,13 +175,13 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 			match panes.last_below(self.r, self.a)? {
 				None => self.a = self.r,
 				Some(pane) => {
-					let value = panes.value(pane)?;
+					let value = panes.value(merge, pane)?;
 					let partial = if self.a < self.b {
 						merge.merged(Some(value), &panes.partial(self.a)?)
 					} else {
 						value
 					};
-					panes.set_partial(pane, partial)?;
+					panes.set_partial(merge, pane, partial)?;
 					self.a = pane;
 				}
 			}
@@ -196,7 +196,7 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 			}
 			Some(pane) => {
 				let partial = merge.merged(Some(panes.partial(pane)?), mid);
-				panes.set_partial(pane, partial)?;
+				panes.set_partial(merge, pane, partial)?;
 				self.l = pane;
 			}
 		}
@@ -224,6 +224,7 @@ mod tests {
 		first: Option<i64>,
 		last: Option<i64>,
 		sum: i64,
+		raw: Vec<i64>,
 	}
 
 	impl HeapSize for Trail {
@@ -241,6 +242,7 @@ mod tests {
 				first: Some(value),
 				last: Some(value),
 				sum: value,
+				raw: vec![value],
 			}
 		}
 	}
@@ -280,6 +282,11 @@ mod tests {
 			self.min = self.min.min(other.min);
 			self.last = other.last;
 			self.sum += other.sum;
+			self.raw.extend_from_slice(&other.raw);
+		}
+
+		fn compact(&mut self) {
+			self.raw.clear();
 		}
 	}
 
@@ -291,9 +298,11 @@ mod tests {
 	}
 
 	impl DabaPanes<Trail> for Panes {
-		fn value(&mut self, pane: u64) -> Result<Trail> {
+		fn value(&mut self, merge: Merge<Trail>, pane: u64) -> Result<Trail> {
 			self.reads += 1;
-			Ok(self.rows.get(&pane).expect("value of a missing pane").0.clone())
+			let mut value = self.rows.get(&pane).expect("value of a missing pane").0.clone();
+			(merge.compact)(&mut value);
+			Ok(value)
 		}
 
 		fn partial(&mut self, pane: u64) -> Result<Trail> {
@@ -304,8 +313,10 @@ mod tests {
 				.expect("partial of a pane never converted"))
 		}
 
-		fn set_partial(&mut self, pane: u64, partial: Trail) -> Result<()> {
-			self.rows.get_mut(&pane).expect("partial set on a missing pane").1 = Some(partial);
+		fn set_partial(&mut self, merge: Merge<Trail>, pane: u64, partial: Trail) -> Result<()> {
+			let row = self.rows.get_mut(&pane).expect("partial set on a missing pane");
+			(merge.compact)(&mut row.0);
+			row.1 = Some(partial);
 			Ok(())
 		}
 
@@ -324,6 +335,11 @@ mod tests {
 		}
 	}
 
+	fn compacted(mut trail: Trail) -> Trail {
+		trail.compact();
+		trail
+	}
+
 	fn oracle(window: &BTreeMap<u64, i64>) -> Option<Trail> {
 		let mut total: Option<Trail> = None;
 		for (pane, value) in window {
@@ -336,7 +352,7 @@ mod tests {
 				None => one,
 			});
 		}
-		total
+		total.map(compacted)
 	}
 
 	fn run(seed: u64, operations: usize, push_percent: u64) {
@@ -353,7 +369,7 @@ mod tests {
 				let one = Trail::of(next, value);
 				panes.rows.insert(next, (one.clone(), None));
 				window.insert(next, value);
-				queue.push(Merge::of(), &mut panes, next, &one).unwrap();
+				queue.push(Merge::of(), &mut panes, next, &compacted(one)).unwrap();
 			} else {
 				let (front, _) = window.pop_first().unwrap();
 				panes.rows.remove(&front);
@@ -367,6 +383,16 @@ mod tests {
 				panes.reads - before.1
 			);
 			assert_eq!(queue.len(), window.len() as u64, "seed {seed} op {op}: queue length drifted");
+			for (pane, (value, partial)) in &panes.rows {
+				// A partial folded from a raw pane carries every sample of its suffix and grows with
+				// the queue.
+				if let Some(partial) = partial {
+					assert!(
+						value.raw.is_empty() && partial.raw.is_empty(),
+						"seed {seed} op {op}: pane {pane} holds a partial next to raw samples"
+					);
+				}
+			}
 			let front = window.keys().next().copied();
 			assert_eq!(
 				queue.query(Merge::of(), &mut panes, front).unwrap(),
@@ -406,7 +432,7 @@ mod tests {
 		for pane in [1u64, 2, 3] {
 			let one = Trail::of(pane, pane as i64);
 			panes.rows.insert(pane, (one.clone(), None));
-			queue.push(Merge::of(), &mut panes, pane, &one).unwrap();
+			queue.push(Merge::of(), &mut panes, pane, &compacted(one)).unwrap();
 		}
 		for pane in [1u64, 2, 3] {
 			panes.rows.remove(&pane);
@@ -416,7 +442,7 @@ mod tests {
 		assert_eq!(queue.query(Merge::of(), &mut panes, None).unwrap(), None);
 		let one = Trail::of(9, 4);
 		panes.rows.insert(9, (one.clone(), None));
-		queue.push(Merge::of(), &mut panes, 9, &one).unwrap();
-		assert_eq!(queue.query(Merge::of(), &mut panes, Some(9)).unwrap(), Some(Trail::of(9, 4)));
+		queue.push(Merge::of(), &mut panes, 9, &compacted(one)).unwrap();
+		assert_eq!(queue.query(Merge::of(), &mut panes, Some(9)).unwrap(), Some(compacted(Trail::of(9, 4))));
 	}
 }
