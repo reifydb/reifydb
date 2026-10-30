@@ -221,10 +221,6 @@ pub fn active_scope() -> Option<ScopeId> {
 	ACTIVE_SCOPE.try_with(|id| *id).ok()
 }
 
-pub fn lookup_scope(id: ScopeId) -> Option<Arc<ScopeState>> {
-	REGISTRY.get(id)
-}
-
 #[cfg(test)]
 mod tests {
 	use std::sync::atomic::{AtomicUsize, Ordering};
@@ -245,20 +241,20 @@ mod tests {
 	fn finish_drains_records_and_marks_closed() {
 		let handle = ProfilerScope::start("test.scope", Clock::Real);
 		let id = handle.id();
-		let state = lookup_scope(id).expect("scope registered");
+		let state = REGISTRY.get(id).expect("scope registered");
 		state.push(MinimalSpanRecord::new(ProfilerCategory::Query, 1, 100));
 		state.push(MinimalSpanRecord::new(ProfilerCategory::Query, 2, 200));
 
 		let summary = handle.finish();
 		assert_eq!(summary.records.len(), 2);
 		assert_eq!(summary.category(ProfilerCategory::Query).calls, 2);
-		assert!(lookup_scope(id).is_none());
+		assert!(REGISTRY.get(id).is_none());
 	}
 
 	#[test]
 	fn push_after_finish_is_ignored() {
 		let handle = ProfilerScope::start("test.scope", Clock::Real);
-		let state = lookup_scope(handle.id()).unwrap();
+		let state = REGISTRY.get(handle.id()).unwrap();
 		let _ = handle.finish();
 		state.push(MinimalSpanRecord::new(ProfilerCategory::Storage, 1, 50));
 		assert!(state.records.lock().is_empty());
@@ -278,7 +274,7 @@ mod tests {
 		}
 		let sink: Arc<CountingSink> = Arc::new(CountingSink::default());
 		let handle = ProfilerScope::start_with_sink("test.scope", sink.clone(), Clock::Real);
-		let state = lookup_scope(handle.id()).unwrap();
+		let state = REGISTRY.get(handle.id()).unwrap();
 		for i in 0..DEFAULT_BATCH_THRESHOLD {
 			state.push(MinimalSpanRecord::new(ProfilerCategory::Flow, i as u64, 10));
 		}
