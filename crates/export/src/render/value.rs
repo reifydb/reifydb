@@ -61,9 +61,6 @@ pub fn render_value(value: &Value) -> Result<String, RenderError> {
 		Value::Record(_) => Err(RenderError::Unsupported("Record")),
 		Value::Tuple(_) => Err(RenderError::Unsupported("Tuple")),
 		Value::Digest(_) => Err(RenderError::Unsupported("Digest")),
-		Value::Enum {
-			..
-		} => Err(RenderError::Unsupported("Enum")),
 	}
 }
 

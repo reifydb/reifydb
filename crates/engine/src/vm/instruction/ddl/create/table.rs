@@ -331,7 +331,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_with_sumtype_constructor() {
+	fn test_insert_with_sumtype_name_and_fields() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
@@ -371,7 +371,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 1, shape: app::Object::Circle { radius: 5.0 } }]",
+				rql: "INSERT app::drawings [{ id: 1, shape: 'circle', shape_circle_radius: 5.0 }]",
 				params: Params::default(),
 			},
 		);
@@ -383,7 +383,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_with_unit_sumtype_constructor() {
+	fn test_insert_with_unit_sumtype_name() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
@@ -423,7 +423,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::tasks [{ id: 1, status: app::Status::Active }]",
+				rql: "INSERT app::tasks [{ id: 1, status: 'active' }]",
 				params: Params::default(),
 			},
 		);
@@ -435,7 +435,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_filter_is_variant() {
+	fn test_filter_by_variant_name() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
@@ -475,7 +475,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 1, shape: app::Object::Circle { radius: 5.0 } }]",
+				rql: "INSERT app::drawings [{ id: 1, shape: 'circle', shape_circle_radius: 5.0 }]",
 				params: Params::default(),
 			},
 		);
@@ -486,7 +486,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 2, shape: app::Object::Rectangle { width: 3.0, height: 4.0 } }]",
+				rql: "INSERT app::drawings [{ id: 2, shape: 'rectangle', shape_rectangle_width: 3.0, shape_rectangle_height: 4.0 }]",
 				params: Params::default(),
 			},
 		);
@@ -497,7 +497,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app::drawings [{ id: 3, shape: app::Object::Circle { radius: 10.0 } }]",
+				rql: "INSERT app::drawings [{ id: 3, shape: 'circle', shape_circle_radius: 10.0 }]",
 				params: Params::default(),
 			},
 		);
@@ -508,7 +508,7 @@ pub mod tests {
 		let r = instance.admin(
 			&mut txn,
 			Admin {
-				rql: "FROM app::drawings | FILTER shape IS app::Object::Circle",
+				rql: "FROM app::drawings | FILTER shape == 'circle'",
 				params: Params::default(),
 			},
 		);

@@ -104,18 +104,16 @@ fn the_same_field_in_different_rows_is_not_a_duplicate() {
 }
 
 #[test]
-fn a_constructor_that_gives_a_field_twice_is_an_error_in_every_constructor_form() {
-	// Two radius values are ambiguous, so every way of writing a constructor must refuse them.
+fn a_flat_field_given_twice_is_an_error_in_insert_and_update() {
+	// Two radius values are ambiguous, so insert and update must both refuse them.
 	let t = engine();
-	t.command("INSERT s::g [{ id: 1, shape: s::shape::Circle { radius: 0.5 } }]");
+	t.command("INSERT s::g [{ id: 1, shape: 'circle', shape_circle_radius: 0.5 }]");
 
 	for rql in [
-		"INSERT s::g [{ id: 2, shape: s::shape::Circle { radius: 1.0, radius: 2.0 } }]",
-		"INSERT s::g [{ id: 2, shape: Circle { radius: 1.0, radius: 2.0 } }]",
-		"UPDATE s::g { shape: Circle { radius: 1.0, radius: 2.0 } } FILTER { id == 1 }",
-		"UPDATE s::g { shape: s::shape::Circle { radius: 1.0, radius: 2.0 } } FILTER { id == 1 }",
+		"INSERT s::g [{ id: 2, shape: 'circle', shape_circle_radius: 1.0, shape_circle_radius: 2.0 }]",
+		"UPDATE s::g { shape: 'circle', shape_circle_radius: 1.0, shape_circle_radius: 2.0 } FILTER { id == 1 }",
 	] {
-		assert_duplicate_field(&t, rql, "radius");
+		assert_duplicate_field(&t, rql, "shape_circle_radius");
 	}
 	assert_eq!(TestEngine::row_count(&t.query("FROM s::g")), 1);
 }

@@ -566,7 +566,6 @@ fn collect(expression: &Expression, found: &mut Vec<Reference>) {
 		Expression::Map(e) => e.expressions.iter().for_each(|inner| collect(inner, found)),
 		Expression::Extend(e) => e.expressions.iter().for_each(|inner| collect(inner, found)),
 		Expression::Record(e) => e.fields.iter().for_each(|(_, inner)| collect(inner, found)),
-		Expression::SumTypeConstructor(e) => e.columns.iter().for_each(|(_, inner)| collect(inner, found)),
 		Expression::IsVariant(e) => collect(&e.expression, found),
 		Expression::FieldAccess(e) => collect(&e.object, found),
 		Expression::Constant(_) | Expression::Type(_) | Expression::Parameter(_) | Expression::Variable(_) => {}

@@ -68,7 +68,6 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Decimal {
 			..
 		}
-		| ValueType::Enum(_)
 		| ValueType::Option(_)
 		| ValueType::List(_)
 		| ValueType::Record(_)

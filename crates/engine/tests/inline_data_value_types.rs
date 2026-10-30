@@ -420,33 +420,6 @@ fn float4_then_integer_beyond_float4_precision_keeps_the_integer_exact() {
 }
 
 #[test]
-fn unqualified_constructor_without_a_target_is_an_error_with_its_fragment() {
-	// With no target there is no enum to resolve Foo against, which must fail loud, never panic.
-	let err = query_err("from [{ v: Foo { x: 1 } }]", Params::None);
-
-	assert_eq!(err.code, "CA_101", "got: {err:?}");
-	assert_eq!(err.fragment.text(), "Foo", "got: {err:?}");
-}
-
-#[test]
-fn constructor_without_a_target_names_each_expanded_column() {
-	// A tag and a field column must not both be named after the alias, or one hides the other.
-	let t = TestEngine::new();
-	t.admin("CREATE NAMESPACE s");
-	t.admin("CREATE ENUM s::shape { Circle { radius: float8 }, Square { side: float8 } }");
-	let r = t.inner().query_as(
-		TestEngine::identity(),
-		"from [{ v: s::shape::Square { side: 2.0 } }]",
-		Params::None,
-	);
-	assert!(r.error.is_none(), "got: {:?}", r.error);
-
-	let names: Vec<&str> = user_columns(&r.frames[0].batch).map(|(field, _)| field.name().as_str()).collect();
-	assert_eq!(names, vec!["v_square_side", "v_tag"]);
-	assert_eq!(column(&r.frames, "v_tag").1, vec![Value::Int1(1)]);
-}
-
-#[test]
 fn inline_row_with_a_duplicate_column_is_an_error() {
 	// Two values for a in one row are ambiguous, so the first must not be dropped in favour of the last.
 	let err = query_err("from [{ a: 1, a: 2 }]", Params::None);

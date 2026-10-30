@@ -16,10 +16,7 @@ use reifydb_core::{
 		column::factory::{column_reference, rename_keeping_tag, tag_label},
 	},
 };
-use reifydb_evaluate::{
-	expression::context::EvalContext,
-	lower::{LoweredExpr, compile_check},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -61,9 +58,6 @@ impl MapOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		for expression in &expressions {
-			compile_check(expression)?;
-		}
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 		let references = expressions.iter().map(column_reference).collect();
 

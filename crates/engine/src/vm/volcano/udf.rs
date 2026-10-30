@@ -21,7 +21,7 @@ use reifydb_evaluate::{
 		context::EvalContext,
 		udf_extract::{ExtractedUdf, extract_udf_calls},
 	},
-	lower::{LoweredExpr, compile_check},
+	lower::LoweredExpr,
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
 };
 use reifydb_routine_abi::registry::Routines;
@@ -231,9 +231,6 @@ impl QueryNode for UdfEvalNode {
 			.udf_calls
 			.drain(..)
 			.map(|udf| {
-				for expression in &udf.arg_expressions {
-					compile_check(expression)?;
-				}
 				let lowered_args = udf
 					.arg_expressions
 					.iter()

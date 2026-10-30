@@ -31,10 +31,6 @@ pub fn value_to_json(value: &Value, declared: &ValueType) -> JsonValue {
 		} => JsonValue::String(none_marker(depth.saturating_sub(peel_options(inner).1 + 1))),
 		Value::Blob(b) => JsonValue::String(b.to_hex()),
 		Value::Digest(digest) => JsonValue::String(format!("0x{}", encode(&digest.encode()))),
-		Value::Enum {
-			tag,
-			..
-		} => JsonValue::String(tag.to_string()),
 		Value::List(items) => {
 			let elem_ty = match peel_options(declared).0 {
 				ValueType::List(inner) => inner.as_ref(),

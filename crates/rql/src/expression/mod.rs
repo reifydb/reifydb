@@ -43,11 +43,10 @@ use reifydb_core::{
 		AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
 		ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
 		EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
-		GreaterThanExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
-		LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RecordExpression, RemExpression,
-		SubExpression, SumTypeConstructorExpression, TupleExpression, TypeExpression, VariableExpression,
-		XorExpression,
+		GreaterThanExpression, IdentExpression, IfExpression, InExpression, LessThanEqExpression,
+		LessThanExpression, ListExpression, MapExpression, MulExpression, NotEqExpression, OrExpression,
+		PrefixExpression, PrefixOperator, RecordExpression, RemExpression, SubExpression, TupleExpression,
+		TypeExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
@@ -297,32 +296,6 @@ impl ExpressionCompiler {
 					fragment,
 				}))
 			}
-			Ast::SumTypeConstructor(ctor) => {
-				let mut columns = Vec::with_capacity(ctor.columns.keyed_values.len());
-				for kv in ctor.columns.keyed_values {
-					let name = kv.key.token.fragment.to_owned();
-					let expr = Self::compile(BumpBox::into_inner(kv.value))?;
-					columns.push((name, expr));
-				}
-				Ok(Expression::SumTypeConstructor(SumTypeConstructorExpression {
-					namespace: ctor.namespace.to_owned(),
-					sumtype_name: ctor.sumtype_name.to_owned(),
-					variant_name: ctor.variant_name.to_owned(),
-					columns,
-					fragment: ctor.token.fragment.to_owned(),
-				}))
-			}
-			Ast::IsVariant(is) => {
-				let expression = Self::compile(BumpBox::into_inner(is.expression))?;
-				Ok(Expression::IsVariant(IsVariantExpression {
-					expression: Box::new(expression),
-					namespace: is.namespace.map(|n| n.to_owned()),
-					sumtype_name: is.sumtype_name.to_owned(),
-					variant_name: is.variant_name.to_owned(),
-					tag: None,
-					fragment: is.token.fragment.to_owned(),
-				}))
-			}
 			Ast::Match(match_ast) => Self::compile_match(match_ast),
 			Ast::Identity(ident) => Ok(Expression::Variable(VariableExpression {
 				fragment: ident.token.fragment.to_owned(),
@@ -398,11 +371,6 @@ impl ExpressionCompiler {
 			None => None,
 		};
 
-		let subject_col_name = subject.as_ref().and_then(|s| match s {
-			Expression::Column(ColumnExpression(col)) => Some(col.name.text().to_string()),
-			_ => None,
-		});
-
 		let mut branches: Vec<(Expression, Expression)> = Vec::new();
 		let mut else_result: Option<Expression> = None;
 
@@ -437,111 +405,6 @@ impl ExpressionCompiler {
 					}
 
 					let result_expr = Self::compile_match_arm_result(result)?;
-					branches.push((condition, result_expr));
-				}
-				AstMatchArm::IsVariant {
-					namespace,
-					sumtype_name,
-					variant_name,
-					destructure,
-					guard,
-					result,
-				} => {
-					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
-
-					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
-						(Some(destr), Some(col_name)) => {
-							let variant_lower = variant_name.text().to_lowercase();
-							destr.fields
-								.iter()
-								.map(|f| {
-									let field_name = f.text().to_string();
-									let physical = format!(
-										"{}_{}_{}",
-										col_name,
-										variant_lower,
-										field_name.to_lowercase()
-									);
-									(field_name, physical)
-								})
-								.collect()
-						}
-						_ => vec![],
-					};
-
-					let mut condition = Expression::IsVariant(IsVariantExpression {
-						expression: Box::new(subject_expr),
-						namespace: namespace.map(|n| n.to_owned()),
-						sumtype_name: sumtype_name.to_owned(),
-						variant_name: variant_name.to_owned(),
-						tag: None,
-						fragment: fragment.clone(),
-					});
-
-					if let Some(guard) = guard {
-						let mut guard_expr = Self::compile(BumpBox::into_inner(guard))?;
-						Self::rewrite_field_refs(&mut guard_expr, &bindings);
-						condition = Expression::And(AndExpression {
-							left: Box::new(condition),
-							right: Box::new(guard_expr),
-							fragment: fragment.clone(),
-						});
-					}
-
-					let mut result_expr = Self::compile_match_arm_result(result)?;
-					Self::rewrite_field_refs(&mut result_expr, &bindings);
-					branches.push((condition, result_expr));
-				}
-				AstMatchArm::Variant {
-					variant_name,
-					destructure,
-					guard,
-					result,
-				} => {
-					let subject_expr =
-						subject.clone().expect("Variant arm requires a MATCH subject");
-
-					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
-						(Some(destr), Some(col_name)) => {
-							let variant_lower = variant_name.text().to_lowercase();
-							destr.fields
-								.iter()
-								.map(|f| {
-									let field_name = f.text().to_string();
-									let physical = format!(
-										"{}_{}_{}",
-										col_name,
-										variant_lower,
-										field_name.to_lowercase()
-									);
-									(field_name, physical)
-								})
-								.collect()
-						}
-						_ => vec![],
-					};
-
-					let mut condition = Expression::IsVariant(IsVariantExpression {
-						expression: Box::new(subject_expr),
-						namespace: None,
-						sumtype_name: variant_name.to_owned(),
-						variant_name: variant_name.to_owned(),
-						tag: None,
-						fragment: fragment.clone(),
-					});
-
-					if let Some(guard) = guard {
-						let mut guard_expr = Self::compile(BumpBox::into_inner(guard))?;
-						Self::rewrite_field_refs(&mut guard_expr, &bindings);
-						condition = Expression::And(AndExpression {
-							left: Box::new(condition),
-							right: Box::new(guard_expr),
-							fragment: fragment.clone(),
-						});
-					}
-
-					let mut result_expr = Self::compile_match_arm_result(result)?;
-					Self::rewrite_field_refs(&mut result_expr, &bindings);
 					branches.push((condition, result_expr));
 				}
 				AstMatchArm::Condition {
@@ -590,143 +453,6 @@ impl ExpressionCompiler {
 			else_expr: else_result.map(Box::new),
 			fragment,
 		}))
-	}
-
-	pub(crate) fn rewrite_field_refs(expr: &mut Expression, bindings: &[(String, String)]) {
-		if bindings.is_empty() {
-			return;
-		}
-		match expr {
-			Expression::Column(ColumnExpression(col)) => {
-				let name = col.name.text().to_string();
-				for (field_name, physical_name) in bindings {
-					if name == *field_name {
-						col.name = Fragment::internal(physical_name);
-						break;
-					}
-				}
-			}
-			Expression::Add(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Sub(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Mul(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Div(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Rem(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Equal(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::NotEqual(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::GreaterThan(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::GreaterThanEqual(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::LessThan(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::LessThanEqual(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::And(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Or(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Xor(e) => {
-				Self::rewrite_field_refs(&mut e.left, bindings);
-				Self::rewrite_field_refs(&mut e.right, bindings);
-			}
-			Expression::Prefix(e) => {
-				Self::rewrite_field_refs(&mut e.expression, bindings);
-			}
-			Expression::Cast(e) => {
-				Self::rewrite_field_refs(&mut e.expression, bindings);
-			}
-			Expression::Call(e) => {
-				for arg in &mut e.args {
-					Self::rewrite_field_refs(arg, bindings);
-				}
-			}
-			Expression::If(e) => {
-				Self::rewrite_field_refs(&mut e.condition, bindings);
-				Self::rewrite_field_refs(&mut e.then_expr, bindings);
-				for else_if in &mut e.else_ifs {
-					Self::rewrite_field_refs(&mut else_if.condition, bindings);
-					Self::rewrite_field_refs(&mut else_if.then_expr, bindings);
-				}
-				if let Some(else_expr) = &mut e.else_expr {
-					Self::rewrite_field_refs(else_expr, bindings);
-				}
-			}
-			Expression::Alias(e) => {
-				Self::rewrite_field_refs(&mut e.expression, bindings);
-			}
-			Expression::Tuple(e) => {
-				for expr in &mut e.expressions {
-					Self::rewrite_field_refs(expr, bindings);
-				}
-			}
-			Expression::List(e) => {
-				for expr in &mut e.expressions {
-					Self::rewrite_field_refs(expr, bindings);
-				}
-			}
-			Expression::Record(e) => {
-				for (_, expr) in &mut e.fields {
-					Self::rewrite_field_refs(expr, bindings);
-				}
-			}
-			Expression::Between(e) => {
-				Self::rewrite_field_refs(&mut e.value, bindings);
-				Self::rewrite_field_refs(&mut e.lower, bindings);
-				Self::rewrite_field_refs(&mut e.upper, bindings);
-			}
-			Expression::In(e) => {
-				Self::rewrite_field_refs(&mut e.value, bindings);
-				Self::rewrite_field_refs(&mut e.list, bindings);
-			}
-			Expression::Contains(e) => {
-				Self::rewrite_field_refs(&mut e.value, bindings);
-				Self::rewrite_field_refs(&mut e.list, bindings);
-			}
-
-			Expression::Constant(_)
-			| Expression::AccessSource(_)
-			| Expression::Type(_)
-			| Expression::Parameter(_)
-			| Expression::Variable(_)
-			| Expression::Map(_)
-			| Expression::Extend(_)
-			| Expression::SumTypeConstructor(_)
-			| Expression::IsVariant(_)
-			| Expression::FieldAccess(_) => {}
-		}
 	}
 
 	fn infix(ast: AstInfix<'_>) -> Result<Expression> {

@@ -407,9 +407,6 @@ impl From<&Expression> for JsonExpression {
 			Expression::Type(e) => JsonExpression::Type {
 				ty: type_name(&e.ty),
 			},
-			Expression::SumTypeConstructor(_) => JsonExpression::Type {
-				ty: "SumTypeConstructor".to_string(),
-			},
 			Expression::IsVariant(_) => JsonExpression::Type {
 				ty: "IsVariant".to_string(),
 			},

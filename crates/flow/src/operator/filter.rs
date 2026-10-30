@@ -14,7 +14,7 @@ use reifydb_core::{
 	internal_err,
 	value::batch::{empty_batch, take_rows},
 };
-use reifydb_evaluate::{expression::context::EvalContext, lower::compile_check};
+use reifydb_evaluate::expression::context::EvalContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -50,10 +50,6 @@ impl FilterOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		for condition in &conditions {
-			compile_check(condition)?;
-		}
-
 		Ok(Self {
 			parent_schema,
 			operator,

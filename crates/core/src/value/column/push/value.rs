@@ -59,9 +59,6 @@ impl ColumnBuilder {
 			panic!("the untyped none column can not take a value of type {:?}", value.get_type());
 		}
 		match value {
-			Value::Enum {
-				..
-			} => unreachable!("enum columns are only made at the result edge"),
 			Value::Boolean(v) => match &mut self.inner {
 				TypedBuilder::Bool(builder) => builder.append_value(v),
 				_ => unimplemented!(),

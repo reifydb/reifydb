@@ -7,7 +7,7 @@ use reifydb_value::value::Value;
 
 use crate::{
 	error::{ExportError, RenderError},
-	model::{NameResolver, ObjectRows},
+	model::ObjectRows,
 	render::{
 		layout::{EnumColumn, LayoutColumn},
 		value::render_value,
@@ -19,7 +19,6 @@ pub fn render_inserts(
 	rows: &ObjectRows,
 	batch_size: usize,
 	layout: &[LayoutColumn],
-	resolver: &NameResolver,
 ) -> Result<String, ExportError> {
 	if rows.rows.is_empty() {
 		return Ok(String::new());
@@ -49,9 +48,7 @@ pub fn render_inserts(
 						out.push_str(&format!("{}: {}", c.name, rendered));
 					}
 					LayoutColumn::Enum(e) => {
-						let rendered =
-							render_enum_value(e, resolver, &index, row, qualified_object)?;
-						out.push_str(&format!("{}: {}", e.logical_name, rendered));
+						out.push_str(&render_enum_value(e, &index, row, qualified_object)?);
 					}
 				}
 			}
@@ -73,25 +70,15 @@ fn cell<'a>(index: &HashMap<&str, usize>, row: &'a [Value], name: &str) -> Optio
 
 fn render_enum_value(
 	column: &EnumColumn,
-	resolver: &NameResolver,
 	index: &HashMap<&str, usize>,
 	row: &[Value],
 	object: &str,
 ) -> Result<String, ExportError> {
-	let qualified = &resolver
-		.sumtype(column.sumtype_id)
-		.ok_or_else(|| ExportError::UnresolvedReference {
-			kind: "sumtype",
-			id: column.sumtype_id,
-			object: object.to_string(),
-		})?
-		.qualified_name;
-
 	let variant = match cell(index, row, &column.logical_name).or_else(|| cell(index, row, &column.tag_column)) {
 		None
 		| Some(Value::None {
 			..
-		}) => return Ok("none".to_string()),
+		}) => return Ok(format!("{}: none", column.logical_name)),
 		Some(Value::Utf8(name)) => column.variants.iter().find(|v| v.name == *name).ok_or_else(|| {
 			ExportError::UnsupportedValue {
 				object: object.to_string(),
@@ -115,19 +102,17 @@ fn render_enum_value(
 		}
 	};
 
-	if variant.fields.is_empty() {
-		return Ok(format!("{}::{}", qualified, variant.name));
-	}
-
-	let mut parts = Vec::with_capacity(variant.fields.len());
+	let name = render_value(&Value::Utf8(variant.name.clone()))
+		.map_err(|e| map_value_error(e, object, &column.logical_name))?;
+	let mut parts = vec![format!("{}: {}", column.logical_name, name)];
 	for (field_name, physical) in &variant.fields {
 		let rendered = match cell(index, row, physical) {
 			Some(value) => render_value(value).map_err(|e| map_value_error(e, object, field_name))?,
 			None => "none".to_string(),
 		};
-		parts.push(format!("{}: {}", field_name, rendered));
+		parts.push(format!("{}: {}", physical, rendered));
 	}
-	Ok(format!("{}::{} {{ {} }}", qualified, variant.name, parts.join(", ")))
+	Ok(parts.join(", "))
 }
 
 fn map_value_error(error: RenderError, object: &str, column: &str) -> ExportError {
@@ -157,7 +142,7 @@ mod tests {
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
-	use crate::{model::ResolvedSumType, render::layout::EnumVariant};
+	use crate::render::layout::EnumVariant;
 
 	fn rows() -> ObjectRows {
 		ObjectRows {
@@ -191,14 +176,14 @@ mod tests {
 	#[test]
 	fn renders_batched_record_inserts() {
 		let cols = plain(&["id", "name"]);
-		let out = render_inserts("test::users", &rows(), 500, &layout(&cols), &NameResolver::empty()).unwrap();
+		let out = render_inserts("test::users", &rows(), 500, &layout(&cols)).unwrap();
 		assert_eq!(out, "INSERT test::users [\n  { id: 1, name: 'Alice' },\n  { id: 2, name: 'Bob' }\n];\n");
 	}
 
 	#[test]
 	fn splits_into_batches() {
 		let cols = plain(&["id", "name"]);
-		let out = render_inserts("test::users", &rows(), 1, &layout(&cols), &NameResolver::empty()).unwrap();
+		let out = render_inserts("test::users", &rows(), 1, &layout(&cols)).unwrap();
 		let inserts = out.matches("INSERT test::users").count();
 		assert_eq!(inserts, 2);
 	}
@@ -210,10 +195,7 @@ mod tests {
 			rows: vec![],
 		};
 		let cols = plain(&["id"]);
-		assert_eq!(
-			render_inserts("test::users", &empty, 500, &layout(&cols), &NameResolver::empty()).unwrap(),
-			""
-		);
+		assert_eq!(render_inserts("test::users", &empty, 500, &layout(&cols)).unwrap(), "");
 	}
 
 	#[test]
@@ -224,24 +206,12 @@ mod tests {
 		};
 		let cols = plain(&["note"]);
 		assert_eq!(
-			render_inserts("test::notes", &bad, 500, &layout(&cols), &NameResolver::empty()),
+			render_inserts("test::notes", &bad, 500, &layout(&cols)),
 			Err(ExportError::UnrepresentableText {
 				object: "test::notes".to_string(),
 				column: "note".to_string()
 			})
 		);
-	}
-
-	fn resolver_with(id: u64, qualified: &str) -> NameResolver {
-		let mut r = NameResolver::empty();
-		r.sumtypes.insert(
-			id,
-			ResolvedSumType {
-				qualified_name: qualified.to_string(),
-				variants: vec![],
-			},
-		);
-		r
 	}
 
 	#[test]
@@ -269,11 +239,10 @@ mod tests {
 			columns: vec!["id".to_string(), "state_tag".to_string()],
 			rows: vec![vec![Value::Int4(1), Value::Uint1(0)], vec![Value::Int4(2), Value::Uint1(1)]],
 		};
-		let out =
-			render_inserts("shop::items", &rows, 500, &layout, &resolver_with(9, "shop::status")).unwrap();
+		let out = render_inserts("shop::items", &rows, 500, &layout).unwrap();
 		assert_eq!(
 			out,
-			"INSERT shop::items [\n  { id: 1, state: shop::status::active },\n  { id: 2, state: shop::status::inactive }\n];\n"
+			"INSERT shop::items [\n  { id: 1, state: 'active' },\n  { id: 2, state: 'inactive' }\n];\n"
 		);
 	}
 
@@ -320,11 +289,10 @@ mod tests {
 				],
 			],
 		};
-		let out =
-			render_inserts("shop::shapes", &rows, 500, &layout, &resolver_with(9, "shop::shape")).unwrap();
+		let out = render_inserts("shop::shapes", &rows, 500, &layout).unwrap();
 		assert_eq!(
 			out,
-			"INSERT shop::shapes [\n  { id: 1, shape: shop::shape::circle { radius: 5 } },\n  { id: 2, shape: shop::shape::rectangle { width: 3, height: 4 } }\n];\n"
+			"INSERT shop::shapes [\n  { id: 1, shape: 'circle', shape_circle_radius: 5 },\n  { id: 2, shape: 'rectangle', shape_rectangle_width: 3, shape_rectangle_height: 4 }\n];\n"
 		);
 	}
 }

@@ -130,8 +130,6 @@ mod tag {
 	pub const RUN_TESTS: u8 = 0x9A;
 	pub const ASSERT: u8 = 0x9B;
 	pub const DISPATCH: u8 = 0x9C;
-	pub const SUM_TYPE_CTOR: u8 = 0x9D;
-	pub const IS_VARIANT: u8 = 0x9E;
 
 	pub const OP_ADD: u8 = 0xA0;
 	pub const OP_SUBTRACT: u8 = 0xA1;
@@ -1133,25 +1131,6 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				fingerprint_ast(buf, val);
 			}
 		}
-		Ast::SumTypeConstructor(node) => {
-			buf.write_u8(tag::SUM_TYPE_CTOR);
-			buf.write_str(node.namespace.text());
-			buf.write_str(node.sumtype_name.text());
-			buf.write_str(node.variant_name.text());
-			for kv in &node.columns.keyed_values {
-				buf.write_str(kv.key.text());
-				fingerprint_ast(buf, &kv.value);
-			}
-		}
-		Ast::IsVariant(node) => {
-			buf.write_u8(tag::IS_VARIANT);
-			fingerprint_ast(buf, &node.expression);
-			if let Some(ns) = &node.namespace {
-				buf.write_str(ns.text());
-			}
-			buf.write_str(node.sumtype_name.text());
-			buf.write_str(node.variant_name.text());
-		}
 	}
 }
 
@@ -1246,48 +1225,6 @@ fn write_match_arm(buf: &mut FingerprintBuffer, arm: &AstMatchArm<'_>) {
 		} => {
 			buf.write_u8(0x01);
 			fingerprint_ast(buf, pattern);
-			if let Some(g) = guard {
-				fingerprint_ast(buf, g);
-			}
-			write_let_value(buf, result);
-		}
-		AstMatchArm::IsVariant {
-			namespace,
-			sumtype_name,
-			variant_name,
-			destructure,
-			guard,
-			result,
-		} => {
-			buf.write_u8(0x02);
-			if let Some(ns) = namespace {
-				buf.write_str(ns.text());
-			}
-			buf.write_str(sumtype_name.text());
-			buf.write_str(variant_name.text());
-			if let Some(d) = destructure {
-				for field in &d.fields {
-					buf.write_str(field.text());
-				}
-			}
-			if let Some(g) = guard {
-				fingerprint_ast(buf, g);
-			}
-			write_let_value(buf, result);
-		}
-		AstMatchArm::Variant {
-			variant_name,
-			destructure,
-			guard,
-			result,
-		} => {
-			buf.write_u8(0x03);
-			buf.write_str(variant_name.text());
-			if let Some(d) = destructure {
-				for field in &d.fields {
-					buf.write_str(field.text());
-				}
-			}
 			if let Some(g) = guard {
 				fingerprint_ast(buf, g);
 			}

@@ -360,8 +360,6 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::Return(_) => "Return",
 		Ast::Append(_) => "Append",
 		Ast::Assert(_) => "Assert",
-		Ast::SumTypeConstructor(_) => "SumTypeConstructor",
-		Ast::IsVariant(_) => "IsVariant",
 		Ast::Match(_) => "Match",
 		Ast::Closure(_) => "Closure",
 		Ast::Dispatch(_) => "Dispatch",

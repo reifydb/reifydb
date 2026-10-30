@@ -27,10 +27,7 @@ use reifydb_core::{
 		column::factory::none,
 	},
 };
-use reifydb_evaluate::{
-	expression::context::EvalContext,
-	lower::{LoweredExpr, compile_check},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
@@ -195,9 +192,6 @@ impl Output {
 
 impl LookupOperator {
 	pub fn new(config: LookupConfig) -> Result<Self> {
-		for expression in &config.left {
-			compile_check(expression)?;
-		}
 		let lowered_left = config
 			.left
 			.iter()

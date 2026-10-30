@@ -30,24 +30,17 @@ use reifydb_core::{
 	sort::SortKey,
 	util::ioc::IocContainer,
 };
-use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, lower::compile_check, stack::SymbolTable};
+use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, stack::SymbolTable};
 use reifydb_flow::{
 	compiler::compile_flow,
 	time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::query::{QueryPlan, extract_resolved_source};
+use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{error, fragment::Fragment};
 
-use crate::{
-	Result,
-	flow_check::FlowRegistrationCheckRef,
-	vm::volcano::{
-		filter::resolve_variant_equality,
-		inline::{resolve_is_variants, resolve_sumtype_ctor},
-	},
-};
+use crate::{Result, flow_check::FlowRegistrationCheckRef};
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
 	match plan {
@@ -177,48 +170,6 @@ fn ensure_no_script_routine_call(plan: &mut QueryPlan, symbols: &SymbolTable) ->
 		}
 	}
 	inputs.into_iter().try_for_each(|input| ensure_no_script_routine_call(input, symbols))
-}
-
-fn resolve_flow_variants(catalog: &Catalog, txn: &mut AdminTransaction, plan: &mut QueryPlan) -> Result<()> {
-	let filter = matches!(plan, QueryPlan::Filter(_) | QueryPlan::Gate(_));
-	let projection = matches!(plan, QueryPlan::Map(_) | QueryPlan::Extend(_));
-	let (expressions, inputs) = plan_expressions_and_inputs(plan);
-	if filter || projection {
-		let source = inputs.first().and_then(|input| extract_resolved_source(input));
-		for expression in expressions {
-			if let Expression::Alias(alias) = &*expression
-				&& let Expression::SumTypeConstructor(ctor) = alias.expression.as_ref()
-			{
-				resolve_sumtype_ctor(
-					catalog,
-					&mut Transaction::Admin(txn),
-					None,
-					&alias.alias.0,
-					ctor,
-				)?;
-			}
-			if let Some(source) = source.as_ref() {
-				resolve_is_variants(catalog, &mut Transaction::Admin(txn), source, expression)?;
-				if filter {
-					resolve_variant_equality(
-						catalog,
-						&mut Transaction::Admin(txn),
-						source,
-						expression,
-					)?;
-				}
-			}
-		}
-	}
-	inputs.into_iter().try_for_each(|input| resolve_flow_variants(catalog, txn, input))
-}
-
-fn ensure_flow_expressions_compile(plan: &mut QueryPlan) -> Result<()> {
-	let (expressions, inputs) = plan_expressions_and_inputs(plan);
-	for expression in expressions {
-		compile_check(expression)?;
-	}
-	inputs.into_iter().try_for_each(ensure_flow_expressions_compile)
 }
 
 fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<()> {
@@ -355,8 +306,6 @@ pub(crate) fn create_deferred_view_flow(
 ) -> Result<()> {
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
-	resolve_flow_variants(catalog, txn, &mut plan)?;
-	ensure_flow_expressions_compile(&mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
@@ -479,8 +428,6 @@ pub(crate) fn create_transactional_view_flow(
 	ensure_no_lookup(&mut plan)?;
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
-	resolve_flow_variants(catalog, txn, &mut plan)?;
-	ensure_flow_expressions_compile(&mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
 	check_transactional_flow(catalog, txn, &dag)?;

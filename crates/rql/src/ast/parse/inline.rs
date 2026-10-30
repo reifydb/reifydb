@@ -7,7 +7,7 @@ use reifydb_value::return_error;
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstInline, AstInlineKeyedValue, AstSumTypeConstructor},
+		ast::{AstInline, AstInlineKeyedValue},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -35,24 +35,7 @@ impl<'bump> Parser<'bump> {
 
 			let key = self.parse_identifier_with_hyphens()?;
 			self.consume_operator(Colon)?;
-			let mut value_ast = self.parse_node(Precedence::None)?;
-
-			if let Ast::Identifier(ref ident) = value_ast
-				&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
-			{
-				let token = ident.token;
-				let variant_name = ident.token.fragment;
-				let columns = self.parse_inline_with_unique_keys()?;
-				value_ast = Ast::SumTypeConstructor(AstSumTypeConstructor {
-					token,
-					namespace: variant_name,
-					sumtype_name: variant_name,
-					variant_name,
-					columns,
-				});
-			}
-
-			let value = BumpBox::new_in(value_ast, self.bump());
+			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			keyed_values.push(AstInlineKeyedValue {
 				key,

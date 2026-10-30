@@ -421,7 +421,6 @@ fn mentions(expression: &Expression, name: &str) -> bool {
 		| Expression::Parameter(_)
 		| Expression::Variable(_)
 		| Expression::Type(_)
-		| Expression::SumTypeConstructor(_)
 		| Expression::IsVariant(_) => false,
 		Expression::Call(e) => e.args.iter().any(|arg| mentions(arg, name)),
 		Expression::Add(e) => mentions(&e.left, name) || mentions(&e.right, name),

@@ -92,9 +92,9 @@ pub fn seed_demo(db: &Database) {
 	db.command_as_root(
 		r#"
 		insert shop::products [
-			{ id: 1, name: 'Laptop', sym: 'LPT', state: shop::status::Active },
-			{ id: 2, name: 'Mouse', sym: 'MSE', state: shop::status::Active },
-			{ id: 3, name: 'Keyboard', sym: 'KBD', state: shop::status::Inactive }
+			{ id: 1, name: 'Laptop', sym: 'LPT', state: 'active' },
+			{ id: 2, name: 'Mouse', sym: 'MSE', state: 'active' },
+			{ id: 3, name: 'Keyboard', sym: 'KBD', state: 'inactive' }
 		];
 		"#,
 		Params::None,

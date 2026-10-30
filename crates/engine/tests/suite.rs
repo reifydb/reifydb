@@ -76,8 +76,6 @@ mod empty_result_column_types;
 mod empty_result_rownum;
 #[path = "enum_column_optional.rs"]
 mod enum_column_optional;
-#[path = "enum_variant_in_expression.rs"]
-mod enum_variant_in_expression;
 #[path = "enum_variant_in_query.rs"]
 mod enum_variant_in_query;
 #[path = "enum_variant_update_errors.rs"]
@@ -102,8 +100,6 @@ mod in_list_partition_prune;
 mod in_list_variable;
 #[path = "in_list_with_a_none_item.rs"]
 mod in_list_with_a_none_item;
-#[path = "inline_constructor_unknown_column.rs"]
-mod inline_constructor_unknown_column;
 #[path = "inline_data_insert_target.rs"]
 mod inline_data_insert_target;
 #[path = "inline_data_value_types.rs"]
@@ -212,8 +208,6 @@ mod series_key_write;
 mod series_parameter_scan;
 #[path = "series_scan_column_types.rs"]
 mod series_scan_column_types;
-#[path = "series_tag_constructor_field.rs"]
-mod series_tag_constructor_field;
 #[path = "series_update_tag.rs"]
 mod series_update_tag;
 #[path = "series_write_coercion.rs"]

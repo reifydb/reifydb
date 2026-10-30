@@ -122,8 +122,6 @@ pub enum Ast<'bump> {
 	SystemColumn(AstSystemColumn<'bump>),
 	DefFunction(AstDefFunction<'bump>),
 	Return(AstReturn<'bump>),
-	SumTypeConstructor(AstSumTypeConstructor<'bump>),
-	IsVariant(AstIsVariant<'bump>),
 	Match(AstMatch<'bump>),
 	Closure(AstClosure<'bump>),
 	Dispatch(AstDispatch<'bump>),
@@ -219,8 +217,6 @@ impl<'bump> Ast<'bump> {
 			Ast::SystemColumn(node) => &node.token,
 			Ast::DefFunction(node) => &node.token,
 			Ast::Return(node) => &node.token,
-			Ast::SumTypeConstructor(node) => &node.token,
-			Ast::IsVariant(node) => &node.token,
 			Ast::Match(node) => &node.token,
 			Ast::Closure(node) => &node.token,
 			Ast::Dispatch(node) => &node.token,
@@ -331,24 +327,6 @@ impl<'bump> Index<usize> for AstInline<'bump> {
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.keyed_values[index]
 	}
-}
-
-#[derive(Debug)]
-pub struct AstSumTypeConstructor<'bump> {
-	pub token: Token<'bump>,
-	pub namespace: BumpFragment<'bump>,
-	pub sumtype_name: BumpFragment<'bump>,
-	pub variant_name: BumpFragment<'bump>,
-	pub columns: AstInline<'bump>,
-}
-
-#[derive(Debug)]
-pub struct AstIsVariant<'bump> {
-	pub token: Token<'bump>,
-	pub expression: BumpBox<'bump, Ast<'bump>>,
-	pub namespace: Option<BumpFragment<'bump>>,
-	pub sumtype_name: BumpFragment<'bump>,
-	pub variant_name: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -2087,30 +2065,9 @@ pub enum AstAppendSource<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AstMatchArmDestructure<'bump> {
-	pub fields: Vec<BumpFragment<'bump>>,
-}
-
-#[derive(Debug)]
 pub enum AstMatchArm<'bump> {
 	Value {
 		pattern: BumpBox<'bump, Ast<'bump>>,
-		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: LetValue<'bump>,
-	},
-
-	IsVariant {
-		namespace: Option<BumpFragment<'bump>>,
-		sumtype_name: BumpFragment<'bump>,
-		variant_name: BumpFragment<'bump>,
-		destructure: Option<AstMatchArmDestructure<'bump>>,
-		guard: Option<BumpBox<'bump, Ast<'bump>>>,
-		result: LetValue<'bump>,
-	},
-
-	Variant {
-		variant_name: BumpFragment<'bump>,
-		destructure: Option<AstMatchArmDestructure<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: LetValue<'bump>,
 	},

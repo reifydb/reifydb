@@ -398,10 +398,9 @@ pub fn contains(value: Expression, items: Vec<Expression>) -> Expression {
 	})
 }
 
-pub fn is_variant(column_name: &str, tag: Option<u8>) -> Expression {
+pub fn is_variant(column_name: &str, tag: u8) -> Expression {
 	Expression::IsVariant(IsVariantExpression {
 		expression: Box::new(column(column_name)),
-		namespace: None,
 		sumtype_name: frag("shape"),
 		variant_name: frag("circle"),
 		tag,

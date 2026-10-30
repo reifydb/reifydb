@@ -30,60 +30,7 @@ use crate::{
 
 const FLOW: FlowId = FlowId(1);
 const SOURCE: OperatorId = OperatorId(1);
-const FILTER: OperatorId = OperatorId(2);
 const AGGREGATE: OperatorId = OperatorId(3);
-
-#[test]
-fn registering_a_filter_with_a_variant_inside_an_expression_returns_the_compile_error_instead_of_panicking() {
-	let engine = TestEngine::new();
-	engine.admin("CREATE NAMESPACE s");
-	engine.admin("CREATE ENUM s::status { Active, Inactive }");
-	engine.admin("CREATE TABLE s::t { a: int4 }");
-
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
-	let catalog = engine.catalog();
-	let namespace = catalog
-		.find_namespace_by_name(&mut Transaction::Command(&mut txn), "s")
-		.expect("the namespace lookup must succeed")
-		.expect("the namespace must exist");
-	let table = catalog
-		.find_table_by_name(&mut Transaction::Command(&mut txn), namespace.id(), "t")
-		.expect("the table lookup must succeed")
-		.expect("the table must exist");
-
-	let mut builder = FlowDag::builder(FLOW);
-	builder.add_node(FlowNode::new(
-		SOURCE,
-		OperatorDef::SourceTable {
-			table: table.id,
-			time_domain: TimeDomain::None,
-		},
-	));
-	builder.add_node(FlowNode::new(
-		FILTER,
-		OperatorDef::Filter {
-			conditions: parse_expression("a == 1 + s::status::Active").expect("the condition must parse"),
-		},
-	));
-	builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, FILTER)).expect("both edge ends must exist");
-
-	let mut inner = FlowEngineInner::new(
-		engine.catalog(),
-		engine.executor().routines.clone(),
-		RuntimeContext::with_clock(engine.clock().clone()),
-		Arc::new(EmptyOperatorProvider),
-		FlowSubstrate::with_dictionary(engine.inner().dictionary_allocators(), engine.inner().operator_state()),
-		OperatorSampleRegistry::new(),
-	);
-
-	let diagnostic = inner
-		.register(&mut txn, builder.build())
-		.expect_err("a filter the flow cannot compile must fail registration")
-		.diagnostic();
-	assert_eq!(diagnostic.code, "CA_102", "the error must be the variant compile error: {diagnostic:?}");
-	assert_eq!(diagnostic.fragment.text(), "Active", "the error must point at the variant: {diagnostic:?}");
-}
 
 #[test]
 fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_error_instead_of_panicking() {

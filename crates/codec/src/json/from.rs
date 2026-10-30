@@ -248,7 +248,6 @@ fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 			scale,
 		} => parse_decimal_text(text, *precision, *scale).map(Value::Decimal),
 		ValueType::Option(inner) => parse_base(inner, text),
-		ValueType::Enum(_) => None,
 		ValueType::Digest {
 			inner,
 			accuracy,
@@ -466,11 +465,6 @@ fn convert_list_or_record_column(
 fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Result<(ValueType, ArrayRef), DecodeError> {
 	let array: ArrayRef = match base {
 		ValueType::Option(inner) => return base_column(name, inner, rows),
-		ValueType::Enum(_) => {
-			return Err(DecodeError::UnsupportedType(format!(
-				"column {name}: an enum travels as Utf8 names"
-			)));
-		}
 		ValueType::Boolean => Arc::new(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?)),
 		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| {
 			s.parse().ok().map(OrderedF32::canonical)

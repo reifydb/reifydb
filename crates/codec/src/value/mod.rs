@@ -19,7 +19,6 @@ use reifydb_value::{
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
-		sumtype::SumTypeId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -41,18 +40,6 @@ pub fn encode_value(value: &Value) -> Result<Vec<u8>, EncodeError> {
 pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
 	buf.push(ValueKind::of_value(value).byte());
 	match value {
-		Value::Enum {
-			id,
-			tag,
-			fields,
-		} => {
-			buf.extend_from_slice(&id.0.to_le_bytes());
-			buf.push(*tag);
-			buf.extend_from_slice(&(fields.len() as u32).to_le_bytes());
-			for field in fields {
-				encode_value_into(field, buf)?;
-			}
-		}
 		Value::None {
 			inner,
 		} => encode_value_type(inner, buf)?,
@@ -226,11 +213,9 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 			}
 			Ok(Value::Record(fields))
 		}
-		ValueKind::Enum => Ok(Value::Enum {
-			id: SumTypeId(r.u64()?),
-			tag: r.u8()?,
-			fields: decode_value_sequence(r)?,
-		}),
+		ValueKind::Enum => {
+			Err(DecodeError::UnsupportedType("kind Enum is a column kind, not a value".to_string()))
+		}
 		ValueKind::Digest => Digest::decode(decode_len_prefixed_bytes(r)?)
 			.map(|digest| Value::Digest(Box::new(digest)))
 			.map_err(|error| DecodeError::InvalidData(format!("invalid digest: {error}"))),

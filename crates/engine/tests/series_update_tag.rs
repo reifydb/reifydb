@@ -64,11 +64,11 @@ fn updating_the_tag_to_its_current_value_is_the_same_error() {
 }
 
 #[test]
-fn updating_the_tag_by_variant_name_is_the_tag_error_not_column_not_found() {
-	// A variant name is how users write a tag, so it must get the tag error instead of a lookup failure.
+fn updating_the_tag_by_name_is_the_tag_error() {
+	// A name is how users write a tag, so it must get the tag error instead of a lookup failure.
 	let t = engine();
 
-	assert_tag_update_refused(&t, "UPDATE s::m { tag: Inactive } FILTER { val == 1 }", "Inactive");
+	assert_tag_update_refused(&t, "UPDATE s::m { tag: 'inactive' } FILTER { val == 1 }", "inactive");
 }
 
 #[test]

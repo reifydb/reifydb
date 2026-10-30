@@ -121,9 +121,9 @@ CREATE NAMESPACE rt;
 CREATE ENUM rt::status { Active, Inactive };
 CREATE TABLE rt::items { id: int4, state: rt::status };
 INSERT rt::items [
-    { id: 1, state: rt::status::Active },
-    { id: 2, state: rt::status::Inactive },
-    { id: 3, state: rt::status::Active }
+    { id: 1, state: 'active' },
+    { id: 2, state: 'inactive' },
+    { id: 3, state: 'active' }
 ];
 "#;
 	let a = TestDb::memory();
@@ -143,22 +143,27 @@ INSERT rt::items [
 
 #[test]
 fn enum_structured_column_roundtrip() {
-	// A variant carrying fields must round-trip the logical column name and the full
-	// `ns::enum::variant { field: value }` constructor for each row, not just the tag.
+	// A variant with fields must round-trip its name and flat fields, not just the tag.
 	let setup = r#"
 CREATE NAMESPACE rt;
 CREATE ENUM rt::shape { Circle { radius: float8 }, Rectangle { width: float8, height: float8 } };
 CREATE TABLE rt::shapes { id: int4, shape: rt::shape };
 INSERT rt::shapes [
-    { id: 1, shape: rt::shape::Circle { radius: 5.0 } },
-    { id: 2, shape: rt::shape::Rectangle { width: 3.0, height: 4.0 } },
-    { id: 3, shape: rt::shape::Circle { radius: 10.0 } }
+    { id: 1, shape: 'circle', shape_circle_radius: 5.0 },
+    { id: 2, shape: 'rectangle', shape_rectangle_width: 3.0, shape_rectangle_height: 4.0 },
+    { id: 3, shape: 'circle', shape_circle_radius: 10.0 }
 ];
 "#;
 	let (a, b, dump) = prepare(setup);
 	assert!(dump.contains("shape: rt::shape"), "logical enum column expected;\ndump:\n{dump}");
-	assert!(dump.contains("rt::shape::circle {"), "structured constructor expected;\ndump:\n{dump}");
-	assert!(dump.contains("rt::shape::rectangle {"), "structured constructor expected;\ndump:\n{dump}");
+	assert!(
+		dump.contains("shape: 'circle', shape_circle_radius: 5"),
+		"name and flat field expected;\ndump:\n{dump}"
+	);
+	assert!(
+		dump.contains("shape: 'rectangle', shape_rectangle_width: 3, shape_rectangle_height: 4"),
+		"name and flat fields expected;\ndump:\n{dump}"
+	);
 	assert_same_rows(&a.query("from rt::shapes"), &b.query("from rt::shapes"));
 }
 

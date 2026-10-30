@@ -187,12 +187,6 @@ fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>> 
 			inner: *inner,
 			accuracy,
 		},
-		ValueType::Enum(_) => {
-			return Err(field_error(format!(
-				"column {} is an enum, which leaves the engine as names",
-				field.name()
-			)));
-		}
 		ValueType::Option(_) => {
 			return Err(field_error(format!("column {} has a nested Option type", field.name())));
 		}

@@ -510,7 +510,7 @@ expected:
 ### enum_unit_variants
 ```yaml
 operation: admin
-statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_variants CASCADE; CREATE NAMESPACE vt_enum_unit_variants; CREATE ENUM vt_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_variants::t { id: int4, v: vt_enum_unit_variants::status }; INSERT vt_enum_unit_variants::t [{ id: 1, v: vt_enum_unit_variants::status::Todo }, { id: 2, v: vt_enum_unit_variants::status::Doing }, { id: 3, v: vt_enum_unit_variants::status::Done }, { id: 4, v: vt_enum_unit_variants::status::Todo }]; OUTPUT FROM vt_enum_unit_variants::t SORT { id: asc }"
+statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_variants CASCADE; CREATE NAMESPACE vt_enum_unit_variants; CREATE ENUM vt_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_variants::t { id: int4, v: vt_enum_unit_variants::status }; INSERT vt_enum_unit_variants::t [{ id: 1, v: 'todo' }, { id: 2, v: 'doing' }, { id: 3, v: 'done' }, { id: 4, v: 'todo' }]; OUTPUT FROM vt_enum_unit_variants::t SORT { id: asc }"
 params: null
 expected:
   status: success
@@ -530,7 +530,7 @@ expected:
 ### enum_unit_optional
 ```yaml
 operation: admin
-statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_optional CASCADE; CREATE NAMESPACE vt_enum_unit_optional; CREATE ENUM vt_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_optional::t { id: int4, v: Option(vt_enum_unit_optional::status) }; INSERT vt_enum_unit_optional::t [{ id: 1, v: vt_enum_unit_optional::status::Doing }, { id: 2, v: none }, { id: 3, v: vt_enum_unit_optional::status::Done }]; OUTPUT FROM vt_enum_unit_optional::t SORT { id: asc }"
+statement: "DROP NAMESPACE IF EXISTS vt_enum_unit_optional CASCADE; CREATE NAMESPACE vt_enum_unit_optional; CREATE ENUM vt_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_enum_unit_optional::t { id: int4, v: Option(vt_enum_unit_optional::status) }; INSERT vt_enum_unit_optional::t [{ id: 1, v: 'doing' }, { id: 2, v: none }, { id: 3, v: 'done' }]; OUTPUT FROM vt_enum_unit_optional::t SORT { id: asc }"
 params: null
 expected:
   status: success
@@ -549,7 +549,7 @@ expected:
 ### enum_with_fields
 ```yaml
 operation: admin
-statement: "DROP NAMESPACE IF EXISTS vt_enum_with_fields CASCADE; CREATE NAMESPACE vt_enum_with_fields; CREATE ENUM vt_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_enum_with_fields::t { id: int4, v: vt_enum_with_fields::shape }; INSERT vt_enum_with_fields::t [{ id: 1, v: vt_enum_with_fields::shape::Point }, { id: 2, v: vt_enum_with_fields::shape::Circle { radius: 1.5 } }, { id: 3, v: vt_enum_with_fields::shape::Rect { w: 2.0, h: 3.0 } }]; OUTPUT FROM vt_enum_with_fields::t SORT { id: asc }"
+statement: "DROP NAMESPACE IF EXISTS vt_enum_with_fields CASCADE; CREATE NAMESPACE vt_enum_with_fields; CREATE ENUM vt_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_enum_with_fields::t { id: int4, v: vt_enum_with_fields::shape }; INSERT vt_enum_with_fields::t [{ id: 1, v: 'point' }, { id: 2, v: 'circle', v_circle_radius: 1.5 }, { id: 3, v: 'rect', v_rect_w: 2.0, v_rect_h: 3.0 }]; OUTPUT FROM vt_enum_with_fields::t SORT { id: asc }"
 params: null
 expected:
   status: success

@@ -9,7 +9,7 @@ fn engine() -> TestEngine {
 	t.admin("CREATE NAMESPACE s");
 	t.admin("CREATE ENUM s::status { Active, Inactive }");
 	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
-	t.command("INSERT s::e [{ id: 1, status: s::status::Inactive }]");
+	t.command("INSERT s::e [{ id: 1, status: 'inactive' }]");
 	t
 }
 
@@ -30,7 +30,7 @@ fn an_optional_enum_column_stores_and_reads_back_a_variant_and_a_none() {
 	// Option(s::status) must resolve the enum as s::status does and hold a none, never fail as type not found.
 	let t = engine();
 	t.admin("CREATE TABLE s::o { id: int4, status: Option(s::status) }");
-	t.command("INSERT s::o [{ id: 1, status: s::status::Inactive }, { id: 2, status: none }]");
+	t.command("INSERT s::o [{ id: 1, status: 'inactive' }, { id: 2, status: none }]");
 
 	let rows = status_rows(&t.query("FROM s::o | sort { id: ASC }"));
 

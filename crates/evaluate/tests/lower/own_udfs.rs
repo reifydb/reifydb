@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	expression::{Expression, SumTypeConstructorExpression},
-	value::column::factory,
-};
+use reifydb_core::value::column::factory;
 use reifydb_value::value::Value;
 
 use crate::common::{
-	Env, Frozen, and, batch, between, boolean, column, contains, frag, is_variant, none, number, strings, xor,
+	Env, Frozen, and, batch, between, boolean, column, contains, is_variant, none, number, strings, xor,
 };
 
 #[test]
@@ -97,47 +94,13 @@ fn is_variant_reads_the_tag_column_like_the_old_path() {
 	let env = Env::new();
 	let tagged = batch(vec![factory::uint1("shape_tag", [0, 1, 0])]);
 	let untagged = batch(vec![factory::int4("other", [1, 2, 3])]);
-	let expression = is_variant("shape", Some(0));
+	let expression = is_variant("shape", 0);
 	for input in [tagged, untagged] {
 		let lowered = env.lowered(&expression, input.clone()).unwrap();
 		let old = frozen.old(&env, &expression, input).unwrap();
 		assert_eq!(lowered.0, old.0);
 		assert_eq!(strings(&lowered), strings(&old));
 	}
-}
-
-#[test]
-fn is_variant_without_a_known_enum_errors_like_the_old_path() {
-	// The tag is resolved at plan time, so a missing one must keep today's CA_103.
-	let mut frozen = Frozen::inline(&[
-		"CA_103 \"circle\" `circle` cannot be matched, because the enum of `shape` is not known here []",
-	]);
-	let env = Env::new();
-	let input = batch(vec![factory::uint1("shape_tag", [0])]);
-	let expression = is_variant("shape", None);
-
-	assert_eq!(env.lowered(&expression, input.clone()).unwrap_err().code, "CA_103");
-	assert_eq!(frozen.old(&env, &expression, input).unwrap_err().code, "CA_103");
-}
-
-#[test]
-fn a_sum_type_constructor_inside_an_expression_errors_like_the_old_path() {
-	// A variant can never be a value inside an expression, so it must be refused with CA_102.
-	let mut frozen = Frozen::inline(&[
-		"CA_102 \"circle\" `circle` is an enum variant, which cannot be used inside an expression []",
-	]);
-	let env = Env::new();
-	let input = batch(vec![factory::int4("v", [1])]);
-	let expression = Expression::SumTypeConstructor(SumTypeConstructorExpression {
-		namespace: frag("ns"),
-		sumtype_name: frag("shape"),
-		variant_name: frag("circle"),
-		columns: vec![],
-		fragment: frag("circle"),
-	});
-
-	assert_eq!(env.lowered(&expression, input.clone()).unwrap_err().code, "CA_102");
-	assert_eq!(frozen.old(&env, &expression, input).unwrap_err().code, "CA_102");
 }
 
 #[test]
@@ -151,34 +114,11 @@ fn every_own_udf_kind_lowers_with_the_rest_of_its_expression() {
 		factory::any("l", [Value::List(vec![Value::Int4(1)]), Value::List(vec![])]),
 	]);
 	let guard = || between(column("n"), number("0"), number("10"));
-	for kind in [
-		xor(column("b"), boolean("true")),
-		contains(column("l"), vec![number("1")]),
-		is_variant("shape", Some(0)),
-	] {
+	for kind in
+		[xor(column("b"), boolean("true")), contains(column("l"), vec![number("1")]), is_variant("shape", 0)]
+	{
 		let expression = and(guard(), kind.clone());
 		let lowered = env.lowered(&expression, input.clone()).unwrap();
 		assert_eq!(strings(&lowered)[0], strings(&env.lowered(&kind, input.clone()).unwrap())[0], "{kind:?}");
 	}
-}
-
-#[test]
-fn a_variant_error_wins_over_a_missing_column_anywhere_in_the_expression() {
-	// The old compiler raised variant errors before any row ran, so a missing column next to one must not win.
-	let mut frozen = Frozen::inline(&[
-		"CA_102 \"circle\" `circle` is an enum variant, which cannot be used inside an expression []",
-	]);
-	let env = Env::new();
-	let input = batch(vec![factory::int4("v", [1])]);
-	let variant = Expression::SumTypeConstructor(SumTypeConstructorExpression {
-		namespace: frag("ns"),
-		sumtype_name: frag("shape"),
-		variant_name: frag("circle"),
-		columns: vec![],
-		fragment: frag("circle"),
-	});
-	let expression = and(column("missing"), xor(boolean("true"), variant));
-
-	assert_eq!(env.lowered(&expression, input.clone()).unwrap_err().code, "CA_102");
-	assert_eq!(frozen.old(&env, &expression, input).unwrap_err().code, "CA_102");
 }

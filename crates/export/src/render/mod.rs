@@ -78,13 +78,7 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 					&table.table.name,
 				)?;
 				let layout = build_layout(&table.table.columns, &model.resolver);
-				out.push_str(&render_inserts(
-					&name,
-					rows,
-					options.insert_batch_size,
-					&layout,
-					&model.resolver,
-				)?);
+				out.push_str(&render_inserts(&name, rows, options.insert_batch_size, &layout)?);
 			}
 		}
 		for ringbuffer in &model.ringbuffers {
@@ -96,13 +90,7 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 					&ringbuffer.ringbuffer.name,
 				)?;
 				let layout = build_layout(&ringbuffer.ringbuffer.columns, &model.resolver);
-				out.push_str(&render_inserts(
-					&name,
-					rows,
-					options.insert_batch_size,
-					&layout,
-					&model.resolver,
-				)?);
+				out.push_str(&render_inserts(&name, rows, options.insert_batch_size, &layout)?);
 			}
 		}
 		for series in &model.series {
@@ -114,13 +102,7 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 					&series.series.name,
 				)?;
 				let layout = build_layout(&series.series.columns, &model.resolver);
-				out.push_str(&render_inserts(
-					&name,
-					rows,
-					options.insert_batch_size,
-					&layout,
-					&model.resolver,
-				)?);
+				out.push_str(&render_inserts(&name, rows, options.insert_batch_size, &layout)?);
 			}
 		}
 	}

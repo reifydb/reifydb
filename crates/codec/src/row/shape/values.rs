@@ -285,7 +285,6 @@ impl RowShape {
 		};
 
 		match field_type {
-			ValueType::Enum(_) => unreachable!("enum is stored split, never as one value"),
 			ValueType::Boolean => Value::Boolean(self.get::<bool>(row, index)),
 			ValueType::Float4 => OrderedF32::try_from(self.get::<f32>(row, index))
 				.map(Value::Float4)

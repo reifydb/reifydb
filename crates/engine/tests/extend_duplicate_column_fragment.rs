@@ -12,7 +12,7 @@ fn engine() -> TestEngine {
 	t.admin("CREATE TABLE s::empty { a: int4 }");
 	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
 	t.command("INSERT s::t [{ a: 1 }]");
-	t.command("INSERT s::e [{ id: 1, status: Active }]");
+	t.command("INSERT s::e [{ id: 1, status: 'active' }]");
 	t
 }
 
@@ -37,7 +37,7 @@ fn a_duplicate_extend_column_error_points_at_the_later_name_as_written() {
 		("FROM s::empty | extend { y: 1, y: 2 }", "y"),
 		("extend { y: 1, y: 2 }", "y"),
 		("FROM s::e | extend { status_tag: 2 }", "status_tag"),
-		("FROM s::e | extend { status: s::status::Active }", "status"),
+		("FROM s::e | extend { status: 'active' }", "status"),
 	] {
 		let expected_column = rql.rfind(&format!("{name}: ")).expect("name in query") + 1;
 		match query_err(&t, rql) {

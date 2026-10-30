@@ -122,9 +122,9 @@ fn an_optional_enum_field_stores_a_value_and_a_none() {
 	let t = engine();
 	t.admin("CREATE ENUM test::e { A { x: Option(int4) }, B }");
 	t.admin("CREATE TABLE test::t { id: int4, v: test::e }");
-	t.command("INSERT test::t [{ id: 1, v: test::e::A { x: 5 } }]");
-	t.command("INSERT test::t [{ id: 2, v: test::e::A { x: none } }]");
-	t.command("INSERT test::t [{ id: 3, v: test::e::B }]");
+	t.command("INSERT test::t [{ id: 1, v: 'a', v_a_x: 5 }]");
+	t.command("INSERT test::t [{ id: 2, v: 'a', v_a_x: none }]");
+	t.command("INSERT test::t [{ id: 3, v: 'b' }]");
 
 	let frames = t.query("FROM test::t SORT { id: ASC }");
 

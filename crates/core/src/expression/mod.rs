@@ -96,7 +96,6 @@ pub enum Expression {
 	If(IfExpression),
 	Map(MapExpression),
 	Extend(ExtendExpression),
-	SumTypeConstructor(SumTypeConstructorExpression),
 	IsVariant(IsVariantExpression),
 	FieldAccess(FieldAccessExpression),
 }
@@ -693,17 +692,6 @@ impl Display for Expression {
 					.collect::<Vec<_>>()
 					.join(", ")
 			),
-			Expression::SumTypeConstructor(ctor) => write!(
-				f,
-				"{}::{}{{ {} }}",
-				ctor.sumtype_name.text(),
-				ctor.variant_name.text(),
-				ctor.columns
-					.iter()
-					.map(|(name, expr)| format!("{}: {}", name.text(), expr))
-					.collect::<Vec<_>>()
-					.join(", ")
-			),
 			Expression::IsVariant(e) => write!(f, "({} IS {})", e.expression, e.variant_name.text()),
 			Expression::FieldAccess(field_access) => write!(f, "{}", field_access),
 		}
@@ -948,21 +936,11 @@ pub struct ExtendExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SumTypeConstructorExpression {
-	pub namespace: Fragment,
-	pub sumtype_name: Fragment,
-	pub variant_name: Fragment,
-	pub columns: Vec<(Fragment, Expression)>,
-	pub fragment: Fragment,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IsVariantExpression {
 	pub expression: Box<Expression>,
-	pub namespace: Option<Fragment>,
 	pub sumtype_name: Fragment,
 	pub variant_name: Fragment,
-	pub tag: Option<u8>,
+	pub tag: u8,
 	pub fragment: Fragment,
 }
 
@@ -1109,11 +1087,6 @@ fn collect_variable_names(expr: &Expression, names: &mut Vec<String>) {
 		}
 		Expression::Record(e) => {
 			for (_, expr) in &e.fields {
-				collect_variable_names(expr, names);
-			}
-		}
-		Expression::SumTypeConstructor(e) => {
-			for (_, expr) in &e.columns {
 				collect_variable_names(expr, names);
 			}
 		}

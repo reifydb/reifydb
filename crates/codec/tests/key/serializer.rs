@@ -23,7 +23,6 @@ use reifydb_value::{
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
-		sumtype::SumTypeId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
@@ -1053,23 +1052,7 @@ fn test_roundtrip_exhaustiveness_guard() {
 		Value::Record(_) => {}
 		Value::Tuple(_) => {}
 		Value::Digest(_) => {}
-		Value::Enum {
-			..
-		} => {}
 	}
-}
-
-#[test]
-#[should_panic(expected = "enum is stored split, never as one value")]
-fn test_enum_is_never_a_key() {
-	// An enum key must be its stored tag column, otherwise index order would depend on a value the store never
-	// holds.
-	let mut ser = KeySerializer::new();
-	ser.extend_value(&Value::Enum {
-		id: SumTypeId(1),
-		tag: 0,
-		fields: Vec::new(),
-	});
 }
 
 #[test]

@@ -110,9 +110,6 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 			inner: inner.as_ref().clone(),
 			accuracy: *accuracy,
 		})),
-		ValueType::Enum(_) => {
-			panic!("field {name}: an enum column leaves the engine as names, found {field_type:?}")
-		}
 		ValueType::Option(_) => {
 			panic!("field {name}: a nested Option has no arrow field, found {field_type:?}")
 		}

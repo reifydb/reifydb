@@ -14,9 +14,6 @@ fn to_json_pretty(value: &Value, indent: usize) -> String {
 	let pad = "  ".repeat(indent);
 	let inner_pad = "  ".repeat(indent + 1);
 	match value {
-		Value::Enum {
-			..
-		} => unreachable!("enum columns are only made at the result edge"),
 		Value::None {
 			..
 		} => "null".to_string(),

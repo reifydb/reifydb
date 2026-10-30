@@ -55,7 +55,6 @@ use duration::Duration;
 use identity::IdentityId;
 use ordered_f32::OrderedF32;
 use ordered_f64::OrderedF64;
-use sumtype::SumTypeId;
 use time::Time;
 use uuid::{Uuid4, Uuid7};
 use value_type::ValueType;
@@ -125,12 +124,6 @@ pub enum Value {
 	Tuple(Vec<Value>),
 
 	Digest(Box<Digest>),
-
-	Enum {
-		id: SumTypeId,
-		tag: u8,
-		fields: Vec<Value>,
-	},
 }
 
 impl Value {
@@ -381,18 +374,6 @@ impl PartialEq for Value {
 			(Value::Record(l), Value::Record(r)) => l == r,
 			(Value::Tuple(l), Value::Tuple(r)) => l == r,
 			(Value::Digest(l), Value::Digest(r)) => l == r,
-			(
-				Value::Enum {
-					id: li,
-					tag: lt,
-					fields: lf,
-				},
-				Value::Enum {
-					id: ri,
-					tag: rt,
-					fields: rf,
-				},
-			) => li == ri && lt == rt && lf == rf,
 			_ => false,
 		}
 	}
@@ -442,15 +423,6 @@ impl hash::Hash for Value {
 			}
 			Value::Tuple(v) => v.hash(state),
 			Value::Digest(v) => v.hash(state),
-			Value::Enum {
-				id,
-				tag,
-				fields,
-			} => {
-				id.hash(state);
-				tag.hash(state);
-				fields.hash(state);
-			}
 		}
 	}
 }
@@ -516,26 +488,6 @@ impl Ord for Value {
 			(Value::Tuple(_), Value::Tuple(_)) => unreachable!("Tuple values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			(Value::Digest(l), Value::Digest(r)) => l.encode().cmp(&r.encode()),
-			(
-				Value::Enum {
-					id: li,
-					tag: lt,
-					fields: lf,
-				},
-				Value::Enum {
-					id: ri,
-					tag: rt,
-					fields: rf,
-				},
-			) if lf.is_empty() && rf.is_empty() => (li, lt).cmp(&(ri, rt)),
-			(
-				Value::Enum {
-					..
-				},
-				Value::Enum {
-					..
-				},
-			) => unreachable!("Enum values with fields are not orderable"),
 			_ => unimplemented!(),
 		}
 	}
@@ -605,11 +557,6 @@ impl Display for Value {
 				..
 			} => f.write_str("none"),
 			Value::Digest(digest) => write!(f, "digest(n: {})", digest.count()),
-			Value::Enum {
-				id,
-				tag,
-				..
-			} => write!(f, "Enum({}, {})", id, tag),
 		}
 	}
 }
@@ -658,10 +605,6 @@ impl Value {
 				inner: Box::new(digest.inner().clone()),
 				accuracy: digest.accuracy(),
 			},
-			Value::Enum {
-				id,
-				..
-			} => ValueType::Enum(*id),
 		}
 	}
 

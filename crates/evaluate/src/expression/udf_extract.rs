@@ -235,7 +235,6 @@ fn rewrite_expr(
 		| Expression::Parameter(_)
 		| Expression::Variable(_)
 		| Expression::Type(_)
-		| Expression::SumTypeConstructor(_)
 		| Expression::IsVariant(_) => expr.clone(),
 	}
 }

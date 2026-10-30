@@ -155,11 +155,6 @@ fn fold_children(expr: &mut Expression) {
 				fold(value);
 			}
 		}
-		Expression::SumTypeConstructor(e) => {
-			for (_, value) in &mut e.columns {
-				fold(value);
-			}
-		}
 		Expression::Constant(_)
 		| Expression::Column(_)
 		| Expression::AccessSource(_)

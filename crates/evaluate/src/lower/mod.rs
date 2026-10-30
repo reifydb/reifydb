@@ -95,13 +95,6 @@ impl From<Error> for Stop {
 
 type Lowered<T> = std::result::Result<T, Stop>;
 
-pub fn compile_check(expression: &Expression) -> Result<()> {
-	match variant::compile_time_error(expression) {
-		Some(error) => Err(error),
-		None => Ok(()),
-	}
-}
-
 impl LoweredExpr {
 	pub fn new(expression: Expression, operator: &'static str) -> Self {
 		Self {
@@ -222,9 +215,6 @@ fn lower_root<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 ) -> Lowered<(Arc<dyn PhysicalExpr>, FieldRef)> {
-	if let Some(error) = variant::compile_time_error(expression) {
-		return Err(Stop::Error(error));
-	}
 	let node = lower_node(ctx, operator, expression)?;
 	let schema = positional_schema(operator, ctx.batch.schema_ref())?;
 	let expr =
@@ -397,9 +387,6 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::Extend(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
 		Expression::Contains(e) => contains::lower_contains(ctx, operator, expression, e),
 		Expression::IsVariant(e) => Ok(variant::lower_is_variant(ctx, operator, e)?),
-		Expression::SumTypeConstructor(_) => Err(Stop::Error(
-			variant::compile_time_error(expression).expect("a sum type constructor is a compile error"),
-		)),
 	}
 }
 

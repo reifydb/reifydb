@@ -300,7 +300,7 @@ describe('Value Types', () => {
 
     it('enum_unit_variants', async () => {
         const frames = await client.admin(
-            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_variants CASCADE; CREATE NAMESPACE vt_ws_enum_unit_variants; CREATE ENUM vt_ws_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_variants::t { id: int4, v: vt_ws_enum_unit_variants::status }; INSERT vt_ws_enum_unit_variants::t [{ id: 1, v: vt_ws_enum_unit_variants::status::Todo }, { id: 2, v: vt_ws_enum_unit_variants::status::Doing }, { id: 3, v: vt_ws_enum_unit_variants::status::Done }, { id: 4, v: vt_ws_enum_unit_variants::status::Todo }]; OUTPUT FROM vt_ws_enum_unit_variants::t SORT { id: asc }",
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_variants CASCADE; CREATE NAMESPACE vt_ws_enum_unit_variants; CREATE ENUM vt_ws_enum_unit_variants::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_variants::t { id: int4, v: vt_ws_enum_unit_variants::status }; INSERT vt_ws_enum_unit_variants::t [{ id: 1, v: 'todo' }, { id: 2, v: 'doing' }, { id: 3, v: 'done' }, { id: 4, v: 'todo' }]; OUTPUT FROM vt_ws_enum_unit_variants::t SORT { id: asc }",
             null,
             [Shape.object({id: Shape.int4(), v: Shape.utf8()})]
         );
@@ -310,7 +310,7 @@ describe('Value Types', () => {
 
     it('enum_unit_optional', async () => {
         const frames = await client.admin(
-            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_optional CASCADE; CREATE NAMESPACE vt_ws_enum_unit_optional; CREATE ENUM vt_ws_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_optional::t { id: int4, v: Option(vt_ws_enum_unit_optional::status) }; INSERT vt_ws_enum_unit_optional::t [{ id: 1, v: vt_ws_enum_unit_optional::status::Doing }, { id: 2, v: none }, { id: 3, v: vt_ws_enum_unit_optional::status::Done }]; OUTPUT FROM vt_ws_enum_unit_optional::t SORT { id: asc }",
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_unit_optional CASCADE; CREATE NAMESPACE vt_ws_enum_unit_optional; CREATE ENUM vt_ws_enum_unit_optional::status { Todo, Doing, Done }; CREATE TABLE vt_ws_enum_unit_optional::t { id: int4, v: Option(vt_ws_enum_unit_optional::status) }; INSERT vt_ws_enum_unit_optional::t [{ id: 1, v: 'doing' }, { id: 2, v: none }, { id: 3, v: 'done' }]; OUTPUT FROM vt_ws_enum_unit_optional::t SORT { id: asc }",
             null,
             [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
         );
@@ -320,7 +320,7 @@ describe('Value Types', () => {
 
     it('enum_with_fields', async () => {
         const frames = await client.admin(
-            "DROP NAMESPACE IF EXISTS vt_ws_enum_with_fields CASCADE; CREATE NAMESPACE vt_ws_enum_with_fields; CREATE ENUM vt_ws_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_ws_enum_with_fields::t { id: int4, v: vt_ws_enum_with_fields::shape }; INSERT vt_ws_enum_with_fields::t [{ id: 1, v: vt_ws_enum_with_fields::shape::Point }, { id: 2, v: vt_ws_enum_with_fields::shape::Circle { radius: 1.5 } }, { id: 3, v: vt_ws_enum_with_fields::shape::Rect { w: 2.0, h: 3.0 } }]; OUTPUT FROM vt_ws_enum_with_fields::t SORT { id: asc }",
+            "DROP NAMESPACE IF EXISTS vt_ws_enum_with_fields CASCADE; CREATE NAMESPACE vt_ws_enum_with_fields; CREATE ENUM vt_ws_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_ws_enum_with_fields::t { id: int4, v: vt_ws_enum_with_fields::shape }; INSERT vt_ws_enum_with_fields::t [{ id: 1, v: 'point' }, { id: 2, v: 'circle', v_circle_radius: 1.5 }, { id: 3, v: 'rect', v_rect_w: 2.0, v_rect_h: 3.0 }]; OUTPUT FROM vt_ws_enum_with_fields::t SORT { id: asc }",
             null,
             [Shape.object({id: Shape.int4(), v: Shape.utf8(), v_circle_radius: Shape.option(Shape.float8()), v_rect_w: Shape.option(Shape.float8()), v_rect_h: Shape.option(Shape.float8())})]
         );

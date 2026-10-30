@@ -3,7 +3,7 @@
 
 use reifydb_core::{expression::Expression, flow::operator::OperatorDef::Gate, interface::catalog::flow::OperatorId};
 use reifydb_rql::{
-	expression::variant::resolve_is_variant_tags,
+	expression::variant::{resolve_enum_equality, text_literal},
 	nodes::GateNode,
 	query::{QueryPlan, extract_resolved_source},
 };
@@ -32,7 +32,7 @@ impl CompileOperator for GateCompiler {
 		if let Some(source) = extract_resolved_source(&self.input) {
 			let mut tx = txn.reborrow();
 			for expr in &mut conditions {
-				resolve_is_variant_tags(expr, &source, &compiler.catalog, &mut tx)?;
+				resolve_enum_equality(expr, &source, &compiler.catalog, &mut tx, &mut text_literal)?;
 			}
 		}
 

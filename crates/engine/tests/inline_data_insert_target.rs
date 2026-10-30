@@ -101,7 +101,7 @@ fn tagged_series_insert_with_a_variant_name_stores_that_variant_tag() {
 	// Inactive is the second variant, so writing the default tag 0 silently files the row under Active.
 	let t = engine();
 
-	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: Inactive }]");
+	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 'inactive' }]");
 
 	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Uint1(1)]);
 }
@@ -280,9 +280,9 @@ fn tagged_series_insert_with_an_unknown_variant_name_is_an_error_with_its_fragme
 	// A name that is no variant must fail loud instead of falling back to the default tag 0.
 	let t = engine();
 
-	let err = command_err(&t, "INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: Nope }]");
+	let err = command_err(&t, "INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 'nope' }]");
 
-	assert_diagnostic(&err, "CA_100", "Nope");
+	assert_diagnostic(&err, "CA_100", "nope");
 	assert_eq!(row_count(&t, "FROM s::m"), 0);
 }
 
@@ -300,46 +300,6 @@ fn tagged_series_insert_with_a_numeric_tag_that_is_no_variant_reports_that_tag()
 		assert!(err.fragment.text().contains(tag), "tag {tag}, got: {err:?}");
 	}
 	assert_eq!(row_count(&t, "FROM s::m"), 0);
-}
-
-#[test]
-fn tagged_series_insert_with_a_qualified_variant_stores_that_variant_tag() {
-	// The qualified form must resolve like the bare name, never panic or store the default tag 0.
-	let t = engine();
-
-	command_ok(
-		&t,
-		"INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: s::status::Inactive }]",
-	);
-
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Uint1(1)]);
-}
-
-#[test]
-fn tagged_series_insert_with_a_variant_of_another_enum_is_an_error() {
-	// s::other::Y has tag 1 like Inactive, so accepting it would file the row under the wrong enum.
-	let t = engine();
-	t.admin("CREATE ENUM s::other { X, Y }");
-
-	let err = command_err(
-		&t,
-		"INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: s::other::Y }]",
-	);
-
-	assert_diagnostic(&err, "CA_100", "s::other::Y");
-}
-
-#[test]
-fn tagged_series_insert_with_a_variant_of_an_unknown_namespace_is_an_error() {
-	// A qualified variant must resolve its namespace, not match on the enum and variant name alone.
-	let t = engine();
-
-	let err = command_err(
-		&t,
-		"INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: nope::status::Inactive }]",
-	);
-
-	assert_diagnostic(&err, "CA_002", "nope");
 }
 
 #[test]
@@ -399,102 +359,30 @@ fn series_insert_without_a_value_for_a_non_optional_column_is_an_error() {
 }
 
 #[test]
-fn table_insert_with_an_unknown_unit_variant_is_an_error_with_its_fragment() {
+fn table_insert_with_an_unknown_name_is_an_error_with_its_fragment() {
 	// A name that is no variant of the column enum must fail loud and name the value.
 	let t = engine();
 	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
 
-	let err = command_err(&t, "INSERT s::e [{ id: 1, status: Nope }]");
+	let err = command_err(&t, "INSERT s::e [{ id: 1, status: 'nope' }]");
 
-	assert_diagnostic(&err, "CA_100", "Nope");
+	assert_diagnostic(&err, "CA_100", "nope");
 }
 
 #[test]
-fn table_insert_with_an_unknown_qualified_variant_is_an_error_with_its_fragment() {
-	// A qualified variant that the enum does not declare must fail loud, never panic.
-	let t = engine();
-	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
-
-	let err = command_err(&t, "INSERT s::e [{ id: 1, status: s::status::Nope }]");
-
-	assert_diagnostic(&err, "CA_100", "Nope");
-}
-
-#[test]
-fn table_insert_with_a_variant_of_another_enum_is_an_error() {
-	// s::other::Y has tag 1 like Inactive, so accepting it would store a variant of the wrong enum.
-	let t = engine();
-	t.admin("CREATE ENUM s::other { X, Y }");
-	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
-
-	let err = command_err(&t, "INSERT s::e [{ id: 1, status: s::other::Y }]");
-
-	assert_diagnostic(&err, "CA_100", "s::other::Y");
-	assert_eq!(row_count(&t, "FROM s::e"), 0);
-}
-
-#[test]
-fn table_insert_with_a_variant_of_an_unknown_namespace_is_namespace_not_found() {
-	// An unknown namespace in a qualified variant must fail loud, never panic.
-	let t = engine();
-	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
-
-	let err = command_err(&t, "INSERT s::e [{ id: 1, status: nope::status::Active }]");
-
-	assert_diagnostic(&err, "CA_002", "nope");
-}
-
-#[test]
-fn table_insert_with_a_variant_of_an_unknown_enum_is_type_not_found() {
-	// An unknown enum in a qualified variant must fail loud, never panic.
-	let t = engine();
-	t.admin("CREATE TABLE s::e { id: int4, status: s::status }");
-
-	let err = command_err(&t, "INSERT s::e [{ id: 1, status: s::nope::Active }]");
-
-	assert_diagnostic(&err, "CA_002", "nope");
-}
-
-#[test]
-fn table_insert_with_a_field_the_variant_does_not_declare_is_column_not_found() {
+fn table_insert_with_a_field_of_another_variant_is_refused() {
 	// side belongs to Square, so a Circle carrying it must fail loud instead of losing the value.
 	let t = engine();
 	t.admin("CREATE ENUM s::shape { Circle { radius: float8 }, Square { side: float8 } }");
 	t.admin("CREATE TABLE s::g { id: int4, shape: s::shape }");
 
-	let err = command_err(&t, "INSERT s::g [{ id: 1, shape: s::shape::Circle { side: 1.0 } }]");
+	let err = command_err(
+		&t,
+		"INSERT s::g [{ id: 1, shape: 'circle', shape_circle_radius: 1.0, shape_square_side: 1.0 }]",
+	);
 
-	assert_column_not_found(&err, "side");
-}
-
-#[test]
-fn table_insert_with_a_constructor_in_a_column_that_is_no_enum_is_an_error() {
-	// a is int4, so a constructor for it has no enum to resolve against and must fail loud, never panic.
-	let t = engine();
-
-	let err = command_err(&t, "INSERT s::t [{ a: Foo { x: 1 } }]");
-
-	assert_diagnostic(&err, "CA_101", "Foo");
-}
-
-#[test]
-fn table_insert_with_a_qualified_variant_in_a_column_that_is_no_enum_is_an_error() {
-	// A qualified variant for an int4 column must fail loud at the value instead of at a hidden tag column.
-	let t = engine();
-
-	let err = command_err(&t, "INSERT s::t [{ a: s::status::Active }]");
-
-	assert_diagnostic(&err, "CA_101", "Active");
-}
-
-#[test]
-fn series_insert_with_a_constructor_in_a_data_column_is_an_error() {
-	// A series data column is never an enum, so a constructor for it must fail loud, never panic.
-	let t = engine();
-
-	let err = command_err(&t, "INSERT s::x [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: Foo { x: 1 } }]");
-
-	assert_diagnostic(&err, "CA_101", "Foo");
+	assert_diagnostic(&err, "CA_133", "shape_square_side");
+	assert_eq!(row_count(&t, "FROM s::g"), 0);
 }
 
 #[test]
@@ -521,14 +409,17 @@ fn table_insert_with_a_duplicate_column_in_a_row_is_an_error() {
 }
 
 #[test]
-fn table_insert_with_a_duplicate_constructor_field_is_an_error() {
+fn table_insert_with_a_duplicate_flat_field_is_an_error() {
 	// Two values for radius are ambiguous, so the first must not be dropped in favour of the last.
 	let t = engine();
 	t.admin("CREATE ENUM s::shape { Circle { radius: float8 }, Square { side: float8 } }");
 	t.admin("CREATE TABLE s::g { id: int4, shape: s::shape }");
 
-	let err = command_err(&t, "INSERT s::g [{ id: 1, shape: s::shape::Circle { radius: 1.0, radius: 2.0 } }]");
+	let err = command_err(
+		&t,
+		"INSERT s::g [{ id: 1, shape: 'circle', shape_circle_radius: 1.0, shape_circle_radius: 2.0 }]",
+	);
 
-	assert_eq!(err.fragment.text(), "radius", "got: {err:?}");
+	assert_eq!(err.fragment.text(), "shape_circle_radius", "got: {err:?}");
 	assert_eq!(row_count(&t, "FROM s::g"), 0);
 }

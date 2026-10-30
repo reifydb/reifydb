@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_core::expression::{
-	AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression, IdentExpression,
-	IsVariantExpression,
-};
+use reifydb_core::expression::{AndExpression, EqExpression, Expression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
@@ -21,13 +18,12 @@ use crate::{
 	expression::ExpressionCompiler,
 	plan::logical::{
 		AssignNode, AssignValue, Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue,
-		LogicalPlan, LoopNode, MapNode, PipelineNode, WhileNode,
+		LogicalPlan, LoopNode, PipelineNode, WhileNode,
 		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode, ReturnValue},
 	},
 	token::token::{Literal, Token, TokenKind},
 };
 
-type MatchSubject = (Option<Expression>, Option<String>);
 type MatchBranches<'bump> = (Vec<(Expression, LogicalPlan<'bump>)>, Option<LogicalPlan<'bump>>);
 
 enum ExprOrPlan<'bump> {
@@ -149,9 +145,8 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let fragment = ast.token.fragment.to_owned();
-		let (subject, subject_col_name) = Self::compile_match_subject(ast.subject)?;
-		let (branches, else_plan) =
-			self.lower_match_arms(ast.arms, &fragment, &subject, &subject_col_name, tx)?;
+		let subject = Self::compile_match_subject(ast.subject)?;
+		let (branches, else_plan) = self.lower_match_arms(ast.arms, &fragment, &subject, tx)?;
 		self.assemble_match_conditional(branches, else_plan)
 	}
 
@@ -169,48 +164,12 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn compile_match_arm_result_with_bindings(
-		&self,
-		result: AstLetValue<'bump>,
-		bindings: &[(String, String)],
-		fragment: &Fragment,
-		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
-		match result {
-			AstLetValue::Expression(expr) => {
-				let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(expr))?;
-				ExpressionCompiler::rewrite_field_refs(&mut result_expr, bindings);
-
-				let alias_expr = AliasExpression {
-					alias: IdentExpression(Fragment::internal("value")),
-					expression: Box::new(result_expr),
-					fragment: fragment.clone(),
-				};
-				Ok(LogicalPlan::Map(MapNode {
-					map: vec![Expression::Alias(alias_expr)],
-					rql: String::new(),
-				}))
-			}
-			AstLetValue::Statement(statement) => {
-				let plans = self.compile(statement, tx)?;
-				self.fold_plans_into_single(plans)
-			}
-		}
-	}
-
 	#[inline]
-	fn compile_match_subject(subject: Option<BumpBox<'bump, Ast<'bump>>>) -> Result<MatchSubject> {
-		let subject = match subject {
-			Some(s) => Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?),
-			None => None,
-		};
-
-		let subject_col_name = subject.as_ref().and_then(|s| match s {
-			Expression::Column(ColumnExpression(col)) => Some(col.name.text().to_string()),
-			_ => None,
-		});
-
-		Ok((subject, subject_col_name))
+	fn compile_match_subject(subject: Option<BumpBox<'bump, Ast<'bump>>>) -> Result<Option<Expression>> {
+		match subject {
+			Some(s) => Ok(Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?)),
+			None => Ok(None),
+		}
 	}
 
 	#[inline]
@@ -219,7 +178,6 @@ impl<'bump> Compiler<'bump> {
 		arms: Vec<AstMatchArm<'bump>>,
 		fragment: &Fragment,
 		subject: &Option<Expression>,
-		subject_col_name: &Option<String>,
 		tx: &mut Transaction<'_>,
 	) -> Result<MatchBranches<'bump>> {
 		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
@@ -257,117 +215,6 @@ impl<'bump> Compiler<'bump> {
 					}
 
 					let result_plan = self.compile_match_arm_result(result, tx)?;
-					branches.push((condition, result_plan));
-				}
-				AstMatchArm::IsVariant {
-					namespace,
-					sumtype_name,
-					variant_name,
-					destructure,
-					guard,
-					result,
-				} => {
-					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
-
-					let bindings: Vec<(String, String)> = match (&destructure, subject_col_name) {
-						(Some(destr), Some(col_name)) => {
-							let variant_lower = variant_name.text().to_lowercase();
-							destr.fields
-								.iter()
-								.map(|f| {
-									let field_name = f.text().to_string();
-									let physical = format!(
-										"{}_{}_{}",
-										col_name,
-										variant_lower,
-										field_name.to_lowercase()
-									);
-									(field_name, physical)
-								})
-								.collect()
-						}
-						_ => vec![],
-					};
-
-					let mut condition = Expression::IsVariant(IsVariantExpression {
-						expression: Box::new(subject_expr),
-						namespace: namespace.map(|n| n.to_owned()),
-						sumtype_name: sumtype_name.to_owned(),
-						variant_name: variant_name.to_owned(),
-						tag: None,
-						fragment: fragment.clone(),
-					});
-
-					if let Some(guard) = guard {
-						let mut guard_expr =
-							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
-						ExpressionCompiler::rewrite_field_refs(&mut guard_expr, &bindings);
-						condition = Expression::And(AndExpression {
-							left: Box::new(condition),
-							right: Box::new(guard_expr),
-							fragment: fragment.clone(),
-						});
-					}
-
-					let result_plan = self.compile_match_arm_result_with_bindings(
-						result, &bindings, fragment, tx,
-					)?;
-
-					branches.push((condition, result_plan));
-				}
-				AstMatchArm::Variant {
-					variant_name,
-					destructure,
-					guard,
-					result,
-				} => {
-					let subject_expr =
-						subject.clone().expect("Variant arm requires a MATCH subject");
-
-					let bindings: Vec<(String, String)> = match (&destructure, subject_col_name) {
-						(Some(destr), Some(col_name)) => {
-							let variant_lower = variant_name.text().to_lowercase();
-							destr.fields
-								.iter()
-								.map(|f| {
-									let field_name = f.text().to_string();
-									let physical = format!(
-										"{}_{}_{}",
-										col_name,
-										variant_lower,
-										field_name.to_lowercase()
-									);
-									(field_name, physical)
-								})
-								.collect()
-						}
-						_ => vec![],
-					};
-
-					let mut condition = Expression::IsVariant(IsVariantExpression {
-						expression: Box::new(subject_expr),
-						namespace: None,
-						sumtype_name: variant_name.to_owned(),
-						variant_name: variant_name.to_owned(),
-						tag: None,
-						fragment: fragment.clone(),
-					});
-
-					if let Some(guard) = guard {
-						let mut guard_expr =
-							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
-						ExpressionCompiler::rewrite_field_refs(&mut guard_expr, &bindings);
-						condition = Expression::And(AndExpression {
-							left: Box::new(condition),
-							right: Box::new(guard_expr),
-							fragment: fragment.clone(),
-						});
-					}
-
-					let result_plan = self.compile_match_arm_result_with_bindings(
-						result, &bindings, fragment, tx,
-					)?;
-
 					branches.push((condition, result_plan));
 				}
 				AstMatchArm::Condition {

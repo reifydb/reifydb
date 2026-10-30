@@ -6,13 +6,8 @@ use std::{collections::HashSet, fmt, fmt::Debug, str::FromStr, sync::Arc};
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	error::diagnostic::{
-		catalog::{variant_enum_not_known, variant_in_expression},
-		query, subscription,
-	},
-	expression::{
-		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
-	},
+	error::diagnostic::{query, subscription},
+	expression::{AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::{
 		namespace::Namespace,
@@ -1063,16 +1058,7 @@ impl InstructionCompiler {
 			Expression::Column(col) => {
 				self.emit(Instruction::LoadVar(col.0.name.clone()));
 			}
-			Expression::SumTypeConstructor(ctor) => {
-				return Err(error!(variant_in_expression(ctor.variant_name.clone())));
-			}
-			Expression::IsVariant(is) => {
-				let column = match is.expression.as_ref() {
-					Expression::Column(column) => column.0.name.text().to_string(),
-					other => display_label(other).text().to_string(),
-				};
-				return Err(error!(variant_enum_not_known(is.variant_name.clone(), &column)));
-			}
+			Expression::IsVariant(_) => unreachable!("a variant test is made only by the enum rewrite"),
 			Expression::AccessSource(_)
 			| Expression::Alias(_)
 			| Expression::Extend(_)

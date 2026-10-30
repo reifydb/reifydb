@@ -21,6 +21,7 @@ use reifydb_evaluate::{
 	lower::LoweredExpr,
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
+use reifydb_rql::expression::variant::resolve_enum_equality;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -33,7 +34,7 @@ use super::{NoopNode, user_header_names, with_system_headers, with_user_columns}
 use crate::{
 	Result,
 	vm::volcano::{
-		inline::{expand_aliases, expand_sumtype_assignment, resolve_is_variants, take_flat_fields},
+		inline::{enum_operand, expand_aliases, expand_sumtype_assignment, take_flat_fields},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -95,7 +96,9 @@ impl QueryNode for PatchNode {
 		}
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
-				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
+				resolve_enum_equality(expr, source, &ctx.services.catalog, rx, &mut |e| {
+					enum_operand(ctx, e)
+				})?;
 			}
 		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(

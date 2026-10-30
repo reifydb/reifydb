@@ -47,19 +47,19 @@ fn main() {
 	info!("Inserting drawings with enum values...");
 	log_query(
 		r#"INSERT art::drawings [
-    { id: 1, shape: art::Object::Circle { radius: 5.0 } },
-    { id: 2, shape: art::Object::Rectangle { width: 3.0, height: 4.0 } },
-    { id: 3, shape: art::Object::Circle { radius: 10.0 } },
-    { id: 4, shape: art::Object::Rectangle { width: 6.0, height: 2.5 } }
+    { id: 1, shape: 'circle', shape_circle_radius: 5.0 },
+    { id: 2, shape: 'rectangle', shape_rectangle_width: 3.0, shape_rectangle_height: 4.0 },
+    { id: 3, shape: 'circle', shape_circle_radius: 10.0 },
+    { id: 4, shape: 'rectangle', shape_rectangle_width: 6.0, shape_rectangle_height: 2.5 }
 ]"#,
 	);
 	db.command_as_root(
 		r#"
 		INSERT art::drawings [
-			{ id: 1, shape: art::Object::Circle { radius: 5.0 } },
-			{ id: 2, shape: art::Object::Rectangle { width: 3.0, height: 4.0 } },
-			{ id: 3, shape: art::Object::Circle { radius: 10.0 } },
-			{ id: 4, shape: art::Object::Rectangle { width: 6.0, height: 2.5 } }
+			{ id: 1, shape: 'circle', shape_circle_radius: 5.0 },
+			{ id: 2, shape: 'rectangle', shape_rectangle_width: 3.0, shape_rectangle_height: 4.0 },
+			{ id: 3, shape: 'circle', shape_circle_radius: 10.0 },
+			{ id: 4, shape: 'rectangle', shape_rectangle_width: 6.0, shape_rectangle_height: 2.5 }
 		];
 		"#,
 		Params::None,
@@ -82,12 +82,12 @@ fn main() {
 	}
 
 	info!("Filtering for Circle variants...");
-	log_query("FROM art::drawings FILTER { shape IS art::Object::Circle }");
+	log_query("FROM art::drawings FILTER { shape == 'circle' }");
 	let results = db
 		.query_as_root(
 			r#"
 			FROM art::drawings
-			FILTER { shape IS art::Object::Circle }
+			FILTER { shape == 'circle' }
 			"#,
 			Params::None,
 		)
@@ -98,12 +98,12 @@ fn main() {
 	}
 
 	info!("Filtering for Rectangle variants...");
-	log_query("FROM art::drawings FILTER { shape IS art::Object::Rectangle }");
+	log_query("FROM art::drawings FILTER { shape == 'rectangle' }");
 	let results = db
 		.query_as_root(
 			r#"
 			FROM art::drawings
-			FILTER { shape IS art::Object::Rectangle }
+			FILTER { shape == 'rectangle' }
 			"#,
 			Params::None,
 		)

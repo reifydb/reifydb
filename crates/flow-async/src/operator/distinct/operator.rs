@@ -27,7 +27,7 @@ use reifydb_core::{
 	internal_err,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 };
-use reifydb_evaluate::lower::{LoweredExpr, compile_check};
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -74,9 +74,6 @@ impl DistinctOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		for expression in &expressions {
-			compile_check(expression)?;
-		}
 		let lowered_expressions: Vec<LoweredExpr> =
 			expressions.iter().map(|e| LoweredExpr::new(e.clone(), "distinct")).collect();
 

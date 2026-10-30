@@ -166,7 +166,6 @@ fn reads_row(expr: &Expression) -> bool {
 		Expression::Tuple(e) => e.expressions.iter().any(reads_row),
 		Expression::List(e) => e.expressions.iter().any(reads_row),
 		Expression::Record(e) => e.fields.iter().any(|(_, field)| reads_row(field)),
-		Expression::SumTypeConstructor(e) => e.columns.iter().any(|(_, column)| reads_row(column)),
 		Expression::If(e) => {
 			reads_row(&e.condition)
 				|| reads_row(&e.then_expr) || e

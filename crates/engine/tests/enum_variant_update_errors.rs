@@ -18,8 +18,8 @@ fn engine() -> TestEngine {
 	t.admin("CREATE TABLE s::g { id: int4, shape: s::shape }");
 	t.admin("CREATE RINGBUFFER s::r { a: int4 } WITH { capacity: 10 }");
 	t.command("INSERT s::t [{ a: 1 }]");
-	t.command("INSERT s::e [{ id: 1, status: Active }]");
-	t.command("INSERT s::g [{ id: 1, shape: s::shape::Dot }]");
+	t.command("INSERT s::e [{ id: 1, status: 'active' }]");
+	t.command("INSERT s::g [{ id: 1, shape: 'dot' }]");
 	t.command("INSERT s::r [{ a: 1 }]");
 	t
 }
@@ -46,58 +46,11 @@ fn assert_update_rejects_like_insert(t: &TestEngine, source: &str, filter: &str,
 }
 
 #[test]
-fn an_update_rejects_a_qualified_variant_for_a_plain_or_unknown_column_with_the_insert_error() {
-	// A table and a ringbuffer share the patch path, so neither may hand the variant to the evaluator.
+fn an_update_rejects_a_name_its_enum_does_not_have_with_the_insert_error() {
+	// An unknown name must be a diagnostic at the name, never a panic while expanding the enum columns.
 	let t = engine();
 
-	for source in ["s::t", "s::r"] {
-		assert_update_rejects_like_insert(&t, source, "a == 1", "a: s::status::Active", "a: s::status::Active");
-		assert_update_rejects_like_insert(
-			&t,
-			source,
-			"a == 1",
-			"nope: s::status::Active",
-			"nope: s::status::Active",
-		);
-	}
-}
-
-#[test]
-fn an_update_rejects_a_variant_its_enum_does_not_have_with_the_insert_error() {
-	// An unknown variant must be a diagnostic at the variant, never a panic while expanding the enum columns.
-	let t = engine();
-
-	assert_update_rejects_like_insert(
-		&t,
-		"s::e",
-		"id == 1",
-		"id: 9, status: s::status::Nope",
-		"status: s::status::Nope",
-	);
-}
-
-#[test]
-fn an_update_rejects_an_unqualified_name_its_enum_does_not_have_with_the_insert_error() {
-	// A bare name under an enum column is a variant, so a typo must be the INSERT error, never a missing column.
-	let t = engine();
-
-	assert_update_rejects_like_insert(&t, "s::e", "id == 1", "id: 9, status: Nope", "status: Nope");
-}
-
-#[test]
-fn an_update_rejects_a_variant_of_another_enum_with_the_insert_error() {
-	// A variant is looked up in the enum it names, otherwise another enum's Active silently stores this enum's tag.
-	let t = engine();
-
-	for variant in ["s::other::Gone", "s::other::Active"] {
-		assert_update_rejects_like_insert(
-			&t,
-			"s::e",
-			"id == 1",
-			&format!("id: 9, status: {variant}"),
-			&format!("status: {variant}"),
-		);
-	}
+	assert_update_rejects_like_insert(&t, "s::e", "id == 1", "id: 9, status: 'nope'", "status: 'nope'");
 }
 
 #[test]
@@ -109,58 +62,9 @@ fn an_update_rejects_a_field_the_variant_does_not_have_with_the_insert_error() {
 		&t,
 		"s::g",
 		"id == 1",
-		"id: 9, shape: s::shape::Circle { nope: 1.0 }",
-		"shape: s::shape::Circle { nope: 1.0 }",
+		"id: 9, shape: 'circle', shape_circle_nope: 1.0",
+		"shape: 'circle', shape_circle_nope: 1.0",
 	);
-}
-
-#[test]
-fn an_update_rejects_a_variant_of_an_unknown_enum_with_the_insert_error() {
-	// The named enum must be resolved first, otherwise a typo in its path reads as a column type mismatch.
-	let t = engine();
-
-	for variant in ["s::nope::Active", "nope::status::Active"] {
-		assert_update_rejects_like_insert(
-			&t,
-			"s::t",
-			"a == 1",
-			&format!("a: {variant}"),
-			&format!("a: {variant}"),
-		);
-	}
-}
-
-#[test]
-fn a_variant_inside_an_update_expression_is_a_value_or_an_error_never_a_panic() {
-	// Only a variant directly under the column is expanded, so a nested one must not reach the evaluator unhandled.
-	let t = engine();
-
-	let error = error_of(&t, "UPDATE s::t { a: if a == 1 { s::status::Active } else { 2 } } FILTER { a == 1 }");
-
-	assert!(error == "no error" || error.contains("Active"), "the error must point at the variant: {error}");
-}
-
-#[test]
-fn a_qualified_variant_in_a_query_patch_is_a_value_or_an_error_never_a_panic() {
-	// A query patch has no write target, so the variant must still be handled without an INSERT to expand it.
-	let t = engine();
-
-	for (rql, variant) in [
-		("FROM s::t PATCH { a: s::status::Active }", "Active"),
-		("FROM s::e PATCH { status: s::status::Nope }", "Nope"),
-	] {
-		let result = t.inner().query_as(TestEngine::identity(), rql, Params::None);
-
-		if let Some(err) = result.error {
-			let diagnostic = err.diagnostic();
-			assert!(
-				diagnostic.fragment.text().contains(variant),
-				"{rql}: the error must point at the variant: {diagnostic:?}"
-			);
-		} else {
-			assert_ne!(variant, "Nope", "{rql}: an unknown variant has no value");
-		}
-	}
 }
 
 #[test]
@@ -169,7 +73,7 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 	let t = engine();
 
 	let read = t.query("FROM s::e");
-	let patched = t.query("FROM s::e PATCH { status: s::status::Inactive }");
+	let patched = t.query("FROM s::e PATCH { status: 'inactive' }");
 
 	assert_eq!(status_name(&patched).0, status_name(&read).0);
 	assert_eq!(status_name(&patched).1, [Value::Utf8("inactive".to_string())]);
@@ -190,8 +94,8 @@ fn an_update_rejects_a_field_value_out_of_its_range_with_the_insert_error() {
 		&t,
 		"s::g",
 		"id == 1",
-		"id: 9, shape: s::shape::Circle { radius: 1e400 }",
-		"shape: s::shape::Circle { radius: 1e400 }",
+		"id: 9, shape: 'circle', shape_circle_radius: 1e400",
+		"shape: 'circle', shape_circle_radius: 1e400",
 	);
 }
 
@@ -202,8 +106,8 @@ fn a_query_patch_of_an_enum_column_gives_its_field_columns_the_types_a_table_rea
 
 	let read = column_of(&t.query("FROM s::g"), "shape_circle_radius");
 	for (patch, values) in [
-		("FROM s::g PATCH { shape: s::shape::Circle { radius: 3.0 } }", vec!["3"]),
-		("FROM s::g PATCH { shape: s::shape::Dot }", vec!["none"]),
+		("FROM s::g PATCH { shape: 'circle', shape_circle_radius: 3.0 }", vec!["3"]),
+		("FROM s::g PATCH { shape: 'dot' }", vec!["none"]),
 	] {
 		let patched = column_of(&t.query(patch), "shape_circle_radius");
 

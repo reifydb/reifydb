@@ -96,9 +96,6 @@ impl ValueKind {
 
 	pub fn of_value(value: &Value) -> ValueKind {
 		match value {
-			Value::Enum {
-				..
-			} => ValueKind::Enum,
 			Value::None {
 				..
 			} => ValueKind::None,
@@ -137,7 +134,6 @@ impl ValueKind {
 
 	pub fn of_type(ty: &ValueType) -> ValueKind {
 		match ty {
-			ValueType::Enum(_) => ValueKind::Enum,
 			ValueType::Option(inner) => Self::of_type(inner),
 			ValueType::Boolean => ValueKind::Boolean,
 			ValueType::Float4 => ValueKind::Float4,

@@ -65,10 +65,7 @@ use reifydb_value::return_error;
 use crate::{
 	Result,
 	ast::{
-		ast::{
-			Ast, AstBetween, AstInfix, AstInline, AstIsVariant, AstStatement, AstSumTypeConstructor,
-			AstVariable, InfixOperator,
-		},
+		ast::{Ast, AstBetween, AstInfix, AstStatement, AstVariable, InfixOperator},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
 	bump::BumpBox,
@@ -333,7 +330,6 @@ impl<'bump> Parser<'bump> {
 				Between,
 				In,
 				NotIn,
-				Is,
 				Contains,
 				Assign,
 			}
@@ -342,7 +338,6 @@ impl<'bump> Parser<'bump> {
 				match current.kind {
 					TokenKind::Keyword(Keyword::Between) => Some(SpecialInfix::Between),
 					TokenKind::Keyword(Keyword::In) => Some(SpecialInfix::In),
-					TokenKind::Keyword(Keyword::Is) => Some(SpecialInfix::Is),
 					TokenKind::Keyword(Keyword::Contains) => Some(SpecialInfix::Contains),
 					TokenKind::Operator(Operator::Not) => {
 						if self.is_next_keyword(Keyword::In) {
@@ -370,9 +365,6 @@ impl<'bump> Parser<'bump> {
 				Some(SpecialInfix::NotIn) => {
 					left = Ast::Infix(self.parse_in(left, true)?);
 				}
-				Some(SpecialInfix::Is) => {
-					left = self.parse_is(left)?;
-				}
 				Some(SpecialInfix::Contains) => {
 					left = Ast::Infix(self.parse_contains(left)?);
 				}
@@ -381,88 +373,11 @@ impl<'bump> Parser<'bump> {
 				}
 				_ => {
 					let infix = self.parse_infix(left)?;
-					if matches!(infix.operator, InfixOperator::AccessNamespace(_)) {
-						if !self.is_eof()
-							&& self.current()?.is_operator(Operator::OpenCurly)
-							&& infix.right.is_identifier() && match infix.left.as_ref() {
-							Ast::Infix(inner)
-								if matches!(
-									inner.operator,
-									InfixOperator::AccessTable(_)
-										| InfixOperator::AccessNamespace(_)
-								) =>
-							{
-								inner.left.is_identifier()
-									&& inner.right.is_identifier()
-							}
-							other => other.is_identifier(),
-						} {
-							left = self.parse_sumtype_constructor(infix)?;
-							continue;
-						}
-						if infix.right.is_identifier()
-							&& let Ast::Infix(inner) = infix.left.as_ref() && matches!(
-							inner.operator,
-							InfixOperator::AccessTable(_)
-								| InfixOperator::AccessNamespace(_)
-						) && inner.left.is_identifier() && inner.right.is_identifier()
-						{
-							left = self.parse_sumtype_unit_constructor(infix)?;
-							continue;
-						}
-					}
 					left = Ast::Infix(infix);
 				}
 			}
 		}
 		Ok(left)
-	}
-
-	fn parse_sumtype_constructor(&mut self, infix: AstInfix<'bump>) -> Result<Ast<'bump>> {
-		let variant_name = *infix.right.as_identifier().fragment();
-		let (namespace, sumtype_name) = match infix.left.as_ref() {
-			Ast::Infix(inner)
-				if matches!(
-					inner.operator,
-					InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_)
-				) =>
-			{
-				let ns = *inner.left.as_identifier().fragment();
-				let name = *inner.right.as_identifier().fragment();
-				(ns, name)
-			}
-			_ => {
-				let name = *infix.left.as_identifier().fragment();
-				(name, name)
-			}
-		};
-		let columns = self.parse_inline_with_unique_keys()?;
-		Ok(Ast::SumTypeConstructor(AstSumTypeConstructor {
-			token: infix.token,
-			namespace,
-			sumtype_name,
-			variant_name,
-			columns,
-		}))
-	}
-
-	fn parse_sumtype_unit_constructor(&mut self, infix: AstInfix<'bump>) -> Result<Ast<'bump>> {
-		let variant_name = *infix.right.as_identifier().fragment();
-		let Ast::Infix(inner) = infix.left.as_ref() else {
-			unreachable!()
-		};
-		let namespace = *inner.left.as_identifier().fragment();
-		let sumtype_name = *inner.right.as_identifier().fragment();
-		Ok(Ast::SumTypeConstructor(AstSumTypeConstructor {
-			token: infix.token,
-			namespace,
-			sumtype_name,
-			variant_name,
-			columns: AstInline {
-				token: infix.token,
-				keyed_values: vec![],
-			},
-		}))
 	}
 
 	pub(crate) fn advance(&mut self) -> Result<Token<'bump>> {
@@ -585,7 +500,6 @@ impl<'bump> Parser<'bump> {
 			}
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
-			TokenKind::Keyword(Keyword::Is) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::Contains) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
 		}
@@ -685,32 +599,6 @@ impl<'bump> Parser<'bump> {
 			operator: InfixOperator::Contains(contains_token),
 			right: BumpBox::new_in(right, self.bump()),
 		})
-	}
-
-	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
-		let is_token = self.consume_keyword(Keyword::Is)?;
-
-		let first = self.consume_identifier()?;
-
-		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
-		{
-			self.consume_operator(Operator::DoubleColon)?;
-			let sumtype_token = self.consume_identifier()?;
-			(Some(first.fragment), sumtype_token.fragment)
-		} else {
-			(None, first.fragment)
-		};
-
-		self.consume_operator(Operator::DoubleColon)?;
-		let variant_token = self.consume_identifier()?;
-
-		Ok(Ast::IsVariant(AstIsVariant {
-			token: is_token,
-			expression: BumpBox::new_in(left, self.bump()),
-			namespace,
-			sumtype_name,
-			variant_name: variant_token.fragment,
-		}))
 	}
 
 	pub(crate) fn parse_expressions(
@@ -843,24 +731,9 @@ impl<'bump> Parser<'bump> {
 		};
 		let colon_token = self.advance()?;
 
-		let mut expression = self.parse_node(Precedence::None)?;
+		let expression = self.parse_node(Precedence::None)?;
 		if matches!(expression, Ast::Nop) {
 			return Err(AstError::UnexpectedEof.into());
-		}
-
-		if let Ast::Identifier(ref ident) = expression
-			&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
-		{
-			let token = ident.token;
-			let variant_name = ident.token.fragment;
-			let columns = self.parse_inline_with_unique_keys()?;
-			expression = Ast::SumTypeConstructor(AstSumTypeConstructor {
-				token,
-				namespace: variant_name,
-				sumtype_name: variant_name,
-				variant_name,
-				columns,
-			});
 		}
 
 		Ok(Ast::Infix(AstInfix {

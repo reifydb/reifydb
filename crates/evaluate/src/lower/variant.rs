@@ -4,17 +4,12 @@
 use datafusion_common::ScalarValue;
 use datafusion_expr::{BinaryExpr, Expr, Operator};
 use reifydb_core::{
-	error::diagnostic::catalog::{variant_enum_not_known, variant_in_expression},
 	expression::{Expression, IsVariantExpression, name::display_label},
 	value::column::factory,
 };
-use reifydb_value::{
-	error,
-	error::Error,
-	value::{
-		system_columns::resolve_column,
-		value_type::{ValueType, field::from_field},
-	},
+use reifydb_value::value::{
+	system_columns::resolve_column,
+	value_type::{ValueType, field::from_field},
 };
 
 use crate::{
@@ -22,20 +17,6 @@ use crate::{
 	expression::context::EvalContext,
 	lower::{Node, bool_field, literal, schema::positional},
 };
-
-pub(super) fn compile_time_error(expression: &Expression) -> Option<Error> {
-	match expression {
-		Expression::SumTypeConstructor(constructor) => {
-			return Some(error!(variant_in_expression(constructor.variant_name.clone())));
-		}
-		Expression::IsVariant(e) if e.tag.is_none() => {
-			return Some(error!(variant_enum_not_known(e.variant_name.clone(), &variant_column(e))));
-		}
-		Expression::IsVariant(_) => return None,
-		_ => {}
-	}
-	children(expression).into_iter().find_map(compile_time_error)
-}
 
 pub(super) fn children(expression: &Expression) -> Vec<&Expression> {
 	match expression {
@@ -80,9 +61,8 @@ pub(super) fn children(expression: &Expression) -> Vec<&Expression> {
 		| Expression::Constant(_)
 		| Expression::Type(_)
 		| Expression::Parameter(_)
-		| Expression::Variable(_)
-		| Expression::SumTypeConstructor(_)
-		| Expression::IsVariant(_) => vec![],
+		| Expression::Variable(_) => vec![],
+		Expression::IsVariant(e) => vec![&e.expression],
 	}
 }
 
@@ -95,9 +75,7 @@ fn variant_column(e: &IsVariantExpression) -> String {
 
 pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantExpression) -> Result<Node> {
 	let column = variant_column(e);
-	let Some(tag) = e.tag else {
-		return Err(error!(variant_enum_not_known(e.variant_name.clone(), &column)));
-	};
+	let tag = e.tag;
 	let name = e.fragment.text();
 	if let Some(index) = resolve_column(&ctx.batch, &format!("{column}_tag")) {
 		let field = &ctx.batch.schema_ref().fields()[index];

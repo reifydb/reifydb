@@ -53,9 +53,6 @@ impl AsString for Value {
 				format!("{{{}}}", inner.join(", "))
 			}
 			Value::Digest(_) => self.to_string(),
-			Value::Enum {
-				..
-			} => self.to_string(),
 		}
 	}
 }

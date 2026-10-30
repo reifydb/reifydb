@@ -94,14 +94,9 @@ fn canonical_text(expr: &Expression) -> String {
 		}
 
 		Expression::IsVariant(e) => {
-			let ns = match &e.namespace {
-				Some(n) => format!("{}.", n.text()),
-				None => String::new(),
-			};
 			format!(
-				"{} is {}{}::{}",
+				"{} is {}::{}",
 				child_text(expr, &e.expression),
-				ns,
 				e.sumtype_name.text(),
 				e.variant_name.text()
 			)
@@ -157,16 +152,6 @@ fn canonical_text(expr: &Expression) -> String {
 				.collect::<Vec<_>>()
 				.join(", ");
 			format!("{{{}}}", fields)
-		}
-
-		Expression::SumTypeConstructor(ctor) => {
-			let fields = ctor
-				.columns
-				.iter()
-				.map(|(name, value)| format!("{}: {}", name.text(), canonical_text(value)))
-				.collect::<Vec<_>>()
-				.join(", ");
-			format!("{}::{}({})", ctor.sumtype_name.text(), ctor.variant_name.text(), fields)
 		}
 
 		Expression::FieldAccess(fa) => {
@@ -321,8 +306,7 @@ mod tests {
 			GreaterThanExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
 			LessThanExpression, ListExpression, MapExpression, MulExpression, NotEqExpression,
 			OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, SubExpression,
-			SumTypeConstructorExpression, TupleExpression, TypeExpression, VariableExpression,
-			XorExpression,
+			TupleExpression, TypeExpression, VariableExpression, XorExpression,
 		},
 		interface::identifier::{ColumnIdentifier, ColumnObject},
 	};
@@ -751,38 +735,12 @@ mod tests {
 	}
 
 	#[test]
-	fn canonical_sumtype_constructor() {
-		let e = Expression::SumTypeConstructor(SumTypeConstructorExpression {
-			namespace: frag("ns"),
-			sumtype_name: frag("Status"),
-			variant_name: frag("Active"),
-			columns: vec![(frag("amount"), num("100"))],
-			fragment: frag("Status::Active"),
-		});
-		assert_eq!(canonical_name(&e).text(), "Status::Active(amount: 100)");
-	}
-
-	#[test]
-	fn canonical_is_variant_with_namespace() {
-		let e = Expression::IsVariant(IsVariantExpression {
-			expression: Box::new(col("x")),
-			namespace: Some(frag("ns")),
-			sumtype_name: frag("Status"),
-			variant_name: frag("Active"),
-			tag: None,
-			fragment: frag("is"),
-		});
-		assert_eq!(canonical_name(&e).text(), "x is ns.Status::Active");
-	}
-
-	#[test]
 	fn canonical_is_variant_without_namespace() {
 		let e = Expression::IsVariant(IsVariantExpression {
 			expression: Box::new(col("x")),
-			namespace: None,
 			sumtype_name: frag("Status"),
 			variant_name: frag("Active"),
-			tag: None,
+			tag: 0,
 			fragment: frag("is"),
 		});
 		assert_eq!(canonical_name(&e).text(), "x is Status::Active");
@@ -1002,22 +960,12 @@ mod tests {
 	}
 
 	#[test]
-	fn sum_type_constructor_and_is_variant() {
-		let ctor = Expression::SumTypeConstructor(SumTypeConstructorExpression {
-			namespace: frag("ns"),
-			sumtype_name: frag("Status"),
-			variant_name: frag("Active"),
-			columns: vec![(frag("val"), col("amount"))],
-			fragment: frag("Status::Active"),
-		});
-		assert_eq!(collect(&ctor), HashSet::from(["amount".to_string()]));
-
+	fn is_variant_collects_its_subject() {
 		let is_v = Expression::IsVariant(IsVariantExpression {
 			expression: Box::new(col("my_col")),
-			namespace: None,
 			sumtype_name: frag("Status"),
 			variant_name: frag("Active"),
-			tag: None,
+			tag: 0,
 			fragment: frag("IS"),
 		});
 		assert_eq!(collect(&is_v), HashSet::from(["my_col".to_string()]));

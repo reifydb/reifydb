@@ -107,14 +107,6 @@ fn a_later_batch_with_moved_columns_reads_the_right_column() {
 	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(moved)).unwrap(), "c"), vec!["6"]);
 }
 
-#[test]
-fn a_broken_expression_fails_when_the_extend_is_built() {
-	// A broken expression must fail at registration, otherwise the flow registers and only fails on data.
-	let built = extend(&["b: a IS test::Status::Active"]);
-
-	assert!(built.is_err(), "an unresolved variant must fail ExtendOperator::new");
-}
-
 fn parent() -> SchemaRef {
 	Arc::new(Schema::new(vec![
 		to_field("a", &FieldType::from(ValueType::Utf8)),

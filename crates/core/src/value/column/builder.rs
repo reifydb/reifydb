@@ -361,7 +361,6 @@ pub enum TypedBuilder {
 impl ColumnBuilder {
 	pub fn with_capacity(target: ValueType, capacity: usize) -> Self {
 		let inner = match target {
-			ValueType::Enum(_) => unreachable!("enum columns are only made at the result edge"),
 			ValueType::Option(inner) => {
 				return ColumnBuilder {
 					optional: true,
