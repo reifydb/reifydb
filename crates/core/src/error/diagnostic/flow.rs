@@ -648,6 +648,14 @@ pub fn flow_operator_with_pane_missing() -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_rolling_unbounded(operator: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_092",
+		format!("{} cannot run a rolling window: its partials would grow with every sample", operator),
+		"Use a tumbling or sliding window, or an operator whose rolling state compacts.",
+	)
+}
+
 pub fn flow_operator_with_window_kind_unsupported(kind: &str, supported: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_066",

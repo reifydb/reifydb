@@ -76,6 +76,10 @@ where
 			self.subs.entry(key.clone()).or_default().merge(sub);
 		}
 	}
+
+	fn compacts(&self) -> bool {
+		A::default().compacts()
+	}
 }
 
 impl<K: Ord + HeapSize, A: HeapSize> HeapSize for KeyedInvertibleAccumulator<K, A> {
@@ -87,9 +91,13 @@ impl<K: Ord + HeapSize, A: HeapSize> HeapSize for KeyedInvertibleAccumulator<K, 
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::operator::state::{OperatorState, decode};
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
-	use crate::window::accumulator::{invertible::moments::Moments, testkit::assert_add_remove_is_inverse};
+	use crate::{
+		operator::state::sealing::min::SealingMin,
+		window::accumulator::{invertible::moments::Moments, testkit::assert_add_remove_is_inverse},
+	};
 
 	#[test]
 	fn keyed_invertible_routes_per_key_and_drops_empty_keys() {
@@ -194,5 +202,15 @@ mod tests {
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: KeyedInvertibleAccumulator<u64, Moments> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);
+	}
+
+	#[test]
+	fn keyed_compacts_exactly_when_its_inner_accumulator_does() {
+		// a keyed map must answer as its inner accumulator, otherwise unbounded state slips past create
+		let moments: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		assert!(moments.compacts());
+		let sealing: KeyedInvertibleAccumulator<u64, SealingMin<DateTime, i64>> =
+			KeyedInvertibleAccumulator::default();
+		assert!(!sealing.compacts());
 	}
 }

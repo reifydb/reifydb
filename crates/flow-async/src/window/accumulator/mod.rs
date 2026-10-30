@@ -57,6 +57,10 @@ pub trait MergeAccumulator: WindowAccumulator {
 	fn merge(&mut self, other: &Self);
 
 	fn compact(&mut self) {}
+
+	fn compacts(&self) -> bool {
+		true
+	}
 }
 
 pub trait UnmergeAccumulator: MergeAccumulator {

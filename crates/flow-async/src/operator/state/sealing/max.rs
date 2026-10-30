@@ -73,6 +73,10 @@ where
 			self.seal(aged);
 		}
 	}
+
+	fn compacts(&self) -> bool {
+		self.base.immutable().is_some()
+	}
 }
 
 impl<S, V> WindowAccumulator for SealingMax<S, V>
@@ -244,5 +248,13 @@ mod tests {
 		let bytes = mx.encode_state().expect("encode");
 		let restored: SealingMax<DateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, mx);
+	}
+
+	#[test]
+	fn sealing_max_compacts_only_with_an_immutable_span() {
+		// without an immutable span nothing seals, so the tail must count as growing with every sample
+		assert!(!SealingMax::<DateTime, i64>::default().compacts());
+		assert!(!SealingMax::<DateTime, i64>::maybe_immutable(None).compacts());
+		assert!(SealingMax::<DateTime, i64>::immutable(millis(10)).compacts());
 	}
 }

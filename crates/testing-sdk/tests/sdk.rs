@@ -19,6 +19,9 @@ mod rolling;
 #[path = "sdk/rolling_top_k.rs"]
 mod rolling_top_k;
 
+#[path = "sdk/rolling_unbounded.rs"]
+mod rolling_unbounded;
+
 #[path = "sdk/tumbling_carry.rs"]
 mod tumbling_carry;
 

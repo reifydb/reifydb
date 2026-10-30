@@ -122,6 +122,10 @@ impl<S: Slot, V> SealingBase<S, V> {
 	pub fn is_tail_empty(&self) -> bool {
 		self.tail.is_empty()
 	}
+
+	pub fn immutable(&self) -> Option<SlotSpan<S>> {
+		self.immutable
+	}
 }
 
 impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<S, V> {

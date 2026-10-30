@@ -104,6 +104,10 @@ where
 			self.map.insert(key.clone(), value.clone());
 		}
 	}
+
+	fn compacts(&self) -> bool {
+		false
+	}
 }
 
 impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
@@ -250,5 +254,12 @@ mod tests {
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: RetainedAccumulator<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);
+	}
+
+	#[test]
+	fn retained_does_not_compact() {
+		// a retained map keeps every sample, so a rolling window over it must never be accepted
+		let accumulator: RetainedAccumulator<u64, f64> = RetainedAccumulator::default();
+		assert!(!accumulator.compacts());
 	}
 }

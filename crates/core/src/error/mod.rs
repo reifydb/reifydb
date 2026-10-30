@@ -51,6 +51,11 @@ pub enum CoreError {
 	#[error("this operator needs 'pane' in its rolling window's with block")]
 	OperatorWithPaneMissing,
 
+	#[error("{operator} cannot run a rolling window: its partials would grow with every sample")]
+	OperatorRollingUnbounded {
+		operator: &'static str,
+	},
+
 	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
 	OperatorWithWindowKindUnsupported {
 		kind: &'static str,

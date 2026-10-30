@@ -1167,6 +1167,12 @@ where
 			let Some(pane) = settings.pane else {
 				return Err(Error::from(CoreError::OperatorWithPaneMissing).into());
 			};
+			if !<A::Kinds as KindSet<A>>::compacts(&aggregator.new_accumulator(&settings)) {
+				return Err(Error::from(CoreError::OperatorRollingUnbounded {
+					operator: A::NAME,
+				})
+				.into());
+			}
 			let merge = Merge {
 				merge: <A::Kinds as KindSet<A>>::merge,
 				compact: <A::Kinds as KindSet<A>>::compact,

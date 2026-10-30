@@ -136,6 +136,8 @@ pub trait KindSet<T: Emit> {
 	fn merge(target: &mut T::Accumulator, other: &T::Accumulator);
 
 	fn compact(accumulator: &mut T::Accumulator);
+
+	fn compacts(accumulator: &T::Accumulator) -> bool;
 }
 
 impl<T: Emit> KindSet<T> for AllKinds
@@ -151,6 +153,10 @@ where
 	fn compact(accumulator: &mut T::Accumulator) {
 		accumulator.compact();
 	}
+
+	fn compacts(accumulator: &T::Accumulator) -> bool {
+		accumulator.compacts()
+	}
 }
 
 impl<T: Emit> KindSet<T> for NoRolling {
@@ -161,6 +167,10 @@ impl<T: Emit> KindSet<T> for NoRolling {
 	}
 
 	fn compact(_accumulator: &mut T::Accumulator) {
+		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
+	}
+
+	fn compacts(_accumulator: &T::Accumulator) -> bool {
 		unreachable!("a NoRolling operator never runs a rolling window; create refuses it first")
 	}
 }
