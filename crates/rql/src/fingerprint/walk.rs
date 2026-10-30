@@ -675,14 +675,6 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_str(n.name.name.text());
 					write_variants(buf, &n.variants);
 				}
-				AstCreate::Tag(n) => {
-					buf.write_u8(0x0F);
-					for ns in &n.name.namespace {
-						buf.write_str(ns.text());
-					}
-					buf.write_str(n.name.name.text());
-					write_variants(buf, &n.variants);
-				}
 				AstCreate::Handler(n) => {
 					buf.write_u8(0x10);
 					for ns in &n.name.namespace {

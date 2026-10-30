@@ -93,6 +93,9 @@ pub fn from_any(
 				result.push_value(ColumnView::try_from(&casted_column)?.get_value(0));
 			}
 			Some(casted_column) => match &ColumnView::try_from(&casted_column)?.data {
+				ViewData::Enum {
+					..
+				} => unreachable!("enum columns are only made at the result edge"),
 				ViewData::Bool(c) => {
 					if !c.is_empty() {
 						result.push::<bool>(c.value(0));

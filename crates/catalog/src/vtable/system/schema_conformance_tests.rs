@@ -53,8 +53,6 @@ use super::{
 	subscriptions::SystemSubscriptions,
 	tables::SystemTables,
 	tables_virtual::SystemTablesVirtual,
-	tag_variants::SystemTagVariants,
-	tags::SystemTags,
 	types::SystemTypes,
 	versions::SystemVersions,
 	views::SystemViews,
@@ -102,8 +100,6 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemEvents::new()),
 		Box::new(SystemEventVariants::new()),
 		Box::new(SystemHandlers::new(catalog.clone())),
-		Box::new(SystemTags::new()),
-		Box::new(SystemTagVariants::new()),
 		Box::new(SystemSeries::new()),
 		Box::new(SystemIdentities::new()),
 		Box::new(SystemIdentityAttributes::new()),
@@ -190,7 +186,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 55, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 53, "expected every system vtable handler to be exercised");
 }
 
 #[test]

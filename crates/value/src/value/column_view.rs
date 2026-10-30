@@ -62,6 +62,10 @@ pub enum ViewData<'a> {
 		container: &'a LargeStringArray,
 		max_bytes: MaxBytes,
 	},
+	Enum {
+		container: &'a LargeStringArray,
+		r#enum: String,
+	},
 	Date(&'a Date32Array),
 	DateTime(&'a TimestampNanosecondArray),
 	Time(&'a Time64NanosecondArray),
@@ -154,6 +158,10 @@ fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>> 
 			container: downcast(array, field)?,
 			max_bytes: field_type.max_bytes.unwrap_or(MaxBytes::MAX),
 		},
+		ValueType::Enum(name) => ViewData::Enum {
+			container: downcast(array, field)?,
+			r#enum: name.clone(),
+		},
 		ValueType::Date => ViewData::Date(downcast(array, field)?),
 		ValueType::DateTime => ViewData::DateTime(downcast(array, field)?),
 		ValueType::Time => ViewData::Time(downcast(array, field)?),
@@ -229,6 +237,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Uint8(a) => *a,
 			ViewData::Uint16(a) => *a,
 			ViewData::Utf8 {
+				container,
+				..
+			} => *container,
+			ViewData::Enum {
 				container,
 				..
 			} => *container,
@@ -309,6 +321,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Utf8 {
 				..
 			} => ValueType::Utf8,
+			ViewData::Enum {
+				r#enum,
+				..
+			} => ValueType::Enum(r#enum.clone()),
 			ViewData::Date(_) => ValueType::Date,
 			ViewData::DateTime(_) => ValueType::DateTime,
 			ViewData::Time(_) => ValueType::Time,
@@ -438,6 +454,10 @@ impl<'a> ColumnView<'a> {
 				container,
 				..
 			} => utf8_get_value(container, index),
+			ViewData::Enum {
+				container,
+				..
+			} => utf8_get_value(container, index),
 			ViewData::Date(a) => temporal_array::get_value(dates(a), index),
 			ViewData::DateTime(a) => temporal_array::get_value(datetimes(a), index),
 			ViewData::Time(a) => temporal_array::get_value(times(a), index),
@@ -503,6 +523,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Uint8(a) => collect!(|i| primitive::get_value(*a, i)),
 			ViewData::Uint16(a) => collect!(|i| wide_int_array::get_value::<u128>(a, i)),
 			ViewData::Utf8 {
+				container,
+				..
+			} => collect!(|i| utf8_get_value(container, i)),
+			ViewData::Enum {
 				container,
 				..
 			} => collect!(|i| utf8_get_value(container, i)),
@@ -580,6 +604,10 @@ impl<'a> ColumnView<'a> {
 			ViewData::Uint8(a) => primitive::as_string(*a, index),
 			ViewData::Uint16(a) => wide_int_array::as_string::<u128>(a, index),
 			ViewData::Utf8 {
+				container,
+				..
+			} => utf8_as_string(container, index),
+			ViewData::Enum {
 				container,
 				..
 			} => utf8_as_string(container, index),

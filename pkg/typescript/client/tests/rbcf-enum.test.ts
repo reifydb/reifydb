@@ -66,17 +66,17 @@ function enumMessage(enumName: string, names: string[], nones?: boolean[]): Uint
 }
 
 describe("RBCF enum columns", () => {
-    it("decode kind 31 as Utf8 names with the enum marker", () => {
-        // D3: clients read plain names; a missing marker loses the enum type, a tag here means the old layout.
+    it("decode kind 31 as an enum column of plain names", () => {
+        // D19: the column type names the enum and cells are plain names; a tag here means the old layout.
         const [frame] = rbcf.decode(enumMessage("s::status", ["todo", "doing"]));
-        expect(frame.columns[0]).toEqual({ name: "status", type: "Utf8", payload: ["todo", "doing"], enum: "s::status" });
+        expect(frame.columns[0]).toEqual({ name: "status", type: { Enum: "s::status" }, payload: ["todo", "doing"] });
     });
 
     it("keep none rows of an optional enum as none", () => {
         // A none tag must stay none, not become an empty name.
         const [frame] = rbcf.decode(enumMessage("s::status", ["", "done"], [false, true]));
         expect(frame.columns[0]).toEqual({
-            name: "status", type: { Option: "Utf8" }, payload: [NONE_VALUE, "done"], enum: "s::status",
+            name: "status", type: { Option: { Enum: "s::status" } }, payload: [NONE_VALUE, "done"],
         });
     });
 
@@ -88,27 +88,27 @@ describe("RBCF enum columns", () => {
         expect(() => rbcf.decode(bytes)).toThrow();
     });
 
-    it("round trip the marker through the TS encoder", () => {
+    it("round trip the enum type through the TS encoder", () => {
         // Encode must write what decode reads, otherwise a forwarded frame drops the enum type.
-        const column = { name: "status", type: "Utf8" as const, payload: ["todo"], enum: "s::status" };
+        const column = { name: "status", type: { Enum: "s::status" }, payload: ["todo"] };
         const [frame] = rbcf.decode(rbcf.encode([{ columns: [column] }]));
         expect(frame.columns[0]).toEqual(column);
     });
 });
 
 describe("json enum columns", () => {
-    it("read the enum descriptor as Utf8 and keep the qualified name", () => {
-        // D3: `{"id":"Enum","sumtype":"ns::name"}` with names as payload, under Option when nullable.
+    it("read the enum descriptor as an enum type with the qualified name", () => {
+        // D19: `{"id":"Enum","enum":"ns::name"}` with names as payload, under Option when nullable.
         const [plain, optional] = columnsFromWire([
-            { name: "a", type: { id: "Enum", sumtype: "s::status" }, payload: ["doing"] },
-            { name: "b", type: { id: "Option", underlying: { id: "Enum", sumtype: "s::status" } }, payload: ["done"] },
+            { name: "a", type: { id: "Enum", enum: "s::status" }, payload: ["doing"] },
+            { name: "b", type: { id: "Option", underlying: { id: "Enum", enum: "s::status" } }, payload: ["done"] },
         ]);
-        expect(plain).toEqual({ name: "a", type: "Utf8", payload: ["doing"], enum: "s::status" });
-        expect(optional).toEqual({ name: "b", type: { Option: "Utf8" }, payload: ["done"], enum: "s::status" });
+        expect(plain).toEqual({ name: "a", type: { Enum: "s::status" }, payload: ["doing"] });
+        expect(optional).toEqual({ name: "b", type: { Option: { Enum: "s::status" } }, payload: ["done"] });
     });
 
-    it("refuse an enum descriptor with a numeric sumtype", () => {
+    it("refuse an enum descriptor with a numeric enum", () => {
         // D1: an id is no longer part of the wire, so the old descriptor must be refused, not half read.
-        expect(() => columnsFromWire([{ name: "a", type: { id: "Enum", sumtype: 7 } as any, payload: ["1"] }])).toThrow();
+        expect(() => columnsFromWire([{ name: "a", type: { id: "Enum", enum: 7 } as any, payload: ["1"] }])).toThrow();
     });
 });

@@ -94,7 +94,6 @@ pub enum PhysicalPlan<'bump> {
 	CreateEvent(nodes::CreateEventNode),
 
 	CreateSeries(nodes::CreateSeriesNode),
-	CreateTag(nodes::CreateTagNode),
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
 	CreateBinding(nodes::CreateBindingNode),
@@ -2003,10 +2002,6 @@ impl<'bump> Compiler<'bump> {
 
 			LogicalPlan::CreateEvent(create) => {
 				return Ok(self.compile_create_event(rx, create)?);
-			}
-
-			LogicalPlan::CreateTag(create) => {
-				return Ok(self.compile_create_tag(rx, create)?);
 			}
 
 			LogicalPlan::CreateSource(create) => {

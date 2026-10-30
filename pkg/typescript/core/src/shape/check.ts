@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {Column, Frame} from '../types';
 import {
-    Type, digestTypeName, fixedPointKind, fixedPointTypeName, isDigestType, isFixedPointType, isListType, isOptionType,
+    Type, digestTypeName, fixedPointKind, fixedPointTypeName, isDigestType, isEnumType, isFixedPointType, isListType, isOptionType,
     isRecordType,
 } from '../value';
 import {ShapeNode} from '.';
@@ -58,6 +58,9 @@ function familyOf(type: string): readonly string[] {
 }
 
 function matches(shape: ShapeNode, type: Type): boolean {
+    if (isEnumType(type)) {
+        return matches(shape, 'Utf8');
+    }
     if (isFixedPointType(type)) {
         const kind = fixedPointKind(type);
         if (shape.kind === 'primitive') return familyOf(shape.type).includes(kind);
@@ -111,6 +114,9 @@ function typeName(type: Type): string {
     }
     if (isRecordType(type)) {
         return `Record(${type.Record.map(field => `${field.name}: ${typeName(field.type)}`).join(', ')})`;
+    }
+    if (isEnumType(type)) {
+        return `Enum(${type.Enum})`;
     }
     return type;
 }

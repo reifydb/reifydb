@@ -88,7 +88,6 @@ fn a_variant_field_nested_past_the_type_tag_is_refused_at_create() {
 	for rql in [
 		format!("CREATE ENUM test::e {{ A {{ x: {d} }} }}"),
 		format!("CREATE EVENT test::ev {{ A {{ x: {d} }} }}"),
-		format!("CREATE TAG test::tg {{ A {{ x: {d} }} }}"),
 	] {
 		assert_nested_option_refused(admin(&t, &rql), &rql);
 	}

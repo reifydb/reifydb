@@ -493,7 +493,6 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::CreateProcedure(_) => ("CreateProcedure", String::new()),
 		PhysicalPlan::CreateSeries(_) => ("CreateSeries", String::new()),
 		PhysicalPlan::CreateEvent(_) => ("CreateEvent", String::new()),
-		PhysicalPlan::CreateTag(_) => ("CreateTag", String::new()),
 		PhysicalPlan::CreateTest(_) => ("CreateTest", String::new()),
 		PhysicalPlan::RunTests(_) => ("RunTests", String::new()),
 		PhysicalPlan::CreateMigration(_) => ("CreateMigration", String::new()),

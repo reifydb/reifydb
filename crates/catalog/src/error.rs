@@ -31,7 +31,6 @@ pub enum CatalogObjectKind {
 	VirtualTable,
 	Handler,
 	Series,
-	Tag,
 	Identity,
 	IdentityAttribute,
 	Role,
@@ -62,7 +61,6 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::VirtualTable => f.write_str("virtual table"),
 			CatalogObjectKind::Handler => f.write_str("handler"),
 			CatalogObjectKind::Series => f.write_str("series"),
-			CatalogObjectKind::Tag => f.write_str("tag"),
 			CatalogObjectKind::Identity => f.write_str("identity"),
 			CatalogObjectKind::IdentityAttribute => f.write_str("user attribute"),
 			CatalogObjectKind::Role => f.write_str("role"),
@@ -462,11 +460,6 @@ impl IntoDiagnostic for CatalogError {
 						"series",
 						"choose a different name or drop the existing series first",
 					),
-					CatalogObjectKind::Tag => (
-						"CA_003",
-						"tag",
-						"choose a different name or drop the existing tag first",
-					),
 					CatalogObjectKind::Identity => (
 						"CA_040",
 						"identity",
@@ -620,11 +613,6 @@ impl IntoDiagnostic for CatalogError {
 						"CA_024",
 						"series",
 						"ensure the series exists or create it first using `CREATE SERIES`".to_string(),
-					),
-					CatalogObjectKind::Tag => (
-						"CA_002",
-						"tag",
-						format!("create the tag first with `CREATE TAG {}.{} {{ ... }}`", namespace, name),
 					),
 					CatalogObjectKind::Identity => (
 						"CA_043",

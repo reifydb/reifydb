@@ -104,13 +104,11 @@ function decodeColumn(r: BinaryReader): WireColumn {
     const baseName = typeNameFromCode(kind);
     let type: Type = baseName as Type;
     let payload: string[];
-    let enumName: string | undefined;
 
     try {
         if (kind === TYPE_CODE.Enum) {
             const named = decodeEnumName(extraBytes);
-            enumName = named.name;
-            type = 'Utf8' as Type;
+            type = { Enum: named.name };
             payload = decodeByStrategy('Utf8', encoding, flags, rowCount, dataBytes, offsetsBytes, named.rest);
         } else if (kind === TYPE_CODE.Digest) {
             if (encoding !== ColumnEncoding.Plain) {
@@ -143,7 +141,7 @@ function decodeColumn(r: BinaryReader): WireColumn {
         type = { Option: type };
     }
 
-    return enumName === undefined ? { name, type, payload } : { name, type, payload, enum: enumName };
+    return { name, type, payload };
 }
 
 function decodeEnumName(extra: Uint8Array): { name: string; rest: Uint8Array } {

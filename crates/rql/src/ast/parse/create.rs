@@ -20,12 +20,12 @@ use crate::{
 			AstCreateDeferredView, AstCreateDictionary, AstCreateEvent, AstCreateHandler,
 			AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey, AstCreateProcedure,
 			AstCreateQueue, AstCreateRelationship, AstCreateRemoteNamespace, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
-			AstCreateTransactionalView, AstIndexColumn, AstPersistent, AstPolicyTargetType, AstPrimaryKey,
-			AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention,
-			AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings,
-			AstSeriesEncoding, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
-			AstTypeParameter, AstVariant, AstViewStorageKind, AstViewWithClause,
+			AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTest, AstCreateTransactionalView,
+			AstIndexColumn, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
+			AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry,
+			AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings, AstSeriesEncoding,
+			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstTypeParameter,
+			AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -43,7 +43,7 @@ use crate::{
 			Keyword,
 			Keyword::{
 				Create, Deferred, Dictionary, Exists, For, If, Namespace, Remote, Replace, Ringbuffer,
-				Series, Subscription, Table, Tag, Test, Transactional, View,
+				Series, Subscription, Table, Test, Transactional, View,
 			},
 		},
 		operator::{
@@ -316,10 +316,6 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Event))?).is_some() {
 			return self.parse_event(token);
-		}
-
-		if (self.consume_if(TokenKind::Keyword(Tag))?).is_some() {
-			return self.parse_tag(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Handler))?).is_some() {
@@ -2266,55 +2262,6 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		Ok(AstCreate::Event(AstCreateEvent {
-			token,
-			name: sumtype_ident,
-			variants,
-		}))
-	}
-
-	pub(crate) fn parse_tag(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name_frag = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let sumtype_ident = if namespace.is_empty() {
-			MaybeQualifiedSumTypeIdentifier::new(name_frag)
-		} else {
-			MaybeQualifiedSumTypeIdentifier::new(name_frag).with_namespace(namespace)
-		};
-
-		self.consume_operator(Operator::OpenCurly)?;
-		let mut variants = Vec::new();
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			let variant_name = self.parse_identifier_with_hyphens()?.into_fragment();
-
-			let columns = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
-				self.parse_columns()?
-			} else {
-				Vec::new()
-			};
-
-			variants.push(AstVariant {
-				name: variant_name,
-				columns,
-			});
-
-			self.skip_new_line()?;
-			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
-				self.skip_new_line()?;
-				break;
-			}
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		Ok(AstCreate::Tag(AstCreateTag {
 			token,
 			name: sumtype_ident,
 			variants,

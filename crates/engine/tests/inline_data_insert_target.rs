@@ -83,7 +83,7 @@ fn tagged_series_insert_with_a_numeric_tag_stores_that_tag() {
 
 	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 1 }]");
 
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Uint1(1)]);
+	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())]);
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn tagged_series_insert_with_a_variant_name_stores_that_variant_tag() {
 
 	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 'inactive' }]");
 
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Uint1(1)]);
+	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())]);
 }
 
 #[test]

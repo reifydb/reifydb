@@ -99,6 +99,8 @@ pub enum ValueType {
 		inner: Box<ValueType>,
 		accuracy: u32,
 	},
+
+	Enum(String),
 }
 
 impl ValueType {
@@ -264,7 +266,7 @@ impl ValueType {
 			ValueType::Int4 => 4,
 			ValueType::Int8 => 8,
 			ValueType::Int16 => 16,
-			ValueType::Utf8 => 8,
+			ValueType::Utf8 | ValueType::Enum(_) => 8,
 			ValueType::Uint1 => 1,
 			ValueType::Uint2 => 2,
 			ValueType::Uint4 => 4,
@@ -310,7 +312,7 @@ impl ValueType {
 			ValueType::Int4 => 4,
 			ValueType::Int8 => 8,
 			ValueType::Int16 => 16,
-			ValueType::Utf8 => 4,
+			ValueType::Utf8 | ValueType::Enum(_) => 4,
 			ValueType::Uint1 => 1,
 			ValueType::Uint2 => 2,
 			ValueType::Uint4 => 4,
@@ -352,6 +354,7 @@ impl Display for ValueType {
 			ValueType::Int8 => f.write_str("Int8"),
 			ValueType::Int16 => f.write_str("Int16"),
 			ValueType::Utf8 => f.write_str("Utf8"),
+			ValueType::Enum(name) => write!(f, "Enum({name})"),
 			ValueType::Uint1 => f.write_str("Uint1"),
 			ValueType::Uint2 => f.write_str("Uint2"),
 			ValueType::Uint4 => f.write_str("Uint4"),

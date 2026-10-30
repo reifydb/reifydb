@@ -9,7 +9,10 @@ use reifydb_core::{
 };
 use reifydb_value::value::{
 	system_columns::resolve_column,
-	value_type::{ValueType, field::from_field},
+	value_type::{
+		ValueType,
+		field::{from_field, is_sumtype_tag},
+	},
 };
 
 use crate::{
@@ -77,7 +80,11 @@ pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantE
 	let column = variant_column(e);
 	let tag = e.tag;
 	let name = e.fragment.text();
-	if let Some(index) = resolve_column(&ctx.batch, &format!("{column}_tag")) {
+	let tag_column = resolve_column(&ctx.batch, &format!("{column}_tag")).or_else(|| {
+		resolve_column(&ctx.batch, &column)
+			.filter(|index| is_sumtype_tag(&ctx.batch.schema_ref().fields()[*index]))
+	});
+	if let Some(index) = tag_column {
 		let field = &ctx.batch.schema_ref().fields()[index];
 		let value_type = from_field(field)?.value_type;
 		let nullable = field.is_nullable();

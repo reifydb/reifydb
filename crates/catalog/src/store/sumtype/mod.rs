@@ -31,7 +31,6 @@ pub(crate) fn sumtype_from_bytes(bytes: &EncodedCatalogRow) -> SumType {
 	let kind = match sumtype::get_kind(bytes) {
 		0 => SumTypeKind::Enum,
 		1 => SumTypeKind::Event,
-		2 => SumTypeKind::Tag,
 		other => {
 			warn!("Unknown SumTypeKind discriminant {} for {:?}, defaulting to Enum", other, id);
 			SumTypeKind::Enum

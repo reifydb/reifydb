@@ -21,7 +21,6 @@ impl From<ValueType> for WireValueType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireColumnType {
 	pub value_type: ValueType,
-	pub enum_name: Option<String>,
 }
 
 impl From<WireValueType> for ValueType {
@@ -37,7 +36,7 @@ const TYPE: &str = "type";
 const ACCURACY: &str = "accuracy";
 const PRECISION: &str = "precision";
 const SCALE: &str = "scale";
-const SUMTYPE: &str = "sumtype";
+const ENUM: &str = "enum";
 
 fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 	Some(match ty {
@@ -68,6 +67,7 @@ fn scalar_id(ty: &ValueType) -> Option<&'static str> {
 		ValueType::Decimal {
 			..
 		}
+		| ValueType::Enum(_)
 		| ValueType::Option(_)
 		| ValueType::List(_)
 		| ValueType::Record(_)
@@ -158,6 +158,12 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 			scale,
 		} => family_descriptor("Decimal", *precision, Some(*scale)),
 		ValueType::Option(inner) => descriptor("Option", Some(to_json(inner))),
+		ValueType::Enum(name) => {
+			let mut object = Map::new();
+			object.insert(ID.to_string(), JsonValue::String("Enum".to_string()));
+			object.insert(ENUM.to_string(), JsonValue::String(name.clone()));
+			JsonValue::Object(object)
+		}
 		ValueType::List(inner) => descriptor("List", Some(to_json(inner))),
 		ValueType::Tuple(members) => {
 			descriptor("Tuple", Some(JsonValue::Array(members.iter().map(to_json).collect())))
@@ -262,61 +268,38 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 	}
 }
 
-pub fn column_to_json(value_type: &ValueType, enum_name: Option<&str>) -> JsonValue {
-	match (value_type, enum_name) {
-		(ValueType::Option(inner), Some(_)) => descriptor("Option", Some(column_to_json(inner, enum_name))),
-		(_, Some(enum_name)) => {
-			let mut object = Map::new();
-			object.insert(ID.to_string(), JsonValue::String("Enum".to_string()));
-			object.insert(SUMTYPE.to_string(), JsonValue::String(enum_name.to_string()));
-			JsonValue::Object(object)
-		}
-		(_, None) => to_json(value_type),
-	}
-}
-
-pub fn column_from_json(value: &JsonValue) -> Result<WireColumnType, String> {
+pub fn column_from_json(value: &JsonValue) -> Result<ValueType, String> {
 	let object = value.as_object().ok_or_else(|| format!("expected a type descriptor object, got {value}"))?;
 	match object.get(ID).and_then(JsonValue::as_str) {
-		Some("Enum") => {
-			let enum_name = object
-				.get(SUMTYPE)
-				.and_then(JsonValue::as_str)
-				.ok_or_else(|| format!("`Enum` needs a string `{SUMTYPE}`: {value}"))?;
-			Ok(WireColumnType {
-				value_type: ValueType::Utf8,
-				enum_name: Some(enum_name.to_string()),
-			})
-		}
+		Some("Enum") => object
+			.get(ENUM)
+			.and_then(JsonValue::as_str)
+			.map(|name| ValueType::Enum(name.to_string()))
+			.ok_or_else(|| format!("`Enum` needs a string `{ENUM}`: {value}")),
 		Some("Option") => {
 			let underlying = object
 				.get(UNDERLYING)
 				.ok_or_else(|| format!("`Option` needs an `{UNDERLYING}` type: {value}"))?;
-			let inner = column_from_json(underlying)?;
-			Ok(WireColumnType {
-				value_type: ValueType::Option(Box::new(inner.value_type)),
-				enum_name: inner.enum_name,
-			})
+			Ok(ValueType::Option(Box::new(column_from_json(underlying)?)))
 		}
-		_ => from_json(value).map(|value_type| WireColumnType {
-			value_type,
-			enum_name: None,
-		}),
+		_ => from_json(value),
 	}
 }
 
 impl Serialize for WireColumnType {
 	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		column_to_json(&self.value_type, self.enum_name.as_deref())
-			.serialize(serializer)
-			.map_err(S::Error::custom)
+		to_json(&self.value_type).serialize(serializer).map_err(S::Error::custom)
 	}
 }
 
 impl<'de> Deserialize<'de> for WireColumnType {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		let value = JsonValue::deserialize(deserializer)?;
-		column_from_json(&value).map_err(D::Error::custom)
+		column_from_json(&value)
+			.map(|value_type| WireColumnType {
+				value_type,
+			})
+			.map_err(D::Error::custom)
 	}
 }
 

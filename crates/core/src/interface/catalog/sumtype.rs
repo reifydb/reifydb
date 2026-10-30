@@ -13,7 +13,6 @@ pub enum SumTypeKind {
 	#[default]
 	Enum = 0,
 	Event = 1,
-	Tag = 2,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

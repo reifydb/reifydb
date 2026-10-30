@@ -63,7 +63,12 @@ export type FixedPointType = DecimalType;
 export interface RecordField { name: string; type: Type }
 export interface ListType { List: Type }
 export interface RecordType { Record: RecordField[] }
-export type Type = BaseType | OptionType | DigestType | FixedPointType | ListType | RecordType;
+export interface EnumType { Enum: string }
+export type Type = BaseType | OptionType | DigestType | FixedPointType | ListType | RecordType | EnumType;
+
+export function isEnumType(t: Type): t is EnumType {
+    return typeof t === 'object' && t !== null && 'Enum' in t;
+}
 
 export function isOptionType(t: Type): t is OptionType {
     return typeof t === 'object' && t !== null && 'Option' in t;
@@ -81,7 +86,7 @@ export function isRecordType(t: Type): t is RecordType {
     return typeof t === 'object' && t !== null && 'Record' in t;
 }
 
-export function unwrapOptionType(t: Type): BaseType | DigestType | FixedPointType | ListType | RecordType {
+export function unwrapOptionType(t: Type): BaseType | DigestType | FixedPointType | ListType | RecordType | EnumType {
     if (isOptionType(t)) return unwrapOptionType(t.Option);
     return t;
 }

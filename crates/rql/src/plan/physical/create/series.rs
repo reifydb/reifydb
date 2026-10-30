@@ -60,7 +60,7 @@ impl<'bump> Compiler<'bump> {
 					Fragment::internal(tag_ns_segments.join("::"))
 				};
 				return Err(CatalogError::NotFound {
-					kind: CatalogObjectKind::Tag,
+					kind: CatalogObjectKind::Enum,
 					namespace: tag_ns_segments.join("::"),
 					name: tag_ident.name.text().to_string(),
 					fragment: ns_fragment,
@@ -71,7 +71,7 @@ impl<'bump> Compiler<'bump> {
 			let tag_name = tag_ident.name.text();
 			let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, tag_ns.id(), tag_name)? else {
 				return Err(CatalogError::NotFound {
-					kind: CatalogObjectKind::Tag,
+					kind: CatalogObjectKind::Enum,
 					namespace: tag_ns_segments.join("::"),
 					name: tag_name.to_string(),
 					fragment: self.interner.intern_fragment(&tag_ident.name),

@@ -102,6 +102,9 @@ fn compare_rows(comparators: &[(Comparator<'_>, &SortDirection)], left: usize, r
 
 fn comparator<'a>(data: &'a ColumnView<'a>) -> Comparator<'a> {
 	match &data.data {
+		ViewData::Enum {
+			..
+		} => unreachable!("enum columns are only made at the result edge"),
 		ViewData::Bool(a) => by(data, move |i| Some(a.value(i))),
 		ViewData::Float4(a) => by(data, move |i| OrderedF32::try_from(a.value(i)).ok()),
 		ViewData::Float8(a) => by(data, move |i| OrderedF64::try_from(a.value(i)).ok()),

@@ -23,13 +23,22 @@ pub(crate) struct MarkSumtypeTagsNode {
 
 impl MarkSumtypeTagsNode {
 	pub(crate) fn wrap(input: Box<dyn QueryNode>, columns: &[Column]) -> Box<dyn QueryNode> {
-		let sumtypes: HashMap<String, SumTypeId> = columns
+		Self::wrap_series(input, columns, None)
+	}
+
+	pub(crate) fn wrap_series(
+		input: Box<dyn QueryNode>,
+		columns: &[Column],
+		tag: Option<SumTypeId>,
+	) -> Box<dyn QueryNode> {
+		let mut sumtypes: HashMap<String, SumTypeId> = columns
 			.iter()
 			.filter_map(|column| match column.constraint.constraint() {
 				Some(Constraint::SumType(id)) => Some((column.name.clone(), *id)),
 				_ => None,
 			})
 			.collect();
+		sumtypes.extend(tag.map(|id| ("tag".to_string(), id)));
 		if sumtypes.is_empty() {
 			return input;
 		}

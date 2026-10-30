@@ -346,7 +346,6 @@ pub enum AstCreate<'bump> {
 	ColumnProperty(AstCreateColumnProperty<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
 	Event(AstCreateEvent<'bump>),
-	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
 	Identity(AstCreateIdentity<'bump>),
 	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
@@ -1068,7 +1067,6 @@ impl_token_for_enum!(AstCreate, 'bump,
 	ColumnProperty(AstCreateColumnProperty<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
 	Event(AstCreateEvent<'bump>),
-	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
 	Identity(AstCreateIdentity<'bump>),
 	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
@@ -2099,13 +2097,6 @@ pub struct AstClosure<'bump> {
 
 #[derive(Debug)]
 pub struct AstCreateEvent<'bump> {
-	pub token: Token<'bump>,
-	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariant<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariant<'bump>>,

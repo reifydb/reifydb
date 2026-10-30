@@ -36,8 +36,10 @@ pub fn text_literal(expression: &Expression) -> Result<EnumOperand> {
 }
 
 pub fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
-	if matches!(source, ResolvedObject::Dictionary(_)) {
-		return None;
+	match source {
+		ResolvedObject::Dictionary(_) => return None,
+		ResolvedObject::Series(series) if col_name == "tag" => return series.def().tag,
+		_ => {}
 	}
 	let tag_col_name = format!("{}_tag", col_name);
 	let tag_col = source.columns().iter().find(|c| c.name == tag_col_name)?;

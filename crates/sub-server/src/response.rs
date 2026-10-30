@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
-	json::{none_marker, wire_type::column_to_json},
+	json::{none_marker, wire_type::to_json},
 };
 use reifydb_core::value::batch::views;
 use reifydb_value::{
@@ -14,7 +14,7 @@ use reifydb_value::{
 		diff_type::DiffType,
 		frame::frame::Frame,
 		system_columns::{SystemColumn, row_numbers},
-		value_type::{ValueType, field::enum_name},
+		value_type::ValueType,
 	},
 };
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
@@ -136,8 +136,7 @@ fn row_value(column_type: &ValueType, value: Value) -> JsonValue {
 fn frame_types(frame: &Frame) -> Result<JsonValue, String> {
 	let mut types = Map::new();
 	for view in column_views(frame)? {
-		let enum_name = enum_name(view.field).map_err(|e| e.to_string())?;
-		types.insert(view.field.name().clone(), column_to_json(&view.get_type(), enum_name.as_deref()));
+		types.insert(view.field.name().clone(), to_json(&view.get_type()));
 	}
 	Ok(JsonValue::Object(types))
 }

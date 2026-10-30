@@ -20,7 +20,6 @@ pub mod sink;
 pub mod source;
 pub mod sumtype;
 pub mod table;
-pub mod tag;
 pub mod test;
 pub mod transactional;
 pub mod ttl;
@@ -68,7 +67,6 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::ColumnProperty(node) => self.compile_create_column_property(node, tx),
 			AstCreate::Procedure(node) => self.compile_create_procedure(node),
 			AstCreate::Event(node) => self.compile_create_event(node),
-			AstCreate::Tag(node) => self.compile_create_tag(node),
 			AstCreate::Handler(node) => self.compile_create_handler(node),
 			AstCreate::Identity(node) => Ok(LogicalPlan::CreateIdentity(CreateIdentityNode {
 				name: node.name,

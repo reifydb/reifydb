@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, frame::frame::Frame, value_type::field::from_field},
+	value::{Value, frame::frame::Frame, value_type::ValueType},
 };
 
 fn engine() -> TestEngine {
@@ -69,7 +69,7 @@ fn an_update_rejects_a_field_the_variant_does_not_have_with_the_insert_error() {
 
 #[test]
 fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
-	// IS only matches a tag of the stored type, so a patched tag of another type silently matches no row.
+	// A name test only matches a tag of the stored type, so a patched tag of another type silently matches no row.
 	let t = engine();
 
 	let read = t.query("FROM s::e");
@@ -81,7 +81,10 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 
 fn status_name(frames: &[Frame]) -> (Option<String>, Vec<Value>) {
 	let column = frames[0].column("status").unwrap().expect("column status");
-	let enum_name = from_field(column.field).unwrap().enum_name;
+	let enum_name = match column.get_type().inner_type() {
+		ValueType::Enum(name) => Some(name.clone()),
+		_ => None,
+	};
 	(enum_name, (0..column.len()).map(|i| column.get_value(i)).collect())
 }
 

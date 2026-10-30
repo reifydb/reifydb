@@ -386,7 +386,6 @@ pub enum LogicalPlan<'bump> {
 	RunTests(RunTestsNode<'bump>),
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
-	CreateTag(CreateTagNode<'bump>),
 	CreateSource(CreateSourceNode<'bump>),
 	CreateSink(CreateSinkNode<'bump>),
 	CreateBinding(CreateBindingNode<'bump>),
@@ -1200,12 +1199,6 @@ pub struct CreateSeriesNode<'bump> {
 
 #[derive(Debug)]
 pub struct CreateEventNode<'bump> {
-	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariant<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct CreateTagNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariant<'bump>>,
 }

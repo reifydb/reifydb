@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {NONE_VALUE, ROW_NUMBER_KEY} from '../constant';
-import {BaseType, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType} from '.';
+import {BaseType, Type, WireCellValue, isDigestType, isEnumType, isListType, isOptionType, isRecordType} from '.';
 import {digestType} from './digest';
 import {
     DECIMAL_DEFAULT_SCALE, FIXED_POINT_MAX_PRECISION, decimalType, fixedPointKind, fixedPointPrecision,
@@ -30,7 +30,7 @@ export interface WireType {
     accuracy?: number;
     precision?: number;
     scale?: number;
-    sumtype?: string;
+    enum?: string;
 }
 
 export function typeToWire(type: Type): WireType {
@@ -51,6 +51,9 @@ export function typeToWire(type: Type): WireType {
     }
     if (isRecordType(type)) {
         return {id: 'Record', underlying: type.Record.map(field => ({name: field.name, type: typeToWire(field.type)}))};
+    }
+    if (isEnumType(type)) {
+        return {id: 'Enum', enum: type.Enum};
     }
     return {id: type};
 }
@@ -73,7 +76,10 @@ export function typeFromWire(wire: WireType): Type {
         return digestType(inner, wire.accuracy);
     }
     if (wire.id === 'Enum') {
-        return 'Utf8';
+        if (typeof wire.enum !== 'string') {
+            throw new Error(`Enum type descriptor needs a string enum, got ${JSON.stringify(wire)}`);
+        }
+        return {Enum: wire.enum};
     }
     if (wire.id === 'Decimal') {
         const precision = wire.precision ?? FIXED_POINT_MAX_PRECISION;
@@ -96,24 +102,7 @@ export function typeFromWire(wire: WireType): Type {
 
 /** Reads the column types of a frames payload, leaving the rest of the frame untouched. */
 export function columnsFromWire<T extends {type: any}>(columns: T[]): T[] {
-    return columns.map(column => {
-        const decoded = {...column, type: typeFromWire(column.type)};
-        const name = enumName(column.type);
-        return name === undefined ? decoded : {...decoded, enum: name};
-    });
-}
-
-function enumName(wire: WireType): string | undefined {
-    if (wire.id === 'Enum') {
-        if (typeof wire.sumtype !== 'string') {
-            throw new Error(`Enum type descriptor needs a string sumtype, got ${JSON.stringify(wire)}`);
-        }
-        return wire.sumtype;
-    }
-    if (wire.id === 'Option' && wire.underlying && !Array.isArray(wire.underlying)) {
-        return enumName(wire.underlying);
-    }
-    return undefined;
+    return columns.map(column => ({...column, type: typeFromWire(column.type)}));
 }
 
 const LEGACY_FRAME_KEYS = ['row_numbers', 'created_at', 'updated_at', 'time'];

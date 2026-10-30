@@ -42,8 +42,8 @@ use super::{
 				property::create_column_property, queue::create_queue,
 				relationship::create_relationship, remote_namespace::create_remote_namespace,
 				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
-				source::create_source, sumtype::create_sumtype, table::create_table, tag::create_tag,
-				test::create_test, transactional::create_transactional_view,
+				source::create_source, sumtype::create_sumtype, table::create_table, test::create_test,
+				transactional::create_transactional_view,
 			},
 			drop::{
 				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
@@ -481,9 +481,6 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::CreateEvent(n) => {
 					self.exec_ddl(services, tx, |s, t| create_event(s, t, n.clone()))?
-				}
-				Instruction::CreateTag(n) => {
-					self.exec_ddl(services, tx, |s, t| create_tag(s, t, n.clone()))?
 				}
 				Instruction::CreateSource(n) => {
 					self.exec_ddl(services, tx, |s, t| create_source(s, t, n.clone()))?

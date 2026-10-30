@@ -254,13 +254,6 @@ pub struct CreateEventNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTagNode {
-	pub namespace: Namespace,
-	pub name: Fragment,
-	pub variants: Vec<CreateSumTypeVariant>,
-}
-
-#[derive(Debug, Clone)]
 pub struct ConfigPair {
 	pub key: Fragment,
 	pub value: Fragment,

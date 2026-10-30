@@ -97,7 +97,6 @@ pub mod sink;
 pub mod source;
 pub mod sumtype;
 pub mod table;
-pub mod tag;
 pub mod test;
 pub mod transactional;
 

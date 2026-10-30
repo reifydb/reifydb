@@ -76,10 +76,10 @@ mod empty_result_column_types;
 mod empty_result_rownum;
 #[path = "enum_column_optional.rs"]
 mod enum_column_optional;
-#[path = "enum_variant_in_query.rs"]
-mod enum_variant_in_query;
-#[path = "enum_variant_update_errors.rs"]
-mod enum_variant_update_errors;
+#[path = "enum_name_in_query.rs"]
+mod enum_name_in_query;
+#[path = "enum_name_update_errors.rs"]
+mod enum_name_update_errors;
 #[path = "events.rs"]
 mod events;
 #[path = "extend_duplicate_column_fragment.rs"]

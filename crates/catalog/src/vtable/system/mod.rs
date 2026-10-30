@@ -49,8 +49,6 @@ pub mod subscription_watermarks;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
-pub mod tag_variants;
-pub mod tags;
 pub mod types;
 pub mod versions;
 pub mod views;

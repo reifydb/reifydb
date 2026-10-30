@@ -31,7 +31,6 @@ pub struct FieldType {
 	pub dictionary_id: Option<DictionaryId>,
 	pub declared_type: Option<ValueType>,
 	pub sumtype: Option<SumTypeId>,
-	pub enum_name: Option<String>,
 }
 
 impl From<ValueType> for FieldType {
@@ -69,7 +68,7 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 		ValueType::Int4 => field(DataType::Int32),
 		ValueType::Int8 => field(DataType::Int64),
 		ValueType::Uint1 => match field_type.sumtype {
-			Some(id) => field(DataType::UInt8).with_extension_type(SumTypeTagTag(id)),
+			Some(id) => field(DataType::UInt8).with_extension_type(SumTypeTag(id)),
 			None => field(DataType::UInt8),
 		},
 		ValueType::Uint2 => field(DataType::UInt16),
@@ -92,13 +91,11 @@ pub fn to_field(name: &str, field_type: &FieldType) -> Field {
 		ValueType::IdentityId => field(wide).with_extension_type(IdentityIdTag(())),
 		ValueType::DictionaryId => field(DataType::FixedSizeBinary(DICTIONARY_ENTRY_WIDTH as i32))
 			.with_extension_type(DictionaryIdTag(field_type.dictionary_id)),
-		ValueType::Utf8 => match (field_type.max_bytes, &field_type.enum_name) {
-			(Some(max_bytes), _) => field(DataType::LargeUtf8).with_extension_type(Utf8Tag(max_bytes)),
-			(None, Some(enum_name)) => {
-				field(DataType::LargeUtf8).with_extension_type(EnumTag(enum_name.clone()))
-			}
-			(None, None) => field(DataType::LargeUtf8),
+		ValueType::Utf8 => match field_type.max_bytes {
+			Some(max_bytes) => field(DataType::LargeUtf8).with_extension_type(Utf8Tag(max_bytes)),
+			None => field(DataType::LargeUtf8),
 		},
+		ValueType::Enum(name) => field(DataType::LargeUtf8).with_extension_type(EnumTag(name.clone())),
 		ValueType::Blob => field(DataType::LargeBinary).with_extension_type(BlobTag(field_type.max_bytes)),
 		ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
 			field(DataType::LargeBinary).with_extension_type(AnyTag(field_type.declared_type.clone()))
@@ -153,12 +150,9 @@ pub fn from_field(field: &Field) -> Result<FieldType> {
 				accuracy: metadata.accuracy,
 			}
 		}
-		Some(EnumTag::NAME) => {
-			field_type.enum_name = Some(tagged::<EnumTag>(field)?.0);
-			ValueType::Utf8
-		}
-		Some(SumTypeTagTag::NAME) => {
-			field_type.sumtype = Some(tagged::<SumTypeTagTag>(field)?.0);
+		Some(EnumTag::NAME) => ValueType::Enum(tagged::<EnumTag>(field)?.0),
+		Some(SumTypeTag::NAME) => {
+			field_type.sumtype = Some(tagged::<SumTypeTag>(field)?.0);
 			ValueType::Uint1
 		}
 		Some(name) => {
@@ -177,15 +171,13 @@ fn details_fit(bare: Option<&ValueType>, field_type: &FieldType) -> bool {
 	let max_bytes_fit = field_type.max_bytes.is_none() || matches!(bare, Some(ValueType::Utf8 | ValueType::Blob));
 	let dictionary_fit = field_type.dictionary_id.is_none() || matches!(bare, Some(ValueType::DictionaryId));
 	let sumtype_fit = field_type.sumtype.is_none() || matches!(bare, Some(ValueType::Uint1));
-	let enum_fit = field_type.enum_name.is_none()
-		|| (matches!(bare, Some(ValueType::Utf8)) && field_type.max_bytes.is_none());
 	let declared_fit = match bare {
 		Some(any @ (ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))) => {
 			field_type.declared_type.as_ref().unwrap_or(&ValueType::Any) == any
 		}
 		_ => field_type.declared_type.is_none(),
 	};
-	max_bytes_fit && dictionary_fit && sumtype_fit && enum_fit && declared_fit
+	max_bytes_fit && dictionary_fit && sumtype_fit && declared_fit
 }
 
 fn untagged(field: &Field) -> Result<ValueType> {
@@ -241,7 +233,7 @@ pub fn enum_name(field: &Field) -> Result<Option<String>> {
 }
 
 pub fn is_sumtype_tag(field: &Field) -> bool {
-	field.extension_type_name() == Some(SumTypeTagTag::NAME)
+	field.extension_type_name() == Some(SumTypeTag::NAME)
 }
 
 pub(crate) fn field_error(message: String) -> Error {
@@ -319,7 +311,7 @@ tag!(
 tag!(AnyTag, "reifydb.any", Option<ValueType>, DataType::LargeBinary, write_declared_type, read_declared_type);
 tag!(DigestTag, "reifydb.digest", DigestMetadata, DataType::LargeBinary, write_digest, read_digest);
 tag!(EnumTag, "reifydb.enum", String, DataType::LargeUtf8, write_enum, read_enum);
-tag!(SumTypeTagTag, "reifydb.sumtype_tag", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
+tag!(SumTypeTag, "reifydb.sumtype_tag", SumTypeId, DataType::UInt8, write_sumtype, read_sumtype);
 
 #[derive(Deserialize)]
 struct MaxBytesMetadata {
@@ -473,6 +465,7 @@ mod tests {
 			ValueType::Int8,
 			ValueType::Int16,
 			ValueType::Utf8,
+			ValueType::Enum("s::status".to_string()),
 			ValueType::Uint1,
 			ValueType::Uint2,
 			ValueType::Uint4,
@@ -755,7 +748,6 @@ mod tests {
 				dictionary_id: None,
 				declared_type: None,
 				sumtype: None,
-				enum_name: None,
 			}
 		);
 		assert_eq!(FieldType::from(ValueType::Int4), plain(ValueType::Int4));

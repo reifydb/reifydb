@@ -27,7 +27,7 @@ pub(crate) fn create_sumtype(
 		return single_row([
 			("id", Value::Uint8(existing.id.0)),
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
-			("sumtype", Value::Utf8(plan.name.text().to_string())),
+			("enum", Value::Utf8(plan.name.text().to_string())),
 			("created", Value::Boolean(false)),
 		]);
 	}
@@ -61,7 +61,7 @@ pub(crate) fn create_sumtype(
 	single_row([
 		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
-		("sumtype", Value::Utf8(plan.name.text().to_string())),
+		("enum", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),
 	])
 }

@@ -363,6 +363,10 @@ impl HeapSize for ColumnView<'_> {
 			ViewData::Utf8 {
 				container: v,
 				..
+			}
+			| ViewData::Enum {
+				container: v,
+				..
 			} => varlen_array::heap_size(*v),
 			ViewData::Blob {
 				container: v,

@@ -239,14 +239,11 @@ fn enum_names(
 			.transpose()
 		})
 		.collect::<Result<Vec<_>>>()?;
-	let value_type = match value_type {
-		Some(ValueType::Option(_)) => ValueType::Option(Box::new(ValueType::Utf8)),
-		_ => ValueType::Utf8,
-	};
-	let field_type = FieldType {
-		enum_name: Some(format!("{}::{}", namespace.name(), sumtype.name)),
-		..FieldType::from(value_type)
-	};
+	let r#enum = ValueType::Enum(format!("{}::{}", namespace.name(), sumtype.name));
+	let field_type = FieldType::from(match value_type {
+		Some(ValueType::Option(_)) => ValueType::Option(Box::new(r#enum)),
+		_ => r#enum,
+	});
 	let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
 	Ok((Arc::new(to_field(name, &field_type)), Arc::new(LargeStringArray::from(names))))
 }

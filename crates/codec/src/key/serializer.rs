@@ -308,6 +308,7 @@ impl KeySerializer {
 				self.buffer.push(ValueKind::Utf8.byte());
 				self.extend_str(s);
 			}
+
 			Value::Uint1(u) => {
 				self.buffer.push(ValueKind::Uint1.byte());
 				self.extend_u8(*u);

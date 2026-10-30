@@ -29,8 +29,8 @@ mod digest_view_lifecycle;
 mod digest_view_sink_write;
 #[path = "digest_view_sort_key.rs"]
 mod digest_view_sort_key;
-#[path = "enum_variant_in_view.rs"]
-mod enum_variant_in_view;
+#[path = "enum_name_in_view.rs"]
+mod enum_name_in_view;
 #[path = "flow_isolation.rs"]
 mod flow_isolation;
 #[path = "flow_materialization.rs"]

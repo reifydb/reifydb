@@ -268,7 +268,7 @@ fn procedure_parameters_and_variant_fields_keep_a_digest_type_across_a_reload() 
 		"CREATE PROCEDURE test::p { d: digest(float8, 0.01) } AS { map { n: 1 } }",
 		"CREATE ENUM test::e { A { d: digest(int4, 0.02) } }",
 		"CREATE EVENT test::ev { Happened { d: digest(uint8, 0.03) } }",
-		"CREATE TAG test::tg { Marked { d: Option(digest(duration, 0.04)) } }",
+		"CREATE ENUM test::tg { Marked { d: Option(digest(duration, 0.04)) } }",
 	] {
 		admin(&t, rql).unwrap_or_else(|e| panic!("{rql}: {e:?}"));
 	}

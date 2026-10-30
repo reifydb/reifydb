@@ -613,7 +613,6 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreateProcedure(_) => "CREATE PROCEDURE",
 		PhysicalPlan::CreateEvent(_) => "CREATE EVENT",
 		PhysicalPlan::CreateSeries(_) => "CREATE SERIES",
-		PhysicalPlan::CreateTag(_) => "CREATE TAG",
 		PhysicalPlan::CreateSource(_) => "CREATE SOURCE",
 		PhysicalPlan::CreateSink(_) => "CREATE SINK",
 		PhysicalPlan::CreateBinding(_) => "CREATE BINDING",
@@ -1125,10 +1124,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::CreateEvent(node) => {
 				self.emit(Instruction::CreateEvent(node));
-				self.emit(Instruction::Emit);
-			}
-			PhysicalPlan::CreateTag(node) => {
-				self.emit(Instruction::CreateTag(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateSource(node) => {

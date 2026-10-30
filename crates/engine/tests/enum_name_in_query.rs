@@ -4,11 +4,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_value::{
-	error::Diagnostic,
-	params::Params,
-	value::{Value, column_view::ColumnView, frame::frame::Frame, system_columns::user_columns},
-};
+use reifydb_value::{error::Diagnostic, params::Params, value::frame::frame::Frame};
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();
@@ -44,19 +40,6 @@ fn error_text(result: Result<Vec<Frame>, Box<Diagnostic>>) -> String {
 		Err(diagnostic) => format!("{} at {:?}", diagnostic.code, diagnostic.fragment.text()),
 		Ok(frames) => format!("no error, got {frames:?}"),
 	}
-}
-
-fn columns(frames: &[Frame]) -> Vec<(String, String, Vec<String>)> {
-	assert_eq!(frames.len(), 1, "expected exactly one frame, got {}", frames.len());
-	let mut columns: Vec<(String, String, Vec<String>)> = user_columns(&frames[0].batch)
-		.map(|(field, array)| {
-			let c = ColumnView::try_from((array, field.as_ref())).unwrap();
-			let values = (0..c.len()).map(|row| c.get_value(row).to_string()).collect();
-			(field.name().clone(), c.get_type().to_string(), values)
-		})
-		.collect();
-	columns.sort();
-	columns
 }
 
 fn ids(frames: &[Frame]) -> Vec<String> {

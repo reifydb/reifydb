@@ -497,7 +497,6 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::CreateProcedure(_) => ("CreateProcedure", String::new()),
 		LogicalPlan::CreateSeries(_) => ("CreateSeries", String::new()),
 		LogicalPlan::CreateEvent(_) => ("CreateEvent", String::new()),
-		LogicalPlan::CreateTag(_) => ("CreateTag", String::new()),
 		LogicalPlan::CreateTest(_) => ("CreateTest", String::new()),
 		LogicalPlan::RunTests(_) => ("RunTests", String::new()),
 		LogicalPlan::CreateMigration(_) => ("CreateMigration", String::new()),

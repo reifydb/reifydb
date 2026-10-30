@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import {
-    DigestValue, fixedPointKind, isDigestType, isFixedPointType, noneMarkerDepth, optionDepth, unwrapOptionType,
+    DigestValue, fixedPointKind, isDigestType, isEnumType, isFixedPointType, noneMarkerDepth, optionDepth, unwrapOptionType,
     type DigestType,
 } from "@reifydb/core";
 
@@ -50,11 +50,12 @@ function encodeFrame(w: BinaryWriter, frame: WireFrame): void {
 
 function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     const unwrapped = unwrapOptionType(col.type);
-    const base = (isDigestType(unwrapped) ? "Digest" : isFixedPointType(unwrapped) ? fixedPointKind(unwrapped) : unwrapped) as TypeName;
+    const enumName = isEnumType(unwrapped) ? unwrapped.Enum : undefined;
+    const base = (isDigestType(unwrapped) ? "Digest" : isFixedPointType(unwrapped) ? fixedPointKind(unwrapped) : enumName !== undefined ? "Utf8" : unwrapped) as TypeName;
     const depth = optionDepth(col.type);
     const rowCount = col.payload.length;
 
-    const typeCode = (depth << TAG_DEPTH_SHIFT) | TYPE_CODE[col.enum === undefined ? base : "Enum"];
+    const typeCode = (depth << TAG_DEPTH_SHIFT) | TYPE_CODE[enumName === undefined ? base : "Enum"];
 
     const layers = Array.from({ length: depth }, () => new Array<boolean>(rowCount).fill(true));
     const definedPayload = new Array<string>(rowCount);
@@ -79,7 +80,7 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     const { data, offsets, extra: dataExtra } = isDigestType(unwrapped)
         ? encodeDigestData(unwrapped, definedPayload, (i) => depth > 0 && !layers[depth - 1][i])
         : { ...encodePlainData(base, definedPayload), extra: new Uint8Array(0) };
-    const extra = col.enum === undefined ? dataExtra : concat([enumNameBytes(col.enum), dataExtra]);
+    const extra = enumName === undefined ? dataExtra : concat([enumNameBytes(enumName), dataExtra]);
 
     w.u8(typeCode);
     w.u8(ColumnEncoding.Plain);

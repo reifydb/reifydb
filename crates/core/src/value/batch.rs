@@ -565,6 +565,10 @@ fn view_data_size(view: &ColumnView<'_>) -> usize {
 		ViewData::Utf8 {
 			container: v,
 			..
+		}
+		| ViewData::Enum {
+			container: v,
+			..
 		} => varlen_size(*v),
 		ViewData::Blob {
 			container: v,

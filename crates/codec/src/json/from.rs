@@ -43,10 +43,7 @@ use reifydb_value::{
 			Uuid4, Uuid7,
 			parse::{parse_uuid4, parse_uuid7},
 		},
-		value_type::{
-			ValueType,
-			field::{FieldType, from_field, to_field},
-		},
+		value_type::ValueType,
 	},
 };
 use serde::de::Error as _;
@@ -100,20 +97,7 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Result<Frame, DecodeError> {
 	let columns = frame
 		.columns
 		.into_iter()
-		.map(|col| {
-			let (field, array) = convert_column_to_data(&col.name, col.r#type.value_type, col.payload)?;
-			Ok(match col.r#type.enum_name {
-				Some(enum_name) => {
-					let field_type = FieldType {
-						enum_name: Some(enum_name),
-						..from_field(&field)
-							.map_err(|error| DecodeError::InvalidData(error.to_string()))?
-					};
-					(Arc::new(to_field(&col.name, &field_type)), array)
-				}
-				None => (field, array),
-			})
-		})
+		.map(|col| convert_column_to_data(&col.name, col.r#type.value_type, col.payload))
 		.collect::<Result<Vec<_>, DecodeError>>()?;
 	let row_count = columns.first().map_or(0, |(_, array)| array.len());
 
@@ -229,7 +213,7 @@ fn parse_base(base: &ValueType, text: &str) -> Option<Value> {
 		ValueType::Int4 => text.parse().ok().map(Value::Int4),
 		ValueType::Int8 => text.parse().ok().map(Value::Int8),
 		ValueType::Int16 => text.parse().ok().map(Value::Int16),
-		ValueType::Utf8 => Some(Value::Utf8(text.to_string())),
+		ValueType::Utf8 | ValueType::Enum(_) => Some(Value::Utf8(text.to_string())),
 		ValueType::Uint1 => text.parse().ok().map(Value::Uint1),
 		ValueType::Uint2 => text.parse().ok().map(Value::Uint2),
 		ValueType::Uint4 => text.parse().ok().map(Value::Uint4),
@@ -562,6 +546,10 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 		| ValueType::Tuple(_) => {
 			let strings = cells(name, base, rows, String::new(), |s| Some(s.to_string()))?;
 			return Ok((ValueType::Utf8, Arc::new(LargeStringArray::from(strings))));
+		}
+		ValueType::Enum(_) => {
+			let strings = cells(name, base, rows, String::new(), |s| Some(s.to_string()))?;
+			Arc::new(LargeStringArray::from(strings))
 		}
 	};
 	Ok((base.clone(), array))

@@ -298,6 +298,9 @@ impl RowShape {
 			ValueType::Int8 => Value::Int8(self.get::<i64>(row, index)),
 			ValueType::Int16 => Value::Int16(self.get::<i128>(row, index)),
 			ValueType::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
+			ValueType::Enum(_) => {
+				unreachable!("an enum is stored as its tag and fields, never as one value")
+			}
 			ValueType::Uint1 => Value::Uint1(self.get::<u8>(row, index)),
 			ValueType::Uint2 => Value::Uint2(self.get::<u16>(row, index)),
 			ValueType::Uint4 => Value::Uint4(self.get::<u32>(row, index)),

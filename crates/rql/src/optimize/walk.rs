@@ -252,7 +252,6 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::CreateProcedure(_)
 		| PhysicalPlan::CreateEvent(_)
 		| PhysicalPlan::CreateSeries(_)
-		| PhysicalPlan::CreateTag(_)
 		| PhysicalPlan::CreateSource(_)
 		| PhysicalPlan::CreateSink(_)
 		| PhysicalPlan::CreateBinding(_)

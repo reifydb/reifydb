@@ -103,7 +103,8 @@ pub fn render_value_type(ty: &ValueType, object: &str) -> Result<String, ExportE
 		| ValueType::Tuple(_)
 		| ValueType::Digest {
 			..
-		} => {
+		}
+		| ValueType::Enum(_) => {
 			return Err(ExportError::UnsupportedType {
 				object: object.to_string(),
 				value_type: format!("{}", ty),

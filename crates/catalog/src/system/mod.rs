@@ -50,8 +50,6 @@ pub mod subscription_watermarks;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
-pub mod tag_variants;
-pub mod tags;
 pub mod types;
 pub mod versions;
 pub mod views;
@@ -102,8 +100,6 @@ use subscription_watermarks::subscription_watermarks;
 use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
-use tag_variants::tag_variants;
-use tags::tags;
 use types::types;
 use versions::versions;
 use views::views;
@@ -387,31 +383,6 @@ pub mod ids {
 
 				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
 			}
-		}
-
-		pub mod tag_variants {
-			use reifydb_core::interface::catalog::id::ColumnId;
-
-			pub const ID: ColumnId = ColumnId(1);
-			pub const VARIANT_TAG: ColumnId = ColumnId(2);
-			pub const VARIANT_NAME: ColumnId = ColumnId(3);
-			pub const FIELD_COUNT: ColumnId = ColumnId(4);
-			pub const FIELD_INDEX: ColumnId = ColumnId(5);
-			pub const FIELD_NAME: ColumnId = ColumnId(6);
-			pub const FIELD_TYPE: ColumnId = ColumnId(7);
-
-			pub const ALL: [ColumnId; 7] =
-				[ID, VARIANT_TAG, VARIANT_NAME, FIELD_COUNT, FIELD_INDEX, FIELD_NAME, FIELD_TYPE];
-		}
-
-		pub mod tags {
-			use reifydb_core::interface::catalog::id::ColumnId;
-
-			pub const ID: ColumnId = ColumnId(1);
-			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
-			pub const NAME: ColumnId = ColumnId(3);
-
-			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
 		}
 
 		pub mod series {
@@ -932,7 +903,6 @@ pub mod ids {
 		pub const ENUMS: VTableId = VTableId(32);
 		pub const EVENTS: VTableId = VTableId(33);
 		pub const HANDLERS: VTableId = VTableId(35);
-		pub const TAGS: VTableId = VTableId(36);
 		pub const SERIES: VTableId = VTableId(37);
 		pub const IDENTITIES: VTableId = VTableId(38);
 		pub const ROLES: VTableId = VTableId(39);
@@ -945,7 +915,6 @@ pub mod ids {
 		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(46);
 		pub const ENUM_VARIANTS: VTableId = VTableId(47);
 		pub const EVENT_VARIANTS: VTableId = VTableId(48);
-		pub const TAG_VARIANTS: VTableId = VTableId(49);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(50);
 		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(59);
 		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(60);
@@ -987,7 +956,7 @@ pub mod ids {
 		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 76] = [
+		pub const ALL: [VTableId; 74] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -1028,7 +997,6 @@ pub mod ids {
 			BINDINGS_WS,
 			RELATIONSHIPS,
 			HANDLERS,
-			TAGS,
 			SERIES,
 			IDENTITIES,
 			ROLES,
@@ -1044,7 +1012,6 @@ pub mod ids {
 			VIRTUAL_TABLE_COLUMNS,
 			ENUM_VARIANTS,
 			EVENT_VARIANTS,
-			TAG_VARIANTS,
 			SUBSCRIPTIONS,
 			METRICS_STORAGE_TABLE,
 			METRICS_STORAGE_VIEW,
@@ -1257,14 +1224,6 @@ impl SystemCatalog {
 
 	pub fn get_system_handlers_table() -> Arc<VTable> {
 		handlers()
-	}
-
-	pub fn get_system_tags_table() -> Arc<VTable> {
-		tags()
-	}
-
-	pub fn get_system_tag_variants_table() -> Arc<VTable> {
-		tag_variants()
 	}
 
 	pub fn get_system_series_table() -> Arc<VTable> {

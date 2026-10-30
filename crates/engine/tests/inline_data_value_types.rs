@@ -17,7 +17,6 @@ use reifydb_value::{
 		duration::Duration,
 		frame::frame::Frame,
 		identity::IdentityId,
-		system_columns::user_columns,
 		time::Time,
 		uuid::Uuid4,
 		value_type::ValueType,

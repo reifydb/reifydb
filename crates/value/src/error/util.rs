@@ -54,7 +54,7 @@ fn nines(precision: u8, scale: u8) -> String {
 
 fn fixed_max(value: ValueType) -> &'static str {
 	match value {
-		ValueType::Boolean => unreachable!(),
+		ValueType::Boolean | ValueType::Enum(_) => unreachable!(),
 		ValueType::Float4 => "+3.4e38",
 		ValueType::Float8 => "+1.8e308",
 		ValueType::Int1 => "127",
@@ -93,7 +93,7 @@ fn fixed_max(value: ValueType) -> &'static str {
 
 fn fixed_range(value: ValueType) -> &'static str {
 	match value {
-		ValueType::Boolean => unreachable!(),
+		ValueType::Boolean | ValueType::Enum(_) => unreachable!(),
 		ValueType::Float4 => "-3.4e38 to +3.4e38",
 		ValueType::Float8 => "-1.8e308 to +1.8e308",
 		ValueType::Int1 => "-128 to 127",

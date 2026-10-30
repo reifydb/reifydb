@@ -261,7 +261,7 @@ pub(crate) fn compile<'a>(
 				#[cfg(not(feature = "column"))]
 				ScanLayout::Column => unreachable!("column scan layout requires the engine column feature"),
 			};
-			MarkSumtypeTagsNode::wrap(scan, &columns)
+			MarkSumtypeTagsNode::wrap_series(scan, &columns, node.source.def().tag)
 		}
 		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();

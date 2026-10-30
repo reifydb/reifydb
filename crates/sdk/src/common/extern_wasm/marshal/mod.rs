@@ -327,6 +327,9 @@ fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BooleanBuffer {
 
 fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, view: &ColumnView<'_>) -> (u32, u32, u32, u32) {
 	match &view.data {
+		ViewData::Enum {
+			..
+		} => unreachable!("enum columns are only made at the result edge"),
 		ViewData::Bool(container) => {
 			let len = container.len();
 			if len == 0 {

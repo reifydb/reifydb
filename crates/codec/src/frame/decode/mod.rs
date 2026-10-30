@@ -275,6 +275,10 @@ pub(crate) fn decoded_column(
 	layer: Option<BooleanBuffer>,
 	enum_name: Option<String>,
 ) -> Result<(FieldRef, ArrayRef), DecodeError> {
+	let value_type = match enum_name {
+		Some(name) => ValueType::Enum(name),
+		None => value_type,
+	};
 	let declared_type = matches!(value_type, ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))
 		.then(|| value_type.clone());
 	let (value_type, array) = match layer {
@@ -293,7 +297,6 @@ pub(crate) fn decoded_column(
 	let field_type = FieldType {
 		value_type: Some(value_type),
 		declared_type,
-		enum_name,
 		..FieldType::default()
 	};
 	Ok((Arc::new(to_field(name, &field_type)), array))

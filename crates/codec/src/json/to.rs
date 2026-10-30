@@ -3,13 +3,7 @@
 
 use reifydb_value::{
 	util::hex::encode,
-	value::{
-		Value,
-		column_view::ColumnView,
-		diff_type::DiffType,
-		frame::frame::Frame,
-		value_type::{ValueType, field::enum_name},
-	},
+	value::{Value, column_view::ColumnView, diff_type::DiffType, frame::frame::Frame, value_type::ValueType},
 };
 use serde::ser::Error as _;
 use serde_json::{Error, Value as JsonValue, to_string};
@@ -77,7 +71,6 @@ pub fn convert_frames(frames: &[Frame]) -> Result<Vec<ResponseFrame>, Error> {
 				name: field.name().clone(),
 				r#type: WireColumnType {
 					value_type: column_type,
-					enum_name: enum_name(field).map_err(Error::custom)?,
 				},
 				payload: column_data,
 			});

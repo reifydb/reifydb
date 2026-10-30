@@ -6,7 +6,7 @@ import {
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     ListValue, RecordValue,
-    Value, TypeValuePair, Type, WireCellValue, isDigestType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
+    Value, TypeValuePair, Type, WireCellValue, isDigestType, isEnumType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
     fixedPointTypeName, isFixedPointType
 } from './value';
 import {noneMarkerDepth, ROW_NUMBER_KEY} from './constant';
@@ -28,6 +28,10 @@ export function decode(pair: TypeValuePair): Value {
             throw new Error(`none under ${noneAt} Some layers cannot fit an option of depth ${depth}`);
         }
         return new NoneValue(stripOptionLayers(pair.type, noneAt + 1));
+    }
+
+    if (isEnumType(pair.type)) {
+        return decode({type: 'Utf8', value: pair.value});
     }
 
     if (isDigestType(pair.type)) {

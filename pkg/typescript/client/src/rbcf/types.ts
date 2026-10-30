@@ -12,7 +12,6 @@ export interface WireColumn {
     name: string;
     type: Type;
     payload: string[];
-    enum?: string;
 }
 
 export type WireOp = 1 | 2 | 3;

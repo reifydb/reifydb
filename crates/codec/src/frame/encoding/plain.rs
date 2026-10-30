@@ -164,6 +164,10 @@ pub fn encode_plain(col: &ColumnView<'_>) -> Result<PlainEncoded, EncodeError> {
 			container,
 			..
 		} => encode_varlen_strings(container, ValueType::Utf8),
+		ViewData::Enum {
+			container,
+			..
+		} => encode_varlen_strings(container, ValueType::Utf8),
 		ViewData::Blob {
 			container,
 			..
