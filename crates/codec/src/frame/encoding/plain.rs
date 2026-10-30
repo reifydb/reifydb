@@ -29,7 +29,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{error::EncodeError, frame::encode::any::encode_any_value, tag::ValueKind};
+use crate::{error::EncodeError, tag::ValueKind, value::encode_value_into};
 
 macro_rules! encode_fixed {
 	($container:expr, $ty:expr, $elem:ty) => {
@@ -179,7 +179,7 @@ pub fn encode_plain(col: &ColumnView<'_>) -> Result<PlainEncoded, EncodeError> {
 		} => {
 			let mut data = Vec::new();
 			for val in any_array::values(container) {
-				encode_any_value(&val, &mut data)?;
+				encode_value_into(&val, &mut data)?;
 			}
 			return Ok(PlainEncoded {
 				data,
@@ -207,7 +207,7 @@ pub fn encode_plain(col: &ColumnView<'_>) -> Result<PlainEncoded, EncodeError> {
 		} => {
 			let mut data = Vec::new();
 			for _ in 0..array.len() {
-				encode_any_value(&Value::none(), &mut data)?;
+				encode_value_into(&Value::none(), &mut data)?;
 			}
 			return Ok(PlainEncoded {
 				data,
