@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowFamily;
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -11,7 +11,6 @@ use reifydb_core::{
 		series::{Series, SeriesEncoding, SeriesKey, SeriesPartitionMetadata},
 	},
 	internal,
-	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalSeriesChanges,
@@ -20,7 +19,10 @@ use reifydb_transaction::{
 use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId},
+	value::{
+		constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId,
+		value_type::ValueType,
+	},
 };
 use tracing::{instrument, warn};
 
@@ -244,17 +246,46 @@ impl Catalog {
 		})
 	}
 
+	pub fn get_or_create_series_shape(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<RowShape> {
+		let fields = self.series_shape_fields(txn, series)?;
+		self.get_or_create_row_shape(txn, RowFamily::Series, fields)
+	}
+
+	pub fn find_series_shape(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<Option<RowShape>> {
+		let fields = self.series_shape_fields(txn, series)?;
+		self.get_or_load_row_shape(RowShape::new(RowFamily::Series, fields).fingerprint(), txn)
+	}
+
+	fn series_shape_fields(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<Vec<RowShapeField>> {
+		let mut fields = Vec::with_capacity(1 + series.columns.len());
+
+		let key_column = series.key.column();
+		let key_col = series.columns.iter().find(|c| c.name == key_column);
+		let key_type = key_col
+			.map(|c| c.constraint.clone())
+			.unwrap_or_else(|| TypeConstraint::unconstrained(ValueType::Int8));
+		fields.push(RowShapeField::new(key_column.to_string(), key_type));
+		for col in series.data_columns() {
+			let constraint = if let Some(dict_id) = col.dictionary_id {
+				if let Some(dict) = self.find_dictionary(txn, dict_id)? {
+					TypeConstraint::dictionary(dict_id, dict.id_type)
+				} else {
+					col.constraint.clone()
+				}
+			} else {
+				col.constraint.clone()
+			};
+			fields.push(RowShapeField::new(col.name.clone(), constraint));
+		}
+		Ok(fields)
+	}
+
 	#[instrument(name = "catalog::series::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::Series, series.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Series,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_series_shape(&mut Transaction::Admin(&mut *txn), &series)?;
 
 		Ok(series)
 	}
@@ -269,12 +300,7 @@ impl Catalog {
 		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = row_shape_from_columns(RowFamily::Series, series.columns.as_slice());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Series,
-			shape.fields().to_vec(),
-		)?;
+		self.get_or_create_series_shape(&mut Transaction::Admin(&mut *txn), &series)?;
 
 		Ok(series)
 	}

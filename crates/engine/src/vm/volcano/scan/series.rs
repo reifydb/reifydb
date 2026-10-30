@@ -47,7 +47,7 @@ use super::{
 use crate::{
 	Result,
 	vm::{
-		instruction::dml::shape::get_or_create_series_shape,
+		instruction::dml::shape::find_series_shape,
 		volcano::{
 			decode_dictionary_column,
 			query::{QueryContext, QueryNode},
@@ -373,7 +373,10 @@ impl QueryNode for SeriesScanNode {
 			range
 		};
 
-		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
+		let Some(read_shape) = find_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)? else {
+			self.exhausted = true;
+			return Ok(Some(empty_scan(empty_series_columns(self.series.def()), &self.system_columns)?));
+		};
 		let stored_ctx = stored_ctx.clone();
 
 		let scope = RangeScope::All;

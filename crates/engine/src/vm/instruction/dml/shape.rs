@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::interface::catalog::{queue::Queue, ringbuffer::RingBuffer, series::Series, table::Table};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::Result;
 
@@ -74,24 +74,9 @@ pub fn get_or_create_queue_shape(catalog: &Catalog, queue: &Queue, txn: &mut Tra
 }
 
 pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<RowShape> {
-	let mut fields = Vec::with_capacity(1 + series.columns.len());
+	catalog.get_or_create_series_shape(txn, series)
+}
 
-	let key_column = series.key.column();
-	let key_col = series.columns.iter().find(|c| c.name == key_column);
-	let key_type =
-		key_col.map(|c| c.constraint.clone()).unwrap_or_else(|| TypeConstraint::unconstrained(ValueType::Int8));
-	fields.push(RowShapeField::new(key_column.to_string(), key_type));
-	for col in series.data_columns() {
-		let constraint = if let Some(dict_id) = col.dictionary_id {
-			if let Some(dict) = catalog.find_dictionary(txn, dict_id)? {
-				TypeConstraint::dictionary(dict_id, dict.id_type)
-			} else {
-				col.constraint.clone()
-			}
-		} else {
-			col.constraint.clone()
-		};
-		fields.push(RowShapeField::new(col.name.clone(), constraint));
-	}
-	catalog.get_or_create_row_shape(txn, RowFamily::Series, fields)
+pub fn find_series_shape(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<Option<RowShape>> {
+	catalog.find_series_shape(txn, series)
 }
