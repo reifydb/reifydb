@@ -209,6 +209,9 @@ pub(crate) fn resolve_variant_equality(
 			resolve_variant_equality(catalog, rx, source, &mut e.right)
 		}
 		Expression::Prefix(e) => resolve_variant_equality(catalog, rx, source, &mut e.expression),
+		Expression::Tuple(e) if e.expressions.len() == 1 => {
+			resolve_variant_equality(catalog, rx, source, &mut e.expressions[0])
+		}
 		Expression::Equal(e) => {
 			if let Some(is_variant) = variant_test(catalog, rx, source, &e.left, &e.right, &e.fragment)? {
 				*expr = is_variant;
@@ -270,6 +273,9 @@ pub(crate) fn resolve_enum_param_equality(
 			return resolve_enum_param_equality(ctx, rx, source, &mut e.right);
 		}
 		Expression::Prefix(e) => return resolve_enum_param_equality(ctx, rx, source, &mut e.expression),
+		Expression::Tuple(e) if e.expressions.len() == 1 => {
+			return resolve_enum_param_equality(ctx, rx, source, &mut e.expressions[0]);
+		}
 		Expression::Equal(e) => (e.left.clone(), e.right.clone(), e.fragment.clone(), false),
 		Expression::NotEqual(e) => (e.left.clone(), e.right.clone(), e.fragment.clone(), true),
 		_ => return Ok(()),

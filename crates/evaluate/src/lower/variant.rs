@@ -101,14 +101,21 @@ pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantE
 	let name = e.fragment.text();
 	if let Some(index) = resolve_column(&ctx.batch, &format!("{column}_tag")) {
 		let field = &ctx.batch.schema_ref().fields()[index];
-		if !field.is_nullable() && from_field(field)?.value_type == Some(ValueType::Uint1) {
+		let value_type = from_field(field)?.value_type;
+		let nullable = field.is_nullable();
+		let uint1 = match value_type {
+			Some(ValueType::Uint1) => true,
+			Some(ValueType::Option(inner)) => *inner == ValueType::Uint1,
+			_ => false,
+		};
+		if uint1 {
 			return Ok(Node {
 				expr: Expr::BinaryExpr(BinaryExpr::new(
 					Box::new(positional(index)),
 					Operator::Eq,
 					Box::new(Expr::Literal(ScalarValue::UInt8(Some(tag)), None)),
 				)),
-				field: bool_field(name, false),
+				field: bool_field(name, nullable),
 			});
 		}
 	}
