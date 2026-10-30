@@ -126,7 +126,6 @@ fn a_variant_nested_inside_an_expression_is_an_error_at_the_variant_in_every_pos
 		("query", "extend { x: 1 + s::status::Active }"),
 		("query", "FROM s::t FILTER { a == 1 + s::status::Active }"),
 		("query", "FROM s::e FILTER { s::status::Active == status }"),
-		("query", "FROM s::e FILTER { status != s::status::Active }"),
 		("query", "FROM s::t PATCH { a: 1 + s::status::Active }"),
 		("query", "FROM [{ x: 1 + s::status::Active }]"),
 		("query", "UDF f ($x) { RETURN 1 }; FROM s::t | map { v: f(1 + s::status::Active) }"),

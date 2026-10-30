@@ -8,7 +8,11 @@ use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	expression::{Expression, IsVariantExpression},
+	error::diagnostic::catalog::{enum_value_expected, enum_value_with_fields, sumtype_variant_not_found},
+	expression::{
+		ConstantExpression, EqExpression, Expression, IsVariantExpression, NotEqExpression, PrefixExpression,
+		PrefixOperator,
+	},
 	interface::resolved::ResolvedObject,
 	value::{batch::filter, column::headers::ColumnHeaders},
 };
@@ -16,8 +20,12 @@ use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	reifydb_assertions,
-	value::column_view::{ColumnView, ViewData},
+	fragment::Fragment,
+	reifydb_assertions, return_error,
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+	},
 };
 use tracing::instrument;
 
@@ -25,7 +33,7 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
-		inline::{resolve_is_variants, resolve_sumtype_ctor},
+		inline::{declared_sumtype_id, param_symbol, resolve_is_variants, resolve_sumtype_ctor, symbol_scalar},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -100,6 +108,7 @@ impl QueryNode for FilterNode {
 			for expr in &mut self.expressions {
 				resolve_is_variants(&ctx.services.catalog, rx, source, expr)?;
 				resolve_variant_equality(&ctx.services.catalog, rx, source, expr)?;
+				resolve_enum_param_equality(ctx, rx, source, expr)?;
 			}
 		}
 		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
@@ -201,26 +210,136 @@ pub(crate) fn resolve_variant_equality(
 		}
 		Expression::Prefix(e) => resolve_variant_equality(catalog, rx, source, &mut e.expression),
 		Expression::Equal(e) => {
-			let (Expression::Column(column), Expression::SumTypeConstructor(ctor)) =
-				(e.left.as_ref(), e.right.as_ref())
-			else {
-				return Ok(());
-			};
-			if !ctor.columns.is_empty() {
-				return Ok(());
+			if let Some(is_variant) = variant_test(catalog, rx, source, &e.left, &e.right, &e.fragment)? {
+				*expr = is_variant;
 			}
-			let (sumtype, variant) = resolve_sumtype_ctor(catalog, rx, Some(source), &column.0.name, ctor)?;
-			let is_variant = Expression::IsVariant(IsVariantExpression {
-				expression: e.left.clone(),
-				namespace: Some(ctor.namespace.clone()),
-				sumtype_name: ctor.sumtype_name.clone(),
-				variant_name: ctor.variant_name.clone(),
-				tag: Some(sumtype.variants[variant].tag),
-				fragment: e.fragment.clone(),
-			});
-			*expr = is_variant;
+			Ok(())
+		}
+		Expression::NotEqual(e) => {
+			if let Some(is_variant) = variant_test(catalog, rx, source, &e.left, &e.right, &e.fragment)? {
+				*expr = Expression::Prefix(PrefixExpression {
+					operator: PrefixOperator::Not(e.fragment.clone()),
+					expression: Box::new(is_variant),
+					fragment: e.fragment.clone(),
+				});
+			}
 			Ok(())
 		}
 		_ => Ok(()),
 	}
+}
+
+fn variant_test(
+	catalog: &Catalog,
+	rx: &mut Transaction<'_>,
+	source: &ResolvedObject,
+	left: &Expression,
+	right: &Expression,
+	fragment: &Fragment,
+) -> Result<Option<Expression>> {
+	let (Expression::Column(column), Expression::SumTypeConstructor(ctor)) = (left, right) else {
+		return Ok(None);
+	};
+	if !ctor.columns.is_empty() {
+		return Ok(None);
+	}
+	let (sumtype, variant) = resolve_sumtype_ctor(catalog, rx, Some(source), &column.0.name, ctor)?;
+	Ok(Some(Expression::IsVariant(IsVariantExpression {
+		expression: Box::new(left.clone()),
+		namespace: Some(ctor.namespace.clone()),
+		sumtype_name: ctor.sumtype_name.clone(),
+		variant_name: ctor.variant_name.clone(),
+		tag: Some(sumtype.variants[variant].tag),
+		fragment: fragment.clone(),
+	})))
+}
+
+pub(crate) fn resolve_enum_param_equality(
+	ctx: &QueryContext,
+	rx: &mut Transaction<'_>,
+	source: &ResolvedObject,
+	expr: &mut Expression,
+) -> Result<()> {
+	let (left, right, fragment, negated) = match expr {
+		Expression::And(e) => {
+			resolve_enum_param_equality(ctx, rx, source, &mut e.left)?;
+			return resolve_enum_param_equality(ctx, rx, source, &mut e.right);
+		}
+		Expression::Or(e) => {
+			resolve_enum_param_equality(ctx, rx, source, &mut e.left)?;
+			return resolve_enum_param_equality(ctx, rx, source, &mut e.right);
+		}
+		Expression::Prefix(e) => return resolve_enum_param_equality(ctx, rx, source, &mut e.expression),
+		Expression::Equal(e) => (e.left.clone(), e.right.clone(), e.fragment.clone(), false),
+		Expression::NotEqual(e) => (e.left.clone(), e.right.clone(), e.fragment.clone(), true),
+		_ => return Ok(()),
+	};
+	let Expression::Column(column) = left.as_ref() else {
+		return Ok(());
+	};
+	let Some(symbol) = param_symbol(right.as_ref()) else {
+		return Ok(());
+	};
+	let col_name = column.0.name.text();
+	let Some(declared) = declared_sumtype_id(source, col_name) else {
+		return Ok(());
+	};
+	let Some(value) = symbol_scalar(ctx, symbol)? else {
+		return Ok(());
+	};
+	let sumtype = ctx.services.catalog.get_sumtype(rx, declared)?;
+	let param_fragment = right.full_fragment_owned();
+	let tag = match value {
+		Value::None {
+			..
+		} => {
+			let none = Box::new(Expression::Constant(ConstantExpression::None {
+				fragment: param_fragment,
+			}));
+			*expr = match negated {
+				false => Expression::Equal(EqExpression {
+					left,
+					right: none,
+					fragment,
+				}),
+				true => Expression::NotEqual(NotEqExpression {
+					left,
+					right: none,
+					fragment,
+				}),
+			};
+			return Ok(());
+		}
+		Value::Enum {
+			id,
+			tag,
+			fields,
+		} if id == declared => {
+			if !fields.is_empty() {
+				return_error!(enum_value_with_fields(param_fragment, col_name));
+			}
+			tag
+		}
+		other => return_error!(enum_value_expected(param_fragment, col_name, &sumtype.name, other.get_type())),
+	};
+	let Some(variant) = sumtype.variants.iter().find(|variant| variant.tag == tag) else {
+		return_error!(sumtype_variant_not_found(param_fragment, &sumtype.name));
+	};
+	let is_variant = Expression::IsVariant(IsVariantExpression {
+		expression: left.clone(),
+		namespace: None,
+		sumtype_name: Fragment::internal(sumtype.name.clone()),
+		variant_name: Fragment::internal(variant.name.clone()),
+		tag: Some(tag),
+		fragment: fragment.clone(),
+	});
+	*expr = match negated {
+		false => is_variant,
+		true => Expression::Prefix(PrefixExpression {
+			operator: PrefixOperator::Not(fragment.clone()),
+			expression: Box::new(is_variant),
+			fragment,
+		}),
+	};
+	Ok(())
 }

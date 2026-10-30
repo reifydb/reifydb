@@ -567,7 +567,7 @@ fn find_ctor_sumtype(
 	Ok(sumtype)
 }
 
-fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
+pub(crate) fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
 	let tag_col_name = format!("{}_tag", col_name);
 	let tag_col = source.columns().iter().find(|c| c.name == tag_col_name)?;
 	match tag_col.constraint.constraint() {
@@ -647,7 +647,7 @@ fn expand_enum_param(
 	Ok(None)
 }
 
-fn param_symbol(expression: &Expression) -> Option<&str> {
+pub(crate) fn param_symbol(expression: &Expression) -> Option<&str> {
 	match expression {
 		Expression::Parameter(
 			ParameterExpression::Positional {
@@ -662,7 +662,7 @@ fn param_symbol(expression: &Expression) -> Option<&str> {
 	}
 }
 
-fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Value>> {
+pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Value>> {
 	let Some(Variable::Columns {
 		batch,
 	}) = ctx.symbols.get(name)
