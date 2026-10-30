@@ -3,12 +3,7 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
-	interface::catalog::{
-		column::Column,
-		id::{TableId, ViewId},
-		key::PrimaryKey,
-		object::ObjectId,
-	},
+	interface::catalog::{column::Column, id::ViewId, key::PrimaryKey, object::ObjectId},
 	key::catalog::PrimaryKeyKey,
 	return_internal_error,
 };
@@ -82,14 +77,6 @@ impl CatalogStore {
 			id: primary_key_id,
 			columns,
 		}))
-	}
-
-	#[inline]
-	pub(crate) fn find_table_primary_key(
-		rx: &mut Transaction<'_>,
-		table_id: TableId,
-	) -> Result<Option<PrimaryKey>> {
-		Self::find_primary_key(rx, table_id)
 	}
 
 	#[inline]
