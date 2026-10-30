@@ -77,11 +77,36 @@ impl Serialize for WireValue {
 	}
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum WireParams {
 	Positional(Vec<WireValue>),
 	Named(HashMap<String, WireValue>),
+}
+
+impl<'de> Deserialize<'de> for WireParams {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		match JsonValue::deserialize(deserializer)? {
+			JsonValue::Array(items) => items
+				.into_iter()
+				.enumerate()
+				.map(|(index, item)| wire_value(&format!("${}", index + 1), item))
+				.collect::<Result<_, _>>()
+				.map(WireParams::Positional)
+				.map_err(D::Error::custom),
+			JsonValue::Object(entries) => entries
+				.into_iter()
+				.map(|(key, item)| wire_value(&format!("${key}"), item).map(|wire| (key, wire)))
+				.collect::<Result<_, _>>()
+				.map(WireParams::Named)
+				.map_err(D::Error::custom),
+			other => Err(D::Error::custom(format!("params must be a list or a map, got {other}"))),
+		}
+	}
+}
+
+fn wire_value(parameter: &str, item: JsonValue) -> Result<WireValue, String> {
+	WireValue::deserialize(item).map_err(|e| format!("parameter {parameter}: {e}"))
 }
 
 fn wire_value_to_value(parameter: &str, wire: WireValue) -> Result<Value, String> {
