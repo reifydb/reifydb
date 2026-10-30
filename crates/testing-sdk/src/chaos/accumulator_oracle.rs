@@ -213,7 +213,6 @@ type RollingCoord<A> = <A as WindowedOperator>::Coord;
 type RollingGroup<A> = <A as WindowedOperator>::GroupKey;
 
 type RollingContribution<A> = Contribution<A>;
-type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord<A>), Vec<Leg<RollingContribution<A>>>>;
 
 enum Leg<C> {
 	Add(C),
@@ -241,100 +240,6 @@ fn fan_out(batch: &ChaosBatch, mut leg: impl FnMut(&CoreRow, bool)) {
 			} => leg(row, false),
 		}
 	}
-}
-
-fn bucket_rolling<A>(
-	aggregate: &A,
-	chaos: &ChaosContext,
-	pane: <RollingCoord<A> as Coord>::Span,
-	batch: &ChaosBatch,
-) -> RollingBuckets<A>
-where
-	A: WindowedOperator,
-{
-	let mut buckets: RollingBuckets<A> = BTreeMap::new();
-	fan_out(batch, |row, is_add| push_rolling(aggregate, chaos, pane, row, is_add, &mut buckets));
-	buckets
-}
-
-fn push_rolling<A>(
-	aggregate: &A,
-	chaos: &ChaosContext,
-	pane: <RollingCoord<A> as Coord>::Span,
-	row: &CoreRow,
-	is_add: bool,
-	buckets: &mut RollingBuckets<A>,
-) where
-	A: WindowedOperator,
-{
-	if let Some((group, coord, contribution)) = extract_rolling(aggregate, chaos, pane, row) {
-		let leg = if is_add {
-			Leg::Add(contribution)
-		} else {
-			Leg::Remove(contribution)
-		};
-		buckets.entry((group, coord)).or_default().push(leg);
-	}
-}
-
-#[allow(clippy::type_complexity)]
-fn apply_rolling_buckets<A>(
-	size: <RollingCoord<A> as Coord>::Span,
-	snapshot: &HashMap<RollingGroup<A>, RollingCoord<A>>,
-	buckets: RollingBuckets<A>,
-	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
-	high_water: &mut HashMap<RollingGroup<A>, RollingCoord<A>>,
-) -> BTreeSet<RollingGroup<A>>
-where
-	A: WindowedOperator,
-{
-	let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
-	for ((group, coord), legs) in buckets {
-		let buffer = buffers.entry(group.clone()).or_default();
-
-		let late = snapshot.get(&group).is_some_and(|hw| coord < *hw) && !buffer.contains_key(&coord);
-		let mut accumulator = buffer.remove(&coord).unwrap_or_default();
-		let mut changed = false;
-		for leg in legs {
-			match leg {
-				Leg::Add(c) => {
-					if late {
-						continue;
-					}
-					accumulator.add(&c);
-					changed = true;
-				}
-				Leg::Remove(c) => {
-					if accumulator.is_empty() {
-						continue;
-					}
-					accumulator.remove(&c);
-					changed = true;
-				}
-			}
-		}
-		if !accumulator.is_empty() {
-			buffer.insert(coord, accumulator);
-		}
-
-		if !changed {
-			continue;
-		}
-		let cutoff = buffer.last_key_value().and_then(|(newest, _)| newest.checked_sub_span(size));
-		if let Some(cutoff) = cutoff {
-			buffer.retain(|coord, _| *coord > cutoff);
-		}
-		high_water
-			.entry(group.clone())
-			.and_modify(|hw| {
-				if coord > *hw {
-					*hw = coord;
-				}
-			})
-			.or_insert(coord);
-		touched.insert(group);
-	}
-	touched
 }
 
 fn fold_panes<A>(buffer: &BTreeMap<RollingCoord<A>, A::Accumulator>) -> A::Accumulator
@@ -406,20 +311,17 @@ impl<C: Coord> RollingRules<C> {
 	}
 }
 
-pub fn rolling_accumulator_oracle<A>(
+#[allow(clippy::type_complexity)]
+fn rolling_windows<A>(
 	aggregate: &A,
-	with: &ApplyWith,
+	settings: &WindowSettings<DateTime>,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
-	output_key_columns: &[String],
-) -> MaterializedView
+) -> Vec<(RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>)>
 where
-	A: Emit + WindowedOperator<Coord = DateTime>,
-	A::Accumulator: MergeAccumulator,
-	A::Output: Row,
+	A: WindowedOperator<Coord = DateTime>,
 {
-	let settings = <DateTime as SealDomain>::window_settings_of(with).expect("rolling oracle window settings");
-	let pane = rolling_pane::<A>(&settings);
+	let pane = rolling_pane::<A>(settings);
 	let rules = RollingRules::<DateTime> {
 		size: settings.fixed_size(),
 		lateness: settings.lateness,
@@ -544,19 +446,38 @@ where
 	let drain_ms = i64::try_from(ctx.drain_at_ms).expect("chaos ledger time fits in i64 milliseconds");
 	let drain = DateTime::from_epoch_millis(drain_ms).expect("rolling oracle drain time");
 	let clock_cutoff = drain.checked_sub_span(rules.size).map(|cutoff| cutoff.floor_to(pane));
-	let mut outputs = Vec::new();
-	for (group, mut state) in groups {
-		let cutoff = match (clock_cutoff, rules.own_cutoff(state.newest)) {
-			(Some(clock), Some(own)) => Some(clock.max(own)),
-			(clock, own) => clock.or(own),
-		};
-		if let Some(cutoff) = cutoff {
-			state.panes.retain(|coord, _| *coord > cutoff);
-		}
-		if let Some(out) = combine_rolling(aggregate, &settings, pane, &group, &state.panes) {
-			outputs.push(out);
-		}
-	}
+	groups.into_iter()
+		.map(|(group, mut state)| {
+			let cutoff = match (clock_cutoff, rules.own_cutoff(state.newest)) {
+				(Some(clock), Some(own)) => Some(clock.max(own)),
+				(clock, own) => clock.or(own),
+			};
+			if let Some(cutoff) = cutoff {
+				state.panes.retain(|coord, _| *coord > cutoff);
+			}
+			(group, state.panes)
+		})
+		.collect()
+}
+
+pub fn rolling_accumulator_oracle<A>(
+	aggregate: &A,
+	with: &ApplyWith,
+	ctx: &ChaosContext,
+	batches: &[ChaosBatch],
+	output_key_columns: &[String],
+) -> MaterializedView
+where
+	A: Emit + WindowedOperator<Coord = DateTime>,
+	A::Accumulator: MergeAccumulator,
+	A::Output: Row,
+{
+	let settings = <DateTime as SealDomain>::window_settings_of(with).expect("rolling oracle window settings");
+	let pane = rolling_pane::<A>(&settings);
+	let outputs: Vec<A::Output> = rolling_windows(aggregate, &settings, ctx, batches)
+		.into_iter()
+		.filter_map(|(group, panes)| combine_rolling(aggregate, &settings, pane, &group, &panes))
+		.collect();
 	materialize_outputs(outputs.into_iter(), ctx.now(), output_key_columns)
 }
 
@@ -778,42 +699,24 @@ where
 
 pub fn rolling_top_k_accumulator_oracle<A, SK, R>(
 	aggregate: &A,
-	settings: &WindowSettings<A::Coord>,
+	settings: &WindowSettings<DateTime>,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedView
 where
-	A: Emit<Output = BTreeMap<SK, R>>,
+	A: Emit<Output = BTreeMap<SK, R>> + WindowedOperator<Coord = DateTime>,
 	A::Accumulator: MergeAccumulator,
 	SK: Ord,
 	R: Row,
 {
 	let pane = rolling_pane::<A>(settings);
-	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = HashMap::new();
-	let mut high_water: HashMap<RollingGroup<A>, RollingCoord<A>> = HashMap::new();
-	let mut last_visible: HashMap<RollingGroup<A>, Vec<R>> = HashMap::new();
-
-	for batch in batches {
-		let snapshot = HashMap::new();
-		let buckets = bucket_rolling(aggregate, ctx, pane, batch);
-		let touched = apply_rolling_buckets::<A>(
-			settings.fixed_size(),
-			&snapshot,
-			buckets,
-			&mut buffers,
-			&mut high_water,
-		);
-		for group in touched {
-			if let Some(buffer) = buffers.get(&group) {
-				let emit =
-					combine_rolling(aggregate, settings, pane, &group, buffer).unwrap_or_default();
-				last_visible.insert(group, emit.into_values().collect());
-			}
-		}
-	}
-
-	let outputs: Vec<R> = last_visible.into_values().flatten().collect();
+	let outputs: Vec<R> = rolling_windows(aggregate, settings, ctx, batches)
+		.into_iter()
+		.flat_map(|(group, panes)| {
+			combine_rolling(aggregate, settings, pane, &group, &panes).unwrap_or_default().into_values()
+		})
+		.collect();
 	materialize_outputs(outputs.into_iter(), ctx.now(), output_key_columns)
 }
 

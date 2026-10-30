@@ -11,26 +11,23 @@ use reifydb_core::{
 	common::WindowRequirements,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
+	state::timer::StateStore,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
-		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, RollingBuckets,
-			rolling_top_k::{RollingBuffer, RollingTopKEngine, TopKEmit},
+			daba::Merge,
+			pane::{PaneEngine, PaneEvent, PanePublisher, PaneSpans},
 		},
+		prefetch::Prefetched,
 		settings::WindowSettings,
-		span::WindowSpan,
 	},
 };
-use reifydb_value::{
-	config::ExtensionParams,
-	error::Error,
-	value::{diff_type::DiffType, row_number::RowNumber},
-};
+use reifydb_value::{Result as ValueResult, config::ExtensionParams, error::Error, value::row_number::RowNumber};
 use tracing::debug;
 
 use crate::{
@@ -40,13 +37,14 @@ use crate::{
 		column::{operator::OperatorColumn, row::OutputRows},
 		context::{GuestContext, Windowed},
 		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView},
+		view::ChangeView,
 		windowed::{
-			bucket_of,
+			RollingGroups,
 			guest_as_host::GuestAsHost,
 			observe_batch,
-			operator::{Contribution, Emit, KindSet, WindowedOperator, extract_rows},
-			seal_frontier, timer_frontier, window_engine_config,
+			operator::{Contribution, Emit, KindSet, WindowedOperator},
+			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
+			window_engine_config,
 		},
 	},
 };
@@ -54,14 +52,92 @@ use crate::{
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Sk<A> = <<A as WindowedOperator>::Output as OutputRows>::Key;
 type Rw<A> = <<A as WindowedOperator>::Output as OutputRows>::Row;
-type Buckets<A> = RollingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
-type TopKEngine<A> = RollingTopKEngine<
-	<A as WindowedOperator>::GroupKey,
-	<A as WindowedOperator>::Coord,
-	<A as WindowedOperator>::Accumulator,
-	Sk<A>,
-	Rw<A>,
->;
+type Ranking<A> = BTreeMap<Sk<A>, (RowNumber, Rw<A>)>;
+
+pub(crate) enum TopKRow<R> {
+	Insert(RowNumber, R),
+	Update(RowNumber, R, R),
+	Remove(RowNumber, R),
+}
+
+pub(crate) struct TopKPublisher<'f, A: Emit> {
+	aggregator: &'f A,
+	settings: &'f WindowSettings<A::Coord>,
+	pane: <A::Coord as Coord>::Span,
+}
+
+impl<A> PanePublisher<A::GroupKey, A::Coord, A::Accumulator> for TopKPublisher<'_, A>
+where
+	A: Emit,
+	A::Output: OutputRows + IntoIterator<Item = (Sk<A>, Rw<A>)>,
+	Sk<A>: Clone + Ord,
+	Rw<A>: Clone + PartialEq,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+	for<'a> &'a Sk<A>: IntoEncodedKey,
+{
+	type Published = Ranking<A>;
+	type Emit = TopKRow<Rw<A>>;
+
+	fn publish(
+		&self,
+		store: &mut dyn StateStore,
+		group: &A::GroupKey,
+		group_id: GroupId,
+		newest: A::Coord,
+		prior: Option<Ranking<A>>,
+		value: Option<&A::Accumulator>,
+		emits: &mut Vec<TopKRow<Rw<A>>>,
+	) -> ValueResult<Option<Ranking<A>>> {
+		let prior = prior.unwrap_or_default();
+		let ranking: BTreeMap<Sk<A>, Rw<A>> = match value {
+			Some(value) => rolling_output(self.aggregator, self.settings, self.pane, group, newest, value)
+				.map(|rows| rows.into_iter().collect())
+				.unwrap_or_default(),
+			None => BTreeMap::new(),
+		};
+		let added: Vec<&Sk<A>> = ranking.keys().filter(|sk| !prior.contains_key(*sk)).collect();
+		let added_keys: Vec<EncodedKey> = added.iter().map(|sk| row_key(group, *sk)).collect();
+		let numbers = store.get_or_create_row_numbers(group_id, &added_keys)?;
+		let mut next: Ranking<A> = BTreeMap::new();
+		let mut freed: Vec<EncodedKey> = Vec::new();
+		for (sk, (number, old)) in prior {
+			match ranking.get(&sk) {
+				Some(new) => {
+					if *new != old {
+						emits.push(TopKRow::Update(number, old, new.clone()));
+					}
+					next.insert(sk, (number, new.clone()));
+				}
+				None => {
+					freed.push(row_key(group, &sk));
+					emits.push(TopKRow::Remove(number, old));
+				}
+			}
+		}
+		for (sk, (number, is_new)) in added.into_iter().zip(numbers) {
+			let new = ranking[sk].clone();
+			emits.push(if is_new {
+				TopKRow::Insert(number, new.clone())
+			} else {
+				TopKRow::Update(number, new.clone(), new.clone())
+			});
+			next.insert(sk.clone(), (number, new));
+		}
+		store.remove_row_number(group_id, &freed)?;
+		Ok((!next.is_empty()).then_some(next))
+	}
+}
+
+fn row_key<G, S>(group: &G, secondary: &S) -> EncodedKey
+where
+	for<'a> &'a G: IntoEncodedKey,
+	for<'a> &'a S: IntoEncodedKey,
+{
+	EncodedKey::builder()
+		.raw(group.into_encoded_key().as_slice())
+		.raw(secondary.into_encoded_key().as_slice())
+		.build()
+}
 
 pub struct TopKDriver<A>
 where
@@ -71,74 +147,10 @@ where
 	for<'a> &'a Sk<A>: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TopKEngine<A>,
+	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	pane: <A::Coord as Coord>::Span,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
-}
-
-impl<A> TopKDriver<A>
-where
-	A: Emit,
-	A::Output: OutputRows + IntoIterator<Item = (Sk<A>, Rw<A>)>,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-	for<'a> &'a Sk<A>: IntoEncodedKey,
-{
-	fn row_key(group: &A::GroupKey, secondary: &Sk<A>) -> EncodedKey {
-		EncodedKey::builder()
-			.raw(group.into_encoded_key().as_slice())
-			.raw(secondary.into_encoded_key().as_slice())
-			.build()
-	}
-
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
-		let mut buckets: Buckets<A> = BTreeMap::new();
-
-		for di in 0..change.diff_count() {
-			let Some(diff) = change.diff(di) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert => {
-					if let Some(cols) = diff.post() {
-						self.push_all(ctx, &cols, &mut buckets, true)?;
-					}
-				}
-				DiffType::Update => {
-					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_all(ctx, &pre, &mut buckets, false)?;
-						self.push_all(ctx, &post, &mut buckets, true)?;
-					}
-				}
-				DiffType::Remove => {
-					if let Some(cols) = diff.pre() {
-						self.push_all(ctx, &cols, &mut buckets, false)?;
-					}
-				}
-			}
-		}
-		Ok(buckets)
-	}
-
-	fn push_all<C: ColumnsView>(
-		&self,
-		ctx: &mut impl GuestContext,
-		cols: &C,
-		buckets: &mut Buckets<A>,
-		is_add: bool,
-	) -> Result<()> {
-		let rows: Vec<usize> = (0..cols.row_count()).collect();
-		for (_, coord, group, contribution) in extract_rows(&self.aggregator, ctx, cols, &rows)? {
-			let pane_start = bucket_of(coord, self.pane);
-			let event = if is_add {
-				AccumulatorEvent::Add(contribution)
-			} else {
-				AccumulatorEvent::Remove(contribution)
-			};
-			buckets.entry((group, pane_start)).or_default().push(event);
-		}
-		Ok(())
-	}
 }
 
 impl<A> TopKDriver<A>
@@ -153,52 +165,74 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 	for<'a> &'a Sk<A>: IntoEncodedKey,
 {
-	fn expire_through<C: GuestContext>(
-		engine: &mut TopKEngine<A>,
-		settings: &WindowSettings<A::Coord>,
-		store: &mut GuestAsHost<'_, C>,
-		horizon: A::Coord,
-	) -> Result<Vec<(RowNumber, Rw<A>)>> {
-		if horizon > <A::Coord as Coord>::from_order(0) {
-			engine.expire_meta(store, horizon.to_order())?;
-		}
-		if horizon < <A::Coord as Coord>::from_order(0).add_span(settings.fixed_size()) {
-			return Ok(Vec::new());
-		}
-		Ok(engine.expire_dead(
-			store,
-			horizon.saturating_sub_span(settings.fixed_size()),
-			|group, secondary| Self::row_key(group, secondary),
-		)?)
-	}
-
-	fn combine(
-		aggregator: &A,
-		settings: &WindowSettings<A::Coord>,
-		pane: <A::Coord as Coord>::Span,
-		group: &A::GroupKey,
-		buffer: &RollingBuffer<A::Coord, A::Accumulator>,
-	) -> BTreeMap<Sk<A>, Rw<A>> {
-		let Some(value) = <A::Kinds as KindSet<A>>::merge_panes(buffer).finalize() else {
-			return BTreeMap::new();
-		};
-		let Some((newest, _)) = buffer.last_key_value() else {
-			return BTreeMap::new();
-		};
-		let end = newest.add_span(pane);
-		let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
-		match aggregator.build_output(group, span, &value) {
-			Some(rows) => rows.into_iter().collect(),
-			None => BTreeMap::new(),
-		}
-	}
-
-	fn emit_three_batches(
+	fn apply_rolling(
+		&mut self,
 		ctx: &mut impl GuestContext,
-		inserts: &[(RowNumber, Rw<A>)],
-		updates: &[(RowNumber, Rw<A>, Rw<A>)],
-		removes: &[(RowNumber, Rw<A>)],
-	) -> Result<()> {
+		groups: RollingGroups<A>,
+	) -> Result<Vec<TopKRow<Rw<A>>>> {
+		let mut store = GuestAsHost(ctx);
+		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
+		if let (Some(seal_span), Some(newest)) = (self.seal_span, newest) {
+			observe_batch(&mut store, newest, seal_span)?;
+		}
+		let frontier = seal_frontier::<A::Coord>(&mut store)?;
+		let clock = match (self.seal_span, newest) {
+			(None, Some(newest)) => frontier.max(newest),
+			_ => frontier,
+		};
+		let Self {
+			aggregator,
+			engine,
+			pane,
+			settings,
+			..
+		} = &mut *self;
+		let cutoff = rolling_cutoff::<A>(settings, *pane, clock);
+		let publisher = TopKPublisher {
+			aggregator: &*aggregator,
+			settings: &*settings,
+			pane: *pane,
+		};
+		let before = engine.earliest_expiry(&mut store)?;
+		let mut emits = match cutoff {
+			Some(cutoff) => engine.expire(&mut store, cutoff, &publisher)?,
+			None => Vec::new(),
+		};
+		let keys = engine.state_keys(&groups);
+		let mut prefetched = Prefetched::read(&mut store, keys)?;
+		let applied = engine.apply(
+			&mut prefetched,
+			groups,
+			cutoff,
+			&|| aggregator.new_accumulator(settings),
+			&publisher,
+		)?;
+		prefetched.write()?;
+		if applied.sealed_drops + applied.stale_retractions > 0 {
+			debug!(
+				operator = A::NAME,
+				sealed_drops = applied.sealed_drops,
+				stale_retractions = applied.stale_retractions,
+				"rolling input dropped past its group's seal or retract line"
+			);
+		}
+		emits.extend(applied.emits);
+		let after = engine.earliest_expiry(&mut store)?;
+		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
+		Ok(emits)
+	}
+
+	fn emit_rows(ctx: &mut impl GuestContext, rows: Vec<TopKRow<Rw<A>>>) -> Result<()> {
+		let mut inserts: Vec<(RowNumber, Rw<A>)> = Vec::new();
+		let mut updates: Vec<(RowNumber, Rw<A>, Rw<A>)> = Vec::new();
+		let mut removes: Vec<(RowNumber, Rw<A>)> = Vec::new();
+		for row in rows {
+			match row {
+				TopKRow::Insert(number, value) => inserts.push((number, value)),
+				TopKRow::Update(number, prior, value) => updates.push((number, prior, value)),
+				TopKRow::Remove(number, value) => removes.push((number, value)),
+			}
+		}
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
 		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
@@ -264,9 +298,19 @@ where
 		let Some(pane) = settings.pane else {
 			return Err(Error::from(CoreError::OperatorWithPaneMissing).into());
 		};
+		let merge = Merge {
+			merge: <A::Kinds as KindSet<A>>::merge,
+			compact: <A::Kinds as KindSet<A>>::compact,
+		};
+		let spans = PaneSpans {
+			size: settings.fixed_size(),
+			lag: Default::default(),
+			lateness: settings.lateness,
+			retract: settings.immutable.unwrap_or(settings.lateness),
+		};
 		Ok(Self {
 			aggregator,
-			engine: RollingTopKEngine::new(window_engine_config(params)),
+			engine: PaneEngine::queue(window_engine_config(params), spans, merge),
 			pane,
 			seal_span,
 			settings,
@@ -274,119 +318,44 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_span) = self.seal_span else {
+		if self.seal_span.is_none() {
 			return Ok(());
+		}
+		let Self {
+			aggregator,
+			engine,
+			pane,
+			settings,
+			..
+		} = &mut *self;
+		let rows = {
+			let mut store = GuestAsHost(ctx);
+			let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
+				return Ok(());
+			};
+			let before = engine.earliest_expiry(&mut store)?;
+			let publisher = TopKPublisher {
+				aggregator: &*aggregator,
+				settings: &*settings,
+				pane: *pane,
+			};
+			let rows = match rolling_cutoff::<A>(settings, *pane, frontier) {
+				Some(cutoff) => engine.expire(&mut store, cutoff, &publisher)?,
+				None => Vec::new(),
+			};
+			let after = engine.earliest_expiry(&mut store)?;
+			<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
+			rows
 		};
-		let mut store = GuestAsHost(ctx);
-		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
-			return Ok(());
-		};
-		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
-		let before = self.engine.earliest_expiry(&mut store)?;
-		let removes = Self::expire_through(&mut self.engine, &self.settings, &mut store, horizon)?;
-		let after = self.engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_dead(&mut store, self.settings.fixed_size(), seal_span, before, after)?;
-		Self::emit_three_batches(ctx, &[], &[], &removes)
+		Self::emit_rows(ctx, rows)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets = self.route(ctx, &change)?;
-		if buckets.is_empty() {
+		let groups = route_rolling(&self.aggregator, self.pane, ctx, &change)?;
+		if groups.is_empty() {
 			return Ok(());
 		}
-
-		let seal_span = self.seal_span;
-		let mut before: Option<u64> = None;
-		let mut removes: Vec<(RowNumber, Rw<A>)> = Vec::new();
-		if let Some(seal_span) = seal_span {
-			let mut store = GuestAsHost(ctx);
-			let newest = buckets.keys().map(|(_, coord)| *coord).max();
-			if let Some(newest) = newest {
-				observe_batch(&mut store, newest, seal_span)?;
-			}
-			let watermark = seal_frontier::<A::Coord>(&mut store)?;
-			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-			before = self.engine.earliest_expiry(&mut store)?;
-			removes = Self::expire_through(&mut self.engine, &self.settings, &mut store, horizon)?;
-			let mut dropped = 0u64;
-			buckets.retain(|(_, coord), events| {
-				if is_sealed(*coord, horizon) {
-					dropped += events.len() as u64;
-					false
-				} else {
-					true
-				}
-			});
-			if dropped > 0 {
-				debug!(operator = A::NAME, dropped, "mutations targeting sealed panes were dropped");
-			}
-			if buckets.is_empty() {
-				let after = self.engine.earliest_expiry(&mut store)?;
-				<A::Coord as SealDomain>::rearm_dead(
-					&mut store,
-					self.settings.fixed_size(),
-					seal_span,
-					before,
-					after,
-				)?;
-				Self::emit_three_batches(ctx, &[], &[], &removes)?;
-				return Ok(());
-			}
-		}
-
-		let emits = {
-			let Self {
-				aggregator,
-				engine,
-				pane,
-				settings,
-				..
-			} = &mut *self;
-			let pane = *pane;
-			let mut store = GuestAsHost(ctx);
-			engine.apply(
-				&mut store,
-				buckets,
-				settings.fixed_size(),
-				|group| group.into_encoded_key(),
-				|group, secondary| Self::row_key(group, secondary),
-				|| aggregator.new_accumulator(settings),
-				|group, buffer| Self::combine(aggregator, settings, pane, group, buffer),
-			)?
-		};
-
-		let mut inserts: Vec<(RowNumber, Rw<A>)> = Vec::new();
-		let mut updates: Vec<(RowNumber, Rw<A>, Rw<A>)> = Vec::new();
-		for emit in emits {
-			match emit {
-				TopKEmit::Insert {
-					row_number,
-					value,
-				} => inserts.push((row_number, value)),
-				TopKEmit::Update {
-					row_number,
-					prior,
-					value,
-				} => updates.push((row_number, prior, value)),
-				TopKEmit::Remove {
-					row_number,
-					value,
-				} => removes.push((row_number, value)),
-			}
-		}
-		if let Some(seal_span) = seal_span {
-			let mut store = GuestAsHost(ctx);
-			let after = self.engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_dead(
-				&mut store,
-				self.settings.fixed_size(),
-				seal_span,
-				before,
-				after,
-			)?;
-		}
-		Self::emit_three_batches(ctx, &inserts, &updates, &removes)?;
-
-		Ok(())
+		let rows = self.apply_rolling(ctx, groups)?;
+		Self::emit_rows(ctx, rows)
 	}
 }

@@ -7,6 +7,7 @@ use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
 	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	key::operator::state::{KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
@@ -38,7 +39,7 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, system_columns::row_numbers, value_type::ValueType},
 };
 
 use crate::read;
@@ -524,12 +525,12 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 		.insert(input_row(2, "BTC", 100, 8, 5.0))
 		.build())
 		.expect("apply");
-	let dead: Vec<(DateTime, TimerKind)> =
-		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-dead").map(|t| (t.due, t.kind)).collect();
-	assert_eq!(dead, vec![(DateTime::from_millis(117), TimerKind::Seal)]);
+	let decay: Vec<(DateTime, TimerKind)> =
+		h.armed_timers().into_iter().filter(|t| t.key == b"rolling-decay").map(|t| (t.due, t.kind)).collect();
+	assert_eq!(decay, vec![(DateTime::from_millis(103), TimerKind::Seal)]);
 
 	let out = h
-		.on_timer(DateTime::from_millis(117), TimerKind::Seal, b"rolling-dead")
+		.on_timer(DateTime::from_millis(103), TimerKind::Seal, b"rolling-decay")
 		.expect("timer")
 		.expect("the dead group must emit");
 
@@ -549,8 +550,9 @@ fn a_dead_top_k_group_removes_every_ranked_row_on_its_timer() {
 }
 
 #[test]
-fn a_top_k_group_revived_inside_its_window_keeps_its_old_panes() {
-	// A group must live one size past its horizon, otherwise a revived row loses the panes still in its window.
+fn a_top_k_trade_behind_the_window_is_dropped_and_a_trade_inside_it_revives_the_group() {
+	// A trade behind clock minus size must never resurrect expired panes; one inside must restart from its own
+	// pane.
 	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
 		.with(dead_with())
 		.build()
@@ -558,14 +560,64 @@ fn a_top_k_group_revived_inside_its_window_keeps_its_old_panes() {
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 1.0)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(115)).expect("watermark");
 
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
+	let behind = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 102, 7, 2.0)).build()).expect("apply");
+	assert!(behind.diffs.is_empty(), "a trade behind the window must be dropped, got {:?}", behind.diffs.len());
 
-	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
-	assert_eq!(kinds, vec![DiffType::Update]);
-	let post = out.diffs[0].post().expect("post");
+	let inside = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 113, 7, 4.0)).build()).expect("apply");
+	let kinds: Vec<DiffType> = inside.diffs.iter().map(|d| d.kind()).collect();
+	assert_eq!(kinds, vec![DiffType::Insert]);
+	let post = inside.diffs[0].post().expect("post");
 	let r = (post, 0);
 	assert_eq!(
 		(post.num_rows(), read::<u64>(r, "trader").unwrap(), read::<f64>(r, "volume").unwrap()),
-		(1, 7, 3.0)
+		(1, 7, 4.0)
 	);
+}
+
+#[test]
+fn a_withdrawn_ranking_frees_the_row_numbers_of_its_ranked_rows() {
+	// A mapping kept past withdrawal would hand a later ranking the old row number of a row the sink removed.
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
+		.with(dead_with())
+		.build()
+		.expect("harness");
+	let first = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 10.0)).build()).expect("apply");
+	let first_number = row_numbers(first.diffs[0].post().expect("post")).unwrap()[0];
+
+	let gone = h
+		.on_timer(DateTime::from_millis(103), TimerKind::Seal, b"rolling-decay")
+		.expect("timer")
+		.expect("the dead group must emit");
+	assert_eq!(gone.diffs.iter().map(|d| d.kind()).collect::<Vec<_>>(), vec![DiffType::Remove]);
+	assert_eq!(row_numbers(gone.diffs[0].pre().expect("pre")).unwrap()[0], first_number);
+
+	let again = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 200, 7, 4.0)).build()).expect("apply");
+	assert_eq!(again.diffs.iter().map(|d| d.kind()).collect::<Vec<_>>(), vec![DiffType::Insert]);
+	assert_ne!(row_numbers(again.diffs[0].post().expect("post")).unwrap()[0], first_number);
+}
+
+#[test]
+fn a_group_row_lost_while_its_row_mapping_survives_updates_the_same_ranked_row() {
+	// Inserting again under a surviving mapping would leave the sink with two rows for one ranked trader.
+	let mut h = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new()
+		.with(dead_with())
+		.build()
+		.expect("harness");
+	let first = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 7, 10.0)).build()).expect("apply");
+	let first_number = row_numbers(first.diffs[0].post().expect("post")).unwrap()[0];
+
+	let kept = h
+		.snapshot_state()
+		.into_iter()
+		.filter(|(key, _)| {
+			OperatorStateKey::decode(key).is_none_or(|key| key.keyspace != KeyspaceId::ROLLING_META)
+		})
+		.collect();
+	h.restore_state(kept);
+
+	let again = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 100, 7, 5.0)).build()).expect("apply");
+	assert_eq!(again.diffs.iter().map(|d| d.kind()).collect::<Vec<_>>(), vec![DiffType::Update]);
+	let post = again.diffs[0].post().expect("post");
+	assert_eq!(row_numbers(post).unwrap()[0], first_number);
+	assert_eq!(read::<f64>((post, 0), "volume").unwrap(), 15.0);
 }

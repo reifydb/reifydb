@@ -9,9 +9,12 @@ pub mod publish;
 pub mod retained;
 pub mod top_k;
 
-use std::{collections::HashMap, hash::Hash};
+use std::{
+	collections::{BTreeMap, HashMap},
+	hash::Hash,
+};
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
 	key::operator::state::GroupId,
 	state::timer::{StateStore, TimerStore},
@@ -24,13 +27,27 @@ use reifydb_flow_async::{
 	},
 	timer::Timer as FlowTimer,
 	window::{
-		engine::{KeyspaceFamily, config::WindowEngineConfig},
+		accumulator::WindowAccumulator,
+		engine::{
+			KeyspaceFamily,
+			config::WindowEngineConfig,
+			pane::{PaneEvent, PaneGroups},
+		},
+		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
-use reifydb_value::{Result, config::ExtensionParams};
+use reifydb_value::{Result, config::ExtensionParams, value::diff_type::DiffType};
 
-use crate::flow::operator::timer::Timer;
+use crate::{
+	error,
+	flow::operator::{
+		context::GuestContext,
+		timer::Timer,
+		view::{ChangeView, ColumnsView, DiffView},
+		windowed::operator::{Contribution, Emit, Extracted, WindowedOperator, extract_rows},
+	},
+};
 
 pub(crate) fn seal_frontier<C: SealDomain>(store: &mut (impl StateStore + TimerStore)) -> Result<C> {
 	C::frontier(store)
@@ -84,6 +101,140 @@ where
 
 pub(crate) fn window_engine_config(_params: &ExtensionParams) -> WindowEngineConfig {
 	WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
+}
+
+pub(crate) type RollingGroups<A> =
+	PaneGroups<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+
+pub(crate) fn partition_of<G>(group: &G) -> GroupId
+where
+	for<'a> &'a G: IntoEncodedKey,
+{
+	GroupId::of(&group.into_encoded_key())
+}
+
+fn extract_all<A: WindowedOperator, C: ColumnsView>(
+	aggregator: &A,
+	ctx: &mut impl GuestContext,
+	cols: &C,
+) -> error::Result<Vec<Extracted<A>>> {
+	let rows: Vec<usize> = (0..cols.row_count()).collect();
+	extract_rows(aggregator, ctx, cols, &rows)
+}
+
+pub(crate) fn route_rolling<A>(
+	aggregator: &A,
+	pane: <A::Coord as Coord>::Span,
+	ctx: &mut impl GuestContext,
+	change: &impl ChangeView,
+) -> error::Result<RollingGroups<A>>
+where
+	A: WindowedOperator,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	let mut groups: RollingGroups<A> = BTreeMap::new();
+	let mut push = |group: A::GroupKey, event: PaneEvent<A::Coord, Contribution<A>>| {
+		groups.entry(group.clone()).or_insert_with(|| (partition_of(&group), Vec::new())).1.push(event);
+	};
+	for di in 0..change.diff_count() {
+		let Some(diff) = change.diff(di) else {
+			continue;
+		};
+		match diff.kind() {
+			DiffType::Insert => {
+				if let Some(cols) = diff.post() {
+					for (_, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
+						push(group, PaneEvent::Insert(bucket_of(coord, pane), contribution));
+					}
+				}
+			}
+			DiffType::Remove => {
+				if let Some(cols) = diff.pre() {
+					for (_, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
+						push(group, PaneEvent::Remove(bucket_of(coord, pane), contribution));
+					}
+				}
+			}
+			DiffType::Update => {
+				let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
+					continue;
+				};
+				let after = extract_all(aggregator, ctx, &post)?;
+				if !A::UPDATE_PRE_RETRACTS {
+					for (_, coord, group, contribution) in after {
+						push(group, PaneEvent::Insert(bucket_of(coord, pane), contribution));
+					}
+					continue;
+				}
+				let mut before: BTreeMap<usize, (A::Coord, A::GroupKey, Contribution<A>)> =
+					extract_all(aggregator, ctx, &pre)?
+						.into_iter()
+						.map(|(row, coord, group, contribution)| {
+							(row, (coord, group, contribution))
+						})
+						.collect();
+				for (row, coord, group, contribution) in after {
+					let post_pane = bucket_of(coord, pane);
+					match before.remove(&row) {
+						Some((pre_coord, pre_group, pre_contribution))
+							if pre_group == group =>
+						{
+							push(
+								group,
+								PaneEvent::Update {
+									pre: (
+										bucket_of(pre_coord, pane),
+										pre_contribution,
+									),
+									post: (post_pane, contribution),
+								},
+							)
+						}
+						Some((pre_coord, pre_group, pre_contribution)) => {
+							push(
+								pre_group,
+								PaneEvent::Remove(
+									bucket_of(pre_coord, pane),
+									pre_contribution,
+								),
+							);
+							push(group, PaneEvent::Insert(post_pane, contribution));
+						}
+						None => push(group, PaneEvent::Insert(post_pane, contribution)),
+					}
+				}
+				for (_, (pre_coord, pre_group, pre_contribution)) in before {
+					push(
+						pre_group,
+						PaneEvent::Remove(bucket_of(pre_coord, pane), pre_contribution),
+					);
+				}
+			}
+		}
+	}
+	Ok(groups)
+}
+
+pub(crate) fn rolling_output<A: Emit>(
+	aggregator: &A,
+	settings: &WindowSettings<A::Coord>,
+	pane: <A::Coord as Coord>::Span,
+	group: &A::GroupKey,
+	newest: A::Coord,
+	accumulator: &A::Accumulator,
+) -> Option<A::Output> {
+	let value = accumulator.finalize()?;
+	let end = newest.add_span(pane);
+	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
+	aggregator.build_output(group, span, &value)
+}
+
+pub(crate) fn rolling_cutoff<A: WindowedOperator>(
+	settings: &WindowSettings<A::Coord>,
+	pane: <A::Coord as Coord>::Span,
+	clock: A::Coord,
+) -> Option<A::Coord> {
+	clock.checked_sub_span(settings.fixed_size()).map(|cutoff| bucket_of(cutoff, pane))
 }
 
 #[cfg(test)]

@@ -24,12 +24,11 @@ use reifydb_flow_async::{
 		state_access::batch,
 	},
 	window::{
-		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
 			daba::Merge,
-			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
-			publish::PublishState,
+			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
+			publish::{PublishState, RowPublisher},
 			session::{GuestSession, SessionEngine},
 			sliding::SlidingEngine,
 			tumbling::{TumblingBuckets, TumblingEngine},
@@ -58,12 +57,14 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			WindowGroups, bucket_of, group_of,
+			RollingGroups, WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Contribution, Emit, Extracted, KindSet, WindowedOperator, batch_len, extract_rows},
+			operator::{Contribution, Emit, KindSet, WindowedOperator, batch_len, extract_rows},
+			partition_of,
 			publish::{Emitted, UpdateRow, publish_row},
-			seal_frontier, timer_frontier, window_engine_config,
+			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
+			window_engine_config,
 		},
 	},
 };
@@ -82,8 +83,6 @@ struct RollingMode<A: Emit> {
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	pane: <A::Coord as Coord>::Span,
 }
-
-type RollingGroups<A> = PaneGroups<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
 
 type RollingEmits<A> = Vec<RollingEmit<<A as WindowedOperator>::GroupKey, NoKey, <A as WindowedOperator>::Output>>;
 
@@ -176,10 +175,6 @@ where
 		window_row_key(group.into_encoded_key(), window_start)
 	}
 
-	fn partition_of(group: &A::GroupKey) -> GroupId {
-		GroupId::of(&group.into_encoded_key())
-	}
-
 	fn session_group(group: &A::GroupKey, id: u64) -> GroupId {
 		GroupId::of(&Self::row_key(group, <A::Coord as Coord>::from_order(id)))
 	}
@@ -217,120 +212,6 @@ where
 			}
 		}
 		Ok(buckets)
-	}
-
-	fn route_rolling(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<RollingGroups<A>> {
-		let mut groups: RollingGroups<A> = BTreeMap::new();
-		let mut push = |group: A::GroupKey, event: PaneEvent<A::Coord, Contribution<A>>| {
-			groups.entry(group.clone())
-				.or_insert_with(|| (Self::partition_of(&group), Vec::new()))
-				.1
-				.push(event);
-		};
-		for di in 0..change.diff_count() {
-			let Some(diff) = change.diff(di) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert => {
-					if let Some(cols) = diff.post() {
-						for (_, coord, group, contribution) in self.extract_all(ctx, &cols)? {
-							push(
-								group,
-								PaneEvent::Insert(
-									self.bucket_span(coord).start,
-									contribution,
-								),
-							);
-						}
-					}
-				}
-				DiffType::Remove => {
-					if let Some(cols) = diff.pre() {
-						for (_, coord, group, contribution) in self.extract_all(ctx, &cols)? {
-							push(
-								group,
-								PaneEvent::Remove(
-									self.bucket_span(coord).start,
-									contribution,
-								),
-							);
-						}
-					}
-				}
-				DiffType::Update => {
-					let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
-						continue;
-					};
-					let after = self.extract_all(ctx, &post)?;
-					if !A::UPDATE_PRE_RETRACTS {
-						for (_, coord, group, contribution) in after {
-							push(
-								group,
-								PaneEvent::Insert(
-									self.bucket_span(coord).start,
-									contribution,
-								),
-							);
-						}
-						continue;
-					}
-					let mut before: BTreeMap<usize, (A::Coord, A::GroupKey, Contribution<A>)> =
-						self.extract_all(ctx, &pre)?
-							.into_iter()
-							.map(|(row, coord, group, contribution)| {
-								(row, (coord, group, contribution))
-							})
-							.collect();
-					for (row, coord, group, contribution) in after {
-						let post_pane = self.bucket_span(coord).start;
-						match before.remove(&row) {
-							Some((pre_coord, pre_group, pre_contribution))
-								if pre_group == group =>
-							{
-								push(
-									group,
-									PaneEvent::Update {
-										pre: (
-											self.bucket_span(pre_coord)
-												.start,
-											pre_contribution,
-										),
-										post: (post_pane, contribution),
-									},
-								)
-							}
-							Some((pre_coord, pre_group, pre_contribution)) => {
-								push(
-									pre_group,
-									PaneEvent::Remove(
-										self.bucket_span(pre_coord).start,
-										pre_contribution,
-									),
-								);
-								push(group, PaneEvent::Insert(post_pane, contribution));
-							}
-							None => push(group, PaneEvent::Insert(post_pane, contribution)),
-						}
-					}
-					for (_, (pre_coord, pre_group, pre_contribution)) in before {
-						push(
-							pre_group,
-							PaneEvent::Remove(
-								self.bucket_span(pre_coord).start,
-								pre_contribution,
-							),
-						);
-					}
-				}
-			}
-		}
-		Ok(groups)
-	}
-
-	fn extract_all<C: ColumnsView>(&self, ctx: &mut impl GuestContext, cols: &C) -> Result<Vec<Extracted<A>>> {
-		let rows: Vec<usize> = (0..cols.row_count()).collect();
-		extract_rows(&self.aggregator, ctx, cols, &rows)
 	}
 
 	fn push_all<C: ColumnsView>(
@@ -419,28 +300,6 @@ where
 		}
 		Ok(())
 	}
-	fn rolling_output(
-		aggregator: &A,
-		settings: &WindowSettings<A::Coord>,
-		pane: <A::Coord as Coord>::Span,
-		group: &A::GroupKey,
-		newest: A::Coord,
-		accumulator: &A::Accumulator,
-	) -> Option<A::Output> {
-		let value = accumulator.finalize()?;
-		let end = newest.add_span(pane);
-		let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
-		aggregator.build_output(group, span, &value)
-	}
-
-	fn rolling_cutoff(
-		settings: &WindowSettings<A::Coord>,
-		pane: <A::Coord as Coord>::Span,
-		clock: A::Coord,
-	) -> Option<A::Coord> {
-		clock.checked_sub_span(settings.fixed_size()).map(|cutoff| bucket_of(cutoff, pane))
-	}
-
 	fn rolling_emitted(emits: RollingEmits<A>) -> Emitted<A> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		for emit in emits {
@@ -467,11 +326,18 @@ where
 	) -> Result<Emitted<A>> {
 		let pane = mode.pane;
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
-			Self::rolling_output(aggregator, settings, pane, group, newest, accumulator)
+			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
 		let before = mode.engine.earliest_expiry(store)?;
-		let emits = match Self::rolling_cutoff(settings, pane, clock) {
-			Some(cutoff) => mode.engine.expire(store, cutoff, &finalize)?,
+		let emits = match rolling_cutoff::<A>(settings, pane, clock) {
+			Some(cutoff) => mode.engine.expire(
+				store,
+				cutoff,
+				&RowPublisher {
+					key: None,
+					finalize: &finalize,
+				},
+			)?,
 			None => Vec::new(),
 		};
 		let after = mode.engine.earliest_expiry(store)?;
@@ -499,12 +365,19 @@ where
 		};
 		let pane = mode.pane;
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
-			Self::rolling_output(aggregator, settings, pane, group, newest, accumulator)
+			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
-		let cutoff = Self::rolling_cutoff(settings, pane, clock);
+		let cutoff = rolling_cutoff::<A>(settings, pane, clock);
 		let before = mode.engine.earliest_expiry(&mut store)?;
 		let mut emits = match cutoff {
-			Some(cutoff) => mode.engine.expire(&mut store, cutoff, &finalize)?,
+			Some(cutoff) => mode.engine.expire(
+				&mut store,
+				cutoff,
+				&RowPublisher {
+					key: None,
+					finalize: &finalize,
+				},
+			)?,
 			None => Vec::new(),
 		};
 		let keys = mode.engine.state_keys(&groups);
@@ -514,8 +387,10 @@ where
 			groups,
 			cutoff,
 			&|| aggregator.new_accumulator(settings),
-			&|_| NoKey,
-			&finalize,
+			&RowPublisher {
+				key: Some(&|_: &A::GroupKey| NoKey),
+				finalize: &finalize,
+			},
 		)?;
 		prefetched.write()?;
 		if applied.sealed_drops + applied.stale_retractions > 0 {
@@ -925,7 +800,7 @@ where
 		if groups.is_empty() {
 			return Ok(());
 		}
-		let partitions: Vec<GroupId> = groups.iter().map(Self::partition_of).collect();
+		let partitions: Vec<GroupId> = groups.iter().map(partition_of).collect();
 		let trackers = engine.load_trackers(&mut GuestAsHost(ctx), &partitions)?;
 		let current: Vec<GroupId> = groups
 			.iter()
@@ -1387,8 +1262,8 @@ where
 			)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
-		if self.rolling.is_some() {
-			let groups = self.route_rolling(ctx, &change)?;
+		if let Some(pane) = self.rolling.as_ref().map(|mode| mode.pane) {
+			let groups = route_rolling(&self.aggregator, pane, ctx, &change)?;
 			if groups.is_empty() {
 				return Ok(());
 			}

@@ -30,6 +30,7 @@ use crate::{
 		engine::{
 			daba::Merge,
 			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
+			publish::RowPublisher,
 		},
 		kind::rolling::RollingOverTime,
 		prefetch::Prefetched,
@@ -246,8 +247,10 @@ pub fn apply_rolling_engine(
 		pane_groups,
 		cutoff,
 		&|| RowAccumulator::new(&kinds, None),
-		&|hash: &Hash128| group_values.get(hash).cloned().unwrap_or_default(),
-		&finalize_rolling,
+		&RowPublisher {
+			key: Some(&|hash: &Hash128| group_values.get(hash).cloned().unwrap_or_default()),
+			finalize: &finalize_rolling,
+		},
 	)?;
 	state.write()?;
 	operator.note_sealed_drops(applied.sealed_drops);
@@ -321,7 +324,14 @@ pub fn seal_rolling_engine(
 	let cutoff = expiry_cutoff(operator, ts);
 	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
 	let emits = match cutoff {
-		Some(cutoff) => pane_engine(operator, &kinds).expire(host, cutoff, &finalize_rolling)?,
+		Some(cutoff) => pane_engine(operator, &kinds).expire(
+			host,
+			cutoff,
+			&RowPublisher {
+				key: None,
+				finalize: &finalize_rolling,
+			},
+		)?,
 		None => Vec::new(),
 	};
 	Span::current().record("expired", emits.len());
@@ -758,8 +768,10 @@ mod tests {
 					groups,
 					cutoff.map(millis),
 					&new_accumulator,
-					&|_: &Hash128| Vec::<Value>::new(),
-					&finalize_rolling,
+					&RowPublisher {
+						key: Some(&|_: &Hash128| Vec::<Value>::new()),
+						finalize: &finalize_rolling,
+					},
 				)
 				.unwrap();
 			dropped += round_dropped;
@@ -789,7 +801,14 @@ mod tests {
 				let next = base.saturating_sub(20);
 				cutoff = Some(next);
 				let expiries = engine
-					.expire::<Vec<Value>, Vec<Value>>(&mut store, millis(next), &finalize_rolling)
+					.expire(
+						&mut store,
+						millis(next),
+						&RowPublisher::<_, Vec<Value>, _, _, _> {
+							key: None,
+							finalize: &finalize_rolling,
+						},
+					)
 					.unwrap();
 				for (group, rows) in frame.live.iter_mut() {
 					let kept = rows.split_off(&(next + 1, 0));
@@ -819,7 +838,14 @@ mod tests {
 		}
 
 		let drained = engine
-			.expire::<Vec<Value>, Vec<Value>>(&mut store, millis(base + 1_000_000), &finalize_rolling)
+			.expire(
+				&mut store,
+				millis(base + 1_000_000),
+				&RowPublisher::<_, Vec<Value>, _, _, _> {
+					key: None,
+					finalize: &finalize_rolling,
+				},
+			)
 			.unwrap();
 		assert!(
 			drained.iter().all(|emit| emit.post.is_none()),

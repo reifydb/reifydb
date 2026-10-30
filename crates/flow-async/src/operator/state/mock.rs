@@ -90,16 +90,8 @@ impl MockStore {
 			.count()
 	}
 
-	pub(crate) fn index_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::ROLLING_EXPIRY)
-	}
-
 	pub(crate) fn tumbling_index_entry_count(&mut self) -> usize {
 		self.keyspace_count(KeyspaceId::TUMBLING_EXPIRY)
-	}
-
-	pub(crate) fn buffer_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::BUFFER)
 	}
 
 	pub(crate) fn pane_count(&mut self) -> usize {
@@ -122,28 +114,8 @@ impl MockStore {
 		keys.len()
 	}
 
-	pub(crate) fn drop_group_data_entries(&mut self) -> usize {
-		let keys: Vec<Vec<u8>> = self
-			.data
-			.keys()
-			.filter(|k| {
-				OperatorStateKey::decode_inner(k)
-					.is_some_and(|(group, found, _)| !group.is_root() && found.is_data())
-			})
-			.cloned()
-			.collect();
-		for key in &keys {
-			self.data.remove(key);
-		}
-		keys.len()
-	}
-
 	pub(crate) fn contains_row_mapping(&self, group: GroupId) -> bool {
 		self.rows.contains_key(&(group, Vec::new()))
-	}
-
-	pub(crate) fn contains_guest_row_mapping(&self, group: GroupId, key: &EncodedKey) -> bool {
-		self.rows.contains_key(&(group, key.as_bytes().to_vec()))
 	}
 
 	pub(crate) fn rows_visited(&self) -> usize {

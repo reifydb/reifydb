@@ -5,18 +5,13 @@ pub mod config;
 pub mod daba;
 pub mod pane;
 pub mod publish;
-pub mod rolling_top_k;
 pub mod session;
 pub mod sliding;
 pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	ops::Bound,
-	slice::from_ref,
-};
+use std::{collections::BTreeMap, ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey},
@@ -48,10 +43,7 @@ use reifydb_value::{
 use tracing::{debug, instrument};
 
 use crate::{
-	operator::{
-		state::seal::coord::Coord,
-		state_access::{get_classified, remove, set},
-	},
+	operator::{state::seal::coord::Coord, state_access::remove},
 	window::span::{Slot, WindowSpan},
 };
 
@@ -149,40 +141,6 @@ impl<S: Slot> BatchMeta<S> {
 	pub(crate) fn high_water(&self) -> Option<S> {
 		self.bumped.or(self.initial)
 	}
-}
-
-pub(crate) fn load_batch_meta<S>(store: &mut dyn StateStore, key: &MetaKey) -> Result<BatchMeta<S>>
-where
-	S: Slot,
-{
-	let initial =
-		get_classified::<_, GroupMeta<S>>(store, from_ref(key))?.remove(0).and_then(|meta| meta.high_water);
-	Ok(BatchMeta {
-		initial,
-		bumped: None,
-	})
-}
-
-pub(crate) fn persist_batch_meta<G, S>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<S>>) -> Result<()>
-where
-	G: StateCodec,
-	S: Slot,
-{
-	for (group, batch) in loaded {
-		let Some(bumped) = batch.bumped else {
-			continue;
-		};
-		set(
-			store,
-			vec![(
-				meta_key_for(group_hash(&group)?),
-				GroupMeta {
-					high_water: Some(bumped),
-				},
-			)],
-		)?;
-	}
-	Ok(())
 }
 
 const META_SWEEP_PAGE: usize = 1024;
@@ -622,7 +580,7 @@ mod meta_sweep_tests {
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::*;
-	use crate::operator::state::mock::MockStore;
+	use crate::operator::{state::mock::MockStore, state_access::set};
 
 	fn meta_key(index: u32) -> MetaKey {
 		// Built through the production constructor so the fixture can never seed a key shape the

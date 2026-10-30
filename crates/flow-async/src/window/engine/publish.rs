@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{internal_err, key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_macro::operator_state;
+use reifydb_value::{Result, value::row_number::RowNumber};
+
+use crate::window::{
+	engine::pane::{PanePublisher, RollingEmit},
+	meta::RollingPublished,
+};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +26,77 @@ impl<O> Default for PublishState<O> {
 	fn default() -> Self {
 		Self {
 			row: None,
+		}
+	}
+}
+
+pub struct RowPublisher<'f, G, K, O, A, C> {
+	pub key: Option<&'f dyn Fn(&G) -> K>,
+	pub finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
+}
+
+impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
+	type Published = RollingPublished<K, O>;
+	type Emit = RollingEmit<G, K, O>;
+
+	fn publish(
+		&self,
+		store: &mut dyn StateStore,
+		group: &G,
+		group_id: GroupId,
+		newest: C,
+		prior: Option<RollingPublished<K, O>>,
+		value: Option<&A>,
+		emits: &mut Vec<RollingEmit<G, K, O>>,
+	) -> Result<Option<RollingPublished<K, O>>> {
+		let out = value.and_then(|value| (self.finalize)(group, newest, value));
+		match (prior, out) {
+			(None, Some(out)) => {
+				let Some(key) = self.key else {
+					return internal_err!(
+						"a rolling expiry would publish a group that had no published row"
+					);
+				};
+				let (RowNumber(row_number), _) =
+					store.get_or_create_row_numbers_for_groups(&[group_id])?.remove(0);
+				let post = RollingPublished {
+					row_number,
+					key: key(group),
+					last_value: out,
+				};
+				emits.push(RollingEmit {
+					group: group.clone(),
+					group_id,
+					prior: None,
+					post: Some(post.clone()),
+				});
+				Ok(Some(post))
+			}
+			(Some(prior), Some(out)) => {
+				let post = RollingPublished {
+					row_number: prior.row_number,
+					key: prior.key.clone(),
+					last_value: out,
+				};
+				emits.push(RollingEmit {
+					group: group.clone(),
+					group_id,
+					prior: Some(prior),
+					post: Some(post.clone()),
+				});
+				Ok(Some(post))
+			}
+			(Some(prior), None) => {
+				store.remove_row_number_for_group(&[group_id])?;
+				emits.push(RollingEmit {
+					group: group.clone(),
+					group_id,
+					prior: Some(prior),
+					post: None,
+				});
+				Ok(None)
+			}
+			(None, None) => Ok(None),
 		}
 	}
 }

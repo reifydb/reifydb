@@ -24,7 +24,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::Result;
 
 use crate::{
 	operator::{
@@ -170,13 +170,13 @@ impl<G, K, O> RollingEmit<G, K, O> {
 	}
 }
 
-pub struct PaneApplied<G, K, O> {
-	pub emits: Vec<RollingEmit<G, K, O>>,
+pub struct PaneApplied<E> {
+	pub emits: Vec<E>,
 	pub sealed_drops: u64,
 	pub stale_retractions: u64,
 }
 
-impl<G, K, O> Default for PaneApplied<G, K, O> {
+impl<E> Default for PaneApplied<E> {
 	fn default() -> Self {
 		Self {
 			emits: Vec::new(),
@@ -188,7 +188,22 @@ impl<G, K, O> Default for PaneApplied<G, K, O> {
 
 pub type PaneGroups<G, C, X> = BTreeMap<G, (GroupId, Vec<PaneEvent<C, X>>)>;
 
-type Group<A, K, O> = RollingGroup<A, RollingPublished<K, O>>;
+pub trait PanePublisher<G, C, A> {
+	type Published: Clone;
+	type Emit;
+
+	#[allow(clippy::too_many_arguments)]
+	fn publish(
+		&self,
+		store: &mut dyn StateStore,
+		group: &G,
+		group_id: GroupId,
+		newest: C,
+		prior: Option<Self::Published>,
+		value: Option<&A>,
+		emits: &mut Vec<Self::Emit>,
+	) -> Result<Option<Self::Published>>;
+}
 
 struct Panes<'s, A> {
 	store: &'s mut dyn StateStore,
@@ -387,11 +402,6 @@ where
 	}
 }
 
-struct Publish<'f, G, K, O, A, C> {
-	key: Option<&'f dyn Fn(&G) -> K>,
-	finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
-}
-
 pub struct PaneEngine<G, C: Coord, A> {
 	fold: PaneFold,
 	merge: Merge<A>,
@@ -478,26 +488,19 @@ where
 		keys
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn apply<K, O>(
+	pub fn apply<P>(
 		&mut self,
 		store: &mut dyn StateStore,
 		groups: PaneGroups<G, C, A::Contribution>,
 		cutoff: Option<C>,
 		new_accumulator: &dyn Fn() -> A,
-		key: &dyn Fn(&G) -> K,
-		finalize: &dyn Fn(&G, C, &A) -> Option<O>,
-	) -> Result<PaneApplied<G, K, O>>
+		publisher: &P,
+	) -> Result<PaneApplied<P::Emit>>
 	where
-		K: Clone,
-		O: Clone,
-		Group<A, K, O>: OperatorState + HeapSize,
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published>: OperatorState + HeapSize,
 	{
 		let cutoff = cutoff.map(Coord::to_order);
-		let publish = Publish {
-			key: Some(key),
-			finalize,
-		};
 		let mut applied = PaneApplied::default();
 		for (group, (group_id, events)) in groups {
 			self.apply_group(
@@ -507,37 +510,28 @@ where
 				events,
 				cutoff,
 				new_accumulator,
-				&publish,
+				publisher,
 				&mut applied,
 			)?;
 		}
 		Ok(applied)
 	}
 
-	pub fn expire<K, O>(
-		&mut self,
-		store: &mut dyn StateStore,
-		cutoff: C,
-		finalize: &dyn Fn(&G, C, &A) -> Option<O>,
-	) -> Result<Vec<RollingEmit<G, K, O>>>
+	pub fn expire<P>(&mut self, store: &mut dyn StateStore, cutoff: C, publisher: &P) -> Result<Vec<P::Emit>>
 	where
-		K: Clone,
-		O: Clone,
-		Group<A, K, O>: OperatorState + HeapSize,
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published>: OperatorState + HeapSize,
 	{
-		let publish = Publish {
-			key: None,
-			finalize,
-		};
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			self.expiry.due(store, cutoff.to_order(), self.expire_batch)?;
 		let mut applied = PaneApplied::default();
 		for (index_key, entry) in due {
 			expiry_drop(store, &index_key)?;
-			let Some(row) =
-				get_classified::<_, Group<A, K, O>>(store, from_ref(&RollingMetaKey(entry.group_id)))?
-					.remove(0)
-			else {
+			let Some(row) = get_classified::<_, RollingGroup<A, P::Published>>(
+				store,
+				from_ref(&RollingMetaKey(entry.group_id)),
+			)?
+			.remove(0) else {
 				return internal_err!("a rolling expiry row names a group with no group row");
 			};
 			let view = Panes::new(store, entry.group_id);
@@ -549,8 +543,7 @@ where
 				true,
 				None,
 				Some(cutoff.to_order()),
-				false,
-				&publish,
+				publisher,
 				&mut applied,
 			)?;
 		}
@@ -560,7 +553,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn apply_group<K, O>(
+	fn apply_group<P>(
 		&mut self,
 		store: &mut dyn StateStore,
 		group: &G,
@@ -568,15 +561,16 @@ where
 		events: Vec<PaneEvent<C, A::Contribution>>,
 		cutoff: Option<u64>,
 		new_accumulator: &dyn Fn() -> A,
-		publish: &Publish<'_, G, K, O, A, C>,
-		applied: &mut PaneApplied<G, K, O>,
+		publisher: &P,
+		applied: &mut PaneApplied<P::Emit>,
 	) -> Result<()>
 	where
-		K: Clone,
-		O: Clone,
-		Group<A, K, O>: OperatorState + HeapSize,
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published>: OperatorState + HeapSize,
 	{
-		let stored = get_classified::<_, Group<A, K, O>>(store, from_ref(&RollingMetaKey(group_id)))?.remove(0);
+		let stored =
+			get_classified::<_, RollingGroup<A, P::Published>>(store, from_ref(&RollingMetaKey(group_id)))?
+				.remove(0);
 		let lines = stored.as_ref().map(|row| self.lines(C::from_order(row.newest)));
 		let admission = match &stored {
 			Some(row) => self.group_cutoff(row.newest, cutoff),
@@ -680,33 +674,29 @@ where
 			prior_oldest.is_some(),
 			prior_oldest,
 			cutoff,
-			true,
-			publish,
+			publisher,
 			applied,
 		)
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn settle<K, O>(
+	fn settle<P>(
 		&mut self,
 		mut view: Panes<'_, A>,
 		group: &G,
 		group_id: GroupId,
-		mut row: Group<A, K, O>,
+		mut row: RollingGroup<A, P::Published>,
 		existed: bool,
 		prior_oldest: Option<u64>,
 		cutoff: Option<u64>,
-		touched: bool,
-		publish: &Publish<'_, G, K, O, A, C>,
-		applied: &mut PaneApplied<G, K, O>,
+		publisher: &P,
+		applied: &mut PaneApplied<P::Emit>,
 	) -> Result<()>
 	where
-		K: Clone,
-		O: Clone,
-		Group<A, K, O>: OperatorState + HeapSize,
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published>: OperatorState + HeapSize,
 	{
 		let lines = self.lines(C::from_order(row.newest));
-		let mut changed = touched;
 		if let Some(cutoff) = self.group_cutoff(row.newest, cutoff) {
 			for (pane, value) in view.scan(Unbounded, Included(cutoff))? {
 				view.put(pane, None);
@@ -720,7 +710,6 @@ where
 						None => row.queue.pop(self.merge, &mut view)?,
 					}
 				}
-				changed |= lines.output.is_some_and(|output| pane <= output);
 			}
 		}
 		let through = match self.fold {
@@ -771,68 +760,27 @@ where
 			if existed {
 				remove(store, from_ref(&RollingMetaKey(group_id)))?;
 			}
-			if let Some(prior) = row.published {
-				store.remove_row_number_for_group(&[group_id])?;
-				applied.emits.push(RollingEmit {
-					group: group.clone(),
-					group_id,
-					prior: Some(prior),
-					post: None,
-				});
-			}
+			publisher.publish(
+				store,
+				group,
+				group_id,
+				C::from_order(row.newest),
+				row.published,
+				None,
+				&mut applied.emits,
+			)?;
 			return Ok(());
 		};
 		row.oldest = oldest;
-		let out = value.and_then(|value| (publish.finalize)(group, C::from_order(row.newest), &value));
-		match (row.published.take(), out) {
-			(None, Some(out)) => {
-				let Some(key) = publish.key else {
-					return internal_err!(
-						"a rolling expiry would publish a group that had no published row"
-					);
-				};
-				let (RowNumber(row_number), _) =
-					store.get_or_create_row_numbers_for_groups(&[group_id])?.remove(0);
-				let post = RollingPublished {
-					row_number,
-					key: key(group),
-					last_value: out,
-				};
-				row.published = Some(post.clone());
-				applied.emits.push(RollingEmit {
-					group: group.clone(),
-					group_id,
-					prior: None,
-					post: Some(post),
-				});
-			}
-			(Some(prior), Some(out)) => {
-				let post = RollingPublished {
-					row_number: prior.row_number,
-					key: prior.key.clone(),
-					last_value: out,
-				};
-				row.published = Some(post.clone());
-				if changed {
-					applied.emits.push(RollingEmit {
-						group: group.clone(),
-						group_id,
-						prior: Some(prior),
-						post: Some(post),
-					});
-				}
-			}
-			(Some(prior), None) => {
-				store.remove_row_number_for_group(&[group_id])?;
-				applied.emits.push(RollingEmit {
-					group: group.clone(),
-					group_id,
-					prior: Some(prior),
-					post: None,
-				});
-			}
-			(None, None) => {}
-		}
+		row.published = publisher.publish(
+			store,
+			group,
+			group_id,
+			C::from_order(row.newest),
+			row.published.take(),
+			value.as_ref(),
+			&mut applied.emits,
+		)?;
 		if prior_oldest != Some(oldest) {
 			if let Some(old) = prior_oldest {
 				expiry_drop(store, &rolling_expiry_key(old, hash))?;
@@ -872,7 +820,7 @@ mod tests {
 		operator::state::mock::MockStore,
 		window::{
 			accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
-			engine::{config::WindowEngineConfig, daba::Merge},
+			engine::{config::WindowEngineConfig, daba::Merge, publish::RowPublisher},
 			meta::NoKey,
 		},
 	};
@@ -1089,8 +1037,10 @@ mod tests {
 					groups,
 					cutoff.map(ms),
 					&Bag::default,
-					&|_| NoKey,
-					&|_, _, bag: &Bag| bag.finalize(),
+					&RowPublisher {
+						key: Some(&|_: &u32| NoKey),
+						finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+					},
 				)
 				.unwrap();
 			assert_eq!(
@@ -1108,10 +1058,13 @@ mod tests {
 					model.expire(shape, group, cutoff);
 				}
 				let out = engine
-					.expire::<NoKey, Vec<(u64, i64)>>(
+					.expire(
 						&mut store,
 						ms(cutoff.unwrap()),
-						&|_, _, bag: &Bag| bag.finalize(),
+						&RowPublisher::<_, NoKey, _, _, _> {
+							key: None,
+							finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+						},
 					)
 					.unwrap();
 				expired += out.len();
@@ -1200,8 +1153,10 @@ mod tests {
 					groups,
 					None,
 					&Bag::default,
-					&|_| NoKey,
-					&|_, _, bag: &Bag| bag.finalize(),
+					&RowPublisher {
+						key: Some(&|_: &u32| NoKey),
+						finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+					},
 				)
 				.unwrap();
 				visited.push(store.rows_visited() - before);
@@ -1287,9 +1242,16 @@ mod tests {
 			}
 			let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));
-			engine.apply(&mut store, groups, None, &Tally::default, &|_| NoKey, &|_, _, t: &Tally| {
-				t.finalize()
-			})
+			engine.apply(
+				&mut store,
+				groups,
+				None,
+				&Tally::default,
+				&RowPublisher {
+					key: Some(&|_: &u32| NoKey),
+					finalize: &|_: &u32, _: DateTime, t: &Tally| t.finalize(),
+				},
+			)
 			.unwrap();
 			let queue_line = engine.lines(ms(pane)).queue.unwrap_or(0);
 			for (key, row) in store.state_page(pane_range(group, Unbounded, Unbounded), None).unwrap() {
