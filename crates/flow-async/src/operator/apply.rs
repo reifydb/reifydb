@@ -31,7 +31,7 @@ use crate::{
 		BoxedHostOperator, HostOperator,
 		host::HostContext,
 		join::kept::dictionary_columns,
-		max_input_time, stamp_output_time,
+		max_input_time, stamp_output_created, stamp_output_time,
 		state::{
 			expiry::{expiry_drop, expiry_due, managed_due_group, managed_latest_key},
 			reaper::{StoreReaper, drain, drain_group, enqueue},
@@ -89,8 +89,10 @@ impl HostOperator for ApplyOperator {
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change)?;
+		let changed_at = change.changed_at;
 		let mut out = self.inner.apply(host, change)?;
 		stamp_output_time(&mut out, inherited)?;
+		stamp_output_created(&mut out, changed_at)?;
 		Ok(out)
 	}
 
@@ -103,6 +105,7 @@ impl HostOperator for ApplyOperator {
 		let mut out = self.inner.on_timer(host, timer)?;
 		if let Some(change) = out.as_mut() {
 			stamp_output_time(change, Some(due))?;
+			stamp_output_created(change, due)?;
 		}
 		Ok(out)
 	}

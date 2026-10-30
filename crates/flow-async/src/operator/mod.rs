@@ -19,9 +19,9 @@ use reifydb_value::{
 	Result,
 	value::{
 		column_view::ViewData,
-		container::temporal_array::{datetime_timezone, datetime_to_native},
+		container::temporal_array::{datetime_array, datetime_timezone, datetime_to_native},
 		datetime::DateTime,
-		system_columns::{SystemColumn, column_view, with_system_column},
+		system_columns::{SystemColumn, column_view, system_column, with_system_column},
 	},
 };
 
@@ -155,6 +155,22 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 				.unary::<_, TimestampNanosecondType>(|own| own.min(inherited))
 				.with_timezone(datetime_timezone());
 			*columns = with_system_column(columns.clone(), SystemColumn::Time, Arc::new(stamped))?;
+		}
+	}
+	Ok(())
+}
+
+#[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+pub(crate) fn stamp_output_created(change: &mut Change, at: DateTime) -> Result<()> {
+	for diff in change.diffs.iter_mut() {
+		for columns in diff.batches_mut() {
+			let rows = columns.num_rows();
+			for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt] {
+				if system_column(columns, column).is_none() {
+					continue;
+				}
+				*columns = with_system_column(columns.clone(), column, Arc::new(datetime_array(vec![at; rows])))?;
+			}
 		}
 	}
 	Ok(())
