@@ -220,9 +220,16 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
 			if self.consume_word("windowed")? {
+				let hint = if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+					ViewStorageKindHint::RingBuffer
+				} else if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+					ViewStorageKindHint::Series
+				} else {
+					ViewStorageKindHint::Table
+				};
 				self.consume_keyword(View)?;
 				self.expect_word("group")?;
-				return self.parse_deferred_windowed_view_group(token);
+				return self.parse_deferred_windowed_view_group(token, hint);
 			}
 			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 				self.consume_keyword(View)?;
@@ -1081,7 +1088,11 @@ impl<'bump> Parser<'bump> {
 		Err(unexpected_option(&self.current()?, &format!("'{}'", word)))
 	}
 
-	fn parse_deferred_windowed_view_group(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_deferred_windowed_view_group(
+		&mut self,
+		token: Token<'bump>,
+		hint: ViewStorageKindHint,
+	) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1089,7 +1100,7 @@ impl<'bump> Parser<'bump> {
 		let columns = self.parse_columns()?;
 
 		self.consume_keyword(Keyword::With)?;
-		let members = self.parse_windowed_view_group_members()?;
+		let (storage_kind, members) = self.parse_windowed_view_group_with_clause(hint)?;
 
 		let as_start = self.position;
 		let Some(first) = self.parse_view_as_clause()? else {
@@ -1110,19 +1121,127 @@ impl<'bump> Parser<'bump> {
 			token,
 			group,
 			columns,
+			storage_kind,
 			members,
 			as_clauses,
 		}))
 	}
 
-	fn parse_windowed_view_group_members(&mut self) -> Result<Vec<AstWindowedViewGroupMember<'bump>>> {
-		self.consume_operator(Operator::OpenCurly)?;
-		self.skip_new_line()?;
-		let key = self.consume_identifier()?;
-		if key.fragment.text() != "members" {
-			return Err(unexpected_option(&key, "'members'"));
+	fn parse_windowed_view_group_with_clause(
+		&mut self,
+		hint: ViewStorageKindHint,
+	) -> Result<(AstViewStorageKind, Vec<AstWindowedViewGroupMember<'bump>>)> {
+		let open = self.consume_operator(Operator::OpenCurly)?;
+
+		let mut members: Option<Vec<AstWindowedViewGroupMember<'bump>>> = None;
+		let mut partition_by: Vec<String> = Vec::new();
+		let mut eviction: Option<ParsedEviction<'bump>> = None;
+		let mut capacity: Option<u64> = None;
+		let mut key_column: Option<String> = None;
+		let mut precision: Option<AstTimestampPrecision> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_identifier()?;
+			self.consume_operator(Operator::Colon)?;
+
+			match (key.fragment.text(), &hint) {
+				("members", _) => {
+					members = Some(self.parse_windowed_view_group_members()?);
+				}
+				("partition", _) => {
+					partition_by = self.parse_partition_config()?;
+				}
+				("eviction", _) => {
+					if eviction.is_some() {
+						return Err(duplicate_eviction(&key));
+					}
+					eviction = Some(self.parse_eviction_config(EVICTION_REASONS)?);
+				}
+				("capacity", ViewStorageKindHint::RingBuffer) => {
+					capacity = Some(self.parse_view_capacity()?);
+				}
+				("key", ViewStorageKindHint::Series) => {
+					key_column = Some(self.consume_identifier()?.fragment.text().to_string());
+				}
+				("precision", ViewStorageKindHint::Series) => {
+					precision = Some(self.parse_timestamp_precision()?);
+				}
+				_ => {
+					let expected = match hint {
+						ViewStorageKindHint::Table => "'members', 'partition', or 'eviction'",
+						ViewStorageKindHint::RingBuffer => {
+							"'members', 'capacity', 'partition', or 'eviction'"
+						}
+						ViewStorageKindHint::Series => {
+							"'members', 'key', 'precision', 'partition', or 'eviction'"
+						}
+					};
+					return Err(unexpected_option(&key, expected));
+				}
+			}
+
+			self.skip_new_line()?;
+			self.consume_if(TokenKind::Separator(Comma))?;
 		}
-		self.consume_operator(Operator::Colon)?;
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let Some(mut members) = members else {
+			return Err(unexpected_option(&open, "'members'"));
+		};
+
+		if let Some(eviction) = eviction
+			&& let Some((token, ttl)) = eviction.ttl
+		{
+			let mut applied = false;
+			for member in &mut members {
+				if let Some(settings) = &mut member.settings
+					&& settings.ttl.is_some()
+				{
+					settings.ttl_eviction = ttl;
+					applied = true;
+				}
+			}
+			if !applied {
+				return Err(ttl_eviction_without_row_ttl(&token));
+			}
+		}
+
+		let storage_kind = match hint {
+			ViewStorageKindHint::Table => AstViewStorageKind::Table {
+				partition_by,
+			},
+			ViewStorageKindHint::RingBuffer => {
+				let Some(capacity) = capacity else {
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "capacity".to_string(),
+						},
+						message: "ringbuffer view group requires 'capacity' in WITH clause".to_string(),
+						fragment: open.fragment.to_owned(),
+					}));
+				};
+				AstViewStorageKind::RingBuffer {
+					capacity,
+					partition_by,
+				}
+			}
+			ViewStorageKindHint::Series => AstViewStorageKind::Series {
+				key_column: key_column.unwrap_or_default(),
+				precision,
+				partition_by,
+			},
+		};
+
+		Ok((storage_kind, members))
+	}
+
+	fn parse_windowed_view_group_members(&mut self) -> Result<Vec<AstWindowedViewGroupMember<'bump>>> {
 		self.consume_operator(Operator::OpenBracket)?;
 		let mut members = Vec::new();
 		loop {
@@ -1135,10 +1254,6 @@ impl<'bump> Parser<'bump> {
 			self.consume_if(TokenKind::Separator(Comma))?;
 		}
 		self.consume_operator(Operator::CloseBracket)?;
-		self.skip_new_line()?;
-		self.consume_if(TokenKind::Separator(Comma))?;
-		self.skip_new_line()?;
-		self.consume_operator(Operator::CloseCurly)?;
 		Ok(members)
 	}
 
@@ -2643,6 +2758,40 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
+	fn parse_view_capacity(&mut self) -> Result<u64> {
+		let token = self.consume(TokenKind::Literal(Literal::Number))?;
+		token.fragment.text().parse::<u64>().map_err(|_| {
+			let fragment = token.fragment.to_owned();
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "valid capacity number".to_string(),
+				},
+				message: format!("expected valid capacity number, got {}", fragment.text()),
+				fragment,
+			})
+		})
+	}
+
+	fn parse_timestamp_precision(&mut self) -> Result<AstTimestampPrecision> {
+		let token = self.consume_identifier()?;
+		Ok(match token.fragment.text() {
+			"second" => AstTimestampPrecision::Second,
+			"millisecond" => AstTimestampPrecision::Millisecond,
+			"microsecond" => AstTimestampPrecision::Microsecond,
+			"nanosecond" => AstTimestampPrecision::Nanosecond,
+			_ => {
+				let fragment = token.fragment.to_owned();
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "second, millisecond, microsecond, or nanosecond".to_string(),
+					},
+					message: format!("unexpected precision '{}'", fragment.text()),
+					fragment,
+				}));
+			}
+		})
+	}
+
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
@@ -2653,6 +2802,7 @@ impl<'bump> Parser<'bump> {
 		let mut settings = None;
 
 		match hint {
+			ViewStorageKindHint::Table => unreachable!(),
 			ViewStorageKindHint::RingBuffer => {
 				let mut capacity: Option<u64> = None;
 				let mut partition_by: Vec<String> = Vec::new();
@@ -2669,22 +2819,7 @@ impl<'bump> Parser<'bump> {
 
 					match key.fragment.text() {
 						"capacity" => {
-							let token =
-								self.consume(TokenKind::Literal(Literal::Number))?;
-							capacity =
-								Some(token.fragment.text().parse::<u64>().map_err(
-									|_| {
-										let fragment =
-											token.fragment.to_owned();
-										Error::from(TypeError::Ast {
-									kind: AstErrorKind::UnexpectedToken {
-										expected: "valid capacity number".to_string(),
-									},
-									message: format!("expected valid capacity number, got {}", fragment.text()),
-									fragment,
-								})
-									},
-								)?);
+							capacity = Some(self.parse_view_capacity()?);
 						}
 						"partition" => {
 							partition_by = self.parse_partition_config()?;
@@ -2760,23 +2895,7 @@ impl<'bump> Parser<'bump> {
 							key_column = Some(token.fragment.text().to_string());
 						}
 						"precision" => {
-							let token = self.consume_identifier()?;
-							precision = Some(match token.fragment.text() {
-								"second" => AstTimestampPrecision::Second,
-								"millisecond" => AstTimestampPrecision::Millisecond,
-								"microsecond" => AstTimestampPrecision::Microsecond,
-								"nanosecond" => AstTimestampPrecision::Nanosecond,
-								_ => {
-									let fragment = token.fragment.to_owned();
-									return Err(Error::from(TypeError::Ast {
-										kind: AstErrorKind::UnexpectedToken {
-											expected: "second, millisecond, microsecond, or nanosecond".to_string(),
-										},
-										message: format!("unexpected precision '{}'", fragment.text()),
-										fragment,
-									}));
-								}
-							});
+							precision = Some(self.parse_timestamp_precision()?);
 						}
 						"partition" => {
 							partition_by = self.parse_partition_config()?;
@@ -3339,6 +3458,7 @@ impl<'bump> Parser<'bump> {
 }
 
 enum ViewStorageKindHint {
+	Table,
 	RingBuffer,
 	Series,
 }
@@ -5162,5 +5282,175 @@ mod eviction_tests {
 			let message = create_error(source);
 			assert!(message.contains(keys), "{source}: {message}");
 		}
+	}
+}
+
+#[cfg(test)]
+mod windowed_view_group_storage_tests {
+	use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
+
+	use crate::{
+		ast::{
+			ast::{Ast, AstCreate, AstTimestampPrecision, AstViewStorageKind},
+			parse::Parser,
+		},
+		bump::Bump,
+		token::tokenize,
+	};
+
+	const AS: &str = "as { from ns::t window tumbling { c: math::count(a) } }";
+
+	fn group(source: &str, check: impl FnOnce(&AstViewStorageKind, &[Option<EvictionVisibility>])) {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = match parser.parse() {
+			Ok(result) => result,
+			Err(err) => panic!("the DDL must be accepted: {source}: {:?}", err.diagnostic()),
+		};
+		let statement = result.pop().unwrap();
+		let Some(Ast::Create(create)) = statement.nodes.into_iter().next() else {
+			panic!("expected CREATE");
+		};
+		let AstCreate::DeferredWindowedViewGroup(group) = &*create else {
+			panic!("expected a windowed view group");
+		};
+		let evictions = group.members.iter().map(|m| m.settings.as_ref().map(|s| s.ttl_eviction)).collect::<Vec<_>>();
+		check(&group.storage_kind, &evictions);
+	}
+
+	fn create_error(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("the DDL must be rejected");
+		format!("{:?}", err.diagnostic())
+	}
+
+	#[test]
+	fn a_plain_group_is_a_table_and_keeps_its_partition() {
+		// Dropping the partition here would silently store every member unpartitioned.
+		let source = format!(
+			"create deferred windowed view group ns::g {{ a: int4 }} with {{ partition: {{ by: {{ a }} }}, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+		);
+		group(&source, |kind, _| match kind {
+			AstViewStorageKind::Table {
+				partition_by,
+			} => assert_eq!(partition_by, &vec!["a".to_string()]),
+			other => panic!("expected a table group, got {other:?}"),
+		});
+	}
+
+	#[test]
+	fn a_ringbuffer_group_carries_capacity_and_partition() {
+		// Both must reach the storage, or members would differ from a ringbuffer view.
+		let source = format!(
+			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ members: [ {{ view: ns::g1, duration: 1s }} ], capacity: 5, partition: {{ by: {{ a }} }} }} {AS}"
+		);
+		group(&source, |kind, _| match kind {
+			AstViewStorageKind::RingBuffer {
+				capacity,
+				partition_by,
+			} => {
+				assert_eq!(*capacity, 5);
+				assert_eq!(partition_by, &vec!["a".to_string()]);
+			}
+			other => panic!("expected a ringbuffer group, got {other:?}"),
+		});
+	}
+
+	#[test]
+	fn a_ringbuffer_group_refuses_capacity_eviction() {
+		// The ring sink never evicts silently on capacity, so accepting it would promise an eviction that never happens.
+		let message = create_error(&format!(
+			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ members: [ {{ view: ns::g1, duration: 1s }} ], capacity: 5, eviction: {{ capacity: silent }} }} {AS}"
+		));
+		assert!(message.contains("'ttl'"), "{message}");
+	}
+
+	#[test]
+	fn a_series_group_carries_key_and_precision() {
+		// A lost key or precision would give members a different series layout than a series view.
+		let source = format!(
+			"create deferred windowed series view group ns::g {{ a: int4, ts: datetime }} with {{ key: ts, precision: microsecond, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+		);
+		group(&source, |kind, _| match kind {
+			AstViewStorageKind::Series {
+				key_column,
+				precision,
+				partition_by,
+			} => {
+				assert_eq!(key_column, "ts");
+				assert!(matches!(precision, Some(AstTimestampPrecision::Microsecond)));
+				assert!(partition_by.is_empty());
+			}
+			other => panic!("expected a series group, got {other:?}"),
+		});
+	}
+
+	#[test]
+	fn a_ttl_eviction_reaches_only_members_with_a_ttl() {
+		// A member without a ttl must keep its default; one with a ttl must take the group setting.
+		let source = format!(
+			"create deferred windowed view group ns::g {{ a: int4 }} with {{ eviction: {{ ttl: visible }}, members: [ {{ view: ns::g1, duration: 1s, row: {{ ttl: 1m }} }}, {{ view: ns::g2, duration: 2s, row: {{ persistent: true }} }}, {{ view: ns::g3, duration: 3s }} ] }} {AS}"
+		);
+		group(&source, |_, evictions| {
+			assert_eq!(evictions, &[Some(EvictionVisibility::Visible), Some(EvictionVisibility::Silent), None]);
+		});
+	}
+
+	#[test]
+	fn a_ttl_eviction_with_no_member_ttl_is_rejected() {
+		// A setting that reaches no member is a mistake and must not pass silently.
+		let message = create_error(&format!(
+			"create deferred windowed view group ns::g {{ a: int4 }} with {{ eviction: {{ ttl: silent }}, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+		));
+		assert!(message.contains("row: { ttl: .. }"), "{message}");
+	}
+
+	#[test]
+	fn a_ringbuffer_group_without_capacity_is_rejected() {
+		// A plain ringbuffer view requires capacity, so a group must as well.
+		let message = create_error(&format!(
+			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+		));
+		assert!(message.contains("'capacity'"), "{message}");
+	}
+
+	#[test]
+	fn storage_keys_of_another_kind_are_rejected() {
+		// Accepting them would let the author believe a setting is in force when none is.
+		for (source, listed) in [
+			(
+				format!(
+					"create deferred windowed view group ns::g {{ a: int4 }} with {{ capacity: 5, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+				),
+				"'members', 'partition', or 'eviction'",
+			),
+			(
+				format!(
+					"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ capacity: 5, key: a, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+				),
+				"'members', 'capacity', 'partition', or 'eviction'",
+			),
+			(
+				format!(
+					"create deferred windowed series view group ns::g {{ a: int4 }} with {{ row: {{ ttl: 1m }}, members: [ {{ view: ns::g1, duration: 1s }} ] }} {AS}"
+				),
+				"'members', 'key', 'precision', 'partition', or 'eviction'",
+			),
+		] {
+			let message = create_error(&source);
+			assert!(message.contains(listed), "{source}: {message}");
+		}
+	}
+
+	#[test]
+	fn a_group_without_members_key_is_rejected() {
+		// Without members there is nothing to create, and storage keys alone must not be enough.
+		let message = create_error(&format!(
+			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ capacity: 5 }} {AS}"
+		));
+		assert!(message.contains("'members'"), "{message}");
 	}
 }

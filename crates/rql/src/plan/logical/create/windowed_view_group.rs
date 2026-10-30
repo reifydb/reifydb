@@ -13,7 +13,10 @@ use crate::{
 	},
 	duration::{DurationBound, compile_duration, invalid_option},
 	error::RqlError,
-	plan::logical::{Compiler, CreateDeferredWindowedViewGroupNode, LogicalPlan, WindowedViewGroupMember},
+	plan::logical::{
+		Compiler, CreateDeferredWindowedViewGroupNode, LogicalPlan, WindowedViewGroupMember,
+		create::check_view_partition,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -31,6 +34,7 @@ impl<'bump> Compiler<'bump> {
 
 		let group_ns_segments: Vec<&str> = ast.group.namespace.iter().map(|n| n.text()).collect();
 		let columns = self.compile_view_columns(ast.columns, &group_ns_segments, tx)?;
+		check_view_partition(&columns, &ast.storage_kind, &group_ns_segments)?;
 
 		let mut durations: Vec<Duration> = Vec::with_capacity(ast.members.len());
 		let mut members = Vec::with_capacity(ast.members.len());
@@ -70,6 +74,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::CreateDeferredWindowedViewGroup(CreateDeferredWindowedViewGroupNode {
 			group: ast.group,
 			columns,
+			storage_kind: ast.storage_kind,
 			members,
 		}))
 	}

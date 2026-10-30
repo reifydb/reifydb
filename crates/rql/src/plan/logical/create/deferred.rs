@@ -14,12 +14,12 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstColumnToCreate, AstCreateDeferredView, AstViewStorageKind},
+	ast::ast::{AstColumnProperty, AstColumnToCreate, AstCreateDeferredView},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateDeferredViewNode, LogicalPlan,
-		create::{reject_dictionary_on_decimal, reject_digest_partition_columns},
+		create::{check_view_partition, reject_dictionary_on_decimal},
 		reserved::reject_reserved_column_name,
 	},
 };
@@ -33,35 +33,7 @@ impl<'bump> Compiler<'bump> {
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
 		let columns = self.compile_view_columns(ast.columns, &view_ns_segments, tx)?;
 
-		let partition_by: &[String] = match &ast.storage_kind {
-			AstViewStorageKind::Table {
-				partition_by,
-			} => partition_by,
-			AstViewStorageKind::RingBuffer {
-				partition_by,
-				..
-			} => partition_by,
-			AstViewStorageKind::Series {
-				partition_by,
-				..
-			} => partition_by,
-		};
-
-		for pb_col in partition_by {
-			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
-				return Err(CatalogError::NotFound {
-					kind: CatalogObjectKind::Column,
-					namespace: view_ns_segments.join("::"),
-					name: pb_col.clone(),
-					fragment: Fragment::internal(pb_col.as_str()),
-				}
-				.into());
-			}
-		}
-		reject_digest_partition_columns(
-			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
-			partition_by,
-		)?;
+		check_view_partition(&columns, &ast.storage_kind, &view_ns_segments)?;
 
 		let view = ast.view;
 

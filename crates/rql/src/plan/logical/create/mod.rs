@@ -25,7 +25,10 @@ pub mod transactional;
 pub mod ttl;
 pub mod windowed_view_group;
 
-use reifydb_catalog::error::CatalogError;
+use reifydb_catalog::{
+	catalog::view::ViewColumnToCreate,
+	error::{CatalogError, CatalogObjectKind},
+};
 use reifydb_core::{
 	interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	partition::PartitionError,
@@ -39,7 +42,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstCreate, AstLiteral},
+	ast::ast::{Ast, AstCreate, AstLiteral, AstViewStorageKind},
 	plan::logical::{
 		Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
 		CreateRoleNode, LogicalPlan,
@@ -141,6 +144,39 @@ fn invalid_column_property(value: &Ast<'_>, message: String) -> Error {
 		message,
 		fragment: value.token().fragment.to_owned(),
 	})
+}
+
+pub(crate) fn check_view_partition(
+	columns: &[ViewColumnToCreate],
+	storage_kind: &AstViewStorageKind,
+	view_ns_segments: &[&str],
+) -> Result<()> {
+	let partition_by: &[String] = match storage_kind {
+		AstViewStorageKind::Table {
+			partition_by,
+		} => partition_by,
+		AstViewStorageKind::RingBuffer {
+			partition_by,
+			..
+		} => partition_by,
+		AstViewStorageKind::Series {
+			partition_by,
+			..
+		} => partition_by,
+	};
+
+	for pb_col in partition_by {
+		if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Column,
+				namespace: view_ns_segments.join("::"),
+				name: pb_col.clone(),
+				fragment: Fragment::internal(pb_col.as_str()),
+			}
+			.into());
+		}
+	}
+	reject_digest_partition_columns(columns.iter().map(|c| (c.name.text(), c.constraint.get_type())), partition_by)
 }
 
 pub(crate) fn reject_digest_partition_columns<'a>(

@@ -5,7 +5,7 @@ use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::{flow::FlowToCreate, view::ViewToCreate, windowed_view_group::WindowedViewGroupToCreate},
 	error::{CatalogError, CatalogObjectKind},
-	store::{row_settings::create::create_row_settings, view::create::ViewStorage},
+	store::row_settings::create::create_row_settings,
 };
 use reifydb_core::{
 	error::diagnostic::{catalog::view_already_exists, flow::flow_source_required},
@@ -22,7 +22,10 @@ use reifydb_rql::{error::RqlError, nodes::CreateDeferredWindowedViewGroupNode, q
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{error::Error, fragment::Fragment, return_error, value::Value};
 
-use super::{check_flow_dag, count_windowed_nodes, extract_view_sort, prepare_flow_plan, split_at_windowed_node};
+use super::{
+	check_flow_dag, count_windowed_nodes, extract_view_sort, prepare_flow_plan, split_at_windowed_node,
+	view_storage,
+};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_windowed_view_group(
@@ -73,9 +76,7 @@ pub(crate) fn create_deferred_windowed_view_group(
 				name: member.view.clone(),
 				namespace: member.namespace.id(),
 				columns: plan.columns.clone(),
-				storage: ViewStorage::Table {
-					partition_by: Vec::new(),
-				},
+				storage: view_storage(&plan.storage_kind),
 				sort,
 			},
 		)?;

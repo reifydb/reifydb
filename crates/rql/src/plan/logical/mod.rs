@@ -600,6 +600,7 @@ pub struct CreateDeferredViewNode<'bump> {
 pub struct CreateDeferredWindowedViewGroupNode<'bump> {
 	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage_kind: AstViewStorageKind,
 	pub members: Vec<WindowedViewGroupMember<'bump>>,
 }
 

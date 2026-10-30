@@ -231,6 +231,7 @@ pub struct CreateDeferredWindowedViewGroupNode<'bump> {
 	pub namespace: Namespace,
 	pub group: Fragment,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage_kind: AstViewStorageKind,
 	pub members: Vec<WindowedViewGroupMember<'bump>>,
 }
 

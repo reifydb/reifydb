@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{view::ViewKind, vtable::VTable},
+	interface::catalog::{
+		view::{View, ViewKind},
+		vtable::VTable,
+	},
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -53,6 +56,7 @@ impl BaseVTable for SystemViews {
 		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, views.len());
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, views.len());
 		let mut kinds = ColumnBuilder::with_capacity(ValueType::Utf8, views.len());
+		let mut storages = ColumnBuilder::with_capacity(ValueType::Utf8, views.len());
 		let mut primary_keys = ColumnBuilder::with_capacity(ValueType::Uint8, views.len());
 
 		for view in views {
@@ -62,6 +66,11 @@ impl BaseVTable for SystemViews {
 			kinds.push(match view.kind() {
 				ViewKind::Deferred => "deferred",
 				ViewKind::Transactional => "transactional",
+			});
+			storages.push(match &view {
+				View::Table(_) => "table",
+				View::RingBuffer(_) => "ringbuffer",
+				View::Series(_) => "series",
 			});
 			primary_keys.push_value(
 				view.primary_key()
@@ -76,6 +85,7 @@ impl BaseVTable for SystemViews {
 			namespaces.finish("namespace_id"),
 			names.finish("name"),
 			kinds.finish("kind"),
+			storages.finish("storage"),
 			primary_keys.finish("primary_key_id"),
 		];
 

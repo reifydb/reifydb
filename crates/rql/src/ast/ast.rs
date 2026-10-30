@@ -699,6 +699,7 @@ pub struct AstCreateDeferredWindowedViewGroup<'bump> {
 	pub token: Token<'bump>,
 	pub group: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 	pub members: Vec<AstWindowedViewGroupMember<'bump>>,
 	pub as_clauses: Vec<AstStatement<'bump>>,
 }

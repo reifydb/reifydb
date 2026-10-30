@@ -3,6 +3,7 @@
 
 use reifydb_catalog::{
 	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
+	store::view::create::ViewStorage,
 	vtable::system::operator_libary::OperatorLibrary,
 };
 use reifydb_core::{
@@ -36,7 +37,7 @@ use reifydb_flow::{
 	time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::query::QueryPlan;
+use reifydb_rql::{nodes::CompiledViewStorageKind, query::QueryPlan};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{error, fragment::Fragment};
 
@@ -51,6 +52,31 @@ fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
 		QueryPlan::Take(node) => outermost_sort(&node.input),
 		QueryPlan::Distinct(node) => outermost_sort(&node.input),
 		_ => None,
+	}
+}
+
+pub(crate) fn view_storage(kind: &CompiledViewStorageKind) -> ViewStorage {
+	match kind {
+		CompiledViewStorageKind::Table {
+			partition_by,
+		} => ViewStorage::Table {
+			partition_by: partition_by.clone(),
+		},
+		CompiledViewStorageKind::RingBuffer {
+			capacity,
+			partition_by,
+		} => ViewStorage::RingBuffer {
+			capacity: *capacity,
+			partition_by: partition_by.clone(),
+		},
+		CompiledViewStorageKind::Series {
+			key,
+			partition_by,
+		} => ViewStorage::Series {
+			key: key.clone(),
+			tag: None,
+			partition_by: partition_by.clone(),
+		},
 	}
 }
 

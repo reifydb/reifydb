@@ -84,6 +84,7 @@ pub struct CreateDeferredWindowedViewGroupNode {
 	pub namespace: Namespace,
 	pub group: Fragment,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage_kind: CompiledViewStorageKind,
 	pub members: Vec<WindowedViewGroupMember>,
 }
 

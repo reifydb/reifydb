@@ -1336,6 +1336,7 @@ impl InstructionCompiler {
 						namespace: node.namespace,
 						group: node.group,
 						columns: node.columns,
+						storage_kind: compile_view_storage_kind(node.storage_kind),
 						members,
 					},
 				));

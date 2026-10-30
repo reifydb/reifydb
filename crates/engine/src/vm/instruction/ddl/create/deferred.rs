@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
-use reifydb_catalog::{
-	catalog::view::ViewToCreate,
-	store::{row_settings::create::create_row_settings, view::create::ViewStorage},
-};
+use reifydb_catalog::{catalog::view::ViewToCreate, store::row_settings::create::create_row_settings};
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
@@ -13,11 +10,11 @@ use reifydb_core::{
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
+use reifydb_rql::nodes::CreateDeferredViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{return_error, value::Value};
 
-use super::{create_deferred_view_flow, extract_view_sort};
+use super::{create_deferred_view_flow, extract_view_sort, view_storage};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_view(
@@ -43,28 +40,7 @@ pub(crate) fn create_deferred_view(
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 
-	let storage = match &plan.storage_kind {
-		CompiledViewStorageKind::Table {
-			partition_by,
-		} => ViewStorage::Table {
-			partition_by: partition_by.clone(),
-		},
-		CompiledViewStorageKind::RingBuffer {
-			capacity,
-			partition_by,
-		} => ViewStorage::RingBuffer {
-			capacity: *capacity,
-			partition_by: partition_by.clone(),
-		},
-		CompiledViewStorageKind::Series {
-			key,
-			partition_by,
-		} => ViewStorage::Series {
-			key: key.clone(),
-			tag: None,
-			partition_by: partition_by.clone(),
-		},
-	};
+	let storage = view_storage(&plan.storage_kind);
 
 	let sort = extract_view_sort(&plan.as_clause, &plan.columns);
 

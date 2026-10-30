@@ -41,6 +41,7 @@ impl<'bump> Compiler<'bump> {
 			namespace,
 			group: self.interner.intern_fragment(&create.group.name),
 			columns: create.columns,
+			storage_kind: create.storage_kind,
 			members,
 		}))
 	}
