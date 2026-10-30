@@ -307,7 +307,7 @@ impl SqliteCdcPersistent {
 				   WHERE max_timestamp >= ?1 ORDER BY max_version ASC LIMIT 1"#,
 			)
 			.map_err(|e| error!(internal(format!("cdc ttl cutoff prepare: {e}"))))?
-			.query_row(params![datetime_to_nanos(&cutoff)], |row| row.get::<_, Vec<u8>>(0))
+			.query_row(params![cutoff.to_nanos()], |row| row.get::<_, Vec<u8>>(0))
 			.optional()
 			.map_err(|e| error!(internal(format!("cdc ttl cutoff query: {e}"))))?
 		};
@@ -569,13 +569,9 @@ fn decode_rollup(bytes: &[u8]) -> Result<Vec<CdcEviction>> {
 
 fn summarize_timestamps(entries: &[Arc<Cdc>]) -> (i64, i64) {
 	entries.iter().fold((i64::MAX, i64::MIN), |(lo, hi), entry| {
-		let nanos = datetime_to_nanos(&entry.timestamp);
+		let nanos = entry.timestamp.to_nanos();
 		(lo.min(nanos), hi.max(nanos))
 	})
-}
-
-fn datetime_to_nanos(value: &DateTime) -> i64 {
-	value.to_nanos()
 }
 
 fn version_to_bytes(version: CommitVersion) -> [u8; 8] {
