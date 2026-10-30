@@ -1317,7 +1317,7 @@ mod pull_protocol {
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
-		value::{Value, row_number::RowNumber, system_columns::row_numbers},
+		value::{Value, system_columns::row_numbers},
 	};
 
 	use super::*;
@@ -2465,7 +2465,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn only_the_capacity_eviction_of_the_two_survives_the_lift() {
+	fn only_the_capacity_overwrite_of_the_three_changes_survives_the_lift() {
 		let h = capacity_ring_harness();
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
@@ -2524,27 +2524,33 @@ mod pull_protocol {
 						_ => None,
 					})
 					.collect();
-				(found.len() == 3).then_some(found)
+				(found.len() == 2).then_some(found)
 			})
-			.expect("one capacity evict plus the two ttl expiries must all reach the change stream");
+			.expect("the two ttl expiries must reach the change stream");
 
 		assert!(
-			deletes.iter().all(|(_, pre, _)| pre.is_some()),
-			"every eviction stays replication-complete: hiding a delete must not drop its pre-image"
+			deletes.iter().all(|(_, pre, visible)| pre.is_some() && !*visible),
+			"both ttl expiries are hidden and keep their pre-image for replication"
 		);
-
-		let (visible, hidden): (Vec<_>, Vec<_>) = deletes.into_iter().partition(|(_, _, visible)| *visible);
-		assert_eq!(visible.len(), 1, "the capacity evict of the oldest row is the only visible delete");
-		assert_eq!(hidden.len(), 2, "both rows left in the ring expire by ttl and must be hidden");
-
-		let mut expected: Vec<RowNumber> =
-			visible.iter().map(|(key, _, _)| row_target(key).expect("row target").row).collect();
-		expected.sort();
+		let overwrites: Vec<EncodedKey> = h
+			.cdc_records()
+			.into_iter()
+			.filter(|cdc| cdc.version.commit > stable)
+			.flat_map(|cdc| cdc.changes.clone())
+			.filter_map(|sc| match sc {
+				CdcChange::Update {
+					key,
+					..
+				} if matches!(KeyTag::of(&key), Some(KeyTag::Row)) => Some(key),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(overwrites.len(), 1, "the capacity overflow overwrites the oldest slot as one update");
 
 		let catalog = h.engine.catalog();
 		let mut query = h.engine.begin_query(IdentityId::system()).expect("query transaction");
 		let mut txn = Transaction::Query(&mut query);
-		let mut lifted: Vec<RowNumber> = h
+		let lifted: Vec<Diff> = h
 			.cdc_records()
 			.into_iter()
 			.filter(|cdc| cdc.version.commit > stable)
@@ -2553,20 +2559,20 @@ mod pull_protocol {
 			})
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.flat_map(|change| change.diffs)
-			.filter_map(|diff| match diff {
-				Diff::Remove {
-					pre,
-					..
-				} => Some(row_numbers(&pre).expect("#rownum").to_vec()),
-				_ => None,
-			})
-			.flatten()
 			.collect();
-		lifted.sort();
 
+		assert_eq!(lifted.len(), 1, "the lift must carry exactly the overwrite and drop both ttl expiries");
+		let Diff::Update {
+			pre,
+			..
+		} = &lifted[0]
+		else {
+			panic!("the overwrite must lift as an update, got {lifted:?}");
+		};
 		assert_eq!(
-			lifted, expected,
-			"the lift must carry exactly the capacity evict through and drop both ttl expiries"
+			row_numbers(pre).expect("#rownum").to_vec(),
+			vec![row_target(&overwrites[0]).expect("row target").row],
+			"the lifted update names the overwritten slot"
 		);
 		drop(actor);
 	}
@@ -2778,11 +2784,11 @@ mod pull_protocol {
 		assert_eq!(mirrored.len(), 1, "the sink must keep exactly one mirror for its global metadata");
 		assert_eq!(
 			mirrored[0], stored,
-			"the operator state mirror and the mvcc row must carry the same count, head and tail: \
+			"the operator state mirror and the mvcc row must carry the same base, sequence and count: \
 			 the mirror is what a replay reads, so any drift makes the replay assign different \
 			 storage row numbers than the live run did"
 		);
-		assert!(mirrored[0].head > 1, "precondition: evictions must have moved head off its initial value");
+		assert!(mirrored[0].next_sequence > 3, "precondition: the write cycle must have lapped the ring");
 		drop(actor);
 	}
 }
