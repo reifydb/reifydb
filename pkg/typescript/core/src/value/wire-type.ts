@@ -30,6 +30,7 @@ export interface WireType {
     accuracy?: number;
     precision?: number;
     scale?: number;
+    sumtype?: string;
 }
 
 export function typeToWire(type: Type): WireType {
@@ -97,18 +98,22 @@ export function typeFromWire(wire: WireType): Type {
 export function columnsFromWire<T extends {type: any}>(columns: T[]): T[] {
     return columns.map(column => {
         const decoded = {...column, type: typeFromWire(column.type)};
-        const variants: [number, string][] | undefined = (column as any).variants;
-        if (!variants || !isEnumWire(column.type)) {
-            return decoded;
-        }
-        const names = new Map(variants.map(([tag, name]) => [String(tag), name]));
-        return {...decoded, payload: (column as any).payload.map((cell: any) => names.get(cell) ?? cell)};
+        const name = enumName(column.type);
+        return name === undefined ? decoded : {...decoded, enum: name};
     });
 }
 
-function isEnumWire(wire: WireType): boolean {
-    if (wire.id === 'Enum') return true;
-    return wire.id === 'Option' && !!wire.underlying && !Array.isArray(wire.underlying) && isEnumWire(wire.underlying);
+function enumName(wire: WireType): string | undefined {
+    if (wire.id === 'Enum') {
+        if (typeof wire.sumtype !== 'string') {
+            throw new Error(`Enum type descriptor needs a string sumtype, got ${JSON.stringify(wire)}`);
+        }
+        return wire.sumtype;
+    }
+    if (wire.id === 'Option' && wire.underlying && !Array.isArray(wire.underlying)) {
+        return enumName(wire.underlying);
+    }
+    return undefined;
 }
 
 const LEGACY_FRAME_KEYS = ['row_numbers', 'created_at', 'updated_at', 'time'];

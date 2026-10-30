@@ -36,6 +36,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		digest::DigestError,
+		system_columns::sumtype_tag_position,
 		value_type::field::{FieldType, from_field},
 	},
 };
@@ -153,9 +154,14 @@ impl AggregateNode {
 		while let Some(columns) = input.next(rx, ctx)? {
 			if key_types.is_empty() {
 				for key in &keys {
-					key_types.push(match columns.schema_ref().index_of(key) {
-						Ok(index) => Some(from_field(columns.schema_ref().field(index))?),
-						Err(_) => None,
+					let index = columns
+						.schema_ref()
+						.index_of(key)
+						.ok()
+						.or_else(|| sumtype_tag_position(&columns, key));
+					key_types.push(match index {
+						Some(index) => Some(from_field(columns.schema_ref().field(index))?),
+						None => None,
 					});
 				}
 				let aliases =

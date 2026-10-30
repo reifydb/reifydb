@@ -3,13 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_catalog::cache::CatalogCache;
 use reifydb_codec::json::{from::parse_json_value, wire_type, wire_type::WireValueType};
-use reifydb_core::error::diagnostic::catalog::{
-	enum_value_with_fields, namespace_not_found, sumtype_not_found, sumtype_variant_not_found,
-};
 use reifydb_value::{
-	error::Diagnostic,
 	fragment::Fragment,
 	params::Params,
 	value::{
@@ -21,13 +16,12 @@ use reifydb_value::{
 	},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError};
-use serde_json::{Value as JsonValue, json};
+use serde_json::Value as JsonValue;
 
 #[derive(Debug)]
 pub struct WireValue {
 	pub r#type: WireValueType,
 	pub value: JsonValue,
-	pub sumtype: Option<String>,
 }
 
 pub fn resolve_type(r#type: &JsonValue, value: &JsonValue) -> Result<ValueType, String> {
@@ -75,53 +69,12 @@ impl Serialize for WireValue {
 			r#type: JsonValue,
 			value: &'a JsonValue,
 		}
-		let r#type = match &self.sumtype {
-			Some(sumtype) => json!({ "id": "Enum", "sumtype": sumtype }),
-			None => wire_type::to_json(&self.r#type.0),
-		};
 		Raw {
-			r#type,
+			r#type: wire_type::to_json(&self.r#type.0),
 			value: &self.value,
 		}
 		.serialize(serializer)
 	}
-}
-
-fn enum_name(r#type: &JsonValue) -> Option<&str> {
-	let object = r#type.as_object()?;
-	if object.get("id").and_then(JsonValue::as_str) != Some("Enum") {
-		return None;
-	}
-	object.get("sumtype").and_then(JsonValue::as_str)
-}
-
-fn diagnostic_text(diagnostic: Diagnostic) -> String {
-	format!("{}: {}", diagnostic.code, diagnostic.message)
-}
-
-fn resolve_enum(catalog: &CatalogCache, sumtype: &str, variant: &str) -> Result<Value, String> {
-	let Some((namespace, name)) = sumtype.rsplit_once("::") else {
-		return Err(format!("`Enum` needs a `sumtype` as `namespace::name`, got `{sumtype}`"));
-	};
-	let fragment = Fragment::internal(sumtype);
-	let found_namespace = catalog
-		.find_namespace_by_name(namespace)
-		.ok_or_else(|| diagnostic_text(namespace_not_found(fragment.clone(), namespace)))?;
-	let found = catalog
-		.find_sumtype_by_name(found_namespace.id(), name)
-		.ok_or_else(|| diagnostic_text(sumtype_not_found(fragment, namespace, name)))?;
-	let variant_lower = variant.to_lowercase();
-	let Some(matched) = found.variants.iter().find(|candidate| candidate.name == variant_lower) else {
-		return Err(diagnostic_text(sumtype_variant_not_found(Fragment::internal(variant), &found.name)));
-	};
-	if !matched.fields.is_empty() {
-		return Err(diagnostic_text(enum_value_with_fields(Fragment::internal(variant), sumtype)));
-	}
-	Ok(Value::Enum {
-		id: found.id,
-		tag: matched.tag,
-		fields: vec![],
-	})
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -131,31 +84,16 @@ pub enum WireParams {
 	Named(HashMap<String, WireValue>),
 }
 
-fn wire_value_to_value(parameter: &str, wire: WireValue, catalog: &CatalogCache) -> Result<Value, String> {
-	let Some(sumtype) = wire.sumtype else {
-		return parse_json_value(&wire.r#type.0, &wire.value)
-			.map_err(|e| format!("parameter {parameter}: {e}"));
-	};
-	let variant = wire.value.as_str().ok_or_else(|| {
-		format!("parameter {parameter}: an `Enum` param needs a variant name, got {}", wire.value)
-	})?;
-	resolve_enum(catalog, &sumtype, variant).map_err(|e| format!("parameter {parameter}: {e}"))
+fn wire_value_to_value(parameter: &str, wire: WireValue) -> Result<Value, String> {
+	parse_json_value(&wire.r#type.0, &wire.value).map_err(|e| format!("parameter {parameter}: {e}"))
 }
 
 impl WireValue {
 	pub fn parse(r#type: &JsonValue, value: JsonValue) -> Result<Self, String> {
-		if let Some(sumtype) = enum_name(r#type) {
-			return Ok(WireValue {
-				r#type: WireValueType::from(ValueType::Utf8),
-				value,
-				sumtype: Some(sumtype.to_string()),
-			});
-		}
 		let ty = resolve_type(r#type, &value)?;
 		Ok(WireValue {
 			r#type: WireValueType::from(ty),
 			value,
-			sumtype: None,
 		})
 	}
 
@@ -168,19 +106,19 @@ impl WireValue {
 }
 
 impl WireParams {
-	pub fn into_params(self, catalog: &CatalogCache) -> Result<Params, String> {
+	pub fn into_params(self) -> Result<Params, String> {
 		match self {
 			WireParams::Positional(items) => {
 				let mut values = Vec::with_capacity(items.len());
 				for (index, item) in items.into_iter().enumerate() {
-					values.push(wire_value_to_value(&format!("${}", index + 1), item, catalog)?);
+					values.push(wire_value_to_value(&format!("${}", index + 1), item)?);
 				}
 				Ok(Params::Positional(Arc::new(values)))
 			}
 			WireParams::Named(map) => {
 				let mut result = HashMap::with_capacity(map.len());
 				for (key, wire) in map {
-					let value = wire_value_to_value(&format!("${key}"), wire, catalog)?;
+					let value = wire_value_to_value(&format!("${key}"), wire)?;
 					result.insert(key, value);
 				}
 				Ok(Params::Named(Arc::new(result)))
@@ -198,11 +136,11 @@ mod tests {
 	use super::*;
 
 	fn positional(json: &str) -> Result<Params, String> {
-		from_str::<WireParams>(json).expect("wire params should deserialise").into_params(&CatalogCache::new())
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
 	}
 
 	fn named(json: &str) -> Result<Params, String> {
-		from_str::<WireParams>(json).expect("wire params should deserialise").into_params(&CatalogCache::new())
+		from_str::<WireParams>(json).expect("wire params should deserialise").into_params()
 	}
 
 	fn option(inner: ValueType) -> ValueType {
@@ -274,7 +212,7 @@ mod tests {
 	#[test]
 	fn a_named_error_names_the_parameter_and_the_type() {
 		let params = from_str::<WireParams>(r#"{"id":{"type":{"id":"Int4"},"value":"⟪none⟫"}}"#).unwrap();
-		let err = params.into_params(&CatalogCache::new()).unwrap_err();
+		let err = params.into_params().unwrap_err();
 		assert_eq!(err, "parameter $id: invalid data: none marker for non-Option type Int4");
 	}
 }

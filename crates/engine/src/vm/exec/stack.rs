@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use arrow_array::RecordBatch;
+use arrow_array::{Array, ArrayRef, LargeStringArray, RecordBatch, UInt8Array};
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal_error,
 	value::{
@@ -19,10 +20,11 @@ use reifydb_value::{
 	value::{
 		Value,
 		frame::frame::Frame,
+		sumtype::SumTypeId,
 		system_columns::user_columns,
 		value_type::{
 			ValueType,
-			field::{FieldType, from_field, to_field, with_enum_variants},
+			field::{FieldType, from_field, to_field},
 		},
 	},
 };
@@ -195,30 +197,56 @@ fn rebuild_enums(batch: RecordBatch, services: &Arc<Services>, tx: &mut Transact
 	let schema = batch.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
-		let field_type = from_field(field)?;
-		let field = match field_type.sumtype {
-			Some(id) => {
-				let value_type = match field_type.value_type {
-					Some(ValueType::Option(_)) => ValueType::Option(Box::new(ValueType::Enum(id))),
-					_ => ValueType::Enum(id),
-				};
-				let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
-				let variants = services
-					.catalog
-					.get_sumtype(tx, id)?
-					.variants
-					.into_iter()
-					.map(|variant| (variant.tag, variant.name))
-					.collect();
-				Arc::new(with_enum_variants(
-					to_field(name, &FieldType::from(value_type)).with_nullable(field.is_nullable()),
-					id,
-					variants,
-				))
-			}
-			None => field.clone(),
+		let column = match from_field(field)? {
+			FieldType {
+				sumtype: Some(id),
+				value_type,
+				..
+			} => enum_names(field, array, id, value_type, services, tx)?,
+			_ => (field.clone(), array.clone()),
 		};
-		columns.push((field, array.clone()));
+		columns.push(column);
 	}
 	batch_with(&schema, columns, batch.num_rows())
+}
+
+fn enum_names(
+	field: &FieldRef,
+	array: &ArrayRef,
+	id: SumTypeId,
+	value_type: Option<ValueType>,
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+) -> Result<(FieldRef, ArrayRef)> {
+	let sumtype = services.catalog.get_sumtype(tx, id)?;
+	let namespace = services.catalog.get_namespace(tx, sumtype.namespace)?;
+	let tags = array
+		.as_any()
+		.downcast_ref::<UInt8Array>()
+		.ok_or_else(|| internal_error!("sumtype tag column {} is not uint8", field.name()))?;
+	let names = tags
+		.iter()
+		.map(|tag| {
+			tag.map(|tag| {
+				sumtype.variants
+					.iter()
+					.find(|variant| variant.tag == tag)
+					.map(|variant| variant.name.as_str())
+					.ok_or_else(|| {
+						internal_error!("tag {tag} of {} is outside its variants", field.name())
+					})
+			})
+			.transpose()
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let value_type = match value_type {
+		Some(ValueType::Option(_)) => ValueType::Option(Box::new(ValueType::Utf8)),
+		_ => ValueType::Utf8,
+	};
+	let field_type = FieldType {
+		enum_name: Some(format!("{}::{}", namespace.name(), sumtype.name)),
+		..FieldType::from(value_type)
+	};
+	let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
+	Ok((Arc::new(to_field(name, &field_type)), Arc::new(LargeStringArray::from(names))))
 }

@@ -54,7 +54,7 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     const depth = optionDepth(col.type);
     const rowCount = col.payload.length;
 
-    const typeCode = (depth << TAG_DEPTH_SHIFT) | TYPE_CODE[base];
+    const typeCode = (depth << TAG_DEPTH_SHIFT) | TYPE_CODE[col.enum === undefined ? base : "Enum"];
 
     const layers = Array.from({ length: depth }, () => new Array<boolean>(rowCount).fill(true));
     const definedPayload = new Array<string>(rowCount);
@@ -76,9 +76,10 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
 
     const nonesBytes = concat(layers.map(encodeBitvec));
 
-    const { data, offsets, extra } = isDigestType(unwrapped)
+    const { data, offsets, extra: dataExtra } = isDigestType(unwrapped)
         ? encodeDigestData(unwrapped, definedPayload, (i) => depth > 0 && !layers[depth - 1][i])
         : { ...encodePlainData(base, definedPayload), extra: new Uint8Array(0) };
+    const extra = col.enum === undefined ? dataExtra : concat([enumNameBytes(col.enum), dataExtra]);
 
     w.u8(typeCode);
     w.u8(ColumnEncoding.Plain);
@@ -102,6 +103,14 @@ function encodeColumn(w: BinaryWriter, col: WireColumn): void {
     w.bytes(data);
     w.bytes(offsets);
     w.bytes(extra);
+}
+
+function enumNameBytes(name: string): Uint8Array {
+    const bytes = new TextEncoder().encode(name);
+    const out = new Uint8Array(2 + bytes.length);
+    new DataView(out.buffer).setUint16(0, bytes.length, true);
+    out.set(bytes, 2);
+    return out;
 }
 
 function concat(parts: Uint8Array[]): Uint8Array {

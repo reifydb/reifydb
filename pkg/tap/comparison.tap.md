@@ -6,7 +6,7 @@
 
 1. Each case stores three values and a none row in `Option(T)` in a fresh namespace `cmp_<case>`, then filters with a typed named param `$p` holding the second value.
 2. `v == $p` keeps exactly row 2; `v != $p` and `not (v == $p)` keep exactly rows 1 and 3; the none row is in neither.
-3. Rust compares the rendered output; TypeScript compares the typed rows. Enum params are not covered until the clients can send them (P6, P7).
+3. Rust compares the rendered output; TypeScript compares the typed rows. An enum param is plain text naming the variant (D1, D2).
 
 ## Test Specification
 ```yaml
@@ -275,6 +275,17 @@ expected:
 operation: query
 setup: "DROP NAMESPACE IF EXISTS cmp_identity_id CASCADE; CREATE NAMESPACE cmp_identity_id; CREATE TABLE cmp_identity_id::o { id: int4, v: Option(identity_id) }; INSERT cmp_identity_id::o [{ id: 1, v: '018fad5d-f37a-7c94-a716-446655440000' }, { id: 2, v: '018fad5d-f37a-7c94-a716-446655440001' }, { id: 3, v: '018fad5d-f37a-7c94-a716-446655440002' }, { id: 9, v: none }]; OUTPUT FROM cmp_identity_id::o SORT { id: asc }"
 param: { p: IdentityIdValue.parse('018fad5d-f37a-7c94-a716-446655440001') }
+expected:
+  'v == $p': [2]
+  'v != $p': [1, 3]
+  'not (v == $p)': [1, 3]
+```
+
+### enum_param
+```yaml
+operation: query
+setup: "DROP NAMESPACE IF EXISTS cmp_enum CASCADE; CREATE NAMESPACE cmp_enum; CREATE ENUM cmp_enum::status { Todo, Doing, Done }; CREATE TABLE cmp_enum::o { id: int4, v: Option(cmp_enum::status) }; INSERT cmp_enum::o [{ id: 1, v: 'todo' }, { id: 2, v: 'doing' }, { id: 3, v: 'done' }, { id: 9, v: none }]; OUTPUT FROM cmp_enum::o SORT { id: asc }"
+param: { p: Utf8Value.parse('doing') }
 expected:
   'v == $p': [2]
   'v != $p': [1, 3]

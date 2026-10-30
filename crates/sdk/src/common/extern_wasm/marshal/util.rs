@@ -28,9 +28,6 @@ pub(crate) fn ensure_view_marshallable(view: &ColumnView<'_>) -> Result<()> {
 
 pub(crate) fn column_data_to_type_code(view: &ColumnView<'_>) -> ValueKind {
 	match &view.data {
-		ViewData::Enum {
-			..
-		} => unreachable!("enum columns are only made at the result edge"),
 		ViewData::Bool(_) => ValueKind::Boolean,
 		ViewData::Float4(_) => ValueKind::Float4,
 		ViewData::Float8(_) => ValueKind::Float8,

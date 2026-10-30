@@ -33,9 +33,6 @@ enum Cell {
 pub fn extend_column_with_direction(view: &ColumnView, direction: SortOrder, rows: &mut [KeySerializer]) -> Result<()> {
 	let ascending = matches!(direction, SortOrder::Asc);
 	match &view.data {
-		ViewData::Enum {
-			..
-		} => unreachable!("enum is stored split, never as one value"),
 		ViewData::Bool(a) => typed(view, rows, ascending, |row, i, _| {
 			row.extend_kind(ValueKind::Boolean).extend_bool(a.value(i));
 			Ok(Cell::Written)

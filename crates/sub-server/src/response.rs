@@ -3,18 +3,18 @@
 
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
-	json::{none_marker, wire_type::to_json as type_to_json},
+	json::{none_marker, wire_type::column_to_json},
 };
 use reifydb_core::value::batch::views;
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value,
-		column_view::{ColumnView, ViewData},
+		column_view::ColumnView,
 		diff_type::DiffType,
 		frame::frame::Frame,
 		system_columns::{SystemColumn, row_numbers},
-		value_type::ValueType,
+		value_type::{ValueType, field::enum_name},
 	},
 };
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
@@ -136,7 +136,8 @@ fn row_value(column_type: &ValueType, value: Value) -> JsonValue {
 fn frame_types(frame: &Frame) -> Result<JsonValue, String> {
 	let mut types = Map::new();
 	for view in column_views(frame)? {
-		types.insert(view.field.name().clone(), type_to_json(&view.get_type()));
+		let enum_name = enum_name(view.field).map_err(|e| e.to_string())?;
+		types.insert(view.field.name().clone(), column_to_json(&view.get_type(), enum_name.as_deref()));
 	}
 	Ok(JsonValue::Object(types))
 }
@@ -182,18 +183,7 @@ fn frame_json_rows(frame: &Frame) -> Result<Vec<JsonValue>, String> {
 				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
 			}
 			for view in &columns {
-				let value = match (&view.data, view.get_value(i)) {
-					(
-						ViewData::Enum {
-							..
-						},
-						Value::Enum {
-							..
-						},
-					) => JsonValue::String(view.as_string(i)),
-					(_, value) => row_value(&view.get_type(), value),
-				};
-				obj.insert(view.field.name().clone(), value);
+				obj.insert(view.field.name().clone(), row_value(&view.get_type(), view.get_value(i)));
 			}
 			JsonValue::Object(obj)
 		})

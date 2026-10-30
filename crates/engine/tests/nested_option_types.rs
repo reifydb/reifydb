@@ -128,7 +128,8 @@ fn an_optional_enum_field_stores_a_value_and_a_none() {
 
 	let frames = t.query("FROM test::t SORT { id: ASC }");
 
-	assert_eq!(column_values(&frames, "v_tag"), vec![Value::Uint1(0), Value::Uint1(0), Value::Uint1(1)]);
+	let names = ["a", "a", "b"].map(|name| Value::Utf8(name.to_string()));
+	assert_eq!(column_values(&frames, "v"), names.to_vec());
 	let x = column_values(&frames, "v_a_x");
 	assert_eq!(x[0], Value::Int4(5), "the stored field value must read back: {x:?}");
 	assert!(matches!(x[1], Value::None { .. }), "an A with no x must read back as none: {x:?}");

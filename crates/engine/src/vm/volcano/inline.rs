@@ -280,7 +280,7 @@ pub(crate) fn expand_sumtype_ctor(
 	expanded.push(tag_alias(source, col_name, sumtype.variants[variant].tag, &alias_expr.fragment));
 	let tag_column = format!("{col_name}_tag");
 	if source.is_some_and(|source| source.columns().iter().any(|column| column.name == tag_column)) {
-		mark_unit_tag(marks, col_name, &sumtype);
+		mark_tag(marks, col_name, &sumtype);
 	}
 	for (field_name, field_expr) in &ctor.columns {
 		let phys_col_name = format!("{}_{}_{}", col_name, variant_name, field_name.text().to_lowercase());
@@ -324,7 +324,7 @@ fn expand_sumtype_none(
 		expression: none(),
 		fragment: fragment.clone(),
 	});
-	mark_unit_tag(marks, col_name, &sumtype);
+	mark_tag(marks, col_name, &sumtype);
 	for variant in &sumtype.variants {
 		for field in &variant.fields {
 			let phys_col_name =
@@ -481,7 +481,7 @@ fn push_all_variant_columns(
 	marks: &mut HashMap<String, SumTypeId>,
 ) {
 	expanded.push(tag_alias(Some(source), col_name, sumtype.variants[variant].tag, fragment));
-	mark_unit_tag(marks, col_name, sumtype);
+	mark_tag(marks, col_name, sumtype);
 	for (index, v) in sumtype.variants.iter().enumerate() {
 		for field in &v.fields {
 			let field_name = field.name.to_lowercase();
@@ -501,10 +501,8 @@ fn push_all_variant_columns(
 	}
 }
 
-fn mark_unit_tag(marks: &mut HashMap<String, SumTypeId>, col_name: &str, sumtype: &SumType) {
-	if sumtype.variants.iter().all(|variant| variant.fields.is_empty()) {
-		marks.insert(format!("{col_name}_tag"), sumtype.id);
-	}
+fn mark_tag(marks: &mut HashMap<String, SumTypeId>, col_name: &str, sumtype: &SumType) {
+	marks.insert(format!("{col_name}_tag"), sumtype.id);
 }
 
 fn tag_alias(source: Option<&ResolvedObject>, col_name: &str, tag: u8, fragment: &Fragment) -> AliasExpression {
@@ -663,7 +661,7 @@ fn expand_enum_param(
 	};
 
 	expanded.push(tag_alias(Some(source), &col_name, tag, &alias_expr.fragment));
-	mark_unit_tag(marks, &col_name, &sumtype);
+	mark_tag(marks, &col_name, &sumtype);
 	let field_types = ctx.source.is_none().then_some(source);
 	for variant in &sumtype.variants {
 		for field in &variant.fields {

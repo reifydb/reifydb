@@ -292,7 +292,7 @@ pub fn enum_value_expected(fragment: Fragment, column: &str, sumtype: &str, actu
 		),
 		fragment,
 		label: Some("not a value of this enum".to_string()),
-		help: Some(format!("send an `Enum` param of `{}` with a variant name", sumtype)),
+		help: Some(format!("send a variant name of `{}` as text", sumtype)),
 		column: None,
 		notes: vec![],
 		cause: None,

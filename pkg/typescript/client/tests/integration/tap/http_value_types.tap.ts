@@ -310,9 +310,9 @@ describe('Value Types (HTTP)', () => {
         const frames = await client.admin(
             "DROP NAMESPACE IF EXISTS vt_http_enum_with_fields CASCADE; CREATE NAMESPACE vt_http_enum_with_fields; CREATE ENUM vt_http_enum_with_fields::shape { Point, Circle { radius: float8 }, Rect { w: float8, h: float8 } }; CREATE TABLE vt_http_enum_with_fields::t { id: int4, v: vt_http_enum_with_fields::shape }; INSERT vt_http_enum_with_fields::t [{ id: 1, v: vt_http_enum_with_fields::shape::Point }, { id: 2, v: vt_http_enum_with_fields::shape::Circle { radius: 1.5 } }, { id: 3, v: vt_http_enum_with_fields::shape::Rect { w: 2.0, h: 3.0 } }]; OUTPUT FROM vt_http_enum_with_fields::t SORT { id: asc }",
             null,
-            [Shape.object({id: Shape.int4(), v_tag: Shape.uint1(), v_circle_radius: Shape.option(Shape.float8()), v_rect_w: Shape.option(Shape.float8()), v_rect_h: Shape.option(Shape.float8())})]
+            [Shape.object({id: Shape.int4(), v: Shape.utf8(), v_circle_radius: Shape.option(Shape.float8()), v_rect_w: Shape.option(Shape.float8()), v_rect_h: Shape.option(Shape.float8())})]
         );
         expect(frames).toHaveLength(1);
-        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, vTag: 0, vCircleRadius: Option.none('Float8'), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 2, id: 2, vTag: 1, vCircleRadius: Option.some(1.5), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 3, id: 3, vTag: 2, vCircleRadius: Option.none('Float8'), vRectW: Option.some(2), vRectH: Option.some(3)}]);
+        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, v: 'point', vCircleRadius: Option.none('Float8'), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 2, id: 2, v: 'circle', vCircleRadius: Option.some(1.5), vRectW: Option.none('Float8'), vRectH: Option.none('Float8')}, {'#rownum': 3, id: 3, v: 'rect', vCircleRadius: Option.none('Float8'), vRectW: Option.some(2), vRectH: Option.some(3)}]);
     });
 });

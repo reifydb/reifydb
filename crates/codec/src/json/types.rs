@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::json::wire_type::WireValueType;
+use crate::json::wire_type::WireColumnType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFrame {
@@ -25,8 +25,6 @@ pub struct ResponseFrame {
 pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
-	pub r#type: WireValueType,
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub variants: Vec<(u8, String)>,
+	pub r#type: WireColumnType,
 	pub payload: Vec<JsonValue>,
 }

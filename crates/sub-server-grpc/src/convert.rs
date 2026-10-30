@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::value::decode_value;
+use reifydb_codec::{error::DecodeError, value::decode_value};
 use reifydb_core::interface::catalog::subscription::{HydrationConfig, SubscribeOptions};
 use reifydb_value::{
 	params::Params,
@@ -35,7 +35,14 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 }
 
 fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
-	Ok(decode_value(&tv.encoded)?)
+	match decode_value(&tv.encoded)? {
+		Value::Enum {
+			..
+		} => Err(GrpcError::InvalidParamEncoding(DecodeError::UnsupportedType(
+			"an enum param travels as its variant name in Utf8".to_string(),
+		))),
+		value => Ok(value),
+	}
 }
 
 pub fn proto_subscribe_options(proto: Option<generated::SubscribeOptions>) -> Result<SubscribeOptions, String> {

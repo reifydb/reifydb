@@ -553,14 +553,14 @@ statement: "DROP NAMESPACE IF EXISTS vt_enum_with_fields CASCADE; CREATE NAMESPA
 params: null
 expected:
   status: success
-  shape: split: v_tag Shape.uint1(), fields Shape.option(Shape.float8())
+  shape: split: v Shape.utf8() (the variant name), fields Shape.option(Shape.float8())
   values: see the TS row objects
   output: |
-    +-----------+------+---------+-------------------+------------+------------+
-    |  #rownum  |  id  |  v_tag  |  v_circle_radius  |  v_rect_w  |  v_rect_h  |
-    +-----------+------+---------+-------------------+------------+------------+
-    |     1     |  1   |    0    |       none        |    none    |    none    |
-    |     2     |  2   |    1    |        1.5        |    none    |    none    |
-    |     3     |  3   |    2    |       none        |     2      |     3      |
-    +-----------+------+---------+-------------------+------------+------------+
+    +-----------+------+----------+-------------------+------------+------------+
+    |  #rownum  |  id  |    v     |  v_circle_radius  |  v_rect_w  |  v_rect_h  |
+    +-----------+------+----------+-------------------+------------+------------+
+    |     1     |  1   |  point   |       none        |    none    |    none    |
+    |     2     |  2   |  circle  |        1.5        |    none    |    none    |
+    |     3     |  3   |   rect   |       none        |     2      |     3      |
+    +-----------+------+----------+-------------------+------------+------------+
 ```

@@ -747,4 +747,34 @@ describe('Comparison', () => {
         expect(not_eq).toHaveLength(1);
         expect(not_eq[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('018fad5d-f37a-7c94-a716-446655440000')}, {'#rownum': 3, id: 3, v: Option.some('018fad5d-f37a-7c94-a716-446655440002')}]);
     });
+
+    it('enum_param', async () => {
+        await client.admin(
+            "DROP NAMESPACE IF EXISTS cmp_ws_enum CASCADE; CREATE NAMESPACE cmp_ws_enum; CREATE ENUM cmp_ws_enum::status { Todo, Doing, Done }; CREATE TABLE cmp_ws_enum::o { id: int4, v: Option(cmp_ws_enum::status) }; INSERT cmp_ws_enum::o [{ id: 1, v: 'todo' }, { id: 2, v: 'doing' }, { id: 3, v: 'done' }, { id: 9, v: none }]; OUTPUT FROM cmp_ws_enum::o SORT { id: asc }",
+            null,
+            [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
+        );
+        const params = {p: Utf8Value.parse('doing')};
+        const eq = await client.query(
+            "FROM cmp_ws_enum::o FILTER { v == $p } SORT { id: asc }",
+            params,
+            [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
+        );
+        expect(eq).toHaveLength(1);
+        expect(eq[0]).toEqual([{'#rownum': 2, id: 2, v: Option.some('doing')}]);
+        const ne = await client.query(
+            "FROM cmp_ws_enum::o FILTER { v != $p } SORT { id: asc }",
+            params,
+            [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
+        );
+        expect(ne).toHaveLength(1);
+        expect(ne[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('todo')}, {'#rownum': 3, id: 3, v: Option.some('done')}]);
+        const not_eq = await client.query(
+            "FROM cmp_ws_enum::o FILTER { not (v == $p) } SORT { id: asc }",
+            params,
+            [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
+        );
+        expect(not_eq).toHaveLength(1);
+        expect(not_eq[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('todo')}, {'#rownum': 3, id: 3, v: Option.some('done')}]);
+    });
 });

@@ -46,19 +46,6 @@ impl MarkSumtypeTagsNode {
 
 impl QueryNode for MarkSumtypeTagsNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		let mut unit = HashMap::new();
-		for (name, id) in self.sumtypes.drain() {
-			if ctx.services
-				.catalog
-				.get_sumtype(rx, id)?
-				.variants
-				.iter()
-				.all(|variant| variant.fields.is_empty())
-			{
-				unit.insert(name, id);
-			}
-		}
-		self.sumtypes = unit;
 		self.input.initialize(rx, ctx)
 	}
 

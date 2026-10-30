@@ -935,9 +935,6 @@ impl TypedBuilder {
 
 	fn from_view(data: &ViewData) -> TypedBuilder {
 		match data {
-			ViewData::Enum {
-				..
-			} => unreachable!("enum columns are only made at the result edge"),
 			ViewData::Bool(a) => {
 				let mut builder = BooleanBuilder::with_capacity(a.len());
 				builder.append_array(a);

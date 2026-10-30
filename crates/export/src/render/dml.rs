@@ -87,31 +87,33 @@ fn render_enum_value(
 		})?
 		.qualified_name;
 
-	let tag = match cell(index, row, &column.logical_name).or_else(|| cell(index, row, &column.tag_column)) {
-		Some(Value::Enum {
-			tag,
-			..
-		}) => *tag,
+	let variant = match cell(index, row, &column.logical_name).or_else(|| cell(index, row, &column.tag_column)) {
 		None
 		| Some(Value::None {
 			..
 		}) => return Ok("none".to_string()),
-		Some(Value::Uint1(t)) => *t,
+		Some(Value::Utf8(name)) => column.variants.iter().find(|v| v.name == *name).ok_or_else(|| {
+			ExportError::UnsupportedValue {
+				object: object.to_string(),
+				column: column.logical_name.clone(),
+				value_type: format!("enum variant name {name} outside its variants"),
+			}
+		})?,
+		Some(Value::Uint1(tag)) => column.variants.iter().find(|v| v.tag == *tag).ok_or_else(|| {
+			ExportError::UnresolvedReference {
+				kind: "sumtype variant",
+				id: *tag as u64,
+				object: object.to_string(),
+			}
+		})?,
 		Some(_) => {
 			return Err(ExportError::UnsupportedValue {
 				object: object.to_string(),
 				column: column.logical_name.clone(),
-				value_type: "enum tag (expected uint1)".to_string(),
+				value_type: "enum (expected a variant name or a uint1 tag)".to_string(),
 			});
 		}
 	};
-
-	let variant =
-		column.variants.iter().find(|v| v.tag == tag).ok_or_else(|| ExportError::UnresolvedReference {
-			kind: "sumtype variant",
-			id: tag as u64,
-			object: object.to_string(),
-		})?;
 
 	if variant.fields.is_empty() {
 		return Ok(format!("{}::{}", qualified, variant.name));

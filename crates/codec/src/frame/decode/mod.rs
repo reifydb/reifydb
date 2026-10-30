@@ -7,7 +7,7 @@ mod varlen;
 
 use std::{str, sync::Arc};
 
-use arrow_array::{ArrayRef, LargeStringArray, RecordBatch, RecordBatchOptions, UInt8Array, make_array};
+use arrow_array::{ArrayRef, LargeStringArray, RecordBatch, RecordBatchOptions, make_array};
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer};
 use arrow_schema::{FieldRef, Schema};
 use reifydb_value::{
@@ -17,10 +17,9 @@ use reifydb_value::{
 		container::varlen_array::blob_array,
 		diff_type::DiffType,
 		frame::frame::Frame,
-		sumtype::SumTypeId,
 		value_type::{
 			ValueType,
-			field::{FieldType, to_field, with_enum_variants},
+			field::{FieldType, to_field},
 		},
 	},
 };
@@ -239,6 +238,13 @@ fn decode_column(data: &[u8], start: usize) -> Result<((FieldRef, ArrayRef), usi
 		let extra_bytes = &data[pos..pos + extra_len];
 		pos += extra_len;
 
+		let (enum_name, base_code, extra_bytes) = match base_code == ValueKind::Enum.byte() {
+			true => {
+				let (enum_name, rest) = decode_enum_name(extra_bytes)?;
+				(Some(enum_name), ValueKind::Utf8.byte(), rest)
+			}
+			false => (None, base_code, extra_bytes),
+		};
 		let (value_type, array) = decode_column_dispatch(
 			base_code,
 			encoding,
@@ -250,14 +256,7 @@ fn decode_column(data: &[u8], start: usize) -> Result<((FieldRef, ArrayRef), usi
 			layers.last(),
 		)?;
 
-		let (field, array) = decoded_column(&name, value_type, array, layers.into_iter().next())?;
-		let field = match base_code == ValueKind::Enum.byte() {
-			true => {
-				let (id, variants) = decode_enum_params(extra_bytes)?;
-				Arc::new(with_enum_variants(field.as_ref().clone(), id, variants))
-			}
-			false => field,
-		};
+		let (field, array) = decoded_column(&name, value_type, array, layers.into_iter().next(), enum_name)?;
 		Ok(((field, array), pos))
 	})()
 	.map_err(|e| DecodeError::ColumnDecodeFailed {
@@ -274,6 +273,7 @@ pub(crate) fn decoded_column(
 	value_type: ValueType,
 	array: ArrayRef,
 	layer: Option<BooleanBuffer>,
+	enum_name: Option<String>,
 ) -> Result<(FieldRef, ArrayRef), DecodeError> {
 	let declared_type = matches!(value_type, ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_))
 		.then(|| value_type.clone());
@@ -293,6 +293,7 @@ pub(crate) fn decoded_column(
 	let field_type = FieldType {
 		value_type: Some(value_type),
 		declared_type,
+		enum_name,
 		..FieldType::default()
 	};
 	Ok((Arc::new(to_field(name, &field_type)), array))
@@ -307,23 +308,12 @@ fn attach_layer(array: ArrayRef, layer: BooleanBuffer) -> Result<ArrayRef, Decod
 	Ok(make_array(data))
 }
 
-fn decode_enum_params(extra: &[u8]) -> Result<(SumTypeId, Vec<(u8, String)>), DecodeError> {
-	let short = || DecodeError::InvalidData("enum column variant list is truncated".to_string());
-	let id = SumTypeId(u64::from_le_bytes(extra.get(0..8).ok_or_else(short)?.try_into().map_err(|_| short())?));
-	let count = u16::from_le_bytes(extra.get(8..10).ok_or_else(short)?.try_into().map_err(|_| short())?);
-	let mut pos = 10;
-	let mut variants = Vec::with_capacity(count as usize);
-	for _ in 0..count {
-		let tag = *extra.get(pos).ok_or_else(short)?;
-		let len = u16::from_le_bytes(
-			extra.get(pos + 1..pos + 3).ok_or_else(short)?.try_into().map_err(|_| short())?,
-		) as usize;
-		let name = str::from_utf8(extra.get(pos + 3..pos + 3 + len).ok_or_else(short)?)
-			.map_err(|e| DecodeError::InvalidData(format!("enum variant name is not utf8: {e}")))?;
-		variants.push((tag, name.to_string()));
-		pos += 3 + len;
-	}
-	Ok((id, variants))
+fn decode_enum_name(extra: &[u8]) -> Result<(String, &[u8]), DecodeError> {
+	let short = || DecodeError::InvalidData("enum column name is truncated".to_string());
+	let len = u16::from_le_bytes(extra.get(0..2).ok_or_else(short)?.try_into().map_err(|_| short())?) as usize;
+	let name = str::from_utf8(extra.get(2..2 + len).ok_or_else(short)?)
+		.map_err(|e| DecodeError::InvalidData(format!("enum column name is not utf8: {e}")))?;
+	Ok((name.to_string(), &extra[2 + len..]))
 }
 
 pub(crate) fn column_type_from_code(type_code: u8) -> Result<ValueType, DecodeError> {
@@ -341,16 +331,6 @@ fn decode_column_dispatch(
 	extra: &[u8],
 	defined: Option<&BooleanBuffer>,
 ) -> Result<(ValueType, ArrayRef), DecodeError> {
-	if type_code == ValueKind::Enum.byte() {
-		if encoding != Encoding::Plain || data.len() != row_count {
-			return Err(DecodeError::InvalidData(format!(
-				"enum column must be plain with one tag byte per row, found {encoding:?} with {} bytes for {row_count} rows",
-				data.len()
-			)));
-		}
-		let (id, _) = decode_enum_params(extra)?;
-		return Ok((ValueType::Enum(id), Arc::new(UInt8Array::from(data.to_vec()))));
-	}
 	if type_code == ValueKind::Digest.byte() {
 		if encoding != Encoding::Plain {
 			return Err(DecodeError::InvalidData(format!(

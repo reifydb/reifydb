@@ -17,7 +17,6 @@ use napi_derive::napi;
 use reifydb::{
 	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
 	auth::service::AuthResponse,
-	catalog::cache::CatalogCache,
 	core::{
 		actors::server::method_not_enabled_reason,
 		interface::catalog::{
@@ -131,7 +130,7 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
 
 type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 
-fn parse_params(params: Option<ParamsInput>, catalog: &CatalogCache) -> Result<Params> {
+fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
 	let wire = match params {
 		None => return Ok(Params::None),
 		Some(Either::A(items)) => WireParams::Positional(
@@ -149,7 +148,7 @@ fn parse_params(params: Option<ParamsInput>, catalog: &CatalogCache) -> Result<P
 				.collect::<Result<_>>()?,
 		),
 	};
-	wire.into_params(catalog).map_err(NapiError::from_reason)
+	wire.into_params().map_err(NapiError::from_reason)
 }
 
 fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
@@ -294,7 +293,7 @@ impl ReifydbNode {
 			.map(|subscription| {
 				Ok((
 					subscription.query,
-					parse_params(subscription.params, self.db.catalog().cache())?,
+					parse_params(subscription.params)?,
 					parse_options(subscription.options)?,
 				))
 			})
@@ -347,35 +346,35 @@ impl ReifydbNode {
 
 impl ReifydbNode {
 	fn admin_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.admin_as_root(&rql, params))
 	}
 
 	fn command_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.command_as_root(&rql, params))
 	}
 
 	fn query_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.query_as_root(&rql, params))
 	}
 
 	fn admin_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.admin_as(identity, &rql, params))
 	}
 
 	fn command_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.command_as(identity, &rql, params))
 	}
 
 	fn query_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
 		let identity = parse_identity(&identity)?;
-		let params = parse_params(params, self.db.catalog().cache())?;
+		let params = parse_params(params)?;
 		render(self.db.query_as(identity, &rql, params))
 	}
 

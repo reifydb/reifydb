@@ -4,7 +4,6 @@
 use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	digest::Digest,
-	sumtype::SumTypeId,
 	value_type::ValueType,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as DeError, ser::Error as SerError};
@@ -17,6 +16,12 @@ impl From<ValueType> for WireValueType {
 	fn from(ty: ValueType) -> Self {
 		Self(ty)
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WireColumnType {
+	pub value_type: ValueType,
+	pub enum_name: Option<String>,
 }
 
 impl From<WireValueType> for ValueType {
@@ -180,14 +185,6 @@ pub fn to_json(ty: &ValueType) -> JsonValue {
 			}
 			object
 		}
-
-		ValueType::Enum(id) => {
-			let mut object = descriptor("Enum", None);
-			if let JsonValue::Object(fields) = &mut object {
-				fields.insert(SUMTYPE.to_string(), JsonValue::from(id.0));
-			}
-			object
-		}
 		other => descriptor(&other.to_string(), None),
 	}
 }
@@ -262,12 +259,65 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 				accuracy,
 			})
 		}
-		"Enum" => object
-			.get(SUMTYPE)
-			.and_then(JsonValue::as_u64)
-			.map(|id| ValueType::Enum(SumTypeId(id)))
-			.ok_or_else(|| format!("`Enum` needs an unsigned `{SUMTYPE}`: {value}")),
 		unknown => Err(format!("unknown type id `{unknown}`")),
+	}
+}
+
+pub fn column_to_json(value_type: &ValueType, enum_name: Option<&str>) -> JsonValue {
+	match (value_type, enum_name) {
+		(ValueType::Option(inner), Some(_)) => descriptor("Option", Some(column_to_json(inner, enum_name))),
+		(_, Some(enum_name)) => {
+			let mut object = Map::new();
+			object.insert(ID.to_string(), JsonValue::String("Enum".to_string()));
+			object.insert(SUMTYPE.to_string(), JsonValue::String(enum_name.to_string()));
+			JsonValue::Object(object)
+		}
+		(_, None) => to_json(value_type),
+	}
+}
+
+pub fn column_from_json(value: &JsonValue) -> Result<WireColumnType, String> {
+	let object = value.as_object().ok_or_else(|| format!("expected a type descriptor object, got {value}"))?;
+	match object.get(ID).and_then(JsonValue::as_str) {
+		Some("Enum") => {
+			let enum_name = object
+				.get(SUMTYPE)
+				.and_then(JsonValue::as_str)
+				.ok_or_else(|| format!("`Enum` needs a string `{SUMTYPE}`: {value}"))?;
+			Ok(WireColumnType {
+				value_type: ValueType::Utf8,
+				enum_name: Some(enum_name.to_string()),
+			})
+		}
+		Some("Option") => {
+			let underlying = object
+				.get(UNDERLYING)
+				.ok_or_else(|| format!("`Option` needs an `{UNDERLYING}` type: {value}"))?;
+			let inner = column_from_json(underlying)?;
+			Ok(WireColumnType {
+				value_type: ValueType::Option(Box::new(inner.value_type)),
+				enum_name: inner.enum_name,
+			})
+		}
+		_ => from_json(value).map(|value_type| WireColumnType {
+			value_type,
+			enum_name: None,
+		}),
+	}
+}
+
+impl Serialize for WireColumnType {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		column_to_json(&self.value_type, self.enum_name.as_deref())
+			.serialize(serializer)
+			.map_err(S::Error::custom)
+	}
+}
+
+impl<'de> Deserialize<'de> for WireColumnType {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		let value = JsonValue::deserialize(deserializer)?;
+		column_from_json(&value).map_err(D::Error::custom)
 	}
 }
 

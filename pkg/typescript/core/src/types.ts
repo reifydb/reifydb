@@ -36,6 +36,7 @@ export interface Column {
     name: string;
     type: Type;
     payload: WireCellValue[];
+    enum?: string;
 }
 
 export interface ErrorResponse {

@@ -8,7 +8,7 @@ use reifydb_value::{
 		column_view::ColumnView,
 		diff_type::DiffType,
 		frame::frame::Frame,
-		value_type::{ValueType, field::enum_variants},
+		value_type::{ValueType, field::enum_name},
 	},
 };
 use serde::ser::Error as _;
@@ -18,7 +18,7 @@ use crate::{
 	json::{
 		none_marker,
 		types::{ResponseColumn, ResponseFrame},
-		wire_type::WireValueType,
+		wire_type::WireColumnType,
 	},
 	tag::peel_options,
 };
@@ -77,14 +77,12 @@ pub fn convert_frames(frames: &[Frame]) -> Result<Vec<ResponseFrame>, Error> {
 			let column_data: Vec<JsonValue> =
 				view.iter().map(|value| value_to_json(&value, &column_type)).collect();
 
-			let variants = match column_type.inner_type() {
-				ValueType::Enum(_) => enum_variants(field).map_err(Error::custom)?,
-				_ => Vec::new(),
-			};
 			columns.push(ResponseColumn {
 				name: field.name().clone(),
-				r#type: WireValueType(column_type),
-				variants,
+				r#type: WireColumnType {
+					value_type: column_type,
+					enum_name: enum_name(field).map_err(Error::custom)?,
+				},
 				payload: column_data,
 			});
 		}

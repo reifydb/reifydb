@@ -104,15 +104,14 @@ function decodeColumn(r: BinaryReader): WireColumn {
     const baseName = typeNameFromCode(kind);
     let type: Type = baseName as Type;
     let payload: string[];
+    let enumName: string | undefined;
 
     try {
         if (kind === TYPE_CODE.Enum) {
-            if (encoding !== ColumnEncoding.Plain || dataBytes.length !== rowCount) {
-                throw new Error(`enum column must be plain with one tag byte per row`);
-            }
-            const names = decodeEnumVariants(extraBytes);
+            const named = decodeEnumName(extraBytes);
+            enumName = named.name;
             type = 'Utf8' as Type;
-            payload = Array.from(dataBytes, tag => names.get(tag) ?? String(tag));
+            payload = decodeByStrategy('Utf8', encoding, flags, rowCount, dataBytes, offsetsBytes, named.rest);
         } else if (kind === TYPE_CODE.Digest) {
             if (encoding !== ColumnEncoding.Plain) {
                 throw new Error(`digest column must use plain encoding, found ${ColumnEncoding[encoding] ?? encoding}`);
@@ -144,22 +143,18 @@ function decodeColumn(r: BinaryReader): WireColumn {
         type = { Option: type };
     }
 
-    return { name, type, payload };
+    return enumName === undefined ? { name, type, payload } : { name, type, payload, enum: enumName };
 }
 
-function decodeEnumVariants(extra: Uint8Array): Map<number, string> {
-    const view = new DataView(extra.buffer, extra.byteOffset, extra.byteLength);
-    const decoder = new TextDecoder();
-    const count = view.getUint16(8, true);
-    const names = new Map<number, string>();
-    let pos = 10;
-    for (let i = 0; i < count; i++) {
-        const tag = view.getUint8(pos);
-        const len = view.getUint16(pos + 1, true);
-        names.set(tag, decoder.decode(extra.subarray(pos + 3, pos + 3 + len)));
-        pos += 3 + len;
+function decodeEnumName(extra: Uint8Array): { name: string; rest: Uint8Array } {
+    if (extra.length < 2) {
+        throw new Error(`enum column name is truncated`);
     }
-    return names;
+    const len = new DataView(extra.buffer, extra.byteOffset, extra.byteLength).getUint16(0, true);
+    if (extra.length < 2 + len) {
+        throw new Error(`enum column name is truncated`);
+    }
+    return { name: new TextDecoder().decode(extra.subarray(2, 2 + len)), rest: extra.subarray(2 + len) };
 }
 
 function decodeFixedPointColumn(

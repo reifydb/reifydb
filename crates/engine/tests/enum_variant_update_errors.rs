@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, value_type::field::from_field},
 };
 
 fn engine() -> TestEngine {
@@ -171,22 +171,14 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 	let read = t.query("FROM s::e");
 	let patched = t.query("FROM s::e PATCH { status: s::status::Inactive }");
 
-	assert_eq!(status_tag(&patched).0, status_tag(&read).0);
-	assert_eq!(status_tag(&patched).1, [1]);
+	assert_eq!(status_name(&patched).0, status_name(&read).0);
+	assert_eq!(status_name(&patched).1, [Value::Utf8("inactive".to_string())]);
 }
 
-fn status_tag(frames: &[Frame]) -> (String, Vec<u8>) {
+fn status_name(frames: &[Frame]) -> (Option<String>, Vec<Value>) {
 	let column = frames[0].column("status").unwrap().expect("column status");
-	let tags = (0..column.len())
-		.map(|i| match column.get_value(i) {
-			Value::Enum {
-				tag,
-				..
-			} => tag,
-			other => panic!("status must read as an enum, got {other:?}"),
-		})
-		.collect();
-	(column.get_type().to_string(), tags)
+	let enum_name = from_field(column.field).unwrap().enum_name;
+	(enum_name, (0..column.len()).map(|i| column.get_value(i)).collect())
 }
 
 #[test]

@@ -6,13 +6,11 @@ mod fixed;
 mod varlen;
 
 use arrow_buffer::BooleanBuffer;
-use arrow_schema::Field;
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	diff_type::DiffType,
 	frame::frame::Frame,
-	sumtype::SumTypeId,
-	value_type::field::enum_variants,
+	value_type::field::enum_name,
 };
 use tracing::{Span, instrument};
 
@@ -26,7 +24,7 @@ use crate::{
 		heuristics::choose_encoding,
 		options::EncodeOptions,
 	},
-	tag::TypeTag,
+	tag::{TypeTag, ValueKind},
 	typeinfo::encode_digest_params,
 	unscaled::params,
 };
@@ -162,13 +160,6 @@ fn try_encode_with(view: &ColumnView<'_>, desired: Encoding) -> Result<EncodedCo
 			{
 				encode_digest_params(digest_inner, *accuracy, &mut extra)?;
 			}
-			if let ViewData::Enum {
-				id,
-				..
-			} = &view.data
-			{
-				encode_enum_params(*id, view.field, &mut extra)?;
-			}
 			EncodedColumn {
 				type_code: plain.type_code,
 				encoding: Encoding::Plain,
@@ -191,19 +182,22 @@ fn try_encode_with(view: &ColumnView<'_>, desired: Encoding) -> Result<EncodedCo
 		enc.nones = nones;
 		enc.flags |= COL_FLAG_HAS_NONES;
 	}
+	if let Some(name) = enum_name(view.field).map_err(|error| EncodeError::UnsupportedType(error.to_string()))? {
+		mark_enum(&mut enc, &name)?;
+	}
 	enc.row_count = row_count;
 	Ok(enc)
 }
 
-fn encode_enum_params(id: SumTypeId, field: &Field, extra: &mut Vec<u8>) -> Result<(), EncodeError> {
-	let variants = enum_variants(field).map_err(|error| EncodeError::UnsupportedType(error.to_string()))?;
-	extra.extend_from_slice(&id.0.to_le_bytes());
-	extra.extend_from_slice(&(variants.len() as u16).to_le_bytes());
-	for (tag, name) in variants {
-		extra.push(tag);
-		extra.extend_from_slice(&(name.len() as u16).to_le_bytes());
-		extra.extend_from_slice(name.as_bytes());
-	}
+fn mark_enum(enc: &mut EncodedColumn, name: &str) -> Result<(), EncodeError> {
+	let len = u16::try_from(name.len())
+		.map_err(|_| EncodeError::UnsupportedType(format!("enum name {name} is longer than 65535 bytes")))?;
+	let mut extra = Vec::with_capacity(2 + name.len() + enc.extra.len());
+	extra.extend_from_slice(&len.to_le_bytes());
+	extra.extend_from_slice(name.as_bytes());
+	extra.append(&mut enc.extra);
+	enc.extra = extra;
+	enc.type_code = (enc.type_code & !0x3F) | ValueKind::Enum.byte();
 	Ok(())
 }
 
