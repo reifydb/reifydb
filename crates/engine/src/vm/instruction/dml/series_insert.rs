@@ -73,7 +73,6 @@ use super::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image,
 		with_series_stamps,
 	},
-	shape::get_or_create_series_shape,
 };
 use crate::{
 	Result,
@@ -134,7 +133,7 @@ pub(crate) fn insert_series(
 	};
 
 	input_node.initialize(txn, &context)?;
-	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+	let shape = services.catalog.get_or_create_series_shape(txn, &series)?;
 
 	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &series.columns)?;
 	let pipeline = ColumnPipeline {

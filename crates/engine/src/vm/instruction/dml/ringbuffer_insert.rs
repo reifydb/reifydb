@@ -48,7 +48,6 @@ use super::{
 	context::RingBufferTarget,
 	partition::ringbuffer_batch_partitions,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
-	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
@@ -328,7 +327,7 @@ fn resolve_insert_ringbuffer_target_and_shape(
 		let fragment = Fragment::internal(target.name());
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
-	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
+	let shape = services.catalog.get_or_create_ringbuffer_shape(txn, &ringbuffer)?;
 	Ok((namespace, ringbuffer, shape))
 }
 

@@ -16,7 +16,6 @@ pub mod ringbuffer_update;
 pub mod series_delete;
 pub mod series_insert;
 pub mod series_update;
-pub mod shape;
 pub mod table_delete;
 pub mod table_insert;
 pub mod table_update;

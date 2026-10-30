@@ -61,7 +61,6 @@ use crate::{
 		SeriesDeleteTally, apply_series_metadata_after_delete, emit_series_remove_change, remove_series_rows,
 	},
 	vm::{
-		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -127,7 +126,7 @@ pub(crate) fn delete_series(
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+		let shape = services.catalog.get_or_create_series_shape(txn, &series)?;
 		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
 		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;
 		let cols = with_pre_image(cols.clone(), &cols)?;

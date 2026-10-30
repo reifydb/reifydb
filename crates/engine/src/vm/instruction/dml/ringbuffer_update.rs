@@ -50,7 +50,6 @@ use super::{
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::RingBufferTarget,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
-	shape::get_or_create_ringbuffer_shape,
 	table_insert::cast_partitions,
 };
 use crate::{
@@ -81,7 +80,7 @@ pub(crate) fn update_ringbuffer(
 		returning,
 	} = plan;
 	let (namespace, ringbuffer) = resolve_update_ringbuffer_target(services, txn, &target)?;
-	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
+	let shape = services.catalog.get_or_create_ringbuffer_shape(txn, &ringbuffer)?;
 	let target_data = RingBufferTarget {
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,

@@ -80,7 +80,6 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
-			shape::get_or_create_series_shape,
 			time::{RowTime, populator_index},
 		},
 		services::Services,
@@ -183,7 +182,7 @@ pub(crate) fn update_series(
 		let shape = match &statement_shape {
 			Some(shape) => shape.clone(),
 			None => {
-				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+				let shape = services.catalog.get_or_create_series_shape(txn, &series)?;
 				statement_shape = Some(shape.clone());
 				shape
 			}
@@ -318,7 +317,7 @@ pub(crate) fn update_series(
 	if let Some(returning_exprs) = &returning {
 		let shape = match statement_shape {
 			Some(shape) => shape,
-			None => get_or_create_series_shape(&services.catalog, &series, txn)?,
+			None => services.catalog.get_or_create_series_shape(txn, &series)?,
 		};
 		let cols = decode_rows_to_columns(&shape, &returned_rows)?;
 		let cols = decode_returning_dictionaries(services, txn, &series.columns, cols)?;

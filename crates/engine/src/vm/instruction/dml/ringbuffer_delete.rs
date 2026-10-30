@@ -45,7 +45,6 @@ use reifydb_value::{
 use super::{
 	context::{RingBufferTarget, WriteExecCtx},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
-	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
@@ -79,7 +78,7 @@ pub(crate) fn delete_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
+	let shape = services.catalog.get_or_create_ringbuffer_shape(txn, &ringbuffer)?;
 
 	let exec = WriteExecCtx {
 		services,

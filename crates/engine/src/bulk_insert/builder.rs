@@ -78,7 +78,6 @@ use crate::{
 			primary_key::{Violation, get_primary_key},
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::{assign_series_keys, series_batch_partitions, write_inserted_series_metadata},
-			shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape},
 			table_insert::{EncodedTableRows, table_batch_partitions, write_table_rows},
 			time::{RowTime, populator_index},
 		},
@@ -607,7 +606,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 ) -> Result<RingBufferInsertResult> {
 	let catalog = writer.catalog;
 	let (namespace, ringbuffer) = resolve_ringbuffer(catalog, txn, pending)?;
-	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
+	let shape = catalog.get_or_create_ringbuffer_shape(&mut Transaction::Command(txn), &ringbuffer)?;
 	let (columns, _) = coerce_columns(
 		&pending.rows,
 		&pending.batches,
@@ -726,7 +725,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let (namespace, series) = resolve_series(catalog, txn, pending)?;
 	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
 	let mut inserted_keys: HashMap<Partition, Vec<u64>> = HashMap::new();
-	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
+	let shape = catalog.get_or_create_series_shape(&mut Transaction::Command(txn), &series)?;
 	let sumtype = series.tag.map(|id| catalog.get_sumtype(&mut Transaction::Command(txn), id)).transpose()?;
 	let (columns, tags) = coerce_columns(
 		&pending.rows,

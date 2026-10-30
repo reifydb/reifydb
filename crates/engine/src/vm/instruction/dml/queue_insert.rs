@@ -69,7 +69,6 @@ use tracing::instrument;
 use super::{
 	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
-	shape::get_or_create_queue_shape,
 };
 use crate::{
 	Result,
@@ -111,7 +110,7 @@ pub(crate) fn insert_queue(
 	} = plan;
 
 	let (namespace, queue) = resolve_insert_queue_target(services, txn, &target)?;
-	let shape = get_or_create_queue_shape(&services.catalog, &queue, txn)?;
+	let shape = services.catalog.get_or_create_queue_shape(txn, &queue)?;
 	let target_data = QueueTarget {
 		namespace: &namespace,
 		queue: &queue,
