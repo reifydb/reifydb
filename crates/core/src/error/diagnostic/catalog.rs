@@ -321,6 +321,44 @@ pub fn enum_value_with_fields(fragment: Fragment, column: &str) -> Diagnostic {
 	}
 }
 
+pub fn enum_field_missing(fragment: Fragment, column: &str, variant: &str, field: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_132".to_string(),
+		rql: None,
+		message: format!(
+			"`{}` is `{}`, which needs the field `{}_{}_{}`",
+			column, variant, column, variant, field
+		),
+		fragment,
+		label: Some("missing field of the variant".to_string()),
+		help: Some(format!("give `{}_{}_{}` next to `{}`", column, variant, field, column)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn enum_field_of_other_variant(fragment: Fragment, column: &str, variant: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_133".to_string(),
+		rql: None,
+		message: format!(
+			"`{}` belongs to another variant than `{}`, the variant written to `{}`",
+			fragment.text(),
+			variant,
+			column
+		),
+		fragment,
+		label: Some("field of another variant".to_string()),
+		help: Some(format!("leave the field out or give it as none when `{}` is `{}`", column, variant)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_023".to_string(),

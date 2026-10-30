@@ -33,7 +33,7 @@ use super::{NoopNode, user_header_names, with_system_headers, with_user_columns}
 use crate::{
 	Result,
 	vm::volcano::{
-		inline::{expand_aliases, expand_sumtype_assignment, resolve_is_variants},
+		inline::{expand_aliases, expand_sumtype_assignment, resolve_is_variants, take_flat_fields},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -67,17 +67,31 @@ impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		if let Some(source) = ctx.source.as_ref().or(self.source.as_ref()) {
-			(self.expressions, _) =
-				expand_aliases(mem::take(&mut self.expressions), |alias_expr, expanded| {
-					expand_sumtype_assignment(
-						ctx,
-						rx,
-						source,
-						alias_expr,
-						expanded,
-						&mut self.tag_marks,
-					)
-				})?;
+			let (expressions, mut fields) = take_flat_fields(
+				ctx,
+				rx,
+				Some(source),
+				mem::take(&mut self.expressions),
+				|expr: &Expression| match expr {
+					Expression::Alias(alias_expr) => Some(alias_expr),
+					_ => None,
+				},
+				|expr| match expr {
+					Expression::Alias(alias_expr) => alias_expr,
+					_ => unreachable!(),
+				},
+			)?;
+			(self.expressions, _) = expand_aliases(expressions, |alias_expr, expanded| {
+				expand_sumtype_assignment(
+					ctx,
+					rx,
+					source,
+					alias_expr,
+					expanded,
+					&mut self.tag_marks,
+					&mut fields,
+				)
+			})?;
 		}
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {

@@ -33,7 +33,10 @@ use super::NoopNode;
 use crate::{
 	Result,
 	vm::volcano::{
-		inline::{declared_sumtype_id, param_symbol, resolve_is_variants, resolve_sumtype_ctor, symbol_scalar},
+		inline::{
+			declared_sumtype_id, enum_name, param_symbol, resolve_is_variants, resolve_sumtype_ctor,
+			symbol_scalar, variant_by_name,
+		},
 		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
@@ -283,11 +286,17 @@ pub(crate) fn resolve_enum_param_equality(
 	let Expression::Column(column) = left.as_ref() else {
 		return Ok(());
 	};
-	let Some(symbol) = param_symbol(right.as_ref()) else {
-		return Ok(());
-	};
 	let col_name = column.0.name.text();
 	let Some(declared) = declared_sumtype_id(source, col_name) else {
+		return Ok(());
+	};
+	if let Some(name) = enum_name(ctx, right.as_ref())? {
+		let sumtype = ctx.services.catalog.get_sumtype(rx, declared)?;
+		let variant = &sumtype.variants[variant_by_name(&sumtype, &name)?];
+		*expr = variant_test_expr(left, &sumtype.name, &variant.name, variant.tag, fragment, negated);
+		return Ok(());
+	}
+	let Some(symbol) = param_symbol(right.as_ref()) else {
 		return Ok(());
 	};
 	let Some(value) = symbol_scalar(ctx, symbol)? else {
@@ -331,21 +340,32 @@ pub(crate) fn resolve_enum_param_equality(
 	let Some(variant) = sumtype.variants.iter().find(|variant| variant.tag == tag) else {
 		return_error!(sumtype_variant_not_found(param_fragment, &sumtype.name));
 	};
+	*expr = variant_test_expr(left, &sumtype.name, &variant.name, tag, fragment, negated);
+	Ok(())
+}
+
+fn variant_test_expr(
+	left: Box<Expression>,
+	sumtype: &str,
+	variant: &str,
+	tag: u8,
+	fragment: Fragment,
+	negated: bool,
+) -> Expression {
 	let is_variant = Expression::IsVariant(IsVariantExpression {
-		expression: left.clone(),
+		expression: left,
 		namespace: None,
-		sumtype_name: Fragment::internal(sumtype.name.clone()),
-		variant_name: Fragment::internal(variant.name.clone()),
+		sumtype_name: Fragment::internal(sumtype),
+		variant_name: Fragment::internal(variant),
 		tag: Some(tag),
 		fragment: fragment.clone(),
 	});
-	*expr = match negated {
+	match negated {
 		false => is_variant,
 		true => Expression::Prefix(PrefixExpression {
 			operator: PrefixOperator::Not(fragment.clone()),
 			expression: Box::new(is_variant),
 			fragment,
 		}),
-	};
-	Ok(())
+	}
 }

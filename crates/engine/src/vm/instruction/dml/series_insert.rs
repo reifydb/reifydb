@@ -636,9 +636,19 @@ impl<'a> VariantTags<'a> {
 }
 
 pub(crate) fn resolve_variant_tag(sumtype: &SumType, value: &Value, fragment: Fragment) -> Result<u8> {
-	match value.get_type().is_integer().then(|| value.to_usize()).flatten().and_then(|n| u8::try_from(n).ok()) {
-		Some(tag) if sumtype.variants.iter().any(|v| v.tag == tag) => Ok(tag),
-		_ => return_error!(sumtype_variant_not_found(fragment, &sumtype.name)),
+	let tag = match value {
+		Value::Utf8(name) => sumtype.variants.iter().find(|v| v.name.eq_ignore_ascii_case(name)).map(|v| v.tag),
+		_ => value
+			.get_type()
+			.is_integer()
+			.then(|| value.to_usize())
+			.flatten()
+			.and_then(|n| u8::try_from(n).ok())
+			.filter(|tag| sumtype.variants.iter().any(|v| v.tag == *tag)),
+	};
+	match tag {
+		Some(tag) => Ok(tag),
+		None => return_error!(sumtype_variant_not_found(fragment, &sumtype.name)),
 	}
 }
 
