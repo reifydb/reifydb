@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#blob_param
+# Test: == != and not == with a blob param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_blob CASCADE; CREATE NAMESPACE cmp_blob; CREATE TABLE cmp_blob::o { id: int4, v: Option(blob) }; INSERT cmp_blob::o [{ id: 1, v: blob::hex("") }, { id: 2, v: blob::hex("00ff10") }, { id: 3, v: blob::hex("ff") }, { id: 9, v: none }]; OUTPUT FROM cmp_blob::o SORT { id: asc }'
+query_named 'FROM cmp_blob::o FILTER { v == $p } SORT { id: asc }' 'p=0x00ff10::blob'
+query_named 'FROM cmp_blob::o FILTER { v != $p } SORT { id: asc }' 'p=0x00ff10::blob'
+query_named 'FROM cmp_blob::o FILTER { not (v == $p) } SORT { id: asc }' 'p=0x00ff10::blob'
+---
+> +-----------+------+------------+
+> |  #rownum  |  id  |     v      |
+> +-----------+------+------------+
+> |     1     |  1   |     0x     |
+> |     2     |  2   |  0x00ff10  |
+> |     3     |  3   |    0xff    |
+> |     4     |  9   |    none    |
+> +-----------+------+------------+
+>
+> +-----------+------+------------+
+> |  #rownum  |  id  |     v      |
+> +-----------+------+------------+
+> |     2     |  2   |  0x00ff10  |
+> +-----------+------+------------+
+>
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |   0x   |
+> |     3     |  3   |  0xff  |
+> +-----------+------+--------+
+>
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |   0x   |
+> |     3     |  3   |  0xff  |
+> +-----------+------+--------+
+>

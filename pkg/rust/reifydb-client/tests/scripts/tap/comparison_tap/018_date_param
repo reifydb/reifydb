@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#date_param
+# Test: == != and not == with a date param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_date CASCADE; CREATE NAMESPACE cmp_date; CREATE TABLE cmp_date::o { id: int4, v: Option(date) }; INSERT cmp_date::o [{ id: 1, v: "1970-01-01" }, { id: 2, v: "2024-02-29" }, { id: 3, v: "2100-12-31" }, { id: 9, v: none }]; OUTPUT FROM cmp_date::o SORT { id: asc }'
+query_named 'FROM cmp_date::o FILTER { v == $p } SORT { id: asc }' 'p=2024-02-29::date'
+query_named 'FROM cmp_date::o FILTER { v != $p } SORT { id: asc }' 'p=2024-02-29::date'
+query_named 'FROM cmp_date::o FILTER { not (v == $p) } SORT { id: asc }' 'p=2024-02-29::date'
+---
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     1     |  1   |  1970-01-01  |
+> |     2     |  2   |  2024-02-29  |
+> |     3     |  3   |  2100-12-31  |
+> |     4     |  9   |     none     |
+> +-----------+------+--------------+
+>
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     2     |  2   |  2024-02-29  |
+> +-----------+------+--------------+
+>
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     1     |  1   |  1970-01-01  |
+> |     3     |  3   |  2100-12-31  |
+> +-----------+------+--------------+
+>
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     1     |  1   |  1970-01-01  |
+> |     3     |  3   |  2100-12-31  |
+> +-----------+------+--------------+
+>

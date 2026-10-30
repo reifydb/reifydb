@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#int1_param
+# Test: == != and not == with a int1 param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_int1 CASCADE; CREATE NAMESPACE cmp_int1; CREATE TABLE cmp_int1::o { id: int4, v: Option(int1) }; INSERT cmp_int1::o [{ id: 1, v: -128 }, { id: 2, v: 0 }, { id: 3, v: 127 }, { id: 9, v: none }]; OUTPUT FROM cmp_int1::o SORT { id: asc }'
+query_named 'FROM cmp_int1::o FILTER { v == $p } SORT { id: asc }' 'p=0::int1'
+query_named 'FROM cmp_int1::o FILTER { v != $p } SORT { id: asc }' 'p=0::int1'
+query_named 'FROM cmp_int1::o FILTER { not (v == $p) } SORT { id: asc }' 'p=0::int1'
+---
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |  -128  |
+> |     2     |  2   |   0    |
+> |     3     |  3   |  127   |
+> |     4     |  9   |  none  |
+> +-----------+------+--------+
+>
+> +-----------+------+-----+
+> |  #rownum  |  id  |  v  |
+> +-----------+------+-----+
+> |     2     |  2   |  0  |
+> +-----------+------+-----+
+>
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |  -128  |
+> |     3     |  3   |  127   |
+> +-----------+------+--------+
+>
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |  -128  |
+> |     3     |  3   |  127   |
+> +-----------+------+--------+
+>

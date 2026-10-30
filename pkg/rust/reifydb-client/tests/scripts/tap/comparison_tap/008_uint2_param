@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#uint2_param
+# Test: == != and not == with a uint2 param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_uint2 CASCADE; CREATE NAMESPACE cmp_uint2; CREATE TABLE cmp_uint2::o { id: int4, v: Option(uint2) }; INSERT cmp_uint2::o [{ id: 1, v: 0 }, { id: 2, v: 1 }, { id: 3, v: 65535 }, { id: 9, v: none }]; OUTPUT FROM cmp_uint2::o SORT { id: asc }'
+query_named 'FROM cmp_uint2::o FILTER { v == $p } SORT { id: asc }' 'p=1::uint2'
+query_named 'FROM cmp_uint2::o FILTER { v != $p } SORT { id: asc }' 'p=1::uint2'
+query_named 'FROM cmp_uint2::o FILTER { not (v == $p) } SORT { id: asc }' 'p=1::uint2'
+---
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |    0    |
+> |     2     |  2   |    1    |
+> |     3     |  3   |  65535  |
+> |     4     |  9   |  none   |
+> +-----------+------+---------+
+>
+> +-----------+------+-----+
+> |  #rownum  |  id  |  v  |
+> +-----------+------+-----+
+> |     2     |  2   |  1  |
+> +-----------+------+-----+
+>
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |    0    |
+> |     3     |  3   |  65535  |
+> +-----------+------+---------+
+>
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |    0    |
+> |     3     |  3   |  65535  |
+> +-----------+------+---------+
+>

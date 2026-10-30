@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#decimal_scaled_param
+# Test: == != and not == with a decimal(30, 3) param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_decimal_scaled CASCADE; CREATE NAMESPACE cmp_decimal_scaled; CREATE TABLE cmp_decimal_scaled::o { id: int4, v: Option(decimal(30, 3)) }; INSERT cmp_decimal_scaled::o [{ id: 1, v: "1.5" }, { id: 2, v: "-0.25" }, { id: 3, v: "12345678901234567890.123" }, { id: 9, v: none }]; OUTPUT FROM cmp_decimal_scaled::o SORT { id: asc }'
+query_named 'FROM cmp_decimal_scaled::o FILTER { v == $p } SORT { id: asc }' 'p=-0.25::decimal'
+query_named 'FROM cmp_decimal_scaled::o FILTER { v != $p } SORT { id: asc }' 'p=-0.25::decimal'
+query_named 'FROM cmp_decimal_scaled::o FILTER { not (v == $p) } SORT { id: asc }' 'p=-0.25::decimal'
+---
+> +-----------+------+----------------------------+
+> |  #rownum  |  id  |             v              |
+> +-----------+------+----------------------------+
+> |     1     |  1   |           1.500            |
+> |     2     |  2   |           -0.250           |
+> |     3     |  3   |  12345678901234567890.123  |
+> |     4     |  9   |            none            |
+> +-----------+------+----------------------------+
+>
+> +-----------+------+----------+
+> |  #rownum  |  id  |    v     |
+> +-----------+------+----------+
+> |     2     |  2   |  -0.250  |
+> +-----------+------+----------+
+>
+> +-----------+------+----------------------------+
+> |  #rownum  |  id  |             v              |
+> +-----------+------+----------------------------+
+> |     1     |  1   |           1.500            |
+> |     3     |  3   |  12345678901234567890.123  |
+> +-----------+------+----------------------------+
+>
+> +-----------+------+----------------------------+
+> |  #rownum  |  id  |             v              |
+> +-----------+------+----------------------------+
+> |     1     |  1   |           1.500            |
+> |     3     |  3   |  12345678901234567890.123  |
+> +-----------+------+----------------------------+
+>

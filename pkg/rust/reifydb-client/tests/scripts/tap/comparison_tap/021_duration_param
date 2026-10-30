@@ -1,0 +1,37 @@
+# Generated from: comparison.tap.md#duration_param
+# Test: == != and not == with a duration param
+
+admin 'DROP NAMESPACE IF EXISTS cmp_duration CASCADE; CREATE NAMESPACE cmp_duration; CREATE TABLE cmp_duration::o { id: int4, v: Option(duration) }; INSERT cmp_duration::o [{ id: 1, v: "0s" }, { id: 2, v: "1d2h30m" }, { id: 3, v: "30m" }, { id: 9, v: none }]; OUTPUT FROM cmp_duration::o SORT { id: asc }'
+query_named 'FROM cmp_duration::o FILTER { v == $p } SORT { id: asc }' 'p=1d2h30m::duration'
+query_named 'FROM cmp_duration::o FILTER { v != $p } SORT { id: asc }' 'p=1d2h30m::duration'
+query_named 'FROM cmp_duration::o FILTER { not (v == $p) } SORT { id: asc }' 'p=1d2h30m::duration'
+---
+> +-----------+------+-----------+
+> |  #rownum  |  id  |     v     |
+> +-----------+------+-----------+
+> |     1     |  1   |    0s     |
+> |     2     |  2   |  1d2h30m  |
+> |     3     |  3   |    30m    |
+> |     4     |  9   |   none    |
+> +-----------+------+-----------+
+>
+> +-----------+------+-----------+
+> |  #rownum  |  id  |     v     |
+> +-----------+------+-----------+
+> |     2     |  2   |  1d2h30m  |
+> +-----------+------+-----------+
+>
+> +-----------+------+-------+
+> |  #rownum  |  id  |   v   |
+> +-----------+------+-------+
+> |     1     |  1   |  0s   |
+> |     3     |  3   |  30m  |
+> +-----------+------+-------+
+>
+> +-----------+------+-------+
+> |  #rownum  |  id  |   v   |
+> +-----------+------+-------+
+> |     1     |  1   |  0s   |
+> |     3     |  3   |  30m  |
+> +-----------+------+-------+
+>

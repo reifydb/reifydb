@@ -6,6 +6,8 @@ use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb::{Database, RuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
+use reifydb_codec::json::from::parse_json_value;
+use reifydb_sub_server::wire::resolve_type;
 use reifydb_testing::testscript::command::Command;
 #[cfg(not(reifydb_single_threaded))]
 use tokio::runtime::Runtime;
@@ -241,8 +243,49 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 }
 
 #[allow(dead_code)]
+fn parse_typed_param(s: &str) -> Option<Value> {
+	let (text, ty) = s.rsplit_once("::")?;
+	let id = match ty {
+		"bool" => "Boolean",
+		"int1" => "Int1",
+		"int2" => "Int2",
+		"int4" => "Int4",
+		"int8" => "Int8",
+		"int16" => "Int16",
+		"uint1" => "Uint1",
+		"uint2" => "Uint2",
+		"uint4" => "Uint4",
+		"uint8" => "Uint8",
+		"uint16" => "Uint16",
+		"float4" => "Float4",
+		"float8" => "Float8",
+		"decimal" => "Decimal",
+		"utf8" => "Utf8",
+		"blob" => "Blob",
+		"date" => "Date",
+		"time" => "Time",
+		"datetime" => "DateTime",
+		"duration" => "Duration",
+		"uuid4" => "Uuid4",
+		"uuid7" => "Uuid7",
+		"identity_id" => "IdentityId",
+		_ => return None,
+	};
+	let text_json = serde_json::Value::String(text.to_string());
+	let ty = resolve_type(&serde_json::json!({ "id": id }), &text_json)
+		.unwrap_or_else(|e| panic!("typed param {s}: unknown type: {e}"));
+	if text == "none" {
+		return Some(Value::none_of(ty));
+	}
+	Some(parse_json_value(&ty, &text_json).unwrap_or_else(|e| panic!("typed param {s}: {e}")))
+}
+
+#[allow(dead_code)]
 fn parse_param_value(s: &str) -> Value {
 	let trimmed = s.trim();
+	if let Some(value) = parse_typed_param(trimmed) {
+		return value;
+	}
 	if trimmed.starts_with('[') {
 		return parse_list_of_records(trimmed);
 	}
