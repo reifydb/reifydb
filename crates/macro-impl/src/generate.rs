@@ -107,11 +107,6 @@ pub fn generics(inner: impl IntoIterator<Item = TokenTree>) -> Vec<TokenTree> {
 	tokens
 }
 
-#[allow(dead_code)]
-pub fn extend(tokens: &mut Vec<TokenTree>, iter: impl IntoIterator<Item = TokenTree>) {
-	tokens.extend(iter);
-}
-
 pub fn compile_error(message: &str) -> TokenStream {
 	let tokens = vec![ident("compile_error"), punct('!'), parens([literal_str(message)]), punct(';')];
 	tokens.into_iter().collect()
