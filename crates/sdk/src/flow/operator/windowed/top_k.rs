@@ -123,7 +123,9 @@ where
 			});
 			next.insert(sk.clone(), (number, new));
 		}
-		store.remove_row_number(group_id, &freed)?;
+		if !freed.is_empty() {
+			store.remove_row_number(group_id, &freed)?;
+		}
 		Ok((!next.is_empty()).then_some(next))
 	}
 }
