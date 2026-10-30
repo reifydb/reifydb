@@ -29,7 +29,6 @@ use crate::{
 		host::HostContext,
 		state::{seal::coord::Coord, store},
 		state_access::{get_classified, remove, set},
-		window::prefetch::Prefetched,
 	},
 	window::{
 		engine::{
@@ -38,6 +37,7 @@ use crate::{
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		meta::{EngineMeta, EngineMetaKey, SessionKey, SessionState},
+		prefetch::Prefetched,
 		span::WindowSpan,
 	},
 };

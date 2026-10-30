@@ -14,10 +14,7 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use super::{
-	operator::{WindowOperator, required_row_numbers},
-	prefetch::Prefetched,
-};
+use super::operator::{WindowOperator, required_row_numbers};
 use crate::{
 	operator::{
 		aggregation::{
@@ -35,6 +32,7 @@ use crate::{
 			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
 		},
 		kind::rolling::RollingOverTime,
+		prefetch::Prefetched,
 	},
 };
 

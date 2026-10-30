@@ -23,7 +23,6 @@ use tracing::{Span, instrument};
 use super::{
 	bind::SlidingBound,
 	operator::{WindowOperator, required_row_numbers},
-	prefetch::Prefetched,
 };
 use crate::{
 	operator::{
@@ -58,6 +57,7 @@ use crate::{
 			session::{SessionKind, SessionTracker},
 		},
 		meta::{EngineMeta, EngineMetaKey, RowIndexKey},
+		prefetch::Prefetched,
 		span::WindowSpan,
 	},
 };

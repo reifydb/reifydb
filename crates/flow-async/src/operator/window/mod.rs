@@ -4,5 +4,4 @@
 pub mod apply;
 pub mod bind;
 pub mod operator;
-pub mod prefetch;
 pub mod rolling;

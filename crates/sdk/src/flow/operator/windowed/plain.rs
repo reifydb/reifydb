@@ -36,6 +36,7 @@ use reifydb_flow_async::{
 		},
 		kind::session::SessionAssignment,
 		meta::NoKey,
+		prefetch::Prefetched,
 		settings::WindowSettings,
 		span::{WindowSpan, window_row_key},
 	},
@@ -506,14 +507,17 @@ where
 			Some(cutoff) => mode.engine.expire(&mut store, cutoff, &finalize)?,
 			None => Vec::new(),
 		};
+		let keys = mode.engine.state_keys(&groups);
+		let mut prefetched = Prefetched::read(&mut store, keys)?;
 		let applied = mode.engine.apply(
-			&mut store,
+			&mut prefetched,
 			groups,
 			cutoff,
 			&|| aggregator.new_accumulator(settings),
 			&|_| NoKey,
 			&finalize,
 		)?;
+		prefetched.write()?;
 		if applied.sealed_drops + applied.stale_retractions > 0 {
 			debug!(
 				operator = A::NAME,
