@@ -8,11 +8,26 @@ use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
 
-use crate::operator::state::seal::coord::{Coord, IsZero};
+use crate::{
+	operator::state::seal::coord::{Coord, IsZero},
+	window::coord::OrdinalCoord,
+};
 
-pub trait WindowAnchor: Slot<Coord = Self> + Coord {}
+pub trait WindowAnchor: Slot<Coord = Self> + Coord {
+	fn as_time(self) -> Option<DateTime>;
+}
 
-impl<T> WindowAnchor for T where T: Slot<Coord = T> + Coord {}
+impl WindowAnchor for DateTime {
+	fn as_time(self) -> Option<DateTime> {
+		Some(self)
+	}
+}
+
+impl WindowAnchor for OrdinalCoord {
+	fn as_time(self) -> Option<DateTime> {
+		None
+	}
+}
 
 pub type SlotSpan<S> = <<S as Slot>::Coord as Coord>::Span;
 

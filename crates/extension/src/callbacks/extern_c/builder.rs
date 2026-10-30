@@ -581,6 +581,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	pre_row_count: usize,
 	pre_row_numbers_ptr: *const u64,
 	pre_row_numbers_len: usize,
+	pre_times_ptr: *const i64,
+	pre_times_len: usize,
 	post_handles_ptr: *const *mut ColumnBufferHandle,
 	post_name_ptrs: *const *const u8,
 	post_name_lens: *const usize,
@@ -588,6 +590,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	post_row_count: usize,
 	post_row_numbers_ptr: *const u64,
 	post_row_numbers_len: usize,
+	post_times_ptr: *const i64,
+	post_times_len: usize,
 ) -> i32 {
 	let Some(registry) = current_registry() else {
 		return EXTERN_C_ERROR_INTERNAL;
@@ -621,6 +625,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		pre_row_count,
 		pre_row_numbers_ptr,
 		pre_row_numbers_len,
+		pre_times_ptr,
+		pre_times_len,
 		now,
 	) {
 		Ok(c) => c,
@@ -637,6 +643,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		post_row_count,
 		post_row_numbers_ptr,
 		post_row_numbers_len,
+		post_times_ptr,
+		post_times_len,
 		now,
 	) {
 		Ok(c) => c,
@@ -668,12 +676,14 @@ fn assemble_columns_opt(
 	row_count: usize,
 	row_numbers_ptr: *const u64,
 	row_numbers_len: usize,
+	times_ptr: *const i64,
+	times_len: usize,
 	now: DateTime,
 ) -> Result<Option<RecordBatch>, i32> {
 	if ptrs.count == 0 {
 		return Ok(None);
 	}
-	assemble_columns(inner, ptrs, row_count, row_numbers_ptr, row_numbers_len, now).map(Some)
+	assemble_columns(inner, ptrs, row_count, row_numbers_ptr, row_numbers_len, times_ptr, times_len, now).map(Some)
 }
 
 struct ColumnsPtrs {
@@ -689,6 +699,8 @@ fn assemble_columns(
 	row_count: usize,
 	row_numbers_ptr: *const u64,
 	row_numbers_len: usize,
+	times_ptr: *const i64,
+	times_len: usize,
 	now: DateTime,
 ) -> Result<RecordBatch, i32> {
 	let ColumnsPtrs {
@@ -704,6 +716,12 @@ fn assemble_columns(
 		return Err(EXTERN_C_ERROR_INTERNAL);
 	}
 	if row_count > 0 && row_numbers_ptr.is_null() {
+		return Err(EXTERN_C_ERROR_NULL_PTR);
+	}
+	if times_len != row_count {
+		return Err(EXTERN_C_ERROR_INTERNAL);
+	}
+	if row_count > 0 && times_ptr.is_null() {
 		return Err(EXTERN_C_ERROR_NULL_PTR);
 	}
 	// SAFETY: all three are non-null here and the caller guarantees `count` initialized elements.
@@ -739,9 +757,16 @@ fn assemble_columns(
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
 		stamps.push((SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec()))));
 	}
-	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt] {
 		stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 	}
+	let times: &[i64] = if row_count == 0 {
+		&[]
+	} else {
+		// SAFETY: row_count > 0 passed the null check and times_len was verified equal to it.
+		unsafe { slice::from_raw_parts(times_ptr, row_count) }
+	};
+	stamps.push((SystemColumn::Time, Arc::new(datetime_array(times.iter().copied().map(DateTime::from_nanos)))));
 	stamp_system_columns(out, stamps).map_err(|err| inner.stash_failure(err))
 }
 
@@ -1087,6 +1112,8 @@ mod tests {
 		let (_, post) = commit_varlen(registry, ValueKind::Utf8, b"b", &[0, 1]);
 		let name = b"c".as_ptr();
 		let len = 1usize;
+		let pre_times = vec![0i64; pre_rows.len()];
+		let post_times = vec![0i64; post_rows.len()];
 		with_registry(registry, || {
 			// SAFETY: a registry is installed and every pointer is a live local valid for the count passed
 			// with it.
@@ -1101,6 +1128,8 @@ mod tests {
 					pre_rows.len(),
 					pre_rows.as_ptr(),
 					pre_rows.len(),
+					pre_times.as_ptr(),
+					pre_times.len(),
 					&post,
 					&name,
 					&len,
@@ -1108,6 +1137,8 @@ mod tests {
 					post_rows.len(),
 					post_rows.as_ptr(),
 					post_rows.len(),
+					post_times.as_ptr(),
+					post_times.len(),
 				)
 			}
 		})

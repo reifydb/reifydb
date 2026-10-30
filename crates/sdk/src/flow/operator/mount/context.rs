@@ -96,8 +96,8 @@ impl GuestEmit for InProcessInsertEmit<'_> {
 	fn sink(&mut self) -> &mut InProcessRowSink {
 		&mut self.sink
 	}
-	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
+		let columns = self.sink.finish(row_numbers.to_vec(), times, self.now)?;
 		self.diffs.push(Diff::insert(columns));
 		Ok(())
 	}
@@ -114,8 +114,8 @@ impl GuestEmit for InProcessRemoveEmit<'_> {
 	fn sink(&mut self) -> &mut InProcessRowSink {
 		&mut self.sink
 	}
-	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
+		let columns = self.sink.finish(row_numbers.to_vec(), times, self.now)?;
 		self.diffs.push(Diff::remove(columns));
 		Ok(())
 	}
@@ -136,9 +136,9 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 	fn post(&mut self) -> &mut InProcessRowSink {
 		&mut self.post
 	}
-	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let pre_columns = self.pre.finish(row_numbers.to_vec(), self.now)?;
-		let post_columns = self.post.finish(row_numbers.to_vec(), self.now)?;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
+		let pre_columns = self.pre.finish(row_numbers.to_vec(), times, self.now)?;
+		let post_columns = self.post.finish(row_numbers.to_vec(), times, self.now)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
 		Ok(())
 	}

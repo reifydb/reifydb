@@ -1222,7 +1222,8 @@ impl<'bump> Parser<'bump> {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "capacity".to_string(),
 						},
-						message: "ringbuffer view group requires 'capacity' in WITH clause".to_string(),
+						message: "ringbuffer view group requires 'capacity' in WITH clause"
+							.to_string(),
 						fragment: open.fragment.to_owned(),
 					}));
 				};
@@ -5315,7 +5316,8 @@ mod windowed_view_group_storage_tests {
 		let AstCreate::DeferredWindowedViewGroup(group) = &*create else {
 			panic!("expected a windowed view group");
 		};
-		let evictions = group.members.iter().map(|m| m.settings.as_ref().map(|s| s.ttl_eviction)).collect::<Vec<_>>();
+		let evictions =
+			group.members.iter().map(|m| m.settings.as_ref().map(|s| s.ttl_eviction)).collect::<Vec<_>>();
 		check(&group.storage_kind, &evictions);
 	}
 
@@ -5395,7 +5397,10 @@ mod windowed_view_group_storage_tests {
 			"create deferred windowed view group ns::g {{ a: int4 }} with {{ eviction: {{ ttl: visible }}, members: [ {{ view: ns::g1, duration: 1s, row: {{ ttl: 1m }} }}, {{ view: ns::g2, duration: 2s, row: {{ persistent: true }} }}, {{ view: ns::g3, duration: 3s }} ] }} {AS}"
 		);
 		group(&source, |_, evictions| {
-			assert_eq!(evictions, &[Some(EvictionVisibility::Visible), Some(EvictionVisibility::Silent), None]);
+			assert_eq!(
+				evictions,
+				&[Some(EvictionVisibility::Visible), Some(EvictionVisibility::Silent), None]
+			);
 		});
 	}
 

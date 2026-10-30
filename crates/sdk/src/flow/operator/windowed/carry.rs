@@ -21,12 +21,12 @@ use reifydb_flow_async::{
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
 		settings::WindowSettings,
-		span::{WindowSpan, window_row_key},
+		span::{WindowAnchor, WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 use tracing::{debug, instrument};
 
@@ -148,20 +148,24 @@ where
 	fn emit_batches(
 		&self,
 		ctx: &mut impl GuestContext,
-		inserts: &[(RowNumber, A::Output)],
-		updates: &[(RowNumber, A::Output)],
-		removes: &[(RowNumber, A::Output)],
+		inserts: &[(RowNumber, DateTime, A::Output)],
+		updates: &[(RowNumber, DateTime, A::Output)],
+		removes: &[(RowNumber, DateTime, A::Output)],
 	) -> Result<()> {
-		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_update(
-			updates.iter().map(|(_, data)| data),
-			updates.iter().map(|(_, data)| data),
+			updates.iter().map(|(.., data)| data),
+			updates.iter().map(|(.., data)| data),
 			&row_numbers,
+			&times,
 		)?;
-		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_remove(removes.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		Ok(())
 	}
 }
@@ -332,16 +336,18 @@ where
 			}
 		}
 
+		let now = ctx.written_at();
 		let results = self.accumulate(ctx, buckets)?;
 
-		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
-		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
-		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut inserts: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
+		let mut updates: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		for r in results {
+			let time = r.span.start.as_time().unwrap_or(now);
 			match r.kind {
-				EmitKind::Insert => inserts.push((r.row_number, r.value)),
-				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => removes.push((r.row_number, r.value)),
+				EmitKind::Insert => inserts.push((r.row_number, time, r.value)),
+				EmitKind::Update => updates.push((r.row_number, time, r.value)),
+				EmitKind::Remove => removes.push((r.row_number, time, r.value)),
 			}
 		}
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;

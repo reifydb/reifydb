@@ -105,14 +105,14 @@ impl<'a> GuestBound<'a> {
 pub trait GuestEmit {
 	type Sink: RowSink;
 	fn sink(&mut self) -> &mut Self::Sink;
-	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<()>;
 }
 
 pub trait GuestUpdateEmit {
 	type Sink: RowSink;
 	fn pre(&mut self) -> &mut Self::Sink;
 	fn post(&mut self) -> &mut Self::Sink;
-	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<()>;
 }
 
 pub trait GuestState {
@@ -324,7 +324,12 @@ pub trait GuestEmitContext {
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;
 	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::RemoveEmit<'_>>;
 
-	fn emit_insert<'r, R: Row + 'r, I>(&mut self, rows: I, row_numbers: &[RowNumber]) -> Result<()>
+	fn emit_insert<'r, R: Row + 'r, I>(
+		&mut self,
+		rows: I,
+		row_numbers: &[RowNumber],
+		times: &[DateTime],
+	) -> Result<()>
 	where
 		I: IntoIterator<Item = &'r R>,
 		I::IntoIter: ExactSizeIterator + Clone,
@@ -332,15 +337,22 @@ pub trait GuestEmitContext {
 		let rows = rows.into_iter();
 		let count = rows.len();
 		check_emit_count(count, row_numbers.len())?;
+		check_emit_count(count, times.len())?;
 		if count == 0 {
 			return Ok(());
 		}
 		let mut emit = self.insert_emit::<R>(count)?;
 		R::encode_rows(rows, emit.sink())?;
-		emit.finish(row_numbers)
+		emit.finish(row_numbers, times)
 	}
 
-	fn emit_update<'r, R: Row + 'r, P, Q>(&mut self, pre: P, post: Q, row_numbers: &[RowNumber]) -> Result<()>
+	fn emit_update<'r, R: Row + 'r, P, Q>(
+		&mut self,
+		pre: P,
+		post: Q,
+		row_numbers: &[RowNumber],
+		times: &[DateTime],
+	) -> Result<()>
 	where
 		P: IntoIterator<Item = &'r R>,
 		P::IntoIter: ExactSizeIterator + Clone,
@@ -351,16 +363,22 @@ pub trait GuestEmitContext {
 		let post = post.into_iter();
 		check_emit_count(pre.len(), row_numbers.len())?;
 		check_emit_count(post.len(), row_numbers.len())?;
+		check_emit_count(times.len(), row_numbers.len())?;
 		if row_numbers.is_empty() {
 			return Ok(());
 		}
 		let mut emit = self.update_emit::<R>(row_numbers.len())?;
 		R::encode_rows(pre, emit.pre())?;
 		R::encode_rows(post, emit.post())?;
-		emit.finish(row_numbers)
+		emit.finish(row_numbers, times)
 	}
 
-	fn emit_remove<'r, R: Row + 'r, I>(&mut self, rows: I, row_numbers: &[RowNumber]) -> Result<()>
+	fn emit_remove<'r, R: Row + 'r, I>(
+		&mut self,
+		rows: I,
+		row_numbers: &[RowNumber],
+		times: &[DateTime],
+	) -> Result<()>
 	where
 		I: IntoIterator<Item = &'r R>,
 		I::IntoIter: ExactSizeIterator + Clone,
@@ -368,12 +386,13 @@ pub trait GuestEmitContext {
 		let rows = rows.into_iter();
 		let count = rows.len();
 		check_emit_count(count, row_numbers.len())?;
+		check_emit_count(count, times.len())?;
 		if count == 0 {
 			return Ok(());
 		}
 		let mut emit = self.remove_emit::<R>(count)?;
 		R::encode_rows(rows, emit.sink())?;
-		emit.finish(row_numbers)
+		emit.finish(row_numbers, times)
 	}
 }
 

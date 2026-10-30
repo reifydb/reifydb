@@ -31,13 +31,13 @@ use reifydb_flow_async::{
 			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
 		},
 		settings::WindowSettings,
-		span::{WindowSpan, window_row_key},
+		span::{WindowAnchor, WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
 	config::ExtensionParams,
 	reifydb_assertions,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -206,6 +206,7 @@ where
 		ctx: &mut C,
 		mut buckets: Buckets<A, K, V>,
 	) -> Result<Emitted<A>> {
+		let now = ctx.written_at();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
@@ -292,14 +293,17 @@ where
 		}
 		let mut read = engine.load_entries(&mut store, &due_windows)?;
 		for (slot, r, mut state, decision) in decided {
+			let time = r.span.start.as_time().unwrap_or(now);
 			match decision {
-				Decision::Remove => publish_row::<A>(r.row_number, None, &mut state, &mut emitted)?,
+				Decision::Remove => {
+					publish_row::<A>(r.row_number, time, None, &mut state, &mut emitted)?
+				}
 				Decision::Due => {
 					let entries = read
 						.remove(&r.group_id)
 						.expect("the entry read answers every due window");
 					let out = aggregator.build_output(&r.group, r.span, &entries);
-					publish_row::<A>(r.row_number, out, &mut state, &mut emitted)?;
+					publish_row::<A>(r.row_number, time, out, &mut state, &mut emitted)?;
 				}
 			}
 			session.set(slot, &state)?;
@@ -312,20 +316,24 @@ where
 	fn emit_batches(
 		&self,
 		ctx: &mut impl GuestContext,
-		inserts: &[(RowNumber, A::Output)],
+		inserts: &[(RowNumber, DateTime, A::Output)],
 		updates: &[UpdateRow<A>],
-		removes: &[(RowNumber, A::Output)],
+		removes: &[(RowNumber, DateTime, A::Output)],
 	) -> Result<()> {
-		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
-			updates.iter().map(|(_, pre, post)| pre.as_ref().unwrap_or(post)),
-			updates.iter().map(|(_, _, post)| post),
+			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
+			updates.iter().map(|(.., post)| post),
 			&row_numbers,
+			&times,
 		)?;
-		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_remove(removes.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		Ok(())
 	}
 }

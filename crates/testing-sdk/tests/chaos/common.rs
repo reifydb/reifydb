@@ -146,18 +146,18 @@ fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>)> {
 
 fn emit_insert(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
 	let (rows, numbers) = rows_of(&diff.post().expect("an insert carries a post batch"))?;
-	ctx.emit_insert(&rows, &numbers)
+	ctx.emit_insert(&rows, &numbers, &vec![ctx.written_at(); (&numbers).len()])
 }
 
 fn emit_update(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
 	let (pre, _) = rows_of(&diff.pre().expect("an update carries a pre batch"))?;
 	let (post, numbers) = rows_of(&diff.post().expect("an update carries a post batch"))?;
-	ctx.emit_update(&pre, &post, &numbers)
+	ctx.emit_update(&pre, &post, &numbers, &vec![ctx.written_at(); (&numbers).len()])
 }
 
 fn emit_remove(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
 	let (rows, numbers) = rows_of(&diff.pre().expect("a remove carries a pre batch"))?;
-	ctx.emit_remove(&rows, &numbers)
+	ctx.emit_remove(&rows, &numbers, &vec![ctx.written_at(); (&numbers).len()])
 }
 
 pub fn simple_kv_shape() -> RowShape {

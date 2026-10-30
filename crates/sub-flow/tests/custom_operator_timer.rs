@@ -138,6 +138,7 @@ impl UnmanagedOperator for Alarm {
 				fired_at,
 			}],
 			&[row_number],
+			&vec![ctx.written_at(); (&[row_number]).len()],
 		)?;
 		Ok(())
 	}
@@ -363,6 +364,7 @@ impl UnmanagedOperator for Snooze {
 				fired_at,
 			}],
 			&[row_number],
+			&vec![ctx.written_at(); (&[row_number]).len()],
 		)?;
 		Ok(())
 	}

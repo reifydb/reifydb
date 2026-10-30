@@ -87,7 +87,11 @@ impl MountedOperator for EmitOpInsert {
 				count: 30,
 			},
 		];
-		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3)])
+		ctx.emit_insert(
+			&rows,
+			&[RowNumber(1), RowNumber(2), RowNumber(3)],
+			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
+		)
 	}
 }
 
@@ -138,7 +142,7 @@ impl MountedOperator for EmitOpEmpty {
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
 		let rows: [Bar; 0] = [];
-		ctx.emit_insert(&rows, &[])
+		ctx.emit_insert(&rows, &[], &[])
 	}
 }
 
@@ -182,6 +186,7 @@ impl MountedOperator for EmitOpUpdate {
 				count: 6,
 			}],
 			&[RowNumber(1)],
+			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
 		)
 	}
 }
@@ -242,7 +247,11 @@ impl MountedOperator for EmitOpRemove {
 				count: 0,
 			},
 		];
-		ctx.emit_remove(&rows, &[RowNumber(1), RowNumber(2)])
+		ctx.emit_remove(
+			&rows,
+			&[RowNumber(1), RowNumber(2)],
+			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2)]).len()],
+		)
 	}
 }
 
@@ -283,7 +292,7 @@ impl MountedOperator for EmitOpBig {
 			})
 			.collect();
 		let row_numbers: Vec<RowNumber> = (1..=100).map(RowNumber).collect();
-		ctx.emit_insert(&rows, &row_numbers)
+		ctx.emit_insert(&rows, &row_numbers, &vec![ctx.written_at(); (&row_numbers).len()])
 	}
 }
 
@@ -339,7 +348,11 @@ impl MountedOperator for EmitOpOptU64 {
 				v: Some(u64::MAX),
 			},
 		];
-		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)])
+		ctx.emit_insert(
+			&rows,
+			&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
+			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
+		)
 	}
 }
 
@@ -399,7 +412,11 @@ impl MountedOperator for EmitOpOptStr {
 				s: Some("".to_string()),
 			},
 		];
-		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)])
+		ctx.emit_insert(
+			&rows,
+			&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
+			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
+		)
 	}
 }
 
@@ -456,7 +473,11 @@ impl MountedOperator for EmitOpOptBlob {
 				b: None,
 			},
 		];
-		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3)])
+		ctx.emit_insert(
+			&rows,
+			&[RowNumber(1), RowNumber(2), RowNumber(3)],
+			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
+		)
 	}
 }
 

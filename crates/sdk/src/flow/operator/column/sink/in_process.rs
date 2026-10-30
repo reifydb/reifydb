@@ -62,8 +62,14 @@ impl InProcessRowSink {
 		})
 	}
 
-	pub fn finish(self, row_numbers: Vec<RowNumber>, now: DateTime) -> Result<RecordBatch, SdkError> {
+	pub fn finish(
+		self,
+		row_numbers: Vec<RowNumber>,
+		times: &[DateTime],
+		now: DateTime,
+	) -> Result<RecordBatch, SdkError> {
 		check_emit_count(self.cols.first().map_or(0, ColumnBuilder::len), row_numbers.len())?;
+		check_emit_count(row_numbers.len(), times.len())?;
 		let out = self.columns.iter().zip(self.cols).map(|((name, _), data)| data.finish(name)).collect();
 		let out = batch(out)?;
 		let row_count = out.num_rows();
@@ -72,9 +78,10 @@ impl InProcessRowSink {
 			let row_numbers = UInt64Array::from(row_numbers.into_iter().map(|rn| rn.0).collect::<Vec<_>>());
 			stamps.push((SystemColumn::RowNumbers, Arc::new(row_numbers)));
 		}
-		for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
+		for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt] {
 			stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 		}
+		stamps.push((SystemColumn::Time, Arc::new(datetime_array(times.iter().copied()))));
 		Ok(stamp_system_columns(out, stamps)?)
 	}
 

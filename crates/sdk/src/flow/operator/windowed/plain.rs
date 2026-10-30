@@ -37,14 +37,14 @@ use reifydb_flow_async::{
 		meta::NoKey,
 		prefetch::Prefetched,
 		settings::WindowSettings,
-		span::{WindowSpan, window_row_key},
+		span::{WindowAnchor, WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
 	config::ExtensionParams,
 	error::Error,
 	reifydb_assertions,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -300,17 +300,18 @@ where
 		}
 		Ok(())
 	}
-	fn rolling_emitted(emits: RollingEmits<A>) -> Emitted<A> {
+	fn rolling_emitted(emits: RollingEmits<A>, now: DateTime) -> Emitted<A> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		for emit in emits {
 			match (emit.prior, emit.post) {
-				(None, Some(post)) => emitted.0.push((RowNumber(post.row_number), post.last_value)),
+				(None, Some(post)) => emitted.0.push((RowNumber(post.row_number), now, post.last_value)),
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
+					now,
 					Some(prior.last_value),
 					post.last_value,
 				)),
-				(Some(prior), None) => emitted.2.push((RowNumber(prior.row_number), prior.last_value)),
+				(Some(prior), None) => emitted.2.push((RowNumber(prior.row_number), now, prior.last_value)),
 				(None, None) => {}
 			}
 		}
@@ -324,6 +325,7 @@ where
 		store: &mut GuestAsHost<'_, C>,
 		clock: A::Coord,
 	) -> Result<Emitted<A>> {
+		let now = store.0.written_at();
 		let pane = mode.pane;
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
@@ -342,7 +344,7 @@ where
 		};
 		let after = mode.engine.earliest_expiry(store)?;
 		<A::Coord as SealDomain>::rearm_decay(store, settings.fixed_size(), before, after)?;
-		Ok(Self::rolling_emitted(emits))
+		Ok(Self::rolling_emitted(emits, now))
 	}
 
 	fn apply_rolling<C: GuestContext>(
@@ -353,6 +355,7 @@ where
 		ctx: &mut C,
 		groups: RollingGroups<A>,
 	) -> Result<Emitted<A>> {
+		let now = ctx.written_at();
 		let mut store = GuestAsHost(ctx);
 		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
 		if let (Some(seal_span), Some(newest)) = (seal_span, newest) {
@@ -404,7 +407,7 @@ where
 		emits.extend(applied.emits);
 		let after = mode.engine.earliest_expiry(&mut store)?;
 		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
-		Ok(Self::rolling_emitted(emits))
+		Ok(Self::rolling_emitted(emits, now))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -417,6 +420,7 @@ where
 		ctx: &mut C,
 		mut buckets: Buckets<A>,
 	) -> Result<Emitted<A>> {
+		let now = ctx.written_at();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
@@ -495,13 +499,14 @@ where
 		let mut session = batch::<_, PublishState<A::Output>>(&mut store, &keys)?;
 		for (slot, r) in results.into_iter().enumerate() {
 			let mut state = session.value(slot)?.unwrap_or_default();
+			let time = r.span.start.as_time().unwrap_or(now);
 			if r.kind == EmitKind::Remove {
-				publish_row::<A>(r.row_number, None, &mut state, &mut emitted)?;
+				publish_row::<A>(r.row_number, time, None, &mut state, &mut emitted)?;
 				session.set(slot, &state)?;
 				continue;
 			}
 			let out = aggregator.build_output(&r.group, r.span, &r.value);
-			publish_row::<A>(r.row_number, out, &mut state, &mut emitted)?;
+			publish_row::<A>(r.row_number, time, out, &mut state, &mut emitted)?;
 			session.set(slot, &state)?;
 		}
 		session.commit(&mut store)?;
@@ -971,6 +976,7 @@ where
 		let Some(seal_span) = seal_span else {
 			panic!("{}: a session window reached apply without a seal span", A::NAME);
 		};
+		let now = ctx.written_at();
 		let watermark = seal_frontier::<A::Coord>(&mut GuestAsHost(ctx))?;
 		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		let SessionBatch {
@@ -1063,13 +1069,14 @@ where
 				start: session.start,
 				end: session.last.add_span(gap),
 			};
+			let time = span.start.as_time().unwrap_or(now);
 			let Some(out) = aggregator.build_output(&r.group, span, &r.value) else {
 				continue;
 			};
 			match r.kind {
-				EmitKind::Insert => inserts.push((r.row_number, out)),
-				EmitKind::Update => updates.push((r.row_number, None, out)),
-				EmitKind::Remove => removes.push((r.row_number, out)),
+				EmitKind::Insert => inserts.push((r.row_number, time, out)),
+				EmitKind::Update => updates.push((r.row_number, time, None, out)),
+				EmitKind::Remove => removes.push((r.row_number, time, out)),
 			}
 		}
 		Ok((inserts, updates, removes))
@@ -1079,20 +1086,24 @@ where
 	fn emit_batches(
 		&self,
 		ctx: &mut impl GuestContext,
-		inserts: &[(RowNumber, A::Output)],
+		inserts: &[(RowNumber, DateTime, A::Output)],
 		updates: &[UpdateRow<A>],
-		removes: &[(RowNumber, A::Output)],
+		removes: &[(RowNumber, DateTime, A::Output)],
 	) -> Result<()> {
-		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
-			updates.iter().map(|(_, pre, post)| pre.as_ref().unwrap_or(post)),
-			updates.iter().map(|(_, _, post)| post),
+			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
+			updates.iter().map(|(.., post)| post),
 			&row_numbers,
+			&times,
 		)?;
-		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_remove(removes.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		Ok(())
 	}
 }

@@ -245,16 +245,18 @@ where
 				TopKRow::Remove(number, value) => removes.push((number, value)),
 			}
 		}
+		let now = ctx.written_at();
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
+		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers, &vec![now; row_numbers.len()])?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
 		ctx.emit_update(
 			updates.iter().map(|(_, prior, _)| prior),
 			updates.iter().map(|(_, _, new)| new),
 			&row_numbers,
+			&vec![now; row_numbers.len()],
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers)?;
+		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers, &vec![now; row_numbers.len()])?;
 		Ok(())
 	}
 }

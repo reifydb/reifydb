@@ -202,7 +202,8 @@ fn materialize_outputs<O: Row>(
 	if count == 0 {
 		return MaterializedView::empty();
 	}
-	let columns = sink.finish(row_numbers, now).expect("finish sink");
+	let times = vec![now; row_numbers.len()];
+	let columns = sink.finish(row_numbers, &times, now).expect("finish sink");
 	let change = Change::from_flow(
 		OperatorId(0),
 		ChangeVersion::from(CommitVersion(0)),

@@ -4,7 +4,10 @@
 use core::{ffi::c_void, iter, ptr};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	common::extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
@@ -222,7 +225,8 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
-		self.insert_named(post, names.iter().copied(), row_numbers)
+		let times = vec![DateTime::from_nanos(self.written_at_nanos); row_numbers.len()];
+		self.insert_named(post, names.iter().copied(), row_numbers, &times)
 	}
 
 	pub(crate) fn insert_named<'n>(
@@ -230,19 +234,23 @@ impl<'a> ColumnsBuilder<'a> {
 		post: &[CommittedColumn],
 		names: impl ExactSizeIterator<Item = &'n str> + Clone,
 		row_numbers: &[RowNumber],
+		times: &[DateTime],
 	) -> Result<(), SdkError> {
 		assert_eq!(post.len(), names.len(), "emit_insert: post columns and names must have matching length");
 		let row_count = emitted_rows(post, row_numbers)?;
+		check_emit_count(row_count, times.len())?;
 		self.emit_internal(
 			EmitDiffKind::Insert,
 			&[],
 			iter::empty(),
 			0,
 			&[],
+			&[],
 			post,
 			names,
 			row_count,
 			row_numbers,
+			times,
 		)
 	}
 
@@ -258,15 +266,19 @@ impl<'a> ColumnsBuilder<'a> {
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
+		let pre_times = vec![DateTime::from_nanos(self.written_at_nanos); pre_row_numbers.len()];
+		let post_times = vec![DateTime::from_nanos(self.written_at_nanos); post_row_numbers.len()];
 		self.update_named(
 			pre,
 			pre_names.iter().copied(),
 			pre_row_count,
 			pre_row_numbers,
+			&pre_times,
 			post,
 			post_names.iter().copied(),
 			post_row_count,
 			post_row_numbers,
+			&post_times,
 		)
 	}
 
@@ -277,15 +289,19 @@ impl<'a> ColumnsBuilder<'a> {
 		pre_names: impl ExactSizeIterator<Item = &'n str> + Clone,
 		pre_row_count: usize,
 		pre_row_numbers: &[RowNumber],
+		pre_times: &[DateTime],
 		post: &[CommittedColumn],
 		post_names: impl ExactSizeIterator<Item = &'n str> + Clone,
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
+		post_times: &[DateTime],
 	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), pre_names.len(), "emit_update: pre columns/names mismatch");
 		assert_eq!(post.len(), post_names.len(), "emit_update: post columns/names mismatch");
 		check_emit_count(pre_row_count, pre_row_numbers.len())?;
 		check_emit_count(post_row_count, post_row_numbers.len())?;
+		check_emit_count(pre_row_count, pre_times.len())?;
+		check_emit_count(post_row_count, post_times.len())?;
 		for column in pre {
 			check_emit_count(column.row_count, pre_row_numbers.len())?;
 		}
@@ -298,10 +314,12 @@ impl<'a> ColumnsBuilder<'a> {
 			pre_names,
 			pre_row_count,
 			pre_row_numbers,
+			pre_times,
 			post,
 			post_names,
 			post_row_count,
 			post_row_numbers,
+			post_times,
 		)
 	}
 
@@ -311,7 +329,8 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
-		self.remove_named(pre, names.iter().copied(), row_numbers)
+		let times = vec![DateTime::from_nanos(self.written_at_nanos); row_numbers.len()];
+		self.remove_named(pre, names.iter().copied(), row_numbers, &times)
 	}
 
 	pub(crate) fn remove_named<'n>(
@@ -319,10 +338,24 @@ impl<'a> ColumnsBuilder<'a> {
 		pre: &[CommittedColumn],
 		names: impl ExactSizeIterator<Item = &'n str> + Clone,
 		row_numbers: &[RowNumber],
+		times: &[DateTime],
 	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), names.len(), "emit_remove: pre columns and names must have matching length");
 		let row_count = emitted_rows(pre, row_numbers)?;
-		self.emit_internal(EmitDiffKind::Remove, pre, names, row_count, row_numbers, &[], iter::empty(), 0, &[])
+		check_emit_count(row_count, times.len())?;
+		self.emit_internal(
+			EmitDiffKind::Remove,
+			pre,
+			names,
+			row_count,
+			row_numbers,
+			times,
+			&[],
+			iter::empty(),
+			0,
+			&[],
+			&[],
+		)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -333,19 +366,23 @@ impl<'a> ColumnsBuilder<'a> {
 		pre_names: impl Iterator<Item = &'p str> + Clone,
 		pre_row_count: usize,
 		pre_row_numbers: &[RowNumber],
+		pre_times: &[DateTime],
 		post: &[CommittedColumn],
 		post_names: impl Iterator<Item = &'q str> + Clone,
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
+		post_times: &[DateTime],
 	) -> Result<(), SdkError> {
 		let pre_handles: Vec<*mut ColumnBufferHandle> = pre.iter().map(|c| c.handle).collect();
 		let pre_name_ptrs: Vec<*const u8> = pre_names.clone().map(str::as_ptr).collect();
 		let pre_name_lens: Vec<usize> = pre_names.map(str::len).collect();
 		let pre_row_nums: Vec<u64> = pre_row_numbers.iter().map(|r| r.0).collect();
+		let pre_time_nanos: Vec<i64> = pre_times.iter().map(DateTime::to_nanos).collect();
 		let post_handles: Vec<*mut ColumnBufferHandle> = post.iter().map(|c| c.handle).collect();
 		let post_name_ptrs: Vec<*const u8> = post_names.clone().map(str::as_ptr).collect();
 		let post_name_lens: Vec<usize> = post_names.map(str::len).collect();
 		let post_row_nums: Vec<u64> = post_row_numbers.iter().map(|r| r.0).collect();
+		let post_time_nanos: Vec<i64> = post_times.iter().map(DateTime::to_nanos).collect();
 
 		// SAFETY: `self.callbacks` was copied out of the context borrowed for `'a`, so the table is live; every
 		// array argument is either the base of one of the local `Vec`s above, passed with that `Vec`'s own
@@ -377,6 +414,12 @@ impl<'a> ColumnsBuilder<'a> {
 					pre_row_nums.as_ptr()
 				},
 				pre_row_nums.len(),
+				if pre_time_nanos.is_empty() {
+					ptr::null()
+				} else {
+					pre_time_nanos.as_ptr()
+				},
+				pre_time_nanos.len(),
 				if post_handles.is_empty() {
 					ptr::null()
 				} else {
@@ -400,6 +443,12 @@ impl<'a> ColumnsBuilder<'a> {
 					post_row_nums.as_ptr()
 				},
 				post_row_nums.len(),
+				if post_time_nanos.is_empty() {
+					ptr::null()
+				} else {
+					post_time_nanos.as_ptr()
+				},
+				post_time_nanos.len(),
 			)
 		};
 		if code != 0 {

@@ -89,6 +89,7 @@ impl UnmanagedOperator for SlowCounter {
 				seen: total,
 			}],
 			&[RowNumber(1)],
+			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
 		)
 	}
 }

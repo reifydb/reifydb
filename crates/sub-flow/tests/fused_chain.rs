@@ -325,6 +325,7 @@ impl UnmanagedOperator for SymIds {
 						sym,
 					}],
 					&[row_number],
+					&vec![ctx.written_at(); (&[row_number]).len()],
 				)?;
 			}
 		}
