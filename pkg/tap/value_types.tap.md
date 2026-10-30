@@ -535,7 +535,7 @@ params: null
 expected:
   status: success
   shape: Shape.option(Shape.utf8())
-  values: [Option.some('doing'), Option.none('Utf8'), Option.some('done')]
+  values: [Option.some('doing'), Option.none({Enum: 'vt_enum_unit_optional::status'}), Option.some('done')]
   output: |
     +-----------+------+---------+
     |  #rownum  |  id  |    v    |

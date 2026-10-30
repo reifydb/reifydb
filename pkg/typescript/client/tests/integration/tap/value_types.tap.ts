@@ -315,7 +315,7 @@ describe('Value Types', () => {
             [Shape.object({id: Shape.int4(), v: Shape.option(Shape.utf8())})]
         );
         expect(frames).toHaveLength(1);
-        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('doing')}, {'#rownum': 2, id: 2, v: Option.none('Utf8')}, {'#rownum': 3, id: 3, v: Option.some('done')}]);
+        expect(frames[0]).toEqual([{'#rownum': 1, id: 1, v: Option.some('doing')}, {'#rownum': 2, id: 2, v: Option.none({Enum: 'vt_ws_enum_unit_optional::status'})}, {'#rownum': 3, id: 3, v: Option.some('done')}]);
     });
 
     it('enum_with_fields', async () => {
