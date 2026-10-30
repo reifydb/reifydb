@@ -4,8 +4,8 @@
 //! Identity kinds against a fully bootstrapped database.
 //!
 //! These live here rather than beside the engine tests because `TestEngine` does
-//! not run the root bootstrap, so `system::identities` is empty there. Root's
-//! kind is only observable once `bootstrap_root_identity` has run, and that path
+//! not run the identity bootstrap, so `system::identities` is empty there. Root's
+//! kind is only observable once `bootstrap_identities` has run, and that path
 //! writes the row through `create_identity_with_id`, which is separate from the
 //! DDL path every other identity takes.
 

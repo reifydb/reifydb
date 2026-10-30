@@ -15,17 +15,26 @@ use crate::{
 	cache::{CatalogCache, load::identity::load_identities},
 };
 
-pub fn bootstrap_root_identity(
+pub fn bootstrap_identities(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	if CatalogStore::find_identity_by_name(&mut Transaction::Query(&mut qt), "root")?.is_some() {
-		return Ok(());
+	let mut missing = Vec::new();
+	for (name, id, kind) in [
+		("root", IdentityId::root(), IdentityKind::Root),
+		("system", IdentityId::system(), IdentityKind::System),
+	] {
+		if CatalogStore::find_identity_by_name(&mut Transaction::Query(&mut qt), name)?.is_none() {
+			missing.push((name, id, kind));
+		}
 	}
 	drop(qt);
+	if missing.is_empty() {
+		return Ok(());
+	}
 
 	let mut admin = AdminTransaction::new(
 		multi.clone(),
@@ -36,7 +45,9 @@ pub fn bootstrap_root_identity(
 		Durability::Async,
 	)?;
 
-	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root(), IdentityKind::Root)?;
+	for (name, id, kind) in missing {
+		CatalogStore::create_identity_with_id(&mut admin, name, id, kind)?;
+	}
 	admin.commit()?;
 
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());

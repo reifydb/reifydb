@@ -56,7 +56,7 @@ pub fn bootstrap_system_objects(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	identity::bootstrap_root_identity(multi, single, catalog, eventbus)?;
+	identity::bootstrap_identities(multi, single, catalog, eventbus)?;
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
 	authentication::bootstrap_system_authentication(multi, single, catalog, eventbus)?;
