@@ -1075,7 +1075,10 @@ where
 			};
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, time, out)),
-				EmitKind::Update => updates.push((r.row_number, time, None, out)),
+				EmitKind::Update => {
+					let pre = r.prior.as_ref().and_then(|prior| aggregator.build_output(&r.group, span, prior));
+					updates.push((r.row_number, time, pre, out))
+				}
 				EmitKind::Remove => removes.push((r.row_number, time, out)),
 			}
 		}
