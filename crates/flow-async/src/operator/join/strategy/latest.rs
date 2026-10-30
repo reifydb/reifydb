@@ -261,3 +261,49 @@ pub(crate) fn republish(
 	}
 	Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, UInt64Array};
+	use reifydb_core::value::{batch::batch, column::factory::int8};
+	use reifydb_value::value::{
+		container::temporal_array::datetime_array, datetime::DateTime, system_columns::with_system_column,
+	};
+
+	use super::*;
+
+	fn right_rows(row_numbers: [u64; 2], sequences: Option<[u64; 2]>) -> RecordBatch {
+		let now = DateTime::from_nanos(1_000);
+		let user = batch(vec![int8("v", [10, 20])]).unwrap();
+		let mut system: Vec<(SystemColumn, ArrayRef)> = vec![
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers.to_vec()))),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array([now, now]))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array([now, now]))),
+			(SystemColumn::Time, Arc::new(datetime_array([now, now]))),
+		];
+		if let Some(sequences) = sequences {
+			system.push((SystemColumn::Sequence, Arc::new(UInt64Array::from(sequences.to_vec()))));
+		}
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
+	}
+
+	#[test]
+	fn an_equal_time_tie_on_a_wrapped_ring_goes_to_the_higher_sequence_not_the_higher_row_number() {
+		// After a wrap the newer event sits in the lower slot, so a row-number tie-break would pick the older
+		// one.
+		let columns = right_rows([1, 3], Some([3, 2]));
+		assert_eq!(winner_index(&columns, &JoinPick::latest()).unwrap(), Some(0));
+		assert_eq!(winner_index(&columns, &JoinPick::earliest()).unwrap(), Some(1));
+	}
+
+	#[test]
+	fn an_equal_time_tie_without_a_sequence_column_falls_back_to_the_row_number() {
+		// Table sources carry no sequence, so the row number must still break the tie.
+		let columns = right_rows([1, 3], None);
+		assert_eq!(winner_index(&columns, &JoinPick::latest()).unwrap(), Some(1));
+		assert_eq!(winner_index(&columns, &JoinPick::earliest()).unwrap(), Some(0));
+	}
+}
