@@ -51,7 +51,7 @@ impl Actor for WatermarkAdvancer {
 			state.advance_chunk(&self.shared.done_until, &mut scratch.to_notify, ADVANCER_CHUNK)
 		};
 		for waiter in scratch.to_notify.drain(..) {
-			notify_guarded(&waiter);
+			waiter.notify();
 		}
 		match outcome {
 			AdvanceOutcome::MoreWork => {
@@ -65,8 +65,4 @@ impl Actor for WatermarkAdvancer {
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(1)
 	}
-}
-
-fn notify_guarded(waiter: &Arc<WaiterHandle>) {
-	waiter.notify()
 }
