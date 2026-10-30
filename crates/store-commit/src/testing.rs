@@ -96,11 +96,13 @@ impl<R: Read> Read for TestingRows<R> {
 		});
 	}
 
-	fn versions(&self, key: &[u8]) -> Vec<CommitVersion> {
-		self.hooks.on(HookPoint::BeforeVersions {
-			key,
-		});
-		self.rows.versions(key)
+	fn versions_batch(&self, keys: &[EncodedKey]) -> Vec<Vec<CommitVersion>> {
+		for key in keys {
+			self.hooks.on(HookPoint::BeforeVersions {
+				key,
+			});
+		}
+		self.rows.versions_batch(keys)
 	}
 
 	fn stats(&self) -> RowStats {

@@ -116,17 +116,30 @@ impl Read for MemoryRows {
 		walk(closed.iter().map(|map| map.rows()), start, end, false, visit);
 	}
 
-	fn versions(&self, key: &[u8]) -> Vec<CommitVersion> {
-		let active = self.active.read();
-		let closed = self.closed.read();
-		let mut versions: Vec<CommitVersion> = iter::once(active.rows())
-			.chain(closed.iter().map(|map| map.rows()))
-			.filter_map(|rows| rows.versions_for(key))
-			.flat_map(|found| found.iter().map(|(version, _)| version))
-			.collect();
-		versions.sort_unstable();
-		versions.dedup();
-		versions
+	fn versions_batch(&self, keys: &[EncodedKey]) -> Vec<Vec<CommitVersion>> {
+		let mut order: Vec<usize> = (0..keys.len()).collect();
+		order.sort_unstable_by(|a, b| keys[*a].cmp(&keys[*b]));
+		let mut out: Vec<Vec<CommitVersion>> = vec![Vec::new(); keys.len()];
+		let (Some(first), Some(last)) = (order.first(), order.last()) else {
+			return out;
+		};
+		let bounds: (Bound<&[u8]>, Bound<&[u8]>) =
+			(Bound::Included(keys[*first].as_ref()), Bound::Included(keys[*last].as_ref()));
+		let snapshot: Vec<Arc<ClosedRows>> = {
+			let active = self.active.read();
+			let snapshot = self.closed.read().iter().cloned().collect();
+			collect_versions(active.rows(), keys, &order, bounds, &mut out);
+			snapshot
+		};
+		for map in &snapshot {
+			collect_versions(map.rows(), keys, &order, bounds, &mut out);
+		}
+		drop(snapshot);
+		for versions in &mut out {
+			versions.sort_unstable();
+			versions.dedup();
+		}
+		out
 	}
 
 	fn stats(&self) -> RowStats {
@@ -221,6 +234,27 @@ impl Write for MemoryRows {
 }
 
 const REMOVE_CHUNK: usize = 4096;
+
+fn collect_versions(
+	rows: &RowMap,
+	keys: &[EncodedKey],
+	order: &[usize],
+	bounds: (Bound<&[u8]>, Bound<&[u8]>),
+	out: &mut [Vec<CommitVersion>],
+) {
+	let mut range = rows.range(bounds).peekable();
+	for &index in order {
+		let key: &[u8] = keys[index].as_ref();
+		while range.peek().is_some_and(|(held, _)| AsRef::<[u8]>::as_ref(*held) < key) {
+			range.next();
+		}
+		if let Some((held, found)) = range.peek()
+			&& AsRef::<[u8]>::as_ref(*held) == key
+		{
+			out[index].extend(found.iter().map(|(version, _)| version));
+		}
+	}
+}
 
 fn chunks_by_key(pairs: Vec<(EncodedKey, CommitVersion)>, limit: usize) -> Vec<Vec<(EncodedKey, CommitVersion)>> {
 	let mut by_key: BTreeMap<EncodedKey, Vec<CommitVersion>> = BTreeMap::new();

@@ -32,7 +32,7 @@ pub trait Read: Rows {
 		visit: impl FnMut(&EncodedKey, &[(CommitVersion, &Option<CowVec<u8>>)]) -> ControlFlow<()>,
 	);
 
-	fn versions(&self, key: &[u8]) -> Vec<CommitVersion>;
+	fn versions_batch(&self, keys: &[EncodedKey]) -> Vec<Vec<CommitVersion>>;
 
 	fn stats(&self) -> RowStats;
 

@@ -437,8 +437,8 @@ impl<R: Read + Remove> CommitStore<R> {
 
 		let mut pairs: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		let mut retained: Vec<EncodedKey> = Vec::new();
-		for key in keys {
-			let versions = entry.rows.versions(&key);
+		let found = entry.rows.versions_batch(&keys);
+		for (key, versions) in keys.into_iter().zip(found) {
 			let listed = versions.partition_point(|version| *version <= cutoff).saturating_sub(1);
 			let requeue = versions.len() - listed >= 2;
 
