@@ -25,7 +25,7 @@ use reifydb_value::{
 };
 
 use super::error::CastError;
-use crate::value::column::builder::ColumnBuilder;
+use crate::value::column::{builder::ColumnBuilder, factory::utf8};
 
 pub fn to_text(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
 	let name = data.field.name();
@@ -55,6 +55,10 @@ pub fn to_text(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(F
 		ViewData::Uuid4(container) => from_uuid(uuid4s(container), name),
 		ViewData::Uuid7(container) => from_uuid(uuid7s(container), name),
 		ViewData::IdentityId(container) => from_identity_id(identity_ids(container), name),
+		ViewData::Enum {
+			container,
+			..
+		} => Ok(utf8(name, container.iter().map(Option::unwrap_or_default))),
 		_ => {
 			let from = data.get_type();
 			Err(TypeError::UnsupportedCast {

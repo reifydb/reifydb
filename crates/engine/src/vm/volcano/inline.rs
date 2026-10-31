@@ -191,6 +191,7 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 				Expression::Constant(ConstantExpression::None { .. })
 					| Expression::Constant(ConstantExpression::Text { .. })
 					| Expression::Parameter(_) | Expression::Variable(_)
+					| Expression::FieldAccess(_)
 			) {
 				return true;
 			}
@@ -461,15 +462,34 @@ pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Val
 	Ok(Some(value))
 }
 
+fn operand_scalar(ctx: &QueryContext, expression: &Expression) -> Result<Option<Value>> {
+	if let Some(symbol) = param_symbol(expression) {
+		return symbol_scalar(ctx, symbol);
+	}
+	let Expression::FieldAccess(access) = expression else {
+		return Ok(None);
+	};
+	let Expression::Variable(variable) = access.object.as_ref() else {
+		return Ok(None);
+	};
+	let Some(Variable::Columns {
+		batch,
+	}) = ctx.symbols.get(variable.name())
+	else {
+		return Ok(None);
+	};
+	if is_scalar(batch) {
+		return Ok(None);
+	}
+	ctx.symbols.enum_field(batch, access.field.text())
+}
+
 pub(crate) type FlatFields = HashMap<String, Vec<AliasExpression>>;
 
 pub(crate) fn param_enum(ctx: &QueryContext, expression: &Expression) -> Result<Option<String>> {
-	match param_symbol(expression) {
-		Some(symbol) => match symbol_scalar(ctx, symbol)? {
-			Some(Value::Enum(value)) => Ok(Some(value.r#enum)),
-			_ => Ok(None),
-		},
-		None => Ok(None),
+	match operand_scalar(ctx, expression)? {
+		Some(Value::Enum(value)) => Ok(Some(value.r#enum)),
+		_ => Ok(None),
 	}
 }
 
@@ -480,11 +500,8 @@ pub(crate) fn enum_operand(ctx: &QueryContext, expression: &Expression) -> Resul
 	{
 		return Ok(EnumOperand::Name(fragment.clone(), None));
 	}
-	let Some(symbol) = param_symbol(expression) else {
-		return Ok(EnumOperand::Other);
-	};
 	let fragment = expression.full_fragment_owned();
-	Ok(match symbol_scalar(ctx, symbol)? {
+	Ok(match operand_scalar(ctx, expression)? {
 		Some(Value::Utf8(name)) => EnumOperand::Name(fragment.with_text(name), None),
 		Some(Value::Enum(value)) => EnumOperand::Name(fragment.with_text(value.variant), Some(value.r#enum)),
 		Some(Value::None {
@@ -502,10 +519,7 @@ pub(crate) fn enum_name(ctx: &QueryContext, expression: &Expression) -> Result<O
 	{
 		return Ok(Some(fragment.clone()));
 	}
-	let Some(symbol) = param_symbol(expression) else {
-		return Ok(None);
-	};
-	match symbol_scalar(ctx, symbol)? {
+	match operand_scalar(ctx, expression)? {
 		Some(Value::Utf8(name)) => Ok(Some(expression.full_fragment_owned().with_text(name))),
 		Some(Value::Enum(value)) => Ok(Some(expression.full_fragment_owned().with_text(value.variant))),
 		_ => Ok(None),

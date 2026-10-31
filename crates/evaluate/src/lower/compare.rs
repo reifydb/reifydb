@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, LargeStringArray, cast::AsArray};
 use arrow_schema::{DataType, FieldRef};
 use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{
@@ -48,6 +50,19 @@ pub(super) fn lower_compare<'e>(
 	}
 	let (left_type, right_type) = (inner_type(&left.field)?, inner_type(&right.field)?);
 	let equality = matches!(binary_op, BinaryOp::Equal | BinaryOp::NotEqual);
+	if is_enum(&left_type) || is_enum(&right_type) {
+		if !equality || !enum_comparable(&left_type, &right_type) {
+			return Err(not_applicable(binary_op, left_type, right_type, fragment).into());
+		}
+		return Ok(Node {
+			expr: Expr::BinaryExpr(BinaryExpr::new(
+				Box::new(enum_text(left.expr)),
+				df_op,
+				Box::new(enum_text(right.expr)),
+			)),
+			field,
+		});
+	}
 	let Some(target) = field_compare_target((&left.field, &left_type), (&right.field, &right_type), equality)?
 	else {
 		return Err(not_applicable(binary_op, left_type, right_type, fragment).into());
@@ -91,10 +106,34 @@ fn check_between(value: &Node, bound: &Node, fragment: &Fragment) -> Result<()> 
 		return Ok(());
 	}
 	let (value_type, bound_type) = (inner_type(&value.field)?, inner_type(&bound.field)?);
+	if is_enum(&value_type) || is_enum(&bound_type) {
+		return Err(not_applicable(BinaryOp::Between, value_type, bound_type, fragment.clone()));
+	}
 	match field_compare_target((&value.field, &value_type), (&bound.field, &bound_type), false)? {
 		Some(_) => Ok(()),
 		None => Err(not_applicable(BinaryOp::Between, value_type, bound_type, fragment.clone())),
 	}
+}
+
+pub(super) fn is_enum(value_type: &ValueType) -> bool {
+	matches!(value_type, ValueType::Enum(_))
+}
+
+pub(super) fn enum_comparable(left: &ValueType, right: &ValueType) -> bool {
+	match (left, right) {
+		(ValueType::Enum(left), ValueType::Enum(right)) => left == right,
+		(ValueType::Enum(_), ValueType::Utf8) | (ValueType::Utf8, ValueType::Enum(_)) => true,
+		_ => false,
+	}
+}
+
+pub(super) fn enum_text(expr: Expr) -> Expr {
+	udf(
+		EnumText {
+			signature: volatile(),
+		},
+		vec![expr],
+	)
 }
 
 pub(super) fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, fragment: &Fragment) -> Expr {
@@ -160,6 +199,47 @@ impl ScalarUDFImpl for CompareCast {
 	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
 		let column = (args.arg_fields[0].clone(), args.args[0].clone().into_array(args.number_rows)?);
 		Ok(ColumnarValue::Array(cast_to(&column, &self.target).map_err(into_external)?))
+	}
+
+	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+		Ok(arg_types.to_vec())
+	}
+}
+
+#[derive(Debug, PartialEq, Hash)]
+struct EnumText {
+	signature: Signature,
+}
+
+impl Eq for EnumText {}
+
+impl ScalarUDFImpl for EnumText {
+	fn name(&self) -> &str {
+		"enum_text"
+	}
+
+	fn signature(&self) -> &Signature {
+		&self.signature
+	}
+
+	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+		internal_err!("enum_text types its output through return_field_from_args")
+	}
+
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+		Ok(typed_field(self.name(), ValueType::Utf8, args.arg_fields[0].is_nullable()))
+	}
+
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+		let array = args.args[0].clone().into_array(args.number_rows)?;
+		let lowered: LargeStringArray = match array.data_type() {
+			DataType::LargeUtf8 => {
+				array.as_string::<i64>().iter().map(|v| v.map(str::to_lowercase)).collect()
+			}
+			DataType::Utf8 => array.as_string::<i32>().iter().map(|v| v.map(str::to_lowercase)).collect(),
+			other => return internal_err!("enum_text takes text, got {other}"),
+		};
+		Ok(ColumnarValue::Array(Arc::new(lowered)))
 	}
 
 	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {

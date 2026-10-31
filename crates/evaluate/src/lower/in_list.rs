@@ -121,6 +121,7 @@ fn lower_in_values(ctx: &EvalContext, operator: &'static str, e: &InExpression, 
 	let mut has_none = false;
 	let mut target = None;
 	let mut nodes = Vec::with_capacity(values.len());
+	let mut enum_items = Vec::new();
 	for item in values {
 		let (field, array) = factory::from_one(name, item);
 		let node = literal::row_zero(operator, &field, &array)?;
@@ -129,6 +130,20 @@ fn lower_in_values(ctx: &EvalContext, operator: &'static str, e: &InExpression, 
 			continue;
 		}
 		let item_type = inner_type(&node.field)?;
+		if compare::is_enum(&value_type) || compare::is_enum(&item_type) {
+			if !compare::enum_comparable(&value_type, &item_type) {
+				return Err(compare::not_applicable(
+					BinaryOp::Equal,
+					value_type,
+					item_type,
+					e.fragment.clone(),
+				)
+				.into());
+			}
+			nullable |= node.field.is_nullable();
+			enum_items.push(compare::enum_text(node.expr));
+			continue;
+		}
 		let item_target = field_compare_target((&value.field, &value_type), (&node.field, &item_type), true)?
 			.ok_or_else(|| {
 			compare::not_applicable(
@@ -151,6 +166,9 @@ fn lower_in_values(ctx: &EvalContext, operator: &'static str, e: &InExpression, 
 		nodes.push((node, item_type));
 	}
 	let mut expr = match target {
+		_ if !enum_items.is_empty() => {
+			Expr::InList(InList::new(Box::new(compare::enum_text(value.expr)), enum_items, false))
+		}
 		Some(target) => {
 			let list = nodes
 				.into_iter()
