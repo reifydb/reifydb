@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt8Array};
-use arrow_schema::FieldRef;
+use arrow_schema::{Field, FieldRef};
 use reifydb_core::{
 	internal,
 	value::batch::{is_scalar, single_row},
@@ -21,11 +21,21 @@ use reifydb_value::{
 		enum_variant::EnumVariant,
 		sumtype::SumTypeId,
 		system_columns::{sumtype_tag_position, user_columns},
-		value_type::{ValueType, field::from_field},
+		value_type::{
+			ValueType,
+			field::{from_field, is_sumtype_tag},
+		},
 	},
 };
 
 use crate::{Result, error::EvaluateError};
+
+pub fn field_label(field: &Field) -> String {
+	match is_sumtype_tag(field) {
+		true => field.name().strip_suffix("_tag").unwrap_or(field.name()).to_string(),
+		false => field.name().clone(),
+	}
+}
 
 pub fn strip_dollar_prefix(name: &str) -> &str {
 	name.strip_prefix('$').unwrap_or(name)

@@ -35,7 +35,7 @@ use crate::{
 		compare::{Equal, compare_columns},
 		context::EvalContext,
 	},
-	stack::Variable,
+	stack::{Variable, field_label},
 };
 
 pub(crate) fn variable_column(
@@ -149,9 +149,8 @@ pub(crate) fn variable_field_column(
 					Ok(factory::from_many(field_name, value, row_count))
 				}
 				None => {
-					let available: Vec<String> = user_columns(batch)
-						.map(|(field, _)| field.name().to_string())
-						.collect();
+					let available: Vec<String> =
+						user_columns(batch).map(|(field, _)| field_label(field)).collect();
 					Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::FieldNotFound {
 							variable: variable_name.to_string(),

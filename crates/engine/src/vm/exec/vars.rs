@@ -11,7 +11,7 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, factory},
 	},
 };
-use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
+use reifydb_evaluate::stack::{Variable, field_label, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -165,7 +165,7 @@ impl<'a> Vm<'a> {
 					}
 					None => {
 						let available: Vec<String> = user_columns(columns)
-							.map(|(field, _)| field.name().clone())
+							.map(|(field, _)| field_label(field))
 							.collect();
 						return Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::FieldNotFound {
