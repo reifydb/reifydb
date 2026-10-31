@@ -138,9 +138,9 @@ pub fn sumtype_not_found(fragment: Fragment, namespace: &str, name: &str) -> Dia
 	Diagnostic {
 		code: "CA_002".to_string(),
 		rql: None,
-		message: format!("type `{}::{}` not found", namespace, name),
+		message: format!("enum `{}::{}` not found", namespace, name),
 		fragment,
-		label: Some("unknown type".to_string()),
+		label: Some("unknown enum".to_string()),
 		help: Some(format!("create the enum first with `CREATE ENUM {}::{} {{ ... }}`", namespace, name)),
 		column: None,
 		notes: vec![],
@@ -226,7 +226,7 @@ pub fn primary_key_invalid_type(fragment: Fragment, column: &str, ty: ValueType)
 
 pub fn enum_value_expected(fragment: Fragment, column: &str, sumtype: &str, actual: ValueType) -> Diagnostic {
 	Diagnostic {
-		code: "CA_105".to_string(),
+		code: "CA_134".to_string(),
 		rql: None,
 		message: format!(
 			"`{}` has type `{}`, but column `{}` holds the enum `{}`",

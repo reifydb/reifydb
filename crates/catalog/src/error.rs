@@ -14,7 +14,7 @@ use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 	util::hash::Hash128,
-	value::value_type::ValueType,
+	value::{sumtype::SumTypeId, value_type::ValueType},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,6 +318,12 @@ pub enum CatalogError {
 		reason: String,
 	},
 
+	#[error("stored sumtype {id} does not decode: {reason}")]
+	SumTypeCorrupt {
+		id: SumTypeId,
+		reason: String,
+	},
+
 	#[error("config of source '{name}' does not encode: {reason}")]
 	SourceConfigEncode {
 		name: String,
@@ -591,7 +597,7 @@ impl IntoDiagnostic for CatalogError {
 					),
 					CatalogObjectKind::Enum => (
 						"CA_002",
-						"type",
+						"enum",
 						format!("create the enum first with `CREATE ENUM {}::{} {{ ... }}`", namespace, name),
 					),
 					CatalogObjectKind::Event => (
@@ -691,7 +697,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				let label_str = match kind {
 					CatalogObjectKind::Namespace => "unknown namespace reference".to_string(),
-					CatalogObjectKind::Enum => "unknown type".to_string(),
+					CatalogObjectKind::Enum => "unknown enum".to_string(),
 					CatalogObjectKind::Event => "unknown event reference".to_string(),
 					_ => format!("unknown {} reference", kind_str),
 				};
@@ -1428,6 +1434,22 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("invalid sink config".to_string()),
 				help: Some("the catalog row is corrupt; drop and re-create the sink".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SumTypeCorrupt {
+				id,
+				reason,
+			} => Diagnostic {
+				code: "CA_135".to_string(),
+				rql: None,
+				message: format!("stored sumtype {} does not decode: {}", id, reason),
+				fragment: Fragment::None,
+				label: Some("corrupt sumtype".to_string()),
+				help: Some("the sumtype catalog row is corrupt; restore it from a backup".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

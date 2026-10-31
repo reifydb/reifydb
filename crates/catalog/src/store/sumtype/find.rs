@@ -18,7 +18,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes))))
+		Ok(Some(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn find_sumtype_by_name(

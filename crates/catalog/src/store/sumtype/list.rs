@@ -40,7 +40,7 @@ impl CatalogStore {
 		let stream = rx.range(SumTypeKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
-			results.push(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes)));
+			results.push(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes))?);
 		}
 
 		Ok(results)
