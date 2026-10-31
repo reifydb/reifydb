@@ -271,7 +271,12 @@ pub fn typed_none(name: &str, ty: &ValueType) -> (FieldRef, ArrayRef) {
 }
 
 pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef) {
-	let (field, array) = default_typed(name, ty, len);
+	let (field, array) = match ty {
+		ValueType::Enum(r#enum) => {
+			column(name, ValueType::Enum(r#enum), Arc::new(LargeStringArray::new_null(len)))
+		}
+		other => default_typed(name, other, len),
+	};
 	let array = with_validity(array, NullBuffer::new_null(len));
 	(Arc::new(field.as_ref().clone().with_nullable(true)), array)
 }

@@ -21,7 +21,7 @@ use reifydb_value::{
 		enum_variant::EnumVariant,
 		sumtype::SumTypeId,
 		system_columns::{sumtype_tag_position, user_columns},
-		value_type::field::from_field,
+		value_type::{ValueType, field::from_field},
 	},
 };
 
@@ -258,7 +258,9 @@ impl SymbolTable {
 			.downcast_ref::<UInt8Array>()
 			.ok_or_else(|| error!(internal!("enum tag column of {} is not uint8", field)))?;
 		if tags.is_null(0) {
-			return Ok(Some(Value::none()));
+			return Ok(Some(Value::None {
+				inner: ValueType::Enum(names.name.clone()),
+			}));
 		}
 		let tag = tags.value(0);
 		let variant = names
