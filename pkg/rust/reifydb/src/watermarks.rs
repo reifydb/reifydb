@@ -7,7 +7,8 @@ use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		flow::{FlowWatermarkRow, FlowWatermarkSampler},
+		catalog::flow::FlowId,
+		flow::{FlowTickSampler, FlowWatermarkRow, FlowWatermarkSampler},
 		subscription::{SubscriptionWatermarkRow, SubscriptionWatermarkSampler},
 	},
 };
@@ -43,8 +44,10 @@ impl<'a> Watermarks<'a> {
 
 	pub fn flow(&self) -> Option<FlowWatermarks<'a>> {
 		let source = self.db.engine().ioc().resolve::<FlowWatermarkSampler>().ok()?;
+		let ticks = self.db.engine().ioc().resolve::<FlowTickSampler>().ok()?;
 		Some(FlowWatermarks {
 			source,
+			ticks,
 			_marker: PhantomData,
 		})
 	}
@@ -175,12 +178,17 @@ impl CdcWatermarks<'_> {
 
 pub struct FlowWatermarks<'a> {
 	source: FlowWatermarkSampler,
+	ticks: FlowTickSampler,
 	_marker: PhantomData<&'a Database>,
 }
 
 impl FlowWatermarks<'_> {
 	pub fn all(&self) -> Vec<FlowWatermarkRow> {
 		self.source.all()
+	}
+
+	pub fn ticks(&self) -> Vec<(FlowId, u64)> {
+		self.ticks.all()
 	}
 }
 

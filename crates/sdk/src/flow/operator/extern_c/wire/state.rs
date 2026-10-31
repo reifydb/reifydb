@@ -44,4 +44,6 @@ pub struct ExternCStateUsage {
 	pub state_bytes: u64,
 	pub row_number_entries: u64,
 	pub row_number_bytes: u64,
+	pub memory_present: u8,
+	pub row_number_cache_present: u8,
 }

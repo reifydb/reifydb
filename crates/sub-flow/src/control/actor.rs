@@ -945,6 +945,7 @@ impl FlowActor {
 			Ok(()) => {
 				state.retry_count = 0;
 				self.move_lookup_lease(state);
+				self.flow_tracker.record_tick(self.flow_id);
 				self.resume_after_commit(state, ctx, false);
 			}
 			Err(e) => {
@@ -995,6 +996,8 @@ impl FlowActor {
 					state.retry_count = 0;
 					if produced_output(&pending, emitted) {
 						self.dispatch_tick_commit(state, ctx, pending);
+					} else {
+						self.flow_tracker.record_tick(self.flow_id);
 					}
 				}
 				Err(e) => {
@@ -3463,6 +3466,23 @@ mod tick_failures {
 
 		assert_eq!(harness.state().retry_count, 0, "a landed commit is progress");
 		assert!(!harness.state().poisoned, "a flow that just committed must not be one strike from poison");
+	}
+
+	#[test]
+	fn a_tick_commit_that_lands_counts_a_completed_tick() {
+		// A flow that emits on every tick only completes ticks here, otherwise a wait for its next tick never
+		// ends.
+		let (_te, _health, actor) = quiet_actor();
+		let tracker = actor.flow_tracker.clone();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Ok(()),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
+
+		assert_eq!(tracker.ticks(), vec![(FLOW, 1)], "a landed tick commit must count as one completed tick");
 	}
 
 	#[test]

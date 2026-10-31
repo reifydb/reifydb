@@ -280,10 +280,17 @@ impl HostOperator for ExternCOperatorHandle {
 }
 
 fn sample_from_usage(usage: &ExternCStateUsage) -> OperatorSample {
-	let state = StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes));
-	let row_numbers =
-		StateMemory::new(Count::new(usage.row_number_entries), ByteSize::from_bytes(usage.row_number_bytes));
-	OperatorSample::with_memory(state).with_row_number_cache(row_numbers)
+	OperatorSample {
+		memory: (usage.memory_present != 0).then(|| {
+			StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes))
+		}),
+		row_number_cache: (usage.row_number_cache_present != 0).then(|| {
+			StateMemory::new(
+				Count::new(usage.row_number_entries),
+				ByteSize::from_bytes(usage.row_number_bytes),
+			)
+		}),
+	}
 }
 
 impl ExternCOperatorHandle {
@@ -349,14 +356,16 @@ mod tests {
 			state_bytes: 128,
 			row_number_entries: 2,
 			row_number_bytes: 64,
+			memory_present: 1,
+			row_number_cache_present: 1,
 		};
 
 		let sample = sample_from_usage(&usage);
 
-		let memory = sample.memory.expect("state memory always ships");
+		let memory = sample.memory.expect("a present state memory must ship");
 		assert_eq!(memory.entries.as_u64(), 3);
 		assert_eq!(memory.bytes.as_bytes(), 128);
-		let rows = sample.row_number_cache.expect("row number cache always ships");
+		let rows = sample.row_number_cache.expect("a present row number cache must ship");
 		assert_eq!(rows.entries.as_u64(), 2);
 		assert_eq!(rows.bytes.as_bytes(), 64);
 	}

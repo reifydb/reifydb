@@ -73,6 +73,26 @@ impl FlowWatermarkSampler {
 	}
 }
 
+#[derive(Clone)]
+pub struct FlowTickSampler {
+	fetch: Arc<dyn Fn() -> Vec<(FlowId, u64)> + Send + Sync>,
+}
+
+impl FlowTickSampler {
+	pub fn new<F>(fetch: F) -> Self
+	where
+		F: Fn() -> Vec<(FlowId, u64)> + Send + Sync + 'static,
+	{
+		Self {
+			fetch: Arc::new(fetch),
+		}
+	}
+
+	pub fn all(&self) -> Vec<(FlowId, u64)> {
+		(self.fetch)()
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct FlowUnitRow {
 	pub flow_id: FlowId,

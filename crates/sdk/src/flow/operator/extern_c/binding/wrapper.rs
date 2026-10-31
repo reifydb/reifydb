@@ -364,10 +364,12 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> ExternCStateUsage {
 		if let Some(memory) = sample.memory {
 			usage.state_entries = memory.entries.as_u64();
 			usage.state_bytes = memory.bytes.as_bytes();
+			usage.memory_present = 1;
 		}
 		if let Some(rows) = sample.row_number_cache {
 			usage.row_number_entries = rows.entries.as_u64();
 			usage.row_number_bytes = rows.bytes.as_bytes();
+			usage.row_number_cache_present = 1;
 		}
 	}
 	usage

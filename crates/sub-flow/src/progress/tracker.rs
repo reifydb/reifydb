@@ -147,6 +147,7 @@ struct FlowProgress {
 	sources: HashMap<FlowId, SourceVersion>,
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 	units: HashMap<FlowId, FlowId>,
+	ticks: HashMap<FlowId, u64>,
 }
 
 impl FlowProgress {
@@ -319,6 +320,14 @@ impl FlowPositionTracker {
 		self.inner.write().advance_last_commit(flow_id, commit);
 	}
 
+	pub fn record_tick(&self, flow_id: FlowId) {
+		*self.inner.write().ticks.entry(flow_id).or_insert(0) += 1;
+	}
+
+	pub fn ticks(&self) -> Vec<(FlowId, u64)> {
+		self.inner.read().ticks.iter().map(|(flow_id, ticks)| (*flow_id, *ticks)).collect()
+	}
+
 	pub fn last_commit(&self, flow_id: FlowId) -> Option<CommitVersion> {
 		self.inner.read().last_commits.get(&flow_id).copied()
 	}
@@ -420,6 +429,7 @@ impl FlowPositionTracker {
 		progress.sources.remove(&flow_id);
 		progress.lookup_producers.remove(&flow_id);
 		progress.units.remove(&flow_id);
+		progress.ticks.remove(&flow_id);
 	}
 
 	pub fn all(&self) -> HashMap<FlowId, CommitVersion> {
