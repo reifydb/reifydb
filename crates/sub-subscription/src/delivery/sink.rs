@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, iter::once, sync::Arc};
+use std::{
+	collections::{BTreeSet, HashMap},
+	iter::once,
+	sync::Arc,
+};
 
-use arrow_array::RecordBatch;
+use arrow_array::{Array, LargeStringArray, RecordBatch, UInt8Array};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId},
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
+	internal_error,
 	metrics::heap::HeapSize,
-	value::batch::take_rows,
+	value::batch::{batch_with, take_rows},
 };
 use reifydb_flow::operator::source::decode_change;
 use reifydb_flow_async::operator::{HostOperator, host::HostContext};
@@ -21,7 +26,12 @@ use reifydb_value::{
 	value::{
 		diff_type::DiffType,
 		row_number::RowNumber,
+		sumtype::SumTypeId,
 		system_columns::{SystemColumn, keep_system_columns, require_row_numbers},
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, to_field},
+		},
 	},
 };
 
@@ -33,10 +43,63 @@ struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
 }
 
+pub struct EnumNames(HashMap<SumTypeId, (String, HashMap<u8, String>)>);
+
+impl EnumNames {
+	pub fn new(names: HashMap<SumTypeId, (String, HashMap<u8, String>)>) -> Self {
+		Self(names)
+	}
+
+	fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+		if self.0.is_empty() {
+			return Ok(batch);
+		}
+		let schema = batch.schema();
+		let mut columns = Vec::with_capacity(batch.num_columns());
+		for (field, array) in schema.fields().iter().zip(batch.columns()) {
+			let field_type = from_field(field)?;
+			let Some((r#enum, variants)) = field_type.sumtype.and_then(|id| self.0.get(&id)) else {
+				columns.push((field.clone(), array.clone()));
+				continue;
+			};
+			let tags = array
+				.as_any()
+				.downcast_ref::<UInt8Array>()
+				.ok_or_else(|| internal_error!("sumtype tag column {} is not uint8", field.name()))?;
+			let names = tags
+				.iter()
+				.map(|tag| {
+					tag.map(|tag| {
+						variants.get(&tag).map(String::as_str).ok_or_else(|| {
+							internal_error!(
+								"tag {tag} of {} is outside its variants",
+								field.name()
+							)
+						})
+					})
+					.transpose()
+				})
+				.collect::<Result<Vec<_>>>()?;
+			let enum_type = ValueType::Enum(r#enum.clone());
+			let enum_type = FieldType::from(match field_type.value_type {
+				Some(ValueType::Option(_)) => ValueType::Option(Box::new(enum_type)),
+				_ => enum_type,
+			});
+			let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
+			columns.push((
+				Arc::new(to_field(name, &enum_type)),
+				Arc::new(LargeStringArray::from(names)) as _,
+			));
+		}
+		batch_with(&schema, columns, batch.num_rows())
+	}
+}
+
 pub struct EphemeralSinkPlan {
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	keep: Vec<SystemColumn>,
+	names: EnumNames,
 	delivery: Arc<DeliveryBuffer>,
 }
 
@@ -50,6 +113,7 @@ impl EphemeralSinkSubscriptionOperator {
 		operator: OperatorId,
 		subscription_id: SubscriptionId,
 		named_system_columns: &[SystemColumn],
+		names: EnumNames,
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
@@ -59,6 +123,7 @@ impl EphemeralSinkSubscriptionOperator {
 				keep: once(SystemColumn::RowNumbers)
 					.chain(named_system_columns.iter().copied())
 					.collect(),
+				names,
 				delivery,
 			}),
 			state: DeliveredState::default(),
@@ -68,7 +133,7 @@ impl EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkPlan {
 	fn stage(&self, batch: &RecordBatch, op: DiffType) -> Result<()> {
-		let batch = keep_system_columns(batch, &self.keep)?;
+		let batch = self.names.apply(keep_system_columns(batch, &self.keep)?)?;
 		reifydb_assertions! {
 			assert!(
 				batch.num_rows() == 0 || reifydb_value::value::system_columns::system_column(&batch, SystemColumn::RowNumbers).is_some(),

@@ -227,7 +227,14 @@ impl SubscriptionWorkerActor {
 
 		let result = self.engine.begin_command(IdentityId::system(), Durability::Async).and_then(|mut cmd| {
 			let mut txn = Transaction::Command(&mut cmd);
-			register_ephemeral_flow(&mut state.flow_engine, &mut txn, flow_dag, &ctx, self.delivery.clone())
+			register_ephemeral_flow(
+				&mut state.flow_engine,
+				&self.catalog,
+				&mut txn,
+				flow_dag,
+				&ctx,
+				self.delivery.clone(),
+			)
 		});
 
 		match result {
