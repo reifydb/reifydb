@@ -401,7 +401,10 @@ impl<'a> Vm<'a> {
 
 				Instruction::ForInit {
 					variable_name,
-				} => self.exec_for_init(variable_name)?,
+				} => {
+					self.register_enums(services, tx)?;
+					self.exec_for_init(variable_name)?
+				}
 				Instruction::ForNext {
 					variable_name,
 					addr,

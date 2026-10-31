@@ -256,27 +256,30 @@ impl SymbolTable {
 		let Some(index) = sumtype_tag_position(batch, field) else {
 			return Ok(None);
 		};
-		let Some(id) = from_field(batch.schema_ref().field(index))?.sumtype else {
+		self.enum_value(batch.schema_ref().field(index), batch.column(index), 0)
+	}
+
+	pub fn enum_value(&self, field: &Field, array: &ArrayRef, row: usize) -> Result<Option<Value>> {
+		let Some(id) = from_field(field)?.sumtype else {
 			return Ok(None);
 		};
 		let Some(names) = self.inner.enums.get(&id) else {
 			return Ok(None);
 		};
-		let tags = batch
-			.column(index)
+		let tags = array
 			.as_any()
 			.downcast_ref::<UInt8Array>()
-			.ok_or_else(|| error!(internal!("enum tag column of {} is not uint8", field)))?;
-		if tags.is_null(0) {
+			.ok_or_else(|| error!(internal!("enum tag column {} is not uint8", field.name())))?;
+		if tags.is_null(row) {
 			return Ok(Some(Value::None {
 				inner: ValueType::Enum(names.name.clone()),
 			}));
 		}
-		let tag = tags.value(0);
+		let tag = tags.value(row);
 		let variant = names
 			.variants
 			.get(&tag)
-			.ok_or_else(|| error!(internal!("tag {} of {} is outside its variants", tag, field)))?;
+			.ok_or_else(|| error!(internal!("tag {} of {} is outside its variants", tag, field.name())))?;
 		Ok(Some(Value::Enum(EnumVariant::new(names.name.clone(), variant.clone()))))
 	}
 

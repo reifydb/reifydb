@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_evaluate::stack::Variable;
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, column_view::ColumnView, system_columns::user_columns},
+	value::{Value, column_view::ColumnView, system_columns::user_columns, value_type::field::is_sumtype_tag},
 };
 
 use crate::{Result, vm::vm::Vm};
@@ -87,11 +87,18 @@ impl<'a> Vm<'a> {
 		let user: Vec<_> = user_columns(&columns).collect();
 		if user.len() == 1 {
 			let (field, array) = user[0];
-			let value = ColumnView::try_from((array, field.as_ref()))?.get_value(index);
+			let value = match self.symbols.enum_value(field, array, index)? {
+				Some(value) => value,
+				None => ColumnView::try_from((array, field.as_ref()))?.get_value(index),
+			};
 			self.symbols.set(clean_name.to_string(), Variable::scalar(value), true)?;
 		} else {
 			let mut row_columns = Vec::new();
 			for (field, array) in user {
+				if is_sumtype_tag(field) {
+					row_columns.push((field.clone(), array.slice(index, 1)));
+					continue;
+				}
 				let value = ColumnView::try_from((array, field.as_ref()))?.get_value(index);
 				let column = match value {
 					Value::None {
