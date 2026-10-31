@@ -69,6 +69,7 @@ pub(crate) fn sector_span(offset: u64, len: usize, sector_bytes: usize) -> usize
 }
 
 struct FileData {
+	len: usize,
 	bytes: Vec<u8>,
 	sectors: Vec<SectorState>,
 	shadow: BTreeMap<usize, (SectorState, Vec<u8>)>,
@@ -77,23 +78,32 @@ struct FileData {
 impl FileData {
 	fn new(len: usize, sector_bytes: usize) -> Self {
 		Self {
-			bytes: vec![0u8; len],
+			len,
+			bytes: Vec::new(),
 			sectors: vec![SectorState::Unwritten; len.div_ceil(sector_bytes)],
 			shadow: BTreeMap::new(),
 		}
 	}
 
 	fn resize(&mut self, len: usize, sector_bytes: usize) {
-		self.bytes.resize(len, 0);
+		self.len = len;
+		self.bytes.truncate(len);
 		self.sectors.resize(len.div_ceil(sector_bytes), SectorState::Unwritten);
 		let sectors = self.sectors.len();
 		self.shadow.retain(|sector, _| *sector < sectors);
 	}
 
+	fn materialize(&mut self, end: usize) {
+		if end > self.bytes.len() {
+			self.bytes.resize(end, 0);
+		}
+	}
+
 	fn dirty(&mut self, sector: usize, sector_bytes: usize) {
 		if !self.shadow.contains_key(&sector) {
 			let lo = sector * sector_bytes;
-			let hi = (lo + sector_bytes).min(self.bytes.len());
+			let hi = (lo + sector_bytes).min(self.len);
+			self.materialize(hi);
 			self.shadow.insert(sector, (self.sectors[sector], self.bytes[lo..hi].to_vec()));
 		}
 		self.sectors[sector] = SectorState::Dirty;
@@ -112,10 +122,11 @@ impl FileData {
 	fn revert(&mut self, sector_bytes: usize) {
 		while let Some((sector, (state, bytes))) = self.shadow.pop_first() {
 			let lo = sector * sector_bytes;
-			if lo >= self.bytes.len() {
+			if lo >= self.len {
 				continue;
 			}
-			let hi = (lo + bytes.len()).min(self.bytes.len());
+			let hi = (lo + bytes.len()).min(self.len);
+			self.materialize(hi);
 			self.bytes[lo..hi].copy_from_slice(&bytes[..hi - lo]);
 			if sector < self.sectors.len() {
 				self.sectors[sector] = state;
@@ -140,11 +151,15 @@ impl MemoryFileState {
 	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
 		let data = self.data.lock();
 		let offset = offset as usize;
-		if offset >= data.bytes.len() {
+		if offset >= data.len {
 			return Ok(0);
 		}
-		let read = buf.len().min(data.bytes.len() - offset);
-		buf[..read].copy_from_slice(&data.bytes[offset..offset + read]);
+		let read = buf.len().min(data.len - offset);
+		let stored = data.bytes.len().saturating_sub(offset).min(read);
+		if stored > 0 {
+			buf[..stored].copy_from_slice(&data.bytes[offset..offset + stored]);
+		}
+		buf[stored..read].fill(0);
 		Ok(read)
 	}
 
@@ -156,9 +171,10 @@ impl MemoryFileState {
 		let offset = offset as usize;
 		let end = offset + buf.len();
 		let mut data = self.data.lock();
-		if end > data.bytes.len() {
+		if end > data.len {
 			data.resize(end, sector_bytes);
 		}
+		data.materialize(end);
 		let first = offset / sector_bytes;
 		let last = (end - 1) / sector_bytes;
 		for sector in first..=last {
@@ -184,7 +200,7 @@ impl MemoryFileState {
 	}
 
 	fn len(&self) -> Result<u64> {
-		Ok(self.data.lock().bytes.len() as u64)
+		Ok(self.data.lock().len as u64)
 	}
 
 	#[cfg(any(test, feature = "testing"))]

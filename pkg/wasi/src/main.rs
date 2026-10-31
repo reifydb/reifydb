@@ -51,7 +51,7 @@ use reifydb_runtime::{
 	actor::timers::drain_expired_timers,
 	context::{RuntimeContext, clock::Clock},
 	pool::PoolConfig,
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
@@ -70,13 +70,13 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
+use reifydb_value::{Result as ValueResult, byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
-	_runtime: Runtime,
+	runtime: Runtime,
 }
 
 impl Bridge {
@@ -232,14 +232,37 @@ impl Bridge {
 		Ok(Bridge {
 			engine,
 			flow_subsystem,
-			_runtime: runtime,
+			runtime,
 		})
+	}
+}
+
+impl Bridge {
+	fn shutdown(&self) -> ValueResult<()> {
+		let mut errors = ShutdownErrors::new("bridge");
+		errors.step("flow", self.flow_subsystem.shutdown());
+		errors.step("runtime", self.runtime.shutdown());
+		let ioc = self.engine.ioc();
+		if let Some(multi_store) = ioc.try_resolve::<MultiStore>() {
+			errors.step("multi store", multi_store.shutdown());
+		}
+		if let Some(single_store) = ioc.try_resolve::<SingleStore>() {
+			errors.step("single store", single_store.shutdown());
+		}
+		if let Some(operator_store) = ioc.try_resolve::<OperatorStore>() {
+			errors.step("operator store", operator_store.shutdown());
+		}
+		if let Some(cdc_store) = ioc.try_resolve::<CdcStore>() {
+			errors.step("cdc store", cdc_store.shutdown());
+		}
+		errors.step("engine", self.engine.shutdown());
+		errors.finish()
 	}
 }
 
 impl Drop for Bridge {
 	fn drop(&mut self) {
-		if let Err(err) = self.flow_subsystem.shutdown() {
+		if let Err(err) = self.shutdown() {
 			if thread::panicking() {
 				eprintln!("bridge shutdown failed during unwind: {err}");
 			} else {
