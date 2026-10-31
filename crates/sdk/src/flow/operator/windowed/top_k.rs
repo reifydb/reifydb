@@ -254,6 +254,7 @@ where
 			updates.iter().map(|(_, _, new)| new),
 			&row_numbers,
 			&vec![now; row_numbers.len()],
+			&vec![now; row_numbers.len()],
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
 		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers, &vec![now; row_numbers.len()])?;

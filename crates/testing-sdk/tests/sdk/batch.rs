@@ -187,6 +187,7 @@ impl MountedOperator for EmitOpUpdate {
 			}],
 			&[RowNumber(1)],
 			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
+			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
 		)
 	}
 }

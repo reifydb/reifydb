@@ -308,6 +308,7 @@ where
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
 					now,
+					now,
 					Some(prior.last_value),
 					post.last_value,
 				)),
@@ -1076,8 +1077,16 @@ where
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, time, out)),
 				EmitKind::Update => {
-					let pre = r.prior.as_ref().and_then(|prior| aggregator.build_output(&r.group, span, prior));
-					updates.push((r.row_number, time, pre, out))
+					let pre_span = session.before.map_or(span, |(start, last)| WindowSpan {
+						start,
+						end: last.add_span(gap),
+					});
+					let pre_time = pre_span.start.as_time().unwrap_or(now);
+					let pre = r
+						.prior
+						.as_ref()
+						.and_then(|prior| aggregator.build_output(&r.group, pre_span, prior));
+					updates.push((r.row_number, pre_time, time, pre, out))
 				}
 				EmitKind::Remove => removes.push((r.row_number, time, out)),
 			}
@@ -1097,12 +1106,14 @@ where
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
+		let pre_times: Vec<DateTime> = updates.iter().map(|(_, pre_time, ..)| *pre_time).collect();
+		let post_times: Vec<DateTime> = updates.iter().map(|(_, _, post_time, ..)| *post_time).collect();
 		ctx.emit_update(
 			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
-			&times,
+			&pre_times,
+			&post_times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();

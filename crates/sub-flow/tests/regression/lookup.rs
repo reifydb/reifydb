@@ -148,6 +148,7 @@ impl UnmanagedOperator for GatedPassThrough {
 						&post,
 						&numbers,
 						&vec![ctx.written_at(); (&numbers).len()],
+						&vec![ctx.written_at(); (&numbers).len()],
 					)?;
 				}
 				DiffType::Remove => {
