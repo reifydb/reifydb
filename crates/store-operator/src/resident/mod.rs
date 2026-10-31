@@ -192,6 +192,8 @@ pub struct Shared {
 	sweep_cursor: AtomicU64,
 	#[cfg(test)]
 	persist_interlock: Mutex<Option<PersistInterlock>>,
+	#[cfg(test)]
+	stage_interlock: Mutex<Option<PersistInterlock>>,
 }
 
 impl Shared {
@@ -226,6 +228,8 @@ impl Shared {
 			sweep_cursor: AtomicU64::new(0),
 			#[cfg(test)]
 			persist_interlock: Mutex::new(None),
+			#[cfg(test)]
+			stage_interlock: Mutex::new(None),
 		}
 	}
 
@@ -389,6 +393,11 @@ impl Resident {
 	#[cfg(test)]
 	pub(crate) fn set_persist_interlock(&self, interlock: PersistInterlock) {
 		*self.shared.persist_interlock.lock() = Some(interlock);
+	}
+
+	#[cfg(test)]
+	pub(crate) fn set_stage_interlock(&self, interlock: PersistInterlock) {
+		*self.shared.stage_interlock.lock() = Some(interlock);
 	}
 
 	pub(crate) fn shared(&self) -> &Shared {
@@ -835,8 +844,11 @@ impl Resident {
 		let mut staged_bytes = ByteSize::ZERO;
 		let mut exhausted = false;
 		let mut hashes: Vec<u64> = Vec::new();
+		let mut drained: BTreeSet<FlowId> = BTreeSet::new();
 
-		for group in self.pending_groups() {
+		let groups = self.pending_groups();
+		let had_dirty: BTreeSet<FlowId> = groups.iter().filter_map(|group| group.flow).collect();
+		for group in groups {
 			if staged > 0 && consumed >= slice {
 				exhausted = true;
 				break;
@@ -866,16 +878,25 @@ impl Resident {
 				self.mark_pending(&mut inner);
 				touched.push(operator);
 			}
+			if let Some(flow) = group.flow {
+				drained.insert(flow);
+			}
+		}
+		#[cfg(test)]
+		{
+			let interlock = self.shared.stage_interlock.lock().take();
+			if let Some(interlock) = interlock {
+				interlock();
+			}
 		}
 		self.shared.filter.add_many(&hashes);
 		self.shared.release_dirty(staged);
 		self.shared.release_dirty_bytes(staged_bytes);
 		batch.bytes = consumed;
 
-		let blocked = self.flows_with_dirty();
 		let mut ready: Vec<FlowId> = Vec::new();
 		for flow in global.checkpoints.keys() {
-			if !blocked.contains(flow) {
+			if !had_dirty.contains(flow) || drained.contains(flow) {
 				ready.push(*flow);
 			}
 		}
@@ -899,23 +920,6 @@ impl Resident {
 		global.in_flight_operators = touched;
 		global.flushing = true;
 		Some(Arc::new(batch))
-	}
-
-	fn flows_with_dirty(&self) -> BTreeSet<FlowId> {
-		let mut blocked = BTreeSet::new();
-		for operator in self.shared.operators() {
-			let Some(slot) = self.shared.slot(operator) else {
-				continue;
-			};
-			let inner = slot.inner.lock();
-			if inner.buckets.dirty_count() == 0 {
-				continue;
-			}
-			if let Some(flow) = inner.flow {
-				blocked.insert(flow);
-			}
-		}
-		blocked
 	}
 
 	fn clear_in_flight(&self, global: &mut GlobalInner) {

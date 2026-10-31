@@ -4,6 +4,8 @@
 use std::sync::Arc;
 
 use arrow_arith::aggregate::max;
+#[cfg(feature = "runtime")]
+use arrow_array::Array;
 use arrow_array::{ArrayRef, RecordBatch, TimestampNanosecondArray};
 #[cfg(feature = "runtime")]
 use arrow_schema::SchemaRef;

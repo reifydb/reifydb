@@ -568,7 +568,7 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 }
 
 #[test]
-fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_written() {
+fn a_flow_the_budget_did_not_reach_keeps_its_checkpoint_for_the_next_slice() {
 	let buffer = Resident::with_budget(entry_bytes("k1", "v1"));
 	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
 	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
@@ -590,6 +590,34 @@ fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_writ
 		second.checkpoints.get(&FLOW_B).copied(),
 		Some(Some(CommitVersion(20))),
 		"the held checkpoint must go out with the state that earns it, or the flow never advances"
+	);
+}
+
+#[test]
+fn a_flow_that_keeps_writing_while_its_state_is_staged_still_lands_its_checkpoint() {
+	let buffer = Resident::new();
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+	let writer = buffer.clone();
+	buffer.set_stage_interlock(Box::new(move || writer.apply_batch(&[insert(OP_A, "k1", "v2")])));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(
+		first.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(10))),
+		"every write at or below version 10 was staged, so the checkpoint must not wait for an idle flow"
+	);
+	assert_eq!(
+		staged_body(written(&first, OP_A, &key("k1")).expect("the staged write must be in the batch")),
+		"v1",
+		"the slice carries the value that was staged, not the one written during staging"
+	);
+	buffer.settle_flush(first);
+
+	let second = buffer.take_for_flush().expect("the late write makes a second slice");
+	assert_eq!(
+		staged_body(written(&second, OP_A, &key("k1")).expect("the late write must be in the next batch")),
+		"v2",
+		"the write that landed during staging must not be lost"
 	);
 }
 
