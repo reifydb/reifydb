@@ -12,6 +12,7 @@ import {
 } from '../value';
 import {ShapeNode} from '.';
 import {PrimitiveToValue} from './inference';
+import {shapeType} from './type';
 
 function createValueInstance<T extends BaseType>(type: T, value: any): PrimitiveToValue<T> {
     switch (type) {
@@ -96,7 +97,7 @@ export function parseValue(shape: ShapeNode, value: any): any {
 
     if (shape.kind === 'option') {
         if (value === null || value === undefined) {
-            return undefined;
+            return Option.none(shapeType(shape.inner));
         }
         if (isOption(value)) {
             return value.map(item => parseValue(shape.inner, item));

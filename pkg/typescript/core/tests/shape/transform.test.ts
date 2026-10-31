@@ -24,6 +24,18 @@ describe('transformResult with option shapes', () => {
         expect(asValue.n.unwrap().unwrap().valueOf()).toBe(7);
     });
 
+    it('turns a null or undefined cell under an option shape into a None typed from the shape, never a Some over nothing', () => {
+        const shape = Shape.object({n: Shape.option(Shape.int4())});
+        for (const missing of [null, undefined]) {
+            const out = transformResult({n: missing}, shape);
+            expect(out.n.isNone()).toBe(true);
+            expect(out.n.type).toEqual({Option: 'Int4'});
+        }
+        const nested = transformResult({n: null}, primitive);
+        expect(nested.n.isNone()).toBe(true);
+        expect(nested.n.type).toEqual({Option: {Option: 'Int4'}});
+    });
+
     it('coerces to bigint under a bigint primitive shape inside an option', () => {
         const shape = Shape.object({n: Shape.option(Shape.int8())});
         const out = transformResult({n: new Int8Value(5n)}, shape);

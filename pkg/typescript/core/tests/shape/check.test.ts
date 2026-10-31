@@ -6,6 +6,7 @@ import {Shape} from '../../src/shape/builder';
 import {transformFrames} from '../../src/shape/transform';
 import {columnsToRows} from '../../src/decoder';
 import {Column, Frame} from '../../src/types';
+import {Option} from '../../src/value';
 
 const usersShape = Shape.object({id: Shape.int4(), name: Shape.utf8()});
 
@@ -57,10 +58,25 @@ describe('checkFrames', () => {
         expect(() => checkFrames([nullable], [shape])).not.toThrow();
     });
 
-    it('throws when a plain column meets an option shape, since the shape promises an Option at that level', () => {
+    it('accepts a plain column under an option shape, since a batch without nones arrives with the bare inner type', () => {
         const shape = Shape.object({id: Shape.option(Shape.int4())});
+        expect(() => checkFrames([users], [shape])).not.toThrow();
+    });
+
+    it('still checks the inner type when a plain column meets an option shape', () => {
+        const shape = Shape.object({name: Shape.option(Shape.int4())});
         expect(() => checkFrames([users], [shape])).toThrow(ShapeMismatch);
-        expect(() => checkFrames([users], [shape])).toThrow('column "id": expected Option(Int4), got Int4');
+        expect(() => checkFrames([users], [shape])).toThrow('column "name": expected Option(Int4), got Utf8');
+    });
+
+    it('accepts an Option(Utf8) shape over a Utf8 subscription frame, the shape a dictionary subject column arrives in', () => {
+        const shape = Shape.object({subject: Shape.option(Shape.utf8())});
+        const frame: Column[] = [{name: 'subject', type: 'Utf8', payload: ['user-1']}];
+        expect(() => checkFrame(frame, shape)).not.toThrow();
+        const [rows] = transformFrames([columnsToRows(frame)], [shape]);
+        expect(rows[0].subject).toBeInstanceOf(Option);
+        expect(rows[0].subject.isSome()).toBe(true);
+        expect(rows[0].subject.unwrap()).toBe('user-1');
     });
 
     it('checks the inner type of an option shape against an Option column', () => {
@@ -69,14 +85,19 @@ describe('checkFrames', () => {
         expect(() => checkFrames([drifted], [shape])).toThrow('column "id": expected Option(Int4), got Option(Utf8)');
     });
 
-    it('requires the option depth to match exactly in both directions', () => {
+    it('rejects a column with more option layers than the shape, since its nones would decode as garbage', () => {
         const one = Shape.object({id: Shape.option(Shape.int4())});
+        const depthTwo: Frame = {columns: [{name: 'id', type: {Option: {Option: 'Int4'}}, payload: ['1']}]};
+        expect(() => checkFrames([depthTwo], [one])).toThrow('column "id": expected Option(Int4), got Option(Option(Int4))');
+    });
+
+    it('accepts a column with the same or fewer option layers than the shape, since each missing layer is some', () => {
         const two = Shape.object({id: Shape.option(Shape.option(Shape.int4()))});
         const depthOne: Frame = {columns: [{name: 'id', type: {Option: 'Int4'}, payload: ['1']}]};
         const depthTwo: Frame = {columns: [{name: 'id', type: {Option: {Option: 'Int4'}}, payload: ['1']}]};
         expect(() => checkFrames([depthTwo], [two])).not.toThrow();
-        expect(() => checkFrames([depthOne], [two])).toThrow('column "id": expected Option(Option(Int4)), got Option(Int4)');
-        expect(() => checkFrames([depthTwo], [one])).toThrow('column "id": expected Option(Int4), got Option(Option(Int4))');
+        expect(() => checkFrames([depthOne], [two])).not.toThrow();
+        expect(() => checkFrames([users], [two])).not.toThrow();
     });
 
     it('rejects an Option column whose base type is a sibling under a value shape inside an option', () => {
@@ -85,12 +106,12 @@ describe('checkFrames', () => {
         expect(() => checkFrames([drifted], [shape])).toThrow('column "id": expected Option(Int4), got Option(Int8)');
     });
 
-    it('lets a None shape under an option accept any deeper Option column, since only nones can come out of it', () => {
+    it('lets a None shape under an option accept a None column and any deeper Option column, since only nones can come out of it', () => {
         const shape = Shape.object({id: Shape.option(Shape.noneValue())});
         const deep: Frame = {columns: [{name: 'id', type: {Option: {Option: 'Utf8'}}, payload: ['']}]};
         expect(() => checkFrames([deep], [shape])).not.toThrow();
         const plain: Frame = {columns: [{name: 'id', type: 'None', payload: ['']}]};
-        expect(() => checkFrames([plain], [shape])).toThrow('column "id": expected Option(None), got None');
+        expect(() => checkFrames([plain], [shape])).not.toThrow();
     });
 
     it('ignores a frame column the shape does not mention, since shapes are projections', () => {

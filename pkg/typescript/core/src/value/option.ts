@@ -48,7 +48,14 @@ export class Option<T> {
     private constructor(private readonly state: State<T>) {}
 
     static some<T>(value: T): Option<T> {
+        if (value === null || value === undefined) {
+            throw new Error('Option.some over null or undefined, use Option.none(inner) or Option.from(value, inner)');
+        }
         return new Option<T>({some: true, value});
+    }
+
+    static from<T>(value: T | null | undefined, inner: Type): Option<T> {
+        return value === null || value === undefined ? Option.none<T>(inner) : Option.some(value);
     }
 
     static none<T = never>(inner: Type): Option<T> {

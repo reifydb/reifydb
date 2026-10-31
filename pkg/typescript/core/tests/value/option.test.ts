@@ -17,8 +17,21 @@ describe('Option', () => {
         it('a Some over a falsy value is still some', () => {
             expect(Option.some(0).isSome()).toBe(true);
             expect(Option.some('').isSome()).toBe(true);
-            expect(Option.some(undefined).isSome()).toBe(true);
-            expect(Option.some(null).isSome()).toBe(true);
+        });
+
+        it('Option.some over null or undefined throws, pointing at none and from', () => {
+            expect(() => Option.some(null)).toThrow('Option.some over null or undefined, use Option.none(inner) or Option.from(value, inner)');
+            expect(() => Option.some(undefined)).toThrow('Option.some over null or undefined, use Option.none(inner) or Option.from(value, inner)');
+        });
+
+        it('Option.from makes a typed None from null or undefined and a Some from any other value, falsy included', () => {
+            expect(Option.from(null, 'Int4').isNone()).toBe(true);
+            expect(Option.from(null, 'Int4').type).toEqual({Option: 'Int4'});
+            expect(Option.from(undefined, 'Utf8').isNone()).toBe(true);
+            expect(Option.from(undefined, 'Utf8').type).toEqual({Option: 'Utf8'});
+            expect(Option.from(0, 'Int4').unwrap()).toBe(0);
+            expect(Option.from('', 'Utf8').unwrap()).toBe('');
+            expect(Option.from(false, 'Boolean').unwrap()).toBe(false);
         });
     });
 

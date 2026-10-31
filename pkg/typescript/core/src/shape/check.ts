@@ -79,7 +79,7 @@ function matches(shape: ShapeNode, type: Type): boolean {
             }
             return type === shape.type || widens(shape.type, type);
         case 'option':
-            return isOptionType(type) && matches(shape.inner, type.Option);
+            return isOptionType(type) ? matches(shape.inner, type.Option) : matches(shape.inner, type);
         case 'object':
         case 'array':
             return false;

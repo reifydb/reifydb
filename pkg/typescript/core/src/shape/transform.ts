@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {ShapeNode} from '.';
 import {ShapeMismatch} from './check';
+import {shapeType} from './type';
 import {widen} from './widen';
 import {DurationValue, NoneValue, Option, TimeValue, noneDepth} from '../value';
 import {FrameResults} from '../types';
@@ -57,6 +58,9 @@ export function transformResult(row: any, resultShape: any): any {
     }
 
     if (resultShape && resultShape.kind === 'option') {
+        if (row === null || row === undefined) {
+            return Option.none(shapeType(resultShape.inner));
+        }
         if (row instanceof NoneValue) {
             const remaining = optionLayers(resultShape);
             const depth = noneDepth(row);

@@ -120,9 +120,13 @@ describe('parseValue', () => {
     });
 
     describe('option kind', () => {
-        it('should return undefined for undefined value', () => {
+        it('should return a typed None for undefined and null', () => {
             const shape: ShapeNode = {kind: 'option', inner: {kind: 'primitive', type: 'Int4'}};
-            expect(parseValue(shape, undefined)).toBeUndefined();
+            for (const missing of [undefined, null]) {
+                const result = parseValue(shape, missing);
+                expect(result.isNone()).toBe(true);
+                expect(result.type).toEqual({Option: 'Int4'});
+            }
         });
 
         it('should lift a bare value into a Some over the parsed inner shape', () => {
@@ -153,9 +157,13 @@ describe('parseValue', () => {
             expect(none.type).toEqual({Option: 'Utf8'});
         });
 
-        it('should return undefined for option wrapping value kind with undefined', () => {
+        it('should return a typed None for option wrapping value kind with undefined and null', () => {
             const shape: ShapeNode = {kind: 'option', inner: {kind: 'value', type: 'Utf8'}};
-            expect(parseValue(shape, undefined)).toBeUndefined();
+            for (const missing of [undefined, null]) {
+                const result = parseValue(shape, missing);
+                expect(result.isNone()).toBe(true);
+                expect(result.type).toEqual({Option: 'Utf8'});
+            }
         });
     });
 

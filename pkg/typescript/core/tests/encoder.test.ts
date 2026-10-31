@@ -15,7 +15,6 @@ describe('encodeParams', () => {
         expect(() => encodeParams([undefined])).toThrow('parameter $1 is null or undefined, use Option.none(inner)');
         expect(() => encodeParams({a: 1, name: null})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
         expect(() => encodeParams({name: undefined})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
-        expect(() => encodeParams({name: Option.some(null)})).toThrow('parameter $name is null or undefined, use Option.none(inner)');
     });
 
     it('encodes a typed NoneValue like Option.none of its inner type and rejects an untyped one naming the parameter', () => {
