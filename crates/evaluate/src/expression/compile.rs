@@ -72,7 +72,11 @@ pub(crate) fn variable_column(
 				{
 					*inner
 				}
-				Value::Enum(value) => Value::Utf8(value.variant),
+				other => other,
+			};
+			let value = match value {
+				Value::Enum(value) if is_param(ctx, variable_name) => Value::Utf8(value.variant),
+				Value::Enum(_) => return Ok(factory::from_many(variable_name, value, row_count)),
 				other => other,
 			};
 			if matches!(
@@ -122,6 +126,11 @@ pub(crate) fn variable_column(
 			.into())
 		}
 	}
+}
+
+fn is_param(ctx: &EvalContext, name: &str) -> bool {
+	ctx.params.get_named(name).is_some()
+		|| name.parse::<usize>().is_ok_and(|index| index > 0 && ctx.params.get_positional(index - 1).is_some())
 }
 
 pub(crate) fn variable_field_column(
