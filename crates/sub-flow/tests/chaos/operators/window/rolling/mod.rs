@@ -81,7 +81,7 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 
 	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
-	let mut model = Oracle::new(size_ms, lateness_ms).with_fold(fold);
+	let mut model = Oracle::new(size_ms, lateness_ms).with_fold(fold).with_immutable(immutable_ms);
 
 	driver::drive(
 		seed,

@@ -753,25 +753,6 @@ where
 		};
 		let store = view.flush()?;
 		let hash = group_hash(group)?;
-		let Some(oldest) = oldest else {
-			if let Some(old) = prior_oldest {
-				expiry_drop(store, &rolling_expiry_key(old, hash))?;
-			}
-			if existed {
-				remove(store, from_ref(&RollingMetaKey(group_id)))?;
-			}
-			publisher.publish(
-				store,
-				group,
-				group_id,
-				C::from_order(row.newest),
-				row.published,
-				None,
-				&mut applied.emits,
-			)?;
-			return Ok(());
-		};
-		row.oldest = oldest;
 		row.published = publisher.publish(
 			store,
 			group,
@@ -781,6 +762,23 @@ where
 			value.as_ref(),
 			&mut applied.emits,
 		)?;
+		let oldest = match oldest {
+			Some(oldest) => oldest,
+			None => {
+				let free = row.newest;
+				if cutoff.is_some_and(|cutoff| cutoff >= free) {
+					if let Some(old) = prior_oldest {
+						expiry_drop(store, &rolling_expiry_key(old, hash))?;
+					}
+					if existed {
+						remove(store, from_ref(&RollingMetaKey(group_id)))?;
+					}
+					return Ok(());
+				}
+				free
+			}
+		};
+		row.oldest = oldest;
 		if prior_oldest != Some(oldest) {
 			if let Some(old) = prior_oldest {
 				expiry_drop(store, &rolling_expiry_key(old, hash))?;

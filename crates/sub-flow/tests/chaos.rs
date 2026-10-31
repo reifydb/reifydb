@@ -2079,9 +2079,8 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_mi
 }
 
 #[test]
-fn a_rolling_retraction_older_than_immutable_rebuilds_the_percentile_and_the_min_from_the_rows_left() {
-	// V31: rows in one rolling slot share a timestamp, so nothing seals and the frame is rebuilt from the rows
-	// left.
+fn a_rolling_retraction_inside_immutable_rebuilds_the_percentile_and_the_min_and_one_past_it_is_dropped() {
+	// A retraction past immutable must change nothing, otherwise the frame drifts from its rows.
 	let spec = WindowSpec {
 		kind: WindowKind::Rolling {
 			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
@@ -2098,14 +2097,15 @@ fn a_rolling_retraction_older_than_immutable_rebuilds_the_percentile_and_the_min
 		window_row(1, 10, 1_000),
 		window_row(2, 20, 20_000),
 		window_row(3, 15, 20_000),
+		window_row(4, 12, 16_000),
 	]))
 	.expect("apply must succeed");
 
 	let out = harness.apply(generator::remove(vec![window_row(1, 10, 1_000)])).expect("apply must succeed");
-	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[20, 15]), Value::Int8(15))]);
+	assert!(out.diffs.is_empty(), "a retraction past immutable must not republish the row");
 
-	let out = harness.apply(generator::remove(vec![window_row(3, 15, 20_000)])).expect("apply must succeed");
-	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[20]), Value::Int8(20))]);
+	let out = harness.apply(generator::remove(vec![window_row(4, 12, 16_000)])).expect("apply must succeed");
+	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[10, 20, 15]), Value::Int8(10))]);
 }
 
 chaos_test!(window_tumbling_percentile_zero_lateness_chaos, |seed| {

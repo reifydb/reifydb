@@ -430,17 +430,12 @@ where
 			}
 		}
 		for group in touched {
-			let empty = groups.get_mut(&group).is_none_or(|state| {
-				if let Some(cutoff) = rules.own_cutoff(state.newest) {
-					state.panes.retain(|coord, _| *coord > cutoff);
-				}
-				state.panes.is_empty()
-			});
-			if empty {
-				groups.remove(&group);
+			if let Some(state) = groups.get_mut(&group)
+				&& let Some(cutoff) = rules.own_cutoff(state.newest)
+			{
+				state.panes.retain(|coord, _| *coord > cutoff);
 			}
 		}
-		groups.retain(|_, state| !state.panes.is_empty());
 	}
 
 	let drain_ms = i64::try_from(ctx.drain_at_ms).expect("chaos ledger time fits in i64 milliseconds");

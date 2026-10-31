@@ -399,7 +399,8 @@ fn a_stopped_rolling_group_gives_back_its_meta_once_the_watermark_passes_it() {
 
 #[test]
 fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
-	// Each withdrawn group may keep one row for the seal to reclaim; a leaked row number mapping doubles it.
+	// Each withdrawn group may keep its group row and expiry entry for the seal to reclaim; a leaked row number
+	// mapping adds a third.
 	let state_after = |groups: u64| {
 		let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SumAnyKind>>::new()
 			.with(rolling(3, Some(1), 3_600_000))
@@ -415,7 +416,7 @@ fn a_withdrawn_rolling_group_leaves_only_its_meta_behind() {
 		h.snapshot_state().len()
 	};
 
-	assert!(state_after(20) <= state_after(5) + 15, "state must grow by at most one row per withdrawn group");
+	assert!(state_after(20) <= state_after(5) + 30, "state must grow by at most two rows per withdrawn group");
 }
 
 #[test]
