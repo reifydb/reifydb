@@ -2108,6 +2108,171 @@ fn a_rolling_retraction_inside_immutable_rebuilds_the_percentile_and_the_min_and
 	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[10, 20, 15]), Value::Int8(10))]);
 }
 
+fn rolling_immutable_spec(aggregations: &'static str) -> WindowSpec {
+	WindowSpec {
+		kind: WindowKind::Rolling {
+			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
+			lag: None,
+			pane: None,
+		},
+		group_by: "g",
+		aggregations,
+		lateness: Some(Duration::default()),
+	}
+}
+
+#[test]
+fn a_rolling_update_dropped_past_the_seal_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
+	// The update is dropped, so the pane keeps 30; removing the row with its new value 50 must still take it out.
+	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(2, 30, 17_000)])).expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 17_000), window_row(2, 50, 17_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 17_000)])).expect("apply must succeed");
+	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[10]), Value::Int8(10))]);
+}
+
+#[test]
+fn a_rolling_update_dropped_past_the_seal_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
+	// A second row keeps the pane alive, so subtracting the event's 50 instead of the held 30 publishes -5, not 15.
+	let spec = rolling_immutable_spec("total: math::sum(v)");
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(2, 30, 17_000), window_row(3, 5, 17_000)]))
+		.expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 17_000), window_row(2, 50, 17_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 17_000)])).expect("apply must succeed");
+	let post = out
+		.diffs
+		.iter()
+		.next_back()
+		.and_then(|diff| diff.post())
+		.expect("the remove must republish the window");
+	assert_eq!(user_values(post, 0)[1], Value::Int16(15), "the sum must be that of the remaining rows");
+}
+
+#[test]
+fn a_rolling_insert_dropped_past_the_seal_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
+	// The insert is dropped, so the pane holds 5 but never 30; removing that row must change nothing.
+	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(3, 5, 17_000)])).expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::insert(vec![window_row(2, 30, 17_000)])).expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 30, 17_000)])).expect("apply must succeed");
+	assert!(out.diffs.is_empty(), "a remove of a row the window never held must not republish");
+}
+
+#[test]
+fn a_rolling_insert_dropped_past_the_seal_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
+	// Subtracting the never-held 30 empties the pane's count, so the 5 vanishes and 10 is published instead of 15.
+	let spec = rolling_immutable_spec("total: math::sum(v)");
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(3, 5, 17_000)])).expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::insert(vec![window_row(2, 30, 17_000)])).expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 30, 17_000)])).expect("apply must succeed");
+	assert!(out.diffs.is_empty(), "a remove of a row the window never held must not republish");
+}
+
+#[test]
+fn a_rolling_update_moved_across_panes_and_dropped_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
+	// The dropped update leaves 30 in pane 16s; the remove names pane 19s, which must not lose the 50 it never
+	// held.
+	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![
+		window_row(3, 5, 16_000),
+		window_row(2, 30, 16_000),
+		window_row(4, 7, 19_000),
+	]))
+	.expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 16_000), window_row(2, 50, 19_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 19_000)])).expect("apply must succeed");
+	assert_eq!(totals_and_mins(&out), vec![(percentile::median(&[5, 7, 10]), Value::Int8(5))]);
+}
+
+#[test]
+fn a_rolling_update_moved_across_panes_and_dropped_then_removed_publishes_the_sum_of_the_remaining_rows() {
+	// Removing 50 from pane 19s instead of 30 from pane 16s keeps the 30 and drops the 7, publishing 45, not 22.
+	let spec = rolling_immutable_spec("total: math::sum(v)");
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![
+		window_row(3, 5, 16_000),
+		window_row(2, 30, 16_000),
+		window_row(4, 7, 19_000),
+	]))
+	.expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(1, 10, 20_000)])).expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 16_000), window_row(2, 50, 19_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 19_000)])).expect("apply must succeed");
+	let post = out
+		.diffs
+		.iter()
+		.next_back()
+		.and_then(|diff| diff.post())
+		.expect("the remove must republish the window");
+	assert_eq!(user_values(post, 0)[1], Value::Int16(22), "the sum must be that of the remaining rows");
+}
+
+#[test]
+fn a_rolling_update_whose_pre_is_past_the_retract_line_then_removed_leaves_the_percentile_and_the_min() {
+	// The stale update leaves 30 in immutable pane 10s; the remove names pane 20s, which never held the 50.
+	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(2, 30, 10_000)])).expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(3, 5, 20_000), window_row(1, 10, 20_000)]))
+		.expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 10_000), window_row(2, 50, 20_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 20_000)])).expect("apply must succeed");
+	assert!(out.diffs.is_empty(), "a remove of a row held in an immutable pane must not republish");
+}
+
+#[test]
+fn a_rolling_update_whose_pre_is_past_the_retract_line_then_removed_leaves_the_sum() {
+	// Subtracting the never-held 50 from pane 20s publishes -5 where the window must keep 45 unpublished.
+	let spec = rolling_immutable_spec("total: math::sum(v)");
+	let immutable = Some(Duration::from_seconds(5).unwrap());
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	harness.apply(generator::insert(vec![window_row(2, 30, 10_000)])).expect("apply must succeed");
+	harness.apply(generator::insert(vec![window_row(3, 5, 20_000), window_row(1, 10, 20_000)]))
+		.expect("apply must succeed");
+
+	harness.apply(generator::update(vec![(window_row(2, 30, 10_000), window_row(2, 50, 20_000))]))
+		.expect("apply must succeed");
+
+	let out = harness.apply(generator::remove(vec![window_row(2, 50, 20_000)])).expect("apply must succeed");
+	assert!(out.diffs.is_empty(), "a remove of a row held in an immutable pane must not republish");
+}
+
 chaos_test!(window_tumbling_percentile_zero_lateness_chaos, |seed| {
 	tumbling::drive_folded(seed, window_fold_params(0), Fold::Percentile);
 });

@@ -6,6 +6,7 @@ use std::{
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
+	mem::take,
 	ops::Bound::{self, Excluded, Included, Unbounded},
 	slice::from_ref,
 };
@@ -53,9 +54,10 @@ pub enum PaneFold {
 }
 
 pub enum PaneEvent<C, X> {
-	Insert(C, X),
-	Remove(C, X),
+	Insert(C, u64, X),
+	Remove(C, u64, X),
 	Update {
+		row: u64,
 		pre: (C, X),
 		post: (C, X),
 	},
@@ -64,10 +66,11 @@ pub enum PaneEvent<C, X> {
 impl<C: Copy, X> PaneEvent<C, X> {
 	pub fn panes(&self) -> Vec<C> {
 		match self {
-			Self::Insert(pane, _) | Self::Remove(pane, _) => vec![*pane],
+			Self::Insert(pane, _, _) | Self::Remove(pane, _, _) => vec![*pane],
 			Self::Update {
 				pre,
 				post,
+				..
 			} => vec![pre.0, post.0],
 		}
 	}
@@ -117,18 +120,32 @@ impl PaneLines {
 
 #[operator_state]
 #[derive(Clone, Debug)]
-pub struct RollingGroup<A, P> {
+pub struct RollingHeld<X> {
+	pub held: Option<(u64, X)>,
+	pub seen: u64,
+}
+
+impl<X: HeapSize> HeapSize for RollingHeld<X> {
+	fn heap_size(&self) -> usize {
+		self.held.heap_size()
+	}
+}
+
+#[operator_state]
+#[derive(Clone, Debug)]
+pub struct RollingGroup<A, P, X> {
 	pub newest: u64,
 	pub oldest: u64,
 	pub crossed: Option<u64>,
 	pub running: Option<A>,
 	pub queue: DabaQueue<A>,
 	pub published: Option<P>,
+	pub held: BTreeMap<u64, RollingHeld<X>>,
 }
 
-impl<A: HeapSize, P: HeapSize> HeapSize for RollingGroup<A, P> {
+impl<A: HeapSize, P: HeapSize, X: HeapSize> HeapSize for RollingGroup<A, P, X> {
 	fn heap_size(&self) -> usize {
-		self.running.heap_size() + self.queue.heap_size() + self.published.heap_size()
+		self.running.heap_size() + self.queue.heap_size() + self.published.heap_size() + self.held.heap_size()
 	}
 }
 
@@ -498,7 +515,7 @@ where
 	) -> Result<PaneApplied<P::Emit>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published>: OperatorState + HeapSize,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
 	{
 		let cutoff = cutoff.map(Coord::to_order);
 		let mut applied = PaneApplied::default();
@@ -520,14 +537,14 @@ where
 	pub fn expire<P>(&mut self, store: &mut dyn StateStore, cutoff: C, publisher: &P) -> Result<Vec<P::Emit>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published>: OperatorState + HeapSize,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
 	{
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			self.expiry.due(store, cutoff.to_order(), self.expire_batch)?;
 		let mut applied = PaneApplied::default();
 		for (index_key, entry) in due {
 			expiry_drop(store, &index_key)?;
-			let Some(row) = get_classified::<_, RollingGroup<A, P::Published>>(
+			let Some(row) = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(
 				store,
 				from_ref(&RollingMetaKey(entry.group_id)),
 			)?
@@ -566,58 +583,119 @@ where
 	) -> Result<()>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published>: OperatorState + HeapSize,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
 	{
-		let stored =
-			get_classified::<_, RollingGroup<A, P::Published>>(store, from_ref(&RollingMetaKey(group_id)))?
-				.remove(0);
+		let mut stored = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(
+			store,
+			from_ref(&RollingMetaKey(group_id)),
+		)?
+		.remove(0);
 		let lines = stored.as_ref().map(|row| self.lines(C::from_order(row.newest)));
 		let admission = match &stored {
 			Some(row) => self.group_cutoff(row.newest, cutoff),
 			None => cutoff,
 		};
+		let mut held = stored.as_mut().map(|row| take(&mut row.held)).unwrap_or_default();
+		let mut held_changed = false;
 		let mut panes: BTreeMap<u64, Vec<AccumulatorEvent<A::Contribution>>> = BTreeMap::new();
 		for event in events {
 			match event {
-				PaneEvent::Insert(pane, contribution) => {
+				PaneEvent::Insert(pane, row_number, contribution) => {
 					let pane = pane.to_order();
 					if PaneLines::admits(lines.as_ref(), admission, pane, false) {
 						panes.entry(pane)
 							.or_default()
 							.push(AccumulatorEvent::Add(contribution));
+						held_changed |= held.remove(&row_number).is_some();
 					} else {
 						applied.sealed_drops += 1;
+						if PaneLines::admits(lines.as_ref(), admission, pane, true) {
+							held.entry(row_number)
+								.or_insert(RollingHeld {
+									held: None,
+									seen: pane,
+								})
+								.seen = pane;
+							held_changed = true;
+						}
 					}
 				}
-				PaneEvent::Remove(pane, contribution) => {
+				PaneEvent::Remove(pane, row_number, contribution) => {
 					let pane = pane.to_order();
-					if PaneLines::admits(lines.as_ref(), admission, pane, true) {
+					if !PaneLines::admits(lines.as_ref(), admission, pane, true) {
+						applied.stale_retractions += 1;
+					} else if let Some(record) = held.remove(&row_number) {
+						held_changed = true;
+						if let Some((at, value)) = record.held.filter(|(at, _)| {
+							PaneLines::admits(lines.as_ref(), admission, *at, true)
+						}) {
+							panes.entry(at)
+								.or_default()
+								.push(AccumulatorEvent::Remove(value));
+						}
+					} else {
 						panes.entry(pane)
 							.or_default()
 							.push(AccumulatorEvent::Remove(contribution));
-					} else {
-						applied.stale_retractions += 1;
 					}
 				}
 				PaneEvent::Update {
+					row: row_number,
 					pre,
 					post,
 				} => {
 					let (pre_pane, post_pane) = (pre.0.to_order(), post.0.to_order());
 					if !PaneLines::admits(lines.as_ref(), admission, pre_pane, true) {
 						applied.stale_retractions += 1;
+						held.entry(row_number)
+							.or_insert_with(|| RollingHeld {
+								held: Some((pre_pane, pre.1)),
+								seen: post_pane,
+							})
+							.seen = post_pane;
+						held_changed = true;
 					} else if !PaneLines::admits(lines.as_ref(), admission, post_pane, false) {
 						applied.sealed_drops += 1;
+						held.entry(row_number)
+							.or_insert_with(|| RollingHeld {
+								held: Some((pre_pane, pre.1)),
+								seen: post_pane,
+							})
+							.seen = post_pane;
+						held_changed = true;
 					} else {
-						panes.entry(pre_pane)
-							.or_default()
-							.push(AccumulatorEvent::Remove(pre.1));
+						match held.remove(&row_number) {
+							Some(record) => {
+								held_changed = true;
+								if let Some((at, value)) =
+									record.held.filter(|(at, _)| {
+										PaneLines::admits(
+											lines.as_ref(),
+											admission,
+											*at,
+											true,
+										)
+									}) {
+									panes.entry(at)
+										.or_default()
+										.push(AccumulatorEvent::Remove(value));
+								}
+							}
+							None => panes
+								.entry(pre_pane)
+								.or_default()
+								.push(AccumulatorEvent::Remove(pre.1)),
+						}
 						panes.entry(post_pane).or_default().push(AccumulatorEvent::Add(post.1));
 					}
 				}
 			}
 		}
 		if panes.is_empty() {
+			if let Some(mut row) = stored.filter(|_| held_changed) {
+				row.held = held;
+				set(store, vec![(RollingMetaKey(group_id), row)])?;
+			}
 			return Ok(());
 		}
 		let prior_oldest = stored.as_ref().map(|row| row.oldest);
@@ -628,7 +706,9 @@ where
 			running: None,
 			queue: DabaQueue::default(),
 			published: None,
+			held: BTreeMap::new(),
 		});
+		row.held = held;
 		let mut view = Panes::new(store, group_id);
 		let mut touched = false;
 		for (pane, events) in panes {
@@ -664,6 +744,10 @@ where
 			);
 		}
 		if !touched {
+			if held_changed {
+				let store = view.flush()?;
+				set(store, vec![(RollingMetaKey(group_id), row)])?;
+			}
 			return Ok(());
 		}
 		self.settle(
@@ -685,7 +769,7 @@ where
 		mut view: Panes<'_, A>,
 		group: &G,
 		group_id: GroupId,
-		mut row: RollingGroup<A, P::Published>,
+		mut row: RollingGroup<A, P::Published, A::Contribution>,
 		existed: bool,
 		prior_oldest: Option<u64>,
 		cutoff: Option<u64>,
@@ -694,10 +778,18 @@ where
 	) -> Result<()>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published>: OperatorState + HeapSize,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
 	{
 		let lines = self.lines(C::from_order(row.newest));
-		if let Some(cutoff) = self.group_cutoff(row.newest, cutoff) {
+		let admission = self.group_cutoff(row.newest, cutoff);
+		row.held.retain(|_, record| {
+			PaneLines::admits(Some(&lines), admission, record.seen, true)
+				|| record
+					.held
+					.as_ref()
+					.is_some_and(|(at, _)| PaneLines::admits(Some(&lines), admission, *at, true))
+		});
+		if let Some(cutoff) = admission {
 			for (pane, value) in view.scan(Unbounded, Included(cutoff))? {
 				view.put(pane, None);
 				if row.crossed.is_some_and(|crossed| pane <= crossed) {
@@ -983,9 +1075,9 @@ mod tests {
 			let mut round_dropped = 0u64;
 			let mut push = |model: &Model, group: u32, pane: u64, row: u64, value: i64, add: bool| {
 				let event = if add {
-					PaneEvent::Insert(ms(pane), (row, value))
+					PaneEvent::Insert(ms(pane), row, (row, value))
 				} else {
-					PaneEvent::Remove(ms(pane), (row, value))
+					PaneEvent::Remove(ms(pane), row, (row, value))
 				};
 				groups.entry(group)
 					.or_insert_with(|| {
@@ -1144,7 +1236,7 @@ mod tests {
 			let mut visited = Vec::new();
 			for pane in 1_000..3_000u64 {
 				let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
-				groups.insert(1, (group, vec![PaneEvent::Insert(ms(pane), (pane, 1))]));
+				groups.insert(1, (group, vec![PaneEvent::Insert(ms(pane), pane, (pane, 1))]));
 				let before = store.rows_visited();
 				engine.apply(
 					&mut store,
@@ -1236,7 +1328,11 @@ mod tests {
 		for pane in 1_000..1_400u64 {
 			let mut events = Vec::new();
 			for row in 0..=rng.below(3) {
-				events.push(PaneEvent::Insert(ms(pane), (pane * 10 + row, rng.below(50) as i64)));
+				events.push(PaneEvent::Insert(
+					ms(pane),
+					pane * 10 + row,
+					(pane * 10 + row, rng.below(50) as i64),
+				));
 			}
 			let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));

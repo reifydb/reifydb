@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, collections::HashMap, iter::repeat_n, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, iter::repeat_n, mem::size_of, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{
 	Array, ArrayRef, FixedSizeBinaryArray, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
@@ -19,6 +19,7 @@ use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::{catalog::flow::OperatorId, change::Diff},
 	internal_err,
+	metrics::heap::HeapSize,
 	value::{
 		batch::{batch, batch_with, empty_batch},
 		column::{builder::ColumnBuilder, key::extend_value_bytes},
@@ -56,6 +57,7 @@ use reifydb_value::{
 		},
 	},
 };
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	operator::aggregation::accumulator::{RowAccumulator, avg_type, sum_type},
@@ -158,6 +160,7 @@ pub enum SlotColumn {
 	Int16(FixedSizeBinaryArray),
 	Array(FieldRef, ArrayRef),
 	EventTime,
+	Owned(Value),
 }
 
 fn present_or_none(array: &dyn Array, row: usize, inner: ValueType, read: impl FnOnce() -> Value) -> Value {
@@ -226,7 +229,56 @@ impl SlotRow {
 					.get_value(self.row),
 			)),
 			SlotColumn::EventTime => Some(Cow::Owned(Value::DateTime(self.event_time))),
+			SlotColumn::Owned(value) => Some(Cow::Borrowed(value)),
 		}
+	}
+
+	fn owned_cells(&self) -> Vec<Option<Value>> {
+		(0..self.width()).map(|slot| self.cell(slot).map(Cow::into_owned)).collect()
+	}
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredSlotRow {
+	cells: Vec<Option<Value>>,
+	event_time: DateTime,
+}
+
+impl Serialize for SlotRow {
+	fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		StoredSlotRow {
+			cells: self.owned_cells(),
+			event_time: self.event_time,
+		}
+		.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for SlotRow {
+	fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let stored = StoredSlotRow::deserialize(deserializer)?;
+		let columns = stored
+			.cells
+			.into_iter()
+			.map(|cell| match cell {
+				Some(value) => SlotColumn::Owned(value),
+				None => SlotColumn::Absent,
+			})
+			.collect();
+		Ok(SlotRow::new(Arc::new(SlotColumns(columns)), 0, stored.event_time))
+	}
+}
+
+impl HeapSize for SlotRow {
+	fn heap_size(&self) -> usize {
+		let cells = self.owned_cells();
+		cells.len() * size_of::<Option<Value>>() + cells.iter().map(HeapSize::heap_size).sum::<usize>()
 	}
 }
 

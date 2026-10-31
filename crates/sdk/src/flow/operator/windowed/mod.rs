@@ -143,15 +143,29 @@ where
 		match diff.kind() {
 			DiffType::Insert => {
 				if let Some(cols) = diff.post() {
-					for (_, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
-						push(group, PaneEvent::Insert(bucket_of(coord, pane), contribution));
+					for (row, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
+						push(
+							group,
+							PaneEvent::Insert(
+								bucket_of(coord, pane),
+								cols.row_numbers()[row].0,
+								contribution,
+							),
+						);
 					}
 				}
 			}
 			DiffType::Remove => {
 				if let Some(cols) = diff.pre() {
-					for (_, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
-						push(group, PaneEvent::Remove(bucket_of(coord, pane), contribution));
+					for (row, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
+						push(
+							group,
+							PaneEvent::Remove(
+								bucket_of(coord, pane),
+								cols.row_numbers()[row].0,
+								contribution,
+							),
+						);
 					}
 				}
 			}
@@ -161,8 +175,15 @@ where
 				};
 				let after = extract_all(aggregator, ctx, &post)?;
 				if !A::UPDATE_PRE_RETRACTS {
-					for (_, coord, group, contribution) in after {
-						push(group, PaneEvent::Insert(bucket_of(coord, pane), contribution));
+					for (row, coord, group, contribution) in after {
+						push(
+							group,
+							PaneEvent::Insert(
+								bucket_of(coord, pane),
+								post.row_numbers()[row].0,
+								contribution,
+							),
+						);
 					}
 					continue;
 				}
@@ -175,6 +196,7 @@ where
 						.collect();
 				for (row, coord, group, contribution) in after {
 					let post_pane = bucket_of(coord, pane);
+					let number = post.row_numbers()[row].0;
 					match before.remove(&row) {
 						Some((pre_coord, pre_group, pre_contribution))
 							if pre_group == group =>
@@ -182,6 +204,7 @@ where
 							push(
 								group,
 								PaneEvent::Update {
+									row: number,
 									pre: (
 										bucket_of(pre_coord, pane),
 										pre_contribution,
@@ -195,18 +218,23 @@ where
 								pre_group,
 								PaneEvent::Remove(
 									bucket_of(pre_coord, pane),
+									pre.row_numbers()[row].0,
 									pre_contribution,
 								),
 							);
-							push(group, PaneEvent::Insert(post_pane, contribution));
+							push(group, PaneEvent::Insert(post_pane, number, contribution));
 						}
-						None => push(group, PaneEvent::Insert(post_pane, contribution)),
+						None => push(group, PaneEvent::Insert(post_pane, number, contribution)),
 					}
 				}
-				for (_, (pre_coord, pre_group, pre_contribution)) in before {
+				for (row, (pre_coord, pre_group, pre_contribution)) in before {
 					push(
 						pre_group,
-						PaneEvent::Remove(bucket_of(pre_coord, pane), pre_contribution),
+						PaneEvent::Remove(
+							bucket_of(pre_coord, pane),
+							pre.row_numbers()[row].0,
+							pre_contribution,
+						),
 					);
 				}
 			}

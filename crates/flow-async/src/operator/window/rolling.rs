@@ -102,6 +102,7 @@ struct RoutedRow {
 	group: Hash128,
 	group_values: Vec<Value>,
 	pane: DateTime,
+	row: u64,
 	contribution: Contribution,
 }
 
@@ -122,6 +123,7 @@ fn routed_rows(operator: &WindowOperator, columns: &RecordBatch) -> Result<Vec<R
 			group: *hash,
 			group_values: gvals.to_vec(),
 			pane,
+			row: row_numbers[row_idx].0,
 			contribution: (
 				WindowSlotKey::new(pane, row_numbers[row_idx].0),
 				views.contribution(row_idx, timestamps[row_idx]),
@@ -160,7 +162,7 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 					routing.push(
 						row.group,
 						row.group_values,
-						PaneEvent::Insert(row.pane, row.contribution),
+						PaneEvent::Insert(row.pane, row.row, row.contribution),
 					);
 				}
 			}
@@ -172,7 +174,7 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 					routing.push(
 						row.group,
 						row.group_values,
-						PaneEvent::Remove(row.pane, row.contribution),
+						PaneEvent::Remove(row.pane, row.row, row.contribution),
 					);
 				}
 			}
@@ -189,6 +191,7 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 							after.group,
 							after.group_values,
 							PaneEvent::Update {
+								row: after.row,
 								pre: (before.pane, before.contribution),
 								post: (after.pane, after.contribution),
 							},
@@ -197,12 +200,12 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 						routing.push(
 							before.group,
 							before.group_values,
-							PaneEvent::Remove(before.pane, before.contribution),
+							PaneEvent::Remove(before.pane, before.row, before.contribution),
 						);
 						routing.push(
 							after.group,
 							after.group_values,
-							PaneEvent::Insert(after.pane, after.contribution),
+							PaneEvent::Insert(after.pane, after.row, after.contribution),
 						);
 					}
 				}
@@ -733,9 +736,9 @@ mod tests {
 			for (group, (ms, seq), value, is_add) in &plan {
 				let contribution = (WindowSlotKey::new(millis(*ms), *seq), inputs(kinds, *value));
 				let event = if *is_add {
-					PaneEvent::Insert(millis(*ms), contribution)
+					PaneEvent::Insert(millis(*ms), *seq, contribution)
 				} else {
-					PaneEvent::Remove(millis(*ms), contribution)
+					PaneEvent::Remove(millis(*ms), *seq, contribution)
 				};
 				groups.entry(*group)
 					.or_insert_with(|| (GroupId::hashed(*group), Vec::new()))

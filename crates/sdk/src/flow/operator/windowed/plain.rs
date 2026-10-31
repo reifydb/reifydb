@@ -256,7 +256,7 @@ where
 	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	A::Accumulator: Send + Sync,
-	Contribution<A>: Send + Sync,
+	Contribution<A>: Send + Sync + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[allow(clippy::too_many_arguments)]
@@ -1118,7 +1118,7 @@ where
 	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
-	Contribution<A>: Send + Sync,
+	Contribution<A>: Send + Sync + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	type Class = Windowed;

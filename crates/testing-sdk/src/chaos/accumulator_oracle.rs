@@ -281,6 +281,7 @@ where
 
 struct OraclePanes<A: WindowedOperator> {
 	panes: BTreeMap<RollingCoord<A>, A::Accumulator>,
+	rows: BTreeMap<RowNumber, (RollingCoord<A>, RollingContribution<A>)>,
 	newest: RollingCoord<A>,
 }
 
@@ -333,7 +334,8 @@ where
 		let newest = |groups: &HashMap<RollingGroup<A>, OraclePanes<A>>, group: &RollingGroup<A>| {
 			groups.get(group).map(|state| state.newest)
 		};
-		let mut admitted: Vec<(RollingGroup<A>, RollingCoord<A>, Leg<RollingContribution<A>>)> = Vec::new();
+		let mut admitted: Vec<(RollingGroup<A>, RollingCoord<A>, RowNumber, Leg<RollingContribution<A>>)> =
+			Vec::new();
 		for event in &batch.events {
 			match event {
 				ChaosEvent::Insert {
@@ -346,7 +348,7 @@ where
 						coord,
 						false,
 					) {
-						admitted.push((group, coord, Leg::Add(contribution)));
+						admitted.push((group, coord, row.number, Leg::Add(contribution)));
 					}
 				}
 				ChaosEvent::Remove {
@@ -359,7 +361,7 @@ where
 						coord,
 						true,
 					) {
-						admitted.push((group, coord, Leg::Remove(contribution)));
+						admitted.push((group, coord, row.number, Leg::Remove(contribution)));
 					}
 				}
 				ChaosEvent::Update {
@@ -378,9 +380,15 @@ where
 								admitted.push((
 									before.0,
 									before.1,
+									pre.number,
 									Leg::Remove(before.2),
 								));
-								admitted.push((after.0, after.1, Leg::Add(after.2)));
+								admitted.push((
+									after.0,
+									after.1,
+									post.number,
+									Leg::Add(after.2),
+								));
 							}
 						}
 						(before, after) => {
@@ -390,13 +398,19 @@ where
 								admitted.push((
 									group,
 									coord,
+									pre.number,
 									Leg::Remove(contribution),
 								));
 							}
 							if let Some((group, coord, contribution)) = after
 								&& rules.admits(newest(&groups, &group), coord, false)
 							{
-								admitted.push((group, coord, Leg::Add(contribution)));
+								admitted.push((
+									group,
+									coord,
+									post.number,
+									Leg::Add(contribution),
+								));
 							}
 						}
 					}
@@ -404,28 +418,36 @@ where
 			}
 		}
 		let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
-		for (group, coord, leg) in admitted {
+		let before: HashMap<RollingGroup<A>, RollingCoord<A>> =
+			groups.iter().map(|(group, state)| (group.clone(), state.newest)).collect();
+		for (group, coord, row, leg) in admitted {
 			let state = groups.entry(group.clone()).or_insert_with(|| OraclePanes {
 				panes: BTreeMap::new(),
+				rows: BTreeMap::new(),
 				newest: coord,
 			});
-			let accumulator = state.panes.entry(coord).or_default();
-			let applied = match leg {
+			let changed = match leg {
 				Leg::Add(contribution) => {
-					accumulator.add(&contribution);
-					true
+					state.panes.entry(coord).or_default().add(&contribution);
+					state.rows.insert(row, (coord, contribution));
+					Some(coord)
 				}
-				Leg::Remove(contribution) if !accumulator.is_empty() => {
-					accumulator.remove(&contribution);
-					true
-				}
-				Leg::Remove(_) => false,
+				Leg::Remove(_) => match state.rows.remove(&row) {
+					Some((held, contribution))
+						if rules.admits(before.get(&group).copied(), held, true) =>
+					{
+						let accumulator = state.panes.entry(held).or_default();
+						accumulator.remove(&contribution);
+						if accumulator.is_empty() {
+							state.panes.remove(&held);
+						}
+						Some(held)
+					}
+					_ => None,
+				},
 			};
-			if accumulator.is_empty() {
-				state.panes.remove(&coord);
-			}
-			if applied {
-				state.newest = state.newest.max(coord);
+			if let Some(at) = changed {
+				state.newest = state.newest.max(at);
 				touched.insert(group);
 			}
 		}
@@ -434,6 +456,7 @@ where
 				&& let Some(cutoff) = rules.own_cutoff(state.newest)
 			{
 				state.panes.retain(|coord, _| *coord > cutoff);
+				state.rows.retain(|_, (coord, _)| *coord > cutoff);
 			}
 		}
 	}
@@ -449,6 +472,7 @@ where
 			};
 			if let Some(cutoff) = cutoff {
 				state.panes.retain(|coord, _| *coord > cutoff);
+				state.rows.retain(|_, (coord, _)| *coord > cutoff);
 			}
 			(group, state.panes)
 		})
