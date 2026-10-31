@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal_error,
 	value::{
-		batch::{append, batch, batch_with, single_row},
+		batch::{append, batch, batch_with, is_scalar, single_row},
 		column::{builder::ColumnBuilder, factory},
 	},
 };
@@ -212,6 +212,27 @@ impl<'a> Vm<'a> {
 				sumtype.variants.into_iter().map(|variant| (variant.tag, variant.name)).collect();
 			self.symbols.set_enum(id, format!("{}::{}", namespace.name(), sumtype.name), variants);
 		}
+		self.scalar_enum_to_variant()
+	}
+
+	fn scalar_enum_to_variant(&mut self) -> Result<()> {
+		let Some(Variable::Columns {
+			batch,
+		}) = self.stack.peek()
+		else {
+			return Ok(());
+		};
+		if !is_scalar(batch) {
+			return Ok(());
+		}
+		let Some((field, array)) = user_columns(batch).next() else {
+			return Ok(());
+		};
+		let Some(value) = self.symbols.enum_value(field, array, 0)? else {
+			return Ok(());
+		};
+		self.stack.pop()?;
+		self.stack.push(Variable::scalar(value));
 		Ok(())
 	}
 }
