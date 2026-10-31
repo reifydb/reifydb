@@ -21,6 +21,27 @@ use crate::{
 	pool::Pools,
 };
 
+struct SpawnedActor {
+	cancel: CancellationToken,
+	stop: Box<dyn FnOnce()>,
+}
+
+thread_local! {
+	static SPAWNED: RefCell<Vec<SpawnedActor>> = const { RefCell::new(Vec::new()) };
+}
+
+fn stop_cancelled_actors() {
+	let stopped: Vec<SpawnedActor> = SPAWNED.with(|spawned| {
+		let mut spawned = spawned.borrow_mut();
+		let (stopped, running) = mem::take(&mut *spawned).into_iter().partition(|a| a.cancel.is_cancelled());
+		*spawned = running;
+		stopped
+	});
+	for actor in stopped {
+		(actor.stop)();
+	}
+}
+
 struct ActorSystemInner {
 	cancel: CancellationToken,
 	clock: Clock,
@@ -86,6 +107,7 @@ impl ActorSystem {
 		for child in self.inner.children.lock().unwrap().iter() {
 			child.shutdown();
 		}
+		stop_cancelled_actors();
 	}
 
 	pub fn clock(&self) -> &Clock {
@@ -180,6 +202,23 @@ impl ActorSystem {
 		for msg in queued_messages {
 			let _ = actor_ref_for_drain.send(msg);
 		}
+
+		let actor_ref_for_stop = actor_ref.clone();
+		let actor_for_stop = actor.clone();
+		SPAWNED.with(|spawned| {
+			spawned.borrow_mut().push(SpawnedActor {
+				cancel: self.cancellation_token(),
+				stop: Box::new(move || {
+					if actor_ref_for_stop.is_alive() {
+						actor_ref_for_stop.mark_stopped();
+						actor_for_stop.post_stop();
+					}
+					let processor =
+						actor_ref_for_stop.processor().try_borrow_mut().ok().and_then(|mut p| p.take());
+					drop(processor);
+				}),
+			});
+		});
 
 		ActorHandle {
 			actor_ref,

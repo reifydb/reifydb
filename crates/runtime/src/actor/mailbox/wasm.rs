@@ -93,6 +93,12 @@ impl<M> ActorRefInner<M> {
 
 		self.processing.set(false);
 
+		if !self.alive.load(Ordering::SeqCst) {
+			self.queue.borrow_mut().clear();
+			let processor = self.processor.borrow_mut().take();
+			drop(processor);
+		}
+
 		drain_expired_timers();
 
 		Ok(())
