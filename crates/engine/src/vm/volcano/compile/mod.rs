@@ -216,7 +216,10 @@ pub(crate) fn compile<'a>(
 		}
 		RqlQueryPlan::ViewScan(node) if node.source.def().storage_kind() == ViewStorageKind::RingBuffer => {
 			MarkSumtypeTagsNode::wrap(
-				Box::new(RingBufferScan::for_view(node.source.clone(), node.partition, context, rx).unwrap()),
+				Box::new(
+					RingBufferScan::for_view(node.source.clone(), node.partition, context, rx)
+						.unwrap(),
+				),
 				node.source.columns(),
 			)
 		}

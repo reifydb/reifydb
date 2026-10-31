@@ -23,10 +23,11 @@ pub(crate) fn sumtype_from_bytes(bytes: &EncodedCatalogRow) -> Result<SumType> {
 	let id = SumTypeId(sumtype::get_id(bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(bytes));
 	let name = sumtype::get_name(bytes).to_string();
-	let variants: Vec<Variant> = from_str(sumtype::get_variants_json(bytes)).map_err(|e| CatalogError::SumTypeCorrupt {
-		id,
-		reason: e.to_string(),
-	})?;
+	let variants: Vec<Variant> =
+		from_str(sumtype::get_variants_json(bytes)).map_err(|e| CatalogError::SumTypeCorrupt {
+			id,
+			reason: e.to_string(),
+		})?;
 	let kind = match sumtype::get_kind(bytes) {
 		0 => SumTypeKind::Enum,
 		1 => SumTypeKind::Event,
@@ -55,7 +56,8 @@ mod tests {
 
 	#[test]
 	fn a_sumtype_row_with_an_unknown_kind_is_corrupt() {
-		// Reading an unknown kind as an enum would run filters and writes against a type the row never declared.
+		// Reading an unknown kind as an enum would run filters and writes against a type the row never
+		// declared.
 		let mut row = sumtype::allocate();
 		sumtype::set_name(&mut row, "phantom");
 		sumtype::set_variants_json(&mut row, "[]");

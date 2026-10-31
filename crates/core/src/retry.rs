@@ -24,7 +24,7 @@ pub struct RetryStrategy {
 impl Default for RetryStrategy {
 	fn default() -> Self {
 		Self {
-			max_attempts: 10,
+			max_attempts: 20,
 			backoff: Backoff::ExponentialJitter {
 				base: Duration::from_milliseconds(5).unwrap(),
 				max: Duration::from_milliseconds(200).unwrap(),
@@ -303,7 +303,7 @@ mod retry_tests {
 	#[test]
 	fn default_uses_jittered_backoff() {
 		let s = RetryStrategy::default();
-		assert_eq!(s.max_attempts, 10);
+		assert_eq!(s.max_attempts, 20);
 		let Backoff::ExponentialJitter {
 			base,
 			max,

@@ -219,7 +219,7 @@ impl JoinOperator {
 		let right_kept = dictionary_columns(&right_schema)?.into_iter().collect();
 
 		let output_sumtypes = schema_sumtypes(
-			&JoinedColumnsBuilder::new(&left_schema, &right_schema, &alias, natural)
+			&JoinedColumnsBuilder::new(&left_schema, &right_schema, &alias, natural, SequenceColumn::Drop)
 				.schema(&left_schema, &right_schema),
 		)?;
 		let lowered_left_exprs: Vec<LoweredExpr> =

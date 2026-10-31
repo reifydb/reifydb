@@ -15,7 +15,7 @@ use reifydb_rql::nodes::CreatePrimaryKeyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	return_error,
-	value::{Value, value_type::ValueType},
+	value::{Value, constraint::Constraint, value_type::ValueType},
 };
 
 use crate::{Result, vm::services::Services};
@@ -40,9 +40,23 @@ pub(crate) fn create_primary_key(
 	for pk_column in &plan.columns {
 		let column_name = pk_column.column.text();
 
-		let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
+		let tag_name = format!("{column_name}_tag");
+		let Some(column) = table_columns.iter().find(|col| col.name == column_name).or_else(|| {
+			table_columns.iter().find(|col| {
+				col.name == tag_name
+					&& matches!(col.constraint.constraint(), Some(Constraint::SumType(_)))
+			})
+		}) else {
 			return_error!(column_not_found(pk_column.column.clone()));
 		};
+
+		if let Some(Constraint::SumType(id)) = column.constraint.constraint() {
+			let sumtype = services.catalog.get_sumtype(&mut Transaction::Admin(txn), *id)?;
+			let namespace =
+				services.catalog.get_namespace(&mut Transaction::Admin(txn), sumtype.namespace)?;
+			let ty = ValueType::Enum(format!("{}::{}", namespace.name(), sumtype.name));
+			return_error!(primary_key_invalid_type(pk_column.column.clone(), column_name, ty));
+		}
 
 		let ty = column.constraint.get_type();
 		if column.dictionary_id.is_some()
