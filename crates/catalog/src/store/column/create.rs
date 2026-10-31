@@ -199,16 +199,18 @@ impl CatalogStore {
 		id: ColumnId,
 		column_to_create: ColumnToCreate,
 	) -> Result<Column> {
-		for policy in column_to_create.properties {
-			Self::create_column_property(txn, id, policy)?;
-		}
+		let properties = column_to_create
+			.properties
+			.into_iter()
+			.map(|property| Self::create_column_property(txn, id, property))
+			.collect::<Result<Vec<_>>>()?;
 
 		Ok(Column {
 			id,
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,
 			index: column_to_create.index,
-			properties: Self::list_column_properties(&mut Transaction::Admin(&mut *txn), id)?,
+			properties,
 			auto_increment: column_to_create.auto_increment,
 			dictionary_id: column_to_create.dictionary_id,
 		})
@@ -222,6 +224,7 @@ pub mod test {
 		interface::catalog::{
 			column::ColumnIndex,
 			id::{ColumnId, TableId},
+			property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		},
 		key::column::ColumnsKey,
 	};
@@ -485,5 +488,37 @@ pub mod test {
 			stored_type_and_constraint(&mut txn, optional),
 			(0x40 | 30, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
 		);
+	}
+
+	#[test]
+	fn a_created_column_reports_exactly_the_properties_stored_for_it() {
+		// The returned column must match storage, otherwise callers act on properties a reload would not see.
+		let mut txn = create_test_admin_transaction();
+		ensure_test_table(&mut txn);
+
+		let created = CatalogStore::create_column(
+			&mut txn,
+			TableId(1),
+			ColumnToCreate {
+				fragment: None,
+				namespace_name: "test_namespace".to_string(),
+				object_name: "test_table".to_string(),
+				column: "saturating".to_string(),
+				constraint: TypeConstraint::unconstrained(ValueType::Int2),
+				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::Error)],
+				index: ColumnIndex(0),
+				auto_increment: false,
+				dictionary_id: None,
+			},
+		)
+		.unwrap();
+
+		let stored = CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), created.id).unwrap();
+
+		assert_eq!(stored.len(), 1, "exactly one property must be stored for the column");
+		assert_eq!(created.properties.len(), stored.len());
+		assert_eq!(created.properties[0].id, stored[0].id);
+		assert_eq!(created.properties[0].column, stored[0].column);
+		assert_eq!(created.properties[0].property.to_u8(), stored[0].property.to_u8());
 	}
 }
