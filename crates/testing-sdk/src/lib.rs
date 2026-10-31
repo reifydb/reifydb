@@ -11,4 +11,5 @@ pub mod builders;
 pub mod chaos;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod in_process;
+pub mod rolling_model;
 pub mod state_store;

@@ -43,12 +43,11 @@ use reifydb_testing_chaos::operator::{
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-use super::{
-	context::ChaosContext,
-	materialize::materialize_history,
+use super::{context::ChaosContext, materialize::materialize_history};
+use crate::{
+	in_process::transaction::TestFlowTransaction,
 	rolling_model::{RollingApplied, RollingModel, RollingRules},
 };
-use crate::in_process::transaction::TestFlowTransaction;
 
 fn with_oracle_ctx<R>(chaos: &ChaosContext, f: impl FnOnce(&mut InProcessContext<'_>) -> R) -> R {
 	let mut txn = TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0)));

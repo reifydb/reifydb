@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_testing_chaos::operator::model::Model;
-use reifydb_testing_sdk::chaos::rolling_model::{RollingModel, RollingRules};
+use reifydb_testing_sdk::rolling_model::{RollingModel, RollingRules};
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
 
 use crate::{framework::workload::WindowRow, operators::window::grid::Fold};
