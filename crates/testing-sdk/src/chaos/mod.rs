@@ -22,6 +22,7 @@ pub mod accumulator_oracle;
 pub mod bridge;
 pub mod context;
 pub mod materialize;
+pub mod rolling_model;
 pub mod runner;
 pub mod schema;
 pub mod strategy;

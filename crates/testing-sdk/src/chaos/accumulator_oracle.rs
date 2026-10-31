@@ -43,7 +43,11 @@ use reifydb_testing_chaos::operator::{
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-use super::{context::ChaosContext, materialize::materialize_history};
+use super::{
+	context::ChaosContext,
+	materialize::materialize_history,
+	rolling_model::{RollingApplied, RollingModel, RollingRules},
+};
 use crate::in_process::transaction::TestFlowTransaction;
 
 fn with_oracle_ctx<R>(chaos: &ChaosContext, f: impl FnOnce(&mut InProcessContext<'_>) -> R) -> R {
@@ -242,12 +246,16 @@ fn fan_out(batch: &ChaosBatch, mut leg: impl FnMut(&CoreRow, bool)) {
 	}
 }
 
-fn fold_panes<A>(buffer: &BTreeMap<RollingCoord<A>, A::Accumulator>) -> A::Accumulator
+fn fold_panes<A>(
+	aggregate: &A,
+	settings: &WindowSettings<A::Coord>,
+	buffer: &BTreeMap<RollingCoord<A>, A::Accumulator>,
+) -> A::Accumulator
 where
 	A: WindowedOperator,
 	A::Accumulator: MergeAccumulator,
 {
-	let mut folded = A::Accumulator::default();
+	let mut folded = aggregate.new_accumulator(settings);
 	for pane in buffer.values() {
 		folded.merge(pane);
 	}
@@ -265,7 +273,7 @@ where
 	A: Emit,
 	A::Accumulator: MergeAccumulator,
 {
-	let value = fold_panes::<A>(buffer).finalize()?;
+	let value = fold_panes(aggregate, settings, buffer).finalize()?;
 	let (newest, _) = buffer.last_key_value()?;
 	let end = newest.add_span(pane);
 	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
@@ -279,39 +287,6 @@ where
 	settings.pane.expect("a rolling window needs a pane")
 }
 
-struct OraclePanes<A: WindowedOperator> {
-	panes: BTreeMap<RollingCoord<A>, A::Accumulator>,
-	rows: BTreeMap<RowNumber, (RollingCoord<A>, RollingContribution<A>)>,
-	newest: RollingCoord<A>,
-}
-
-struct RollingRules<C: Coord> {
-	size: C::Span,
-	lateness: C::Span,
-	retract: C::Span,
-}
-
-impl<C: Coord> RollingRules<C> {
-	fn own_cutoff(&self, newest: C) -> Option<C> {
-		newest.checked_sub_span(self.size)
-	}
-
-	fn admits(&self, newest: Option<C>, pane: C, retraction: bool) -> bool {
-		let Some(newest) = newest else {
-			return true;
-		};
-		if self.own_cutoff(newest).is_some_and(|cutoff| pane <= cutoff) {
-			return false;
-		}
-		let line = if retraction {
-			self.retract
-		} else {
-			self.lateness
-		};
-		pane >= newest.saturating_sub_span(line)
-	}
-}
-
 #[allow(clippy::type_complexity)]
 fn rolling_windows<A>(
 	aggregate: &A,
@@ -323,19 +298,16 @@ where
 	A: WindowedOperator<Coord = DateTime>,
 {
 	let pane = rolling_pane::<A>(settings);
-	let rules = RollingRules::<DateTime> {
-		size: settings.fixed_size(),
-		lateness: settings.lateness,
-		retract: settings.immutable.unwrap_or(settings.lateness),
-	};
-	let mut groups: HashMap<RollingGroup<A>, OraclePanes<A>> = HashMap::new();
+	let size = settings.fixed_size();
+	let mut model: RollingModel<RollingGroup<A>, RollingCoord<A>, RollingContribution<A>> =
+		RollingModel::new(RollingRules {
+			size,
+			lateness: settings.lateness,
+			retract: settings.immutable.unwrap_or(settings.lateness),
+		});
 
+	let mut panes: BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = BTreeMap::new();
 	for batch in batches {
-		let newest = |groups: &HashMap<RollingGroup<A>, OraclePanes<A>>, group: &RollingGroup<A>| {
-			groups.get(group).map(|state| state.newest)
-		};
-		let mut admitted: Vec<(RollingGroup<A>, RollingCoord<A>, RowNumber, Leg<RollingContribution<A>>)> =
-			Vec::new();
 		for event in &batch.events {
 			match event {
 				ChaosEvent::Insert {
@@ -343,25 +315,17 @@ where
 					..
 				} => {
 					if let Some((group, coord, contribution)) =
-						extract_rolling(aggregate, ctx, pane, row) && rules.admits(
-						newest(&groups, &group),
-						coord,
-						false,
-					) {
-						admitted.push((group, coord, row.number, Leg::Add(contribution)));
+						extract_rolling(aggregate, ctx, pane, row)
+					{
+						model.insert(group, row.number, coord, contribution);
 					}
 				}
 				ChaosEvent::Remove {
 					row,
 					..
 				} => {
-					if let Some((group, coord, contribution)) =
-						extract_rolling(aggregate, ctx, pane, row) && rules.admits(
-						newest(&groups, &group),
-						coord,
-						true,
-					) {
-						admitted.push((group, coord, row.number, Leg::Remove(contribution)));
+					if let Some((group, coord, _)) = extract_rolling(aggregate, ctx, pane, row) {
+						model.remove(group, row.number, coord);
 					}
 				}
 				ChaosEvent::Update {
@@ -372,111 +336,72 @@ where
 					let before = extract_rolling(aggregate, ctx, pane, pre);
 					let after = extract_rolling(aggregate, ctx, pane, post);
 					match (before, after) {
-						(Some(before), Some(after)) if before.0 == after.0 => {
-							let current = newest(&groups, &before.0);
-							if rules.admits(current, before.1, true)
-								&& rules.admits(current, after.1, false)
-							{
-								admitted.push((
-									before.0,
-									before.1,
-									pre.number,
-									Leg::Remove(before.2),
-								));
-								admitted.push((
-									after.0,
-									after.1,
-									post.number,
-									Leg::Add(after.2),
-								));
-							}
+						(
+							Some((pre_group, pre_coord, _)),
+							Some((group, coord, contribution)),
+						) => {
+							model.update(
+								(pre_group, pre.number, pre_coord),
+								(group, post.number, coord, contribution),
+							);
 						}
-						(before, after) => {
-							if let Some((group, coord, contribution)) = before
-								&& rules.admits(newest(&groups, &group), coord, true)
-							{
-								admitted.push((
-									group,
-									coord,
-									pre.number,
-									Leg::Remove(contribution),
-								));
-							}
-							if let Some((group, coord, contribution)) = after
-								&& rules.admits(newest(&groups, &group), coord, false)
-							{
-								admitted.push((
-									group,
-									coord,
-									post.number,
-									Leg::Add(contribution),
-								));
-							}
+						(Some((group, coord, _)), None) => {
+							model.remove(group, pre.number, coord)
 						}
+						(None, Some((group, coord, contribution))) => {
+							model.insert(group, post.number, coord, contribution);
+						}
+						(None, None) => {}
 					}
 				}
 			}
 		}
-		let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
-		let before: HashMap<RollingGroup<A>, RollingCoord<A>> =
-			groups.iter().map(|(group, state)| (group.clone(), state.newest)).collect();
-		for (group, coord, row, leg) in admitted {
-			let state = groups.entry(group.clone()).or_insert_with(|| OraclePanes {
-				panes: BTreeMap::new(),
-				rows: BTreeMap::new(),
-				newest: coord,
-			});
-			let changed = match leg {
-				Leg::Add(contribution) => {
-					state.panes.entry(coord).or_default().add(&contribution);
-					state.rows.insert(row, (coord, contribution));
-					Some(coord)
-				}
-				Leg::Remove(_) => match state.rows.remove(&row) {
-					Some((held, contribution))
-						if rules.admits(before.get(&group).copied(), held, true) =>
-					{
-						let accumulator = state.panes.entry(held).or_default();
-						accumulator.remove(&contribution);
-						if accumulator.is_empty() {
-							state.panes.remove(&held);
-						}
-						Some(held)
-					}
-					_ => None,
-				},
-			};
-			if let Some(at) = changed {
-				state.newest = state.newest.max(at);
-				touched.insert(group);
-			}
-		}
-		for group in touched {
-			if let Some(state) = groups.get_mut(&group)
-				&& let Some(cutoff) = rules.own_cutoff(state.newest)
-			{
-				state.panes.retain(|coord, _| *coord > cutoff);
-				state.rows.retain(|_, (coord, _)| *coord > cutoff);
-			}
-		}
+		replay_rolling(aggregate, settings, &mut panes, model.step());
 	}
 
 	let drain_ms = i64::try_from(ctx.drain_at_ms).expect("chaos ledger time fits in i64 milliseconds");
 	let drain = DateTime::from_epoch_millis(drain_ms).expect("rolling oracle drain time");
-	let clock_cutoff = drain.checked_sub_span(rules.size).map(|cutoff| cutoff.floor_to(pane));
-	groups.into_iter()
-		.map(|(group, mut state)| {
-			let cutoff = match (clock_cutoff, rules.own_cutoff(state.newest)) {
-				(Some(clock), Some(own)) => Some(clock.max(own)),
-				(clock, own) => clock.or(own),
-			};
-			if let Some(cutoff) = cutoff {
-				state.panes.retain(|coord, _| *coord > cutoff);
-				state.rows.retain(|_, (coord, _)| *coord > cutoff);
+	if let Some(cutoff) = drain.checked_sub_span(size).map(|cutoff| cutoff.floor_to(pane)) {
+		replay_rolling(aggregate, settings, &mut panes, model.advance_cutoff(cutoff));
+	}
+	panes.into_iter().filter(|(_, panes)| !panes.is_empty()).collect()
+}
+
+#[allow(clippy::type_complexity)]
+fn replay_rolling<A>(
+	aggregate: &A,
+	settings: &WindowSettings<A::Coord>,
+	panes: &mut BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
+	applied: Vec<RollingApplied<RollingGroup<A>, RollingCoord<A>, RollingContribution<A>>>,
+) where
+	A: WindowedOperator,
+{
+	for leg in applied {
+		match leg {
+			RollingApplied::Add(group, coord, contribution) => {
+				panes.entry(group)
+					.or_default()
+					.entry(coord)
+					.or_insert_with(|| aggregate.new_accumulator(settings))
+					.add(&contribution);
 			}
-			(group, state.panes)
-		})
-		.collect()
+			RollingApplied::Remove(group, coord, contribution) => {
+				if let Some(group_panes) = panes.get_mut(&group)
+					&& let Some(accumulator) = group_panes.get_mut(&coord)
+				{
+					accumulator.remove(&contribution);
+					if accumulator.is_empty() {
+						group_panes.remove(&coord);
+					}
+				}
+			}
+			RollingApplied::Cut(group, cutoff) => {
+				if let Some(group_panes) = panes.get_mut(&group) {
+					group_panes.retain(|coord, _| *coord > cutoff);
+				}
+			}
+		}
+	}
 }
 
 pub fn rolling_accumulator_oracle<A>(
