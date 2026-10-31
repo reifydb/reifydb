@@ -396,6 +396,7 @@ impl FlowSupervisor {
 			)
 		});
 		state.scan_lease = Some(scan_lease);
+		let scanned_from = state.scan_cursor;
 		state.scan_cursor = bound;
 		self.control.store(bound);
 		self.poll_frontier.store(bound);
@@ -416,7 +417,12 @@ impl FlowSupervisor {
 			state.last_control_commit_at = now;
 		}
 
-		let targets = wake_targets(&state.wake_sets, &changed);
+		let mut targets = wake_targets(&state.wake_sets, &changed);
+		targets.extend(state.flows.keys().copied().filter(|flow_id| {
+			self.flow_tracker
+				.last_commit(*flow_id)
+				.is_some_and(|commit| commit > scanned_from && commit <= bound)
+		}));
 		self.flow_tracker.wake_flows(targets);
 		if !state.full_wake_armed {
 			state.full_wake_armed = true;
