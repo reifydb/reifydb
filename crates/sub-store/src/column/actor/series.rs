@@ -211,19 +211,21 @@ impl SeriesMaterializationActor {
 				values: &partition_values,
 				metadata: &metadata,
 			};
-			let mut start = bucket_for(dirty.start, self.bucket_width).start;
-			while start < dirty.end {
-				let bucket = Bucket {
-					start,
-					end: start + self.bucket_width,
-					width: self.bucket_width,
-				};
-				start = start.saturating_add(self.bucket_width);
-				if !is_closed(&bucket, series, scope.metadata, now_wall, self.grace) {
-					deferred = true;
-					continue;
+			if !dirty.is_empty() {
+				let mut start = bucket_for(dirty.start, self.bucket_width).start;
+				while start < dirty.end {
+					let bucket = Bucket {
+						start,
+						end: start + self.bucket_width,
+						width: self.bucket_width,
+					};
+					start = start.saturating_add(self.bucket_width);
+					if !is_closed(&bucket, series, scope.metadata, now_wall, self.grace) {
+						deferred = true;
+						continue;
+					}
+					self.materialize_bucket(series, scope, &bucket)?;
 				}
-				self.materialize_bucket(series, scope, &bucket)?;
 			}
 			if !deferred {
 				self.clear_dirty_mark(series, partition, &metadata)?;
