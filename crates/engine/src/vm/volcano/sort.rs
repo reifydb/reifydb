@@ -10,7 +10,6 @@ use reifydb_core::{
 		column::headers::ColumnHeaders,
 	},
 };
-use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
@@ -97,13 +96,6 @@ impl QueryNode for SortNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
-	}
-}
-
-impl Transform for SortNode {
-	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
-		let indices = self.sort_indices(&input)?;
-		Self::permute(&input, &indices)
 	}
 }
 
