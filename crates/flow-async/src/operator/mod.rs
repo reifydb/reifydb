@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use arrow_arith::aggregate::max;
-use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray};
+use arrow_array::{ArrayRef, RecordBatch, TimestampNanosecondArray};
 #[cfg(feature = "runtime")]
 use arrow_schema::SchemaRef;
 use reifydb_core::{interface::change::Change, internal_err};

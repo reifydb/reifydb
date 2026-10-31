@@ -28,15 +28,6 @@ pub(crate) fn create_deferred_view(
 		plan.namespace.id(),
 		plan.view.text(),
 	)? {
-		if plan.if_not_exists {
-			return single_row([
-				("id", Value::Uint8(view.id().0)),
-				("namespace", Value::Utf8(plan.namespace.name().to_string())),
-				("view", Value::Utf8(plan.view.text().to_string())),
-				("created", Value::Boolean(false)),
-			]);
-		}
-
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 

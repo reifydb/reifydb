@@ -304,7 +304,9 @@ where
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		for emit in emits {
 			match (emit.prior, emit.post) {
-				(None, Some(post)) => emitted.0.push((RowNumber(post.row_number), now, post.last_value)),
+				(None, Some(post)) => {
+					emitted.0.push((RowNumber(post.row_number), now, post.last_value))
+				}
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
 					now,
@@ -312,7 +314,9 @@ where
 					Some(prior.last_value),
 					post.last_value,
 				)),
-				(Some(prior), None) => emitted.2.push((RowNumber(prior.row_number), now, prior.last_value)),
+				(Some(prior), None) => {
+					emitted.2.push((RowNumber(prior.row_number), now, prior.last_value))
+				}
 				(None, None) => {}
 			}
 		}

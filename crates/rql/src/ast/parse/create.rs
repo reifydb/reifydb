@@ -5363,7 +5363,8 @@ mod windowed_view_group_storage_tests {
 
 	#[test]
 	fn a_ringbuffer_group_refuses_capacity_eviction() {
-		// The ring sink never evicts silently on capacity, so accepting it would promise an eviction that never happens.
+		// The ring sink never evicts silently on capacity, so accepting it would promise an eviction that never
+		// happens.
 		let message = create_error(&format!(
 			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ members: [ {{ view: ns::g1, duration: 1s }} ], capacity: 5, eviction: {{ capacity: silent }} }} {AS}"
 		));
