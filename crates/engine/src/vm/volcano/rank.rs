@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, sync::Arc};
 
-use arrow_array::UInt32Array;
+use arrow_array::{Array, ArrayRef, RecordBatch, UInt8Array, UInt32Array, types::UInt8Type};
 use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
 use reifydb_core::{
 	internal_error,
@@ -11,7 +11,9 @@ use reifydb_core::{
 		SortDirection,
 		SortDirection::{Asc, Desc},
 	},
+	value::batch::batch_with,
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	container::{
@@ -23,9 +25,40 @@ use reifydb_value::value::{
 	},
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
+	value_type::field::from_field,
 };
 
-use crate::Result;
+use crate::{Result, vm::services::Services};
+
+pub(crate) fn enum_name_ranks(
+	batch: &RecordBatch,
+	services: &Arc<Services>,
+	rx: &mut Transaction<'_>,
+) -> Result<RecordBatch> {
+	let schema = batch.schema();
+	let mut columns = Vec::with_capacity(batch.num_columns());
+	for (field, array) in schema.fields().iter().zip(batch.columns()) {
+		let Some(id) = from_field(field)?.sumtype else {
+			columns.push((field.clone(), array.clone()));
+			continue;
+		};
+		let sumtype = services.catalog.get_sumtype(rx, id)?;
+		let mut names: Vec<(&str, u8)> =
+			sumtype.variants.iter().map(|variant| (variant.name.as_str(), variant.tag)).collect();
+		names.sort();
+		let mut rank = [0u8; 256];
+		for (position, (_, tag)) in names.iter().enumerate() {
+			rank[usize::from(*tag)] = position as u8;
+		}
+		let tags = array
+			.as_any()
+			.downcast_ref::<UInt8Array>()
+			.ok_or_else(|| internal_error!("sumtype tag column {} is not uint8", field.name()))?;
+		let ranked: ArrayRef = Arc::new(tags.unary::<_, UInt8Type>(|tag| rank[usize::from(tag)]));
+		columns.push((field.clone(), ranked));
+	}
+	batch_with(&schema, columns, batch.num_rows())
+}
 
 pub(crate) fn rank_rows(
 	keys: &[(ColumnView<'_>, SortDirection)],
@@ -102,9 +135,6 @@ fn compare_rows(comparators: &[(Comparator<'_>, &SortDirection)], left: usize, r
 
 fn comparator<'a>(data: &'a ColumnView<'a>) -> Comparator<'a> {
 	match &data.data {
-		ViewData::Enum {
-			..
-		} => unreachable!("enum columns are only made at the result edge"),
 		ViewData::Bool(a) => by(data, move |i| Some(a.value(i))),
 		ViewData::Float4(a) => by(data, move |i| OrderedF32::try_from(a.value(i)).ok()),
 		ViewData::Float8(a) => by(data, move |i| OrderedF64::try_from(a.value(i)).ok()),
@@ -119,6 +149,10 @@ fn comparator<'a>(data: &'a ColumnView<'a>) -> Comparator<'a> {
 		ViewData::Uint8(a) => by(data, move |i| Some(a.value(i))),
 		ViewData::Uint16(a) => by(data, move |i| wide_at::<u128>(a, i)),
 		ViewData::Utf8 {
+			container,
+			..
+		}
+		| ViewData::Enum {
 			container,
 			..
 		} => by(data, move |i| Some(container.value(i))),

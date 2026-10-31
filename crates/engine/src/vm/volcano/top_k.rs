@@ -24,7 +24,7 @@ use crate::{
 	Result,
 	vm::volcano::{
 		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
-		rank::rank_rows,
+		rank::{enum_name_ranks, rank_rows},
 	},
 };
 
@@ -81,9 +81,10 @@ impl QueryNode for TopKNode {
 		};
 
 		let row_count = columns.num_rows();
+		let ranked = enum_name_ranks(&columns, &ctx.services, rx)?;
 
 		let key_cols: Vec<_> =
-			self.by.iter().map(|key| Self::resolve_key(&columns, key)).collect::<Result<Vec<_>>>()?;
+			self.by.iter().map(|key| Self::resolve_key(&ranked, key)).collect::<Result<Vec<_>>>()?;
 
 		let indices = rank_rows(&key_cols, row_count, Some(self.limit))?;
 		Ok(Some(Self::permute(&columns, &indices)?))

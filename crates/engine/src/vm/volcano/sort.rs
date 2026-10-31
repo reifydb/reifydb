@@ -27,7 +27,7 @@ use crate::{
 	Result,
 	vm::volcano::{
 		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
-		rank::rank_rows,
+		rank::{enum_name_ranks, rank_rows},
 	},
 };
 
@@ -90,12 +90,9 @@ impl QueryNode for SortNode {
 			None => return Ok(None),
 		};
 
-		let transform_ctx = TransformContext {
-			routines: &ctx.services.routines,
-			runtime_context: &ctx.services.runtime_context,
-			params: &ctx.params,
-		};
-		Ok(Some(self.apply(&transform_ctx, columns)?))
+		let ranked = enum_name_ranks(&columns, &ctx.services, rx)?;
+		let indices = self.sort_indices(&ranked)?;
+		Ok(Some(Self::permute(&columns, &indices)?))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -105,6 +102,13 @@ impl QueryNode for SortNode {
 
 impl Transform for SortNode {
 	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+		let indices = self.sort_indices(&input)?;
+		Self::permute(&input, &indices)
+	}
+}
+
+impl SortNode {
+	fn sort_indices(&self, input: &RecordBatch) -> Result<Vec<usize>> {
 		let key_refs = self
 			.by
 			.iter()
@@ -120,12 +124,9 @@ impl Transform for SortNode {
 			})
 			.collect::<Result<Vec<_>>>()?;
 
-		let indices = rank_rows(&key_refs, input.num_rows(), None)?;
-		Self::permute(&input, &indices)
+		rank_rows(&key_refs, input.num_rows(), None)
 	}
-}
 
-impl SortNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
 	fn permute(input: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
 		take_rows(input, indices)
