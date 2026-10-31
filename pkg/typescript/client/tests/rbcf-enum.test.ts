@@ -67,7 +67,7 @@ function enumMessage(enumName: string, names: string[], nones?: boolean[]): Uint
 
 describe("RBCF enum columns", () => {
     it("decode kind 31 as an enum column of plain names", () => {
-        // D19: the column type names the enum and cells are plain names; a tag here means the old layout.
+        // The column type names the enum and cells are plain names; a tag here means the old layout.
         const [frame] = rbcf.decode(enumMessage("s::status", ["todo", "doing"]));
         expect(frame.columns[0]).toEqual({ name: "status", type: { Enum: "s::status" }, payload: ["todo", "doing"] });
     });
@@ -98,7 +98,7 @@ describe("RBCF enum columns", () => {
 
 describe("json enum columns", () => {
     it("read the enum descriptor as an enum type with the qualified name", () => {
-        // D19: `{"id":"Enum","enum":"ns::name"}` with names as payload, under Option when nullable.
+        // `{"id":"Enum","enum":"ns::name"}` with names as payload, under Option when nullable.
         const [plain, optional] = columnsFromWire([
             { name: "a", type: { id: "Enum", enum: "s::status" }, payload: ["doing"] },
             { name: "b", type: { id: "Option", underlying: { id: "Enum", enum: "s::status" } }, payload: ["done"] },
@@ -108,7 +108,7 @@ describe("json enum columns", () => {
     });
 
     it("refuse an enum descriptor with a numeric enum", () => {
-        // D1: an id is no longer part of the wire, so the old descriptor must be refused, not half read.
+        // An id is no longer part of the wire, so the old descriptor must be refused, not half read.
         expect(() => columnsFromWire([{ name: "a", type: { id: "Enum", enum: 7 } as any, payload: ["1"] }])).toThrow();
     });
 });

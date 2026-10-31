@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, enum_variant::EnumVariant, frame::frame::Frame},
 };
 
 fn engine() -> TestEngine {
@@ -43,7 +43,11 @@ fn assert_tag_update_refused(t: &TestEngine, rql: &str, value: &str) {
 	assert!(err.message.contains("tag"), "the error must name the tag column: {err:?}");
 	assert!(err.message.contains("s::m"), "the error must name the series: {err:?}");
 	assert_eq!(err.fragment.text(), value, "{rql}: the error must point at the assigned value");
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())], "{rql}");
+	assert_eq!(
+		column_values(&t.query("FROM s::m"), "tag"),
+		vec![Value::Enum(EnumVariant::new("s::status", "inactive"))],
+		"{rql}"
+	);
 	assert_eq!(column_values(&t.query("FROM s::m"), "val"), vec![Value::Int4(1)], "{rql}");
 }
 
@@ -88,5 +92,8 @@ fn updating_another_column_of_a_tagged_series_updates_the_row_and_keeps_its_tag(
 
 	assert_eq!(column_values(&frames, "updated"), vec![Value::Uint8(1)]);
 	assert_eq!(column_values(&t.query("FROM s::m"), "val"), vec![Value::Int4(5)]);
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())]);
+	assert_eq!(
+		column_values(&t.query("FROM s::m"), "tag"),
+		vec![Value::Enum(EnumVariant::new("s::status", "inactive"))]
+	);
 }

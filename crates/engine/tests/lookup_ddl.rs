@@ -107,7 +107,7 @@ fn using_an_unpartitioned_table_is_lookup_002() {
 
 #[test]
 fn using_the_partition_columns_in_another_order_is_accepted() {
-	// G1: 'and' order carries no meaning, so a reordered using clause is the same key.
+	// 'and' order carries no meaning, so a reordered using clause is the same key.
 	let engine = engine();
 	engine.admin(&view("v", "{ FROM lk::pool }", "(pool, p.pair) and (mint, p.pool)", RETENTION));
 }

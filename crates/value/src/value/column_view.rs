@@ -33,6 +33,7 @@ use crate::{
 		decimal::Decimal,
 		dictionary::DictionaryId,
 		duration::Duration,
+		enum_variant::EnumVariant,
 		identity::IdentityId,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
@@ -456,8 +457,8 @@ impl<'a> ColumnView<'a> {
 			} => utf8_get_value(container, index),
 			ViewData::Enum {
 				container,
-				..
-			} => utf8_get_value(container, index),
+				r#enum,
+			} => enum_get_value(container, r#enum, index),
 			ViewData::Date(a) => temporal_array::get_value(dates(a), index),
 			ViewData::DateTime(a) => temporal_array::get_value(datetimes(a), index),
 			ViewData::Time(a) => temporal_array::get_value(times(a), index),
@@ -528,8 +529,8 @@ impl<'a> ColumnView<'a> {
 			} => collect!(|i| utf8_get_value(container, i)),
 			ViewData::Enum {
 				container,
-				..
-			} => collect!(|i| utf8_get_value(container, i)),
+				r#enum,
+			} => collect!(|i| enum_get_value(container, r#enum, i)),
 			ViewData::Date(a) => {
 				let values = dates(a);
 				collect!(|i| temporal_array::get_value(values, i))
@@ -912,5 +913,12 @@ impl FromColumnView for IdentityId {
 			ViewData::IdentityId(c) => Ok(identity_ids(c).get(index).copied()),
 			_ => wrong_type(),
 		}
+	}
+}
+
+fn enum_get_value(container: &LargeStringArray, r#enum: &str, index: usize) -> Value {
+	match utf8_get_value(container, index) {
+		Value::Utf8(variant) => Value::Enum(EnumVariant::new(r#enum, variant)),
+		none => none,
 	}
 }

@@ -1040,7 +1040,7 @@ mod tests {
 
 	#[test]
 	fn a_group_id_binds_as_twenty_four_bytes_so_its_order_is_its_unsigned_order() {
-		// R14: a u128 group split across a signed integer would order the top half before the bottom, and
+		// A u128 group split across a signed integer would order the top half before the bottom, and
 		// the split is invisible until a group id happens to cross it
 		let store = open();
 		let low = left(0, 0);

@@ -37,7 +37,7 @@ use reifydb_evaluate::{
 	stack::Variable,
 };
 pub(crate) use reifydb_rql::expression::variant::declared_sumtype_id;
-use reifydb_rql::expression::variant::{EnumOperand, variant_by_name};
+use reifydb_rql::expression::variant::{EnumOperand, check_enum, variant_by_name};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
@@ -133,7 +133,7 @@ impl InlineDataNode {
 				if let Some(sumtype) = self.series_tag.as_ref()
 					&& alias_expr.alias.0.text() == "tag"
 				{
-					expanded.push(resolve_series_tag_name(&ctx, sumtype, alias_expr)?);
+					expanded.push(resolve_series_tag_name(&ctx, txn, sumtype, alias_expr)?);
 					written.push(name);
 					continue;
 				}
@@ -368,12 +368,15 @@ fn cast_to_stored_type(
 
 fn resolve_series_tag_name(
 	ctx: &Arc<QueryContext>,
+	txn: &mut Transaction<'_>,
 	sumtype: &SumType,
 	alias_expr: AliasExpression,
 ) -> Result<AliasExpression> {
 	let Some(variant) = enum_name(ctx, alias_expr.expression.as_ref())? else {
 		return Ok(alias_expr);
 	};
+	let r#enum = param_enum(ctx, alias_expr.expression.as_ref())?;
+	check_enum(&ctx.services.catalog, txn, sumtype, r#enum.as_deref(), &variant, "tag")?;
 	let Some(tag) = sumtype.variants.iter().find(|v| v.name.eq_ignore_ascii_case(variant.text())).map(|v| v.tag)
 	else {
 		return_error!(sumtype_variant_not_found(variant, &sumtype.name));
@@ -460,19 +463,30 @@ pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Val
 
 pub(crate) type FlatFields = HashMap<String, Vec<AliasExpression>>;
 
+pub(crate) fn param_enum(ctx: &QueryContext, expression: &Expression) -> Result<Option<String>> {
+	match param_symbol(expression) {
+		Some(symbol) => match symbol_scalar(ctx, symbol)? {
+			Some(Value::Enum(value)) => Ok(Some(value.r#enum)),
+			_ => Ok(None),
+		},
+		None => Ok(None),
+	}
+}
+
 pub(crate) fn enum_operand(ctx: &QueryContext, expression: &Expression) -> Result<EnumOperand> {
 	if let Expression::Constant(ConstantExpression::Text {
 		fragment,
 	}) = expression
 	{
-		return Ok(EnumOperand::Name(fragment.clone()));
+		return Ok(EnumOperand::Name(fragment.clone(), None));
 	}
 	let Some(symbol) = param_symbol(expression) else {
 		return Ok(EnumOperand::Other);
 	};
 	let fragment = expression.full_fragment_owned();
 	Ok(match symbol_scalar(ctx, symbol)? {
-		Some(Value::Utf8(name)) => EnumOperand::Name(fragment.with_text(name)),
+		Some(Value::Utf8(name)) => EnumOperand::Name(fragment.with_text(name), None),
+		Some(Value::Enum(value)) => EnumOperand::Name(fragment.with_text(value.variant), Some(value.r#enum)),
 		Some(Value::None {
 			..
 		}) => EnumOperand::None(fragment),
@@ -493,6 +507,7 @@ pub(crate) fn enum_name(ctx: &QueryContext, expression: &Expression) -> Result<O
 	};
 	match symbol_scalar(ctx, symbol)? {
 		Some(Value::Utf8(name)) => Ok(Some(expression.full_fragment_owned().with_text(name))),
+		Some(Value::Enum(value)) => Ok(Some(expression.full_fragment_owned().with_text(value.variant))),
 		_ => Ok(None),
 	}
 }
@@ -562,8 +577,10 @@ fn expand_enum_name(
 	marks: &mut HashMap<String, SumTypeId>,
 ) -> Result<()> {
 	let sumtype = ctx.services.catalog.get_sumtype(txn, id)?;
-	let variant = variant_by_name(&sumtype, &name)?;
 	let col_name = alias_expr.alias.0.text();
+	let r#enum = param_enum(ctx, alias_expr.expression.as_ref())?;
+	check_enum(&ctx.services.catalog, txn, &sumtype, r#enum.as_deref(), &name, col_name)?;
+	let variant = variant_by_name(&sumtype, &name)?;
 	let chosen = &sumtype.variants[variant];
 	let prefix = format!("{}_{}_", col_name, chosen.name.to_lowercase());
 	let mut given = HashMap::new();

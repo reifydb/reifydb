@@ -20,7 +20,7 @@ use reifydb_value::{
 use crate::Result;
 
 pub enum EnumOperand {
-	Name(Fragment),
+	Name(Fragment, Option<String>),
 	None(Fragment),
 	Typed(Fragment, ValueType),
 	Other,
@@ -30,9 +30,27 @@ pub fn text_literal(expression: &Expression) -> Result<EnumOperand> {
 	match expression {
 		Expression::Constant(ConstantExpression::Text {
 			fragment,
-		}) => Ok(EnumOperand::Name(fragment.clone())),
+		}) => Ok(EnumOperand::Name(fragment.clone(), None)),
 		_ => Ok(EnumOperand::Other),
 	}
+}
+
+pub fn check_enum(
+	catalog: &Catalog,
+	rx: &mut Transaction<'_>,
+	sumtype: &SumType,
+	r#enum: Option<&str>,
+	fragment: &Fragment,
+	col_name: &str,
+) -> Result<()> {
+	let Some(r#enum) = r#enum else {
+		return Ok(());
+	};
+	let qualified = format!("{}::{}", catalog.get_namespace(rx, sumtype.namespace)?.name(), sumtype.name);
+	if qualified.eq_ignore_ascii_case(r#enum) {
+		return Ok(());
+	}
+	return_error!(enum_value_expected(fragment.clone(), col_name, &qualified, ValueType::Enum(r#enum.to_string())))
 }
 
 pub fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<SumTypeId> {
@@ -81,8 +99,9 @@ pub fn resolve_enum_equality(
 	let (left, fragment) = (left.clone(), fragment.clone());
 	*expr = match operand(right.as_ref())? {
 		EnumOperand::Other => return Ok(()),
-		EnumOperand::Name(name) => {
+		EnumOperand::Name(name, r#enum) => {
 			let sumtype = catalog.get_sumtype(rx, declared)?;
+			check_enum(catalog, rx, &sumtype, r#enum.as_deref(), &name, col_name)?;
 			let variant = &sumtype.variants[variant_by_name(&sumtype, &name)?];
 			let is_variant = Expression::IsVariant(IsVariantExpression {
 				expression: left,

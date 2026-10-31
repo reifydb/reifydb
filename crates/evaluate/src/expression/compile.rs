@@ -72,6 +72,7 @@ pub(crate) fn variable_column(
 				{
 					*inner
 				}
+				Value::Enum(value) => Value::Utf8(value.variant),
 				other => other,
 			};
 			if matches!(

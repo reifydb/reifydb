@@ -431,6 +431,7 @@ impl From<&Value> for ValueType {
 			Value::Int8(_) => ValueType::Int8,
 			Value::Int16(_) => ValueType::Int16,
 			Value::Utf8(_) => ValueType::Utf8,
+			Value::Enum(value) => ValueType::Enum(value.r#enum.clone()),
 			Value::Uint1(_) => ValueType::Uint1,
 			Value::Uint2(_) => ValueType::Uint2,
 			Value::Uint4(_) => ValueType::Uint4,

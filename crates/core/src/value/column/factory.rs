@@ -343,6 +343,11 @@ pub fn from_many(name: &str, value: Value, row_count: usize) -> (FieldRef, Array
 		Value::Int8(v) => int8(name, vec![v; row_count]),
 		Value::Int16(v) => int16(name, vec![v; row_count]),
 		Value::Utf8(v) => utf8(name, vec![v; row_count]),
+		Value::Enum(v) => column(
+			name,
+			ValueType::Enum(v.r#enum),
+			Arc::new(LargeStringArray::new_repeated(v.variant, row_count)),
+		),
 		Value::Uint1(v) => uint1(name, vec![v; row_count]),
 		Value::Uint2(v) => uint2(name, vec![v; row_count]),
 		Value::Uint4(v) => uint4(name, vec![v; row_count]),

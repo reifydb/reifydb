@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, frame::frame::Frame, system_columns::user_columns},
+	value::{Value, enum_variant::EnumVariant, frame::frame::Frame, system_columns::user_columns},
 };
 
 fn engine() -> TestEngine {
@@ -83,7 +83,10 @@ fn tagged_series_insert_with_a_numeric_tag_stores_that_tag() {
 
 	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 1 }]");
 
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())]);
+	assert_eq!(
+		column_values(&t.query("FROM s::m"), "tag"),
+		vec![Value::Enum(EnumVariant::new("s::status", "inactive"))]
+	);
 }
 
 #[test]
@@ -103,7 +106,10 @@ fn tagged_series_insert_with_a_variant_name_stores_that_variant_tag() {
 
 	t.command("INSERT s::m [{ ts: cast('2024-01-01T00:00:00Z', datetime), val: 1, tag: 'inactive' }]");
 
-	assert_eq!(column_values(&t.query("FROM s::m"), "tag"), vec![Value::Utf8("inactive".to_string())]);
+	assert_eq!(
+		column_values(&t.query("FROM s::m"), "tag"),
+		vec![Value::Enum(EnumVariant::new("s::status", "inactive"))]
+	);
 }
 
 #[test]

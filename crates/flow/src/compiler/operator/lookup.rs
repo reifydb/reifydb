@@ -227,7 +227,7 @@ mod tests {
 
 	#[test]
 	fn using_pairs_written_out_of_partition_order_are_reordered_to_it() {
-		// G1: the hash takes values in partition order, so keeping the written order would hash (pair, pool).
+		// The hash takes values in partition order, so keeping the written order would hash (pair, pool).
 		let on = using(&[
 			(left_column("pair_l"), right_column("info", "pair")),
 			(left_column("pool_l"), right_column("info", "pool")),

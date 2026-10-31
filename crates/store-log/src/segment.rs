@@ -411,7 +411,7 @@ mod tests {
 
 	#[test]
 	fn recover_is_a_fixed_point() {
-		// I7: a second recovery pass must not move the head, or a crash during recovery
+		// A second recovery pass must not move the head, or a crash during recovery
 		// would eat one more record on every restart.
 		let (fs, path) = fixture();
 		let mut segment = Segment::create(&fs, &path, CAPACITY).unwrap();

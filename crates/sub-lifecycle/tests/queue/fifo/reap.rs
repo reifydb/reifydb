@@ -189,7 +189,7 @@ fn test_a_reaped_item_waits_out_its_backoff_before_redelivery() {
 
 #[test]
 fn test_lost_attempts_spend_the_retry_budget() {
-	// R5: a black-holing endpoint that kills every worker must eventually stop being retried. If
+	// A black-holing endpoint that kills every worker must eventually stop being retried. If
 	// lost attempts did not count, an item that never produces an ack would cycle forever and the
 	// dead state would be unreachable for exactly the failure mode that needs it most.
 	let t = engine_with_queue(ONE_PARTITION);

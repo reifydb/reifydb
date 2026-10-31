@@ -19,6 +19,7 @@ use reifydb_value::{
 		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
+		enum_variant::EnumVariant,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
@@ -1014,6 +1015,13 @@ fn test_roundtrip_all() {
 }
 
 #[test]
+fn test_enum_value_is_refused_as_a_key() {
+	// An enum is keyed by its stored tag; a name key would order rows by text and never match the stored key.
+	let mut ser = KeySerializer::new();
+	assert!(ser.try_extend_value(&Value::Enum(EnumVariant::new("s::status", "doing"))).is_err());
+}
+
+#[test]
 fn test_roundtrip_exhaustiveness_guard() {
 	// A new Value variant stops this compiling, forcing a round-trip test for it above.
 	let value = Value::none();
@@ -1052,6 +1060,7 @@ fn test_roundtrip_exhaustiveness_guard() {
 		Value::Record(_) => {}
 		Value::Tuple(_) => {}
 		Value::Digest(_) => {}
+		Value::Enum(_) => {}
 	}
 }
 

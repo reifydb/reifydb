@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, enum_variant::EnumVariant, frame::frame::Frame},
 };
 
 fn engine() -> TestEngine {
@@ -127,7 +127,7 @@ fn an_optional_enum_field_stores_a_value_and_a_none() {
 
 	let frames = t.query("FROM test::t SORT { id: ASC }");
 
-	let names = ["a", "a", "b"].map(|name| Value::Utf8(name.to_string()));
+	let names = ["a", "a", "b"].map(|name| Value::Enum(EnumVariant::new("test::e", name)));
 	assert_eq!(column_values(&frames, "v"), names.to_vec());
 	let x = column_values(&frames, "v_a_x");
 	assert_eq!(x[0], Value::Int4(5), "the stored field value must read back: {x:?}");

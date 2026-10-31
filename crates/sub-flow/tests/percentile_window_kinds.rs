@@ -184,7 +184,7 @@ fn a_session_percentile_view_equals_the_median_of_each_session_through_inserts_d
 #[test]
 fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_min_in_tumbling_sliding_and_session_views()
  {
-	// D34: the digest applies every retraction, while a min sealed past immutable keeps the retracted value.
+	// The digest applies every retraction, while a min sealed past immutable keeps the retracted value.
 	let db = memory();
 	let calls = "p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)";
 	let views = [

@@ -2015,7 +2015,7 @@ fn window_row(number: u64, value: i64, at_ms: i64) -> Row {
 
 #[test]
 fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_min_beside_it() {
-	// D34: the digest applies every retraction, while a min sealed past immutable drops it and keeps the row alive.
+	// The digest applies every retraction, while a min sealed past immutable drops it and keeps the row alive.
 	let specs = [
 		(
 			"tumbling",
@@ -2282,7 +2282,7 @@ chaos_test!(window_tumbling_percentile_lateness_chaos, |seed| {
 });
 
 chaos_test!(window_tumbling_percentile_immutable_chaos, |seed| {
-	// D34: a retraction older than immutable leaves the digest, while the sealed min beside it keeps the row alive.
+	// A retraction older than immutable leaves the digest, while the sealed min beside it keeps the row alive.
 	tumbling::drive_immutable(
 		seed,
 		tumbling::Params {
@@ -2365,7 +2365,7 @@ chaos_test!(window_rolling_percentile_next_to_min_chaos, |seed| {
 });
 
 chaos_test!(window_rolling_percentile_immutable_chaos, |seed| {
-	// V31: immutable forces the recombine path, and the frame must equal the rows still in it exactly.
+	// Immutable forces the recombine path, and the frame must equal the rows still in it exactly.
 	rolling::drive_slotted(
 		seed,
 		rolling_slotted_params(45),

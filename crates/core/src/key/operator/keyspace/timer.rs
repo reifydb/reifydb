@@ -113,7 +113,7 @@ mod tests {
 
 	#[test]
 	fn timer_ids_order_as_the_unsigned_integers_they_hash_to() {
-		// R14: the big endian array is what sqlite stores and what derived Ord compares, so the two must
+		// The big endian array is what sqlite stores and what derived Ord compares, so the two must
 		// agree or the in memory wheel and the table would walk the index in different orders
 		let low = 7u128.to_be_bytes();
 		let high = 8u128.to_be_bytes();

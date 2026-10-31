@@ -28,6 +28,7 @@ export {Uint16Value} from './uint16';
 export {NoneValue, noneDepth} from './none';
 export {Option, isOption} from './option';
 export {Utf8Value} from './utf8';
+export {EnumVariant} from './enum-variant';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';

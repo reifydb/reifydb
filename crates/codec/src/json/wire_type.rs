@@ -212,6 +212,11 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 	};
 
 	match id {
+		"Enum" => object
+			.get(ENUM)
+			.and_then(JsonValue::as_str)
+			.map(|name| ValueType::Enum(name.to_string()))
+			.ok_or_else(|| format!("`Enum` needs a string `{ENUM}`: {value}")),
 		"Decimal" => {
 			let precision = family_precision(
 				object,
@@ -268,24 +273,6 @@ pub fn from_json(value: &JsonValue) -> Result<ValueType, String> {
 	}
 }
 
-pub fn column_from_json(value: &JsonValue) -> Result<ValueType, String> {
-	let object = value.as_object().ok_or_else(|| format!("expected a type descriptor object, got {value}"))?;
-	match object.get(ID).and_then(JsonValue::as_str) {
-		Some("Enum") => object
-			.get(ENUM)
-			.and_then(JsonValue::as_str)
-			.map(|name| ValueType::Enum(name.to_string()))
-			.ok_or_else(|| format!("`Enum` needs a string `{ENUM}`: {value}")),
-		Some("Option") => {
-			let underlying = object
-				.get(UNDERLYING)
-				.ok_or_else(|| format!("`Option` needs an `{UNDERLYING}` type: {value}"))?;
-			Ok(ValueType::Option(Box::new(column_from_json(underlying)?)))
-		}
-		_ => from_json(value),
-	}
-}
-
 impl Serialize for WireColumnType {
 	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		to_json(&self.value_type).serialize(serializer).map_err(S::Error::custom)
@@ -295,7 +282,7 @@ impl Serialize for WireColumnType {
 impl<'de> Deserialize<'de> for WireColumnType {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		let value = JsonValue::deserialize(deserializer)?;
-		column_from_json(&value)
+		from_json(&value)
 			.map(|value_type| WireColumnType {
 				value_type,
 			})

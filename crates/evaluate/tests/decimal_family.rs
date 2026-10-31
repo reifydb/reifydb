@@ -126,7 +126,7 @@ fn decimal_against_one_row_int_goes_through_the_scalar_path() {
 
 #[test]
 fn equal_values_of_different_scale_compare_equal() {
-	// N2: 1.5 and 1.50 are one value; comparing raw unscaled 15 against 150 would say they differ.
+	// 1.5 and 1.50 are one value; comparing raw unscaled 15 against 150 would say they differ.
 	let left = || decimal(2, 1, &["1.5", "1.5", "-0.5"]);
 	let right = || decimal(5, 2, &["1.50", "1.51", "-0.50"]);
 
@@ -219,7 +219,7 @@ fn prefix_minus_keeps_precision_and_scale() {
 
 #[test]
 fn a_decimal_literal_takes_precision_and_scale_from_its_text() {
-	// N20: the text decides the type; 1.50 keeps scale 2 and 0.05 needs precision 2 to hold two fraction digits.
+	// The text decides the type; 1.50 keeps scale 2 and 0.05 needs precision 2 to hold two fraction digits.
 	let cases = [
 		("1.50", ValueType::decimal(Precision::new(3), Scale::new(2))),
 		("0.05", ValueType::decimal(Precision::new(2), Scale::new(2))),
@@ -234,7 +234,7 @@ fn a_decimal_literal_takes_precision_and_scale_from_its_text() {
 
 #[test]
 fn an_integer_literal_takes_the_narrowest_type_then_u128_then_int() {
-	// N20: i8 .. i128, then u128, then decimal; a negative past i128 must become a decimal, not an error.
+	// I8 .. i128, then u128, then decimal; a negative past i128 must become a decimal, not an error.
 	assert_eq!(type_of(&literal("127").unwrap()), ValueType::Int1);
 	assert_eq!(type_of(&literal("170141183460469231731687303715884105727").unwrap()), ValueType::Int16);
 	assert_eq!(type_of(&literal("170141183460469231731687303715884105728").unwrap()), ValueType::Uint16);
@@ -250,7 +250,7 @@ fn an_integer_literal_takes_the_narrowest_type_then_u128_then_int() {
 
 #[test]
 fn a_77_digit_literal_is_a_range_error() {
-	// P2-Q3: past 76 digits there is no family type; the literal must fail instead of saturating.
+	// Past 76 digits there is no family type; the literal must fail instead of saturating.
 	let err = literal(&"1".repeat(77)).unwrap_err();
 	assert_eq!(err.0.code, "NUMBER_002");
 	let err = literal(&format!("{}.5", "1".repeat(76))).unwrap_err();

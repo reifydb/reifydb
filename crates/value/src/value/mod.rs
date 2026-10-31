@@ -21,6 +21,7 @@ pub mod dictionary;
 pub mod diff_type;
 pub mod digest;
 pub mod duration;
+pub mod enum_variant;
 pub mod frame;
 pub mod identity;
 pub mod into;
@@ -52,6 +53,7 @@ use decimal::Decimal;
 use dictionary::DictionaryEntryId;
 use digest::Digest;
 use duration::Duration;
+use enum_variant::EnumVariant;
 use identity::IdentityId;
 use ordered_f32::OrderedF32;
 use ordered_f64::OrderedF64;
@@ -124,6 +126,8 @@ pub enum Value {
 	Tuple(Vec<Value>),
 
 	Digest(Box<Digest>),
+
+	Enum(EnumVariant),
 }
 
 impl Value {
@@ -374,6 +378,7 @@ impl PartialEq for Value {
 			(Value::Record(l), Value::Record(r)) => l == r,
 			(Value::Tuple(l), Value::Tuple(r)) => l == r,
 			(Value::Digest(l), Value::Digest(r)) => l == r,
+			(Value::Enum(l), Value::Enum(r)) => l == r,
 			_ => false,
 		}
 	}
@@ -423,6 +428,7 @@ impl hash::Hash for Value {
 			}
 			Value::Tuple(v) => v.hash(state),
 			Value::Digest(v) => v.hash(state),
+			Value::Enum(v) => v.hash(state),
 		}
 	}
 }
@@ -488,6 +494,7 @@ impl Ord for Value {
 			(Value::Tuple(_), Value::Tuple(_)) => unreachable!("Tuple values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			(Value::Digest(l), Value::Digest(r)) => l.encode().cmp(&r.encode()),
+			(Value::Enum(l), Value::Enum(r)) => l.cmp(r),
 			_ => unimplemented!(),
 		}
 	}
@@ -557,6 +564,7 @@ impl Display for Value {
 				..
 			} => f.write_str("none"),
 			Value::Digest(digest) => write!(f, "digest(n: {})", digest.count()),
+			Value::Enum(value) => Display::fmt(value, f),
 		}
 	}
 }
@@ -605,6 +613,7 @@ impl Value {
 				inner: Box::new(digest.inner().clone()),
 				accuracy: digest.accuracy(),
 			},
+			Value::Enum(value) => ValueType::Enum(value.r#enum.clone()),
 		}
 	}
 

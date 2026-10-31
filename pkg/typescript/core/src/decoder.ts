@@ -4,7 +4,7 @@ import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, DigestValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
-    Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
+    Uint16Value, NoneValue, Utf8Value, EnumVariant, Uuid4Value, Uuid7Value, IdentityIdValue,
     ListValue, RecordValue,
     Value, TypeValuePair, Type, WireCellValue, isDigestType, isEnumType, isListType, isOptionType, isRecordType, unwrapOptionType, optionDepth, innerOfOption,
     fixedPointTypeName, isFixedPointType
@@ -31,7 +31,10 @@ export function decode(pair: TypeValuePair): Value {
     }
 
     if (isEnumType(pair.type)) {
-        return decode({type: 'Utf8', value: pair.value});
+        if (typeof pair.value !== 'string') {
+            throw new Error(`Enum cell must be a JSON string, got ${typeof pair.value}`);
+        }
+        return new EnumVariant(pair.type.Enum, pair.value);
     }
 
     if (isDigestType(pair.type)) {

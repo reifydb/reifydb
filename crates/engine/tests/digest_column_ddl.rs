@@ -187,7 +187,8 @@ fn an_accuracy_that_is_not_a_number_is_rejected_at_the_accuracy() {
 
 #[test]
 fn a_digest_without_an_accuracy_is_rejected() {
-	// A digest column with a default accuracy would contradict D4: accuracy is always written, never assumed.
+	// A digest column with a default accuracy would contradict the rule that accuracy is always written, never
+	// assumed.
 	let err = create_table_err("digest(float8)");
 	assert_eq!(err.code, "AST_017", "{err:?}");
 	assert_eq!(err.message, "digest needs an input type and an accuracy");

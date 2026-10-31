@@ -498,7 +498,7 @@ mod tests {
 
 	#[test]
 	fn join_and_split_are_inverse_for_every_keyspace() {
-		// R15: the range tier stores only the suffix and rebuilds the key from its partition identity, so
+		// The range tier stores only the suffix and rebuilds the key from its partition identity, so
 		// a lossy split silently drops a key column on every read back
 		every_keyspace_round_trips();
 	}

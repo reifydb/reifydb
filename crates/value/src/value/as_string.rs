@@ -22,6 +22,7 @@ impl AsString for Value {
 			Value::Int8(i) => i.to_string(),
 			Value::Int16(i) => i.to_string(),
 			Value::Utf8(s) => s.clone(),
+			Value::Enum(value) => value.variant.clone(),
 			Value::Uint1(u) => u.to_string(),
 			Value::Uint2(u) => u.to_string(),
 			Value::Uint4(u) => u.to_string(),

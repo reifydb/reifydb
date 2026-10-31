@@ -956,7 +956,7 @@ mod tests {
 	#[test]
 	#[allow(clippy::disallowed_methods)]
 	fn lookup_partition_equals_the_partition_a_table_and_a_view_stored() {
-		// S1: the lookup hashes the dictionary id, as both writers do; a plain-value hash would land elsewhere.
+		// The lookup hashes the dictionary id, as both writers do; a plain-value hash would land elsewhere.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, true);
 		let version = put_right(&engine, "a", 1);
@@ -974,7 +974,7 @@ mod tests {
 			Some(Partition::of(&[Value::Utf8("a".to_string())])),
 			"a dictionary column must not hash its plain value"
 		);
-		// V3: the stored table row decodes with the shape the operator derives from the catalog columns.
+		// The stored table row decodes with the shape the operator derives from the catalog columns.
 		assert_eq!(
 			read_fingerprint(&stored[0].1),
 			row_shape_from_columns(RowFamily::Table, &table.columns).fingerprint(),
@@ -1061,7 +1061,7 @@ mod tests {
 
 	#[test]
 	fn an_inner_lookup_returns_the_right_row_of_its_partition() {
-		// S2: one left row, one right row under the same key, one output row numbered like the left row.
+		// One left row, one right row under the same key, one output row numbered like the left row.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		put_right(&engine, "b", 20);

@@ -16,6 +16,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		digest::Digest,
 		duration::Duration,
+		enum_variant::EnumVariant,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
@@ -52,6 +53,10 @@ pub fn encode_value_into(value: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeE
 		Value::Int8(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Int16(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Utf8(s) => encode_len_prefixed(s.as_bytes(), buf),
+		Value::Enum(value) => {
+			encode_len_prefixed(value.r#enum.as_bytes(), buf);
+			encode_len_prefixed(value.variant.as_bytes(), buf);
+		}
 		Value::Uint1(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Uint2(v) => buf.extend_from_slice(&v.to_le_bytes()),
 		Value::Uint4(v) => buf.extend_from_slice(&v.to_le_bytes()),
@@ -214,7 +219,8 @@ pub fn decode_value_from(r: &mut Reader) -> Result<Value, DecodeError> {
 			Ok(Value::Record(fields))
 		}
 		ValueKind::Enum => {
-			Err(DecodeError::UnsupportedType("kind Enum is a column kind, not a value".to_string()))
+			let r#enum = decode_len_prefixed_str(r)?.to_string();
+			Ok(Value::Enum(EnumVariant::new(r#enum, decode_len_prefixed_str(r)?)))
 		}
 		ValueKind::Digest => Digest::decode(decode_len_prefixed_bytes(r)?)
 			.map(|digest| Value::Digest(Box::new(digest)))

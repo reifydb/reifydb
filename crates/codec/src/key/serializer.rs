@@ -397,6 +397,11 @@ impl KeySerializer {
 					message: "a digest value cannot be serialized in a key".to_string(),
 				}));
 			}
+			Value::Enum(_) => {
+				return Err(Error::from(TypeError::SerdeKeycode {
+					message: "an enum value cannot be serialized in a key".to_string(),
+				}));
+			}
 			Value::DictionaryId(id) => {
 				self.buffer.push(ValueKind::DictionaryId.byte());
 				match id {

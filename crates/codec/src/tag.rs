@@ -108,6 +108,7 @@ impl ValueKind {
 			Value::Int8(_) => ValueKind::Int8,
 			Value::Int16(_) => ValueKind::Int16,
 			Value::Utf8(_) => ValueKind::Utf8,
+			Value::Enum(_) => ValueKind::Enum,
 			Value::Uint1(_) => ValueKind::Uint1,
 			Value::Uint2(_) => ValueKind::Uint2,
 			Value::Uint4(_) => ValueKind::Uint4,

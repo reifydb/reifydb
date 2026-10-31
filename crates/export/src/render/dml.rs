@@ -79,13 +79,15 @@ fn render_enum_value(
 		| Some(Value::None {
 			..
 		}) => return Ok(format!("{}: none", column.logical_name)),
-		Some(Value::Utf8(name)) => column.variants.iter().find(|v| v.name == *name).ok_or_else(|| {
-			ExportError::UnsupportedValue {
-				object: object.to_string(),
-				column: column.logical_name.clone(),
-				value_type: format!("enum variant name {name} outside its variants"),
-			}
-		})?,
+		Some(Value::Enum(value)) => {
+			column.variants.iter().find(|v| v.name == value.variant).ok_or_else(|| {
+				ExportError::UnsupportedValue {
+					object: object.to_string(),
+					column: column.logical_name.clone(),
+					value_type: format!("enum variant name {} outside its variants", value.variant),
+				}
+			})?
+		}
 		Some(Value::Uint1(tag)) => column.variants.iter().find(|v| v.tag == *tag).ok_or_else(|| {
 			ExportError::UnresolvedReference {
 				kind: "sumtype variant",

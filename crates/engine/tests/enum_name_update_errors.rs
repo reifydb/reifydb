@@ -4,7 +4,7 @@
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
-	value::{Value, frame::frame::Frame, value_type::ValueType},
+	value::{Value, enum_variant::EnumVariant, frame::frame::Frame, value_type::ValueType},
 };
 
 fn engine() -> TestEngine {
@@ -76,7 +76,7 @@ fn a_query_patch_of_an_enum_column_gives_its_tag_the_type_a_table_read_gives() {
 	let patched = t.query("FROM s::e PATCH { status: 'inactive' }");
 
 	assert_eq!(status_name(&patched).0, status_name(&read).0);
-	assert_eq!(status_name(&patched).1, [Value::Utf8("inactive".to_string())]);
+	assert_eq!(status_name(&patched).1, [Value::Enum(EnumVariant::new("s::status", "inactive"))]);
 }
 
 fn status_name(frames: &[Frame]) -> (Option<String>, Vec<Value>) {

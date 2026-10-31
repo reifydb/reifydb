@@ -30,6 +30,7 @@ fn to_json(value: &Value) -> String {
 		Value::Uint16(u) => u.to_string(),
 		Value::Decimal(d) => d.to_string(),
 		Value::Utf8(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+		Value::Enum(v) => format!("\"{}\"", v.variant.replace('\\', "\\\\").replace('"', "\\\"")),
 		Value::Uuid4(u) => format!("\"{}\"", u),
 		Value::Uuid7(u) => format!("\"{}\"", u),
 		Value::IdentityId(id) => format!("\"{}\"", id),
