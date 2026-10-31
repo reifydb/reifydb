@@ -25,7 +25,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -191,6 +191,8 @@ pub struct PaneApplied<E> {
 	pub emits: Vec<E>,
 	pub sealed_drops: u64,
 	pub stale_retractions: u64,
+	pub withdrawn: Vec<GroupId>,
+	pub fresh: Vec<(GroupId, usize)>,
 }
 
 impl<E> Default for PaneApplied<E> {
@@ -199,6 +201,8 @@ impl<E> Default for PaneApplied<E> {
 			emits: Vec::new(),
 			sealed_drops: 0,
 			stale_retractions: 0,
+			withdrawn: Vec::new(),
+			fresh: Vec::new(),
 		}
 	}
 }
@@ -218,8 +222,15 @@ pub trait PanePublisher<G, C, A> {
 		newest: C,
 		prior: Option<Self::Published>,
 		value: Option<&A>,
-		emits: &mut Vec<Self::Emit>,
+		applied: &mut PaneApplied<Self::Emit>,
 	) -> Result<Option<Self::Published>>;
+
+	fn assign_row_number(
+		&self,
+		emit: &mut Self::Emit,
+		published: &mut Self::Published,
+		row: RowNumber,
+	) -> Result<()>;
 }
 
 struct Panes<'s, A> {
@@ -531,6 +542,30 @@ where
 				&mut applied,
 			)?;
 		}
+		if !applied.withdrawn.is_empty() {
+			store.remove_row_number_for_group(&applied.withdrawn)?;
+		}
+		if !applied.fresh.is_empty() {
+			let fresh = take(&mut applied.fresh);
+			let ids: Vec<GroupId> = fresh.iter().map(|(group_id, _)| *group_id).collect();
+			let numbers = store.get_or_create_row_numbers_for_groups(&ids)?;
+			let keys: Vec<RollingMetaKey> = ids.iter().map(|group_id| RollingMetaKey(*group_id)).collect();
+			let rows = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(store, &keys)?;
+			let mut numbered = Vec::with_capacity(rows.len());
+			for (((group_id, at), (number, _)), row) in fresh.into_iter().zip(numbers).zip(rows) {
+				let Some(mut row) = row else {
+					return internal_err!("a freshly published rolling group has no group row");
+				};
+				let Some(published) = row.published.as_mut() else {
+					return internal_err!(
+						"a freshly published rolling group row holds no published row"
+					);
+				};
+				publisher.assign_row_number(&mut applied.emits[at], published, number)?;
+				numbered.push((RollingMetaKey(group_id), row));
+			}
+			set(store, numbered)?;
+		}
 		Ok(applied)
 	}
 
@@ -563,6 +598,9 @@ where
 				publisher,
 				&mut applied,
 			)?;
+		}
+		if !applied.withdrawn.is_empty() {
+			store.remove_row_number_for_group(&applied.withdrawn)?;
 		}
 		self.expiry.settle(store)?;
 		note_when_expiry_capped(applied.emits.len(), self.expire_batch);
@@ -852,7 +890,7 @@ where
 			C::from_order(row.newest),
 			row.published.take(),
 			value.as_ref(),
-			&mut applied.emits,
+			applied,
 		)?;
 		let oldest = match oldest {
 			Some(oldest) => oldest,

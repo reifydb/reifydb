@@ -11,6 +11,7 @@ use reifydb_core::{
 	common::WindowRequirements,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	internal_err,
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
@@ -21,7 +22,7 @@ use reifydb_flow_async::{
 	window::{
 		engine::{
 			daba::Merge,
-			pane::{PaneEngine, PaneEvent, PanePublisher, PaneSpans},
+			pane::{PaneApplied, PaneEngine, PaneEvent, PanePublisher, PaneSpans},
 		},
 		prefetch::Prefetched,
 		settings::WindowSettings,
@@ -86,7 +87,7 @@ where
 		newest: A::Coord,
 		prior: Option<Ranking<A>>,
 		value: Option<&A::Accumulator>,
-		emits: &mut Vec<TopKRow<Rw<A>>>,
+		applied: &mut PaneApplied<TopKRow<Rw<A>>>,
 	) -> ValueResult<Option<Ranking<A>>> {
 		let prior = prior.unwrap_or_default();
 		let ranking: BTreeMap<Sk<A>, Rw<A>> = match value {
@@ -104,19 +105,19 @@ where
 			match ranking.get(&sk) {
 				Some(new) => {
 					if *new != old {
-						emits.push(TopKRow::Update(number, old, new.clone()));
+						applied.emits.push(TopKRow::Update(number, old, new.clone()));
 					}
 					next.insert(sk, (number, new.clone()));
 				}
 				None => {
 					freed.push(row_key(group, &sk));
-					emits.push(TopKRow::Remove(number, old));
+					applied.emits.push(TopKRow::Remove(number, old));
 				}
 			}
 		}
 		for (sk, (number, is_new)) in added.into_iter().zip(numbers) {
 			let new = ranking[sk].clone();
-			emits.push(if is_new {
+			applied.emits.push(if is_new {
 				TopKRow::Insert(number, new.clone())
 			} else {
 				TopKRow::Update(number, new.clone(), new.clone())
@@ -127,6 +128,15 @@ where
 			store.remove_row_number(group_id, &freed)?;
 		}
 		Ok((!next.is_empty()).then_some(next))
+	}
+
+	fn assign_row_number(
+		&self,
+		_emit: &mut Self::Emit,
+		_published: &mut Self::Published,
+		_row: RowNumber,
+	) -> ValueResult<()> {
+		internal_err!("a top-k publisher never defers a row number")
 	}
 }
 

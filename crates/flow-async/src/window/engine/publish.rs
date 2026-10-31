@@ -6,7 +6,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{
-	engine::pane::{PanePublisher, RollingEmit},
+	engine::pane::{PaneApplied, PanePublisher, RollingEmit},
 	meta::RollingPublished,
 };
 
@@ -41,13 +41,13 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 
 	fn publish(
 		&self,
-		store: &mut dyn StateStore,
+		_store: &mut dyn StateStore,
 		group: &G,
 		group_id: GroupId,
 		newest: C,
 		prior: Option<RollingPublished<K, O>>,
 		value: Option<&A>,
-		emits: &mut Vec<RollingEmit<G, K, O>>,
+		applied: &mut PaneApplied<RollingEmit<G, K, O>>,
 	) -> Result<Option<RollingPublished<K, O>>> {
 		let out = value.and_then(|value| (self.finalize)(group, newest, value));
 		match (prior, out) {
@@ -57,19 +57,18 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 						"a rolling expiry would publish a group that had no published row"
 					);
 				};
-				let (RowNumber(row_number), _) =
-					store.get_or_create_row_numbers_for_groups(&[group_id])?.remove(0);
 				let post = RollingPublished {
-					row_number,
+					row_number: 0,
 					key: key(group),
 					last_value: out,
 				};
-				emits.push(RollingEmit {
+				applied.emits.push(RollingEmit {
 					group: group.clone(),
 					group_id,
 					prior: None,
 					post: Some(post.clone()),
 				});
+				applied.fresh.push((group_id, applied.emits.len() - 1));
 				Ok(Some(post))
 			}
 			(Some(prior), Some(out)) => {
@@ -78,7 +77,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 					key: prior.key.clone(),
 					last_value: out,
 				};
-				emits.push(RollingEmit {
+				applied.emits.push(RollingEmit {
 					group: group.clone(),
 					group_id,
 					prior: Some(prior),
@@ -87,8 +86,8 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 				Ok(Some(post))
 			}
 			(Some(prior), None) => {
-				store.remove_row_number_for_group(&[group_id])?;
-				emits.push(RollingEmit {
+				applied.withdrawn.push(group_id);
+				applied.emits.push(RollingEmit {
 					group: group.clone(),
 					group_id,
 					prior: Some(prior),
@@ -98,6 +97,19 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 			}
 			(None, None) => Ok(None),
 		}
+	}
+
+	fn assign_row_number(
+		&self,
+		emit: &mut Self::Emit,
+		published: &mut Self::Published,
+		row: RowNumber,
+	) -> Result<()> {
+		published.row_number = row.0;
+		if let Some(post) = emit.post.as_mut() {
+			post.row_number = row.0;
+		}
+		Ok(())
 	}
 }
 

@@ -62,7 +62,7 @@ fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool> {
 			Some(_) => {}
 		}
 	}
-	if !mixed && updates < 2 {
+	if !mixed && updates < 2 && !any_update_repeats_a_row(diffs)? {
 		return Ok(false);
 	}
 	if !all_row_keyed(diffs.iter().filter(|diff| diff.row_count() > 0))? {
@@ -89,6 +89,24 @@ fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool> {
 	Ok(false)
 }
 
+fn any_update_repeats_a_row(diffs: &[Diff]) -> Result<bool> {
+	for diff in diffs {
+		if diff.kind() == DiffType::Update
+			&& diff.row_count() > 1
+			&& diff_is_row_keyed(diff)?
+			&& repeats_a_row(key_rows(diff)?)
+		{
+			return Ok(true);
+		}
+	}
+	Ok(false)
+}
+
+fn repeats_a_row(rows: &[RowNumber]) -> bool {
+	let mut seen = HashSet::with_capacity(rows.len());
+	!rows.iter().all(|row| seen.insert(*row))
+}
+
 type KindRanges<'a> = (Option<&'a ChangeOrigin>, [Option<(RowNumber, RowNumber)>; 3]);
 
 fn foldable_ranges_meet(diffs: &[Diff]) -> Result<bool> {
@@ -100,6 +118,9 @@ fn foldable_ranges_meet(diffs: &[Diff]) -> Result<bool> {
 		}
 		let origin = diff.origin();
 		let rows = key_rows(diff)?;
+		if diff.kind() == DiffType::Update && repeats_a_row(rows) {
+			return Ok(true);
+		}
 		let (_, ranges) = if first.as_ref().is_none_or(|(head, _)| *head == origin) {
 			first.get_or_insert((origin, [None; 3]))
 		} else if let Some(at) = rest.iter().position(|(known, _)| *known == origin) {
