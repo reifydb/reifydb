@@ -47,7 +47,11 @@ fn routines() -> Routines {
 	b.configure()
 }
 
-fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static str]) -> Harness<WindowOperator> {
+fn rolling_window(
+	lateness: Option<Duration>,
+	immutable: Option<Duration>,
+	aggregations: &'static [&'static str],
+) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
 			parent_schema: Some(Arc::new(Schema::empty())),
@@ -64,7 +68,7 @@ fn rolling_window(immutable: Option<Duration>, aggregations: &'static [&'static 
 				.collect(),
 			runtime_context: runtime,
 			routines: routines(),
-			lateness: None,
+			lateness,
 			immutable,
 			ctx: Arc::new(FlowContext::default()),
 		})
@@ -148,15 +152,18 @@ fn a_rolling_percentile_is_read_from_one_frame_digest_never_from_per_slot_percen
 		"lo: math::min(v)",
 		"p99: stats::approx_percentile(v, 0.99, 0.01)",
 	];
-	let cases: [(Option<Duration>, &'static [&'static str], bool); 2] =
-		[(None, percentiles, false), (Some(Duration::from_milliseconds(500).unwrap()), next_to_a_min, true)];
+	let cases: [(Option<Duration>, &'static [&'static str], bool); 2] = [
+		(Some(Duration::from_milliseconds(SIZE_MS).unwrap()), percentiles, false),
+		(Some(Duration::from_milliseconds(SIZE_MS).unwrap()), next_to_a_min, true),
+	];
 	for (immutable, aggregations, with_min) in cases {
 		let path = if with_min {
 			"recombine"
 		} else {
 			"running"
 		};
-		let mut harness = rolling_window(immutable, aggregations);
+		let mut harness =
+			rolling_window(Some(Duration::from_milliseconds(SIZE_MS).unwrap()), immutable, aggregations);
 		let mut frame: BTreeMap<u64, (i64, i64)> = BTreeMap::new();
 
 		let first = [
