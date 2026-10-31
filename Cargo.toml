@@ -213,8 +213,9 @@ debug-assertions = true
 overflow-checks = true
 
 [profile.gate]
-inherits = "dev"
-opt-level = 0
+inherits = "release"
+opt-level = 1
+debug-assertions = true
 debug = 0
 strip = "debuginfo"
 incremental = true
