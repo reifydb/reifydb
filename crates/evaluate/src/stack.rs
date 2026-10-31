@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{Array, ArrayRef, RecordBatch, UInt8Array};
 use arrow_schema::FieldRef;
 use reifydb_core::{
 	internal,
@@ -15,7 +15,14 @@ use reifydb_rql::{
 };
 use reifydb_value::{
 	error,
-	value::{Value, constraint::TypeConstraint, system_columns::user_columns},
+	value::{
+		Value,
+		constraint::TypeConstraint,
+		enum_variant::EnumVariant,
+		sumtype::SumTypeId,
+		system_columns::{sumtype_tag_position, user_columns},
+		value_type::field::from_field,
+	},
 };
 
 use crate::{Result, error::EvaluateError};
@@ -114,6 +121,14 @@ struct SymbolTableInner {
 	scopes: Vec<Scope>,
 
 	functions: HashMap<String, CompiledFunction>,
+
+	enums: HashMap<SumTypeId, EnumNames>,
+}
+
+#[derive(Debug, Clone)]
+struct EnumNames {
+	name: String,
+	variants: HashMap<u8, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +152,7 @@ impl SymbolTable {
 			inner: Arc::new(SymbolTableInner {
 				scopes: vec![global_scope],
 				functions: HashMap::new(),
+				enums: HashMap::new(),
 			}),
 		}
 	}
@@ -210,6 +226,46 @@ impl SymbolTable {
 			}
 		}
 		None
+	}
+
+	pub fn has_enum(&self, id: SumTypeId) -> bool {
+		self.inner.enums.contains_key(&id)
+	}
+
+	pub fn set_enum(&mut self, id: SumTypeId, name: String, variants: HashMap<u8, String>) {
+		Arc::make_mut(&mut self.inner).enums.insert(
+			id,
+			EnumNames {
+				name,
+				variants,
+			},
+		);
+	}
+
+	pub fn enum_field(&self, batch: &RecordBatch, field: &str) -> Result<Option<Value>> {
+		let Some(index) = sumtype_tag_position(batch, field) else {
+			return Ok(None);
+		};
+		let Some(id) = from_field(batch.schema_ref().field(index))?.sumtype else {
+			return Ok(None);
+		};
+		let Some(names) = self.inner.enums.get(&id) else {
+			return Ok(None);
+		};
+		let tags = batch
+			.column(index)
+			.as_any()
+			.downcast_ref::<UInt8Array>()
+			.ok_or_else(|| error!(internal!("enum tag column of {} is not uint8", field)))?;
+		if tags.is_null(0) {
+			return Ok(Some(Value::none()));
+		}
+		let tag = tags.value(0);
+		let variant = names
+			.variants
+			.get(&tag)
+			.ok_or_else(|| error!(internal!("tag {} of {} is outside its variants", tag, field)))?;
+		Ok(Some(Value::Enum(EnumVariant::new(names.name.clone(), variant.clone()))))
 	}
 
 	pub fn define_function(&mut self, name: String, func: CompiledFunction) {

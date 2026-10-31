@@ -276,6 +276,7 @@ impl<'a> Vm<'a> {
 
 				Instruction::LoadVar(f) => self.exec_load_var(f)?,
 				Instruction::StoreVar(f) => {
+					self.register_enums(services, tx)?;
 					if self.batch_size != 1 && self.is_masked() {
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
@@ -288,7 +289,10 @@ impl<'a> Vm<'a> {
 						self.exec_store_var(f)?;
 					}
 				}
-				Instruction::DeclareVar(f) => self.exec_declare_var(f)?,
+				Instruction::DeclareVar(f) => {
+					self.register_enums(services, tx)?;
+					self.exec_declare_var(f)?
+				}
 				Instruction::FieldAccess {
 					object,
 					field,

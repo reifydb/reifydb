@@ -160,6 +160,9 @@ impl<'a> Vm<'a> {
 						let value = ColumnView::try_from((array, field.as_ref()))?.get_value(0);
 						self.stack.push(Variable::scalar(value));
 					}
+					None if let Some(value) = self.symbols.enum_field(columns, field_name)? => {
+						self.stack.push(Variable::scalar(value));
+					}
 					None => {
 						let available: Vec<String> = user_columns(columns)
 							.map(|(field, _)| field.name().clone())

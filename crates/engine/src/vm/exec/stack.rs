@@ -187,6 +187,33 @@ impl<'a> Vm<'a> {
 		}
 		Ok(())
 	}
+
+	pub(crate) fn register_enums(&mut self, services: &Arc<Services>, tx: &mut Transaction<'_>) -> Result<()> {
+		let Some(Variable::Columns {
+			batch,
+		}) = self.stack.peek()
+		else {
+			return Ok(());
+		};
+		let mut ids = Vec::new();
+		for field in batch.schema_ref().fields() {
+			ids.extend(from_field(field)?.sumtype);
+		}
+		for id in ids {
+			if self.symbols.has_enum(id) {
+				continue;
+			}
+			let sumtype = services.catalog.get_sumtype(tx, id)?;
+			if sumtype.variants.iter().any(|variant| !variant.fields.is_empty()) {
+				continue;
+			}
+			let namespace = services.catalog.get_namespace(tx, sumtype.namespace)?;
+			let variants =
+				sumtype.variants.into_iter().map(|variant| (variant.tag, variant.name)).collect();
+			self.symbols.set_enum(id, format!("{}::{}", namespace.name(), sumtype.name), variants);
+		}
+		Ok(())
+	}
 }
 
 fn format_column_list(names: &[String]) -> String {

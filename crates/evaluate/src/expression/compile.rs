@@ -145,6 +145,9 @@ pub(crate) fn variable_field_column(
 					}
 					Ok(data.finish(field_name))
 				}
+				None if let Some(value) = ctx.symbols.enum_field(batch, field_name)? => {
+					Ok(factory::from_many(field_name, value, row_count))
+				}
 				None => {
 					let available: Vec<String> = user_columns(batch)
 						.map(|(field, _)| field.name().to_string())
