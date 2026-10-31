@@ -6,17 +6,15 @@
 test-examples: build-examples run-examples
 	@$(MAKE) --no-print-directory sweep-auto
 
-# Build all examples in release mode
 .PHONY: build-examples
 build-examples:
-	@echo "Building examples (release mode)..."
-	cd pkg/rust/examples && MAKEFLAGS= cargo build --release --bins $(CARGO_OFFLINE)
+	@echo "Building examples ($(PROFILE))..."
+	cd pkg/rust/examples && MAKEFLAGS= cargo build --profile $(PROFILE) --bins $(CARGO_OFFLINE)
 
-# Run all examples in release mode (in order by directory, then by filename)
 .PHONY: run-examples
 run-examples:
-	@echo "Running examples in order (release mode)..."
-	@cd pkg/rust/examples && make run-all
+	@echo "Running examples in order ($(PROFILE))..."
+	@cd pkg/rust/examples && make run-all PROFILE=$(PROFILE)
 
 # Clean examples build artifacts
 .PHONY: clean-examples

@@ -212,6 +212,29 @@ incremental = true
 debug-assertions = true
 overflow-checks = true
 
+[profile.gate]
+inherits = "dev"
+opt-level = 0
+debug = 0
+strip = "debuginfo"
+incremental = true
+codegen-units = 256
+
+[profile.gate-dst]
+inherits = "gate"
+
+[profile.gate-chaos]
+inherits = "gate"
+
+[profile.gate-loom]
+inherits = "gate"
+
+[profile.gate-check]
+inherits = "gate"
+
+[profile.gate-dst-check]
+inherits = "gate"
+
 [profile.release]
 codegen-units = 256
 strip = "debuginfo"

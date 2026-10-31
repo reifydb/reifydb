@@ -2,7 +2,7 @@
 # Copyright (c) 2026 ReifyDB
 
 SWEEP_DAYS ?= 1
-SWEEP_DIRS := $(CARGO_TARGET_DIR) $(CARGO_TARGET_DIR)/dst
+SWEEP_DIRS := $(CARGO_TARGET_DIR)
 SWEEP_FLAGS :=
 SWEEP_PRUNE := -exec rm -rf {} +
 

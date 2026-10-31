@@ -35,6 +35,8 @@ endif
 # Export target directory for sharing artifacts between workspace and external test suites
 export CARGO_TARGET_DIR := $(CURDIR)/target
 
+PROFILE := gate
+
 # Build scripts gate reifydb_assertions on this via rerun-if-env-changed, so an unset value recompiles the whole workspace.
 export REIFYDB_ASSERTIONS := 1
 
@@ -156,7 +158,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: pull-siblings precheck precheck-all build build-testcontainer test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push-testcontainer push
+all: pull-siblings precheck precheck-all build test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push
 
 .PHONY: precheck
 precheck: format-check check-code-quality check-workspace

@@ -29,12 +29,6 @@
 # unit test whose name contains `chaos`; FILTER narrows it to tests whose name
 # contains the given substring. SEED pins every selected test to that exact seed
 # for reproduction (pair it with FILTER to target one test).
-#
-# REIFYDB_ASSERTIONS=1 is forced on: these runs are --release, and the cfg only
-# lights for a debug PROFILE or that variable, so without it the invariant guards
-# a chaos run exists to trip are compiled out of the binary being fuzzed.
-# It changes the build fingerprint, so alternating with another --release target
-# rebuilds the workspace; list-chaos sets it too so the two share a cache.
 
 FILTER ?=
 PACKAGE ?=
@@ -56,7 +50,7 @@ test-workspace-chaos:
 	@echo "🌀 Running chaos tests (N=$(if $(ITERATIONS),$(ITERATIONS),32)$(if $(SEED), SEED=$(SEED),)$(if $(FILTER), FILTER=$(FILTER),))"
 	@echo "   packages: $(strip $(PACKAGES) $(PACKAGE))"
 	@REIFYDB_ASSERTIONS=1 $(if $(ITERATIONS),ITERATIONS=$(ITERATIONS),) $(if $(SEED),SEED=$(SEED),) \
-		cargo nextest run --release \
+		cargo nextest run --cargo-profile gate-chaos \
 		$(foreach p,$(strip $(PACKAGES) $(PACKAGE)),-p $(p)) \
 		--features chaos -E '$(SELECT)' \
 		--no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE)
@@ -65,6 +59,6 @@ test-workspace-chaos:
 list-chaos:
 	@echo "   packages: $(strip $(PACKAGES) $(PACKAGE))"
 	@REIFYDB_ASSERTIONS=1 $(if $(ITERATIONS),ITERATIONS=$(ITERATIONS),) \
-		cargo nextest list --release \
+		cargo nextest list --cargo-profile gate-chaos \
 		$(foreach p,$(strip $(PACKAGES) $(PACKAGE)),-p $(p)) \
 		--features chaos -E '$(SELECT)' $(CARGO_OFFLINE)

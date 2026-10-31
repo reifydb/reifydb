@@ -4,6 +4,8 @@
 # ReifyDB Examples Makefile
 # Run any example with: make <example-name>
 
+PROFILE ?= gate
+
 .PHONY: help
 help:
 	@echo "ReifyDB Examples - Available targets:"
@@ -202,11 +204,11 @@ run-all:
 	echo ""; \
 	for example in $(BASIC_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if cargo run --release --bin $$example; then \
+		if cargo run --profile $(PROFILE) --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(cargo run --release --bin $$example 2>&1); \
+			output=$$(cargo run --profile $(PROFILE) --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -218,11 +220,11 @@ run-all:
 	echo ""; \
 	for example in $(RQL_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if cargo run --release --bin $$example; then \
+		if cargo run --profile $(PROFILE) --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(cargo run --release --bin $$example 2>&1); \
+			output=$$(cargo run --profile $(PROFILE) --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -234,11 +236,11 @@ run-all:
 	echo ""; \
 	for example in $(QUEUE_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --release --bin $$example; then \
+		if RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
+			output=$$(RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -250,11 +252,11 @@ run-all:
 	echo ""; \
 	for example in $(INTERCEPT_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --release --bin $$example; then \
+		if RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
+			output=$$(RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -266,11 +268,11 @@ run-all:
 	echo ""; \
 	for example in $(EXPORT_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --release --bin $$example; then \
+		if RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
+			output=$$(RUST_LOG=info cargo run --profile $(PROFILE) --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \

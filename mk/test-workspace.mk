@@ -19,7 +19,7 @@ test-workspace:
 			echo "==> [iter $$i/$(REPEAT)] starting at $$(date -Iseconds)"; \
 		fi; \
 		echo "🔨 Building examples..."; \
-		MAKEFLAGS= cargo build --release --workspace --examples $(CARGO_OFFLINE) || { \
+		MAKEFLAGS= cargo build --profile $(PROFILE) --workspace --examples $(CARGO_OFFLINE) || { \
 			rc=$$?; \
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \
@@ -28,7 +28,7 @@ test-workspace:
 			exit $$rc; \
 		}; \
 		echo "🧪 Running workspace tests..."; \
-		MAKEFLAGS= cargo nextest run --release --workspace --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
+		MAKEFLAGS= cargo nextest run --cargo-profile $(PROFILE) --workspace --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
 			rc=$$?; \
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \

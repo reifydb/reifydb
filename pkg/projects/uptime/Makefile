@@ -23,8 +23,8 @@ help:
 	@echo "separate terminals. Tokens are hardcoded to match PROBES in backend/src/main.rs."
 
 test:
-	cargo test -p $(PKG)
-	cargo build --release -p reifydb-uptime-bridge
+	cargo test --profile gate -p $(PKG)
+	cargo build --profile gate -p reifydb-uptime-bridge
 	cd web && pnpm install --frozen-lockfile && pnpm test
 
 service:

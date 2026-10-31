@@ -8,9 +8,9 @@ cd "$(dirname "$0")/.."
 
 log=target/testcontainer-ts.log
 
-MAKEFLAGS= cargo build --offline -p testcontainer
+MAKEFLAGS= cargo build --offline --profile gate -p testcontainer
 
-./target/debug/testcontainer > "$log" 2>&1 &
+./target/gate/testcontainer > "$log" 2>&1 &
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
 

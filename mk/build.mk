@@ -16,17 +16,17 @@ build-workspace:
 	@echo "🏗️ Building Rust workspace..."
 	@if [ -d "vendor" ]; then \
 		echo "Using vendored dependencies (offline mode)"; \
-		MAKEFLAGS= cargo build --release --workspace --offline; \
+		MAKEFLAGS= cargo build --profile $(PROFILE) --workspace --offline; \
 	else \
 		echo "Using network dependencies"; \
-		MAKEFLAGS= cargo build --release --workspace; \
+		MAKEFLAGS= cargo build --profile $(PROFILE) --workspace; \
 	fi
 	@echo "🔍 Checking all-features compile..."
-	@MAKEFLAGS= cargo check --release --workspace --all-features
+	@MAKEFLAGS= cargo check --profile gate-check --workspace --all-features
 
 check:
 	@echo "🔍 Checking all features compile..."
-	@MAKEFLAGS= cargo check --release --workspace --all-features --all-targets
+	@MAKEFLAGS= cargo check --profile gate-check --workspace --all-features --all-targets
 	cd $(TEST_SUITE_DIR) && $(MAKE) check
 	cd $(TEST_CRATE_DIR) && $(MAKE) check
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check
@@ -36,11 +36,11 @@ check:
 
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."
-	@MAKEFLAGS= cargo check --release -p reifydb-value --tests $(CARGO_OFFLINE)
+	@MAKEFLAGS= cargo check --profile $(PROFILE) -p reifydb-value --tests $(CARGO_OFFLINE)
 
 check-flow-async-no-features:
 	@echo "Checking reifydb-flow-async compiles without features..."
-	@MAKEFLAGS= cargo check --release -p reifydb-flow-async $(CARGO_OFFLINE)
+	@MAKEFLAGS= cargo check --profile $(PROFILE) -p reifydb-flow-async $(CARGO_OFFLINE)
 
 # Build pkg/typescript packages
 build-pkg-typescript:
@@ -65,7 +65,7 @@ build-wasm:
 		echo "   Install with: cargo install wasm-pack"; \
 		exit 1; \
 	fi
-	@./scripts/build-wasm.sh
+	@./scripts/build-wasm.sh gate
 
 build-wasm-release:
 	@echo "Building size-optimized WebAssembly packages..."

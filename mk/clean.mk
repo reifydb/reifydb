@@ -29,7 +29,7 @@ clean-workspace:
 	@echo "📦 Cleaning workspace packages..."
 	@cargo metadata --no-deps --format-version 1 --offline 2>/dev/null \
 		| python3 -c "import json,sys; [print(p['name']) for p in json.load(sys.stdin)['packages']]" \
-		| while read -r pkg; do cargo clean -p "$$pkg" --release 2>/dev/null || true; done
+		| while read -r pkg; do cargo clean -p "$$pkg" --profile $(PROFILE) 2>/dev/null || true; done
 
 # Clean pkg/typescript packages
 clean-pkg-typescript:

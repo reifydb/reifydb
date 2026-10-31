@@ -187,6 +187,7 @@ release:
 	echo ""; \
 	echo "$(YELLOW)[5/8] Building size-optimized WebAssembly packages...$(NC)"; \
 	$(MAKE) build-wasm-release || exit 1; \
+	$(MAKE) build-testcontainer || exit 1; \
 	echo "$(GREEN)✓ WebAssembly packages built$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[6/8] Creating git commit and tag...$(NC)"; \
@@ -197,6 +198,7 @@ release:
 	echo "$(YELLOW)[7/8] Publishing packages...$(NC)"; \
 	if [ ! -f "$(SCRIPTS_DIR)/publish-release.sh" ]; then echo "$(RED)Error: Required script $(SCRIPTS_DIR)/publish-release.sh not found$(NC)"; exit 1; fi; \
 	$(SCRIPTS_DIR)/publish-release.sh $$NEW_VERSION || exit 1; \
+	$(MAKE) push-testcontainer || exit 1; \
 	echo "$(GREEN)✓ All packages published$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[8/8] Pushing to remote...$(NC)"; \

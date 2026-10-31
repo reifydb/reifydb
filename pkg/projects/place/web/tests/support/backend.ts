@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { loadTestFactory, storeClient, type BridgeClient, type TestDb, type TestFactory } from '@reifydb/reifydb'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/release/libplace_bridge.so')
+const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/gate/libplace_bridge.so')
 
 export const ANONYMOUS = '00000000-0000-7000-8000-000000000000'
 
@@ -18,7 +18,7 @@ export function loadBackend(): TestFactory {
   } catch (err) {
     throw new Error(
       `bridge addon not built at ${ADDON_PATH}. From the repo root, run:\n` +
-        `  cargo build --release -p reifydb-place-bridge\n` +
+        `  cargo build --profile gate -p reifydb-place-bridge\n` +
         `Original error: ${err}`,
     )
   }
