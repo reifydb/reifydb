@@ -213,8 +213,11 @@ impl ActorSystem {
 						actor_ref_for_stop.mark_stopped();
 						actor_for_stop.post_stop();
 					}
-					let processor =
-						actor_ref_for_stop.processor().try_borrow_mut().ok().and_then(|mut p| p.take());
+					let processor = actor_ref_for_stop
+						.processor()
+						.try_borrow_mut()
+						.ok()
+						.and_then(|mut p| p.take());
 					drop(processor);
 				}),
 			});
