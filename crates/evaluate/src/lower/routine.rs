@@ -28,7 +28,7 @@ use reifydb_value::{
 		system_columns::resolve_column,
 		value_type::{
 			ValueType,
-			field::{FieldType, to_field},
+			field::{FieldType, from_field, to_field},
 		},
 	},
 };
@@ -38,7 +38,7 @@ use crate::{
 	error::EvaluateError,
 	expression::{compile::type_column, context::EvalContext},
 	lower::{
-		Lowered, Node, Stop, direct::splice_key, empty_of, error::into_external, literal, lower_node,
+		Lowered, Node, Stop, compare, direct::splice_key, empty_of, error::into_external, literal, lower_node,
 		schema::positional, typed_field, udf, volatile,
 	},
 };
@@ -93,6 +93,7 @@ pub(super) fn lower_call<'e>(
 			_ => lower_node(ctx, operator, arg),
 		})
 		.collect::<Lowered<Vec<Node>>>()?;
+	let args = args.into_iter().map(|node| enum_as_text(node, &call.func.0)).collect::<Result<Vec<Node>>>()?;
 	let fields: Vec<FieldRef> = args.iter().map(|node| node.field.clone()).collect();
 	let field = routine_field(display_label(expression).text(), function.as_ref(), &fields)?;
 	Ok(Node {
@@ -107,6 +108,21 @@ pub(super) fn lower_call<'e>(
 			},
 			args.into_iter().map(|node| node.expr).collect(),
 		),
+		field,
+	})
+}
+
+fn enum_as_text(node: Node, fragment: &Fragment) -> Result<Node> {
+	let Some(value_type) = from_field(&node.field)?.value_type.map(|value_type| value_type.inner_type().clone())
+	else {
+		return Ok(node);
+	};
+	if !compare::is_enum(&value_type) {
+		return Ok(node);
+	}
+	let field = typed_field(node.field.name(), ValueType::Utf8, node.field.is_nullable());
+	Ok(Node {
+		expr: compare::cast_side(node, &value_type, &ValueType::Utf8, fragment),
 		field,
 	})
 }

@@ -267,6 +267,13 @@ pub(crate) fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Resu
 		(ValueType::Uint16, ViewData::Uint8(a)) => Arc::new(to_wide(a, |v| v as u128)),
 		(ValueType::Float8, ViewData::Decimal(a)) => family_to_float(a),
 		(
+			ValueType::Utf8,
+			ViewData::Enum {
+				container,
+				..
+			},
+		) => Arc::new((*container).clone()),
+		(
 			ValueType::Decimal {
 				precision,
 				scale,
