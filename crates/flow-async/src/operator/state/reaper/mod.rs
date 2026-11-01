@@ -29,7 +29,7 @@ pub trait Reaper {
 }
 
 pub trait IdentityReclaim: StateStore {
-	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>;
 }
 
 pub struct StoreReaper;
@@ -186,7 +186,7 @@ where
 			still_queued: true,
 		});
 	}
-	let outcome = store.reclaim_identity(group, budget - freed)?;
+	let outcome = store.reclaim_identities(from_ref(&group), budget - freed)?.remove(0);
 	let freed = freed + outcome.removed.as_u64() as usize;
 	if outcome.more {
 		return Ok(GroupDrain {
@@ -217,7 +217,7 @@ where
 			still_queued: true,
 		});
 	}
-	let outcome = store.reclaim_identity(group, budget - freed)?;
+	let outcome = store.reclaim_identities(from_ref(&group), budget - freed)?.remove(0);
 	let freed = freed + outcome.removed.as_u64() as usize;
 	if outcome.more {
 		return Ok(GroupDrain {
@@ -291,9 +291,11 @@ where
 
 	let mut spent = 0usize;
 	let mut still_queued: Vec<GroupId> = Vec::new();
+	let mut reclaiming: Vec<GroupId> = Vec::new();
+	let mut finished: Vec<GroupStateKey> = Vec::new();
 	for (group, freed) in planned {
 		if group.is_root() {
-			store.state_remove(from_ref(&queue_key(group)))?;
+			finished.push(queue_key(group));
 			continue;
 		}
 		reifydb_assertions! {
@@ -305,19 +307,24 @@ where
 				group
 			);
 		}
-		let available = budget.saturating_sub(spent);
-		if freed >= available {
-			spent += freed;
-			still_queued.push(group);
-			continue;
+		spent += freed;
+		reclaiming.push(group);
+	}
+	let available = budget.saturating_sub(spent);
+	if available == 0 {
+		still_queued.extend(reclaiming);
+	} else if !reclaiming.is_empty() {
+		let outcomes = store.reclaim_identities(&reclaiming, available)?;
+		for (group, outcome) in reclaiming.into_iter().zip(outcomes) {
+			spent += outcome.removed.as_u64() as usize;
+			match outcome.more {
+				true => still_queued.push(group),
+				false => finished.push(queue_key(group)),
+			}
 		}
-		let outcome = store.reclaim_identity(group, available - freed)?;
-		spent += freed + outcome.removed.as_u64() as usize;
-		if outcome.more {
-			still_queued.push(group);
-			continue;
-		}
-		store.state_remove(from_ref(&queue_key(group)))?;
+	}
+	if !finished.is_empty() {
+		store.state_remove(&finished)?;
 	}
 
 	if let Some(group) = cut_group {

@@ -270,6 +270,10 @@ pub(crate) fn finish_tumbling_engine(
 			})
 			.collect(),
 	};
+	let gone = |hash: Hash128, window_start: u64| match stamp {
+		Stamp::Session(_, bounds, _) => !bounds.contains_key(&(hash, window_start)),
+		Stamp::SpanStart | Stamp::Latest => false,
+	};
 	let mut store = Prefetched::read(host, keys)?;
 	let empty_key = store::empty_key();
 	let mut reindexed = Vec::with_capacity(arrival.len());
@@ -282,7 +286,18 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let latest = prior_last.max(window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order()));
 		match r.kind {
-			EmitKind::Remove => {}
+			EmitKind::Remove => {
+				if gone(r.group, window_start) {
+					reindexed.push(WindowReindex {
+						group: &r.group,
+						window_start: r.span.start,
+						id: group,
+						slot_key: &empty_key,
+						prior: prior_index,
+						new: None,
+					});
+				}
+			}
 			EmitKind::Insert | EmitKind::Update => {
 				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
 				let last_event_time = prior_last.max(batch_max);
@@ -368,7 +383,10 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
 		let last_event_time = prior_last.max(batch_max);
-		let new_index = anchor.of(window_start, last_event_time);
+		let new_index = match gone(*hash, window_start) {
+			true => None,
+			false => anchor.of(window_start, last_event_time),
+		};
 		reindexed.push(WindowReindex {
 			group: hash,
 			window_start: span.start,

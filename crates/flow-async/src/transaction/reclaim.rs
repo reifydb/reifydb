@@ -16,6 +16,29 @@ use crate::{
 };
 
 pub trait ReclaimExtension: StateExtension {
+	fn reclaim_group_identities(
+		&mut self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>> {
+		let mut left = limit;
+		let mut outcomes = Vec::with_capacity(groups.len());
+		for group in groups {
+			if left == 0 {
+				outcomes.push(ReclaimOutcome {
+					removed: Count::ZERO,
+					more: true,
+				});
+				continue;
+			}
+			let outcome = self.reclaim_group_identity(operator, *group, left)?;
+			left = left.saturating_sub(outcome.removed.as_u64() as usize);
+			outcomes.push(outcome);
+		}
+		Ok(outcomes)
+	}
+
 	fn reclaim_group_identity(
 		&mut self,
 		operator: OperatorId,

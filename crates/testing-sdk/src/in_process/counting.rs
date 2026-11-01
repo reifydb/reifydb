@@ -176,9 +176,9 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 }
 
 impl<T: FlowTransaction> IdentityReclaim for CountingHost<'_, T> {
-	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		self.record("reclaim_identity", 1);
-		self.inner.reclaim_identity(group, limit)
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		self.record("reclaim_identities", groups.len());
+		self.inner.reclaim_identities(groups, limit)
 	}
 }
 
@@ -266,9 +266,9 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.state_range_limited_visit(range, limit, visit)
 	}
 
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		self.record("reclaim_group_identity", 1);
-		self.inner.reclaim_group_identity(group, limit)
+	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		self.record("reclaim_group_identities", groups.len());
+		self.inner.reclaim_group_identities(groups, limit)
 	}
 
 	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {

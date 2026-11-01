@@ -405,7 +405,7 @@ pub trait GuestContext<C = Windowed>: GuestEmitContext {
 	fn window_state(&mut self) -> impl GuestState + '_
 	where
 		C: WindowClass;
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
+	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>
 	where
 		C: WindowClass;
 }

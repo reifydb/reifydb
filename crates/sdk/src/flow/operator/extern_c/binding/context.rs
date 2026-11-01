@@ -36,8 +36,8 @@ use crate::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					get_or_create_row_numbers_for_groups, get_row_numbers, reclaim_group_identity,
-					remove_row_number, remove_row_number_for_group,
+					get_or_create_row_numbers_for_groups, get_row_numbers,
+					reclaim_group_identities, remove_row_number, remove_row_number_for_group,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -175,8 +175,8 @@ impl ExternCContext {
 		remove_row_number_for_group(self, groups)
 	}
 
-	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		reclaim_group_identity(self, group, limit)
+	pub fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		reclaim_group_identities(self, groups, limit)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
@@ -433,10 +433,10 @@ impl<C> GuestContext<C> for ExternCContext {
 			class: C::CLASS,
 		}
 	}
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
+	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>
 	where
 		C: WindowClass,
 	{
-		ExternCContext::reclaim_group_identity(self, group, limit)
+		ExternCContext::reclaim_group_identities(self, groups, limit)
 	}
 }

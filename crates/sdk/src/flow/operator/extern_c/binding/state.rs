@@ -495,33 +495,47 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind
 	Ok(())
 }
 
-pub(crate) fn reclaim_group_identity(ctx: &mut ExternCContext, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-	let mut removed = 0usize;
-	let mut more = 0u8;
+pub(crate) fn reclaim_group_identities(
+	ctx: &mut ExternCContext,
+	groups: &[GroupId],
+	limit: usize,
+) -> Result<Vec<ReclaimOutcome>> {
+	if groups.is_empty() {
+		return Ok(Vec::new());
+	}
+	let group_ids: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
+	let mut removed = vec![0usize; groups.len()];
+	let mut more = vec![0u8; groups.len()];
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
-	// and aligned for the whole guest call; removed and more are local stack slots.
+	// and aligned for the whole guest call; group_ids, removed and more are live arrays of exactly
+	// groups.len() elements, the first only read and the other two only written by the callback.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identity)(
+		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identities)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			wire_group(group),
+			group_ids.as_ptr(),
+			group_ids.len(),
 			limit,
-			&mut removed,
-			&mut more,
+			removed.as_mut_ptr(),
+			more.as_mut_ptr(),
 		);
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!(
-				"host_reclaim_group_identity failed with code {}",
+				"host_reclaim_group_identities failed with code {}",
 				result
 			)));
 		}
 	}
 
-	Ok(ReclaimOutcome {
-		removed: Count::new(removed as u64),
-		more: more != 0,
-	})
+	Ok(removed
+		.into_iter()
+		.zip(more)
+		.map(|(removed, more)| ReclaimOutcome {
+			removed: Count::new(removed as u64),
+			more: more != 0,
+		})
+		.collect())
 }
 
 pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>> {

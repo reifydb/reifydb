@@ -117,7 +117,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		Ok(())
 	}
 
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
+	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>;
 
 	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
 
@@ -421,8 +421,8 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
-	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		self.txn.reclaim_group_identity(self.operator, group, limit)
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		self.txn.reclaim_group_identities(self.operator, groups, limit)
 	}
 }
 
@@ -565,8 +565,8 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		Ok(())
 	}
 
-	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		self.txn.reclaim_group_identity(self.operator, group, limit)
+	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		self.txn.reclaim_group_identities(self.operator, groups, limit)
 	}
 
 	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {

@@ -124,7 +124,20 @@ impl MockStore {
 }
 
 impl IdentityReclaim for MockStore {
-	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		let mut left = limit;
+		let mut outcomes = Vec::with_capacity(groups.len());
+		for group in groups {
+			let outcome = self.reclaim_one(*group, left);
+			left = left.saturating_sub(outcome.removed.as_u64() as usize);
+			outcomes.push(outcome);
+		}
+		Ok(outcomes)
+	}
+}
+
+impl MockStore {
+	fn reclaim_one(&mut self, group: GroupId, limit: usize) -> ReclaimOutcome {
 		let rows: Vec<Vec<u8>> =
 			self.rows.keys().filter(|(owner, _)| *owner == group).map(|(_, key)| key.clone()).collect();
 		let keys: Vec<Vec<u8>> = self
@@ -150,10 +163,10 @@ impl IdentityReclaim for MockStore {
 		if !more {
 			self.groups.retain(|_, owner| *owner != group);
 		}
-		Ok(ReclaimOutcome {
+		ReclaimOutcome {
 			removed: Count::new(removed as u64),
 			more,
-		})
+		}
 	}
 }
 

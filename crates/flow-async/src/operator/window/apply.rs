@@ -31,13 +31,13 @@ use crate::{
 			core::{BatchGroups, SlotRow},
 			engine::{
 				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, Stamp, WindowGroups,
-				distinct_row_runs, finish_tumbling_engine, intern_window_groups, route_into_buckets,
-				slot_coord,
+				distinct_row_runs, finish_tumbling_engine, group_of, intern_window_groups,
+				route_into_buckets, slot_coord,
 			},
 		},
 		host::HostContext,
 		state::{
-			reaper::{drain, enqueue},
+			reaper::{drain, drain_groups, enqueue},
 			seal::{
 				coord::Coord,
 				gate::{SealGate, rearm_seal, seal_move},
@@ -763,6 +763,11 @@ pub fn apply_session_engine(
 	host.rearm_timers(TimerKind::Seal, &moves)?;
 
 	let interned = intern_batch(&arrival);
+	let gone: Vec<GroupId> = arrival
+		.iter()
+		.filter(|(hash, span)| !bounds.contains_key(&(*hash, span.start.to_order())))
+		.map(|(hash, span)| group_of(&interned, *hash, span.start.to_order()))
+		.collect();
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
@@ -783,6 +788,14 @@ pub fn apply_session_engine(
 		true,
 		Stamp::Session(gap, &bounds, &gated),
 	)?;
+	if !gone.is_empty() {
+		let engine_config = operator.engine_config();
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(engine_config))
+		});
+		drain_groups(host, &gone, &mut *engine, usize::MAX)?;
+		*operator.core.tumbling_engine_slot() = Some(engine);
+	}
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }

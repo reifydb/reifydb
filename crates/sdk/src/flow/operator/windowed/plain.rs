@@ -1037,6 +1037,7 @@ where
 		mode.engine.save_records(&mut store, &records, &stale)?;
 
 		if buckets.is_empty() {
+			drain_groups(&mut store, &stale, mode.engine.tumbling_mut(), usize::MAX)?;
 			return Ok(emitted);
 		}
 		let groups: WindowGroups<A::GroupKey, A::Coord> = buckets
@@ -1058,6 +1059,7 @@ where
 			|group, window_start| group_of(&groups, group, window_start),
 			|| aggregator.new_accumulator(settings),
 		)?;
+		drain_groups(&mut store, &stale, mode.engine.tumbling_mut(), usize::MAX)?;
 
 		let gap = mode.engine.gap();
 		let (mut inserts, mut updates, mut removes) = emitted;

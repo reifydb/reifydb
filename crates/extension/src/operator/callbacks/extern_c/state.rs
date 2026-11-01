@@ -774,26 +774,34 @@ pub(super) extern "C" fn host_arm_timer(
 	}
 }
 
-pub(super) extern "C" fn host_reclaim_group_identity(
+pub(super) extern "C" fn host_reclaim_group_identities(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: ExternCGroupId,
+	groups: *const ExternCGroupId,
+	groups_len: usize,
 	limit: usize,
 	removed_out: *mut usize,
 	more_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || removed_out.is_null() || more_out.is_null() {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || removed_out.is_null() || more_out.is_null()) {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: null-checked above; `ctx` must be the context this host handed to the guest for the
-	// duration of the call, and the out pointers must be valid for writes.
+	// SAFETY: `ctx` and (for a non-zero `groups_len`) `groups`, `removed_out` and `more_out` are null-checked
+	// above; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups` valid
+	// and aligned for `groups_len` reads, and both out pointers valid and aligned for `groups_len` writes.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
-		match host.reclaim_group_identity(host_group(group), limit) {
-			Ok(outcome) => {
-				*removed_out = outcome.removed.as_u64() as usize;
-				*more_out = outcome.more as u8;
+		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
+		match host.reclaim_group_identities(&group_ids, limit) {
+			Ok(outcomes) => {
+				for (index, outcome) in outcomes.iter().enumerate() {
+					*removed_out.add(index) = outcome.removed.as_u64() as usize;
+					*more_out.add(index) = outcome.more as u8;
+				}
 				EXTERN_C_OK
 			}
 			Err(err) => stash_failure(&*ctx, err),
@@ -1058,8 +1066,8 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl IdentityReclaim for RecordingHost {
-		fn reclaim_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
-			Ok(ReclaimOutcome::NOTHING)
+		fn reclaim_identities(&mut self, groups: &[GroupId], _limit: usize) -> Result<Vec<ReclaimOutcome>> {
+			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
 		}
 	}
 
@@ -1141,8 +1149,12 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
-			Ok(ReclaimOutcome::NOTHING)
+		fn reclaim_group_identities(
+			&mut self,
+			groups: &[GroupId],
+			_limit: usize,
+		) -> Result<Vec<ReclaimOutcome>> {
+			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
 		}
 
 		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
