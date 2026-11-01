@@ -149,7 +149,9 @@ export function CanvasView({ buffer, camera, activity, pending, layerVisible, to
           bitmaps.set(key, bitmap)
         }
         const [tx, ty] = parseTileKey(key)
-        context.drawImage(bitmap, view.x + tx * span, view.y + ty * span, span, span)
+        const left = Math.round(view.x + tx * span)
+        const top = Math.round(view.y + ty * span)
+        context.drawImage(bitmap, left, top, Math.round(view.x + (tx + 1) * span) - left, Math.round(view.y + (ty + 1) * span) - top)
       }
       const cell = Math.ceil(view.zoom)
       if (layerVisible) {
