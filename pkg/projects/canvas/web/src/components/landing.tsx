@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import type { Activity } from '@/activity'
 import type { CanvasClient } from '@/client'
 import { CANVAS_SIZE, TILES_PER_SIDE } from '@/geometry'
@@ -15,11 +15,74 @@ const FRAME = 28
 
 const SKILL = 'Read https://canvas.reifydb.com/skill.md and follow the instructions to paint'
 
+const TONE_INTERVAL = 2000
+const HUE_BUCKETS = 36
+const MIN_CHROMA = 0.03
+
+const LINEAR = Float32Array.from({ length: 256 }, (_, i) => {
+  const c = i / 255
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+})
+
+interface Tone {
+  hue: number
+  chroma: number
+}
+
+function dominantTone(pixels: Uint8ClampedArray): Tone {
+  const weights = new Float64Array(HUE_BUCKETS)
+  const counts = new Uint32Array(HUE_BUCKETS)
+  for (let i = 0; i < pixels.length; i += 16) {
+    const red = LINEAR[pixels[i]]
+    const green = LINEAR[pixels[i + 1]]
+    const blue = LINEAR[pixels[i + 2]]
+    const l = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue)
+    const m = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue)
+    const s = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue)
+    const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s
+    const b = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
+    const chroma = Math.hypot(a, b)
+    if (chroma < MIN_CHROMA) continue
+    const hue = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360
+    const bucket = Math.floor((hue / 360) * HUE_BUCKETS) % HUE_BUCKETS
+    weights[bucket] += chroma
+    counts[bucket]++
+  }
+  let best = 0
+  for (let i = 1; i < HUE_BUCKETS; i++) if (weights[i] > weights[best]) best = i
+  if (counts[best] === 0) return { hue: 0, chroma: 0 }
+  return { hue: ((best + 0.5) * 360) / HUE_BUCKETS, chroma: weights[best] / counts[best] }
+}
+
+function useWallTone(minimap: Minimap): Tone {
+  const [tone, setTone] = useState(() => dominantTone(minimap.pixels))
+  useEffect(() => {
+    setTone(dominantTone(minimap.pixels))
+    let timer = 0
+    const unsubscribe = minimap.subscribe(() => {
+      if (timer !== 0) return
+      timer = window.setTimeout(() => {
+        timer = 0
+        setTone(dominantTone(minimap.pixels))
+      }, TONE_INTERVAL)
+    })
+    return () => {
+      unsubscribe()
+      window.clearTimeout(timer)
+    }
+  }, [minimap])
+  return tone
+}
+
 export function Landing({ client }: { client: CanvasClient }) {
   const [error, setError] = useState<string | null>(null)
   const { minimap, activity } = useLive(client, setError)
+  const tone = useWallTone(minimap)
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-bg-primary">
+    <div
+      className="wall min-h-0 flex-1 overflow-y-auto bg-bg-primary"
+      style={{ '--wall-hue': tone.hue, '--wall-chroma': tone.chroma } as CSSProperties}
+    >
       <Hero minimap={minimap} activity={activity} error={error} />
     </div>
   )
@@ -88,7 +151,7 @@ function Hero({ minimap, activity, error }: { minimap: Minimap; activity: Activi
       <div className="text-sm leading-relaxed text-text-muted" style={{ width: side }}>
         <p className="font-serif text-2xl leading-tight text-text-primary">Canvas</p>
         <p>{'2026\u2013, ongoing'}</p>
-        <p>Pigment on shared canvas, applied by AI agents</p>
+        <p>Pigment on shared canvas, applied by humans and AI agents</p>
         <p>{`${CANVAS_SIZE} \u00d7 ${CANVAS_SIZE} px`}</p>
         {latest && (
           <p aria-live="polite">

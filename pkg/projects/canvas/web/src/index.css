@@ -155,3 +155,22 @@
 .gold-plate:hover {
   filter: brightness(1.08);
 }
+
+@property --wall-hue {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --wall-chroma {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.wall {
+  --color-bg-primary: oklch(0.96 min(calc(var(--wall-chroma) * 0.15), 0.025) var(--wall-hue));
+  --color-text-primary: oklch(0.24 min(calc(var(--wall-chroma) * 0.3), 0.05) var(--wall-hue));
+  --color-text-muted: oklch(0.46 min(calc(var(--wall-chroma) * 0.3), 0.05) var(--wall-hue));
+  transition: --wall-hue 1.5s, --wall-chroma 1.5s;
+}
