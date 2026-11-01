@@ -190,7 +190,9 @@ impl<S: Coord> OpenSessions<S> {
 			return Ok(Some(Removal::Emptied(id)));
 		}
 		let members = take(&mut self.sessions[index].members);
-		let split = (1..members.len()).find(|&at| members[at].at.span_since(members[at - 1].at) >= self.gap);
+		let split = (1..members.len()).find(|&at| {
+			members[at].at > members[at - 1].at && members[at].at.span_since(members[at - 1].at) >= self.gap
+		});
 		match split {
 			None => {
 				self.sessions[index] = OpenSession::of(id, members);
@@ -541,5 +543,18 @@ mod tests {
 		assert_eq!(kept, id(4_639));
 		assert_ne!(moved.id, kept, "two open sessions must never share an id");
 		assert_eq!(open.sessions().len(), 2);
+	}
+
+	#[test]
+	fn with_a_zero_gap_removing_one_of_several_rows_at_one_instant_shrinks_rather_than_splits() {
+		// A repeated instant joins its session, so a split between equal instants publishes two rows at one
+		// end.
+		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0), SessionIds::StartTime);
+		open.insert(at_millis(1), RowNumber(4), far_past());
+		open.insert(at_millis(1), RowNumber(18), far_past());
+		open.insert(at_millis(1), RowNumber(25), far_past());
+
+		assert_eq!(open.remove(id(1), RowNumber(4)).unwrap(), Some(Removal::Shrunk(id(1))));
+		assert_eq!(bounds(&open), vec![(id(1), at_millis(1), at_millis(1), 2)]);
 	}
 }
