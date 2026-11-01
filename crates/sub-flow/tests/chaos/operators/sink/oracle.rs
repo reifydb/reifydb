@@ -3,9 +3,9 @@
 
 //! What a view sink owes: the rows it was handed, minus whatever its own capacity pushed out.
 //!
-//! Stated as a bounded ring of slots per lane, where a delete leaves a hole that still holds its
-//! place, which shares nothing with how the operator reaches the same answer. A derivation that mirrored the operator's
-//! would agree with it precisely when both were wrong.
+//! Stated as a bounded queue of live rows per lane, where a delete frees its place and only the
+//! oldest live row is evicted, which shares nothing with how the operator reaches the same answer. A derivation that
+//! mirrored the operator's would agree with it precisely when both were wrong.
 //!
 //! An unpartitioned sink is the one-lane case, so both layouts stay one oracle. Confusing
 //! per-partition capacity for global capacity then diverges in exactly one of them.
@@ -24,7 +24,7 @@ pub struct SinkOracle {
 	capacity: Option<usize>,
 	partitioned: bool,
 	live: BTreeMap<RowNumber, AggregateRow>,
-	lanes: BTreeMap<i32, VecDeque<Option<RowNumber>>>,
+	lanes: BTreeMap<i32, VecDeque<RowNumber>>,
 }
 
 impl SinkOracle {
@@ -59,15 +59,14 @@ impl Model<AggregateRow> for SinkOracle {
 		let lane = self.lane_of(row);
 		self.live.insert(row.number, row.clone());
 		let queue = self.lanes.entry(lane).or_default();
-		queue.push_back(Some(row.number));
+		queue.push_back(row.number);
 
 		// Trimmed after the arrival is queued, not before, so a capacity that cannot fit the arrival
 		// drops the arrival itself.
 		if let Some(capacity) = self.capacity {
 			while queue.len() > capacity {
-				if let Some(evicted) = queue.pop_front().expect("a queue over capacity is not empty") {
-					self.live.remove(&evicted);
-				}
+				let evicted = queue.pop_front().expect("a queue over capacity is not empty");
+				self.live.remove(&evicted);
 			}
 		}
 		true
@@ -84,9 +83,7 @@ impl Model<AggregateRow> for SinkOracle {
 			);
 		}
 		if let Some(queue) = self.lanes.get_mut(&self.lane_of(row)) {
-			for slot in queue.iter_mut().filter(|slot| **slot == Some(row.number)) {
-				*slot = None;
-			}
+			queue.retain(|held| *held != row.number);
 		}
 	}
 

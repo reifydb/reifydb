@@ -583,21 +583,15 @@ impl DurableSink for SinkRingBufferViewOperator {
 					)?;
 					let (kept, replaced) = split_by_sequence(pre, post)?;
 					if replaced.is_empty() {
-						inserts.extend(self.apply_ringbuffer_update(
-							txn,
-							view,
-							pre,
-							post,
-							&mut touched,
-						)?);
+						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
 					} else {
-						inserts.extend(self.apply_ringbuffer_update(
+						self.apply_ringbuffer_update(
 							txn,
 							view,
 							&JoinedColumnsBuilder::retain_rows(pre, &kept)?,
 							&JoinedColumnsBuilder::retain_rows(post, &kept)?,
 							&mut touched,
-						)?);
+						)?;
 						self.apply_ringbuffer_remove(
 							txn,
 							view,
@@ -896,7 +890,7 @@ impl SinkRingBufferViewOperator {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<Option<RecordBatch>> {
+	) -> Result<()> {
 		if pre.num_rows() != post.num_rows() {
 			return internal_err!(
 				"ringbuffer update has {} pre rows but {} post rows",
@@ -905,7 +899,7 @@ impl SinkRingBufferViewOperator {
 			);
 		}
 		if post.num_rows() == 0 {
-			return Ok(None);
+			return Ok(());
 		}
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
@@ -936,13 +930,11 @@ impl SinkRingBufferViewOperator {
 		};
 
 		let mut applied: Vec<usize> = Vec::with_capacity(post.num_rows());
-		let mut orphaned: Vec<usize> = Vec::new();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(post.num_rows());
 		for (row_idx, forward) in self.forwards(txn, pre_row_numbers)?.into_iter().enumerate() {
 			let partition = post_partitions.as_ref().map(|partitions| partitions[row_idx]);
 			touched.insert(partition);
 			let Some(storage_rn) = forward else {
-				orphaned.push(row_idx);
 				continue;
 			};
 			keys.push(self.rb_key(storage_rn, partition));
@@ -976,10 +968,7 @@ impl SinkRingBufferViewOperator {
 				),
 			)?;
 		}
-		match orphaned.is_empty() {
-			true => Ok(None),
-			false => Ok(Some(JoinedColumnsBuilder::retain_rows(post, &orphaned)?)),
-		}
+		Ok(())
 	}
 
 	#[inline]
