@@ -39,7 +39,7 @@ postcard = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }
 
 [dev-dependencies]

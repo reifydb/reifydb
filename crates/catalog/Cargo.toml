@@ -44,5 +44,5 @@ reifydb-engine = { workspace = true, features = ["tokio"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

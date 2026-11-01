@@ -160,5 +160,5 @@ path = "examples/queue/09_introspection.rs"
 name = "queue-long-poll"
 path = "examples/queue/10_long_poll.rs"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

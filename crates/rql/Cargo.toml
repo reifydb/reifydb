@@ -41,5 +41,5 @@ reifydb-catalog = { workspace = true }
 test_each_file = { workspace = true }
 tokio = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

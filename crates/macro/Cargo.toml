@@ -22,5 +22,5 @@ reifydb-codec = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

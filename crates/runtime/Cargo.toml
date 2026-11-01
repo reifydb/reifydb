@@ -39,6 +39,8 @@ crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
 moka = { workspace = true }
+
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }
 
 [target.'cfg(reifydb_loom)'.dependencies]

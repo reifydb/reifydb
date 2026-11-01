@@ -46,5 +46,5 @@ rand = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow", "testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

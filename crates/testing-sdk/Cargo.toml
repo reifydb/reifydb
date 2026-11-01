@@ -52,5 +52,5 @@ path = "tests/operator.rs"
 name = "sdk"
 path = "tests/sdk.rs"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

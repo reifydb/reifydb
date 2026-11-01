@@ -56,5 +56,5 @@ uuid = { workspace = true, optional = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing-sdk = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }

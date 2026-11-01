@@ -58,5 +58,5 @@ test_each_file = { workspace = true }
 name = "suite"
 path = "tests/suite.rs"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
 reifydb-workspace-hack = { workspace = true }
