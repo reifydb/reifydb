@@ -17,7 +17,6 @@ import { CanvasView, useCamera } from './canvas-view'
 import { useLive } from './live'
 import { Sidebar } from './sidebar'
 import { Toolbar } from './toolbar'
-import { Welcome } from './welcome'
 
 export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSession }) {
   const [message, setMessage] = useState<string | null>(null)
@@ -190,7 +189,6 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
             />
           )}
           <Account guest={guest} name={name} onName={setName} open={signUpOpen} onOpen={setSignUpOpen} />
-          <Welcome />
         </div>
         <Sidebar activity={activity} minimap={minimap} camera={camera} />
       </div>
