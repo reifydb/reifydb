@@ -573,14 +573,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					post,
 					..
 				} => {
-					self.flush_inserts_touching(
-						txn,
-						view,
-						&mut ring,
-						&mut inserts,
-						pre,
-						&mut touched,
-					)?;
+					self.flush_inserts(txn, view, &mut ring, &mut inserts, &mut touched)?;
 					let (kept, replaced) = split_by_sequence(pre, post)?;
 					if replaced.is_empty() {
 						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
@@ -606,14 +599,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					pre,
 					..
 				} => {
-					self.flush_inserts_touching(
-						txn,
-						view,
-						&mut ring,
-						&mut inserts,
-						pre,
-						&mut touched,
-					)?;
+					self.flush_inserts(txn, view, &mut ring, &mut inserts, &mut touched)?;
 					self.apply_ringbuffer_remove(txn, view, &mut ring, pre, &mut touched)?
 				}
 			}
@@ -768,22 +754,14 @@ impl SinkRingBufferViewOperator {
 		Ok(groups)
 	}
 
-	fn flush_inserts_touching(
+	fn flush_inserts(
 		&mut self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		ring: &mut Ring,
 		inserts: &mut Vec<RecordBatch>,
-		pre: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
 	) -> Result<()> {
-		let mut buffered: HashSet<RowNumber> = HashSet::new();
-		for batch in inserts.iter() {
-			buffered.extend(require_row_numbers(batch)?.iter().copied());
-		}
-		if !require_row_numbers(pre)?.iter().any(|row| buffered.contains(row)) {
-			return Ok(());
-		}
 		for run in sequence_ordered_runs(&take(inserts))? {
 			self.apply_ringbuffer_insert(txn, view, ring, &run, touched)?;
 		}
@@ -1819,9 +1797,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_remove_of_another_row_frees_its_slot_before_the_inserts_of_the_same_change() {
-		// Distinct rows keep the removes-first rule, otherwise a full ring evicts a live row a remove was about
-		// to free.
+	fn an_insert_before_a_remove_in_one_change_evicts_before_the_remove_frees() {
+		// Diffs apply in arrival order, otherwise a batch keeps a row its ops sent one by one would evict.
 		let engine = TestEngine::new();
 		let mut op = build_capped(false, 2);
 		counted(&engine, &mut op, Diff::insert(single_rows(&[(10, 1), (20, 2)])));
@@ -1831,8 +1808,8 @@ mod tests {
 			vec![Diff::insert(single_rows(&[(30, 3)])), Diff::remove(single_rows(&[(20, 2)]))],
 		);
 
-		assert_eq!(metadata(&engine, &[]).unwrap().count, 2, "row 1 stays, row 3 takes the freed slot");
-		assert_eq!(forward_count(&engine, &op), 2);
+		assert_eq!(metadata(&engine, &[]).unwrap().count, 1, "row 3 evicts row 1, then row 2 is removed");
+		assert_eq!(forward_count(&engine, &op), 1);
 	}
 
 	fn build_capped_op(capacity: u64) -> SinkRingBufferViewOperator {
