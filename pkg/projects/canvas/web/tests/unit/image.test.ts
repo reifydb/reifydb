@@ -70,9 +70,9 @@ describe('convert', () => {
   })
 
   it('picks colours by redmean, not plain RGB', () => {
-    // Plain RGB distance sends this skin tone to pink (24); redmean must pick peach (27).
-    const stamp = convert(image([[0xe0, 0xac, 0x90, 255]]), 1, 1, { width: 1, height: 1 })
-    expect(stamp.cells).toEqual([27])
+    // Plain RGB distance sends this skin tone to pink (24); redmean must keep it on tan skin (34).
+    const stamp = convert(image([[0xeb, 0xa4, 0x8c, 255]]), 1, 1, { width: 1, height: 1 })
+    expect(stamp.cells).toEqual([34])
   })
 
   it('weights colour by opacity so transparent junk does not darken edges', () => {
