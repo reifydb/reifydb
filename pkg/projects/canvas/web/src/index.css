@@ -83,6 +83,22 @@
   }
 }
 
+.tile-highlight {
+  outline: 2px dashed var(--color-text-primary);
+  outline-offset: -1px;
+  animation: tile-highlight-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tile-highlight-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 9999px #1a1a1a14;
+  }
+  50% {
+    box-shadow: inset 0 0 0 9999px #1a1a1a00;
+  }
+}
+
 .ping-dot {
   position: absolute;
   width: 10px;
@@ -127,6 +143,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tile-highlight,
   .activity-row,
   .ping-dot,
   .ping-card {

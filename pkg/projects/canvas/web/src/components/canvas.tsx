@@ -8,6 +8,7 @@ import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
+import type { Streak } from '@/activity'
 import { type GuestSession, signedInName } from '@/session'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
@@ -37,6 +38,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
   const [notice, setNotice] = useState<string | null>(null)
   const [stamp, setStamp] = useState<Stamp | null>(null)
   const [placing, setPlacing] = useState<Pixel[] | null>(null)
+  const [highlight, setHighlight] = useState<Streak | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
   const imageReturnRef = useRef<Tool>('pencil')
 
@@ -167,6 +169,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
             onPick={onPick}
             onHover={setHover}
             ghost={ghost}
+            highlight={highlight}
             onCanvas={onCanvas}
           />
           <Toolbar tool={tool} locked={!name} onSelect={onSelectTool} onFile={onFile} />
@@ -190,7 +193,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
           )}
           <Account guest={guest} name={name} onName={setName} open={signUpOpen} onOpen={setSignUpOpen} />
         </div>
-        <Sidebar activity={activity} minimap={minimap} camera={camera} />
+        <Sidebar activity={activity} minimap={minimap} camera={camera} onHover={setHighlight} />
       </div>
     </div>
   )

@@ -2,14 +2,25 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useState } from 'react'
-import type { Activity } from '@/activity'
+import type { Activity, Streak } from '@/activity'
 import type { Minimap } from '@/minimap'
 import { ActivityFeed } from './activity-feed'
 import type { Camera } from './canvas-view'
 import { MinimapPanel } from './minimap-panel'
+import { tileCenter } from './pings'
 import { ZoomControl } from './zoom-control'
 
-export function Sidebar({ activity, minimap, camera }: { activity: Activity; minimap: Minimap; camera: Camera }) {
+export function Sidebar({
+  activity,
+  minimap,
+  camera,
+  onHover,
+}: {
+  activity: Activity
+  minimap: Minimap
+  camera: Camera
+  onHover: (streak: Streak | null) => void
+}) {
   const [open, setOpen] = useState(true)
   if (!open) {
     return (
@@ -38,8 +49,12 @@ export function Sidebar({ activity, minimap, camera }: { activity: Activity; min
       <h2 className="flex items-center justify-between border-b border-border-light px-3 py-2 text-sm font-bold">
         Activity
       </h2>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <ActivityFeed activity={activity} rows={12} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <ActivityFeed
+          activity={activity}
+          onHover={onHover}
+          onSelect={(streak) => camera.centerOn(tileCenter(streak.tx, streak.ty))}
+        />
       </div>
       <button type="button" className="border-t border-border-light px-3 py-2 text-left text-xs text-text-muted" onClick={() => setOpen(false)}>
         ⟩ hide sidebar

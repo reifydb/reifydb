@@ -3,7 +3,7 @@
 
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
-import type { Activity } from '@/activity'
+import type { Activity, Streak } from '@/activity'
 import { MINIMAP_SIZE, type Minimap } from '@/minimap'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
@@ -45,6 +45,7 @@ interface CanvasViewProps {
   onPick: (point: Point) => void
   onHover: (pixel: Point | null) => void
   ghost: Pixel[] | null
+  highlight: Streak | null
   layerVisible: boolean
   onCanvas: (point: Point) => void
 }
@@ -100,7 +101,7 @@ export function useCamera(): Camera {
   return { view, setView, size, setSize, zoomAt, zoomIn, zoomOut, reset, centerOn }
 }
 
-export function CanvasView({ buffer, minimap, camera, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onCanvas, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, minimap, camera, activity, pending, layerVisible, tool, color, ghost, highlight, onStroke, onShape, onPick, onCanvas, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement[]>())
@@ -362,6 +363,13 @@ export function CanvasView({ buffer, minimap, camera, activity, pending, layerVi
           return left < 0 || top < 0 || left > size.width || top > size.height ? null : { left, top }
         }}
       />
+      {highlight?.tiles.map(([tx, ty]) => (
+        <div
+          key={`${tx},${ty}`}
+          className="tile-highlight pointer-events-none absolute"
+          style={{ left: view.x + tx * TILE_SIZE * view.zoom, top: view.y + ty * TILE_SIZE * view.zoom, width: TILE_SIZE * view.zoom, height: TILE_SIZE * view.zoom }}
+        />
+      ))}
       <div
         className="absolute -translate-x-1/2 -translate-y-1/2"
         style={{ left: view.x + (CANVAS_SIZE * view.zoom) / 2, top: view.y + CANVAS_SIZE * view.zoom + FRAME / 2 }}
