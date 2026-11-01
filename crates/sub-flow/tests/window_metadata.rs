@@ -712,7 +712,7 @@ fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:51Z");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
-	insert(&db, 3, 1, 7, "2026-01-01T00:01:41Z");
+	insert(&db, 3, 1, 7, "2026-01-01T00:01:42Z");
 	insert(&db, 4, 1, 7, "2026-01-01T00:01:40Z");
 	db.await_row_count("FROM app::w | filter { n == 3 }", 1, TIMEOUT);
 

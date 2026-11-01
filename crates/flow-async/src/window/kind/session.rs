@@ -101,7 +101,7 @@ impl SessionKind {
 			tracker.adopt(coord);
 			return SessionAssignment::Opened(tracker.session_id);
 		}
-		if coord > tracker.last && coord - tracker.last > self.gap {
+		if coord > tracker.last && coord - tracker.last >= self.gap {
 			let closed = tracker.session_id;
 			tracker.adopt(coord);
 			return SessionAssignment::Rotated {
@@ -109,7 +109,7 @@ impl SessionKind {
 				opened: tracker.session_id,
 			};
 		}
-		if coord < tracker.start && tracker.start - coord > self.gap {
+		if coord < tracker.start && tracker.start - coord >= self.gap {
 			return SessionAssignment::Refused;
 		}
 		tracker.extend(coord);
@@ -158,16 +158,18 @@ mod tests {
 	}
 
 	#[test]
-	fn a_quiet_period_of_exactly_the_gap_stays_in_the_same_session() {
-		// The gap boundary is inclusive: sessions are defined by the absence of activity for longer
-		// than the gap, so splitting at exactly the gap ends a session that never went quiet.
+	fn a_quiet_period_of_exactly_the_gap_starts_a_new_session() {
+		// Session spans are half-open, so an event exactly one gap after the last starts a new session.
 		let mut tracker = SessionTracker::default();
 
 		kind().assign(&mut tracker, event_coord_at_millis(5_000));
 
 		assert_eq!(
 			kind().assign(&mut tracker, event_coord_at_millis(6_000)),
-			SessionAssignment::Extended(id(5_000))
+			SessionAssignment::Rotated {
+				closed: id(5_000),
+				opened: id(6_000),
+			}
 		);
 	}
 

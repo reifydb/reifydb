@@ -114,7 +114,7 @@ where
 			tracker.adopt(coord);
 			return SessionAssignment::Opened(tracker.session_id);
 		}
-		if coord > tracker.last && coord.span_since(tracker.last) > self.gap {
+		if coord > tracker.last && coord.span_since(tracker.last) >= self.gap {
 			let closed = tracker.session_id;
 			tracker.session_id += 1;
 			tracker.adopt(coord);
@@ -132,7 +132,7 @@ where
 	}
 
 	pub fn refuses(&self, tracker: &GuestSession<S>, coord: S) -> bool {
-		coord < tracker.start && tracker.start.span_since(coord) > self.gap
+		coord < tracker.start && tracker.start.span_since(coord) >= self.gap
 	}
 
 	pub fn take_refused(&mut self) -> u64 {
@@ -253,7 +253,7 @@ mod tests {
 		let mut tracker = GuestSession::unopened();
 
 		assert_eq!(engine.assign(&mut tracker, at_millis(5_000)), SessionAssignment::Opened(0));
-		assert_eq!(engine.assign(&mut tracker, at_millis(6_000)), SessionAssignment::Extended(0));
+		assert_eq!(engine.assign(&mut tracker, at_millis(5_999)), SessionAssignment::Extended(0));
 		assert_eq!(
 			engine.assign(&mut tracker, at_millis(7_001)),
 			SessionAssignment::Rotated {
@@ -290,7 +290,7 @@ mod tests {
 		engine.assign(&mut tracker, at_millis(100));
 
 		assert_eq!(engine.assign(&mut tracker, at_millis(89)), SessionAssignment::Refused);
-		assert_eq!(engine.assign(&mut tracker, at_millis(90)), SessionAssignment::Extended(0));
+		assert_eq!(engine.assign(&mut tracker, at_millis(91)), SessionAssignment::Extended(0));
 		assert_eq!(engine.take_refused(), 1);
 		assert_eq!(engine.take_refused(), 0);
 	}

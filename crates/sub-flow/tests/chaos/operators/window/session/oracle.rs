@@ -103,13 +103,13 @@ impl SessionOracle {
 			tracker.opened = true;
 			return Some(tracker.session);
 		}
-		if coord > tracker.last && coord - tracker.last > gap {
+		if coord > tracker.last && coord - tracker.last >= gap {
 			tracker.session += 1;
 			tracker.last = coord;
 			tracker.start = coord;
 			return Some(tracker.session);
 		}
-		if coord < tracker.start && tracker.start - coord > gap {
+		if coord < tracker.start && tracker.start - coord >= gap {
 			return None;
 		}
 		tracker.last = tracker.last.max(coord);

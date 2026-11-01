@@ -65,14 +65,14 @@ fn a_row_more_than_one_gap_after_the_last_opens_a_new_session() {
 }
 
 #[test]
-fn a_row_exactly_one_gap_from_the_last_still_extends() {
-	// the gap is inclusive; a strict test at exactly one gap would split one session in two
+fn a_row_exactly_one_gap_from_the_last_starts_a_new_session() {
+	// Session spans are half-open, so a row exactly one gap after the last starts a new session.
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 110, 2.0)).build()).expect("apply");
 
-	assert_eq!(render(&out), vec![(DiffType::Update, 3.0, at(100), at(120))]);
+	assert_eq!(render(&out), vec![(DiffType::Insert, 2.0, at(110), at(120))]);
 }
 
 #[test]
