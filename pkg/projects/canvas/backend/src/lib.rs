@@ -107,25 +107,37 @@ pub fn pack_tile(key: u16, blob: &[u8]) -> Vec<u8> {
 	packed
 }
 
-pub fn shrink(tile: &[u8], scale: usize) -> Vec<u8> {
+pub fn shrink(tile: Vec<u8>, scale: usize) -> Vec<u8> {
+	if scale == 1 {
+		return tile;
+	}
 	let side = TILE / scale;
 	let mut out = Vec::with_capacity(side * side);
 	let mut counts = [0u32; COLORS as usize];
+	let mut used = [0u8; COLORS as usize];
 	for by in 0..side {
 		for bx in 0..side {
-			counts.fill(0);
+			let mut n = 0;
 			for y in by * scale..(by + 1) * scale {
-				for x in bx * scale..(bx + 1) * scale {
-					counts[tile[y * TILE + x] as usize] += 1;
+				for &color in &tile[y * TILE + bx * scale..y * TILE + (bx + 1) * scale] {
+					if counts[color as usize] == 0 {
+						used[n] = color;
+						n += 1;
+					}
+					counts[color as usize] += 1;
 				}
 			}
-			let mut best = 0;
-			for color in 1..counts.len() {
-				if counts[color] > counts[best] {
+			let mut best = used[0];
+			for &color in &used[1..n] {
+				let (c, b) = (counts[color as usize], counts[best as usize]);
+				if c > b || (c == b && color < best) {
 					best = color;
 				}
 			}
-			out.push(best as u8);
+			for &color in &used[..n] {
+				counts[color as usize] = 0;
+			}
+			out.push(best);
 		}
 	}
 	out
@@ -224,10 +236,9 @@ pub fn render_png(tiles: &[(u16, Vec<u8>)], scale: usize) -> Result<Vec<u8>, Str
 				y0 + row as u16
 			)
 		})?;
-		let small = shrink(pixels, scale);
 		for y in 0..block {
 			let at = (row * block + y) * width + col * block;
-			image[at..at + block].copy_from_slice(&small[y * block..(y + 1) * block]);
+			image[at..at + block].copy_from_slice(&pixels[y * block..(y + 1) * block]);
 		}
 	}
 	Ok(encode_png(width as u32, height as u32, &image))
@@ -332,7 +343,7 @@ impl Accumulator for PngAccumulator {
 						.failed(format!("packed tile of {} bytes has no key", packed.len())));
 				}
 				let key = u16::from_le_bytes([packed[0], packed[1]]);
-				let pixels = decode_tile(&packed[2..]).map_err(|reason| self.failed(reason))?;
+				let pixels = shrink(decode_tile(&packed[2..]).map_err(|reason| self.failed(reason))?, self.scale);
 				decoded.push((key, pixels));
 			}
 			self.tiles.or_insert(group, Vec::new()).extend(decoded);
