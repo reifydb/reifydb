@@ -31,14 +31,14 @@ use tracing::instrument;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiPointConfig {
-	pub shard_bytes: Option<ByteSize>,
+	pub total_bytes: Option<ByteSize>,
 	pub shards: usize,
 }
 
 impl MultiPointConfig {
 	pub fn testing() -> Self {
 		Self {
-			shard_bytes: Some(default::store::MULTI_POINT_BUFFER_SHARD_TESTING),
+			total_bytes: Some(default::store::MULTI_POINT_BUFFER_TOTAL_TESTING),
 			shards: default::store::MULTI_POINT_BUFFER_SHARDS_TESTING as usize,
 		}
 	}
@@ -47,7 +47,9 @@ impl MultiPointConfig {
 impl From<MultiPointConfig> for PointConfig {
 	fn from(config: MultiPointConfig) -> Self {
 		Self {
-			shard_bytes: config.shard_bytes,
+			shard_bytes: config
+				.total_bytes
+				.map(|total| ByteSize::from_bytes(total.as_bytes() / config.shards.max(1) as u64)),
 			shards: config.shards,
 		}
 	}
@@ -544,14 +546,14 @@ mod tests {
 
 	use super::{
 		CommitVersion, CowVec, MultiPointConfig, MultiPointDomain, MultiPointRow, MultiPointTier,
-		MultiReadMetrics, PointDomain, RowBytes, VersionedGetResult,
+		MultiReadMetrics, PointConfig, PointDomain, RowBytes, VersionedGetResult,
 	};
 
 	const TABLE: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 
 	fn tier() -> MultiPointTier {
 		MultiPointTier::new(MultiPointConfig {
-			shard_bytes: Some(ByteSize::from_mib(1)),
+			total_bytes: Some(ByteSize::from_mib(4)),
 			shards: 4,
 		})
 		.expect("a configured budget yields a tier")
@@ -1041,5 +1043,32 @@ mod tests {
 			),
 			"invalidating table a must not evict table b's entry sharing the same bytes"
 		);
+	}
+
+	#[test]
+	fn the_total_is_divided_by_the_shard_count() {
+		// The key is a total; handing it to each shard unsplit would multiply cache memory by the shard count.
+		let split = PointConfig::from(MultiPointConfig {
+			total_bytes: Some(ByteSize::from_mib(64)),
+			shards: 16,
+		});
+		assert_eq!(split.shard_bytes, Some(ByteSize::from_mib(4)));
+		assert_eq!(split.shards, 16);
+
+		let floored = PointConfig::from(MultiPointConfig {
+			total_bytes: Some(ByteSize::from_bytes(17)),
+			shards: 16,
+		});
+		assert_eq!(
+			floored.shard_bytes,
+			Some(ByteSize::from_bytes(1)),
+			"the split must floor, never exceed the total"
+		);
+
+		let disabled = PointConfig::from(MultiPointConfig {
+			total_bytes: None,
+			shards: 16,
+		});
+		assert_eq!(disabled.shard_bytes, None, "none must keep the cache disabled");
 	}
 }

@@ -65,11 +65,11 @@ impl WalCheckpoint for NoWalCheckpoint {
 pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 	(
 		MultiPointConfig {
-			shard_bytes: Some(ByteSize::from_kib(kib)),
+			total_bytes: Some(ByteSize::from_kib(kib)),
 			shards: 1,
 		},
 		MultiRangeConfig {
-			shard_bytes: Some(ByteSize::from_kib(kib)),
+			total_bytes: Some(ByteSize::from_kib(kib)),
 			shards: 1,
 			..MultiRangeConfig::testing()
 		},

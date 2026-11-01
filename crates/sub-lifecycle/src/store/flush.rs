@@ -55,8 +55,7 @@ impl LifecycleTask for PersistentFlushTask {
 
 	#[instrument(name = "lifecycle::store::flush::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let budget =
-			ByteSize::from_bytes(self.config.get_config_uint8(ConfigKey::MultiFlushBudgetBytes).max(1));
+		let budget = ByteSize::from_bytes(self.config.get_config_uint8(ConfigKey::MultiFlushSliceBytes).max(1));
 		let now = self.clock.now();
 
 		let Some(floor) = self.plane.cutoff_with_binding(RetentionClass::PersistentFlush, now, None) else {

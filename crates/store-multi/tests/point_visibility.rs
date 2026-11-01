@@ -169,11 +169,11 @@ fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
 	// read, and every key must still resolve.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 		MultiPointConfig {
-			shard_bytes: Some(ByteSize::from_bytes(256)),
+			total_bytes: Some(ByteSize::from_bytes(256)),
 			shards: 1,
 		},
 		MultiRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(256)),
+			total_bytes: Some(ByteSize::from_bytes(256)),
 			shards: 1,
 			..MultiRangeConfig::testing()
 		},

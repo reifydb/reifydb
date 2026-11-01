@@ -103,7 +103,7 @@ pub fn sqlite_starved_cache() -> Fixture {
 	// is never a source of truth
 	let (config, guard) = SqliteConfig::in_memory();
 	let read = CdcReadConfig {
-		resident_bytes: Some(ByteSize::from_bytes(1)),
+		total_bytes: Some(ByteSize::from_bytes(1)),
 		shards: 1,
 	};
 	build(CdcPersistentTier::sqlite(config), Some(read), Some(guard))

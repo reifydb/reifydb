@@ -100,7 +100,7 @@ mod tests {
 
 	fn tier(bytes: u64) -> CdcReadBufferTier {
 		CdcReadBufferTier::new(CdcReadConfig {
-			resident_bytes: Some(ByteSize::from_bytes(bytes)),
+			total_bytes: Some(ByteSize::from_bytes(bytes)),
 			shards: 1,
 		})
 		.expect("a read tier with a byte budget must be constructed")

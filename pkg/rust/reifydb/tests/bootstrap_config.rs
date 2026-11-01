@@ -17,17 +17,14 @@ use reifydb_testing::tempdir::temp_dir;
 fn bootstrap_config_overrides_apply_on_first_boot() {
 	// The override must not just land in the catalog: the component constructed from it during
 	// bootstrap must observe the overridden value, not the default. The flow backlog is built
-	// from FLOW_BACKLOG_MEMORY_LIMIT at boot, so its limit is the observable.
+	// from FLOW_BACKLOG_BYTES at boot, so its limit is the observable.
 	temp_dir(|path| {
 		let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-			.with_config(ConfigKey::FlowBacklogMemoryLimit, Value::Uint8(12_345_678))
+			.with_config(ConfigKey::FlowBacklogBytes, Value::Uint8(12_345_678))
 			.build()
 			.expect("fresh sqlite database must build");
 
-		assert_eq!(
-			db.engine().catalog().get_config(ConfigKey::FlowBacklogMemoryLimit),
-			Value::Uint8(12_345_678)
-		);
+		assert_eq!(db.engine().catalog().get_config(ConfigKey::FlowBacklogBytes), Value::Uint8(12_345_678));
 		let backlog = db.engine().ioc().try_resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
 		assert_eq!(backlog.limit().as_bytes(), 12_345_678);
 
@@ -38,16 +35,16 @@ fn bootstrap_config_overrides_apply_on_first_boot() {
 
 #[test]
 fn cdc_read_buffer_override_reaches_the_cdc_store() {
-	// CDC_READ_BUFFER_BYTES requires_restart(), so the observable has to be the budget the read buffer actually
-	// built, summed across its shards, not the catalog value.
+	// CDC_READ_BUFFER_TOTAL_BYTES requires_restart(), so the observable has to be the budget the read buffer
+	// actually built, summed across its shards, not the catalog value.
 	temp_dir(|path| {
 		let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-			.with_config(ConfigKey::CdcReadBufferBytes, Value::Uint8(8 * 1024 * 1024))
+			.with_config(ConfigKey::CdcReadBufferTotalBytes, Value::Uint8(8 * 1024 * 1024))
 			.build()
 			.expect("fresh sqlite database must build");
 
 		assert_eq!(
-			db.engine().catalog().get_config(ConfigKey::CdcReadBufferBytes),
+			db.engine().catalog().get_config(ConfigKey::CdcReadBufferTotalBytes),
 			Value::Uint8(8 * 1024 * 1024)
 		);
 

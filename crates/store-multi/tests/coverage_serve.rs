@@ -84,11 +84,11 @@ fn pair_with(rows_per_partition: u64, budget: ByteSize) -> Pair {
 	let tiers = |bytes: Option<ByteSize>| {
 		(
 			MultiPointConfig {
-				shard_bytes: bytes,
+				total_bytes: bytes,
 				shards: 1,
 			},
 			MultiRangeConfig {
-				shard_bytes: bytes,
+				total_bytes: bytes,
 				shards: 1,
 				..MultiRangeConfig::testing()
 			},

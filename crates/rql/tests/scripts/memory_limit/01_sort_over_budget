@@ -1,6 +1,6 @@
-# A tiny QUERY_MEMORY_LIMIT must reject a SORT that buffers more than a few rows.
+# A tiny QUERY_BYTES must reject a SORT that buffers more than a few rows.
 
-set_config QUERY_MEMORY_LIMIT 8
+set_config QUERY_BYTES 8
 ---
 ok
 

@@ -395,8 +395,8 @@ fn set_query_memory_limit(t: &TestEngine, bytes: usize) {
 	t.inner()
 		.catalog()
 		.cache()
-		.set_config(ConfigKey::QueryMemoryLimit, CommitVersion(1), Value::Uint8(bytes as u64))
-		.expect("failed to set QUERY_MEMORY_LIMIT");
+		.set_config(ConfigKey::QueryBytes, CommitVersion(1), Value::Uint8(bytes as u64))
+		.expect("failed to set QUERY_BYTES");
 }
 
 fn one_digest_heap_size() -> usize {

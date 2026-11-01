@@ -26,14 +26,14 @@ use crate::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct CdcReadConfig {
-	pub resident_bytes: Option<ByteSize>,
+	pub total_bytes: Option<ByteSize>,
 	pub shards: usize,
 }
 
 impl Default for CdcReadConfig {
 	fn default() -> Self {
 		Self {
-			resident_bytes: Some(ByteSize::from_mib(256)),
+			total_bytes: Some(ByteSize::from_mib(256)),
 			shards: 8,
 		}
 	}
@@ -64,10 +64,10 @@ pub struct CdcReadBufferTier {
 impl CdcReadBufferTier {
 	#[instrument(name = "store::cdc::read::new", level = "debug", skip_all, fields(shards = config.shards))]
 	pub fn new(config: CdcReadConfig) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let total_bytes = config.total_bytes?;
 		Some(Self {
 			inner: Arc::new(CdcReadBufferTierInner {
-				shards: build_shards(config, resident_bytes),
+				shards: build_shards(config, total_bytes),
 			}),
 		})
 	}

@@ -1623,11 +1623,11 @@ mod cache_tests {
 	fn store_without_read_tier() -> (StandardMultiStore, impl Drop) {
 		let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 			MultiPointConfig {
-				shard_bytes: None,
+				total_bytes: None,
 				..MultiPointConfig::testing()
 			},
 			MultiRangeConfig {
-				shard_bytes: None,
+				total_bytes: None,
 				..MultiRangeConfig::testing()
 			},
 		);
@@ -2050,6 +2050,7 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 			MultiPointConfig::testing(),
 			MultiRangeConfig {
+				total_bytes: Some(ByteSize::from_kib(16)),
 				shards: 1,
 				..MultiRangeConfig::testing()
 			},
@@ -2145,6 +2146,7 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 			MultiPointConfig::testing(),
 			MultiRangeConfig {
+				total_bytes: Some(ByteSize::from_kib(16)),
 				shards: 1,
 				..MultiRangeConfig::testing()
 			},

@@ -45,7 +45,7 @@ use tracing::instrument;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MultiRangeConfig {
-	pub shard_bytes: Option<ByteSize>,
+	pub total_bytes: Option<ByteSize>,
 	pub shards: usize,
 	pub gap_guard: usize,
 }
@@ -53,7 +53,7 @@ pub struct MultiRangeConfig {
 impl MultiRangeConfig {
 	pub fn testing() -> Self {
 		Self {
-			shard_bytes: Some(default::store::MULTI_RANGE_BUFFER_SHARD_TESTING),
+			total_bytes: Some(default::store::MULTI_RANGE_BUFFER_TOTAL_TESTING),
 			shards: default::store::MULTI_RANGE_BUFFER_SHARDS_TESTING as usize,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
@@ -63,7 +63,9 @@ impl MultiRangeConfig {
 impl From<MultiRangeConfig> for RangeConfig {
 	fn from(config: MultiRangeConfig) -> Self {
 		Self {
-			shard_bytes: config.shard_bytes,
+			shard_bytes: config
+				.total_bytes
+				.map(|total| ByteSize::from_bytes(total.as_bytes() / config.shards.max(1) as u64)),
 			shards: config.shards,
 			gap_guard: config.gap_guard,
 			coverage_bytes: None,
@@ -708,7 +710,7 @@ mod tests {
 
 	fn tier() -> MultiRangeTier {
 		MultiRangeTier::new(MultiRangeConfig {
-			shard_bytes: Some(ByteSize::from_mib(1)),
+			total_bytes: Some(ByteSize::from_mib(4)),
 			shards: 4,
 			gap_guard: DEFAULT_GAP_GUARD,
 		})
@@ -719,7 +721,7 @@ mod tests {
 
 	fn tight() -> MultiRangeTier {
 		MultiRangeTier::new(MultiRangeConfig {
-			shard_bytes: Some(ByteSize::from_kib(4)),
+			total_bytes: Some(ByteSize::from_kib(4)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		})

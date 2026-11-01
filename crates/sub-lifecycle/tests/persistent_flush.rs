@@ -4,7 +4,7 @@
 //! PersistentFlushTask: the scheduler wrapped around the multi flush engine.
 //!
 //! `store-multi` covers the sweep itself, so what is testable here is the seam the engine cannot see: the
-//! per-slice byte budget is read from MULTI_FLUSH_BUDGET_BYTES on every slice, so an operator sizing the
+//! per-slice byte budget is read from MULTI_FLUSH_SLICE_BYTES on every slice, so an operator sizing the
 //! budget down actually gets a smaller slice instead of the engine's compiled fallback.
 
 use std::sync::Arc;
@@ -97,7 +97,7 @@ struct StubConfig(u64);
 impl GetConfig for StubConfig {
 	fn get_config(&self, key: ConfigKey) -> Value {
 		match key {
-			ConfigKey::MultiFlushBudgetBytes => Value::Uint8(self.0),
+			ConfigKey::MultiFlushSliceBytes => Value::Uint8(self.0),
 			other => panic!("the persistent flush task must not read config key {other}"),
 		}
 	}
@@ -141,7 +141,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 #[test]
 fn the_configured_budget_bounds_one_slice() {
 	// The engine carries a 4 MiB compiled fallback that would swallow this whole backlog in one slice, so
-	// a task that ignored MULTI_FLUSH_BUDGET_BYTES and reached for that const would drain here and report
+	// a task that ignored MULTI_FLUSH_SLICE_BYTES and reached for that const would drain here and report
 	// Exhausted. Only a task that actually reads the configured budget can be held to one row per slice.
 	let (throttled_store, _throttled_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let mut throttled = seeded_task(&throttled_store, 1);
@@ -167,7 +167,7 @@ fn the_catalog_default_budget_matches_the_engine_compiled_fallback() {
 	// answers the drain paths. Drift between them makes the scheduled slice and the shutdown slice
 	// silently different sizes.
 	assert_eq!(
-		ConfigKey::MultiFlushBudgetBytes.default_value(),
+		ConfigKey::MultiFlushSliceBytes.default_value(),
 		Value::Uint8(FLUSH_BYTE_BUDGET.as_bytes()),
 		"the catalog default and the engine fallback must be the same number of bytes"
 	);

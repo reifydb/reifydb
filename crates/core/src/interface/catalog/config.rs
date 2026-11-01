@@ -50,7 +50,7 @@ pub fn active_config_profile() -> ConfigProfile {
 pub enum ConfigKey {
 	OracleWindowSize,
 	QueryRowBatchSize,
-	QueryMemoryLimit,
+	QueryBytes,
 	RetentionEvictInterval,
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
@@ -65,18 +65,19 @@ pub enum ConfigKey {
 	CdcWalAutocheckpoint,
 	CdcCommitBufferBytes,
 	CdcBlockCutBytes,
-	CdcReadBufferBytes,
-	MultiPointBufferShardBytes,
-	MultiRangeBufferShardBytes,
+	CdcReadBufferTotalBytes,
+	CdcReadBufferShards,
+	MultiPointBufferTotalBytes,
+	MultiRangeBufferTotalBytes,
 	OperatorRangeTierBytes,
 	MultiPointBufferShards,
 	MultiRangeBufferShards,
 	MultiFlushInterval,
-	MultiFlushBudgetBytes,
+	MultiFlushSliceBytes,
 	MultiWalAutocheckpoint,
-	OperatorResidentBudget,
-	OperatorDirtyBudget,
-	OperatorFlushSlice,
+	OperatorResidentBytes,
+	OperatorDirtyBytes,
+	OperatorFlushSliceBytes,
 	OperatorFlushInterval,
 	OperatorWalAutocheckpoint,
 	FlowTick,
@@ -85,7 +86,7 @@ pub enum ConfigKey {
 	FlowLinger,
 	FlowActorBatchSize,
 	FlowCommitterShards,
-	FlowBacklogMemoryLimit,
+	FlowBacklogBytes,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
 	CdcConsumeWaitTimeout,
@@ -113,7 +114,7 @@ impl ConfigKey {
 		&[
 			Self::OracleWindowSize,
 			Self::QueryRowBatchSize,
-			Self::QueryMemoryLimit,
+			Self::QueryBytes,
 			Self::RetentionEvictInterval,
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
@@ -128,18 +129,19 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint,
 			Self::CdcCommitBufferBytes,
 			Self::CdcBlockCutBytes,
-			Self::CdcReadBufferBytes,
-			Self::MultiPointBufferShardBytes,
-			Self::MultiRangeBufferShardBytes,
+			Self::CdcReadBufferTotalBytes,
+			Self::CdcReadBufferShards,
+			Self::MultiPointBufferTotalBytes,
+			Self::MultiRangeBufferTotalBytes,
 			Self::OperatorRangeTierBytes,
 			Self::MultiPointBufferShards,
 			Self::MultiRangeBufferShards,
 			Self::MultiFlushInterval,
-			Self::MultiFlushBudgetBytes,
+			Self::MultiFlushSliceBytes,
 			Self::MultiWalAutocheckpoint,
-			Self::OperatorResidentBudget,
-			Self::OperatorDirtyBudget,
-			Self::OperatorFlushSlice,
+			Self::OperatorResidentBytes,
+			Self::OperatorDirtyBytes,
+			Self::OperatorFlushSliceBytes,
 			Self::OperatorFlushInterval,
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
@@ -148,7 +150,7 @@ impl ConfigKey {
 			Self::FlowLinger,
 			Self::FlowActorBatchSize,
 			Self::FlowCommitterShards,
-			Self::FlowBacklogMemoryLimit,
+			Self::FlowBacklogBytes,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
 			Self::CdcConsumeWaitTimeout,
@@ -192,7 +194,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE),
-			Self::QueryMemoryLimit => Value::Uint8(default::query::MEMORY_LIMIT.as_bytes()),
+			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT.as_bytes()),
 			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL),
 			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE),
 			Self::RetentionEvictMaxBatchesPerTick => {
@@ -209,24 +211,25 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES),
 			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER.as_bytes()),
 			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT.as_bytes()),
-			Self::CdcReadBufferBytes => Value::Uint8(default::cdc::READ_BUFFER.as_bytes()),
-			Self::MultiPointBufferShardBytes => {
-				Value::Uint8(default::store::MULTI_POINT_BUFFER_SHARD.as_bytes())
+			Self::CdcReadBufferTotalBytes => Value::Uint8(default::cdc::READ_BUFFER.as_bytes()),
+			Self::CdcReadBufferShards => Value::Uint2(default::cdc::READ_BUFFER_SHARDS),
+			Self::MultiPointBufferTotalBytes => {
+				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL.as_bytes())
 			}
-			Self::MultiRangeBufferShardBytes => {
-				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD.as_bytes())
+			Self::MultiRangeBufferTotalBytes => {
+				Value::Uint8(default::store::MULTI_RANGE_BUFFER_TOTAL.as_bytes())
 			}
 			Self::OperatorRangeTierBytes => Value::Uint8(default::store::OPERATOR_RANGE_TIER.as_bytes()),
 			Self::MultiPointBufferShards => Value::Uint2(default::store::MULTI_POINT_BUFFER_SHARDS),
 			Self::MultiRangeBufferShards => Value::Uint2(default::store::MULTI_RANGE_BUFFER_SHARDS),
 			Self::MultiFlushInterval => Value::Duration(default::store::MULTI_FLUSH_INTERVAL),
-			Self::MultiFlushBudgetBytes => Value::Uint8(default::store::MULTI_FLUSH_BUDGET.as_bytes()),
+			Self::MultiFlushSliceBytes => Value::Uint8(default::store::MULTI_FLUSH_BUDGET.as_bytes()),
 			Self::MultiWalAutocheckpoint => Value::Uint8(default::store::MULTI_WAL_AUTOCHECKPOINT_PAGES),
-			Self::OperatorResidentBudget => {
+			Self::OperatorResidentBytes => {
 				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET.as_bytes())
 			}
-			Self::OperatorDirtyBudget => Value::Uint8(default::store::OPERATOR_DIRTY_BUDGET.as_bytes()),
-			Self::OperatorFlushSlice => Value::Uint8(default::store::OPERATOR_FLUSH_SLICE.as_bytes()),
+			Self::OperatorDirtyBytes => Value::Uint8(default::store::OPERATOR_DIRTY_BUDGET.as_bytes()),
+			Self::OperatorFlushSliceBytes => Value::Uint8(default::store::OPERATOR_FLUSH_SLICE.as_bytes()),
 			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL),
 			Self::OperatorWalAutocheckpoint => {
 				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES)
@@ -237,7 +240,7 @@ impl ConfigKey {
 			Self::FlowLinger => Value::Duration(default::flow::LINGER),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
-			Self::FlowBacklogMemoryLimit => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
+			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
 			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT),
@@ -265,7 +268,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE_TESTING),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE_TESTING),
-			Self::QueryMemoryLimit => Value::Uint8(default::query::MEMORY_LIMIT_TESTING.as_bytes()),
+			Self::QueryBytes => Value::Uint8(default::query::MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL_TESTING),
 			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE_TESTING),
 			Self::RetentionEvictMaxBatchesPerTick => {
@@ -288,12 +291,13 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES_TESTING),
 			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER_TESTING.as_bytes()),
 			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT_TESTING.as_bytes()),
-			Self::CdcReadBufferBytes => Value::Uint8(default::cdc::READ_BUFFER_TESTING.as_bytes()),
-			Self::MultiPointBufferShardBytes => {
-				Value::Uint8(default::store::MULTI_POINT_BUFFER_SHARD_TESTING.as_bytes())
+			Self::CdcReadBufferTotalBytes => Value::Uint8(default::cdc::READ_BUFFER_TESTING.as_bytes()),
+			Self::CdcReadBufferShards => Value::Uint2(default::cdc::READ_BUFFER_SHARDS_TESTING),
+			Self::MultiPointBufferTotalBytes => {
+				Value::Uint8(default::store::MULTI_POINT_BUFFER_TOTAL_TESTING.as_bytes())
 			}
-			Self::MultiRangeBufferShardBytes => {
-				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD_TESTING.as_bytes())
+			Self::MultiRangeBufferTotalBytes => {
+				Value::Uint8(default::store::MULTI_RANGE_BUFFER_TOTAL_TESTING.as_bytes())
 			}
 			Self::OperatorRangeTierBytes => {
 				Value::Uint8(default::store::OPERATOR_RANGE_TIER_TESTING.as_bytes())
@@ -301,19 +305,19 @@ impl ConfigKey {
 			Self::MultiPointBufferShards => Value::Uint2(default::store::MULTI_POINT_BUFFER_SHARDS_TESTING),
 			Self::MultiRangeBufferShards => Value::Uint2(default::store::MULTI_RANGE_BUFFER_SHARDS_TESTING),
 			Self::MultiFlushInterval => Value::Duration(default::store::MULTI_FLUSH_INTERVAL_TESTING),
-			Self::MultiFlushBudgetBytes => {
+			Self::MultiFlushSliceBytes => {
 				Value::Uint8(default::store::MULTI_FLUSH_BUDGET_TESTING.as_bytes())
 			}
 			Self::MultiWalAutocheckpoint => {
 				Value::Uint8(default::store::MULTI_WAL_AUTOCHECKPOINT_PAGES_TESTING)
 			}
-			Self::OperatorResidentBudget => {
+			Self::OperatorResidentBytes => {
 				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET_TESTING.as_bytes())
 			}
-			Self::OperatorDirtyBudget => {
+			Self::OperatorDirtyBytes => {
 				Value::Uint8(default::store::OPERATOR_DIRTY_BUDGET_TESTING.as_bytes())
 			}
-			Self::OperatorFlushSlice => {
+			Self::OperatorFlushSliceBytes => {
 				Value::Uint8(default::store::OPERATOR_FLUSH_SLICE_TESTING.as_bytes())
 			}
 			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL_TESTING),
@@ -326,9 +330,7 @@ impl ConfigKey {
 			Self::FlowLinger => Value::Duration(default::flow::LINGER_TESTING),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
-			Self::FlowBacklogMemoryLimit => {
-				Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes())
-			}
+			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
 			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT_TESTING),
@@ -360,7 +362,7 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => {
 				"Number of rows produced per batch by query / DML pipeline operators."
 			}
-			Self::QueryMemoryLimit => {
+			Self::QueryBytes => {
 				"Maximum bytes a single query may buffer in memory across its blocking operators (joins, sort, top k, distinct) and its accumulated result. A query that would exceed this fails with QUERY_006 instead of growing without bound. Read fresh for each query, so changes take effect immediately."
 			}
 			Self::RetentionEvictInterval => {
@@ -424,21 +426,27 @@ impl ConfigKey {
 				 residency. Larger blocks compress better but coarsen retention, which drops whole blocks. \
 				 Read once at boot."
 			}
-			Self::CdcReadBufferBytes => {
-				"Resident byte budget for the CDC read cache of decoded blocks, split evenly across its \
-				 shards. None disables the cache outright, so every miss below the commit buffer decodes a \
-				 block straight from the persistent tier. Read once at boot."
+			Self::CdcReadBufferTotalBytes => {
+				"Total resident byte budget of the CDC read cache of decoded blocks, split evenly across \
+				 CDC_READ_BUFFER_SHARDS. Must be at least the shard count. None disables the cache outright, \
+				 so every miss below the commit buffer decodes a block straight from the persistent tier. \
+				 Read once at boot; changing it requires a restart."
 			}
-			Self::MultiPointBufferShardBytes => {
-				"Resident byte budget for each shard of the multi-version point cache; total cache memory is \
-				 this value times the shard count. None disables the cache outright, so \
-				 every point read that misses the commit buffer goes to the persistent tier. Read once at boot; changing it \
+			Self::CdcReadBufferShards => {
+				"Number of lock-striped shards the CDC read cache total budget is split across. Raising it \
+				 divides the same memory into more, smaller shards. Must be >= 1. Read once at boot; \
+				 changing it requires a restart."
+			}
+			Self::MultiPointBufferTotalBytes => {
+				"Total resident byte budget of the multi-version point cache, split evenly across \
+				 MULTI_POINT_BUFFER_SHARDS. Must be at least the shard count. None disables the cache \
+				 outright, so every point read that misses the commit buffer goes to the persistent tier. Read once at boot; changing it \
 				 requires a restart."
 			}
-			Self::MultiRangeBufferShardBytes => {
-				"Resident byte budget for each shard of the multi-version range cache; total cache memory is \
-				 this value times the shard count. None disables the cache outright, so \
-				 every multi-version range scan goes to the persistent tier. Read once at boot; changing it \
+			Self::MultiRangeBufferTotalBytes => {
+				"Total resident byte budget of the multi-version range cache, split evenly across \
+				 MULTI_RANGE_BUFFER_SHARDS. Must be at least the shard count. None disables the cache \
+				 outright, so every multi-version range scan goes to the persistent tier. Read once at boot; changing it \
 				 requires a restart."
 			}
 			Self::OperatorRangeTierBytes => {
@@ -448,15 +456,13 @@ impl ConfigKey {
 				 persistent tier. Read once at boot; changing it requires a restart."
 			}
 			Self::MultiPointBufferShards => {
-				"Number of lock-striped shards in the multi-version point cache. Each shard carries its own \
-				 byte budget, so raising this raises total cache memory proportionally rather \
-				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				"Number of lock-striped shards the multi-version point cache total budget is split across. \
+				 Raising it divides the same memory into more, smaller shards. Must be >= 1. Read once at boot; changing it \
 				 requires a restart."
 			}
 			Self::MultiRangeBufferShards => {
-				"Number of lock-striped shards in the multi-version range cache. Each shard carries its own \
-				 byte budget, so raising this raises total cache memory proportionally rather \
-				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				"Number of lock-striped shards the multi-version range cache total budget is split across. \
+				 Raising it divides the same memory into more, smaller shards. Must be >= 1. Read once at boot; changing it \
 				 requires a restart."
 			}
 			Self::MultiFlushInterval => {
@@ -465,7 +471,7 @@ impl ConfigKey {
 				 the cost of more resident commit-buffer memory and a longer window before data is \
 				 materialized in the persistent file. Read once at boot; changing it requires a restart."
 			}
-			Self::MultiFlushBudgetBytes => {
+			Self::MultiFlushSliceBytes => {
 				"Maximum bytes of buffered entries the persistent-flush class moves from the commit \
 				 buffer to the SQLite tier in one slice. Bounds how long a single flush holds the lane, \
 				 so a large backlog drains across ticks instead of stalling every other retention class \
@@ -478,21 +484,22 @@ impl ConfigKey {
 				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read once \
 				 at boot; changing it requires a restart."
 			}
-			Self::OperatorResidentBudget => {
+			Self::OperatorResidentBytes => {
 				"Byte ceiling on resident operator state. Eviction returns clean state to this limit \
 				 once it is exceeded. Dirty state is never evicted, so a tier holding mostly unwritten \
-				 state stays above the limit until a flush turns it clean; OPERATOR_DIRTY_BUDGET bounds \
-				 that, and OPERATOR_FLUSH_SLICE sizes the individual commits a flush writes. Read once \
-				 at boot; changing it requires a restart."
+				 state stays above the limit until a flush turns it clean; OPERATOR_DIRTY_BYTES bounds \
+				 that, and OPERATOR_FLUSH_SLICE_BYTES sizes the individual commits a flush writes. No single \
+				 operator may hold more than this divided by min(live operators, 16). Read once at boot; \
+				 changing it requires a restart."
 			}
-			Self::OperatorDirtyBudget => {
+			Self::OperatorDirtyBytes => {
 				"Byte ceiling on unwritten operator state. A flush is triggered once dirty resident state \
 				 exceeds this, which bounds both how much memory dirty state may hold and how much one \
 				 drain has to write. It defaults to the resident budget, so the flush interval is the \
 				 normal trigger and this stays a backstop for a workload that dirties state faster than \
 				 the interval anticipates. Read once at boot; changing it requires a restart."
 			}
-			Self::OperatorFlushSlice => {
+			Self::OperatorFlushSliceBytes => {
 				"Byte target for a single operator-state flush transaction. The drain stops taking work at \
 				 the first group boundary past this value, so one commit can exceed it by the size of that \
 				 group. Larger values mean fewer and longer commits, and every operator-state write blocks \
@@ -539,7 +546,7 @@ impl ConfigKey {
 				 shard, so its own commits stay in order while different flows commit side by side. Must be \
 				 >= 1. Read once at boot; changing it requires a restart."
 			}
-			Self::FlowBacklogMemoryLimit => {
+			Self::FlowBacklogBytes => {
 				"Byte ceiling of the shared in-memory backlog of decoded CDC entries that feeds flow \
 				 consumers. Producer-fed at commit granularity; entries below every flow's cursor are \
 				 dropped eagerly and the lowest versions are evicted first once the ceiling is exceeded, \
@@ -637,7 +644,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => false,
 			Self::QueryRowBatchSize => false,
-			Self::QueryMemoryLimit => false,
+			Self::QueryBytes => false,
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -652,18 +659,19 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => true,
 			Self::CdcCommitBufferBytes => true,
 			Self::CdcBlockCutBytes => true,
-			Self::CdcReadBufferBytes => true,
-			Self::MultiPointBufferShardBytes => true,
-			Self::MultiRangeBufferShardBytes => true,
+			Self::CdcReadBufferTotalBytes => true,
+			Self::CdcReadBufferShards => true,
+			Self::MultiPointBufferTotalBytes => true,
+			Self::MultiRangeBufferTotalBytes => true,
 			Self::OperatorRangeTierBytes => true,
 			Self::MultiPointBufferShards => true,
 			Self::MultiRangeBufferShards => true,
 			Self::MultiFlushInterval => true,
-			Self::MultiFlushBudgetBytes => false,
+			Self::MultiFlushSliceBytes => false,
 			Self::MultiWalAutocheckpoint => true,
-			Self::OperatorResidentBudget => true,
-			Self::OperatorDirtyBudget => true,
-			Self::OperatorFlushSlice => true,
+			Self::OperatorResidentBytes => true,
+			Self::OperatorDirtyBytes => true,
+			Self::OperatorFlushSliceBytes => true,
 			Self::OperatorFlushInterval => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
@@ -672,7 +680,7 @@ impl ConfigKey {
 			Self::FlowLinger => true,
 			Self::FlowActorBatchSize => true,
 			Self::FlowCommitterShards => true,
-			Self::FlowBacklogMemoryLimit => true,
+			Self::FlowBacklogBytes => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
 			Self::CdcConsumeWaitTimeout => false,
@@ -700,7 +708,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
-			Self::QueryMemoryLimit => &[ValueType::Uint8],
+			Self::QueryBytes => &[ValueType::Uint8],
 			Self::RetentionEvictInterval => &[ValueType::Duration],
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
@@ -715,18 +723,19 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
 			Self::CdcCommitBufferBytes => &[ValueType::Uint8],
 			Self::CdcBlockCutBytes => &[ValueType::Uint8],
-			Self::CdcReadBufferBytes => &[ValueType::Uint8],
-			Self::MultiPointBufferShardBytes => &[ValueType::Uint8],
-			Self::MultiRangeBufferShardBytes => &[ValueType::Uint8],
+			Self::CdcReadBufferTotalBytes => &[ValueType::Uint8],
+			Self::CdcReadBufferShards => &[ValueType::Uint2],
+			Self::MultiPointBufferTotalBytes => &[ValueType::Uint8],
+			Self::MultiRangeBufferTotalBytes => &[ValueType::Uint8],
 			Self::OperatorRangeTierBytes => &[ValueType::Uint8],
 			Self::MultiPointBufferShards => &[ValueType::Uint2],
 			Self::MultiRangeBufferShards => &[ValueType::Uint2],
 			Self::MultiFlushInterval => &[ValueType::Duration],
-			Self::MultiFlushBudgetBytes => &[ValueType::Uint8],
+			Self::MultiFlushSliceBytes => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
-			Self::OperatorResidentBudget => &[ValueType::Uint8],
-			Self::OperatorDirtyBudget => &[ValueType::Uint8],
-			Self::OperatorFlushSlice => &[ValueType::Uint8],
+			Self::OperatorResidentBytes => &[ValueType::Uint8],
+			Self::OperatorDirtyBytes => &[ValueType::Uint8],
+			Self::OperatorFlushSliceBytes => &[ValueType::Uint8],
 			Self::OperatorFlushInterval => &[ValueType::Duration],
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
@@ -735,7 +744,7 @@ impl ConfigKey {
 			Self::FlowLinger => &[ValueType::Duration],
 			Self::FlowActorBatchSize => &[ValueType::Uint2],
 			Self::FlowCommitterShards => &[ValueType::Uint2],
-			Self::FlowBacklogMemoryLimit => &[ValueType::Uint8],
+			Self::FlowBacklogBytes => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
@@ -763,7 +772,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => false,
 			Self::QueryRowBatchSize => false,
-			Self::QueryMemoryLimit => false,
+			Self::QueryBytes => false,
 			Self::RetentionEvictInterval => false,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -778,18 +787,19 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => false,
 			Self::CdcCommitBufferBytes => false,
 			Self::CdcBlockCutBytes => false,
-			Self::CdcReadBufferBytes => true,
-			Self::MultiPointBufferShardBytes => true,
-			Self::MultiRangeBufferShardBytes => true,
+			Self::CdcReadBufferTotalBytes => true,
+			Self::CdcReadBufferShards => false,
+			Self::MultiPointBufferTotalBytes => true,
+			Self::MultiRangeBufferTotalBytes => true,
 			Self::OperatorRangeTierBytes => true,
 			Self::MultiPointBufferShards => false,
 			Self::MultiRangeBufferShards => false,
 			Self::MultiFlushInterval => false,
-			Self::MultiFlushBudgetBytes => false,
+			Self::MultiFlushSliceBytes => false,
 			Self::MultiWalAutocheckpoint => false,
-			Self::OperatorResidentBudget => false,
-			Self::OperatorDirtyBudget => false,
-			Self::OperatorFlushSlice => false,
+			Self::OperatorResidentBytes => false,
+			Self::OperatorDirtyBytes => false,
+			Self::OperatorFlushSliceBytes => false,
 			Self::OperatorFlushInterval => false,
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
@@ -798,7 +808,7 @@ impl ConfigKey {
 			Self::FlowLinger => false,
 			Self::FlowActorBatchSize => false,
 			Self::FlowCommitterShards => false,
-			Self::FlowBacklogMemoryLimit => false,
+			Self::FlowBacklogBytes => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -865,13 +875,13 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("QUERY_ROW_BATCH_SIZE must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::QueryMemoryLimit => match value {
-				Value::Uint8(0) => Err("QUERY_MEMORY_LIMIT must be greater than zero".to_string()),
+			Self::QueryBytes => match value {
+				Value::Uint8(0) => Err("QUERY_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::FlowBacklogMemoryLimit => match value {
+			Self::FlowBacklogBytes => match value {
 				Value::Uint8(0) => {
-					Err("FLOW_BACKLOG_MEMORY_LIMIT must be greater than zero".to_string())
+					Err("FLOW_BACKLOG_BYTES must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -883,16 +893,16 @@ impl ConfigKey {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::MultiPointBufferShardBytes => match value {
+			Self::MultiPointBufferTotalBytes => match value {
 				Value::Uint8(0) => Err(
-					"MULTI_POINT_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the point cache"
+					"MULTI_POINT_BUFFER_TOTAL_BYTES must be greater than zero; use none to disable the point cache"
 						.to_string(),
 				),
 				_ => Ok(()),
 			},
-			Self::MultiRangeBufferShardBytes => match value {
+			Self::MultiRangeBufferTotalBytes => match value {
 				Value::Uint8(0) => Err(
-					"MULTI_RANGE_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the range cache"
+					"MULTI_RANGE_BUFFER_TOTAL_BYTES must be greater than zero; use none to disable the range cache"
 						.to_string(),
 				),
 				_ => Ok(()),
@@ -912,6 +922,10 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("MULTI_RANGE_BUFFER_SHARDS must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
+			Self::CdcReadBufferShards => match value {
+				Value::Uint2(0) => Err("CDC_READ_BUFFER_SHARDS must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			Self::CdcCommitBufferBytes => match value {
 				Value::Uint8(0) => Err("CDC_COMMIT_BUFFER_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
@@ -920,9 +934,9 @@ impl ConfigKey {
 				Value::Uint8(0) => Err("CDC_BLOCK_CUT_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::CdcReadBufferBytes => match value {
+			Self::CdcReadBufferTotalBytes => match value {
 				Value::Uint8(0) => Err(
-					"CDC_READ_BUFFER_BYTES must be greater than zero; use none to disable the block cache"
+					"CDC_READ_BUFFER_TOTAL_BYTES must be greater than zero; use none to disable the block cache"
 						.to_string(),
 				),
 				_ => Ok(()),
@@ -937,9 +951,9 @@ impl ConfigKey {
 				Value::Duration(_) => Err("COMMIT_MERGE_INTERVAL must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::MultiFlushBudgetBytes => match value {
+			Self::MultiFlushSliceBytes => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
-				Value::Uint8(_) => Err("MULTI_FLUSH_BUDGET_BYTES must be greater than zero".to_string()),
+				Value::Uint8(_) => Err("MULTI_FLUSH_SLICE_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::MultiWalAutocheckpoint => match value {
@@ -948,21 +962,21 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::OperatorResidentBudget => match value {
+			Self::OperatorResidentBytes => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
 				Value::Uint8(_) => {
-					Err("OPERATOR_RESIDENT_BUDGET must be greater than zero".to_string())
+					Err("OPERATOR_RESIDENT_BYTES must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
-			Self::OperatorDirtyBudget => match value {
+			Self::OperatorDirtyBytes => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
-				Value::Uint8(_) => Err("OPERATOR_DIRTY_BUDGET must be greater than zero".to_string()),
+				Value::Uint8(_) => Err("OPERATOR_DIRTY_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::OperatorFlushSlice => match value {
+			Self::OperatorFlushSliceBytes => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
-				Value::Uint8(_) => Err("OPERATOR_FLUSH_SLICE must be greater than zero".to_string()),
+				Value::Uint8(_) => Err("OPERATOR_FLUSH_SLICE_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::OperatorFlushInterval => match value {
@@ -1149,7 +1163,7 @@ impl fmt::Display for ConfigKey {
 		match self {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
-			Self::QueryMemoryLimit => write!(f, "QUERY_MEMORY_LIMIT"),
+			Self::QueryBytes => write!(f, "QUERY_BYTES"),
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
@@ -1164,18 +1178,19 @@ impl fmt::Display for ConfigKey {
 			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
 			Self::CdcCommitBufferBytes => write!(f, "CDC_COMMIT_BUFFER_BYTES"),
 			Self::CdcBlockCutBytes => write!(f, "CDC_BLOCK_CUT_BYTES"),
-			Self::CdcReadBufferBytes => write!(f, "CDC_READ_BUFFER_BYTES"),
-			Self::MultiPointBufferShardBytes => write!(f, "MULTI_POINT_BUFFER_SHARD_BYTES"),
-			Self::MultiRangeBufferShardBytes => write!(f, "MULTI_RANGE_BUFFER_SHARD_BYTES"),
+			Self::CdcReadBufferTotalBytes => write!(f, "CDC_READ_BUFFER_TOTAL_BYTES"),
+			Self::CdcReadBufferShards => write!(f, "CDC_READ_BUFFER_SHARDS"),
+			Self::MultiPointBufferTotalBytes => write!(f, "MULTI_POINT_BUFFER_TOTAL_BYTES"),
+			Self::MultiRangeBufferTotalBytes => write!(f, "MULTI_RANGE_BUFFER_TOTAL_BYTES"),
 			Self::OperatorRangeTierBytes => write!(f, "OPERATOR_RANGE_TIER_BYTES"),
 			Self::MultiPointBufferShards => write!(f, "MULTI_POINT_BUFFER_SHARDS"),
 			Self::MultiRangeBufferShards => write!(f, "MULTI_RANGE_BUFFER_SHARDS"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
-			Self::MultiFlushBudgetBytes => write!(f, "MULTI_FLUSH_BUDGET_BYTES"),
+			Self::MultiFlushSliceBytes => write!(f, "MULTI_FLUSH_SLICE_BYTES"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
-			Self::OperatorResidentBudget => write!(f, "OPERATOR_RESIDENT_BUDGET"),
-			Self::OperatorDirtyBudget => write!(f, "OPERATOR_DIRTY_BUDGET"),
-			Self::OperatorFlushSlice => write!(f, "OPERATOR_FLUSH_SLICE"),
+			Self::OperatorResidentBytes => write!(f, "OPERATOR_RESIDENT_BYTES"),
+			Self::OperatorDirtyBytes => write!(f, "OPERATOR_DIRTY_BYTES"),
+			Self::OperatorFlushSliceBytes => write!(f, "OPERATOR_FLUSH_SLICE_BYTES"),
 			Self::OperatorFlushInterval => write!(f, "OPERATOR_FLUSH_INTERVAL"),
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
@@ -1184,7 +1199,7 @@ impl fmt::Display for ConfigKey {
 			Self::FlowLinger => write!(f, "FLOW_LINGER"),
 			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
 			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
-			Self::FlowBacklogMemoryLimit => write!(f, "FLOW_BACKLOG_MEMORY_LIMIT"),
+			Self::FlowBacklogBytes => write!(f, "FLOW_BACKLOG_BYTES"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
@@ -1216,7 +1231,7 @@ impl FromStr for ConfigKey {
 		match s {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
-			"QUERY_MEMORY_LIMIT" => Ok(Self::QueryMemoryLimit),
+			"QUERY_BYTES" => Ok(Self::QueryBytes),
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
@@ -1231,18 +1246,19 @@ impl FromStr for ConfigKey {
 			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
 			"CDC_COMMIT_BUFFER_BYTES" => Ok(Self::CdcCommitBufferBytes),
 			"CDC_BLOCK_CUT_BYTES" => Ok(Self::CdcBlockCutBytes),
-			"CDC_READ_BUFFER_BYTES" => Ok(Self::CdcReadBufferBytes),
-			"MULTI_POINT_BUFFER_SHARD_BYTES" => Ok(Self::MultiPointBufferShardBytes),
-			"MULTI_RANGE_BUFFER_SHARD_BYTES" => Ok(Self::MultiRangeBufferShardBytes),
+			"CDC_READ_BUFFER_TOTAL_BYTES" => Ok(Self::CdcReadBufferTotalBytes),
+			"CDC_READ_BUFFER_SHARDS" => Ok(Self::CdcReadBufferShards),
+			"MULTI_POINT_BUFFER_TOTAL_BYTES" => Ok(Self::MultiPointBufferTotalBytes),
+			"MULTI_RANGE_BUFFER_TOTAL_BYTES" => Ok(Self::MultiRangeBufferTotalBytes),
 			"OPERATOR_RANGE_TIER_BYTES" => Ok(Self::OperatorRangeTierBytes),
 			"MULTI_POINT_BUFFER_SHARDS" => Ok(Self::MultiPointBufferShards),
 			"MULTI_RANGE_BUFFER_SHARDS" => Ok(Self::MultiRangeBufferShards),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
-			"MULTI_FLUSH_BUDGET_BYTES" => Ok(Self::MultiFlushBudgetBytes),
+			"MULTI_FLUSH_SLICE_BYTES" => Ok(Self::MultiFlushSliceBytes),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
-			"OPERATOR_RESIDENT_BUDGET" => Ok(Self::OperatorResidentBudget),
-			"OPERATOR_DIRTY_BUDGET" => Ok(Self::OperatorDirtyBudget),
-			"OPERATOR_FLUSH_SLICE" => Ok(Self::OperatorFlushSlice),
+			"OPERATOR_RESIDENT_BYTES" => Ok(Self::OperatorResidentBytes),
+			"OPERATOR_DIRTY_BYTES" => Ok(Self::OperatorDirtyBytes),
+			"OPERATOR_FLUSH_SLICE_BYTES" => Ok(Self::OperatorFlushSliceBytes),
 			"OPERATOR_FLUSH_INTERVAL" => Ok(Self::OperatorFlushInterval),
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
@@ -1251,7 +1267,7 @@ impl FromStr for ConfigKey {
 			"FLOW_LINGER" => Ok(Self::FlowLinger),
 			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
 			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
-			"FLOW_BACKLOG_MEMORY_LIMIT" => Ok(Self::FlowBacklogMemoryLimit),
+			"FLOW_BACKLOG_BYTES" => Ok(Self::FlowBacklogBytes),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
@@ -1418,41 +1434,41 @@ mod tests {
 
 	#[test]
 	fn test_query_memory_limit_defaults_and_round_trips() {
-		assert_eq!(ConfigKey::QueryMemoryLimit.production_value(), Value::Uint8(1024 * 1024 * 1024));
-		assert_eq!(ConfigKey::QueryMemoryLimit.expected_types(), &[ValueType::Uint8]);
-		let key: ConfigKey = "QUERY_MEMORY_LIMIT".parse().unwrap();
-		assert_eq!(key, ConfigKey::QueryMemoryLimit);
-		assert_eq!(format!("{}", ConfigKey::QueryMemoryLimit), "QUERY_MEMORY_LIMIT");
+		assert_eq!(ConfigKey::QueryBytes.production_value(), Value::Uint8(1024 * 1024 * 1024));
+		assert_eq!(ConfigKey::QueryBytes.expected_types(), &[ValueType::Uint8]);
+		let key: ConfigKey = "QUERY_BYTES".parse().unwrap();
+		assert_eq!(key, ConfigKey::QueryBytes);
+		assert_eq!(format!("{}", ConfigKey::QueryBytes), "QUERY_BYTES");
 	}
 
 	#[test]
 	fn test_query_memory_limit_rejects_zero() {
 		// A zero budget would reject every query, including trivial ones, so it must not be settable.
-		assert!(ConfigKey::QueryMemoryLimit.accept(Value::Uint8(0)).is_err());
-		assert_eq!(ConfigKey::QueryMemoryLimit.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+		assert!(ConfigKey::QueryBytes.accept(Value::Uint8(0)).is_err());
+		assert_eq!(ConfigKey::QueryBytes.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
 	}
 
 	#[test]
 	fn test_query_memory_limit_requires_restart_and_optional() {
 		// Read fresh for each query, so a live change takes effect immediately.
-		assert!(!ConfigKey::QueryMemoryLimit.requires_restart());
+		assert!(!ConfigKey::QueryBytes.requires_restart());
 		// Always defaulted to 1 GiB, never unset.
-		assert!(!ConfigKey::QueryMemoryLimit.is_optional());
+		assert!(!ConfigKey::QueryBytes.is_optional());
 	}
 
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 58);
-		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
+		assert_eq!(all.len(), 59);
+		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::OperatorResidentBudget));
-		assert!(all.contains(&ConfigKey::OperatorDirtyBudget));
-		assert!(all.contains(&ConfigKey::OperatorFlushSlice));
+		assert!(all.contains(&ConfigKey::OperatorResidentBytes));
+		assert!(all.contains(&ConfigKey::OperatorDirtyBytes));
+		assert!(all.contains(&ConfigKey::OperatorFlushSliceBytes));
 		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
@@ -1464,13 +1480,14 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
 		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
-		assert!(all.contains(&ConfigKey::CdcReadBufferBytes));
+		assert!(all.contains(&ConfigKey::CdcReadBufferTotalBytes));
+		assert!(all.contains(&ConfigKey::CdcReadBufferShards));
 		assert!(all.contains(&ConfigKey::OperatorRangeTierBytes));
-		assert!(all.contains(&ConfigKey::OperatorDirtyBudget));
-		assert!(all.contains(&ConfigKey::OperatorFlushSlice));
+		assert!(all.contains(&ConfigKey::OperatorDirtyBytes));
+		assert!(all.contains(&ConfigKey::OperatorFlushSliceBytes));
 		assert!(all.contains(&ConfigKey::MultiPointBufferShards));
 		assert!(all.contains(&ConfigKey::MultiRangeBufferShards));
-		assert!(all.contains(&ConfigKey::FlowBacklogMemoryLimit));
+		assert!(all.contains(&ConfigKey::FlowBacklogBytes));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
@@ -1895,11 +1912,11 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_budget_bytes_metadata() {
-		assert_eq!(ConfigKey::OperatorResidentBudget.production_value(), Value::Uint8(128 * 1024 * 1024));
-		assert_eq!(ConfigKey::OperatorResidentBudget.expected_types(), &[ValueType::Uint8]);
-		assert!(!ConfigKey::OperatorResidentBudget.is_optional());
+		assert_eq!(ConfigKey::OperatorResidentBytes.production_value(), Value::Uint8(128 * 1024 * 1024));
+		assert_eq!(ConfigKey::OperatorResidentBytes.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::OperatorResidentBytes.is_optional());
 		assert!(
-			ConfigKey::OperatorResidentBudget.requires_restart(),
+			ConfigKey::OperatorResidentBytes.requires_restart(),
 			"the budget sizes a MemoryBudget built once with the commit tier; declaring it live would \
 			 promise a rewrite that no running store can adopt"
 		);
@@ -1909,19 +1926,19 @@ mod tests {
 	fn test_operator_flush_budget_bytes_rejects_zero() {
 		// A zero budget moves nothing per slice, so the flush lane spins forever on a backlog it
 		// is never allowed to drain.
-		match ConfigKey::OperatorResidentBudget.accept(Value::Uint8(0)).unwrap_err() {
+		match ConfigKey::OperatorResidentBytes.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
-		assert_eq!(ConfigKey::OperatorResidentBudget.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+		assert_eq!(ConfigKey::OperatorResidentBytes.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
 	}
 
 	#[test]
 	fn test_operator_flush_budget_bytes_round_trips_through_display_and_from_str() {
-		assert_eq!("OPERATOR_RESIDENT_BUDGET".parse::<ConfigKey>().unwrap(), ConfigKey::OperatorResidentBudget);
-		assert_eq!(format!("{}", ConfigKey::OperatorResidentBudget), "OPERATOR_RESIDENT_BUDGET");
+		assert_eq!("OPERATOR_RESIDENT_BYTES".parse::<ConfigKey>().unwrap(), ConfigKey::OperatorResidentBytes);
+		assert_eq!(format!("{}", ConfigKey::OperatorResidentBytes), "OPERATOR_RESIDENT_BYTES");
 	}
 
 	#[test]

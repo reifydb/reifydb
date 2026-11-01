@@ -28,7 +28,7 @@ use reifydb_value::{
 use crate::{Result, vm::services::Services};
 
 pub fn query_budget(services: &Services) -> Arc<MemoryBudget> {
-	let limit = services.catalog.get_config_uint8(ConfigKey::QueryMemoryLimit);
+	let limit = services.catalog.get_config_uint8(ConfigKey::QueryBytes);
 	Arc::new(MemoryBudget::new(ByteSize::from_bytes(limit)))
 }
 

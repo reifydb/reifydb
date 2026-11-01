@@ -16,8 +16,8 @@ fn set_query_memory_limit(t: &TestEngine, bytes: u64) {
 	t.inner()
 		.catalog()
 		.cache()
-		.set_config(ConfigKey::QueryMemoryLimit, CommitVersion(1), Value::Uint8(bytes))
-		.expect("failed to set QUERY_MEMORY_LIMIT");
+		.set_config(ConfigKey::QueryBytes, CommitVersion(1), Value::Uint8(bytes))
+		.expect("failed to set QUERY_BYTES");
 }
 
 #[test]

@@ -45,22 +45,23 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsTask,
 	ConfigKey::ThreadsCompute,
 	ConfigKey::ThreadsMaintenance,
-	ConfigKey::MultiPointBufferShardBytes,
-	ConfigKey::MultiRangeBufferShardBytes,
+	ConfigKey::MultiPointBufferTotalBytes,
+	ConfigKey::MultiRangeBufferTotalBytes,
 	ConfigKey::OperatorRangeTierBytes,
 	ConfigKey::MultiPointBufferShards,
 	ConfigKey::MultiRangeBufferShards,
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
-	ConfigKey::OperatorResidentBudget,
-	ConfigKey::OperatorDirtyBudget,
-	ConfigKey::OperatorFlushSlice,
+	ConfigKey::OperatorResidentBytes,
+	ConfigKey::OperatorDirtyBytes,
+	ConfigKey::OperatorFlushSliceBytes,
 	ConfigKey::OperatorFlushInterval,
-	ConfigKey::MultiFlushBudgetBytes,
+	ConfigKey::MultiFlushSliceBytes,
 	ConfigKey::CdcCommitBufferBytes,
 	ConfigKey::CdcBlockCutBytes,
-	ConfigKey::CdcReadBufferBytes,
+	ConfigKey::CdcReadBufferTotalBytes,
+	ConfigKey::CdcReadBufferShards,
 	ConfigKey::SyncInterval,
 ];
 
@@ -128,16 +129,35 @@ pub(crate) fn resolve_startup_configs(
 		async_threads: threads(ConfigKey::ThreadsAsync),
 	};
 
-	let multi_point = uint8_opt(ConfigKey::MultiPointBufferShardBytes).map(|shard_bytes| MultiPointConfig {
-		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-		shards: shard_count(ConfigKey::MultiPointBufferShards),
-	});
+	let split = |total_key: ConfigKey, shards_key: ConfigKey| -> Result<Option<(ByteSize, usize)>> {
+		let shards = shard_count(shards_key);
+		let Some(total) = uint8_opt(total_key) else {
+			return Ok(None);
+		};
+		if total < shards as u64 {
+			return Err(CatalogError::ConfigInvalidValue {
+				key: total_key.to_string(),
+				reason: format!("total bytes {total} must be at least {shards_key} ({shards})"),
+			}
+			.into());
+		}
+		Ok(Some((ByteSize::from_bytes(total), shards)))
+	};
 
-	let multi_range = uint8_opt(ConfigKey::MultiRangeBufferShardBytes).map(|shard_bytes| MultiRangeConfig {
-		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-		shards: shard_count(ConfigKey::MultiRangeBufferShards),
-		gap_guard: DEFAULT_GAP_GUARD,
-	});
+	let multi_point = split(ConfigKey::MultiPointBufferTotalBytes, ConfigKey::MultiPointBufferShards)?.map(
+		|(total_bytes, shards)| MultiPointConfig {
+			total_bytes: Some(total_bytes),
+			shards,
+		},
+	);
+
+	let multi_range = split(ConfigKey::MultiRangeBufferTotalBytes, ConfigKey::MultiRangeBufferShards)?.map(
+		|(total_bytes, shards)| MultiRangeConfig {
+			total_bytes: Some(total_bytes),
+			shards,
+			gap_guard: DEFAULT_GAP_GUARD,
+		},
+	);
 
 	let operator_range = uint8_opt(ConfigKey::OperatorRangeTierBytes).map(|tier_bytes| OperatorRangeConfig {
 		tier_bytes: Some(ByteSize::from_bytes(tier_bytes)),
@@ -154,10 +174,10 @@ pub(crate) fn resolve_startup_configs(
 
 	let cdc_read = if cdc_memory {
 		if overrides.iter().any(|(key, value)| {
-			*key == ConfigKey::CdcReadBufferBytes && !matches!(value, Value::None { .. })
+			*key == ConfigKey::CdcReadBufferTotalBytes && !matches!(value, Value::None { .. })
 		}) {
 			return Err(CatalogError::ConfigInvalidValue {
-				key: ConfigKey::CdcReadBufferBytes.to_string(),
+				key: ConfigKey::CdcReadBufferTotalBytes.to_string(),
 				reason: "an in-memory CDC persistent tier already holds every block resident, \
 					 so a block cache in front of it would duplicate each block in the heap; \
 					 set it to none or use a persistent CDC tier"
@@ -167,10 +187,12 @@ pub(crate) fn resolve_startup_configs(
 		}
 		None
 	} else {
-		uint8_opt(ConfigKey::CdcReadBufferBytes).map(|resident_bytes| CdcReadConfig {
-			resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-			shards: CdcReadConfig::default().shards,
-		})
+		split(ConfigKey::CdcReadBufferTotalBytes, ConfigKey::CdcReadBufferShards)?.map(
+			|(total_bytes, shards)| CdcReadConfig {
+				total_bytes: Some(total_bytes),
+				shards,
+			},
+		)
 	};
 
 	Ok(StartupConfig {
@@ -182,9 +204,9 @@ pub(crate) fn resolve_startup_configs(
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
 		operator_resident: ResidentLimits {
-			budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBudget)),
-			dirty_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorDirtyBudget)),
-			slice: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushSlice)),
+			budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBytes)),
+			dirty_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorDirtyBytes)),
+			slice: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushSliceBytes)),
 			..ResidentLimits::default()
 		},
 		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
@@ -225,14 +247,14 @@ mod tests {
 		// while none exists, so the contradiction must fail the build rather than be ignored.
 		let buffer = CommitStore::new();
 
-		let sized = [(ConfigKey::CdcReadBufferBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
+		let sized = [(ConfigKey::CdcReadBufferTotalBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
 		let Err(err) = resolve_startup_configs(&buffer, None, &sized, true) else {
 			panic!("a sized read buffer must be rejected against an in-memory cdc tier");
 		};
 		assert_eq!(err.diagnostic().code, "CA_053");
 
 		let disabled = [(
-			ConfigKey::CdcReadBufferBytes,
+			ConfigKey::CdcReadBufferTotalBytes,
 			Value::None {
 				inner: ValueType::Uint8,
 			},
@@ -247,9 +269,9 @@ mod tests {
 		// supported way to size the block cache.
 		let buffer = CommitStore::new();
 
-		let sized = [(ConfigKey::CdcReadBufferBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
+		let sized = [(ConfigKey::CdcReadBufferTotalBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes()))];
 		let resolved = resolve_startup_configs(&buffer, None, &sized, false).unwrap();
-		assert_eq!(resolved.cdc_read.unwrap().resident_bytes, Some(ByteSize::from_mib(64)));
+		assert_eq!(resolved.cdc_read.unwrap().total_bytes, Some(ByteSize::from_mib(64)));
 	}
 
 	#[test]
@@ -266,5 +288,65 @@ mod tests {
 		let shortened = [(ConfigKey::OperatorFlushInterval, Value::duration_seconds(5))];
 		let resolved = resolve_startup_configs(&buffer, None, &shortened, false).unwrap();
 		assert_eq!(resolved.operator_flush_interval, Duration::from_seconds_const(5));
+	}
+
+	#[test]
+	fn a_total_below_the_shard_count_is_rejected() {
+		// A total smaller than the shard count leaves every shard a zero-byte cache that silently caches
+		// nothing.
+		let buffer = CommitStore::new();
+
+		for (total_key, shards_key) in [
+			(ConfigKey::MultiPointBufferTotalBytes, ConfigKey::MultiPointBufferShards),
+			(ConfigKey::MultiRangeBufferTotalBytes, ConfigKey::MultiRangeBufferShards),
+			(ConfigKey::CdcReadBufferTotalBytes, ConfigKey::CdcReadBufferShards),
+		] {
+			let overrides = [(total_key, Value::Uint8(1)), (shards_key, Value::Uint2(2))];
+			let Err(err) = resolve_startup_configs(&buffer, None, &overrides, false) else {
+				panic!("{total_key} below {shards_key} must be rejected");
+			};
+			let rendered = err.to_string();
+			assert_eq!(err.diagnostic().code, "CA_053", "{total_key}");
+			assert!(
+				rendered.contains(&total_key.to_string()),
+				"the error must name {total_key}: {rendered}"
+			);
+		}
+	}
+
+	#[test]
+	fn a_total_equal_to_the_shard_count_is_accepted() {
+		// The bound is inclusive; rejecting one byte per shard would refuse the smallest valid cache.
+		let buffer = CommitStore::new();
+
+		let overrides = [
+			(ConfigKey::MultiPointBufferTotalBytes, Value::Uint8(2)),
+			(ConfigKey::MultiPointBufferShards, Value::Uint2(2)),
+		];
+		let resolved = resolve_startup_configs(&buffer, None, &overrides, false).unwrap();
+		assert_eq!(resolved.multi_point.unwrap().total_bytes, Some(ByteSize::from_bytes(2)));
+	}
+
+	#[test]
+	fn the_totals_and_shard_counts_resolve_from_the_catalog() {
+		// The cdc shard count must come from its key; a hard-coded count would ignore the override.
+		let buffer = CommitStore::new();
+
+		let overrides = [
+			(ConfigKey::MultiPointBufferTotalBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes())),
+			(ConfigKey::MultiPointBufferShards, Value::Uint2(16)),
+			(ConfigKey::MultiRangeBufferTotalBytes, Value::Uint8(ByteSize::from_mib(32).as_bytes())),
+			(ConfigKey::MultiRangeBufferShards, Value::Uint2(8)),
+			(ConfigKey::CdcReadBufferTotalBytes, Value::Uint8(ByteSize::from_mib(64).as_bytes())),
+			(ConfigKey::CdcReadBufferShards, Value::Uint2(4)),
+		];
+		let resolved = resolve_startup_configs(&buffer, None, &overrides, false).unwrap();
+
+		let point = resolved.multi_point.unwrap();
+		assert_eq!((point.total_bytes, point.shards), (Some(ByteSize::from_mib(64)), 16));
+		let range = resolved.multi_range.unwrap();
+		assert_eq!((range.total_bytes, range.shards), (Some(ByteSize::from_mib(32)), 8));
+		let read = resolved.cdc_read.unwrap();
+		assert_eq!((read.total_bytes, read.shards), (Some(ByteSize::from_mib(64)), 4));
 	}
 }

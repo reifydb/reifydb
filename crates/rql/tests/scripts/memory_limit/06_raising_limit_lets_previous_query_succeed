@@ -1,4 +1,4 @@
-# query_budget() reads QUERY_MEMORY_LIMIT fresh at every query, so raising the limit
+# query_budget() reads QUERY_BYTES fresh at every query, so raising the limit
 # must let the same query that just failed succeed - no restart required.
 
 admin 'create table test::wide6 { n: int4 }'
@@ -19,7 +19,7 @@ command 'insert test::wide6 [{n:3},{n:1},{n:2}]'
 > +-------------+---------+------------+
 >
 
-set_config QUERY_MEMORY_LIMIT 8
+set_config QUERY_BYTES 8
 ---
 ok
 
@@ -27,7 +27,7 @@ query_fails 'from test::wide6 sort {n}'
 ---
 Error QUERY_006
 
-set_config QUERY_MEMORY_LIMIT 1073741824
+set_config QUERY_BYTES 1073741824
 ---
 ok
 

@@ -463,7 +463,7 @@ impl DatabaseBuilder {
 		self.ioc = self.ioc.register(cdc_wake_registry.clone());
 
 		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
-			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
+			multi.config().get_config_uint8(ConfigKey::FlowBacklogBytes),
 		));
 		self.ioc = self.ioc.register(flow_backlog.clone());
 

@@ -1,6 +1,6 @@
-# A generous QUERY_MEMORY_LIMIT must not affect a small SORT.
+# A generous QUERY_BYTES must not affect a small SORT.
 
-set_config QUERY_MEMORY_LIMIT 1073741824
+set_config QUERY_BYTES 1073741824
 ---
 ok
 

@@ -188,7 +188,7 @@ pub fn sqlite_tier() -> (CdcPersistentTier, Option<SqliteTempPathGuard>) {
 /// truth.
 pub fn starved_read() -> CdcReadConfig {
 	CdcReadConfig {
-		resident_bytes: Some(ByteSize::from_bytes(1)),
+		total_bytes: Some(ByteSize::from_bytes(1)),
 		shards: 1,
 	}
 }
@@ -197,7 +197,7 @@ pub fn starved_read() -> CdcReadConfig {
 /// evicted on the spot; a single shard keeps the budget the whole tier's, not a fraction of it.
 pub fn evicting_read() -> CdcReadConfig {
 	CdcReadConfig {
-		resident_bytes: Some(ByteSize::from_bytes(CUT_SMALL.as_bytes() * 8)),
+		total_bytes: Some(ByteSize::from_bytes(CUT_SMALL.as_bytes() * 8)),
 		shards: 1,
 	}
 }

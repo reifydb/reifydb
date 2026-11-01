@@ -68,6 +68,9 @@ pub mod cdc {
 	pub const READ_BUFFER: ByteSize = ByteSize::from_mib(256);
 	pub const READ_BUFFER_TESTING: ByteSize = ByteSize::from_kib(64);
 
+	pub const READ_BUFFER_SHARDS: u16 = 8;
+	pub const READ_BUFFER_SHARDS_TESTING: u16 = 8;
+
 	pub const CONSUME_WAIT_TIMEOUT: Duration = Duration::from_seconds_const(30);
 	pub const CONSUME_WAIT_TIMEOUT_TESTING: Duration = Duration::from_seconds_const(30);
 }
@@ -75,11 +78,11 @@ pub mod cdc {
 pub mod store {
 	use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
-	pub const MULTI_POINT_BUFFER_SHARD: ByteSize = ByteSize::from_mib(4);
-	pub const MULTI_POINT_BUFFER_SHARD_TESTING: ByteSize = ByteSize::from_kib(16);
+	pub const MULTI_POINT_BUFFER_TOTAL: ByteSize = ByteSize::from_mib(64);
+	pub const MULTI_POINT_BUFFER_TOTAL_TESTING: ByteSize = ByteSize::from_kib(32);
 
-	pub const MULTI_RANGE_BUFFER_SHARD: ByteSize = ByteSize::from_mib(4);
-	pub const MULTI_RANGE_BUFFER_SHARD_TESTING: ByteSize = ByteSize::from_kib(16);
+	pub const MULTI_RANGE_BUFFER_TOTAL: ByteSize = ByteSize::from_mib(64);
+	pub const MULTI_RANGE_BUFFER_TOTAL_TESTING: ByteSize = ByteSize::from_kib(32);
 
 	pub const MULTI_POINT_BUFFER_SHARDS: u16 = 16;
 	pub const MULTI_POINT_BUFFER_SHARDS_TESTING: u16 = 2;

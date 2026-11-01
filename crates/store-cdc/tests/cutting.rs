@@ -139,7 +139,7 @@ fn fixture(combination: Combination, cut_bytes: ByteSize) -> (Fixture, CdcCommit
 		Cache::Absent => None,
 		Cache::Default => Some(CdcReadConfig::default()),
 		Cache::Starved => Some(CdcReadConfig {
-			resident_bytes: Some(ByteSize::from_bytes(1)),
+			total_bytes: Some(ByteSize::from_bytes(1)),
 			shards: 1,
 		}),
 	};
