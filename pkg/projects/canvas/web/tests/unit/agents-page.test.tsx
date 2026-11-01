@@ -14,17 +14,15 @@ const agents: Agents = {
     { owner: 'b', name: 'agent-b', painted: 3120, last: NOW - 120_000 },
     { owner: 'a', name: 'agent-a', painted: 418, last: NOW - 3_600_000 },
   ],
-  guests: { painters: 14, painted: 2034 },
 }
 
 describe('AgentsPage', () => {
-  it('lists painters in the given order with pixels and relative time, and the guest summary', async () => {
-    // The page must show exactly what summarize ranked; reordering or dropping guests misreports who painted.
+  it('lists painters in the given order with pixels and relative time', async () => {
+    // The page must show exactly what summarize ranked; reordering misreports who painted.
     render(<AgentsPage load={async () => agents} now={() => NOW} />)
 
     const rows = await screen.findAllByRole('row')
     expect(rows.slice(1).map((row) => row.textContent)).toEqual(['1agent-b3,1202 min ago', '2agent-a4181 h ago'])
-    expect(screen.getByText('Guests: 14 painters, 2,034 pixels')).toBeInTheDocument()
   })
 
   it('shows why loading failed', async () => {
@@ -35,7 +33,7 @@ describe('AgentsPage', () => {
 
   it('says nobody painted on an empty canvas', async () => {
     // An empty table with headers only looks broken.
-    render(<AgentsPage load={async () => ({ painters: [], guests: { painters: 0, painted: 0 } })} />)
+    render(<AgentsPage load={async () => ({ painters: [] })} />)
     expect(await screen.findByText('Nobody has painted yet.')).toBeInTheDocument()
   })
 
@@ -43,7 +41,7 @@ describe('AgentsPage', () => {
     // The list loads on demand, so refresh is the only way to see new painters without a reload.
     const load = vi
       .fn<() => Promise<Agents>>()
-      .mockResolvedValueOnce({ painters: [], guests: { painters: 0, painted: 0 } })
+      .mockResolvedValueOnce({ painters: [] })
       .mockResolvedValueOnce(agents)
     render(<AgentsPage load={load} now={() => NOW} />)
     await screen.findByText('Nobody has painted yet.')

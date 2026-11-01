@@ -17,10 +17,12 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: LucideIcon }[] = [
 
 export function Toolbar({
   tool,
+  locked,
   onSelect,
   onFile,
 }: {
   tool: Tool
+  locked: boolean
   onSelect: (tool: Tool) => void
   onFile: (file: File) => void
 }) {
@@ -30,13 +32,13 @@ export function Toolbar({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return
       const match = TOOLS.find((entry) => entry.key === event.key.toLowerCase())
-      if (!match) return
+      if (!match || (locked && match.tool !== 'pan')) return
       onSelect(match.tool)
       if (match.tool === 'image') inputRef.current?.click()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onSelect])
+  }, [onSelect, locked])
 
   return (
     <div
@@ -51,6 +53,7 @@ export function Toolbar({
           type="button"
           aria-label={label}
           aria-pressed={entry === tool}
+          disabled={locked && entry !== 'pan'}
           title={`${label} (${key.toUpperCase()})`}
           onClick={() => {
             onSelect(entry)
@@ -58,7 +61,7 @@ export function Toolbar({
           }}
           className={`flex h-10 w-10 items-center justify-center outline-none ${
             entry === tool ? 'bg-text-primary text-bg-primary' : 'text-text-primary hover:bg-bg-tertiary'
-          }`}
+          } disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent`}
         >
           <Icon size={18} />
         </button>

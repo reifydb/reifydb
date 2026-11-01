@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CanvasClient } from '@/client'
-import { DEFAULT_RETRY, commitPending, commitPixels } from '@/commit'
+import { commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
@@ -12,6 +12,7 @@ import { type GuestSession, signedInName } from '@/session'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
 import { Account } from './account'
+import { GuestBanner } from './guest-banner'
 import { CanvasView, useCamera } from './canvas-view'
 import { useLive } from './live'
 import { Sidebar } from './sidebar'
@@ -86,7 +87,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
       loadStamp(file).then(
         async (loaded) => {
           setCommitting(true)
-          const result = await commitPending(client, pending, DEFAULT_RETRY, guest)
+          const result = await commitPending(client, pending)
           setCommitting(false)
           if (!result.ok) {
             setMessage(`Merge failed, your layer is kept: ${result.message}`)
@@ -100,7 +101,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
         },
       )
     },
-    [client, pending, guest],
+    [client, pending],
   )
 
   const onCanvas = useCallback(
@@ -117,7 +118,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
       setMessage(null)
       setPlacing(pixels)
       setCommitting(true)
-      commitPixels(client, inside, DEFAULT_RETRY, guest).then((result) => {
+      commitPixels(client, inside).then((result) => {
         setCommitting(false)
         setPlacing(null)
         if (!result.ok) {
@@ -128,7 +129,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
         setTool((current) => (current === 'image' ? imageReturnRef.current : current))
       })
     },
-    [client, stamp, placing, guest],
+    [client, stamp, placing],
   )
 
   const ghost = useMemo(
@@ -140,7 +141,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
     setCommitting(true)
     setMessage(null)
     setNotice(null)
-    const result = await commitPending(client, pending, DEFAULT_RETRY, guest)
+    const result = await commitPending(client, pending)
     setCommitting(false)
     if (!result.ok) setMessage(`Merge failed, your layer is kept: ${result.message}`)
   }
@@ -150,6 +151,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {!name && <GuestBanner onSignUp={() => setSignUpOpen(true)} />}
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           <CanvasView
@@ -168,7 +170,7 @@ export function Canvas({ client, guest }: { client: CanvasClient; guest: GuestSe
             ghost={ghost}
             onCanvas={onCanvas}
           />
-          <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
+          <Toolbar tool={tool} locked={!name} onSelect={onSelectTool} onFile={onFile} />
           {tool !== 'pan' && (
             <BottomBar
               color={color}

@@ -3,8 +3,6 @@
 
 import { type CanvasClient, numeric } from './client'
 
-export const GUEST_PREFIX = 'guest:'
-
 export const AGENTS_RQL = `from canvas::edit
   map { owner, name, painted, at: datetime::epoch_millis(#created_at) }
   aggregate { painted: math::sum(painted), last: math::max(at) } by { owner, name }`
@@ -25,7 +23,6 @@ export interface Painter {
 
 export interface Agents {
   painters: Painter[]
-  guests: { painters: number; painted: number }
 }
 
 function text(value: unknown): string {
@@ -51,18 +48,8 @@ export function summarize(rows: readonly PainterRow[]): Agents {
       seen.name = name
     }
   }
-  const painters: Painter[] = []
-  const guests = { painters: 0, painted: 0 }
-  for (const painter of byOwner.values()) {
-    if (painter.name.startsWith(GUEST_PREFIX)) {
-      guests.painters += 1
-      guests.painted += painter.painted
-    } else {
-      painters.push(painter)
-    }
-  }
-  painters.sort((a, b) => b.painted - a.painted || b.last - a.last)
-  return { painters, guests }
+  const painters = [...byOwner.values()].sort((a, b) => b.painted - a.painted || b.last - a.last)
+  return { painters }
 }
 
 export async function loadAgents(client: CanvasClient): Promise<Agents> {

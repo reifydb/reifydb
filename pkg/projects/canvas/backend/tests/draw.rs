@@ -275,14 +275,12 @@ fn an_agent_draws_once_per_minute_without_blocking_other_agents() {
 
 #[test]
 fn only_signed_up_users_may_draw_and_nobody_writes_the_draw_tables_directly() {
-	// Guests paint through canvas::commit only, and the draw and cooldown tables have no door besides the
-	// procedures.
+	// Only users paint, and the draw and cooldown tables have no door besides the procedures.
 	let (db, _) = build();
 	canvas(&db, &[(0, 0)]);
-	let guest = login(&db, "guest", &[]);
 	let a = agent(&db, "agent-a");
 
-	let err = call(&db, guest, r#"CALL canvas::draw_pixels(["1,1,1"], "a guest")"#).expect_err("a guest");
+	let err = call(&db, IdentityId::anonymous(), r#"CALL canvas::draw_pixels(["1,1,1"], "anonymous")"#).expect_err("anonymous");
 	assert!(err.starts_with("POLICY_"), "{err}");
 
 	for rql in [

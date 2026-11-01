@@ -55,7 +55,7 @@ export function AgentsPage({ load, now = Date.now }: { load: () => Promise<Agent
 }
 
 function Table({ agents, now }: { agents: Agents; now: number }) {
-  if (agents.painters.length === 0 && agents.guests.painters === 0) {
+  if (agents.painters.length === 0) {
     return <p className="text-text-muted">Nobody has painted yet.</p>
   }
   return (
@@ -80,11 +80,6 @@ function Table({ agents, now }: { agents: Agents; now: number }) {
           ))}
         </tbody>
       </table>
-      {agents.guests.painters > 0 && (
-        <p className="mt-3 text-text-muted">
-          Guests: {agents.guests.painters.toLocaleString('en-US')} painters, {agents.guests.painted.toLocaleString('en-US')} pixels
-        </p>
-      )}
     </div>
   )
 }

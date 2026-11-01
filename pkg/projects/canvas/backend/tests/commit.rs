@@ -114,12 +114,12 @@ fn login_as(db: &Database, caller: IdentityId, method: &str, credentials: &[(&st
 	}
 }
 
-fn guest(db: &Database) -> IdentityId {
-	login_as(db, IdentityId::anonymous(), "guest", &[])
+fn user(db: &Database) -> IdentityId {
+	login_as(db, IdentityId::anonymous(), "password", &[("identifier", "painter"), ("password", "x")])
 }
 
 fn commit_edits(db: &Database, tiles: Vec<Value>) -> Result<(), String> {
-	commit_edits_as(db, guest(db), tiles)
+	commit_edits_as(db, user(db), tiles)
 }
 
 fn commit_as(db: &Database, identity: IdentityId, pixels: Vec<(u64, u64, u64)>) -> Result<(), String> {
@@ -444,14 +444,14 @@ fn a_prepared_paint_still_refuses_ragged_arguments() {
 }
 
 #[test]
-fn a_guest_commit_writes_one_edit_row_per_tile_owned_by_that_guest() {
+fn a_user_commit_writes_one_edit_row_per_tile_owned_by_that_user() {
 	// Attribution rests on this row: without it, or with another owner, a pixel change cannot be traced to its
 	// painter.
 	let db = build();
 	seed_tile(&db, 0, 0);
 	seed_tile(&db, 1, 0);
 	mark_ready(&db);
-	let painter = guest(&db);
+	let painter = user(&db);
 	let tiles = edits(&[pack(1, 1, 3), pack(65, 1, 4)]);
 	let sent: Vec<Vec<u8>> = tiles
 		.iter()
@@ -461,7 +461,7 @@ fn a_guest_commit_writes_one_edit_row_per_tile_owned_by_that_guest() {
 		})
 		.collect();
 
-	commit_edits_as(&db, painter, tiles).expect("guest commit");
+	commit_edits_as(&db, painter, tiles).expect("user commit");
 
 	let mut rows = edit_rows(&db);
 	rows.sort_by_key(|(_, tile, _)| *tile);
@@ -484,6 +484,14 @@ fn an_anonymous_commit_is_refused_and_writes_nothing() {
 	assert!(err.starts_with("POLICY_"), "{err}");
 	assert_eq!(pixel(&db, 1, 1), 0);
 	assert!(edit_rows(&db).is_empty(), "a refused commit must leave no edit row");
+}
+
+#[test]
+fn there_is_no_guest_login() {
+	// Only users paint, so a guest identity would be one that can do nothing; the method must not exist.
+	let db = build();
+	let response = db.auth_service().authenticate_as(IdentityId::anonymous(), "guest", HashMap::new());
+	assert!(!matches!(response, Ok(AuthResponse::Authenticated { .. })), "{response:?}");
 }
 
 #[test]
@@ -514,23 +522,6 @@ fn a_commit_refused_by_the_pixel_cap_writes_no_edit_row() {
 	commit(&db, pixels).unwrap_err();
 
 	assert!(edit_rows(&db).is_empty(), "a refused commit must leave no edit row");
-}
-
-#[test]
-fn a_promoted_guest_keeps_ownership_of_its_edits() {
-	// Signup must promote the guest in place, or every pixel painted before signup is credited to a dead guest.
-	let db = build();
-	seed_tile(&db, 0, 0);
-	mark_ready(&db);
-	let painter = guest(&db);
-	commit_as(&db, painter, vec![pack(1, 1, 12)]).expect("guest commit");
-
-	let user = login_as(&db, painter, "password", &[("identifier", "alice"), ("password", "x")]);
-
-	assert_eq!(user, painter, "the password method must promote the guest, not create a new identity");
-	commit_as(&db, user, vec![pack(2, 1, 13)]).expect("commit after signup");
-	let owners: Vec<IdentityId> = edit_rows(&db).into_iter().map(|(owner, _, _)| owner).collect();
-	assert_eq!(owners, vec![painter, painter]);
 }
 
 #[test]
@@ -614,20 +605,61 @@ fn an_edit_row_carries_the_painter_name_and_its_pixel_count() {
 	assert_eq!(rows, vec![("agent-a".to_string(), tile_key(0, 0), 2), ("agent-a".to_string(), tile_key(1, 0), 1)]);
 }
 
-#[test]
-fn a_guest_edit_row_carries_the_guest_name_shape() {
-	// The list folds guests by the guest: name prefix, so a guest row must carry exactly that shape.
-	let db = build();
-	seed_tile(&db, 0, 0);
-	mark_ready(&db);
-
-	commit(&db, vec![pack(1, 1, 3)]).expect("guest commit");
-
-	let names: Vec<String> = root_query(&db, "from canvas::edit map { name }")
+fn painter_rows(db: &Database) -> Vec<(IdentityId, bool)> {
+	root_query(db, "from canvas::painter map { owner, human }")
 		.iter()
 		.flat_map(|f| f.rows())
-		.map(|r| r.get::<String>("name").unwrap().unwrap())
-		.collect();
-	assert_eq!(names.len(), 1);
-	assert!(names[0].starts_with("guest:"), "{names:?}");
+		.map(|r| (r.get::<IdentityId>("owner").unwrap().unwrap(), r.get::<bool>("human").unwrap().unwrap()))
+		.collect()
+}
+
+fn register_human(db: &Database, identity: IdentityId) -> Result<(), String> {
+	let r = db.engine().command_as(identity, "CALL canvas::register_human()", Params::None);
+	match r.error {
+		Some(e) => Err(format!("{} {}", e.code, e.message)),
+		None => Ok(()),
+	}
+}
+
+#[test]
+fn register_human_flags_only_the_caller_once() {
+	// The flag is what tells humans from agents; a second row or a row for someone else would miscount both.
+	let db = build();
+	let alice = login_as(&db, IdentityId::anonymous(), "password", &[("identifier", "alice"), ("password", "x")]);
+	let agent = login_as(&db, IdentityId::anonymous(), "password", &[("identifier", "agent-a"), ("password", "x")]);
+
+	register_human(&db, alice).expect("first register");
+	register_human(&db, alice).expect("a repeat register must be harmless");
+
+	assert_eq!(painter_rows(&db), vec![(alice, true)]);
+	assert!(!painter_rows(&db).iter().any(|(owner, _)| *owner == agent), "an agent that never registered stays unflagged");
+}
+
+#[test]
+fn only_users_may_register_as_human() {
+	// An anonymous flag would mark an identity that can never paint, so the call policy must refuse it.
+	let db = build();
+
+	let err = register_human(&db, IdentityId::anonymous()).unwrap_err();
+	assert!(err.starts_with("POLICY_"), "{err}");
+	assert!(painter_rows(&db).is_empty());
+}
+
+#[test]
+fn nobody_writes_the_painter_table_directly() {
+	// Without this an agent could flag itself human, or clear a human's flag, around the procedure.
+	let db = build();
+	let alice = login_as(&db, IdentityId::anonymous(), "password", &[("identifier", "alice"), ("password", "x")]);
+	register_human(&db, alice).expect("register");
+
+	for rql in [
+		"insert canvas::painter [{ owner: $identity.id, human: true }]",
+		"update canvas::painter { human: false } filter { true }",
+		"delete canvas::painter filter { true }",
+	] {
+		let r = db.engine().command_as(alice, rql, Params::None);
+		let err = r.error.expect(rql);
+		assert!(err.code.starts_with("POLICY_"), "[{rql}] {} {}", err.code, err.message);
+	}
+	assert_eq!(painter_rows(&db), vec![(alice, true)]);
 }

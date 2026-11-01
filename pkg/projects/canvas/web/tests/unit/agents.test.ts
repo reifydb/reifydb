@@ -14,31 +14,16 @@ describe('summarize', () => {
   })
 
   it('merges the rows of one owner and shows its newest name', () => {
-    // A guest who signed up has rows under both names; showing the old one hides who they are now.
-    const agents = summarize([row('o', 'guest:01a1', 5, 100), row('o', 'alice', 7, 200)])
+    // One owner can have rows under more than one name; showing an old one hides who they are now.
+    const agents = summarize([row('o', 'old-name', 5, 100), row('o', 'alice', 7, 200)])
     expect(agents.painters).toEqual([{ owner: 'o', name: 'alice', painted: 12, last: 200 }])
-    expect(agents.guests).toEqual({ painters: 0, painted: 0 })
   })
 
   it('keeps the newest name whatever order the rows arrive in', () => {
     // Aggregate output has no order guarantee, so the newest name must come from last, not position.
-    const agents = summarize([row('o', 'alice', 7, 200), row('o', 'guest:01a1', 5, 100)])
+    const agents = summarize([row('o', 'alice', 7, 200), row('o', 'old-name', 5, 100)])
     expect(agents.painters[0].name).toBe('alice')
     expect(agents.painters[0].painted).toBe(12)
-  })
-
-  it('folds guests into one summary', () => {
-    // Guest ids mean nothing to a reader, but their activity still counts.
-    const agents = summarize([row('g1', 'guest:1', 4, 1), row('g2', 'guest:2', 6, 2), row('a', 'alpha', 1, 3)])
-    expect(agents.painters.map((p) => p.name)).toEqual(['alpha'])
-    expect(agents.guests).toEqual({ painters: 2, painted: 10 })
-  })
-
-  it('treats an owner whose newest name is a guest name as a guest', () => {
-    // Only the newest name decides; a stale real name must not keep a guest on the list.
-    const agents = summarize([row('o', 'alice', 3, 1), row('o', 'guest:1', 2, 9)])
-    expect(agents.painters).toEqual([])
-    expect(agents.guests).toEqual({ painters: 1, painted: 5 })
   })
 
   it('reads numbers and ids wrapped in value objects', () => {
@@ -49,6 +34,6 @@ describe('summarize', () => {
 
   it('answers an empty list when nothing was painted', () => {
     // A fresh canvas must render an empty list, not fail.
-    expect(summarize([])).toEqual({ painters: [], guests: { painters: 0, painted: 0 } })
+    expect(summarize([])).toEqual({ painters: [] })
   })
 })

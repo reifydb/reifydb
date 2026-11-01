@@ -45,11 +45,11 @@ export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
   return (
     <form
       className="card absolute left-4 top-4 z-10 flex w-64 flex-col gap-2 p-3 text-sm"
-      aria-label="Sign up"
+      aria-label="Log in"
       onSubmit={submit}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <p className="text-text-muted">Keep your pixels under your name. Everything you painted so far comes with you.</p>
+      <p className="text-text-muted">Log in to paint. A new name creates your account.</p>
       <input
         className="rounded border border-border-default px-2 py-1"
         placeholder="Name"
@@ -65,13 +65,13 @@ export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
         value={password}
         onChange={(event) => setPassword(event.target.value)}
       />
-      {error && <p className="text-status-error">Sign up failed: {error}</p>}
+      {error && <p className="text-status-error">Log in failed: {error}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" className="btn btn--quiet" onClick={() => onOpen(false)}>
           Cancel
         </button>
         <button type="submit" className="btn" disabled={busy || identifier.trim() === '' || password === ''}>
-          Sign up
+          Log in
         </button>
       </div>
     </form>

@@ -7,10 +7,10 @@ export function GuestBanner({ onSignUp }: { onSignUp: () => void }) {
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
         <p className="font-mono text-xs uppercase tracking-[1.4px] text-text-secondary">
           You are browsing as a guest
-          <span className="hidden normal-case tracking-normal opacity-90 sm:inline"> · create an account to keep your pixels</span>
+          <span className="normal-case tracking-normal opacity-90"> · log in to paint</span>
         </p>
         <button type="button" className="btn btn--quiet" onClick={onSignUp}>
-          Create account
+          Log in
         </button>
       </div>
     </div>

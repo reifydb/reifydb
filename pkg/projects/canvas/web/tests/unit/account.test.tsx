@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,7 @@ import { GuestBanner } from '@/components/guest-banner'
 import { type GuestSession, SESSION_NAMESPACE, signedInName } from '@/session'
 
 function guest(signUp = vi.fn(async () => undefined)) {
-  return { ensure: vi.fn(async () => undefined), signUp }
+  return { signUp }
 }
 
 function SignUp({ guest }: { guest: GuestSession }) {
@@ -26,20 +26,26 @@ function SignUp({ guest }: { guest: GuestSession }) {
   )
 }
 
+function submit() {
+  // The bar and the form both carry a Log in button, so the submit is found inside the form only.
+  return within(screen.getByRole('form', { name: 'Log in' })).getByRole('button', { name: 'Log in' })
+}
+
 beforeEach(() => {
   localStorage.clear()
 })
 
 describe('Account', () => {
-  it('signs up from the guest banner, then shows the name and drops the banner', async () => {
-    // The form is the only way a human turns a guest into a named painter.
+  it('logs in from the guest bar, then shows the name and drops the bar', async () => {
+    // Guests may not paint, so the bar must tell them and lead to the only way in.
     const session = guest()
     render(<SignUp guest={session} />)
+    expect(screen.getByText(/log in to paint/i)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
     await userEvent.type(screen.getByPlaceholderText('Name'), '  alice ')
     await userEvent.type(screen.getByPlaceholderText('Password'), 'pw')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign up' }))
+    await userEvent.click(submit())
 
     expect(session.signUp).toHaveBeenCalledWith('alice', 'pw')
     expect(await screen.findByText('alice')).toBeInTheDocument()
@@ -51,24 +57,24 @@ describe('Account', () => {
     const session = guest(vi.fn(async () => Promise.reject(new Error('invalid credentials'))))
     render(<SignUp guest={session} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
     await userEvent.type(screen.getByPlaceholderText('Name'), 'alice')
     await userEvent.type(screen.getByPlaceholderText('Password'), 'pw')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign up' }))
+    await userEvent.click(submit())
 
-    expect(await screen.findByText('Sign up failed: invalid credentials')).toBeInTheDocument()
+    expect(await screen.findByText('Log in failed: invalid credentials')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Name')).toBeInTheDocument()
   })
 
   it('does not allow an empty name or password', async () => {
     // The engine accepts any non-empty password, so empty fields are the only thing the form must stop.
     render(<SignUp guest={guest()} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
-    expect(screen.getByRole('button', { name: 'Sign up' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(submit()).toBeDisabled()
     await userEvent.type(screen.getByPlaceholderText('Name'), 'alice')
-    expect(screen.getByRole('button', { name: 'Sign up' })).toBeDisabled()
+    expect(submit()).toBeDisabled()
     await userEvent.type(screen.getByPlaceholderText('Password'), 'x')
-    expect(screen.getByRole('button', { name: 'Sign up' })).toBeEnabled()
+    expect(submit()).toBeEnabled()
   })
 
   it('shows the stored name of a returning user instead of the guest banner', () => {
@@ -83,6 +89,6 @@ describe('Account', () => {
     })
     render(<SignUp guest={guest()} />)
     expect(screen.getByText('alice')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Create account' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument()
   })
 })

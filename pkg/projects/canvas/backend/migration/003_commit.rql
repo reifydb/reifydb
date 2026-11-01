@@ -13,7 +13,7 @@ CREATE MIGRATION 'canvas_commit' {
             update canvas::live { color: $c } filter { tile_x == $tx and tile_y == $ty and x == $x and y == $y }
         }
     };
-    create procedure policy canvas_call_commit on canvas::commit { call: { filter { $identity.kind == "guest" or $identity.kind == "user" } } };
+    create procedure policy canvas_call_commit on canvas::commit { call: { filter { $identity.kind == "user" } } };
     create table policy canvas_live on canvas::live {
         from: { filter { true } },
         update: { filter { $identity.kind == "anonymous" } }

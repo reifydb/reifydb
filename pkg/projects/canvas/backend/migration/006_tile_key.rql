@@ -76,5 +76,16 @@ CREATE MIGRATION 'canvas_tile_key' {
             update canvas::cooldown { last: $now } filter { owner == $identity.id }
         }
     };
-    create procedure policy canvas_call_draw_sprite on canvas::draw_sprite { call: { filter { $identity.kind == "user" } } }
+    create procedure policy canvas_call_draw_sprite on canvas::draw_sprite { call: { filter { $identity.kind == "user" } } };
+    create table canvas::painter { owner: identity_id, human: bool };
+    create table policy canvas_painter on canvas::painter {
+        from: { filter { true } }
+    };
+    create procedure canvas::register_human with { run_as: system } as {
+        let $known = from canvas::painter filter { owner == $identity.id } map { owner };
+        if is::none($known.owner) {
+            insert canvas::painter [{ owner: $identity.id, human: true }]
+        }
+    };
+    create procedure policy canvas_call_register_human on canvas::register_human { call: { filter { $identity.kind == "user" } } }
 };

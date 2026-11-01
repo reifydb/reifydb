@@ -24,8 +24,8 @@ export function loadBackend(): TestFactory {
   }
 }
 
-export async function guestClient(db: TestDb): Promise<BridgeClient> {
-  const response = JSON.parse(await db.authenticate('guest', {}))
-  if (response.status !== 'authenticated') throw new Error(`guest login failed: ${JSON.stringify(response)}`)
+export async function userClient(db: TestDb, identifier = 'painter'): Promise<BridgeClient> {
+  const response = JSON.parse(await db.authenticate('password', { identifier, password: 'x' }))
+  if (response.status !== 'authenticated') throw new Error(`password login failed: ${JSON.stringify(response)}`)
   return storeClient(db, { identity: response.identity })
 }

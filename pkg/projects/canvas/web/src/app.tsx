@@ -42,13 +42,13 @@ function App() {
         onAuthFailed: restart,
       }),
     )
-      .then(({ client, signedIn }) => {
+      .then(({ client }) => {
         if (cancelled) {
           void client.disconnect()
           return
         }
         opened = client
-        setConnection({ status: 'ready', client, guest: guestSession(client, signedIn) })
+        setConnection({ status: 'ready', client, guest: guestSession(client) })
       })
       .catch((error: unknown) => {
         if (!cancelled) setConnection({ status: 'failed', message: error instanceof Error ? error.message : String(error) })

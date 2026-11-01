@@ -4,7 +4,6 @@
 import type { CanvasClient } from './client'
 import { type Pixel, tilesParam } from './pack'
 import type { Pending } from './pending'
-import type { GuestSession } from './session'
 
 export type CommitResult = { ok: true; committed: number } | { ok: false; message: string }
 
@@ -26,10 +25,9 @@ export async function commitPending(
   client: CanvasClient,
   pending: Pending,
   retry: Retry = DEFAULT_RETRY,
-  guest?: Pick<GuestSession, 'ensure'>,
 ): Promise<CommitResult> {
   const pixels = pending.entries()
-  const result = await commitPixels(client, pixels, retry, guest)
+  const result = await commitPixels(client, pixels, retry)
   if (result.ok && pixels.length > 0) pending.settle(pixels)
   return result
 }
@@ -38,14 +36,8 @@ export async function commitPixels(
   client: CanvasClient,
   pixels: readonly Pixel[],
   retry: Retry = DEFAULT_RETRY,
-  guest?: Pick<GuestSession, 'ensure'>,
 ): Promise<CommitResult> {
   if (pixels.length === 0) return { ok: true, committed: 0 }
-  try {
-    await guest?.ensure()
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) }
-  }
   for (let attempt = 0; ; attempt++) {
     try {
       await client.command('CALL canvas::commit($tiles)', { tiles: tilesParam(pixels) }, [])

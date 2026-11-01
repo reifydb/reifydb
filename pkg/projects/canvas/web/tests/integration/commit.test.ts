@@ -6,7 +6,7 @@ import { storeClient } from '@reifydb/reifydb'
 import { type Retry, commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING } from '@/geometry'
 import { Pending } from '@/pending'
-import { ANONYMOUS, guestClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
+import { ANONYMOUS, loadBackend, userClient, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
 import { colorAt, markReady, seedTile } from '../support/seed'
 
 let create: TestFactory
@@ -21,7 +21,7 @@ beforeEach(async () => {
   db = create()
   await seedTile(db, 0, 0)
   await markReady(db)
-  client = await guestClient(db)
+  client = await userClient(db)
 })
 
 describe('commit', () => {
@@ -37,6 +37,12 @@ describe('commit', () => {
     expect(await colorAt(db, 1, 1)).toBe(12)
     expect(await colorAt(db, 2, 1)).toBe(13)
     expect(pending.size).toBe(0)
+  })
+
+  it('offers no guest login to paint with', async () => {
+    // Only signed-in users may paint, so a bypassed UI must not find a guest identity to commit as.
+    const response = JSON.parse(await db.authenticate('guest', {}))
+    expect(response.status).not.toBe('authenticated')
   })
 
   it('keeps every pending pixel when the server refuses the commit', async () => {
