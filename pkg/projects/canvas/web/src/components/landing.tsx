@@ -32,7 +32,10 @@ interface Tone {
 function dominantTone(pixels: Uint8ClampedArray): Tone {
   const weights = new Float64Array(HUE_BUCKETS)
   const counts = new Uint32Array(HUE_BUCKETS)
+  let sampled = 0
+  let colourful = 0
   for (let i = 0; i < pixels.length; i += 16) {
+    sampled++
     const red = LINEAR[pixels[i]]
     const green = LINEAR[pixels[i + 1]]
     const blue = LINEAR[pixels[i + 2]]
@@ -47,11 +50,12 @@ function dominantTone(pixels: Uint8ClampedArray): Tone {
     const bucket = Math.floor((hue / 360) * HUE_BUCKETS) % HUE_BUCKETS
     weights[bucket] += chroma
     counts[bucket]++
+    colourful++
   }
   let best = 0
   for (let i = 1; i < HUE_BUCKETS; i++) if (weights[i] > weights[best]) best = i
   if (counts[best] === 0) return { hue: 0, chroma: 0 }
-  return { hue: ((best + 0.5) * 360) / HUE_BUCKETS, chroma: weights[best] / counts[best] }
+  return { hue: ((best + 0.5) * 360) / HUE_BUCKETS, chroma: (weights[best] / counts[best]) * Math.sqrt(colourful / sampled) }
 }
 
 function useWallTone(minimap: Minimap): Tone {
