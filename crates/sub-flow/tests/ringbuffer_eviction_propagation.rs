@@ -111,8 +111,8 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 }
 
 #[test]
-fn a_delete_in_the_same_commit_never_lets_an_insert_skip_the_write_cycle() {
-	// n=3 must overwrite the oldest slot even when n=2's delete lands in the same commit.
+fn a_delete_in_the_same_commit_frees_its_slot_before_the_insert_lands() {
+	// A delete in the same commit must free its slot before the insert lands, so n=3 never evicts the live n=1.
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
@@ -126,9 +126,9 @@ fn a_delete_in_the_same_commit_never_lets_an_insert_skip_the_write_cycle() {
 	db.command("INSERT test::events [{ region: \"us\", n: 3 }]; DELETE test::events FILTER { n == 2 }");
 
 	assert_eq!(
-		await_agg_group(&db, "us", Some((1, 3))),
-		Some((1, 3)),
-		"the ring keeps rows from its last two writes only: n=2 is deleted and n=1 is overwritten, so only n=3 stays"
+		await_agg_group(&db, "us", Some((2, 4))),
+		Some((2, 4)),
+		"removes apply before inserts in one commit: n=2 frees its slot, n=3 fills it, n=1 stays"
 	);
 }
 

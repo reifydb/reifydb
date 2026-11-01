@@ -9,7 +9,7 @@ use std::{
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, ringbuffer::EncodedRingBufferRow, shape::RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::{
@@ -17,7 +17,7 @@ use reifydb_core::{
 			column::Column,
 			dictionary::Dictionary,
 			object::ObjectId,
-			ringbuffer::{PartitionedMetadata, RingBufferMetadata},
+			ringbuffer::{PartitionedMetadata, decode_ringbuffer_order},
 			storage::StorageId,
 			view::View,
 		},
@@ -27,6 +27,7 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		partition::PartitionKey,
+		ringbuffer::{ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{partition_col_indices, registry_values},
@@ -35,7 +36,7 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{
 	datetime::DateTime,
 	partition::Partition,
@@ -60,7 +61,6 @@ struct RingSource {
 	storage: StorageId,
 	name: String,
 	columns: Vec<Column>,
-	capacity: u64,
 	registry: Option<ObjectId>,
 	only: Option<Partition>,
 	view: Option<ResolvedView>,
@@ -89,6 +89,22 @@ impl RingSource {
 			.filter_map(|(&row, stored)| stored.map(|stored| (row, stored.bytes)))
 			.collect())
 	}
+
+	fn oldest_first(&self, txn: &mut Transaction<'_>, listed: &PartitionedMetadata) -> Result<Vec<RowNumber>> {
+		let partition = listed.partition;
+		let resume = listed
+			.metadata
+			.head
+			.checked_sub(1)
+			.map(|sequence| ring_order_key(self.storage, partition, sequence));
+		let range = ring_order_range(self.storage, partition).resume_after(resume.as_ref());
+		let mut rows = Vec::new();
+		for row in txn.range(range, RangeScope::All, 1024)? {
+			let row = row?;
+			rows.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?.1);
+		}
+		Ok(rows)
+	}
 }
 
 struct MergeHead {
@@ -109,16 +125,14 @@ impl OldestFirstMerge {
 		let mut merge = Self {
 			heads: partitions
 				.iter()
-				.map(|listed| MergeHead {
-					partition: listed.partition,
-					pending: listed
-						.metadata
-						.oldest_first(source.capacity)
-						.map(|(_, row)| row)
-						.collect(),
-					buffer: VecDeque::new(),
+				.map(|listed| {
+					Ok(MergeHead {
+						partition: listed.partition,
+						pending: source.oldest_first(txn, listed)?.into(),
+						buffer: VecDeque::new(),
+					})
 				})
-				.collect(),
+				.collect::<Result<_>>()?,
 			queue: BinaryHeap::new(),
 		};
 		for index in 0..merge.heads.len() {
@@ -201,7 +215,6 @@ impl RingBufferScan {
 			storage: def.id.into(),
 			name: def.name.clone(),
 			columns: ringbuffer.columns().to_vec(),
-			capacity: def.capacity,
 			registry: Some(ObjectId::ringbuffer(def.id)),
 			only: partition,
 			view: None,
@@ -227,7 +240,6 @@ impl RingBufferScan {
 			storage: view.def().storage_id(),
 			name: def.name.clone(),
 			columns: def.columns.clone(),
-			capacity: def.capacity,
 			registry: None,
 			only: partition,
 			view: Some(view.clone()),
@@ -349,8 +361,7 @@ impl RingBufferScan {
 		index: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		let listed = &self.partitions[index];
-		let metadata: &RingBufferMetadata = &listed.metadata;
-		let rows: Vec<RowNumber> = metadata.oldest_first(self.source.capacity).map(|(_, row)| row).collect();
+		let rows = self.source.oldest_first(txn, listed)?;
 		let mut loaded = self.source.read(txn, listed.partition, &rows)?;
 		if self.newest_first {
 			loaded.reverse();

@@ -23,7 +23,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_err,
-	ring::Ring,
+	ring::{Ring, oldest_first},
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -235,9 +235,12 @@ fn delete_ringbuffer_rows(
 		}
 		None => {
 			for listed in catalog.list_ringbuffer_partitions(txn, ringbuffer.id.into())? {
-				let rows =
-					listed.metadata.oldest_first(ringbuffer.capacity).map(|(_, row)| row).collect();
-				grouped.push((listed.partition, rows));
+				let mut store = RingTxn {
+					catalog,
+					txn: &mut *txn,
+					ringbuffer,
+				};
+				grouped.push((listed.partition, oldest_first(&mut store, listed.partition)?));
 			}
 		}
 	}

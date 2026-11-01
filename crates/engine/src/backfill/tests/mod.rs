@@ -547,8 +547,8 @@ fn a_deferred_view_backfill_equals_from_the_view() {
 
 #[test]
 fn a_ringbuffer_backfill_equals_from_after_eviction_updates_and_deletes() {
-	// A hole stays until the cycle reaches it, so overwrites evict live rows past it; a scan from the wrong slot
-	// drops or repeats rows.
+	// An insert must fill a freed slot before evicting the oldest live row; a scan from the wrong slot drops or
+	// repeats rows.
 	let db = Db::new();
 	db.commit(&[
 		"CREATE NAMESPACE ns",
@@ -562,8 +562,8 @@ fn a_ringbuffer_backfill_equals_from_after_eviction_updates_and_deletes() {
 	let (v, changes) = db.snapshot(Transaction::Query(&mut q), &[rb], 2);
 	let from = db.from(&mut Transaction::Query(&mut q), "ns::rb");
 	assert_matches_from(&changes, rb, v, &from, &DROPPED);
-	assert_eq!(user_values(&changes), pairs(&[(4, 40), (5, 50), (6, 60), (7, 70)]));
-	assert_eq!(chunk_sizes(&changes), vec![2, 2]);
+	assert_eq!(user_values(&changes), pairs(&[(2, 21), (4, 40), (5, 50), (6, 60), (7, 70)]));
+	assert_eq!(chunk_sizes(&changes), vec![2, 2, 1]);
 }
 
 #[test]

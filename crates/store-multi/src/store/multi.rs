@@ -1049,26 +1049,22 @@ impl Iterator for MultiVersionRangeIter {
 	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_batch.next() {
-			return Some(Ok(item));
-		}
-
-		if self.cursor.exhausted {
-			return None;
-		}
-
-		match self.store.range_next(&mut self.cursor, self.range.clone(), self.scope, self.batch_size as u64) {
-			Ok(batch) => {
-				if batch.items.is_empty() {
-					if self.cursor.exhausted {
-						return None;
-					}
-					return self.next();
-				}
-				self.current_batch = batch.items.into_iter();
-				self.next()
+		loop {
+			if let Some(item) = self.current_batch.next() {
+				return Some(Ok(item));
 			}
-			Err(e) => Some(Err(e)),
+			if self.cursor.exhausted {
+				return None;
+			}
+			match self.store.range_next(
+				&mut self.cursor,
+				self.range.clone(),
+				self.scope,
+				self.batch_size as u64,
+			) {
+				Ok(batch) => self.current_batch = batch.items.into_iter(),
+				Err(e) => return Some(Err(e)),
+			}
 		}
 	}
 }
@@ -1092,33 +1088,24 @@ impl<L: PersistentRangeLayout> Iterator for NarrowRangeIter<L> {
 	type Item = Result<MultiVersionRow<L>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_batch.next() {
-			return Some(Ok(item));
-		}
-
-		if self.cursor.exhausted {
-			return None;
-		}
-
-		match self.store.range_next_narrow(
-			&mut self.cursor,
-			self.storage,
-			self.start,
-			self.end,
-			self.scope,
-			self.batch_size as u64,
-		) {
-			Ok(batch) => {
-				if batch.items.is_empty() {
-					if self.cursor.exhausted {
-						return None;
-					}
-					return self.next();
-				}
-				self.current_batch = batch.items.into_iter();
-				self.next()
+		loop {
+			if let Some(item) = self.current_batch.next() {
+				return Some(Ok(item));
 			}
-			Err(e) => Some(Err(e)),
+			if self.cursor.exhausted {
+				return None;
+			}
+			match self.store.range_next_narrow(
+				&mut self.cursor,
+				self.storage,
+				self.start,
+				self.end,
+				self.scope,
+				self.batch_size as u64,
+			) {
+				Ok(batch) => self.current_batch = batch.items.into_iter(),
+				Err(e) => return Some(Err(e)),
+			}
 		}
 	}
 }
@@ -1180,31 +1167,22 @@ impl Iterator for MultiVersionRangeRevIter {
 	type Item = Result<MultiVersionRow<TaggedKey>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_batch.next() {
-			return Some(Ok(item));
-		}
-
-		if self.cursor.exhausted {
-			return None;
-		}
-
-		match self.store.range_rev_next(
-			&mut self.cursor,
-			self.range.clone(),
-			self.scope,
-			self.batch_size as u64,
-		) {
-			Ok(batch) => {
-				if batch.items.is_empty() {
-					if self.cursor.exhausted {
-						return None;
-					}
-					return self.next();
-				}
-				self.current_batch = batch.items.into_iter();
-				self.next()
+		loop {
+			if let Some(item) = self.current_batch.next() {
+				return Some(Ok(item));
 			}
-			Err(e) => Some(Err(e)),
+			if self.cursor.exhausted {
+				return None;
+			}
+			match self.store.range_rev_next(
+				&mut self.cursor,
+				self.range.clone(),
+				self.scope,
+				self.batch_size as u64,
+			) {
+				Ok(batch) => self.current_batch = batch.items.into_iter(),
+				Err(e) => return Some(Err(e)),
+			}
 		}
 	}
 }

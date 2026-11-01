@@ -48,6 +48,8 @@ pub mod tests {
 			base_rn: 40,
 			next_sequence: 7,
 			count: 5,
+			filled: 5,
+			head: 2,
 		};
 		let mut tx = Transaction::Admin(&mut txn);
 		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, Some(Partition(9)), &metadata).unwrap();

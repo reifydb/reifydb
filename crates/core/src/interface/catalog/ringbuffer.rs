@@ -15,6 +15,7 @@ use crate::{
 		id::{NamespaceId, RingBufferId},
 		key::PrimaryKey,
 	},
+	key::{any::TaggedKey, ringbuffer::ring_order_sequence},
 	return_internal_error,
 };
 
@@ -48,6 +49,8 @@ pub struct RingBufferMetadata {
 	pub base_rn: u64,
 	pub next_sequence: u64,
 	pub count: u64,
+	pub filled: u64,
+	pub head: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +67,8 @@ impl RingBufferMetadata {
 			base_rn,
 			next_sequence: 0,
 			count: 0,
+			filled: 0,
+			head: 0,
 		}
 	}
 
@@ -75,31 +80,20 @@ impl RingBufferMetadata {
 		self.count == 0
 	}
 
-	pub fn row_of(&self, sequence: u64, capacity: u64) -> RowNumber {
-		RowNumber(self.base_rn + sequence % capacity)
-	}
-
 	pub fn holds(&self, row: RowNumber, capacity: u64) -> bool {
 		row.0 >= self.base_rn && row.0 - self.base_rn < capacity
 	}
-
-	pub fn oldest_sequence(&self, capacity: u64) -> u64 {
-		self.next_sequence.saturating_sub(capacity)
-	}
-
-	pub fn oldest_first(&self, capacity: u64) -> impl DoubleEndedIterator<Item = (u64, RowNumber)> + '_ {
-		(self.oldest_sequence(capacity)..self.next_sequence)
-			.map(move |sequence| (sequence, self.row_of(sequence, capacity)))
-	}
 }
 
-const RINGBUFFER_METADATA_WIDTH: usize = 24;
+const RINGBUFFER_METADATA_WIDTH: usize = 40;
 
 pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedPodRow {
 	let mut bytes = Vec::with_capacity(RINGBUFFER_METADATA_WIDTH);
 	bytes.extend_from_slice(&metadata.base_rn.to_be_bytes());
 	bytes.extend_from_slice(&metadata.next_sequence.to_be_bytes());
 	bytes.extend_from_slice(&metadata.count.to_be_bytes());
+	bytes.extend_from_slice(&metadata.filled.to_be_bytes());
+	bytes.extend_from_slice(&metadata.head.to_be_bytes());
 	EncodedPodRow::new(&bytes)
 }
 
@@ -116,7 +110,42 @@ pub fn decode_ringbuffer_metadata(row: &EncodedPodRow) -> Result<RingBufferMetad
 		base_rn: u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
 		next_sequence: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
 		count: u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+		filled: u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+		head: u64::from_be_bytes(bytes[32..40].try_into().unwrap()),
 	})
+}
+
+pub fn encode_ringbuffer_slots(rows: &[RowNumber]) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(rows.len() * 8);
+	for row in rows {
+		bytes.extend_from_slice(&row.0.to_be_bytes());
+	}
+	EncodedPodRow::new(&bytes)
+}
+
+pub fn decode_ringbuffer_slots(row: &EncodedPodRow) -> Result<Vec<RowNumber>> {
+	let bytes = row.body();
+	if bytes.len() % 8 != 0 {
+		return_internal_error!(
+			"Ring buffer slot list is {} bytes wide, not a multiple of 8. This indicates a corrupt index row.",
+			bytes.len()
+		)
+	}
+	Ok(bytes.chunks_exact(8).map(|chunk| RowNumber(u64::from_be_bytes(chunk.try_into().unwrap()))).collect())
+}
+
+pub fn decode_ringbuffer_order(key: &TaggedKey, value: &EncodedPodRow) -> Result<(u64, RowNumber)> {
+	let Some(sequence) = ring_order_sequence(key) else {
+		return_internal_error!("Ring buffer order scan returned a key that is not an order key: {:?}", key)
+	};
+	match decode_ringbuffer_slots(value)?.as_slice() {
+		[row] => Ok((sequence, *row)),
+		rows => return_internal_error!(
+			"Ring buffer order entry for sequence {} holds {} slots, expected 1. This indicates a corrupt ring index.",
+			sequence,
+			rows.len()
+		),
+	}
 }
 
 #[cfg(test)]
@@ -129,6 +158,8 @@ mod tests {
 			base_rn: 3,
 			next_sequence: 11,
 			count: 7,
+			filled: 9,
+			head: 4,
 		};
 
 		let row = encode_ringbuffer_metadata(&metadata);
@@ -143,6 +174,8 @@ mod tests {
 			base_rn: 99,
 			next_sequence: u64::MAX,
 			count: 0,
+			filled: u64::MAX,
+			head: u64::MAX,
 		};
 
 		assert_eq!(decode_ringbuffer_metadata(&encode_ringbuffer_metadata(&metadata)).unwrap(), metadata);
@@ -150,8 +183,8 @@ mod tests {
 
 	#[test]
 	fn a_row_of_the_wrong_width_is_rejected_rather_than_misread_as_eviction_bounds() {
-		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 23])).is_err());
-		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 25])).is_err());
-		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 40])).is_err());
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 32])).is_err());
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 39])).is_err());
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 41])).is_err());
 	}
 }

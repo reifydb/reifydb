@@ -28,7 +28,9 @@ use reifydb_core::{
 	},
 	internal_err,
 	key::{
-		ringbuffer::RingBufferMetadataKey,
+		ringbuffer::{
+			PartitionedRingBufferOrderKey, RingBufferFreeKey, RingBufferMetadataKey, RingBufferOrderKey,
+		},
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
@@ -345,6 +347,9 @@ fn clear_views(
 			SeriesRowKeyRange::full_scan(storage, None),
 			PartitionedSeriesRowKeyRange::full_scan(storage),
 			RingBufferMetadataKey::full_scan_for_storage(storage),
+			RingBufferOrderKey::full_scan_for_storage(storage),
+			PartitionedRingBufferOrderKey::full_scan_for_storage(storage),
+			RingBufferFreeKey::full_scan_for_storage(storage),
 		];
 		for range in ranges {
 			for row in txn.range(range, RangeScope::All, batch_size.get() as usize) {

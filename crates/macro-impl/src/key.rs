@@ -65,6 +65,7 @@ pub enum KeyColumn {
 	VarintU128,
 	SortRun,
 	AscRowNumber,
+	AscU64,
 }
 
 impl KeyColumn {
@@ -78,7 +79,7 @@ impl KeyColumn {
 			| KeyColumn::SortRun => 16,
 			KeyColumn::TaggedIndexId => 9,
 			KeyColumn::VarintU128 => 17,
-			KeyColumn::AscRowNumber => 8,
+			KeyColumn::AscRowNumber | KeyColumn::AscU64 => 8,
 			KeyColumn::U16 => 2,
 			KeyColumn::U32 => 4,
 			KeyColumn::U64
@@ -153,6 +154,7 @@ impl KeyColumn {
 				)]
 			}
 			KeyColumn::AscRowNumber => vec![format!("Field::UAsc(Width::U64, self.{field}.0.0 as u128)")],
+			KeyColumn::AscU64 => vec![format!("Field::UAsc(Width::U64, self.{field}.0 as u128)")],
 			KeyColumn::U8 => u("U8", format!("self.{field}")),
 			KeyColumn::U16 => u("U16", format!("self.{field}")),
 			KeyColumn::U32 => u("U32", format!("self.{field}")),
@@ -222,6 +224,7 @@ impl KeyColumn {
 			KeyColumn::VarintU128 => format!("serializer.extend_u128_varint(self.{field});"),
 			KeyColumn::SortRun => format!("extend_sort_run(&mut serializer, &self.{field});"),
 			KeyColumn::AscRowNumber => format!("serializer.extend_raw(&self.{field}.0.0.to_be_bytes());"),
+			KeyColumn::AscU64 => format!("serializer.extend_raw(&self.{field}.0.to_be_bytes());"),
 			KeyColumn::U8 => format!("serializer.extend_u8(self.{field});"),
 			KeyColumn::ReprU8 => format!("serializer.extend_u8(self.{field} as u8);"),
 			KeyColumn::U16 => format!("serializer.extend_u16(self.{field});"),
@@ -288,6 +291,9 @@ impl KeyColumn {
 			KeyColumn::VarintU128 => "de.read_u128_varint().ok()?".to_string(),
 			KeyColumn::SortRun => "read_sort_run(&mut de)?".to_string(),
 			KeyColumn::AscRowNumber => "read_row_tail(&mut de)?".to_string(),
+			KeyColumn::AscU64 => {
+				"Asc(u64::from_be_bytes(de.read_raw(8).ok()?.try_into().ok()?))".to_string()
+			}
 			KeyColumn::U8 => "de.read_u8().ok()?".to_string(),
 			KeyColumn::ReprU8 => format!("{field_type}::try_from(de.read_u8().ok()?).ok()?"),
 			KeyColumn::U16 => "de.read_u16().ok()?".to_string(),
@@ -587,6 +593,10 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 
 	if is_generic_of(strip_path(tokens), "Asc", "RowNumber") {
 		return Some(KeyColumn::AscRowNumber);
+	}
+
+	if is_generic_of(strip_path(tokens), "Asc", "u64") {
+		return Some(KeyColumn::AscU64);
 	}
 
 	let unqualified = strip_path(tokens);

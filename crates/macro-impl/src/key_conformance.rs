@@ -96,6 +96,7 @@ impl KeyColumn {
 				Asc(RowNumber(u64::MAX))]"
 					.to_string()
 			}
+			KeyColumn::AscU64 => "vec![Asc(0u64), Asc(1u64), Asc(u64::MAX - 1), Asc(u64::MAX)]".to_string(),
 			KeyColumn::TableId
 			| KeyColumn::ColumnId
 			| KeyColumn::FlowId
@@ -153,6 +154,7 @@ impl KeyColumn {
 			KeyColumn::TaggedIndexId => vec![asc("index_tag(&$)"), desc("$.as_u64()")],
 			KeyColumn::VarintU128 => vec![desc("$")],
 			KeyColumn::AscRowNumber => vec![asc("$.0.0")],
+			KeyColumn::AscU64 => vec![asc("$.0")],
 			KeyColumn::ProcedureId => vec![desc("(*$)")],
 			KeyColumn::EpochSeconds => vec![desc("$.seconds()")],
 			KeyColumn::DateTime => vec![desc("$.to_nanos()")],

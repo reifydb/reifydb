@@ -2,10 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::id::RingBufferId,
-	key::{namespace::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
+	interface::catalog::{id::RingBufferId, storage::StorageId},
+	key::{
+		any::TaggedKey,
+		namespace::NamespaceRingBufferKey,
+		ringbuffer::{PartitionedRingBufferOrderKey, RingBufferFreeKey, RingBufferKey, RingBufferOrderKey},
+	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
@@ -31,6 +38,8 @@ impl CatalogStore {
 				)?;
 			}
 
+			Self::drop_ring_index(txn, ringbuffer_def.id.into())?;
+
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
@@ -40,6 +49,23 @@ impl CatalogStore {
 
 		txn.remove(vec![(RingBufferKey::new(ringbuffer).into(), None)])?;
 
+		Ok(())
+	}
+
+	pub(crate) fn drop_ring_index(txn: &mut AdminTransaction, storage: StorageId) -> Result<()> {
+		for range in [
+			RingBufferOrderKey::full_scan_for_storage(storage),
+			PartitionedRingBufferOrderKey::full_scan_for_storage(storage),
+			RingBufferFreeKey::full_scan_for_storage(storage),
+		] {
+			let mut keys: Vec<TaggedKey> = Vec::new();
+			for entry in txn.range(range, RangeScope::All, 1024)? {
+				keys.push(entry?.key);
+			}
+			for key in keys {
+				txn.remove(vec![(key, None)])?;
+			}
+		}
 		Ok(())
 	}
 }
@@ -162,6 +188,8 @@ pub mod tests {
 				base_rn: 1,
 				next_sequence: 3,
 				count: 3,
+				filled: 3,
+				head: 0,
 			};
 			CatalogStore::save_partition_metadata(
 				&mut Transaction::Admin(&mut txn),

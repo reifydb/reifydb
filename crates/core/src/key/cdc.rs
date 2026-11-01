@@ -130,6 +130,9 @@ pub fn should_exclude_from_cdc(kind: KeyTag) -> bool {
 			| KeyTag::RowSequence | KeyTag::ColumnSequence
 			| KeyTag::SystemVersion
 			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
+			| KeyTag::RingBufferOrder
+			| KeyTag::PartitionedRingBufferOrder
+			| KeyTag::RingBufferFree
 			| KeyTag::Index | KeyTag::ConfigStorage
 			| KeyTag::Token | KeyTag::VersionEpoch
 			| KeyTag::QueuePartition
@@ -171,6 +174,9 @@ pub mod primary_key_tests {
 			KeyTag::RingBuffer => {}
 			KeyTag::NamespaceRingBuffer => {}
 			KeyTag::RingBufferMetadata => {}
+			KeyTag::RingBufferOrder => {}
+			KeyTag::PartitionedRingBufferOrder => {}
+			KeyTag::RingBufferFree => {}
 			KeyTag::Flow => {}
 			KeyTag::NamespaceFlow => {}
 			KeyTag::Operator => {}

@@ -352,7 +352,7 @@ impl FlowEngineInner {
 					false,
 					table.columns,
 					table.partition_by,
-					None,
+					false,
 				)
 			}
 			LookupObject::RingBuffer(ringbuffer) => {
@@ -363,7 +363,7 @@ impl FlowEngineInner {
 					false,
 					ringbuffer.columns,
 					ringbuffer.partition_by,
-					Some(ringbuffer.capacity),
+					true,
 				)
 			}
 			LookupObject::View(view) => match self.catalog.get_view(&mut txn.reborrow(), view)? {
@@ -373,7 +373,7 @@ impl FlowEngineInner {
 					view.kind == ViewKind::Deferred,
 					view.columns,
 					view.partition_by,
-					None,
+					false,
 				),
 				other => {
 					return Err(error!(lookup_right_unsupported(Fragment::None, other.name())));

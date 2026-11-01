@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	mem::take,
 	slice,
 };
 
@@ -25,7 +26,8 @@ use reifydb_core::{
 			flow::OperatorId,
 			ringbuffer::{
 				EvictionVisibility, RingBufferMetadata, decode_ringbuffer_metadata,
-				encode_ringbuffer_metadata,
+				decode_ringbuffer_order, decode_ringbuffer_slots, encode_ringbuffer_metadata,
+				encode_ringbuffer_slots,
 			},
 			storage::StorageId,
 			view::View,
@@ -46,7 +48,7 @@ use reifydb_core::{
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		},
-		ringbuffer::RingBufferMetadataKey,
+		ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey, ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey},
 		typed::direction::Asc,
 	},
@@ -54,7 +56,7 @@ use reifydb_core::{
 	ring::{MetadataWrite, Ring, RingStore, oldest},
 	row::row_shape_from_columns,
 	state::{timer::TimerKind, typed::typed_key},
-	value::batch::from_encoded_bytes,
+	value::batch::{from_encoded_bytes, take_rows},
 };
 use reifydb_flow::{
 	operator::{
@@ -72,6 +74,7 @@ use reifydb_flow::{
 	txn::{Batch, Emit, Get},
 };
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -131,6 +134,30 @@ impl RingStore for SinkRing<'_> {
 		}
 		let keys: Vec<EncodedKey> = rows.iter().map(|&row| self.op.rb_key(row, partition)).collect();
 		self.txn.get(&keys)
+	}
+
+	fn order(
+		&mut self,
+		partition: Option<Partition>,
+		after: Option<u64>,
+		limit: usize,
+	) -> Result<Vec<(u64, RowNumber)>> {
+		let storage = self.op.storage;
+		let resume = after.map(|sequence| ring_order_key(storage, partition, sequence));
+		let range = ring_order_range(storage, partition).resume_after(resume.as_ref());
+		let mut entries = Vec::with_capacity(limit);
+		for row in self.txn.range(range, RangeScope::All, limit).take(limit) {
+			let row = row?;
+			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
+		}
+		Ok(entries)
+	}
+
+	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+		match self.txn.get(&[RingBufferFreeKey::encoded_of(self.op.storage, partition)])?.pop().flatten() {
+			None => Ok(Vec::new()),
+			Some(bytes) => decode_ringbuffer_slots(EncodedPodRow::view(&bytes)),
+		}
 	}
 }
 
@@ -290,6 +317,20 @@ impl SinkRingBufferViewOperator {
 					self.write_metadata(txn, partition, &metadata)?
 				}
 				MetadataWrite::Remove(partition) => self.remove_metadata(txn, partition)?,
+				MetadataWrite::Order(partition, sequence, Some(row)) => txn.set_one(
+					&ring_order_key(self.storage, partition, sequence).encode(),
+					encode_ringbuffer_slots(&[row]).into_bytes(),
+				)?,
+				MetadataWrite::Order(partition, sequence, None) => {
+					txn.remove_one(&ring_order_key(self.storage, partition, sequence).encode())?
+				}
+				MetadataWrite::Free(partition, free) if free.is_empty() => {
+					txn.remove_one(&RingBufferFreeKey::encoded_of(self.storage, partition))?
+				}
+				MetadataWrite::Free(partition, free) => txn.set_one(
+					&RingBufferFreeKey::encoded_of(self.storage, partition),
+					encode_ringbuffer_slots(&free).into_bytes(),
+				)?,
 			}
 		}
 		Ok(())
@@ -436,6 +477,41 @@ fn split_by_sequence(pre: &RecordBatch, post: &RecordBatch) -> Result<(Vec<usize
 	Ok((0..post.num_rows()).partition(|&row_idx| pre_sequences[row_idx] == post_sequences[row_idx]))
 }
 
+fn sequence_ordered_runs(batches: &[RecordBatch]) -> Result<Vec<RecordBatch>> {
+	let mut by_sequence: Vec<Vec<u64>> = Vec::with_capacity(batches.len());
+	for batch in batches {
+		by_sequence.push(sequences(batch)?.to_vec());
+	}
+	let keyed = match by_sequence.iter().zip(batches).all(|(keys, batch)| keys.len() == batch.num_rows()) {
+		true => by_sequence,
+		false => {
+			let mut by_row = Vec::with_capacity(batches.len());
+			for batch in batches {
+				by_row.push(require_row_numbers(batch)?.iter().map(|row| row.0).collect::<Vec<u64>>());
+			}
+			by_row
+		}
+	};
+	let mut rows: Vec<(u64, usize, usize)> = Vec::new();
+	for (batch_idx, keys) in keyed.iter().enumerate() {
+		rows.extend(keys.iter().enumerate().map(|(row_idx, &key)| (key, batch_idx, row_idx)));
+	}
+	rows.sort_by_key(|&(key, _, _)| key);
+	let mut runs = Vec::new();
+	let mut start = 0;
+	while start < rows.len() {
+		let batch_idx = rows[start].1;
+		let end = rows[start..]
+			.iter()
+			.position(|&(_, idx, _)| idx != batch_idx)
+			.map_or(rows.len(), |len| start + len);
+		let picks: Vec<usize> = rows[start..end].iter().map(|&(_, _, row_idx)| row_idx).collect();
+		runs.push(take_rows(&batches[batch_idx], &picks)?);
+		start = end;
+	}
+	Ok(runs)
+}
+
 fn with_sequence(bytes: EncodedBytes, sequence: u64) -> EncodedBytes {
 	let mut row = EncodedRingBufferRow::from(bytes).thaw();
 	row.set_sequence(sequence);
@@ -484,29 +560,44 @@ impl DurableSink for SinkRingBufferViewOperator {
 		let view = resolved.def();
 		let mut ring = Ring::new(self.capacity);
 		let mut touched: IndexSet<Option<Partition>> = IndexSet::new();
+		let mut inserts: Vec<RecordBatch> = Vec::new();
 
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_ringbuffer_insert(txn, view, &mut ring, post, &mut touched)?,
+				} => inserts.push(post.clone()),
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => {
+					self.flush_inserts_touching(
+						txn,
+						view,
+						&mut ring,
+						&mut inserts,
+						pre,
+						&mut touched,
+					)?;
 					let (kept, replaced) = split_by_sequence(pre, post)?;
 					if replaced.is_empty() {
-						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
+						inserts.extend(self.apply_ringbuffer_update(
+							txn,
+							view,
+							pre,
+							post,
+							&mut touched,
+						)?);
 					} else {
-						self.apply_ringbuffer_update(
+						inserts.extend(self.apply_ringbuffer_update(
 							txn,
 							view,
 							&JoinedColumnsBuilder::retain_rows(pre, &kept)?,
 							&JoinedColumnsBuilder::retain_rows(post, &kept)?,
 							&mut touched,
-						)?;
+						)?);
 						self.apply_ringbuffer_remove(
 							txn,
 							view,
@@ -514,20 +605,27 @@ impl DurableSink for SinkRingBufferViewOperator {
 							&JoinedColumnsBuilder::retain_rows(pre, &replaced)?,
 							&mut touched,
 						)?;
-						self.apply_ringbuffer_insert(
-							txn,
-							view,
-							&mut ring,
-							&JoinedColumnsBuilder::retain_rows(post, &replaced)?,
-							&mut touched,
-						)?;
+						inserts.push(JoinedColumnsBuilder::retain_rows(post, &replaced)?);
 					}
 				}
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_ringbuffer_remove(txn, view, &mut ring, pre, &mut touched)?,
+				} => {
+					self.flush_inserts_touching(
+						txn,
+						view,
+						&mut ring,
+						&mut inserts,
+						pre,
+						&mut touched,
+					)?;
+					self.apply_ringbuffer_remove(txn, view, &mut ring, pre, &mut touched)?
+				}
 			}
+		}
+		for run in sequence_ordered_runs(&inserts)? {
+			self.apply_ringbuffer_insert(txn, view, &mut ring, &run, &mut touched)?;
 		}
 
 		self.save_ring(txn, &ring)?;
@@ -581,7 +679,7 @@ impl SinkRingBufferViewOperator {
 			op: self,
 			txn,
 		};
-		let head = oldest(&mut store, partition, self.capacity)?;
+		let head = oldest(&mut store, partition)?;
 		Ok(head.and_then(|(_, bytes)| self.expires_at(EncodedRingBufferRow::view(&bytes).time())))
 	}
 
@@ -674,6 +772,28 @@ impl SinkRingBufferViewOperator {
 			groups[index[partition]].1.push(row_idx);
 		}
 		Ok(groups)
+	}
+
+	fn flush_inserts_touching(
+		&mut self,
+		txn: &mut DeferredTransaction,
+		view: &View,
+		ring: &mut Ring,
+		inserts: &mut Vec<RecordBatch>,
+		pre: &RecordBatch,
+		touched: &mut IndexSet<Option<Partition>>,
+	) -> Result<()> {
+		let mut buffered: HashSet<RowNumber> = HashSet::new();
+		for batch in inserts.iter() {
+			buffered.extend(require_row_numbers(batch)?.iter().copied());
+		}
+		if !require_row_numbers(pre)?.iter().any(|row| buffered.contains(row)) {
+			return Ok(());
+		}
+		for run in sequence_ordered_runs(&take(inserts))? {
+			self.apply_ringbuffer_insert(txn, view, ring, &run, touched)?;
+		}
+		Ok(())
 	}
 
 	#[inline]
@@ -776,7 +896,7 @@ impl SinkRingBufferViewOperator {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<()> {
+	) -> Result<Option<RecordBatch>> {
 		if pre.num_rows() != post.num_rows() {
 			return internal_err!(
 				"ringbuffer update has {} pre rows but {} post rows",
@@ -785,7 +905,7 @@ impl SinkRingBufferViewOperator {
 			);
 		}
 		if post.num_rows() == 0 {
-			return Ok(());
+			return Ok(None);
 		}
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
@@ -816,11 +936,13 @@ impl SinkRingBufferViewOperator {
 		};
 
 		let mut applied: Vec<usize> = Vec::with_capacity(post.num_rows());
+		let mut orphaned: Vec<usize> = Vec::new();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(post.num_rows());
 		for (row_idx, forward) in self.forwards(txn, pre_row_numbers)?.into_iter().enumerate() {
 			let partition = post_partitions.as_ref().map(|partitions| partitions[row_idx]);
 			touched.insert(partition);
 			let Some(storage_rn) = forward else {
+				orphaned.push(row_idx);
 				continue;
 			};
 			keys.push(self.rb_key(storage_rn, partition));
@@ -854,7 +976,10 @@ impl SinkRingBufferViewOperator {
 				),
 			)?;
 		}
-		Ok(())
+		match orphaned.is_empty() {
+			true => Ok(None),
+			false => Ok(Some(JoinedColumnsBuilder::retain_rows(post, &orphaned)?)),
+		}
 	}
 
 	#[inline]
@@ -1653,6 +1778,72 @@ mod tests {
 
 		assert_eq!(metadata(&engine, &[]).unwrap().count, 0, "the remove finds the new copy");
 		assert_eq!(row_entry_count(&engine, &op, &[]), 0);
+	}
+
+	fn one_change(engine: &TestEngine, op: &mut SinkRingBufferViewOperator, diffs: Vec<Diff>) {
+		// Every diff must land in one change, or the same-change ordering rule is never exercised.
+		let mut txn = deferred_txn(engine);
+		op.apply(
+			&mut txn,
+			Change::from_flow(
+				OperatorId(1),
+				ChangeVersion::from(CommitVersion(1)),
+				diffs,
+				DateTime::from_nanos(T0),
+			),
+		)
+		.unwrap();
+		commit_flow_pending(engine, &mut txn);
+	}
+
+	#[test]
+	fn a_row_inserted_and_removed_in_one_change_is_gone() {
+		// Applying the remove before the buffered insert of the same row would leave a ghost row behind.
+		let engine = TestEngine::new();
+		let mut op = build_capped(false, 3);
+		one_change(
+			&engine,
+			&mut op,
+			vec![Diff::insert(single_rows(&[(10, 1)])), Diff::remove(single_rows(&[(10, 1)]))],
+		);
+
+		assert_eq!(metadata(&engine, &[]).map_or(0, |metadata| metadata.count), 0, "the row must not survive");
+		assert_eq!(forward_count(&engine, &op), 0);
+	}
+
+	#[test]
+	fn a_row_inserted_and_updated_in_one_change_is_stored_once() {
+		// Treating the update as an orphan before its own insert lands would store the row twice.
+		let engine = TestEngine::new();
+		let mut op = build_capped(false, 3);
+		one_change(
+			&engine,
+			&mut op,
+			vec![
+				Diff::insert(single_rows(&[(10, 1)])),
+				Diff::update(single_rows(&[(10, 1)]), single_rows(&[(11, 1)])),
+			],
+		);
+
+		assert_eq!(metadata(&engine, &[]).unwrap().count, 1, "one source row, one stored row");
+		assert_eq!(forward_count(&engine, &op), 1);
+	}
+
+	#[test]
+	fn a_remove_of_another_row_frees_its_slot_before_the_inserts_of_the_same_change() {
+		// Distinct rows keep the removes-first rule, otherwise a full ring evicts a live row a remove was about
+		// to free.
+		let engine = TestEngine::new();
+		let mut op = build_capped(false, 2);
+		counted(&engine, &mut op, Diff::insert(single_rows(&[(10, 1), (20, 2)])));
+		one_change(
+			&engine,
+			&mut op,
+			vec![Diff::insert(single_rows(&[(30, 3)])), Diff::remove(single_rows(&[(20, 2)]))],
+		);
+
+		assert_eq!(metadata(&engine, &[]).unwrap().count, 2, "row 1 stays, row 3 takes the freed slot");
+		assert_eq!(forward_count(&engine, &op), 2);
 	}
 
 	fn build_capped_op(capacity: u64) -> SinkRingBufferViewOperator {

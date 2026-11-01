@@ -37,6 +37,9 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 		Some(kind) => match kind {
 			KeyTag::OperatorState => ReadFrom::OperatorState,
 			KeyTag::RingBufferMetadata => ReadFrom::StateQuery,
+			KeyTag::RingBufferOrder => ReadFrom::StateQuery,
+			KeyTag::PartitionedRingBufferOrder => ReadFrom::StateQuery,
+			KeyTag::RingBufferFree => ReadFrom::StateQuery,
 			KeyTag::SeriesPartitionMetadata => ReadFrom::StateQuery,
 
 			KeyTag::Row => ReadFrom::OwnedRow,

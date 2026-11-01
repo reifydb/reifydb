@@ -4,6 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
+	pod::EncodedPodRow,
 	ringbuffer::EncodedRingBufferRow,
 	shape::{RowFamily, RowShape},
 };
@@ -13,12 +14,16 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			object::ObjectId,
-			ringbuffer::{RingBuffer, RingBufferMetadata},
+			ringbuffer::{
+				RingBuffer, RingBufferMetadata, decode_ringbuffer_order, decode_ringbuffer_slots,
+				encode_ringbuffer_slots,
+			},
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::{
 		any::TaggedKey,
+		ringbuffer::{RingBufferFreeKey, ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{PartitionError, partition_col_indices, partitions_of_rows},
@@ -28,6 +33,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, ringbuffer_row::RingBufferRowInterceptor},
+	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, read::Read, write::Write},
 };
 use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
@@ -75,6 +81,31 @@ impl RingStore for RingTxn<'_, '_, '_> {
 			rows.iter().map(|&row| ringbuffer_key(self.ringbuffer, partition, row)).collect();
 		Ok(self.txn.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
+
+	fn order(
+		&mut self,
+		partition: Option<Partition>,
+		after: Option<u64>,
+		limit: usize,
+	) -> Result<Vec<(u64, RowNumber)>> {
+		let storage = self.ringbuffer.id;
+		let resume = after.map(|sequence| ring_order_key(storage, partition, sequence));
+		let range = ring_order_range(storage, partition).resume_after(resume.as_ref());
+		let mut entries = Vec::with_capacity(limit);
+		for row in self.txn.range(range, RangeScope::All, limit)?.take(limit) {
+			let row = row?;
+			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
+		}
+		Ok(entries)
+	}
+
+	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+		let key: TaggedKey = RingBufferFreeKey::of(self.ringbuffer.id, partition).into();
+		match self.txn.get(&[key])?.pop().flatten() {
+			None => Ok(Vec::new()),
+			Some(row) => decode_ringbuffer_slots(EncodedPodRow::view(&row.bytes)),
+		}
+	}
 }
 
 pub fn save_ring(catalog: &Catalog, txn: &mut Transaction<'_>, ringbuffer: &RingBuffer, ring: &Ring) -> Result<()> {
@@ -86,6 +117,20 @@ pub fn save_ring(catalog: &Catalog, txn: &mut Transaction<'_>, ringbuffer: &Ring
 			MetadataWrite::Remove(partition) => {
 				catalog.remove_partition_metadata(txn, ringbuffer, partition)?
 			}
+			MetadataWrite::Order(partition, sequence, Some(row)) => txn.set(vec![(
+				ring_order_key(ringbuffer.id, partition, sequence),
+				encode_ringbuffer_slots(&[row]).into_bytes(),
+			)])?,
+			MetadataWrite::Order(partition, sequence, None) => {
+				txn.remove(vec![(ring_order_key(ringbuffer.id, partition, sequence), None)])?
+			}
+			MetadataWrite::Free(partition, free) if free.is_empty() => {
+				txn.remove(vec![(RingBufferFreeKey::of(ringbuffer.id, partition).into(), None)])?
+			}
+			MetadataWrite::Free(partition, free) => txn.set(vec![(
+				RingBufferFreeKey::of(ringbuffer.id, partition).into(),
+				encode_ringbuffer_slots(&free).into_bytes(),
+			)])?,
 		}
 	}
 	Ok(())

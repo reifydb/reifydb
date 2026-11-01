@@ -19,7 +19,10 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		flow::OperatorId,
 		id::ViewId,
-		ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
+		ringbuffer::{
+			RingBufferMetadata, decode_ringbuffer_metadata, decode_ringbuffer_order,
+			decode_ringbuffer_slots,
+		},
 		storage::StorageId,
 	},
 	internal_err,
@@ -29,10 +32,10 @@ use reifydb_core::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
-		ringbuffer::RingBufferMetadataKey,
+		ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey, ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey},
 	},
-	ring::{RingStore, newest},
+	ring::{RingNewest, RingStore, newest},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -142,7 +145,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
-		ring: Option<u64>,
+		ring: bool,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
@@ -181,6 +184,42 @@ impl RingStore for QueryRing<'_> {
 			})
 			.collect();
 		Ok(self.query.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes().clone())).collect())
+	}
+
+	fn order(
+		&mut self,
+		partition: Option<Partition>,
+		after: Option<u64>,
+		limit: usize,
+	) -> Result<Vec<(u64, RowNumber)>> {
+		let resume = after.map(|sequence| ring_order_key(self.storage, partition, sequence));
+		let range = ring_order_range(self.storage, partition).resume_after(resume.as_ref());
+		let mut entries = Vec::with_capacity(limit);
+		for row in self.query.range(range, RangeScope::All, limit).take(limit) {
+			let row = row?;
+			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
+		}
+		Ok(entries)
+	}
+
+	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+		let key = RingBufferFreeKey::of(self.storage, partition).into();
+		match self.query.get(&[key])?.pop().flatten() {
+			None => Ok(Vec::new()),
+			Some(row) => decode_ringbuffer_slots(EncodedPodRow::view(row.bytes())),
+		}
+	}
+}
+
+impl RingNewest for QueryRing<'_> {
+	fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>> {
+		match self.query.range_rev(ring_order_range(self.storage, partition), RangeScope::All, 1).next() {
+			None => Ok(None),
+			Some(row) => {
+				let row = row?;
+				Ok(Some(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?))
+			}
+		}
 	}
 }
 
@@ -395,7 +434,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
-		ring: Option<u64>,
+		ring: bool,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
@@ -407,15 +446,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		}
 		let mut query = self.txn.query();
 		query.read_as_of_version_inclusive(version);
-		if let Some(capacity) = ring {
+		if ring {
 			let mut store = QueryRing {
 				query: &query,
 				storage,
 			};
-			return partitions
-				.iter()
-				.map(|&partition| newest(&mut store, Some(partition), capacity))
-				.collect();
+			return partitions.iter().map(|&partition| newest(&mut store, Some(partition))).collect();
 		}
 		partitions
 			.iter()

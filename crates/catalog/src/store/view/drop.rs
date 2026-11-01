@@ -54,7 +54,7 @@ impl CatalogStore {
 				for key in keys {
 					txn.remove(vec![(key.clone().into(), None)])?;
 				}
-				Ok(())
+				Self::drop_ring_index(txn, StorageId::View(view))
 			}
 			ViewStorageKind::Series => Ok(()),
 		}

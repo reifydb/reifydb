@@ -916,6 +916,8 @@ mod tests {
 			base_rn: 1,
 			next_sequence: 1,
 			count: 1,
+			filled: 1,
+			head: 0,
 		};
 		txn.set(vec![(
 			RingBufferMetadataKey::of(storage, Some(Partition::of(&values))).into(),

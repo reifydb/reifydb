@@ -102,6 +102,9 @@ pub enum KeyTag {
 	AuthenticationMethod = 0x61,
 	WindowedViewGroup = 0x62,
 	NamespaceWindowedViewGroup = 0x63,
+	RingBufferOrder = 0x64,
+	PartitionedRingBufferOrder = 0x65,
+	RingBufferFree = 0x66,
 }
 
 impl KeyTag {
@@ -218,6 +221,9 @@ impl TryFrom<u8> for KeyTag {
 			0x61 => Ok(Self::AuthenticationMethod),
 			0x62 => Ok(Self::WindowedViewGroup),
 			0x63 => Ok(Self::NamespaceWindowedViewGroup),
+			0x64 => Ok(Self::RingBufferOrder),
+			0x65 => Ok(Self::PartitionedRingBufferOrder),
+			0x66 => Ok(Self::RingBufferFree),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

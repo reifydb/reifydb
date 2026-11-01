@@ -63,8 +63,9 @@ use crate::{
 			QueueKeyActiveKey, QueuePartitionKey,
 		},
 		ringbuffer::{
-			RingBufferEvictionKey, RingBufferKey, RingBufferMetadataKey, SeriesEvictionKey,
-			TableEvictionKey, ViewEvictionKey,
+			PartitionedRingBufferOrderKey, RingBufferEvictionKey, RingBufferFreeKey, RingBufferKey,
+			RingBufferMetadataKey, RingBufferOrderKey, SeriesEvictionKey, TableEvictionKey,
+			ViewEvictionKey,
 		},
 		row::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
@@ -80,7 +81,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 93;
+const DECLARED_KINDS: usize = 96;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -500,6 +501,12 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		KeyTag::ViewEviction => ViewEvictionKey::encoded(ViewId(1)),
 		KeyTag::TableEviction => TableEvictionKey::encoded(TableId(1)),
 		KeyTag::SeriesEviction => SeriesEvictionKey::encoded(SeriesId(1)),
+		KeyTag::RingBufferOrder => RingBufferOrderKey::new(StorageId::ringbuffer(RingBufferId(1)), 1).encode(),
+		KeyTag::PartitionedRingBufferOrder => {
+			PartitionedRingBufferOrderKey::new(StorageId::ringbuffer(RingBufferId(1)), Partition(1), 1)
+				.encode()
+		}
+		KeyTag::RingBufferFree => RingBufferFreeKey::encoded_of(StorageId::ringbuffer(RingBufferId(1)), None),
 	}
 }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{collections::BTreeMap, ops::Bound};
+
 use indexmap::IndexMap;
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow};
 use reifydb_value::{
@@ -8,7 +10,9 @@ use reifydb_value::{
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 
-use crate::interface::catalog::ringbuffer::RingBufferMetadata;
+use crate::{interface::catalog::ringbuffer::RingBufferMetadata, return_internal_error};
+
+const ORDER_PAGE: usize = 64;
 
 pub trait RingStore {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>>;
@@ -16,6 +20,19 @@ pub trait RingStore {
 	fn reserve(&mut self, capacity: u64) -> Result<u64>;
 
 	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>>;
+
+	fn order(
+		&mut self,
+		partition: Option<Partition>,
+		after: Option<u64>,
+		limit: usize,
+	) -> Result<Vec<(u64, RowNumber)>>;
+
+	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>>;
+}
+
+pub trait RingNewest: RingStore {
+	fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,15 +42,20 @@ pub struct Placement {
 	pub evicted: Option<EncodedBytes>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataWrite {
 	Save(Option<Partition>, RingBufferMetadata),
 	Remove(Option<Partition>),
+	Order(Option<Partition>, u64, Option<RowNumber>),
+	Free(Option<Partition>, Vec<RowNumber>),
 }
 
 struct Tracked {
 	loaded: Option<RingBufferMetadata>,
 	current: Option<RingBufferMetadata>,
+	order: BTreeMap<u64, Option<RowNumber>>,
+	free: Option<Vec<RowNumber>>,
+	free_changed: bool,
 }
 
 pub struct Ring {
@@ -64,14 +86,79 @@ impl Ring {
 			Tracked {
 				loaded,
 				current: loaded,
+				order: BTreeMap::new(),
+				free: None,
+				free_changed: false,
 			},
 		);
 		Ok(loaded)
 	}
 
+	fn tracked(&mut self, partition: Option<Partition>) -> &mut Tracked {
+		self.tracked.get_mut(&partition).expect("metadata is loaded before it is changed")
+	}
+
 	fn set(&mut self, partition: Option<Partition>, metadata: RingBufferMetadata) {
-		self.tracked.get_mut(&partition).expect("metadata is loaded before it is changed").current =
-			Some(metadata);
+		self.tracked(partition).current = Some(metadata);
+	}
+
+	fn load_free(&mut self, store: &mut impl RingStore, partition: Option<Partition>) -> Result<usize> {
+		if self.tracked(partition).free.is_none() {
+			let free = store.free(partition)?;
+			self.tracked(partition).free = Some(free);
+		}
+		Ok(self.tracked(partition).free.as_ref().map_or(0, Vec::len))
+	}
+
+	fn release(&mut self, partition: Option<Partition>, sequence: u64, row: RowNumber) {
+		let tracked = self.tracked(partition);
+		tracked.order.insert(sequence, None);
+		tracked.free.as_mut().expect("the free list is loaded before a slot is released").push(row);
+		tracked.free_changed = true;
+	}
+
+	fn live(
+		&mut self,
+		store: &mut impl RingStore,
+		partition: Option<Partition>,
+		after: Option<u64>,
+		limit: usize,
+	) -> Result<Vec<(u64, RowNumber)>> {
+		let mut live = Vec::with_capacity(limit);
+		if limit == 0 {
+			return Ok(live);
+		}
+		let page = limit.max(ORDER_PAGE);
+		let head = self.tracked(partition).current.map_or(0, |metadata| metadata.head);
+		let mut cursor = after.or_else(|| head.checked_sub(1));
+		loop {
+			let stored = store.order(partition, cursor, page)?;
+			let exhausted = stored.len() < page;
+			let staged = &self.tracked(partition).order;
+			for (sequence, row) in stored {
+				cursor = Some(sequence);
+				if matches!(staged.get(&sequence), Some(None)) {
+					continue;
+				}
+				live.push((sequence, row));
+				if live.len() == limit {
+					return Ok(live);
+				}
+			}
+			if exhausted {
+				break;
+			}
+		}
+		let lower = after.map_or(Bound::Unbounded, Bound::Excluded);
+		for (&sequence, entry) in self.tracked(partition).order.range((lower, Bound::Unbounded)) {
+			if let Some(row) = entry {
+				live.push((sequence, *row));
+				if live.len() == limit {
+					break;
+				}
+			}
+		}
+		Ok(live)
 	}
 
 	pub fn place(
@@ -92,22 +179,74 @@ impl Ring {
 			None if partition.is_none() => RingBufferMetadata::unpartitioned(),
 			None => RingBufferMetadata::reserved(store.reserve(self.capacity)?),
 		};
-		let sequences: Vec<u64> = (metadata.next_sequence..metadata.next_sequence + count as u64).collect();
-		let rows: Vec<RowNumber> =
-			sequences.iter().map(|&sequence| metadata.row_of(sequence, self.capacity)).collect();
-		let stored = store.slots(partition, &rows)?;
-		metadata.next_sequence += count as u64;
-		metadata.count += stored.iter().filter(|row| row.is_none()).count() as u64;
+		let free = self.load_free(store, partition)?;
+		let room = free as u64 + (self.capacity - metadata.filled);
+		let evictions = (count as u64).saturating_sub(room) as usize;
+		let victims = self.live(store, partition, None, evictions)?;
+		if victims.len() != evictions {
+			return_internal_error!(
+				"Ring buffer partition {:?} must evict {} rows but its order index names only {}. This indicates a corrupt ring index.",
+				partition,
+				evictions,
+				victims.len()
+			)
+		}
+		if let Some(&(newest_victim, _)) = victims.last() {
+			metadata.head = newest_victim + 1;
+		}
+		let capacity = self.capacity;
+		let tracked = self.tracked(partition);
+		let mut victims = victims.into_iter();
+		let mut placed: Vec<(RowNumber, u64, bool)> = Vec::with_capacity(count);
+		for _ in 0..count {
+			let sequence = metadata.next_sequence;
+			metadata.next_sequence += 1;
+			let (row, evicts) = match tracked.free.as_mut().and_then(Vec::pop) {
+				Some(row) => {
+					tracked.free_changed = true;
+					(row, false)
+				}
+				None if metadata.filled < capacity => {
+					let row = RowNumber(metadata.base_rn + metadata.filled);
+					metadata.filled += 1;
+					(row, false)
+				}
+				None => {
+					let (oldest, row) = victims.next().expect("victims cover every eviction");
+					tracked.order.insert(oldest, None);
+					(row, true)
+				}
+			};
+			tracked.order.insert(sequence, Some(row));
+			if !evicts {
+				metadata.count += 1;
+			}
+			placed.push((row, sequence, evicts));
+		}
+		let evicted_rows: Vec<RowNumber> =
+			placed.iter().filter(|(_, _, evicts)| *evicts).map(|(row, _, _)| *row).collect();
+		let mut evicted = store.slots(partition, &evicted_rows)?.into_iter();
 		self.set(partition, metadata);
-		Ok(rows.into_iter()
-			.zip(sequences)
-			.zip(stored)
-			.map(|((row, sequence), evicted)| Placement {
+		let mut placements = Vec::with_capacity(count);
+		for (row, sequence, evicts) in placed {
+			let evicted = match evicts {
+				false => None,
+				true => match evicted.next().flatten() {
+					Some(bytes) => Some(bytes),
+					None => return_internal_error!(
+						"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
+						partition,
+						row
+					),
+				},
+			};
+			placements.push(Placement {
 				row,
 				sequence,
 				evicted,
-			})
-			.collect())
+			});
+		}
+		Ok(placements)
 	}
 
 	pub fn remove(
@@ -129,7 +268,15 @@ impl Ring {
 				false => None,
 			})
 			.collect();
-		metadata.count -= removed.iter().filter(|row| row.is_some()).count() as u64;
+		if removed.iter().any(Option::is_some) {
+			self.load_free(store, partition)?;
+		}
+		for (&row, bytes) in rows.iter().zip(&removed) {
+			if let Some(bytes) = bytes {
+				self.release(partition, EncodedRingBufferRow::view(bytes).sequence(), row);
+				metadata.count -= 1;
+			}
+		}
 		self.set(partition, metadata);
 		Ok(removed)
 	}
@@ -145,70 +292,116 @@ impl Ring {
 		else {
 			return Ok(Vec::new());
 		};
-		let cycle: Vec<RowNumber> = metadata.oldest_first(self.capacity).map(|(_, row)| row).collect();
-		let mut expired = Vec::new();
-		'walk: for window in cycle.chunks(batch.max(1)) {
-			for (&row, stored) in window.iter().zip(store.slots(partition, window)?) {
+		let mut expired: Vec<(u64, RowNumber, EncodedBytes)> = Vec::new();
+		let mut after = None;
+		'walk: loop {
+			let window = self.live(store, partition, after, batch.max(1))?;
+			let Some(&(last, _)) = window.last() else {
+				break;
+			};
+			after = Some(last);
+			let rows: Vec<RowNumber> = window.iter().map(|&(_, row)| row).collect();
+			for ((sequence, row), stored) in window.into_iter().zip(store.slots(partition, &rows)?) {
 				let Some(bytes) = stored else {
-					continue;
+					return_internal_error!(
+						"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
+						partition,
+						row
+					)
 				};
 				if !EncodedRingBufferRow::view(&bytes).time().is_some_and(|time| time < cutoff) {
 					break 'walk;
 				}
-				expired.push((row, bytes));
+				expired.push((sequence, row, bytes));
 			}
+		}
+		if !expired.is_empty() {
+			self.load_free(store, partition)?;
+		}
+		for &(sequence, row, _) in &expired {
+			self.release(partition, sequence, row);
+		}
+		if let Some(&(newest_expired, _, _)) = expired.last() {
+			metadata.head = newest_expired + 1;
 		}
 		metadata.count -= expired.len() as u64;
 		self.set(partition, metadata);
-		Ok(expired)
+		Ok(expired.into_iter().map(|(_, row, bytes)| (row, bytes)).collect())
 	}
 
 	pub fn writes(&self) -> Vec<MetadataWrite> {
-		self.tracked
-			.iter()
-			.filter(|(_, tracked)| tracked.current != tracked.loaded)
-			.filter_map(|(&partition, tracked)| {
-				let current = tracked.current?;
-				match (partition, current.is_empty(), tracked.loaded) {
-					(Some(_), true, None) => None,
-					(Some(_), true, Some(_)) => Some(MetadataWrite::Remove(partition)),
-					_ => Some(MetadataWrite::Save(partition, current)),
+		let mut writes = Vec::new();
+		for (&partition, tracked) in &self.tracked {
+			let Some(current) = tracked.current.filter(|current| tracked.loaded != Some(*current)) else {
+				continue;
+			};
+			let dropped = partition.is_some() && current.is_empty();
+			match (dropped, tracked.loaded) {
+				(true, None) => {}
+				(true, Some(_)) => writes.push(MetadataWrite::Remove(partition)),
+				(false, _) => writes.push(MetadataWrite::Save(partition, current)),
+			}
+			for (&sequence, &entry) in &tracked.order {
+				writes.push(MetadataWrite::Order(partition, sequence, entry));
+			}
+			match (dropped, &tracked.free) {
+				(true, _) => writes.push(MetadataWrite::Free(partition, Vec::new())),
+				(false, Some(free)) if tracked.free_changed => {
+					writes.push(MetadataWrite::Free(partition, free.clone()))
 				}
-			})
-			.collect()
+				(false, _) => {}
+			}
+		}
+		writes
 	}
 }
 
-pub fn newest(
-	store: &mut impl RingStore,
-	partition: Option<Partition>,
-	capacity: u64,
-) -> Result<Option<(RowNumber, EncodedBytes)>> {
-	let Some(metadata) = store.metadata(partition)?.filter(|metadata| !metadata.is_empty()) else {
-		return Ok(None);
-	};
-	for (_, row) in metadata.oldest_first(capacity).rev() {
-		if let Some(bytes) = store.slots(partition, &[row])?.pop().flatten() {
-			return Ok(Some((row, bytes)));
-		}
+pub fn newest(store: &mut impl RingNewest, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
+	match store.newest_order(partition)? {
+		None => Ok(None),
+		Some((_, row)) => live_slot(store, partition, row).map(Some),
 	}
-	Ok(None)
 }
 
-pub fn oldest(
-	store: &mut impl RingStore,
-	partition: Option<Partition>,
-	capacity: u64,
-) -> Result<Option<(RowNumber, EncodedBytes)>> {
-	let Some(metadata) = store.metadata(partition)?.filter(|metadata| !metadata.is_empty()) else {
-		return Ok(None);
-	};
-	for (_, row) in metadata.oldest_first(capacity) {
-		if let Some(bytes) = store.slots(partition, &[row])?.pop().flatten() {
-			return Ok(Some((row, bytes)));
+pub fn oldest(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
+	let after = head_cursor(store, partition)?;
+	match store.order(partition, after, 1)?.pop() {
+		None => Ok(None),
+		Some((_, row)) => live_slot(store, partition, row).map(Some),
+	}
+}
+
+pub fn oldest_first(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+	let mut rows = Vec::new();
+	let mut after = head_cursor(store, partition)?;
+	loop {
+		let page = store.order(partition, after, ORDER_PAGE)?;
+		let exhausted = page.len() < ORDER_PAGE;
+		after = page.last().map(|&(sequence, _)| sequence).or(after);
+		rows.extend(page.into_iter().map(|(_, row)| row));
+		if exhausted {
+			return Ok(rows);
 		}
 	}
-	Ok(None)
+}
+
+fn head_cursor(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Option<u64>> {
+	Ok(store.metadata(partition)?.and_then(|metadata| metadata.head.checked_sub(1)))
+}
+
+fn live_slot(
+	store: &mut impl RingStore,
+	partition: Option<Partition>,
+	row: RowNumber,
+) -> Result<(RowNumber, EncodedBytes)> {
+	match store.slots(partition, &[row])?.pop().flatten() {
+		Some(bytes) => Ok((row, bytes)),
+		None => return_internal_error!(
+			"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
+			partition,
+			row
+		),
+	}
 }
 
 #[cfg(test)]
@@ -224,6 +417,8 @@ mod tests {
 	struct MemoryStore {
 		metadata: HashMap<Option<Partition>, RingBufferMetadata>,
 		rows: HashMap<(Option<Partition>, RowNumber), EncodedBytes>,
+		order: BTreeMap<(Option<Partition>, u64), RowNumber>,
+		free: HashMap<Option<Partition>, Vec<RowNumber>>,
 		next_base: u64,
 		reads: Vec<(Option<Partition>, RowNumber)>,
 	}
@@ -246,6 +441,40 @@ mod tests {
 		) -> Result<Vec<Option<EncodedBytes>>> {
 			self.reads.extend(rows.iter().map(|&row| (partition, row)));
 			Ok(rows.iter().map(|&row| self.rows.get(&(partition, row)).cloned()).collect())
+		}
+
+		fn order(
+			&mut self,
+			partition: Option<Partition>,
+			after: Option<u64>,
+			limit: usize,
+		) -> Result<Vec<(u64, RowNumber)>> {
+			Ok(self.entries(partition)
+				.filter(|&(sequence, _)| after.is_none_or(|after| sequence > after))
+				.take(limit)
+				.collect())
+		}
+
+		fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+			Ok(self.free.get(&partition).cloned().unwrap_or_default())
+		}
+	}
+
+	impl RingNewest for MemoryStore {
+		fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>> {
+			Ok(self.entries(partition).last())
+		}
+	}
+
+	impl MemoryStore {
+		fn entries(
+			&self,
+			partition: Option<Partition>,
+		) -> impl DoubleEndedIterator<Item = (u64, RowNumber)> + '_ {
+			self.order
+				.iter()
+				.filter(move |((owner, _), _)| *owner == partition)
+				.map(|(&(_, sequence), &row)| (sequence, row))
 		}
 	}
 
@@ -287,6 +516,18 @@ mod tests {
 				MetadataWrite::Remove(partition) => {
 					store.metadata.remove(&partition);
 				}
+				MetadataWrite::Order(partition, sequence, Some(row)) => {
+					store.order.insert((partition, sequence), row);
+				}
+				MetadataWrite::Order(partition, sequence, None) => {
+					store.order.remove(&(partition, sequence));
+				}
+				MetadataWrite::Free(partition, free) if free.is_empty() => {
+					store.free.remove(&partition);
+				}
+				MetadataWrite::Free(partition, free) => {
+					store.free.insert(partition, free);
+				}
 			}
 		}
 	}
@@ -323,27 +564,6 @@ mod tests {
 		assert_eq!(wrapped[0].row, placed[0].row, "the fourth write lands in the first slot");
 		assert_eq!(sequence_of(wrapped[0].evicted.as_ref().unwrap()), placed[0].sequence);
 		assert_eq!(store.metadata[&None].count, 3);
-	}
-
-	#[test]
-	fn a_hole_is_refilled_only_when_the_cycle_reaches_it_and_capacity_holds() {
-		// Mutation: writing into the first free slot breaks slot order == #sequence order.
-		let mut store = MemoryStore::default();
-		let placed = insert(&mut store, 3, None, &[1, 2, 3]);
-		delete(&mut store, 3, None, &[placed[1].row]);
-		assert_eq!(store.metadata[&None].count, 2);
-
-		let next = insert(&mut store, 3, None, &[4]);
-		assert_eq!(next[0].row, placed[0].row, "the cycle goes to slot 0, not to the hole in slot 1");
-		assert!(next[0].evicted.is_some(), "slot 0 was occupied, so this is an overwrite");
-		assert_eq!(store.metadata[&None].count, 2, "the hole stays empty");
-
-		let refill = insert(&mut store, 3, None, &[5]);
-		assert_eq!(refill[0].row, placed[1].row, "the cycle reaches the hole next");
-		assert!(refill[0].evicted.is_none(), "filling a hole is an insert, not an overwrite");
-		assert_eq!(store.metadata[&None].count, 3, "count never exceeds capacity");
-		let live = store.rows.keys().filter(|(partition, _)| partition.is_none()).count();
-		assert_eq!(live, 3);
 	}
 
 	#[test]
@@ -440,7 +660,7 @@ mod tests {
 		let mut store = MemoryStore::default();
 		insert(&mut store, 2, Some(Partition(1)), &[10, 20]);
 		let wrapped = insert(&mut store, 2, Some(Partition(1)), &[30]);
-		let (row, bytes) = newest(&mut store, Some(Partition(1)), 2).unwrap().unwrap();
+		let (row, bytes) = newest(&mut store, Some(Partition(1))).unwrap().unwrap();
 		assert_eq!(row, wrapped[0].row);
 		assert_eq!(sequence_of(&bytes), wrapped[0].sequence);
 	}
@@ -451,7 +671,7 @@ mod tests {
 		let mut store = MemoryStore::default();
 		let placed = insert(&mut store, 3, None, &[10, 20]);
 		delete(&mut store, 3, None, &[placed[1].row]);
-		let (row, _) = newest(&mut store, None, 3).unwrap().unwrap();
+		let (row, _) = newest(&mut store, None).unwrap().unwrap();
 		assert_eq!(row, placed[0].row);
 	}
 
@@ -462,8 +682,111 @@ mod tests {
 		let placed = insert(&mut store, 3, None, &[10, 20, 30]);
 		insert(&mut store, 3, None, &[40]);
 		delete(&mut store, 3, None, &[placed[1].row]);
-		let (row, bytes) = oldest(&mut store, None, 3).unwrap().unwrap();
+		let (row, bytes) = oldest(&mut store, None).unwrap().unwrap();
 		assert_eq!(row, placed[2].row, "slot 0 now holds the newest row and slot 1 is a hole");
 		assert_eq!(sequence_of(&bytes), placed[2].sequence);
+	}
+
+	#[test]
+	fn an_insert_after_a_delete_fills_the_free_slot_instead_of_evicting_a_live_row() {
+		// Mutation: placing at seq % cap evicts the live row under the cursor and leaves the ring under
+		// capacity.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 2, None, &[1, 2]);
+		delete(&mut store, 2, None, &[placed[0].row]);
+		let next = insert(&mut store, 2, None, &[3]);
+		assert_eq!(next[0].row, placed[0].row, "the freed slot is reused");
+		assert!(next[0].evicted.is_none(), "a free slot exists, so nothing live may be evicted");
+		assert_eq!(store.metadata[&None].count, 2, "the ring is full again");
+		assert!(store.rows.contains_key(&(None, placed[1].row)), "the surviving row stays live");
+	}
+
+	#[test]
+	fn a_full_ring_evicts_the_oldest_live_sequence_not_the_slot_under_a_cursor() {
+		// Mutation: evicting by slot position instead of sequence drops the newer of the two live rows.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 2, None, &[1, 2]);
+		delete(&mut store, 2, None, &[placed[0].row]);
+		let refill = insert(&mut store, 2, None, &[3]);
+		let overflow = insert(&mut store, 2, None, &[4]);
+		assert_eq!(overflow[0].row, placed[1].row, "slot 2 holds the oldest live sequence");
+		let evicted = overflow[0].evicted.as_ref().expect("a full ring evicts");
+		assert_eq!(sequence_of(evicted), placed[1].sequence);
+		assert_ne!(overflow[0].row, refill[0].row);
+		assert_eq!(store.metadata[&None].count, 2);
+	}
+
+	#[test]
+	fn a_batch_larger_than_the_free_room_evicts_only_the_shortfall_oldest_first() {
+		// Mutation: evicting before using free slots or fresh room drops rows the ring still has room for.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 4, None, &[1, 2, 3]);
+		delete(&mut store, 4, None, &[placed[1].row]);
+		let batch = insert(&mut store, 4, None, &[4, 5, 6]);
+		let evicted: Vec<u64> = batch.iter().filter_map(|p| p.evicted.as_ref()).map(sequence_of).collect();
+		assert_eq!(
+			evicted,
+			vec![placed[0].sequence],
+			"one free slot and one fresh slot leave a single eviction"
+		);
+		assert_eq!(store.metadata[&None].count, 4);
+		let order: Vec<u64> = store.entries(None).map(|(sequence, _)| sequence).collect();
+		assert_eq!(order, vec![placed[2].sequence, batch[0].sequence, batch[1].sequence, batch[2].sequence]);
+	}
+
+	#[test]
+	fn an_emptied_partition_leaves_no_order_or_free_rows_behind() {
+		// Mutation: keeping the index of a dropped partition makes a fresh range evict ghost slots.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 2, Some(Partition(1)), &[1, 2]);
+		delete(&mut store, 2, Some(Partition(1)), &[placed[0].row]);
+		assert_eq!(store.free[&Some(Partition(1))], vec![placed[0].row]);
+		delete(&mut store, 2, Some(Partition(1)), &[placed[1].row]);
+		assert!(!store.metadata.contains_key(&Some(Partition(1))));
+		assert_eq!(store.entries(Some(Partition(1))).count(), 0);
+		assert!(!store.free.contains_key(&Some(Partition(1))));
+	}
+
+	#[test]
+	fn expiry_frees_the_slots_it_drains_so_the_next_insert_does_not_evict() {
+		// Mutation: expiring without releasing slots makes the next insert evict a live row.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 2, None, &[10, 20]);
+		let mut ring = Ring::new(2);
+		ring.expire(&mut store, None, DateTime::from_millis(15), 8).unwrap();
+		store.rows.remove(&(None, placed[0].row));
+		apply(&mut store, &ring);
+		let next = insert(&mut store, 2, None, &[30]);
+		assert_eq!(next[0].row, placed[0].row);
+		assert!(next[0].evicted.is_none());
+		assert_eq!(store.metadata[&None].count, 2);
+	}
+
+	#[test]
+	fn eviction_moves_the_head_to_the_oldest_live_sequence() {
+		// Mutation: a head left at 0 makes every eviction walk the whole deleted order history.
+		let mut store = MemoryStore::default();
+		insert(&mut store, 3, None, &[1, 2, 3]);
+		let wrapped = insert(&mut store, 3, None, &[4, 5]);
+		let oldest_live = store.entries(None).next().map(|(sequence, _)| sequence).unwrap();
+		assert_eq!(store.metadata[&None].head, oldest_live, "two evictions advance the head past both victims");
+		assert_eq!(wrapped.len(), 2);
+	}
+
+	#[test]
+	fn a_delete_of_the_head_row_keeps_the_head_a_safe_lower_bound() {
+		// Mutation: a head moved past a live row would hide that row from eviction and scans.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 3, None, &[1, 2, 3]);
+		insert(&mut store, 3, None, &[4]);
+		let head = store.metadata[&None].head;
+		delete(&mut store, 3, None, &[placed[1].row]);
+		assert_eq!(store.metadata[&None].head, head, "a delete never moves the head");
+		let (row, _) = oldest(&mut store, None).unwrap().unwrap();
+		assert_eq!(row, placed[2].row, "the oldest live row is still found from the head");
+		let next = insert(&mut store, 3, None, &[5]);
+		assert!(next[0].evicted.is_none(), "the freed slot is used first");
+		let overflow = insert(&mut store, 3, None, &[6]);
+		assert_eq!(sequence_of(overflow[0].evicted.as_ref().unwrap()), placed[2].sequence);
 	}
 }
