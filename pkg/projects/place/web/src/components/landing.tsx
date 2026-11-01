@@ -211,15 +211,17 @@ function Preview({ minimap, activity }: { minimap: Minimap; activity: Activity }
   }, [])
 
   return (
-    <div className="panel dot-grid relative mx-auto flex justify-center p-3">
-      <div ref={boxRef} className="relative aspect-square w-full max-w-[420px]">
-        <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full" />
-        <Pings
-          activity={activity}
-          place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
-        />
+    <div className="flex flex-col items-center gap-5">
+      <div className="frame w-full max-w-[min(100%,80vh)]">
+        <div ref={boxRef} className="relative aspect-square w-full">
+          <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
+          <Pings
+            activity={activity}
+            place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
+          />
+        </div>
       </div>
-      <a href="/canvas" className="game-button absolute bottom-4 right-4">
+      <a href="/canvas" className="game-button">
         Open canvas →
       </a>
     </div>

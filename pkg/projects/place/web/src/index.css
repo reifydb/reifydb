@@ -17,6 +17,13 @@
   background-size: 24px 24px;
 }
 
+.frame {
+  border: 10px solid #10123a;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: inset 0 0 0 1px #4b52d6, 0 6px var(--color-primary-dark), 0 18px 32px -12px #10123a80;
+}
+
 .game-button {
   display: inline-flex;
   align-items: center;
