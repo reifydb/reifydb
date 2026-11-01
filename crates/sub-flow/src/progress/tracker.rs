@@ -105,7 +105,7 @@ impl FlowWaker {
 		if now < next {
 			let was = self.pending.swap(true, Ordering::SeqCst);
 			if !was {
-				let _ = self.actor.send(FlowActorMessage::Wake);
+				let _ = self.actor.send_deferred(FlowActorMessage::Wake);
 			}
 			return;
 		}
@@ -126,7 +126,7 @@ impl FlowWaker {
 		if self.pending.swap(true, Ordering::SeqCst) {
 			return;
 		}
-		let _ = self.actor.send(FlowActorMessage::Wake);
+		let _ = self.actor.send_deferred(FlowActorMessage::Wake);
 	}
 }
 

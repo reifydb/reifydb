@@ -10,8 +10,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use std::sync::atomic::AtomicBool;
+#[cfg(reifydb_target = "wasm")]
+use std::time::Duration;
 
 use cfg_if::cfg_if;
+
+#[cfg(reifydb_target = "wasm")]
+use crate::actor::timers::wasm::schedule_once_fn;
 
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) mod host;
@@ -135,6 +140,11 @@ impl<M: Send> ActorRef<M> {
 	}
 
 	#[inline]
+	pub fn send_deferred(&self, msg: M) -> Result<(), SendError<M>> {
+		self.inner.send(msg)
+	}
+
+	#[inline]
 	pub fn send_blocking(&self, msg: M) -> Result<(), SendError<M>> {
 		self.inner.send_blocking(msg)
 	}
@@ -149,6 +159,11 @@ impl<M: Send> ActorRef<M> {
 impl<M> ActorRef<M> {
 	#[inline]
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
+		self.inner.send(msg)
+	}
+
+	#[inline]
+	pub fn send_deferred(&self, msg: M) -> Result<(), SendError<M>> {
 		self.inner.send(msg)
 	}
 
@@ -189,6 +204,24 @@ impl<M> ActorRef<M> {
 
 	#[inline]
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
+		self.inner.send(msg)
+	}
+
+	#[cfg(reifydb_target = "wasm")]
+	pub fn send_deferred(&self, msg: M) -> Result<(), SendError<M>>
+	where
+		M: Send + 'static,
+	{
+		if !self.is_alive() {
+			return Err(SendError::Closed(msg));
+		}
+		schedule_once_fn(self.clone(), Duration::ZERO, move || msg);
+		Ok(())
+	}
+
+	#[cfg(reifydb_target = "wasi")]
+	#[inline]
+	pub fn send_deferred(&self, msg: M) -> Result<(), SendError<M>> {
 		self.inner.send(msg)
 	}
 
