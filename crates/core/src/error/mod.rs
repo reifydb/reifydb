@@ -95,6 +95,11 @@ pub enum CoreError {
 	#[error("a session window needs a gap above zero")]
 	OperatorWithSessionZeroGap,
 
+	#[error("a session window splits and merges its sessions and takes no immutable span (immutable: {immutable})")]
+	OperatorWithSessionImmutable {
+		immutable: Duration,
+	},
+
 	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
 	OperatorWithDurationSpan {
 		key: &'static str,

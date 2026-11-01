@@ -30,6 +30,12 @@ impl SealGate {
 	pub fn admits(&self, horizon: u64) -> bool {
 		self.rule.seal_instant_from_order(horizon).at() > self.frontier
 	}
+
+	pub fn horizon(&self) -> DateTime {
+		self.rule.horizon_at(self.frontier).map_or_else(DateTime::default, |horizon| {
+			horizon.saturating_add(Duration::from_nanoseconds_const(1))
+		})
+	}
 }
 
 pub fn rearm_seal(
@@ -122,6 +128,17 @@ mod tests {
 
 	fn order(millis: i64) -> u64 {
 		at_millis(millis).to_order()
+	}
+
+	#[test]
+	fn the_horizon_is_the_first_instant_the_gate_still_admits() {
+		// A horizon one step off refuses a row the engine admits, or admits one it seals.
+		let gate = SealGate::new(rule(), None, Some(at_millis(5_000)));
+		let horizon = gate.horizon();
+		let just_before = horizon.saturating_sub(Duration::from_nanoseconds_const(1));
+
+		assert!(gate.admits(horizon.to_order()));
+		assert!(!gate.admits(just_before.to_order()));
 	}
 
 	fn sealed_through(millis: i64) -> SealedThrough {

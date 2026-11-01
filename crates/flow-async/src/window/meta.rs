@@ -3,8 +3,9 @@
 
 use std::{mem::size_of, slice::from_ref};
 
-use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_codec::row::operator::state::{decode_body, derive::Serialize, encode};
 use reifydb_core::{
+	internal_err,
 	key::{
 		operator::{
 			keyspace::window::{
@@ -19,20 +20,12 @@ use reifydb_core::{
 	state::{timer::StateStore, typed::typed_key},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::{Result, value::row_number::RowNumber};
+use serde::de::DeserializeOwned;
 
-use crate::{
-	operator::{
-		state::seal::{
-			coord::Coord,
-			ledger::{SealLedgerState, seal_ledger_key},
-		},
-		state_access::{get, get_classified, remove, set},
-	},
-	window::kind::session::SessionTracker,
+use crate::operator::{
+	state::seal::ledger::{SealLedgerState, seal_ledger_key},
+	state_access::{get, get_classified, remove, set},
 };
 
 #[operator_state]
@@ -58,6 +51,19 @@ pub struct SessionState {
 impl HeapSize for SessionState {
 	fn heap_size(&self) -> usize {
 		0
+	}
+}
+
+#[operator_state]
+#[derive(Clone, Default)]
+pub struct OpenSessionsState {
+	pub sessions: Vec<(u64, Vec<(u64, u64)>)>,
+	pub sealed_last: Option<u64>,
+}
+
+impl HeapSize for OpenSessionsState {
+	fn heap_size(&self) -> usize {
+		self.sessions.iter().map(|(_, members)| size_of::<u64>() + members.len() * 2 * size_of::<u64>()).sum()
 	}
 }
 
@@ -296,16 +302,60 @@ impl WindowMeta {
 		remove(store, from_ref(&RowIndexKey(group, row_number)))
 	}
 
-	pub fn store_session_member(
+	pub fn store_session_member<T: Serialize>(
 		&mut self,
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
+		member: &T,
 	) -> Result<()> {
-		store.state_set(vec![(
-			((&SessionMemberKey(group, row_number)).into_group_state_key()).clone(),
-			EncodedPodRow::new(&[]),
-		)])
+		store.state_set(vec![((&SessionMemberKey(group, row_number)).into_group_state_key(), encode(member)?)])
+	}
+
+	pub fn load_session_member<T: DeserializeOwned>(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<T> {
+		let key = (&SessionMemberKey(group, row_number)).into_group_state_key();
+		match store.state_get(from_ref(&key))?.pop().flatten() {
+			Some(row) => Ok(decode_body::<T>(&row)?),
+			None => internal_err!(
+				"session member {:?} of {:?} has no stored contribution; the open sessions and the member \
+				 rows disagree",
+				row_number,
+				group
+			),
+		}
+	}
+
+	pub fn load_open_sessions(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+	) -> Result<Option<OpenSessionsState>> {
+		Ok(get_classified::<_, OpenSessionsState>(store, from_ref(&SessionKey(group)))?.remove(0))
+	}
+
+	pub fn load_open_sessions_of(
+		&mut self,
+		store: &mut dyn StateStore,
+		groups: &[GroupId],
+	) -> Result<Vec<Option<OpenSessionsState>>> {
+		let keys: Vec<SessionKey> = groups.iter().map(|group| SessionKey(*group)).collect();
+		get_classified::<_, OpenSessionsState>(store, &keys)
+	}
+
+	pub fn save_open_sessions(
+		&mut self,
+		store: &mut dyn StateStore,
+		states: Vec<(GroupId, OpenSessionsState)>,
+	) -> Result<()> {
+		if states.is_empty() {
+			return Ok(());
+		}
+		set(store, states.into_iter().map(|(group, state)| (SessionKey(group), state)).collect())
 	}
 
 	pub fn drop_session_member(
@@ -317,28 +367,6 @@ impl WindowMeta {
 		remove(store, from_ref(&SessionMemberKey(group, row_number)))
 	}
 
-	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
-		Ok(self.stored_session(store, group)?.unwrap_or_default())
-	}
-
-	pub fn stored_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<SessionTracker>> {
-		Ok(get_classified::<_, SessionState>(store, from_ref(&SessionKey(group)))?
-			.remove(0)
-			.map(resumed_session))
-	}
-
-	pub fn stored_sessions(
-		&mut self,
-		store: &mut dyn StateStore,
-		groups: &[GroupId],
-	) -> Result<Vec<Option<SessionTracker>>> {
-		let keys: Vec<SessionKey> = groups.iter().map(|group| SessionKey(*group)).collect();
-		Ok(get_classified::<_, SessionState>(store, &keys)?
-			.into_iter()
-			.map(|state| state.map(resumed_session))
-			.collect())
-	}
-
 	pub fn drop_sessions(&mut self, store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
 		if groups.is_empty() {
 			return Ok(());
@@ -347,33 +375,6 @@ impl WindowMeta {
 			groups.iter().map(|group| (&SessionKey(*group)).into_group_state_key()).collect();
 		store.state_remove(&keys)
 	}
-
-	pub fn save_session(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: GroupId,
-		tracker: &SessionTracker,
-	) -> Result<()> {
-		set(
-			store,
-			vec![(
-				SessionKey(group),
-				SessionState {
-					session_id: tracker.session_id,
-					last_event_time: tracker.last.to_order(),
-					session_start: tracker.start.to_order(),
-				},
-			)],
-		)
-	}
-}
-
-fn resumed_session(state: SessionState) -> SessionTracker {
-	SessionTracker::resumed(
-		state.session_id,
-		<DateTime as Coord>::from_order(state.last_event_time),
-		<DateTime as Coord>::from_order(state.session_start),
-	)
 }
 
 #[cfg(test)]
@@ -386,8 +387,8 @@ mod tests {
 	};
 	use reifydb_value::{factory::time::at_millis, util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
-	use crate::{operator::state::mock::MockStore, window::kind::session::SessionTracker};
+	use super::{OpenSessionsState, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
+	use crate::operator::state::{mock::MockStore, seal::coord::Coord};
 
 	fn group_id() -> GroupId {
 		GroupId::hashed(Hash128(42))
@@ -435,25 +436,29 @@ mod tests {
 	}
 
 	#[test]
-	fn a_session_persisted_at_the_epoch_reloads_as_open_rather_than_as_a_fresh_tracker() {
-		// A SessionState row exists only once a group has opened a session, so row presence IS the
-		// openness bit and load_session must read it as an Option. Defaulting an absent row would
-		// make an all-zero session, which is one opened at the epoch, read as never-seen.
+	fn a_group_whose_only_session_started_at_the_epoch_reloads_with_that_session() {
+		// Openness is the state row's presence, so a session at time zero must reload as a session.
 		let mut meta = WindowMeta::new();
 		let mut store = MockStore::default();
+		let epoch = at_millis(0).to_order();
 
-		assert_eq!(
-			meta.load_session(&mut store, group_id()).unwrap(),
-			SessionTracker::default(),
-			"a group with no persisted session must load as unopened"
-		);
+		assert!(meta.load_open_sessions(&mut store, group_id()).unwrap().is_none());
 
-		meta.save_session(&mut store, group_id(), &SessionTracker::resumed(0, at_millis(0), at_millis(0)))
-			.unwrap();
+		meta.save_open_sessions(
+			&mut store,
+			vec![(
+				group_id(),
+				OpenSessionsState {
+					sessions: vec![(epoch, vec![(epoch, 1)])],
+					sealed_last: None,
+				},
+			)],
+		)
+		.unwrap();
 
-		assert_eq!(
-			meta.load_session(&mut store, group_id()).unwrap(),
-			SessionTracker::resumed(0, at_millis(0), at_millis(0))
-		);
+		let reloaded =
+			meta.load_open_sessions(&mut store, group_id()).unwrap().expect("the saved state reloads");
+		assert_eq!(reloaded.sessions, vec![(epoch, vec![(epoch, 1)])]);
+		assert_eq!(reloaded.sealed_last, None);
 	}
 }

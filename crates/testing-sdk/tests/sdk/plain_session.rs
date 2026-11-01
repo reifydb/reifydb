@@ -76,21 +76,21 @@ fn a_row_exactly_one_gap_from_the_last_starts_a_new_session() {
 }
 
 #[test]
-fn a_row_more_than_one_gap_before_the_start_is_refused() {
-	// a refused row must neither join the session nor move its start
+fn a_row_more_than_one_gap_before_the_start_opens_its_own_session() {
+	// a row a gap away from every live row is its own session, and it must neither join nor move the other one
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 
 	let refused = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 89, 2.0)).build()).expect("apply");
 	let after = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 105, 4.0)).build()).expect("apply");
 
-	assert_eq!(render(&refused), vec![]);
+	assert_eq!(render(&refused), vec![(DiffType::Insert, 2.0, at(89), at(99))]);
 	assert_eq!(render(&after), vec![(DiffType::Update, 5.0, at(100), at(115))]);
 }
 
 #[test]
 fn a_remove_after_a_backward_move_and_a_rotation_hits_the_first_session() {
-	// a remove routed by assigning its time is refused against the current session and leaves the row counted
+	// a remove must find the first session after a rotation, and once 95 leaves its start must shrink to 100
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 95, 2.0)).build()).expect("apply");
@@ -98,7 +98,7 @@ fn a_remove_after_a_backward_move_and_a_rotation_hits_the_first_session() {
 
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 95, 2.0)).build()).expect("apply");
 
-	assert_eq!(render(&out), vec![(DiffType::Update, 1.0, at(95), at(110))]);
+	assert_eq!(render(&out), vec![(DiffType::Update, 1.0, at(100), at(110))]);
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn a_session_seals_by_its_last_row_not_its_start() {
 
 #[test]
 fn an_update_that_moves_a_row_leaves_its_old_session_and_joins_by_its_new_time() {
-	// a moved row kept in its old session leaves both sums wrong, and a session never shrinks when a row leaves
+	// a moved row kept in its old session leaves both sums wrong, and the old session must shrink to the rows left
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");
@@ -187,13 +187,13 @@ fn an_update_that_moves_a_row_leaves_its_old_session_and_joins_by_its_new_time()
 
 	assert_eq!(
 		render(&out),
-		vec![(DiffType::Update, 1.0, at(100), at(115)), (DiffType::Update, 6.0, at(200), at(213))]
+		vec![(DiffType::Update, 1.0, at(100), at(110)), (DiffType::Update, 6.0, at(200), at(213))]
 	);
 }
 
 #[test]
-fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
-	// Retracting before the refused admit would lose the row and its new value from its old session.
+fn an_update_to_a_time_a_gap_from_every_live_row_leaves_its_session_and_opens_a_new_one() {
+	// 150 is more than a gap from 100 and from 200, so a fresh run puts the moved row in a session of its own.
 	let mut h = harness!(SumTumblingOnly, session(10, None)).expect("harness");
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 100, 1.0)).build()).expect("apply");
 	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 105, 2.0)).build()).expect("apply");
@@ -205,7 +205,10 @@ fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
 			.build())
 		.expect("apply");
 
-	assert_eq!(render(&out), vec![(DiffType::Update, 6.0, at(100), at(115))]);
+	assert_eq!(
+		render(&out),
+		vec![(DiffType::Insert, 5.0, at(150), at(160)), (DiffType::Update, 1.0, at(100), at(110))]
+	);
 }
 
 #[test]

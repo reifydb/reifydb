@@ -2378,8 +2378,3 @@ chaos_test!(window_rolling_percentile_immutable_chaos, |seed| {
 chaos_test!(window_session_percentile_chaos, |seed| {
 	session::drive(seed, session::params(2_000, 6_000, Fold::Percentile));
 });
-
-chaos_test!(window_session_percentile_immutable_chaos, |seed| {
-	// Sessions far longer than immutable seal their min, and a retraction behind it must still leave the digest.
-	session::drive_immutable(seed, session::params(3_000, 20_000, Fold::PercentileNextToMin), 2_000);
-});

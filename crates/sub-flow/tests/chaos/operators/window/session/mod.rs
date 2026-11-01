@@ -51,18 +51,14 @@ pub struct Params {
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
-	drive_with(seed, params, None, 0)
-}
-
-pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
-	drive_with(seed, params, Some(immutable_ms), 0)
+	drive_with(seed, params, 0)
 }
 
 pub fn drive_moving(seed: u64, params: Params, move_pct: u32) -> Corpus {
-	drive_with(seed, params, None, move_pct)
+	drive_with(seed, params, move_pct)
 }
 
-fn drive_with(seed: u64, params: Params, immutable_ms: Option<u64>, move_pct: u32) -> Corpus {
+fn drive_with(seed: u64, params: Params, move_pct: u32) -> Corpus {
 	let spec = WindowSpec {
 		kind: WindowKind::Session {
 			gap: Duration::from_milliseconds(params.gap_ms as i64).expect("a drawn gap is representable"),
@@ -72,8 +68,7 @@ fn drive_with(seed: u64, params: Params, immutable_ms: Option<u64>, move_pct: u3
 		lateness: None,
 	};
 
-	let immutable = immutable_ms.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
-	let mut harness = Harness::new(|runtime| build_immutable(&spec, immutable, runtime));
+	let mut harness = Harness::new(|runtime| build_immutable(&spec, None, runtime));
 	let workload = MovingWindowWorkload {
 		inner: WindowWorkload {
 			groups: params.groups,
@@ -82,9 +77,6 @@ fn drive_with(seed: u64, params: Params, immutable_ms: Option<u64>, move_pct: u3
 		move_pct,
 	};
 	let mut model = SessionOracle::new(params.gap_ms, params.fold);
-	if let Some(immutable_ms) = immutable_ms {
-		model = model.with_immutable(immutable_ms);
-	}
 
 	driver::drive(
 		seed,

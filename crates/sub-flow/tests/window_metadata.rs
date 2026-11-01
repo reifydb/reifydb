@@ -309,8 +309,8 @@ fn two_sessions_of_one_group_each_report_their_own_span() {
 }
 
 #[test]
-fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
-	// A removal must render from the stored session bounds, which never shrink, otherwise the span loses its start.
+fn a_session_touched_only_by_a_removal_shrinks_its_published_span_to_the_rows_left() {
+	// A span that kept the removed row's end would disagree with a fresh run over the rows that are left.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
@@ -328,7 +328,7 @@ fn a_session_touched_only_by_a_removal_keeps_its_published_span() {
 
 	let frames = db.query("FROM app::w");
 	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:10.000000000Z".to_string()]);
-	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:50.000000000Z".to_string()]);
+	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:01:40.000000000Z".to_string()]);
 }
 
 #[test]
@@ -441,17 +441,17 @@ fn an_update_moving_time_out_of_a_session_leaves_it_and_opens_a_new_one() {
 	let session = |s: &str, e: &str| {
 		(format!("2026-01-01T00:{s}.000000000Z"), format!("2026-01-01T00:{e}.000000000Z"), "1".to_string())
 	};
-	assert_eq!(sessions(&db), vec![session("01:10", "01:50"), session("03:00", "03:30")]);
+	assert_eq!(sessions(&db), vec![session("01:10", "01:40"), session("03:00", "03:30")]);
 
 	// The delete must follow the row index to the new session, or the 03:00 session would keep the row.
 	db.command("DELETE app::t FILTER { id == 2 }");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
-	assert_eq!(sessions(&db), vec![session("01:10", "01:50")]);
+	assert_eq!(sessions(&db), vec![session("01:10", "01:40")]);
 }
 
 #[test]
-fn an_update_moving_time_forward_inside_the_gap_stretches_its_session() {
-	// Swapping the row in place never tells the tracker, so the session would still end at 01:50.
+fn an_update_moving_time_forward_past_the_gap_from_the_remaining_row_splits_off_a_new_session() {
+	// 01:45 is 35s after the only row left at 01:10, so a fresh run holds two sessions, not one stretched one.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, e: datetime, x: int4 } AS {
@@ -467,13 +467,25 @@ fn an_update_moving_time_forward_inside_the_gap_stretches_its_session() {
 	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
-	assert_eq!(text(&column_values(&frames[0], "e")), vec!["2026-01-01T00:02:15.000000000Z".to_string()]);
-	assert_eq!(text(&column_values(&frames[0], "n")), vec!["2".to_string()]);
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "e"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "n")))
+		.zip(text(&column_values(&frames[0], "x")))
+		.map(|((end, n), x)| (end, n, x))
+		.collect();
+	rows.sort();
+	assert_eq!(
+		rows,
+		vec![
+			("2026-01-01T00:01:40.000000000Z".to_string(), "1".to_string(), "5".to_string()),
+			("2026-01-01T00:02:15.000000000Z".to_string(), "1".to_string(), "4".to_string()),
+		]
+	);
 }
 
 #[test]
-fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
-	// The tracker only knows the 01:40 session, so a small fix to the closed 01:10 session must not drop the row.
+fn an_update_moving_a_row_alone_in_its_session_moves_that_session_to_the_new_time() {
+	// The 01:10 session holds only this row, so after the move a fresh run starts it at 01:15, not 01:10.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, x: int4 } AS {
@@ -499,7 +511,7 @@ fn an_update_to_a_time_the_session_tracker_refuses_stays_in_its_old_session() {
 	assert_eq!(
 		rows,
 		vec![
-			("2026-01-01T00:01:10.000000000Z".to_string(), "1".to_string(), "8".to_string()),
+			("2026-01-01T00:01:15.000000000Z".to_string(), "1".to_string(), "8".to_string()),
 			("2026-01-01T00:01:40.000000000Z".to_string(), "1".to_string(), "7".to_string()),
 		]
 	);
@@ -581,8 +593,8 @@ fn an_update_changing_the_group_moves_a_row_into_the_new_groups_session() {
 }
 
 #[test]
-fn an_update_changing_the_group_to_a_time_the_new_session_refuses_drops_the_row() {
-	// Keeping a refused row in its old session would count a g 2 row under g 1.
+fn an_update_changing_the_group_opens_a_session_in_the_new_group_at_the_row_time() {
+	// Keeping the row in its old group would count a g 2 row under g 1; dropping it loses a row a fresh run keeps.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
@@ -595,12 +607,23 @@ fn an_update_changing_the_group_to_a_time_the_new_session_refuses_drops_the_row(
 	insert(&db, 2, 2, 7, "2026-01-01T00:01:40Z");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
 	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
-	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
+	db.await_row_count("FROM app::w | filter { g == 2 }", 2, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
-	assert_eq!(text(&column_values(&frames[0], "g")), vec!["2".to_string()]);
-	assert_eq!(text(&column_values(&frames[0], "s")), vec!["2026-01-01T00:01:40.000000000Z".to_string()]);
-	assert_eq!(text(&column_values(&frames[0], "n")), vec!["1".to_string()]);
+	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))
+		.into_iter()
+		.zip(text(&column_values(&frames[0], "s")))
+		.zip(text(&column_values(&frames[0], "n")))
+		.map(|((g, start), n)| (g, start, n))
+		.collect();
+	rows.sort();
+	assert_eq!(
+		rows,
+		vec![
+			("2".to_string(), "2026-01-01T00:01:10.000000000Z".to_string(), "1".to_string()),
+			("2".to_string(), "2026-01-01T00:01:40.000000000Z".to_string(), "1".to_string()),
+		]
+	);
 }
 
 #[test]
@@ -664,8 +687,8 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_session() {
 }
 
 #[test]
-fn a_row_dropped_by_a_refused_group_change_and_moved_back_leaves_no_stale_session() {
-	// A stale old-group index would still name the 01:10 session, so the delete would empty row 3's session.
+fn a_row_moved_to_another_group_and_back_then_deleted_leaves_no_stale_session() {
+	// A stale old-group index would still name row 1's old session, so the delete would empty row 3's session.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime } AS {
@@ -694,12 +717,12 @@ fn a_row_dropped_by_a_refused_group_change_and_moved_back_leaves_no_stale_sessio
 		.collect();
 	rows.sort();
 	let session = |g: &str, s: &str| (g.to_string(), format!("2026-01-01T00:{s}.000000000Z"), "1".to_string());
-	assert_eq!(rows, vec![session("1", "01:10"), session("2", "01:40")]);
+	assert_eq!(rows, vec![session("1", "01:15"), session("2", "01:40")]);
 }
 
 #[test]
-fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
-	// A late row can pull a new session back onto the closed one's start, so only the end must tell them apart.
+fn late_rows_within_the_gap_of_a_closed_session_are_refused_and_leave_both_spans_as_published() {
+	// Closed means final: admitting the late rows would merge them into the open session across the closed one.
 	let db = setup();
 	source(&db);
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, s: datetime, e: datetime } AS {
@@ -714,7 +737,8 @@ fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
 	insert(&db, 3, 1, 7, "2026-01-01T00:01:42Z");
 	insert(&db, 4, 1, 7, "2026-01-01T00:01:40Z");
-	db.await_row_count("FROM app::w | filter { n == 3 }", 1, TIMEOUT);
+	insert(&db, 5, 1, 7, "2026-01-01T00:01:55Z");
+	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
 	let mut spans: Vec<(String, String)> =
@@ -724,7 +748,7 @@ fn two_sessions_of_one_group_can_share_a_start_but_never_an_end() {
 		spans,
 		vec![
 			("2026-01-01T00:01:40.000000000Z".to_string(), "2026-01-01T00:01:50.000000000Z".to_string()),
-			("2026-01-01T00:01:40.000000000Z".to_string(), "2026-01-01T00:02:01.000000000Z".to_string()),
+			("2026-01-01T00:01:51.000000000Z".to_string(), "2026-01-01T00:02:05.000000000Z".to_string()),
 		]
 	);
 }

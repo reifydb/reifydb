@@ -137,7 +137,7 @@ fn a_sliding_percentile_view_equals_the_median_of_each_window_through_inserts_de
 
 #[test]
 fn a_session_percentile_view_equals_the_median_of_each_session_through_inserts_deletes_and_updates() {
-	// A delete must not move a session boundary, so a digest that follows the rows but not the sessions goes wrong.
+	// Deleting minute 1 leaves minutes 0 and 2 one gap apart, so row 1 splits into its own session.
 	let db = memory();
 	declare(&db, &[("s", "session", P50, "gap: 2m, lateness: 1h")]);
 	let arrivals: [(i32, i32, u64, f64, u64); 9] = [
@@ -167,6 +167,7 @@ fn a_session_percentile_view_equals_the_median_of_each_session_through_inserts_d
 
 	db.command("DELETE app::t FILTER { id == 3 }");
 	table.remove(&3);
+	table.get_mut(&1).expect("row 1 is live").1 = 2;
 	assert_view(&db, "s", &["p50"], sessions(&table), "delete a row inside the first session");
 
 	db.command("UPDATE app::t { v: 1.0 } FILTER { id == 9 }");

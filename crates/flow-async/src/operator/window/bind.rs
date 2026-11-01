@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	key::operator::state::GroupId,
@@ -15,6 +17,7 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{
+		aggregation::core::SlotRow,
 		host::HostContext,
 		state::seal::{
 			coord::Coord,
@@ -27,9 +30,13 @@ use crate::{
 		coord::EventCoord,
 		kind::{
 			ordinal_window_span,
-			session::{SessionKind, SessionTracker},
+			session::{
+				SessionKind,
+				open::{Member, OpenSession, OpenSessions, SessionIds},
+			},
 			sliding::SlidingOverTime,
 		},
+		meta::OpenSessionsState,
 		mint::Mint,
 		span::WindowSpan,
 	},
@@ -72,22 +79,63 @@ impl WindowOperator {
 		self.session_kind().seal_rule(self.lateness().unwrap_or_else(Duration::zero))
 	}
 
-	pub(super) fn load_session_tracker(
+	pub(super) fn load_open_sessions(
 		&mut self,
 		store: &mut dyn StateStore,
 		group_hash: Hash128,
-	) -> Result<SessionTracker> {
-		let group = self.partition_group(group_hash);
-		self.meta_slot().load_session(store, group)
+	) -> Result<OpenSessions<DateTime>> {
+		Ok(self.load_open_sessions_of(store, from_ref(&group_hash))?.remove(0))
 	}
 
-	pub(super) fn stored_session_trackers(
+	pub(super) fn load_open_sessions_of(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hashes: &[Hash128],
-	) -> Result<Vec<Option<SessionTracker>>> {
+	) -> Result<Vec<OpenSessions<DateTime>>> {
+		let gap = self.session_gap();
 		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
-		self.meta_slot().stored_sessions(host, &groups)
+		let states = self.meta_slot().load_open_sessions_of(store, &groups)?;
+		Ok(states.into_iter().map(|state| open_sessions_of(gap, state)).collect())
+	}
+
+	pub(super) fn save_open_sessions(
+		&mut self,
+		store: &mut dyn StateStore,
+		groups: &[(Hash128, &OpenSessions<DateTime>)],
+	) -> Result<()> {
+		let states = groups
+			.iter()
+			.map(|(hash, open)| {
+				let state = OpenSessionsState {
+					sessions: open
+						.sessions()
+						.iter()
+						.map(|session| {
+							(
+								session.id,
+								session.members
+									.iter()
+									.map(|m| (m.at.to_order(), m.row.0))
+									.collect(),
+							)
+						})
+						.collect(),
+					sealed_last: open.sealed_last().map(|at| at.to_order()),
+				};
+				(self.partition_group(*hash), state)
+			})
+			.collect();
+		self.meta_slot().save_open_sessions(store, states)
+	}
+
+	pub(super) fn load_session_member(
+		&mut self,
+		store: &mut dyn StateStore,
+		group_hash: Hash128,
+		session_id: u64,
+		row_number: RowNumber,
+	) -> Result<SlotRow> {
+		self.meta_slot().load_session_member(store, GroupId::window(group_hash, session_id), row_number)
 	}
 
 	pub(super) fn drop_session_trackers(
@@ -97,16 +145,6 @@ impl WindowOperator {
 	) -> Result<()> {
 		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
 		self.meta_slot().drop_sessions(host, &groups)
-	}
-
-	pub(super) fn save_session_tracker(
-		&mut self,
-		host: &mut dyn HostContext,
-		group_hash: Hash128,
-		tracker: &SessionTracker,
-	) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		self.meta_slot().save_session(host, group, tracker)
 	}
 
 	fn sliding_over_time(&self) -> Option<SlidingOverTime> {
@@ -178,8 +216,14 @@ impl WindowOperator {
 		group_hash: Hash128,
 		session_id: u64,
 		row_number: RowNumber,
+		member: &SlotRow,
 	) -> Result<()> {
-		self.meta_slot().store_session_member(store, GroupId::window(group_hash, session_id), row_number)
+		self.meta_slot().store_session_member(
+			store,
+			GroupId::window(group_hash, session_id),
+			row_number,
+			member,
+		)
 	}
 
 	pub(super) fn drop_session_member(
@@ -205,4 +249,35 @@ impl WindowOperator {
 		let ledger = self.seal_ledger(host)?;
 		Ok(SealGate::new(rule, Some(ledger), watermark))
 	}
+}
+
+fn open_sessions_of(gap: Duration, state: Option<OpenSessionsState>) -> OpenSessions<DateTime> {
+	let Some(state) = state else {
+		return OpenSessions::new(gap, SessionIds::StartTime);
+	};
+	let sessions = state
+		.sessions
+		.into_iter()
+		.map(|(id, members)| {
+			let members: Vec<Member<DateTime>> = members
+				.into_iter()
+				.map(|(at, row)| Member {
+					at: <DateTime as Coord>::from_order(at),
+					row: RowNumber(row),
+				})
+				.collect();
+			OpenSession {
+				id,
+				start: members[0].at,
+				last: members[members.len() - 1].at,
+				members,
+			}
+		})
+		.collect();
+	OpenSessions::resumed(
+		gap,
+		SessionIds::StartTime,
+		sessions,
+		state.sealed_last.map(<DateTime as Coord>::from_order),
+	)
 }

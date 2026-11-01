@@ -40,9 +40,9 @@ use crate::{
 			reaper::{drain, enqueue},
 			seal::{
 				coord::Coord,
-				gate::{rearm_seal, seal_move},
+				gate::{SealGate, rearm_seal, seal_move},
 				ledger::FiredAt,
-				rule::SealRule,
+				rule::{SealRule, SealedThrough},
 				sweep::SealSweep,
 			},
 		},
@@ -50,13 +50,12 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
-		coord::EventCoord,
 		engine::{AccumulatorEvent, ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
-			session::{SessionKind, SessionTracker},
+			session::open::{Insertion, Member, OpenSessions, Removal},
 		},
-		meta::{EngineMeta, EngineMetaKey, RowIndexKey},
+		meta::{EngineMeta, EngineMetaKey, RowIndexKey, SessionKey, SessionMemberKey},
 		prefetch::Prefetched,
 		span::WindowSpan,
 	},
@@ -331,20 +330,9 @@ pub fn apply_sliding_engine(
 
 type SealedWindows = HashSet<(Hash128, WindowSpan<DateTime>)>;
 
-struct BatchTracker {
-	loaded: SessionTracker,
-	current: SessionTracker,
-	sessions: Vec<(u64, SessionTracker)>,
-}
-
-impl BatchTracker {
-	fn admitted(&self, hash: Hash128, sealed: &SealedWindows) -> Option<SessionTracker> {
-		self.sessions
-			.iter()
-			.rev()
-			.find(|(session_id, _)| !sealed.contains(&(hash, ordinal_window_span(*session_id))))
-			.map(|(_, tracker)| *tracker)
-	}
+struct GroupSessions {
+	loaded_due: Option<u64>,
+	open: OpenSessions<DateTime>,
 }
 
 struct IndexEvent {
@@ -375,37 +363,222 @@ fn withdraw_sealed_admissions(
 	Ok(())
 }
 
-fn session_assign(
+fn earliest_due(open: &OpenSessions<DateTime>, gap: Duration) -> Option<u64> {
+	open.sessions()
+		.iter()
+		.map(|session| session.last)
+		.min()
+		.or(open.sealed_last())
+		.map(|last| last.saturating_add(gap).to_order())
+}
+
+fn group_sessions<'a>(
 	operator: &mut WindowOperator,
 	store: &mut dyn StateStore,
+	groups: &'a mut HashMap<Hash128, GroupSessions>,
 	hash: Hash128,
-	event_ts: DateTime,
-	kind: &SessionKind,
-	trackers: &mut HashMap<Hash128, BatchTracker>,
-	bounds: &mut SessionBounds,
-) -> Result<Option<u64>> {
-	let batch = match trackers.entry(hash) {
-		Entry::Occupied(entry) => entry.into_mut(),
-		Entry::Vacant(entry) => {
-			let loaded = operator.load_session_tracker(store, hash)?;
-			entry.insert(BatchTracker {
-				loaded,
-				current: loaded,
-				sessions: Vec::new(),
-			})
+	horizon: DateTime,
+	gap: Duration,
+) -> Result<&'a mut OpenSessions<DateTime>> {
+	if let Entry::Vacant(entry) = groups.entry(hash) {
+		let mut open = operator.load_open_sessions(store, hash)?;
+		let loaded_due = earliest_due(&open, gap);
+		for closed in open.close(horizon) {
+			for member in &closed.members {
+				operator.drop_session_member(store, hash, closed.id, member.row)?;
+				operator.withdraw_row_index(store, hash, member.row, closed.id)?;
+			}
 		}
-	};
-	let mut tracker = batch.current;
-	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
-	if let Some(session_id) = assignment.session_id() {
-		batch.current = tracker;
-		match batch.sessions.last_mut() {
-			Some((last, state)) if *last == session_id => *state = tracker,
-			_ => batch.sessions.push((session_id, tracker)),
-		}
-		bounds.insert((hash, session_id), (tracker.start, tracker.last));
+		entry.insert(GroupSessions {
+			loaded_due,
+			open,
+		});
 	}
-	Ok(assignment.session_id())
+	Ok(&mut groups.get_mut(&hash).expect("the group was loaded above").open)
+}
+
+struct SessionPass<'a> {
+	routing: &'a mut Routing,
+	groups: &'a mut HashMap<Hash128, GroupSessions>,
+	index_events: &'a mut Vec<IndexEvent>,
+	horizon: DateTime,
+	gap: Duration,
+}
+
+impl SessionPass<'_> {
+	fn move_members(
+		&mut self,
+		operator: &mut WindowOperator,
+		store: &mut dyn StateStore,
+		hash: Hash128,
+		gvals: &[Value],
+		from: u64,
+		to: u64,
+		members: &[Member<DateTime>],
+	) -> Result<()> {
+		for member in members {
+			let slot = operator.load_session_member(store, hash, from, member.row)?;
+			let coord = slot_coord(false, member.at, member.row.0);
+			push_count_event(
+				self.routing,
+				hash,
+				gvals,
+				ordinal_window_span(from),
+				coord,
+				AccumulatorEvent::Remove(slot.clone()),
+				member.at,
+			);
+			push_count_event(
+				self.routing,
+				hash,
+				gvals,
+				ordinal_window_span(to),
+				coord,
+				AccumulatorEvent::Add(slot.clone()),
+				member.at,
+			);
+			operator.withdraw_row_index(store, hash, member.row, from)?;
+			operator.store_row_index(store, hash, member.row, to)?;
+			operator.drop_session_member(store, hash, from, member.row)?;
+			operator.store_session_member(store, hash, to, member.row, &slot)?;
+		}
+		Ok(())
+	}
+
+	fn admit(
+		&mut self,
+		operator: &mut WindowOperator,
+		store: &mut dyn StateStore,
+		hash: Hash128,
+		gvals: &[Value],
+		at: DateTime,
+		row: RowNumber,
+		contribution: SlotRow,
+	) -> Result<bool> {
+		let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
+		let target = match open.insert(at, row, self.horizon) {
+			Insertion::Refused => return Ok(false),
+			Insertion::Opened(id) | Insertion::Extended(id) => id,
+			Insertion::Merged {
+				survivor,
+				absorbed,
+			} => {
+				for session in &absorbed {
+					self.move_members(
+						operator,
+						store,
+						hash,
+						gvals,
+						session.id,
+						survivor,
+						&session.members,
+					)?;
+				}
+				survivor
+			}
+		};
+		operator.store_row_index(store, hash, row, target)?;
+		operator.store_session_member(store, hash, target, row, &contribution)?;
+		self.index_events.push(IndexEvent {
+			hash,
+			row_number: row,
+			session_id: target,
+			added: true,
+		});
+		push_count_event(
+			self.routing,
+			hash,
+			gvals,
+			ordinal_window_span(target),
+			slot_coord(false, at, row.0),
+			AccumulatorEvent::Add(contribution),
+			at,
+		);
+		Ok(true)
+	}
+
+	fn retract(
+		&mut self,
+		operator: &mut WindowOperator,
+		store: &mut dyn StateStore,
+		hash: Hash128,
+		gvals: &[Value],
+		at: DateTime,
+		row: RowNumber,
+		contribution: SlotRow,
+	) -> Result<()> {
+		for session_id in operator.lookup_row_index(store, hash, row)? {
+			let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
+			let Some(removal) = open.remove(session_id, row)? else {
+				continue;
+			};
+			push_count_event(
+				self.routing,
+				hash,
+				gvals,
+				ordinal_window_span(session_id),
+				slot_coord(false, at, row.0),
+				AccumulatorEvent::Remove(contribution.clone()),
+				at,
+			);
+			self.index_events.push(IndexEvent {
+				hash,
+				row_number: row,
+				session_id,
+				added: false,
+			});
+			operator.drop_session_member(store, hash, session_id, row)?;
+			if let Removal::Split {
+				kept,
+				moved,
+			} = removal
+			{
+				self.move_members(operator, store, hash, gvals, kept, moved.id, &moved.members)?;
+			}
+		}
+		operator.drop_row_index(store, hash, row)
+	}
+
+	fn revalue(
+		&mut self,
+		operator: &mut WindowOperator,
+		store: &mut dyn StateStore,
+		hash: Hash128,
+		gvals: &[Value],
+		at: DateTime,
+		row: RowNumber,
+		pre: SlotRow,
+		post: SlotRow,
+	) -> Result<()> {
+		for session_id in operator.lookup_row_index(store, hash, row)? {
+			let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
+			if !open.sessions().iter().any(|session| session.id == session_id) {
+				continue;
+			}
+			let coord = slot_coord(false, at, row.0);
+			let span = ordinal_window_span(session_id);
+			push_count_event(
+				self.routing,
+				hash,
+				gvals,
+				span,
+				coord,
+				AccumulatorEvent::Remove(pre.clone()),
+				at,
+			);
+			push_count_event(
+				self.routing,
+				hash,
+				gvals,
+				span,
+				coord,
+				AccumulatorEvent::Add(post.clone()),
+				at,
+			);
+			operator.store_session_member(store, hash, session_id, row, &post)?;
+		}
+		Ok(())
+	}
 }
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
@@ -415,279 +588,131 @@ pub fn apply_session_engine(
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let kind = operator.session_kind();
+	let rule = operator.session_rule();
+	let gap = operator.session_gap();
+	let horizon = operator.seal_gate(host, rule)?.horizon();
 
 	let mut routing = Routing::default();
-	let mut trackers: HashMap<Hash128, BatchTracker> = HashMap::new();
-	let mut bounds: SessionBounds = HashMap::new();
+	let mut groups: HashMap<Hash128, GroupSessions> = HashMap::new();
 	let mut index_events: Vec<IndexEvent> = Vec::new();
 	let mut refused = 0u64;
 
 	let grouped = count_routing_groups(operator, &change)?;
 	let keys = row_index_keys(operator, &change, &grouped)?;
 	let mut store = Prefetched::read(host, keys)?;
-	for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => {
-				let groups = &diff_groups.post;
-				let post_rows = required_row_numbers(post)?;
-				let timestamps = operator.row_times(post, post.num_rows())?;
-				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
-				let views = operator.core.slot_views(post, &slot_cols)?;
-				for row_idx in 0..post.num_rows() {
-					let (hash, gvals) = groups.row(row_idx);
-					let event_ts = timestamps[row_idx];
-					let row_number = post_rows[row_idx];
-					let Some(session_id) = session_assign(
-						operator,
-						&mut store,
-						*hash,
-						event_ts,
-						&kind,
-						&mut trackers,
-						&mut bounds,
-					)?
-					else {
-						refused += 1;
-						continue;
-					};
-					operator.store_row_index(&mut store, *hash, row_number, session_id)?;
-					operator.store_session_member(&mut store, *hash, session_id, row_number)?;
-					index_events.push(IndexEvent {
-						hash: *hash,
-						row_number,
-						session_id,
-						added: true,
-					});
-					let contribution = views.contribution(row_idx, timestamps[row_idx]);
-					let coord = slot_coord(false, event_ts, row_number.0);
-					push_count_event(
-						&mut routing,
-						*hash,
-						gvals,
-						ordinal_window_span(session_id),
-						coord,
-						AccumulatorEvent::Add(contribution),
-						event_ts,
-					);
-				}
-			}
-			Diff::Remove {
-				pre,
-				..
-			} => {
-				let groups = &diff_groups.pre;
-				let pre_rows = required_row_numbers(pre)?;
-				let timestamps = operator.row_times(pre, pre.num_rows())?;
-				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
-				let views = operator.core.slot_views(pre, &slot_cols)?;
-				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = groups.row(row_idx);
-					let event_ts = timestamps[row_idx];
-					let contribution = views.contribution(row_idx, timestamps[row_idx]);
-					let coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
-					for session_id in
-						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?
-					{
-						push_count_event(
-							&mut routing,
-							*hash,
-							gvals,
-							ordinal_window_span(session_id),
-							coord,
-							AccumulatorEvent::Remove(contribution.clone()),
-							event_ts,
-						);
-						index_events.push(IndexEvent {
-							hash: *hash,
-							row_number: pre_rows[row_idx],
-							session_id,
-							added: false,
-						});
-						operator.drop_session_member(
+	{
+		let mut pass = SessionPass {
+			routing: &mut routing,
+			groups: &mut groups,
+			index_events: &mut index_events,
+			horizon,
+			gap,
+		};
+		for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => {
+					let post_rows = required_row_numbers(post)?;
+					let timestamps = operator.row_times(post, post.num_rows())?;
+					let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+					let views = operator.core.slot_views(post, &slot_cols)?;
+					for row_idx in 0..post.num_rows() {
+						let (hash, gvals) = diff_groups.post.row(row_idx);
+						let at = timestamps[row_idx];
+						let contribution = views.contribution(row_idx, at);
+						if !pass.admit(
+							operator,
 							&mut store,
 							*hash,
-							session_id,
+							gvals,
+							at,
+							post_rows[row_idx],
+							contribution,
+						)? {
+							refused += 1;
+						}
+					}
+				}
+				Diff::Remove {
+					pre,
+					..
+				} => {
+					let pre_rows = required_row_numbers(pre)?;
+					let timestamps = operator.row_times(pre, pre.num_rows())?;
+					let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+					let views = operator.core.slot_views(pre, &slot_cols)?;
+					for row_idx in 0..pre.num_rows() {
+						let (hash, gvals) = diff_groups.pre.row(row_idx);
+						let at = timestamps[row_idx];
+						let contribution = views.contribution(row_idx, at);
+						pass.retract(
+							operator,
+							&mut store,
+							*hash,
+							gvals,
+							at,
 							pre_rows[row_idx],
+							contribution,
 						)?;
 					}
-					operator.drop_row_index(&mut store, *hash, pre_rows[row_idx])?;
 				}
-			}
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				let groups = &diff_groups.pre;
-				let pre_rows = required_row_numbers(pre)?;
-				let post_groups = &diff_groups.post;
-				let post_rows = required_row_numbers(post)?;
-				let timestamps = operator.row_times(post, post.num_rows())?;
-				let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
-				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
-				let post_cols = operator.core.evaluate_slot_inputs(post)?;
-				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
-				let post_views = operator.core.slot_views(post, &post_cols)?;
-				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = groups.row(row_idx);
-					let (post_hash, post_gvals) = post_groups.row(row_idx);
-					let event_ts = timestamps[row_idx];
-					let existing =
-						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?;
-					if existing.is_empty() {
-						if let Some(session_id) = session_assign(
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					let pre_rows = required_row_numbers(pre)?;
+					let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
+					let timestamps = operator.row_times(post, post.num_rows())?;
+					let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
+					let post_cols = operator.core.evaluate_slot_inputs(post)?;
+					let pre_views = operator.core.slot_views(pre, &pre_cols)?;
+					let post_views = operator.core.slot_views(post, &post_cols)?;
+					for row_idx in 0..pre.num_rows() {
+						let (hash, gvals) = diff_groups.pre.row(row_idx);
+						let (post_hash, post_gvals) = diff_groups.post.row(row_idx);
+						let row = pre_rows[row_idx];
+						let (pre_at, at) = (pre_timestamps[row_idx], timestamps[row_idx]);
+						let pre_contrib = pre_views.contribution(row_idx, pre_at);
+						let post_contrib = post_views.contribution(row_idx, at);
+						let indexed =
+							!operator.lookup_row_index(&mut store, *hash, row)?.is_empty();
+						if indexed && post_hash == hash && pre_at == at {
+							pass.revalue(
+								operator,
+								&mut store,
+								*hash,
+								gvals,
+								at,
+								row,
+								pre_contrib,
+								post_contrib,
+							)?;
+							continue;
+						}
+						if indexed {
+							pass.retract(
+								operator,
+								&mut store,
+								*hash,
+								gvals,
+								pre_at,
+								row,
+								pre_contrib,
+							)?;
+						}
+						if !pass.admit(
 							operator,
 							&mut store,
 							*post_hash,
-							event_ts,
-							&kind,
-							&mut trackers,
-							&mut bounds,
+							post_gvals,
+							at,
+							row,
+							post_contrib,
 						)? {
-							operator.store_row_index(
-								&mut store,
-								*post_hash,
-								post_rows[row_idx],
-								session_id,
-							)?;
-							operator.store_session_member(
-								&mut store,
-								*post_hash,
-								session_id,
-								post_rows[row_idx],
-							)?;
-							index_events.push(IndexEvent {
-								hash: *post_hash,
-								row_number: post_rows[row_idx],
-								session_id,
-								added: true,
-							});
-							let contribution =
-								post_views.contribution(row_idx, timestamps[row_idx]);
-							let coord = slot_coord(false, event_ts, post_rows[row_idx].0);
-							push_count_event(
-								&mut routing,
-								*post_hash,
-								post_gvals,
-								ordinal_window_span(session_id),
-								coord,
-								AccumulatorEvent::Add(contribution),
-								event_ts,
-							);
-						} else {
 							refused += 1;
-						}
-					} else {
-						let pre_contrib =
-							pre_views.contribution(row_idx, pre_timestamps[row_idx]);
-						let post_contrib =
-							post_views.contribution(row_idx, timestamps[row_idx]);
-						let pre_coord =
-							slot_coord(false, pre_timestamps[row_idx], pre_rows[row_idx].0);
-						let post_coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
-						let regrouped = post_hash != hash;
-						let assigned = if regrouped
-							|| pre_timestamps[row_idx] != timestamps[row_idx]
-						{
-							session_assign(
-								operator,
-								&mut store,
-								*post_hash,
-								event_ts,
-								&kind,
-								&mut trackers,
-								&mut bounds,
-							)?
-						} else {
-							None
-						};
-						let targets = match assigned {
-							Some(session_id) => {
-								operator.drop_row_index(
-									&mut store,
-									*hash,
-									pre_rows[row_idx],
-								)?;
-								for prior in &existing {
-									operator.drop_session_member(
-										&mut store,
-										*hash,
-										*prior,
-										pre_rows[row_idx],
-									)?;
-								}
-								operator.store_row_index(
-									&mut store,
-									*post_hash,
-									pre_rows[row_idx],
-									session_id,
-								)?;
-								operator.store_session_member(
-									&mut store,
-									*post_hash,
-									session_id,
-									pre_rows[row_idx],
-								)?;
-								vec![session_id]
-							}
-							None if regrouped => {
-								operator.drop_row_index(
-									&mut store,
-									*hash,
-									pre_rows[row_idx],
-								)?;
-								for prior in &existing {
-									operator.drop_session_member(
-										&mut store,
-										*hash,
-										*prior,
-										pre_rows[row_idx],
-									)?;
-								}
-								refused += 1;
-								Vec::new()
-							}
-							None => existing.clone(),
-						};
-						for session_id in existing {
-							push_count_event(
-								&mut routing,
-								*hash,
-								gvals,
-								ordinal_window_span(session_id),
-								pre_coord,
-								AccumulatorEvent::Remove(pre_contrib.clone()),
-								pre_timestamps[row_idx],
-							);
-							index_events.push(IndexEvent {
-								hash: *hash,
-								row_number: pre_rows[row_idx],
-								session_id,
-								added: false,
-							});
-						}
-						if let Some(session_id) = assigned {
-							index_events.push(IndexEvent {
-								hash: *post_hash,
-								row_number: pre_rows[row_idx],
-								session_id,
-								added: true,
-							});
-						}
-						for session_id in targets {
-							push_count_event(
-								&mut routing,
-								*post_hash,
-								post_gvals,
-								ordinal_window_span(session_id),
-								post_coord,
-								AccumulatorEvent::Add(post_contrib.clone()),
-								event_ts,
-							);
 						}
 					}
 				}
@@ -697,8 +722,6 @@ pub fn apply_session_engine(
 
 	store.write()?;
 
-	let rule = operator.session_rule();
-	let gap = operator.session_gap();
 	operator.note_refused_rows(refused);
 
 	let Routed {
@@ -720,23 +743,26 @@ pub fn apply_session_engine(
 	if !sealed.is_empty() {
 		withdraw_sealed_admissions(operator, host, &index_events, &sealed)?;
 	}
-	let mut moves = Vec::with_capacity(trackers.len());
-	for (hash, batch) in &trackers {
-		let Some(tracker) = batch.admitted(*hash, &sealed) else {
-			continue;
-		};
-		let before = (!batch.loaded.is_unopened()).then(|| batch.loaded.last.saturating_add(gap).to_order());
-		operator.save_session_tracker(host, *hash, &tracker)?;
-		moves.push(seal_move(
-			rule,
-			tracker_key(*hash),
-			before,
-			Some(tracker.last.saturating_add(gap).to_order()),
-		));
+	let mut bounds: SessionBounds = HashMap::new();
+	let mut moves = Vec::with_capacity(groups.len());
+	let mut emptied = Vec::new();
+	let mut saving = Vec::with_capacity(groups.len());
+	for (hash, group) in &groups {
+		for session in group.open.sessions() {
+			bounds.insert((*hash, session.id), (session.start, session.last));
+		}
+		if group.open.sessions().is_empty() && group.open.sealed_last().is_none() {
+			emptied.push(*hash);
+		} else {
+			saving.push((*hash, &group.open));
+		}
+		moves.push(seal_move(rule, tracker_key(*hash), group.loaded_due, earliest_due(&group.open, gap)));
 	}
+	operator.save_open_sessions(host, &saving)?;
+	operator.drop_session_trackers(host, &emptied)?;
 	host.rearm_timers(TimerKind::Seal, &moves)?;
 
-	let groups = intern_batch(&arrival);
+	let interned = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
@@ -749,7 +775,7 @@ pub fn apply_session_engine(
 		&group_values,
 		arrival,
 		window_max_ts,
-		&groups,
+		&interned,
 		&kinds,
 		engine_config,
 		engine_immutable,
@@ -926,7 +952,7 @@ pub fn seal_session_engines(
 	};
 	let rule = operator.session_rule();
 	let diffs = seal_due_windows(operator, host, FiredAt::of(latest), rule, timers.len())?;
-	retire_session_trackers(operator, host, timers)?;
+	retire_session_trackers(operator, host, timers, FiredAt::of(latest))?;
 	Ok(diffs)
 }
 
@@ -934,37 +960,59 @@ fn tracker_key(hash: Hash128) -> EncodedKey {
 	EncodedKey::new(hash.0.to_be_bytes())
 }
 
-fn retire_session_trackers(operator: &mut WindowOperator, host: &mut dyn HostContext, timers: &[Timer]) -> Result<()> {
-	let fired: Vec<(Hash128, FiredAt)> = timers
+fn retire_session_trackers(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	timers: &[Timer],
+	fired: FiredAt,
+) -> Result<()> {
+	let mut hashes: Vec<Hash128> = timers
 		.iter()
 		.filter(|timer| !timer.key.as_slice().is_empty())
 		.map(|timer| {
-			let hash = Hash128(u128::from_be_bytes(
+			Hash128(u128::from_be_bytes(
 				timer.key
 					.as_slice()
 					.try_into()
 					.expect("a session tracker timer is keyed by its group hash"),
-			));
-			(hash, FiredAt::of(timer))
+			))
 		})
 		.collect();
-	if fired.is_empty() {
+	hashes.sort();
+	hashes.dedup();
+	if hashes.is_empty() {
 		return Ok(());
 	}
 	let rule = operator.session_rule();
 	let gap = operator.session_gap();
-	let hashes: Vec<Hash128> = fired.iter().map(|(hash, _)| *hash).collect();
-	let trackers = operator.stored_session_trackers(host, &hashes)?;
-	let mut retired = HashSet::new();
-	let mut sealed = Vec::new();
-	for ((hash, at), tracker) in fired.iter().zip(trackers) {
-		if tracker.is_some_and(|tracker| rule.seal_instant(tracker.last.saturating_add(gap)).at() <= at.at())
-			&& retired.insert(*hash)
-		{
-			sealed.push(*hash);
+	let watermark = host.flow_watermark()?;
+	let horizon = SealGate::new(rule, Some(SealedThrough::from_order(fired.at().to_order())), watermark).horizon();
+	let loaded = operator.load_open_sessions_of(host, &hashes)?;
+	let mut removes: Vec<GroupStateKey> = Vec::new();
+	let mut saves = Vec::new();
+	let mut moves = Vec::new();
+	for (hash, mut open) in hashes.into_iter().zip(loaded) {
+		let group = operator.partition_group(hash);
+		for closed in open.close(horizon) {
+			for member in &closed.members {
+				removes.push((&SessionMemberKey(GroupId::window(hash, closed.id), member.row))
+					.into_group_state_key());
+				removes.push((&RowIndexKey(group, member.row)).into_group_state_key());
+			}
+		}
+		if open.sessions().is_empty() {
+			removes.push((&SessionKey(group)).into_group_state_key());
+		} else {
+			moves.push(seal_move(rule, tracker_key(hash), None, earliest_due(&open, gap)));
+			saves.push((hash, open));
 		}
 	}
-	operator.drop_session_trackers(host, &sealed)
+	let saving: Vec<(Hash128, &OpenSessions<DateTime>)> = saves.iter().map(|(hash, open)| (*hash, open)).collect();
+	operator.save_open_sessions(host, &saving)?;
+	if !removes.is_empty() {
+		host.state_remove(&removes)?;
+	}
+	host.rearm_timers(TimerKind::Seal, &moves)
 }
 
 pub fn seal_engine_windows(
@@ -1181,7 +1229,10 @@ mod seal_arm_tests {
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
 		},
-		window::engine::WindowReindex,
+		window::{
+			engine::WindowReindex,
+			kind::session::open::{OpenSession, SessionIds},
+		},
 	};
 
 	const SIZE_MS: u64 = 10_000;
@@ -1310,37 +1361,51 @@ mod seal_arm_tests {
 	}
 
 	#[test]
-	fn each_tracker_in_a_seal_run_retires_against_its_own_due_not_the_latest() {
-		// Judging a stale timer by the run's latest due retires a session that was extended past it.
+	fn a_seal_run_keeps_a_group_with_a_session_ahead_of_the_horizon_and_retires_one_behind_it() {
+		// Retiring a group whose session is still ahead of the horizon drops a live session and its later rows.
 		let engine = TestEngine::new();
 		let mut operator = session_window();
 		let id = operator.core.operator;
 		let mut txn = txn_at(&engine, 100);
-		let (extended, closing) = (Hash128::from(1u128), Hash128::from(2u128));
+		let (alive, closing) = (Hash128::from(1u128), Hash128::from(2u128));
+		let gap = Duration::from_milliseconds_const(1_000);
+		let one_session = |millis: i64| {
+			let at = at_millis(millis);
+			OpenSessions::resumed(
+				gap,
+				SessionIds::StartTime,
+				vec![OpenSession {
+					id: at.to_order(),
+					start: at,
+					last: at,
+					members: vec![Member {
+						at,
+						row: RowNumber(1),
+					}],
+				}],
+				None,
+			)
+		};
 		let mut host = TxnHostContext::new(&mut txn, id);
-		operator.save_session_tracker(
-			&mut host,
-			extended,
-			&SessionTracker::resumed(1, at_millis(1_050), at_millis(1_000)),
-		)
-		.unwrap();
-		operator.save_session_tracker(
-			&mut host,
-			closing,
-			&SessionTracker::resumed(2, at_millis(1_100), at_millis(1_100)),
-		)
-		.unwrap();
+		let (alive_sessions, closing_sessions) = (one_session(2_500), one_session(1_100));
+		operator.save_open_sessions(&mut host, &[(alive, &alive_sessions), (closing, &closing_sessions)])
+			.unwrap();
 
 		seal_session_engines(
 			&mut operator,
 			&mut host,
-			&[tracker_timer(extended, 3_001), tracker_timer(closing, 3_101)],
+			&[tracker_timer(alive, 3_001), tracker_timer(closing, 3_101)],
 		)
 		.unwrap();
 
-		let left = operator.stored_session_trackers(&mut host, &[extended, closing]).unwrap();
-		assert!(left[0].is_some(), "a tracker extended past its stale timer must survive the run");
-		assert!(left[1].is_none(), "a tracker whose own due reached its seal instant must retire");
+		let alive_left = operator.load_open_sessions(&mut host, alive).unwrap();
+		let closing_left = operator.load_open_sessions(&mut host, closing).unwrap();
+		assert_eq!(alive_left.sessions().len(), 1, "a session ahead of the horizon must survive the seal run");
+		assert!(
+			closing_left.sessions().is_empty(),
+			"a session behind the horizon must close and its group retire"
+		);
+		assert_eq!(closing_left.sealed_last(), None, "a retired group keeps no state behind");
 	}
 
 	#[test]

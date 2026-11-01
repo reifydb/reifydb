@@ -712,6 +712,17 @@ pub fn flow_operator_with_session_lateness(lateness: Duration) -> Diagnostic {
 	)
 }
 
+pub fn flow_operator_with_session_immutable(immutable: Duration) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_093",
+		format!(
+			"a session window splits and merges its sessions and takes no immutable span (immutable: {})",
+			immutable
+		),
+		"Remove immutable, or set immutable: 0s.",
+	)
+}
+
 pub fn flow_operator_with_session_zero_gap() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_079",

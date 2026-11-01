@@ -135,21 +135,21 @@ fn a_session_a_row_has_left_is_not_resurrected_by_a_later_update() {
 	// Four steps, and the last one is the claim:
 	//
 	//   1. row 1 at 17890 opens session 0
-	//   2. row 2 at 18381 is more than the gap ahead, so session 0 closes and 1 opens
-	//   3. row 1 is withdrawn, emptying session 0, and re-arrives at 17890 - now refused, because it sits more than
-	//      a gap before the open session's start
+	//   2. row 2 at 18381 is more than the gap ahead, so it opens session 1; the watermark then closes session 0
+	//   3. row 1 is withdrawn from the closed session, which stays final, and re-arrives at 17890 - refused,
+	//      because it lands within the gap of the closed session
 	//   4. row 1 is updated
 	//
-	// After 3 row 1 belongs to no session at all, so 4 must publish nothing. It used to find row 1's
-	// membership record from step 1 - never cleaned up - treat the row as still filed in session 0,
-	// and amend that closed and empty session into existence carrying the update's new value.
+	// After 3 row 1 belongs to no session at all, so 4 must publish nothing. A stale membership record from
+	// step 1 would treat the row as still filed in session 0 and amend that closed session back into existence.
 	const GAP_MS: i64 = 200;
 	let mut h = harness(WindowKind::Session {
 		gap: Duration::from_milliseconds(GAP_MS).expect("representable"),
 	});
 
 	h.apply(generator::insert(vec![valued(1, 94, 17_890)])).expect("the first row opens a session");
-	h.apply(generator::insert(vec![valued(2, 97, 18_381)])).expect("the second row rotates the session");
+	h.apply(generator::insert(vec![valued(2, 97, 18_381)])).expect("the second row opens a second session");
+	h.settle_timers(18_300).expect("the watermark closes the first session");
 
 	h.apply(generator::remove(vec![valued(1, 94, 17_890)])).expect("the first row is withdrawn");
 	let refused = h.apply(generator::insert(vec![valued(1, 72, 17_890)])).expect("the first row re-arrives");

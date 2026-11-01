@@ -1,58 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! What a session window owes: one aggregate per stretch of activity that never went quiet for
-//! longer than the gap.
+//! What a session window owes: one aggregate per stretch of live rows that never went quiet for the gap.
 //!
-//! The assignment rule is restated here rather than called, but `SessionKind::assign` is not what
-//! this is aiming at - that has its own unit tests. What no test covers is the threading: one tracker
-//! per group, shared across a batch and reloaded between them, with removes that must not move a
-//! boundary and updates that reassign a row only when its time moves. A rule this short is worth
-//! restating to get at that.
+//! Restated from the rule, not from the operator: the expectation is a fresh run over the rows that are
+//! live now, sorted by time and cut wherever two neighbours are at least a gap apart. Removes and moved
+//! times therefore shrink, split and merge sessions exactly as a rerun from scratch would. Sealing is not
+//! driven here, so no session is ever closed and no row is ever refused.
 //!
-//! A group with three sessions is three rows sharing a group value, each with its own end. Starts
-//! can repeat (a late row can pull a new session back onto the closed one's start), ends cannot,
-//! so the expectation is keyed on the group plus `window::end()`.
+//! A group with three sessions is three rows sharing a group value, each with its own end, so the
+//! expectation is keyed on the group plus `window::end()`.
 
 use std::collections::BTreeMap;
 
 use reifydb_testing_chaos::operator::{expectation::KeyedMultiset, model::Model, view::RowKey};
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{
-	framework::workload::WindowRow,
-	operators::{
-		percentile::no_rows,
-		window::{grid::Fold, seal::Seal},
-	},
-};
+use crate::{framework::workload::WindowRow, operators::window::grid::Fold};
 
-/// Mirrors `SessionTracker`: `opened` is carried rather than inferred from `last == 0`, because the
-/// epoch is a real coordinate a corpus does draw.
-#[derive(Debug, Clone, Copy, Default)]
-struct Tracker {
-	session: u64,
-	last: u64,
-	start: u64,
-	opened: bool,
-}
-
-struct Contribution {
-	row: RowNumber,
+struct LiveRow {
 	group: i32,
-	session: u64,
 	coord: u64,
 	value: i64,
-	live: bool,
 }
 
 pub struct SessionOracle {
 	gap_ms: u64,
 	fold: Fold,
-	trackers: BTreeMap<i32, Tracker>,
-	contributions: Vec<Contribution>,
-	immutable_ms: Option<u64>,
-	seals: BTreeMap<(i32, u64), Seal>,
+	rows: BTreeMap<RowNumber, LiveRow>,
 }
 
 impl SessionOracle {
@@ -60,86 +35,38 @@ impl SessionOracle {
 		Self {
 			gap_ms,
 			fold,
-			trackers: BTreeMap::new(),
-			contributions: Vec::new(),
-			immutable_ms: None,
-			seals: BTreeMap::new(),
+			rows: BTreeMap::new(),
 		}
-	}
-
-	pub fn with_immutable(mut self, immutable_ms: u64) -> Self {
-		assert_eq!(
-			self.fold,
-			Fold::PercentileNextToMin,
-			"only a percentile next to a min is modelled under immutable"
-		);
-		self.immutable_ms = Some(immutable_ms);
-		self
-	}
-
-	fn file(&mut self, row: RowNumber, group: i32, session: u64, coord: u64, value: i64) {
-		self.contributions.push(Contribution {
-			row,
-			group,
-			session,
-			coord,
-			value,
-			live: true,
-		});
-		if let Some(immutable_ms) = self.immutable_ms {
-			self.seals.entry((group, session)).or_default().push(coord, row, immutable_ms);
-		}
-	}
-
-	/// None where the row belongs to a session that has already moved on: it is dropped rather than
-	/// misfiled, so it must not reach the corpus as live either.
-	fn assign(&mut self, group: i32, coord: u64) -> Option<u64> {
-		let gap = self.gap_ms;
-		let tracker = self.trackers.entry(group).or_default();
-
-		if !tracker.opened {
-			tracker.last = coord;
-			tracker.start = coord;
-			tracker.opened = true;
-			return Some(tracker.session);
-		}
-		if coord > tracker.last && coord - tracker.last >= gap {
-			tracker.session += 1;
-			tracker.last = coord;
-			tracker.start = coord;
-			return Some(tracker.session);
-		}
-		if coord < tracker.start && tracker.start - coord >= gap {
-			return None;
-		}
-		tracker.last = tracker.last.max(coord);
-		tracker.start = tracker.start.min(coord);
-		Some(tracker.session)
 	}
 
 	fn folded(&self) -> Vec<Vec<Value>> {
-		let mut grouped: BTreeMap<(i32, u64), Vec<i64>> = BTreeMap::new();
-		for c in self.contributions.iter().filter(|c| c.live) {
-			grouped.entry((c.group, c.session)).or_default().push(c.value);
+		let mut by_group: BTreeMap<i32, Vec<(u64, i64)>> = BTreeMap::new();
+		for row in self.rows.values() {
+			by_group.entry(row.group).or_default().push((row.coord, row.value));
 		}
-		let frozen = self
-			.seals
-			.iter()
-			.filter(|(key, seal)| seal.holds_a_frozen_row() && !grouped.contains_key(*key))
-			.map(|((group, _), _)| vec![Value::Int4(*group), no_rows()]);
-		let mut out: Vec<Vec<Value>> = grouped
-			.iter()
-			.map(|((group, _), values)| vec![Value::Int4(*group), self.fold.apply(values)])
-			.chain(frozen)
-			.collect();
+		let mut out: Vec<Vec<Value>> = Vec::new();
+		for (group, mut points) in by_group {
+			points.sort();
+			let mut session: Vec<i64> = Vec::new();
+			let mut previous: Option<u64> = None;
+			for (coord, value) in points {
+				if previous.is_some_and(|previous| coord > previous && coord - previous >= self.gap_ms)
+				{
+					out.push(vec![Value::Int4(group), self.fold.apply(&session)]);
+					session.clear();
+				}
+				session.push(value);
+				previous = Some(coord);
+			}
+			out.push(vec![Value::Int4(group), self.fold.apply(&session)]);
+		}
 		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		out
 	}
 }
 
-/// The group plus the published `window::end()`: a group's session ends strictly increase, while two
-/// sessions can share a start. Keying on the group alone would let a group's sessions satisfy each
-/// other's totals.
+/// The group plus the published `window::end()`: a group's session ends strictly increase. Keying on the
+/// group alone would let a group's sessions satisfy each other's totals.
 fn session_row_key() -> RowKey {
 	RowKey::columns(["g", "e"])
 }
@@ -149,95 +76,53 @@ impl Model<WindowRow> for SessionOracle {
 
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
-			number: row,
+			number,
 			group,
 			coord_ms,
 			value,
 		} = *event;
-		match self.assign(group, coord_ms) {
-			Some(session) => {
-				self.file(row, group, session, coord_ms, value);
-				true
-			}
-			None => false,
-		}
+		let previous = self.rows.insert(
+			number,
+			LiveRow {
+				group,
+				coord: coord_ms,
+				value,
+			},
+		);
+		assert!(previous.is_none(), "the driver admits row {number:?} while it is still live");
+		true
 	}
 
 	fn retract(&mut self, event: &WindowRow) {
-		// Deliberately leaves the tracker alone. A session's boundaries are a record of what arrived,
-		// not of what is still live, so withdrawing the row that opened a session must not let the
-		// next arrival rejoin the one before it.
-		let WindowRow {
-			number: row,
-			value,
-			..
-		} = *event;
-
-		// A refused row has no contribution to withdraw, and the corpus still holds it because the
-		// driver commits a row to its live set before the model can decline it. Tolerated for that
-		// reason only: a row that WAS filed must still be found, or a divergence would go quiet.
-		if let Some(c) = self.contributions.iter_mut().find(|c| c.live && c.row == row) {
-			assert_eq!(
-				c.value, value,
-				"the driver retracts the value it last admitted for row {row:?}; a mismatch means \
-				 the oracle and the corpus have diverged"
-			);
-			c.live = false;
-			if let Some(seal) = self.seals.get_mut(&(c.group, c.session)) {
-				seal.remove(c.coord, c.row);
-			}
-		}
+		// Withdrawing a row must let its session shrink or split, since a fresh run never saw it.
+		let removed = self.rows.remove(&event.number);
+		let removed = removed
+			.unwrap_or_else(|| panic!("the driver retracts row {:?} it never admitted", event.number));
+		assert_eq!(
+			removed.value, event.value,
+			"the driver retracts the value it last admitted for row {:?}; a mismatch means the oracle and \
+			 the corpus have diverged",
+			event.number
+		);
 	}
 
 	fn update(&mut self, pre: &WindowRow, post: &WindowRow) {
-		// A filed row changes session only on a moved time the tracker files; a refused time must stay put.
+		// A moved time or group leaves and rejoins like a fresh row; the sessions are recomputed from scratch.
 		assert_eq!(pre.number, post.number, "an update must not change a row's number");
-
-		// `c.live` is load-bearing: a row the corpus retracted and re-admitted has more than one
-		// contribution under the same number, and the dead one comes first.
-		if let Some(idx) = self.contributions.iter().position(|c| c.live && c.row == pre.number) {
-			assert_eq!(
-				self.contributions[idx].value, pre.value,
-				"the driver updates from the value it last admitted"
-			);
-			let moved_to = if pre.coord_ms != post.coord_ms {
-				self.assign(post.group, post.coord_ms)
-			} else {
-				None
-			};
-			let c = &mut self.contributions[idx];
-			if let Some(seal) = self.seals.get_mut(&(c.group, c.session)) {
-				seal.remove(c.coord, c.row);
-			}
-			match moved_to {
-				Some(session) => {
-					c.live = false;
-					self.file(post.number, post.group, session, post.coord_ms, post.value);
-				}
-				None => {
-					c.value = post.value;
-					c.coord = post.coord_ms;
-					if let (Some(immutable_ms), Some(seal)) =
-						(self.immutable_ms, self.seals.get_mut(&(c.group, c.session)))
-					{
-						seal.push(c.coord, c.row, immutable_ms);
-					}
-				}
-			}
-			return;
-		}
-
-		// Only reachable for a row that was refused on arrival. The operator looks a row up before
-		// deciding, and finding nothing sends it back through the assignment - so an update is a
-		// second chance at a session, and the tracker may well have moved on enough to grant one.
-		if let Some(session) = self.assign(post.group, post.coord_ms) {
-			self.file(post.number, post.group, session, post.coord_ms, post.value);
-		}
+		let row = self
+			.rows
+			.get_mut(&pre.number)
+			.unwrap_or_else(|| panic!("the driver updates row {:?} it never admitted", pre.number));
+		assert_eq!(row.value, pre.value, "the driver updates from the value it last admitted");
+		*row = LiveRow {
+			group: post.group,
+			coord: post.coord_ms,
+			value: post.value,
+		};
 	}
 
 	fn advance_ledger(&mut self, _at_ms: u64) {
-		// The sweeps hold seal_pct at 0: sealing a session is the same machinery a grid window uses,
-		// and modelling it here would restate that rather than the assignment this suite is for.
+		// The sweeps hold seal_pct at 0, so no session closes and closed-means-final never applies here.
 	}
 
 	fn live(&self) -> KeyedMultiset {

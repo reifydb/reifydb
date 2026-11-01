@@ -167,9 +167,17 @@ impl ApplyWith {
 		if !gap.is_positive() {
 			return Err(CoreError::OperatorWithSessionZeroGap.into());
 		}
-		match self.lateness_duration()? {
-			Some(lateness) if lateness.is_positive() => Err(CoreError::OperatorWithSessionLateness {
+		if let Some(lateness) = self.lateness_duration()?
+			&& lateness.is_positive()
+		{
+			return Err(CoreError::OperatorWithSessionLateness {
 				lateness,
+			}
+			.into());
+		}
+		match duration_span("immutable", self.immutable)? {
+			Some(immutable) if immutable.is_positive() => Err(CoreError::OperatorWithSessionImmutable {
+				immutable,
 			}
 			.into()),
 			_ => Ok(()),
@@ -823,6 +831,31 @@ mod tests {
 			};
 			assert_eq!(with.window_session_gap(), None, "a {name} window has no session gap");
 		}
+	}
+
+	#[test]
+	fn check_session_window_refuses_a_positive_immutable_span_only_on_a_session() {
+		// A frozen row cannot follow its session through a split or merge, so it would count twice.
+		let with = |window: WindowKind, immutable: Option<WithSpan>| ApplyWith {
+			window: Some(window),
+			lateness: None,
+			immutable,
+			retention: None,
+		};
+		let session = WindowKind::Session {
+			gap: secs(30),
+		};
+		let tumbling = WindowKind::Tumbling {
+			size: WindowSize::Duration(secs(60)),
+		};
+
+		assert!(with(session.clone(), None).check_session_window().is_ok());
+		assert!(with(session.clone(), Some(WithSpan::Duration(secs(0)))).check_session_window().is_ok());
+		assert_eq!(
+			with(session, Some(WithSpan::Duration(secs(1)))).check_session_window().unwrap_err().0.code,
+			"FLOW_093"
+		);
+		assert!(with(tumbling, Some(WithSpan::Duration(secs(1)))).check_session_window().is_ok());
 	}
 
 	#[test]
