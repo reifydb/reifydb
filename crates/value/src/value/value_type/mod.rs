@@ -476,6 +476,9 @@ impl FromStr for ValueType {
 			let inner = ValueType::from_str(inner_str)?;
 			return Ok(ValueType::Option(Box::new(inner)));
 		}
+		if let Some((name, args)) = s.strip_suffix(')').and_then(|rest| rest.split_once('(')) {
+			return parse_composite(name.trim(), &split_top_level(args));
+		}
 		match upper.as_str() {
 			"BOOL" | "BOOLEAN" => Ok(ValueType::Boolean),
 			"FLOAT4" => Ok(ValueType::Float4),
@@ -507,6 +510,66 @@ impl FromStr for ValueType {
 	}
 }
 
+fn parse_composite(name: &str, args: &[&str]) -> Result<ValueType, ()> {
+	match (name.to_uppercase().as_str(), args) {
+		("OPTION", [inner]) => Ok(ValueType::Option(Box::new(ValueType::from_str(inner)?))),
+		("LIST", [inner]) => Ok(ValueType::List(Box::new(ValueType::from_str(inner)?))),
+		("DECIMAL", [precision, scale]) => {
+			let precision = Precision::try_new(precision.parse().map_err(|_| ())?).map_err(|_| ())?;
+			let scale = Scale::try_new_with_precision(scale.parse().map_err(|_| ())?, precision)
+				.map_err(|_| ())?;
+			Ok(ValueType::decimal(precision, scale))
+		}
+		("ENUM", [name]) => Ok(ValueType::Enum(name.to_string())),
+		("TUPLE", types) => types.iter().map(|ty| ValueType::from_str(ty)).collect::<Result<_, _>>().map(ValueType::Tuple),
+		("RECORD", fields) => fields
+			.iter()
+			.map(|field| {
+				let (name, ty) = field.split_once(':').ok_or(())?;
+				Ok((name.trim().to_string(), ValueType::from_str(ty.trim())?))
+			})
+			.collect::<Result<_, _>>()
+			.map(ValueType::Record),
+		("DIGEST", [inner, accuracy]) => Ok(ValueType::Digest {
+			inner: Box::new(ValueType::from_str(inner)?),
+			accuracy: parse_accuracy(accuracy)?,
+		}),
+		_ => Err(()),
+	}
+}
+
+fn parse_accuracy(text: &str) -> Result<u32, ()> {
+	let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+	if fraction.len() > 6 || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+		return Err(());
+	}
+	let whole: u32 = whole.parse().map_err(|_| ())?;
+	let fraction: u32 = format!("{fraction:0<6}").parse().map_err(|_| ())?;
+	whole.checked_mul(1_000_000).and_then(|whole| whole.checked_add(fraction)).ok_or(())
+}
+
+fn split_top_level(args: &str) -> Vec<&str> {
+	if args.trim().is_empty() {
+		return Vec::new();
+	}
+	let mut parts = Vec::new();
+	let mut depth = 0usize;
+	let mut start = 0;
+	for (index, character) in args.char_indices() {
+		match character {
+			'(' => depth += 1,
+			')' => depth = depth.saturating_sub(1),
+			',' if depth == 0 => {
+				parts.push(args[start..index].trim());
+				start = index + 1;
+			}
+			_ => {}
+		}
+	}
+	parts.push(args[start..].trim());
+	parts
+}
+
 #[cfg(test)]
 mod tests {
 	use std::str::FromStr;
@@ -521,6 +584,48 @@ mod tests {
 		assert_eq!(ValueType::DECIMAL.to_string(), "Decimal");
 		assert_eq!(ValueType::decimal(Precision::new(10), Scale::new(2)).to_string(), "Decimal(10, 2)");
 		assert_eq!(ValueType::decimal(Precision::new(76), Scale::new(2)).to_string(), "Decimal(76, 2)");
+	}
+
+	#[test]
+	fn every_displayed_type_parses_back_to_itself() {
+		// Readers of system::columns rebuild types from this text, so a lossy parse silently drops Option or decimal scale.
+		let types = vec![
+			ValueType::Int4,
+			ValueType::DECIMAL,
+			ValueType::decimal(Precision::new(10), Scale::new(2)),
+			ValueType::Option(Box::new(ValueType::Utf8)),
+			ValueType::Option(Box::new(ValueType::decimal(Precision::new(12), Scale::new(4)))),
+			ValueType::List(Box::new(ValueType::Option(Box::new(ValueType::Int8)))),
+			ValueType::Enum("color".to_string()),
+			ValueType::Tuple(vec![ValueType::Int1, ValueType::decimal(Precision::new(5), Scale::new(1))]),
+			ValueType::Tuple(Vec::new()),
+			ValueType::Record(vec![
+				("a".to_string(), ValueType::Utf8),
+				("b".to_string(), ValueType::List(Box::new(ValueType::Uint2))),
+			]),
+			ValueType::Record(Vec::new()),
+			ValueType::Digest {
+				inner: Box::new(ValueType::Float8),
+				accuracy: 5_000_000,
+			},
+			ValueType::Digest {
+				inner: Box::new(ValueType::Float8),
+				accuracy: 950_000,
+			},
+		];
+		for ty in types {
+			assert_eq!(ValueType::from_str(&ty.to_string()), Ok(ty.clone()), "{ty}");
+		}
+	}
+
+	#[test]
+	fn a_malformed_composite_is_rejected_not_guessed() {
+		// A wrong arity or a bad number must fail, otherwise a reader gets a plausible but different type.
+		assert_eq!(ValueType::from_str("Option(Int4, Int8)"), Err(()));
+		assert_eq!(ValueType::from_str("Decimal(10)"), Err(()));
+		assert_eq!(ValueType::from_str("Decimal(10, x)"), Err(()));
+		assert_eq!(ValueType::from_str("Digest(Float8, 0.1234567)"), Err(()));
+		assert_eq!(ValueType::from_str("Utf8(32)"), Err(()));
 	}
 
 	#[test]
