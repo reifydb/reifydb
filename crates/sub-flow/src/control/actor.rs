@@ -162,6 +162,7 @@ pub struct FlowActorState {
 	pending_holds: WatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
+	checkpoint_replies: Vec<Box<dyn FnOnce() + Send>>,
 	view_cursors: HashMap<FlowId, CommitVersion>,
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
 	asked: HashMap<FlowId, CommitVersion>,
@@ -387,7 +388,10 @@ impl FlowActor {
 			return;
 		}
 		state.last_checkpoint_at = now;
+		self.checkpoint_cursor(state, ctx);
+	}
 
+	fn checkpoint_cursor(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let advance_to = state.cursor;
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints.push((
@@ -945,12 +949,16 @@ impl FlowActor {
 				state.cursor_lsn = state.pending_lsn;
 				state.durable_cursor = advance_to;
 				state.last_checkpoint_at = self.clock.now();
+				for reply in take(&mut state.checkpoint_replies) {
+					reply();
+				}
 				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
 				self.resume_after_commit(state, ctx, more);
 			}
 			Err(e) => {
 				state.pending_view_cursors.clear();
+				state.checkpoint_replies.clear();
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
 		}
@@ -1174,6 +1182,7 @@ impl Actor for FlowActor {
 			pending_holds: WatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
+			checkpoint_replies: Vec::new(),
 			view_cursors: HashMap::new(),
 			pending_view_cursors: HashMap::new(),
 			asked: HashMap::new(),
@@ -1273,6 +1282,21 @@ impl Actor for FlowActor {
 			} => {
 				self.on_tick_committed(state, ctx, result);
 				self.stop_if_pending(state)
+			}
+			FlowActorMessage::CheckpointNow {
+				reply,
+			} => {
+				if state.poisoned || state.backfilling || state.awaiting_load {
+					return Directive::Continue;
+				}
+				if state.committing {
+					state.checkpoint_replies.push(reply);
+				} else if state.cursor > state.durable_cursor {
+					state.checkpoint_replies.push(reply);
+					state.last_checkpoint_at = self.clock.now();
+					self.checkpoint_cursor(state, ctx);
+				}
+				Directive::Continue
 			}
 			FlowActorMessage::Stop {
 				delete_checkpoint,
@@ -3532,6 +3556,51 @@ mod tick_failures {
 		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
 
 		assert_eq!(tracker.ticks(), vec![(FLOW, 1)], "a landed tick commit must count as one completed tick");
+	}
+
+	#[test]
+	fn a_checkpoint_request_saves_a_fresh_cursor_and_replies_once_it_lands() {
+		// A lagging member that waits out the checkpoint age before saving stalls its unit join past any test
+		// wait.
+		let (_te, _health, actor) = quiet_actor();
+		let now = actor.clock.now();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().backfilling = false;
+		harness.state_mut().cursor = CommitVersion(7);
+		harness.state_mut().durable_cursor = CommitVersion(3);
+		harness.state_mut().last_checkpoint_at = now;
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+
+		harness.send(FlowActorMessage::CheckpointNow {
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the request must be handled");
+		assert!(
+			harness.state().committing,
+			"a cursor ahead of its checkpoint must save now, not after the age"
+		);
+		assert!(
+			!replied.load(Ordering::SeqCst),
+			"the reply must wait for the commit, otherwise the join reads a stale checkpoint"
+		);
+
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(7),
+			more: false,
+			result: Ok(()),
+			committed: Some(CommitVersion(8)),
+		});
+		harness.process_one();
+		assert_eq!(
+			harness.state().durable_cursor,
+			CommitVersion(7),
+			"the landed save must be the requested cursor"
+		);
+		assert!(
+			replied.load(Ordering::SeqCst),
+			"a landed save must reply, otherwise the join waits for the stall tick"
+		);
 	}
 
 	#[test]

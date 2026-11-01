@@ -114,6 +114,8 @@ pub enum FlowSupervisorMessage {
 		joiners: Vec<(FlowId, ViewId)>,
 	},
 
+	TryJoin,
+
 	Loaded {
 		outcome: ValueResult<Loaded>,
 	},
@@ -782,9 +784,34 @@ impl FlowSupervisor {
 			let Some(head_at) = stored_checkpoint(&operators, unit.head) else {
 				continue;
 			};
-			if !joiners.iter().all(|(member, _)| {
-				stored_checkpoint(&operators, *member).is_some_and(|at| at.version >= head_at.version)
-			}) {
+			let lagging: Vec<FlowId> = joiners
+				.iter()
+				.map(|(member, _)| *member)
+				.filter(|member| {
+					!stored_checkpoint(&operators, *member)
+						.is_some_and(|at| at.version >= head_at.version)
+				})
+				.collect();
+			if !lagging.is_empty() {
+				for member in lagging {
+					let self_ref = ctx.self_ref().clone();
+					let reply = Box::new(move || {
+						let _ = self_ref.send(FlowSupervisorMessage::TryJoin);
+					});
+					let handle = state.flows.get(&member).expect("a lagging joiner is running");
+					if handle
+						.actor_ref()
+						.send(FlowActorMessage::CheckpointNow {
+							reply,
+						})
+						.is_err()
+					{
+						panic!(
+							"flow {} stopped before it could checkpoint for unit {}",
+							member.0, unit.head.0
+						);
+					}
+				}
 				continue;
 			}
 			self.stop_for_join(state, ctx, unit.head, joiners);
@@ -1235,6 +1262,7 @@ impl Actor for FlowSupervisor {
 				head,
 				joiners,
 			} => self.handle_join(state, head, joiners),
+			FlowSupervisorMessage::TryJoin => self.try_join(state, ctx),
 			FlowSupervisorMessage::Loaded {
 				outcome,
 			} => self.handle_loaded(state, ctx, outcome),

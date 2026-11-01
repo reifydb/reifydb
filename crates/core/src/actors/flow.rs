@@ -48,6 +48,10 @@ pub enum FlowActorMessage {
 		result: Result<()>,
 	},
 
+	CheckpointNow {
+		reply: Box<dyn FnOnce() + Send>,
+	},
+
 	Stop {
 		delete_checkpoint: bool,
 		reply: Box<dyn FnOnce() + Send>,
