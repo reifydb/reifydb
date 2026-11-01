@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, fmt::Debug};
+use std::fmt::Debug;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -27,7 +27,6 @@ use reifydb_flow_async::{
 		engine::{
 			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
 			publish::PublishState,
-			tumbling::TumblingBuckets,
 			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
 		},
 		settings::WindowSettings,
@@ -50,7 +49,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			group_of,
+			Routing, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Emit, WindowedOperator, extract_rows},
@@ -68,8 +67,7 @@ enum Decision {
 }
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
-type Buckets<A, K, V> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
-type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
+type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
 type Engine<A, K, V> = RetainedTumblingEngine<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, K, V>;
 
 pub struct RetainedDriver<A, K, V>
@@ -107,7 +105,7 @@ where
 	}
 
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A, K, V>> {
-		let mut buckets: Buckets<A, K, V> = BTreeMap::new();
+		let mut buckets: Buckets<A, K, V> = Routing::default();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -150,7 +148,7 @@ where
 			} else {
 				AccumulatorEvent::Remove(contribution)
 			};
-			buckets.entry((group, span)).or_default().push(event);
+			buckets.push(group, span, event);
 		}
 		Ok(())
 	}
@@ -204,10 +202,11 @@ where
 		reap_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
 		ctx: &mut C,
-		mut buckets: Buckets<A, K, V>,
+		routing: Buckets<A, K, V>,
 	) -> Result<Emitted<A>> {
 		let now = ctx.written_at();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
+		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
@@ -228,6 +227,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
+			order.retain(|key| buckets.contains_key(key));
 			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
@@ -241,7 +241,6 @@ where
 
 		let results = {
 			let mut store = GuestAsHost(ctx);
-			let order: WindowOrder<A> = buckets.keys().cloned().collect();
 			engine.apply(&mut store, buckets, &order, |group, window_start| {
 				group_of(&groups, group, window_start)
 			})?
@@ -434,7 +433,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::marker::PhantomData;
+	use std::{collections::BTreeMap, marker::PhantomData};
 
 	use reifydb_core::common::{WindowKind, WindowSize};
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};

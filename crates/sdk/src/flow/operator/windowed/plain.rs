@@ -31,7 +31,7 @@ use reifydb_flow_async::{
 			publish::{PublishState, RowPublisher},
 			session::{GuestSession, SessionEngine},
 			sliding::SlidingEngine,
-			tumbling::{TumblingBuckets, TumblingEngine},
+			tumbling::TumblingEngine,
 		},
 		kind::session::SessionAssignment,
 		meta::NoKey,
@@ -57,7 +57,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			RollingGroups, WindowGroups, group_of,
+			RollingGroups, Routing, WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator, batch_len, extract_rows},
@@ -72,8 +72,7 @@ use crate::{
 const SEAL_REAP_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
-type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
-type WindowOrder<A> = Vec<(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)>;
+type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
 type Trackers<A> = BTreeMap<
 	<A as WindowedOperator>::GroupKey,
 	(GroupId, GuestSession<<A as WindowedOperator>::Coord>, GuestSession<<A as WindowedOperator>::Coord>),
@@ -184,7 +183,7 @@ where
 	}
 
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
-		let mut buckets: Buckets<A> = BTreeMap::new();
+		let mut buckets: Buckets<A> = Routing::default();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -231,7 +230,7 @@ where
 						} else {
 							AccumulatorEvent::Remove(contribution.clone())
 						};
-						buckets.entry((group.clone(), span)).or_default().push(event);
+						buckets.push(group.clone(), span, event);
 					}
 				}
 				None => {
@@ -241,7 +240,7 @@ where
 					} else {
 						AccumulatorEvent::Remove(contribution)
 					};
-					buckets.entry((group, span)).or_default().push(event);
+					buckets.push(group, span, event);
 				}
 			}
 		}
@@ -423,10 +422,11 @@ where
 		seal_span: Option<SealSpan<A>>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
-		mut buckets: Buckets<A>,
+		routing: Buckets<A>,
 	) -> Result<Emitted<A>> {
 		let now = ctx.written_at();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
+		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
@@ -447,6 +447,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
+			order.retain(|key| buckets.contains_key(key));
 			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
@@ -460,7 +461,6 @@ where
 
 		let results = {
 			let mut store = GuestAsHost(ctx);
-			let order: WindowOrder<A> = buckets.keys().cloned().collect();
 			engine.apply(
 				&mut store,
 				buckets,
@@ -609,10 +609,7 @@ where
 			*now = tracker;
 		}
 		engine.index_row(&mut GuestAsHost(ctx), id, session_group, row)?;
-		batch.buckets
-			.entry((group, Self::session_span(id)))
-			.or_default()
-			.push(AccumulatorEvent::Add(contribution));
+		batch.buckets.push(group, Self::session_span(id), AccumulatorEvent::Add(contribution));
 		Ok(())
 	}
 
@@ -657,10 +654,7 @@ where
 			return Ok(());
 		};
 		engine.unindex_row(&mut GuestAsHost(ctx), session_group, row)?;
-		batch.buckets
-			.entry((group, Self::session_span(id)))
-			.or_default()
-			.push(AccumulatorEvent::Remove(contribution));
+		batch.buckets.push(group, Self::session_span(id), AccumulatorEvent::Remove(contribution));
 		Ok(())
 	}
 
@@ -853,7 +847,7 @@ where
 			trackers: BTreeMap::new(),
 			sessions: BTreeMap::new(),
 			absent: BTreeSet::new(),
-			buckets: BTreeMap::new(),
+			buckets: Routing::default(),
 			dropped: 0,
 			refused: 0,
 		};
@@ -913,17 +907,17 @@ where
 							engine, &mut batch, ctx, pre_group, number, horizon,
 						)? {
 							Holder::Held(id, _) => {
-								let events = batch
-									.buckets
-									.entry((
-										pre_group.clone(),
-										Self::session_span(id),
-									))
-									.or_default();
-								events.push(AccumulatorEvent::Remove(
-									pre_value.clone(),
-								));
-								events.push(AccumulatorEvent::Add(post_value.clone()));
+								let span = Self::session_span(id);
+								batch.buckets.push(
+									pre_group.clone(),
+									span,
+									AccumulatorEvent::Remove(pre_value.clone()),
+								);
+								batch.buckets.push(
+									pre_group.clone(),
+									span,
+									AccumulatorEvent::Add(post_value.clone()),
+								);
 							}
 							Holder::Sealed => {}
 							Holder::Absent => Self::admit_session_row(
@@ -988,10 +982,11 @@ where
 			trackers,
 			sessions,
 			absent: _,
-			buckets,
+			buckets: routing,
 			dropped,
 			refused,
 		} = Self::route_session(aggregator, &mut mode.engine, ctx, change, horizon)?;
+		let (buckets, order) = routing.finish();
 		if dropped > 0 || refused > 0 {
 			debug!(operator = A::NAME, dropped, refused, "session mutations were dropped or refused");
 		}
@@ -1020,7 +1015,6 @@ where
 				)
 			})
 			.collect();
-		let order: WindowOrder<A> = buckets.keys().cloned().collect();
 		let results = mode.engine.tumbling_mut().apply(
 			&mut store,
 			buckets,

@@ -10,7 +10,7 @@ pub mod retained;
 pub mod top_k;
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, btree_map::Entry},
 	hash::Hash,
 };
 
@@ -29,9 +29,10 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			KeyspaceFamily,
+			AccumulatorEvent, KeyspaceFamily,
 			config::WindowEngineConfig,
 			pane::{PaneEvent, PaneGroups},
+			tumbling::TumblingBuckets,
 		},
 		settings::WindowSettings,
 		span::WindowSpan,
@@ -79,6 +80,44 @@ pub(crate) fn timer_frontier<C: SealDomain>(
 
 pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {
 	WindowSpan::for_coord(coord, size).start
+}
+
+pub(crate) struct Routing<G, C, E> {
+	buckets: TumblingBuckets<G, C, E>,
+	order: Vec<(G, WindowSpan<C>)>,
+}
+
+impl<G, C, E> Default for Routing<G, C, E> {
+	fn default() -> Self {
+		Self {
+			buckets: BTreeMap::new(),
+			order: Vec::new(),
+		}
+	}
+}
+
+impl<G, C, E> Routing<G, C, E>
+where
+	G: Clone + Ord,
+	WindowSpan<C>: Clone + Ord,
+{
+	pub(crate) fn push(&mut self, group: G, span: WindowSpan<C>, event: AccumulatorEvent<E>) {
+		match self.buckets.entry((group, span)) {
+			Entry::Occupied(mut slot) => slot.get_mut().push(event),
+			Entry::Vacant(slot) => {
+				self.order.push(slot.key().clone());
+				slot.insert(vec![event]);
+			}
+		}
+	}
+
+	pub(crate) fn is_empty(&self) -> bool {
+		self.buckets.is_empty()
+	}
+
+	pub(crate) fn finish(self) -> (TumblingBuckets<G, C, E>, Vec<(G, WindowSpan<C>)>) {
+		(self.buckets, self.order)
+	}
 }
 
 pub(crate) type WindowGroups<G, C> = HashMap<(G, C), (GroupId, EncodedKey)>;
