@@ -73,17 +73,3 @@ describe('Activity.put', () => {
     expect(calls).toBe(1)
   })
 })
-
-describe('Activity windows', () => {
-  it('sums pixels and edits only inside the window', () => {
-    // A window that ignores time would show lifetime totals as "last minute".
-    let now = 0
-    const activity = new Activity(() => now)
-    activity.put('alice', edit(0, 0, [RED, RED, RED, RED, RED]), 5)
-    now = 61_000
-    activity.put('alice', edit(1, 0, [RED, RED, RED, RED, RED, RED, RED]), 7)
-
-    expect(activity.pixelsSince(60_000)).toBe(7)
-    expect(activity.editsSince(60_000)).toBe(1)
-  })
-})

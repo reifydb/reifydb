@@ -40,16 +40,6 @@ export class Activity {
     return this.edits
   }
 
-  pixelsSince(ms: number): number {
-    const from = this.now() - ms
-    return this.edits.filter((edit) => edit.at >= from).reduce((total, edit) => total + edit.px, 0)
-  }
-
-  editsSince(ms: number): number {
-    const from = this.now() - ms
-    return this.edits.filter((edit) => edit.at >= from).length
-  }
-
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
