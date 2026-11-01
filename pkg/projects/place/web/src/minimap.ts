@@ -21,6 +21,7 @@ export interface Rect {
 
 export class Minimap {
   readonly pixels = new Uint8ClampedArray(MINIMAP_SIZE * MINIMAP_SIZE * 4)
+  readonly averaged = new Uint8ClampedArray(MINIMAP_SIZE * MINIMAP_SIZE * 4)
   private dirty: Rect | null = null
   private readonly listeners = new Set<() => void>()
   private readonly counts = new Uint16Array(PALETTE.length)
@@ -35,6 +36,7 @@ export class Minimap {
         this.pixels[offset + 1] = (rgb >> 8) & 0xff
         this.pixels[offset + 2] = rgb & 0xff
         this.pixels[offset + 3] = 0xff
+        this.average(bytes, bx, by, offset)
       }
     }
     this.mark({ x: tx * BLOCKS_PER_TILE, y: ty * BLOCKS_PER_TILE, width: BLOCKS_PER_TILE, height: BLOCKS_PER_TILE })
@@ -49,6 +51,25 @@ export class Minimap {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  private average(bytes: Uint8Array, bx: number, by: number, offset: number): void {
+    let red = 0
+    let green = 0
+    let blue = 0
+    for (let y = by * BLOCK; y < (by + 1) * BLOCK; y++) {
+      for (let x = bx * BLOCK; x < (bx + 1) * BLOCK; x++) {
+        const rgb = PALETTE[bytes[y * TILE_SIZE + x]]
+        red += (rgb >> 16) & 0xff
+        green += (rgb >> 8) & 0xff
+        blue += rgb & 0xff
+      }
+    }
+    const count = BLOCK * BLOCK
+    this.averaged[offset] = red / count
+    this.averaged[offset + 1] = green / count
+    this.averaged[offset + 2] = blue / count
+    this.averaged[offset + 3] = 0xff
   }
 
   private mode(bytes: Uint8Array, bx: number, by: number): number {

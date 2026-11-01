@@ -7,7 +7,15 @@ import { useEdits, useNow } from './activity-feed'
 
 export const PING_MS = 2600
 
-export function Pings({ activity, place }: { activity: Activity; place: (tx: number, ty: number) => { left: number; top: number } | null }) {
+export function Pings({
+  activity,
+  place,
+  labels = true,
+}: {
+  activity: Activity
+  place: (tx: number, ty: number) => { left: number; top: number } | null
+  labels?: boolean
+}) {
   const now = useNow(250)
   const edits = useEdits(activity).filter((edit) => now - edit.at < PING_MS)
   return (
@@ -18,9 +26,7 @@ export function Pings({ activity, place }: { activity: Activity; place: (tx: num
         return (
           <div key={edit.id} style={{ left: at.left, top: at.top }} className="absolute">
             <span className="ping-dot" />
-            <span className="ping-card card">
-              +{edit.px} px
-            </span>
+            {labels && <span className="ping-card card">+{edit.px} px</span>}
           </div>
         )
       })}

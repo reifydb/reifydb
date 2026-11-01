@@ -13,7 +13,6 @@ import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
 import { Account } from './account'
 import { CanvasView, useCamera } from './canvas-view'
-import { GuestBanner } from './guest-banner'
 import { useLive } from './live'
 import { Sidebar } from './sidebar'
 import { Toolbar } from './toolbar'
@@ -151,11 +150,11 @@ export function Place({ client, guest }: { client: PlaceClient; guest: GuestSess
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {!name && <GuestBanner onSignUp={() => setSignUpOpen(true)} />}
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           <CanvasView
             buffer={buffer}
+            minimap={minimap}
             camera={camera}
             activity={activity}
             pending={pending}

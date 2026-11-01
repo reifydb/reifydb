@@ -4,11 +4,13 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
 import type { Activity } from '@/activity'
+import { MINIMAP_SIZE, type Minimap } from '@/minimap'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
 import type { Pixel } from '@/pack'
 import type { PixelBuffer, Tile } from '@/pixels'
 import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
+import { GoldPlate } from './gold-plate'
 import { Pings, tileCenter } from './pings'
 import { isTyping } from './toolbar'
 
@@ -16,9 +18,13 @@ export const MIN_ZOOM = 0.5
 export const MAX_ZOOM = 32
 
 const ZOOM_STEP = 1.25
+const OVERVIEW_ZOOM = 0.25
+const MIP_LEVELS = 4
 const EDGE_MARGIN = 64
 const OUTSIDE_COLOR = '#e4e2dc'
-const BORDER_COLOR = '#1a1a1a'
+const FRAME = 28
+const FRAME_COLOR = '#3b2a1e'
+const BORDER_COLOR = '#2a1d14'
 
 export interface View {
   zoom: number
@@ -28,6 +34,7 @@ export interface View {
 
 interface CanvasViewProps {
   buffer: PixelBuffer
+  minimap: Minimap
   camera: Camera
   activity: Activity
   pending: Pending
@@ -70,7 +77,8 @@ export function useCamera(): Camera {
   const zoomAt = useCallback(
     (zoom: number, cx: number, cy: number) => {
       setView((current) => {
-        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+        const fit = (Math.min(size.width, size.height) - 2 * FRAME) / CANVAS_SIZE
+        const next = Math.min(MAX_ZOOM, Math.max(Math.min(MIN_ZOOM, fit), zoom))
         const scale = next / current.zoom
         return clampView({ zoom: next, x: cx - (cx - current.x) * scale, y: cy - (cy - current.y) * scale }, size)
       })
@@ -92,10 +100,12 @@ export function useCamera(): Camera {
   return { view, setView, size, setSize, zoomAt, zoomIn, zoomOut, reset, centerOn }
 }
 
-export function CanvasView({ buffer, camera, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, minimap, camera, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
+  const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement[]>())
+  const overviewRef = useRef<{ canvas: HTMLCanvasElement; stale: boolean } | null>(null)
+  const compositeRef = useRef<HTMLCanvasElement | null>(null)
   const gestureRef = useRef<Gesture | null>(null)
   const { view, setView, size, setSize, zoomAt, zoomIn, zoomOut, reset } = camera
   const [space, setSpace] = useState(false)
@@ -131,27 +141,58 @@ export function CanvasView({ buffer, camera, activity, pending, layerVisible, to
       const canvasSpan = CANVAS_SIZE * view.zoom
       context.fillStyle = OUTSIDE_COLOR
       context.fillRect(0, 0, canvas.width, canvas.height)
+      context.fillStyle = FRAME_COLOR
+      context.fillRect(view.x - FRAME, view.y - FRAME, canvasSpan + 2 * FRAME, canvasSpan + 2 * FRAME)
       context.clearRect(view.x, view.y, canvasSpan, canvasSpan)
-      const span = TILE_SIZE * view.zoom
-      const visible = tilesInRect(
-        -view.x / view.zoom,
-        -view.y / view.zoom,
-        (size.width - view.x) / view.zoom,
-        (size.height - view.y) / view.zoom,
-      )
-      for (const key of bitmaps.keys()) if (!visible.has(key)) bitmaps.delete(key)
-      for (const key of visible) {
-        let bitmap = bitmaps.get(key)
-        if (!bitmap) {
-          const tile = buffer.tile(key)
-          if (!tile) continue
-          bitmap = tileBitmap(tile)
-          bitmaps.set(key, bitmap)
+      if (view.zoom < OVERVIEW_ZOOM) {
+        bitmaps.clear()
+        context.drawImage(overview(minimap, overviewRef), view.x, view.y, canvasSpan, canvasSpan)
+      } else {
+        const span = TILE_SIZE * view.zoom
+        const level = view.zoom >= 1 ? 0 : Math.min(MIP_LEVELS, Math.ceil(Math.log2(1 / view.zoom)))
+        const visible = tilesInRect(
+          -view.x / view.zoom,
+          -view.y / view.zoom,
+          (size.width - view.x) / view.zoom,
+          (size.height - view.y) / view.zoom,
+        )
+        for (const key of bitmaps.keys()) if (!visible.has(key)) bitmaps.delete(key)
+        const chains: [number, number, HTMLCanvasElement[]][] = []
+        for (const key of visible) {
+          let chain = bitmaps.get(key)
+          if (!chain) {
+            const tile = buffer.tile(key)
+            if (!tile) continue
+            chain = [tileBitmap(tile)]
+            bitmaps.set(key, chain)
+          }
+          const [tx, ty] = parseTileKey(key)
+          chains.push([tx, ty, chain])
         }
-        const [tx, ty] = parseTileKey(key)
-        const left = Math.round(view.x + tx * span)
-        const top = Math.round(view.y + ty * span)
-        context.drawImage(bitmap, left, top, Math.round(view.x + (tx + 1) * span) - left, Math.round(view.y + (ty + 1) * span) - top)
+        if (level === 0) {
+          for (const [tx, ty, chain] of chains) {
+            const left = Math.round(view.x + tx * span)
+            const top = Math.round(view.y + ty * span)
+            context.drawImage(chain[0], left, top, Math.round(view.x + (tx + 1) * span) - left, Math.round(view.y + (ty + 1) * span) - top)
+          }
+        } else if (chains.length > 0) {
+          const cell = TILE_SIZE >> level
+          const tx0 = Math.min(...chains.map(([tx]) => tx))
+          const ty0 = Math.min(...chains.map(([, ty]) => ty))
+          const columns = Math.max(...chains.map(([tx]) => tx)) - tx0 + 1
+          const rows = Math.max(...chains.map(([, ty]) => ty)) - ty0 + 1
+          const composite = compositeRef.current ?? (compositeRef.current = document.createElement('canvas'))
+          composite.width = columns * cell
+          composite.height = rows * cell
+          const compositeContext = composite.getContext('2d')
+          if (!compositeContext) throw new Error('2d canvas context unavailable')
+          compositeContext.imageSmoothingEnabled = false
+          for (const [tx, ty, chain] of chains) compositeContext.drawImage(mip(chain, level), (tx - tx0) * cell, (ty - ty0) * cell)
+          context.imageSmoothingEnabled = true
+          context.imageSmoothingQuality = 'high'
+          context.drawImage(composite, view.x + tx0 * span, view.y + ty0 * span, columns * span, rows * span)
+          context.imageSmoothingEnabled = false
+        }
       }
       const cell = Math.ceil(view.zoom)
       if (layerVisible) {
@@ -188,12 +229,17 @@ export function CanvasView({ buffer, camera, activity, pending, layerVisible, to
     schedule()
     const unsubscribeBuffer = buffer.subscribe(schedule)
     const unsubscribePending = pending.subscribe(schedule)
+    const unsubscribeMinimap = minimap.subscribe(() => {
+      if (overviewRef.current) overviewRef.current.stale = true
+      if (view.zoom < OVERVIEW_ZOOM) schedule()
+    })
     return () => {
       unsubscribeBuffer()
       unsubscribePending()
+      unsubscribeMinimap()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [buffer, pending, layerVisible, view, size, preview, color, ghost])
+  }, [buffer, minimap, pending, layerVisible, view, size, preview, color, ghost])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -316,8 +362,46 @@ export function CanvasView({ buffer, camera, activity, pending, layerVisible, to
           return left < 0 || top < 0 || left > size.width || top > size.height ? null : { left, top }
         }}
       />
+      <div
+        className="absolute -translate-x-1/2 -translate-y-1/2"
+        style={{ left: view.x + (CANVAS_SIZE * view.zoom) / 2, top: view.y + CANVAS_SIZE * view.zoom + FRAME / 2 }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <GoldPlate />
+      </div>
     </div>
   )
+}
+
+function overview(minimap: Minimap, ref: { current: { canvas: HTMLCanvasElement; stale: boolean } | null }): HTMLCanvasElement {
+  if (!ref.current) {
+    const canvas = document.createElement('canvas')
+    canvas.width = MINIMAP_SIZE
+    canvas.height = MINIMAP_SIZE
+    ref.current = { canvas, stale: true }
+  }
+  if (ref.current.stale) {
+    const context = ref.current.canvas.getContext('2d')
+    if (!context) throw new Error('2d canvas context unavailable')
+    context.putImageData(new ImageData(minimap.averaged, MINIMAP_SIZE, MINIMAP_SIZE), 0, 0)
+    ref.current.stale = false
+  }
+  return ref.current.canvas
+}
+
+function mip(chain: HTMLCanvasElement[], level: number): HTMLCanvasElement {
+  while (chain.length <= level) {
+    const source = chain[chain.length - 1]
+    const half = document.createElement('canvas')
+    half.width = source.width / 2
+    half.height = source.height / 2
+    const context = half.getContext('2d')
+    if (!context) throw new Error('2d canvas context unavailable')
+    context.imageSmoothingEnabled = true
+    context.drawImage(source, 0, 0, half.width, half.height)
+    chain.push(half)
+  }
+  return chain[level]
 }
 
 function tileBitmap(tile: Tile): HTMLCanvasElement {

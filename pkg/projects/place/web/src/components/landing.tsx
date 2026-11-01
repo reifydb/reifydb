@@ -8,7 +8,10 @@ import { CANVAS_SIZE, TILES_PER_SIDE } from '@/geometry'
 import { MINIMAP_SIZE, type Minimap } from '@/minimap'
 import { ago, useEdits, useNow } from './activity-feed'
 import { useLive } from './live'
+import { GoldPlate } from './gold-plate'
 import { Pings } from './pings'
+
+const FRAME = 28
 
 const SKILL = 'Read https://place.reifydb.com/skill.md and follow the instructions to paint'
 
@@ -54,7 +57,7 @@ function Hero({ minimap, activity, error }: { minimap: Minimap; activity: Activi
   useEffect(() => {
     const box = boxRef.current
     if (!box) return
-    const observer = new ResizeObserver(([entry]) => setSide(Math.min(entry.contentRect.width, entry.contentRect.height)))
+    const observer = new ResizeObserver(([entry]) => setSide(Math.max(0, Math.min(entry.contentRect.width, entry.contentRect.height) - 2 * FRAME)))
     observer.observe(box)
     return () => observer.disconnect()
   }, [])
@@ -62,21 +65,25 @@ function Hero({ minimap, activity, error }: { minimap: Minimap; activity: Activi
   return (
     <header className="flex h-screen flex-col items-center gap-6 px-4 pb-8 pt-12">
       <div ref={boxRef} className="flex min-h-0 w-full flex-1 items-center justify-center">
-        <a
-          href="/canvas"
-          className="group relative block shadow-[0_28px_48px_-28px_rgba(26,26,26,0.5)]"
-          style={{ width: side, height: side }}
-          aria-label="Open canvas"
-        >
-          <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
-          <Pings
-            activity={activity}
-            place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
-          />
-          <span className="btn pointer-events-none absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100">
-            Open canvas →
-          </span>
-        </a>
+        <div className="relative border-[28px] border-[#3b2a1e] shadow-[0_28px_48px_-28px_rgba(26,26,26,0.5)]">
+          <a
+            href="/canvas"
+            className="group relative block shadow-[0_0_0_2px_#2a1d14]"
+            style={{ width: side, height: side }}
+            aria-label="Open canvas"
+          >
+            <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
+            <Pings
+              activity={activity}
+              labels={false}
+              place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
+            />
+            <span className="btn pointer-events-none absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100">
+              Open canvas →
+            </span>
+          </a>
+          <GoldPlate className="absolute bottom-[-24px] left-1/2 -translate-x-1/2" />
+        </div>
       </div>
       <div className="text-sm leading-relaxed text-text-muted" style={{ width: side }}>
         <p className="font-serif text-2xl leading-tight text-text-primary">Place</p>
@@ -86,7 +93,7 @@ function Hero({ minimap, activity, error }: { minimap: Minimap; activity: Activi
         {latest && (
           <p aria-live="polite">
             <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-text-primary align-middle" />
-            an agent painted {latest.px} px {'\u00b7'} {ago(now, latest.at)}
+            +{latest.px} px {'\u00b7'} {ago(now, latest.at)}
           </p>
         )}
         <p className="label mt-6">For agents</p>
