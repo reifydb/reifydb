@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::tag::type_tag_byte;
+use reifydb_codec::typeinfo::encode_value_type;
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey},
@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{dictionary::DictionaryId, value_type::ValueType},
+	value::{blob::Blob, dictionary::DictionaryId, value_type::ValueType},
 };
 
 use crate::{
@@ -57,7 +57,13 @@ impl CatalogStore {
 
 		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, to_create.name.text())?;
 
-		Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)
+		Ok(Dictionary {
+			id: dictionary_id,
+			namespace: namespace_id,
+			name: to_create.name.text().to_string(),
+			value_type: to_create.value_type,
+			id_type: to_create.id_type,
+		})
 	}
 
 	fn store_dictionary(
@@ -70,8 +76,8 @@ impl CatalogStore {
 		dictionary::set_id(&mut row, u64::from(dictionary));
 		dictionary::set_namespace(&mut row, u64::from(namespace));
 		dictionary::set_name(&mut row, to_create.name.text());
-		dictionary::set_value_type(&mut row, type_tag_byte(&to_create.value_type));
-		dictionary::set_id_type(&mut row, type_tag_byte(&to_create.id_type));
+		dictionary::set_value_type(&mut row, &type_blob(&to_create.value_type));
+		dictionary::set_id_type(&mut row, &type_blob(&to_create.id_type));
 
 		txn.set(vec![(DictionaryKey::new(dictionary).into(), row.freeze().into())])?;
 
@@ -92,6 +98,13 @@ impl CatalogStore {
 
 		Ok(())
 	}
+}
+
+fn type_blob(ty: &ValueType) -> Blob {
+	let mut bytes = Vec::new();
+	encode_value_type(ty, &mut bytes)
+		.unwrap_or_else(|error| panic!("dictionary type {ty} cannot be encoded: {error}"));
+	Blob::from(bytes)
 }
 
 #[cfg(test)]

@@ -687,23 +687,10 @@ pub mod ids {
 			pub const FIELD_INDEX: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
-			pub const CONSTRAINT_TYPE: ColumnId = ColumnId(5);
-			pub const CONSTRAINT_P1: ColumnId = ColumnId(6);
-			pub const CONSTRAINT_P2: ColumnId = ColumnId(7);
 			pub const OFFSET: ColumnId = ColumnId(8);
 			pub const SIZE: ColumnId = ColumnId(9);
 
-			pub const ALL: [ColumnId; 9] = [
-				SHAPE_FINGERPRINT,
-				FIELD_INDEX,
-				NAME,
-				TYPE,
-				CONSTRAINT_TYPE,
-				CONSTRAINT_P1,
-				CONSTRAINT_P2,
-				OFFSET,
-				SIZE,
-			];
+			pub const ALL: [ColumnId; 6] = [SHAPE_FINGERPRINT, FIELD_INDEX, NAME, TYPE, OFFSET, SIZE];
 		}
 
 		pub mod users {

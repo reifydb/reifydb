@@ -7,7 +7,7 @@ use reifydb_value::util::hash::{Hash64, xxh3_64};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	constraint::encode_type_constraint,
+	constraint::encode_type_constraint_info,
 	row::shape::{RowFamily, RowShapeField},
 };
 
@@ -83,12 +83,8 @@ pub fn compute_fingerprint(family: RowFamily, fields: &[RowShapeField]) -> RowSh
 		buffer.extend_from_slice(&name_len.to_le_bytes());
 		buffer.extend_from_slice(name_bytes);
 
-		let extern_c = encode_type_constraint(&field.constraint)
-			.expect("row shape field constraint exceeds tag capacity");
-		buffer.push(extern_c.base_type);
-		buffer.push(extern_c.constraint_type);
-		buffer.extend_from_slice(&extern_c.constraint_param1.to_le_bytes());
-		buffer.extend_from_slice(&extern_c.constraint_param2.to_le_bytes());
+		encode_type_constraint_info(&field.constraint, &mut buffer)
+			.unwrap_or_else(|error| panic!("row shape field {} cannot be encoded: {error}", field.name));
 	}
 
 	RowShapeFingerprint(xxh3_64(&buffer))

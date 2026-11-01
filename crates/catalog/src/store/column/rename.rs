@@ -26,7 +26,7 @@ impl CatalogStore {
 			column::set_id(&mut row, column::get_id(&old));
 			column::set_object(&mut row, column::get_object(&old));
 			column::set_name(&mut row, new_name);
-			column::set_value(&mut row, column::get_value(&old));
+			column::set_value_type(&mut row, &column::get_value_type(&old));
 			column::set_index(&mut row, column::get_index(&old));
 			column::set_auto_increment(&mut row, column::get_auto_increment(&old));
 			column::set_constraint(&mut row, &column::get_constraint(&old));

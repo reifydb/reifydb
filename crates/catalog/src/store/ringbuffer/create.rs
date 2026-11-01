@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
-		column::ColumnIndex,
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::{RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
@@ -25,6 +25,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
+		definition::{reject_invalid_column_list, reject_invalid_time},
 		ringbuffer::shape::{ringbuffer, ringbuffer_namespace},
 		sequence::system::SystemSequence,
 	},
@@ -57,6 +58,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
+		Self::validate_ringbuffer(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_ringbuffer(txn, namespace_id, &to_create.name)?;
 
@@ -65,11 +67,38 @@ impl CatalogStore {
 
 		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
-		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
+		let built = Self::ringbuffer_without_columns(ringbuffer_id, &to_create);
+		let columns = Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
 		if !is_partitioned {
 			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id)?;
 		}
-		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+		Ok(RingBuffer {
+			columns,
+			..built
+		})
+	}
+
+	fn validate_ringbuffer(to_create: &RingBufferToCreate) -> Result<()> {
+		reject_invalid_column_list(
+			CatalogObjectKind::RingBuffer,
+			&to_create.name,
+			"partition_by",
+			&to_create.partition_by,
+		)?;
+		reject_invalid_time(CatalogObjectKind::RingBuffer, &to_create.name, &to_create.time)
+	}
+
+	fn ringbuffer_without_columns(id: RingBufferId, to_create: &RingBufferToCreate) -> RingBuffer {
+		RingBuffer {
+			id,
+			namespace: to_create.namespace,
+			name: to_create.name.text().to_string(),
+			columns: Vec::new(),
+			capacity: to_create.capacity,
+			primary_key: None,
+			partition_by: to_create.partition_by.clone(),
+			time: to_create.time.clone(),
+		}
 	}
 
 	#[inline]
@@ -143,9 +172,10 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
-			CatalogStore::create_column(
+			columns.push(CatalogStore::create_column(
 				txn,
 				ringbuffer_id,
 				ColumnToCreate {
@@ -159,10 +189,10 @@ impl CatalogStore {
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 
 	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
@@ -178,6 +208,7 @@ impl CatalogStore {
 		column_ids: &[ColumnId],
 	) -> Result<RingBuffer> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+		Self::validate_ringbuffer(&to_create)?;
 
 		let namespace_id = to_create.namespace;
 
@@ -186,12 +217,16 @@ impl CatalogStore {
 
 		let is_partitioned = !to_create.partition_by.is_empty();
 
-		Self::insert_ringbuffer_columns_with_ids(txn, ringbuffer_id, to_create, column_ids)?;
+		let built = Self::ringbuffer_without_columns(ringbuffer_id, &to_create);
+		let columns = Self::insert_ringbuffer_columns_with_ids(txn, ringbuffer_id, to_create, column_ids)?;
 		if !is_partitioned {
 			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id)?;
 		}
 
-		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+		Ok(RingBuffer {
+			columns,
+			..built
+		})
 	}
 
 	fn insert_ringbuffer_columns_with_ids(
@@ -199,9 +234,10 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, (col, &col_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
-			CatalogStore::create_column_with_id(
+			columns.push(CatalogStore::create_column_with_id(
 				txn,
 				col_id,
 				ringbuffer_id,
@@ -216,10 +252,10 @@ impl CatalogStore {
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 }
 

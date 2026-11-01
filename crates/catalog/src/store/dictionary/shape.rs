@@ -8,8 +8,8 @@ catalog_shape! {
 		id: u64,
 		namespace: u64,
 		name: utf8,
-		value_type: u8,
-		id_type: u8,
+		value_type: blob,
+		id_type: blob,
 	}
 
 	pub(crate) dictionary_namespace {

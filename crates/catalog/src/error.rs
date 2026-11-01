@@ -282,6 +282,15 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("invalid {kind} `{name}`: {field} {reason}")]
+	InvalidDefinition {
+		kind: CatalogObjectKind,
+		name: String,
+		field: &'static str,
+		reason: String,
+		fragment: Fragment,
+	},
+
 	#[error("invalid relationship: {reason}")]
 	InvalidRelationship {
 		reason: String,
@@ -1466,6 +1475,25 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("source config encoding failed".to_string()),
 				help: Some("ensure the source config is valid".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::InvalidDefinition {
+				kind,
+				name,
+				field,
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_132".to_string(),
+				rql: None,
+				message: format!("invalid {} `{}`: {} {}", kind, name, field, reason),
+				fragment,
+				label: Some(format!("invalid {}", field)),
+				help: Some(format!("fix the {} value of the definition", field)),
 				column: None,
 				notes: vec![],
 				cause: None,

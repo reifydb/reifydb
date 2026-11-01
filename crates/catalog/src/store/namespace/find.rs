@@ -20,14 +20,6 @@ impl CatalogStore {
 	) -> Result<Option<Namespace>> {
 		let name = name.as_ref();
 
-		if name == "system" {
-			return Ok(Some(Namespace::system()));
-		}
-
-		if name == "default" {
-			return Ok(Some(Namespace::default_namespace()));
-		}
-
 		let stream = rx.range(NamespaceKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
@@ -43,14 +35,6 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
-		if id == NamespaceId::SYSTEM {
-			return Ok(Some(Namespace::system()));
-		}
-
-		if id == NamespaceId::DEFAULT {
-			return Ok(Some(Namespace::default_namespace()));
-		}
-
 		rx.get(&[NamespaceKey::new(id).into()])?.pop().flatten().map(convert_namespace).transpose()
 	}
 }

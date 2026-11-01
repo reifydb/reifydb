@@ -40,7 +40,16 @@ impl CatalogStore {
 		let sink_id = next_sink_id(txn)?;
 		Self::store_sink(txn, sink_id, namespace_id, &to_create)?;
 		Self::link_sink_to_namespace(txn, namespace_id, sink_id, to_create.name.text())?;
-		Self::get_sink(&mut Transaction::Admin(&mut *txn), sink_id)
+		Ok(Sink {
+			id: sink_id,
+			namespace: namespace_id,
+			name: to_create.name.text().to_string(),
+			source_namespace: to_create.source_namespace,
+			source_name: to_create.source_name,
+			connector: to_create.connector,
+			config: to_create.config,
+			status: FlowStatus::Active,
+		})
 	}
 
 	#[inline]

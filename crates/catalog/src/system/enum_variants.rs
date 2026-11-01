@@ -78,7 +78,7 @@ pub fn enum_variants() -> Arc<VTable> {
 				Column {
 					id: FIELD_TYPE,
 					name: "field_type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,

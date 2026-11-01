@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
-		column::ColumnIndex,
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, TableId},
 		property::ColumnPropertyKind,
 		table::Table,
@@ -22,6 +22,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
+		definition::{reject_invalid_column_list, reject_invalid_time},
 		sequence::system::SystemSequence,
 		table::shape::{table, table_namespace},
 	},
@@ -50,6 +51,7 @@ use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
+		Self::validate_table(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_table(txn, namespace_id, &to_create.name)?;
 
@@ -57,9 +59,29 @@ impl CatalogStore {
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
-		Self::insert_columns(txn, table_id, to_create)?;
+		let name = to_create.name.text().to_string();
+		let partition_by = to_create.partition_by.clone();
+		let time = to_create.time.clone();
+		let columns = Self::insert_columns(txn, table_id, to_create)?;
+		Ok(Table {
+			id: table_id,
+			namespace: namespace_id,
+			name,
+			columns,
+			primary_key: None,
+			partition_by,
+			time,
+		})
+	}
 
-		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+	fn validate_table(to_create: &TableToCreate) -> Result<()> {
+		reject_invalid_column_list(
+			CatalogObjectKind::Table,
+			&to_create.name,
+			"partition_by",
+			&to_create.partition_by,
+		)?;
+		reject_invalid_time(CatalogObjectKind::Table, &to_create.name, &to_create.time)
 	}
 
 	#[inline]
@@ -115,13 +137,14 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<()> {
+	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<Vec<Column>> {
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
 
+		let mut columns = Vec::with_capacity(to_create.columns.len());
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
-			Self::create_column(
+			columns.push(Self::create_column(
 				txn,
 				table,
 				ColumnToCreate {
@@ -135,9 +158,9 @@ impl CatalogStore {
 					auto_increment: column_to_create.auto_increment,
 					dictionary_id: column_to_create.dictionary_id,
 				},
-			)?;
+			)?);
 		}
-		Ok(())
+		Ok(columns)
 	}
 
 	pub(crate) fn create_table_with_id(
@@ -147,15 +170,26 @@ impl CatalogStore {
 		column_ids: &[ColumnId],
 	) -> Result<Table> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+		Self::validate_table(&to_create)?;
 
 		let namespace_id = to_create.namespace;
 
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
-		Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
-
-		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+		let name = to_create.name.text().to_string();
+		let partition_by = to_create.partition_by.clone();
+		let time = to_create.time.clone();
+		let columns = Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
+		Ok(Table {
+			id: table_id,
+			namespace: namespace_id,
+			name,
+			columns,
+			primary_key: None,
+			partition_by,
+			time,
+		})
 	}
 
 	fn insert_columns_with_ids(
@@ -163,11 +197,12 @@ impl CatalogStore {
 		table: TableId,
 		to_create: TableToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::with_capacity(column_ids.len());
 		for (idx, (column_to_create, &col_id)) in
 			to_create.columns.into_iter().zip(column_ids.iter()).enumerate()
 		{
-			Self::create_column_with_id(
+			columns.push(Self::create_column_with_id(
 				txn,
 				col_id,
 				table,
@@ -182,9 +217,9 @@ impl CatalogStore {
 					auto_increment: column_to_create.auto_increment,
 					dictionary_id: column_to_create.dictionary_id,
 				},
-			)?;
+			)?);
 		}
-		Ok(())
+		Ok(columns)
 	}
 }
 

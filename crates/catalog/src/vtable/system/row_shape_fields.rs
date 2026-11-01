@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::{batch::batch, column::builder::ColumnBuilder},
@@ -15,7 +14,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext, system::type_constraint_text},
 };
 
 pub struct SystemRowShapeFields {
@@ -52,10 +51,7 @@ impl BaseVTable for SystemRowShapeFields {
 		let mut fingerprints = ColumnBuilder::with_capacity(ValueType::Uint8, total_fields);
 		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint2, total_fields);
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, total_fields);
-		let mut types = ColumnBuilder::with_capacity(ValueType::Uint1, total_fields);
-		let mut constraint_types = ColumnBuilder::with_capacity(ValueType::Uint1, total_fields);
-		let mut constraint_p1s = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
-		let mut constraint_p2s = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
+		let mut types = ColumnBuilder::with_capacity(ValueType::Utf8, total_fields);
 		let mut offsets = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
 		let mut sizes = ColumnBuilder::with_capacity(ValueType::Uint4, total_fields);
 
@@ -63,16 +59,10 @@ impl BaseVTable for SystemRowShapeFields {
 			let fingerprint = *shape.fingerprint();
 
 			for (idx, field) in shape.fields().iter().enumerate() {
-				let extern_c = encode_type_constraint(&field.constraint)
-					.expect("constraint exceeds tag capacity");
-
 				fingerprints.push(fingerprint);
 				field_indices.push(idx as u16);
 				names.push(field.name.as_str());
-				types.push(extern_c.base_type);
-				constraint_types.push(extern_c.constraint_type);
-				constraint_p1s.push(extern_c.constraint_param1);
-				constraint_p2s.push(extern_c.constraint_param2);
+				types.push(type_constraint_text(&field.constraint).as_str());
 				offsets.push(field.offset);
 				sizes.push(field.size);
 			}
@@ -83,9 +73,6 @@ impl BaseVTable for SystemRowShapeFields {
 			field_indices.finish("field_index"),
 			names.finish("name"),
 			types.finish("type"),
-			constraint_types.finish("constraint_type"),
-			constraint_p1s.finish("constraint_p1"),
-			constraint_p2s.finish("constraint_p2"),
 			offsets.finish("offset"),
 			sizes.finish("size"),
 		];

@@ -38,27 +38,18 @@ pub(crate) mod shape_field {
 
 	pub(crate) const NAME: usize = 0;
 
-	pub(crate) const TYPE: usize = 1;
+	pub(crate) const TYPE_CONSTRAINT: usize = 1;
 
-	pub(crate) const CONSTRAINT_TYPE: usize = 2;
+	pub(crate) const OFFSET: usize = 2;
 
-	pub(crate) const CONSTRAINT_P1: usize = 3;
-
-	pub(crate) const CONSTRAINT_P2: usize = 4;
-
-	pub(crate) const OFFSET: usize = 5;
-
-	pub(crate) const SIZE: usize = 6;
+	pub(crate) const SIZE: usize = 3;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(
 			RowFamily::Catalog,
 			vec![
 				RowShapeField::unconstrained("name", ValueType::Utf8),
-				RowShapeField::unconstrained("base_type", ValueType::Uint1),
-				RowShapeField::unconstrained("constraint_type", ValueType::Uint1),
-				RowShapeField::unconstrained("constraint_p1", ValueType::Uint4),
-				RowShapeField::unconstrained("constraint_p2", ValueType::Uint4),
+				RowShapeField::unconstrained("type_constraint", ValueType::Blob),
 				RowShapeField::unconstrained("offset", ValueType::Uint4),
 				RowShapeField::unconstrained("size", ValueType::Uint4),
 			],

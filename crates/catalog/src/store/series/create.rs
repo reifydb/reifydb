@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
-		column::ColumnIndex,
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
 		series::{
@@ -30,6 +30,9 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
+		definition::{
+			reject_invalid_column_list, reject_invalid_encoding, reject_invalid_time, reject_zero_tag,
+		},
 		sequence::system::SystemSequence,
 		series::shape::{series, series_namespace},
 	},
@@ -60,14 +63,42 @@ use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
+		Self::validate_series(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_series(txn, namespace_id, &to_create.name)?;
 
 		let series_id = SystemSequence::next_series_id(txn)?;
 		Self::install_series(txn, series_id, namespace_id, &to_create)?;
-		Self::insert_series_columns(txn, series_id, &to_create)?;
+		let columns = Self::insert_series_columns(txn, series_id, &to_create)?;
 		Self::initialize_series_metadata(txn, series_id)?;
-		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
+		Ok(Self::built_series(series_id, to_create, columns))
+	}
+
+	fn validate_series(to_create: &SeriesToCreate) -> Result<()> {
+		reject_invalid_column_list(
+			CatalogObjectKind::Series,
+			&to_create.name,
+			"partition_by",
+			&to_create.partition_by,
+		)?;
+		reject_invalid_time(CatalogObjectKind::Series, &to_create.name, &to_create.time)?;
+		reject_zero_tag(CatalogObjectKind::Series, &to_create.name, to_create.tag)?;
+		reject_invalid_encoding(&to_create.name, to_create.encoding.as_ref())
+	}
+
+	fn built_series(id: SeriesId, to_create: SeriesToCreate, columns: Vec<Column>) -> Series {
+		Series {
+			id,
+			namespace: to_create.namespace,
+			name: to_create.name.text().to_string(),
+			columns,
+			tag: to_create.tag,
+			key: to_create.key,
+			primary_key: None,
+			partition_by: to_create.partition_by,
+			time: to_create.time,
+			encoding: to_create.encoding,
+		}
 	}
 
 	#[inline]
@@ -165,9 +196,10 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		series_id: SeriesId,
 		to_create: &SeriesToCreate,
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.iter().enumerate() {
-			CatalogStore::create_column(
+			columns.push(CatalogStore::create_column(
 				txn,
 				series_id,
 				ColumnToCreate {
@@ -181,10 +213,10 @@ impl CatalogStore {
 					auto_increment: false,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
@@ -203,12 +235,13 @@ impl CatalogStore {
 		column_ids: &[ColumnId],
 	) -> Result<Series> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+		Self::validate_series(&to_create)?;
 
 		let namespace_id = to_create.namespace;
 		Self::install_series(txn, series_id, namespace_id, &to_create)?;
-		Self::insert_series_columns_with_ids(txn, series_id, &to_create, column_ids)?;
+		let columns = Self::insert_series_columns_with_ids(txn, series_id, &to_create, column_ids)?;
 		Self::initialize_series_metadata(txn, series_id)?;
-		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
+		Ok(Self::built_series(series_id, to_create, columns))
 	}
 
 	fn insert_series_columns_with_ids(
@@ -216,9 +249,10 @@ impl CatalogStore {
 		series_id: SeriesId,
 		to_create: &SeriesToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, (col, &col_id)) in to_create.columns.iter().zip(column_ids.iter()).enumerate() {
-			CatalogStore::create_column_with_id(
+			columns.push(CatalogStore::create_column_with_id(
 				txn,
 				col_id,
 				series_id,
@@ -233,10 +267,10 @@ impl CatalogStore {
 					auto_increment: false,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 }
 

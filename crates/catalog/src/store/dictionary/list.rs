@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
+use reifydb_codec::{reader::Reader, row::catalog::EncodedCatalogRow, typeinfo::decode_value_type};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey},
@@ -46,15 +46,22 @@ impl CatalogStore {
 			let id = DictionaryId(dictionary::get_id(bytes));
 			let namespace = NamespaceId(dictionary::get_namespace(bytes));
 			let name = dictionary::get_name(bytes).to_string();
-			let value_type_ordinal = dictionary::get_value_type(bytes);
-			let id_type_ordinal = dictionary::get_id_type(bytes);
+			let value_type =
+				decode_value_type(&mut Reader::new(dictionary::get_value_type(bytes).as_bytes()))
+					.unwrap_or_else(|error| {
+						panic!("invalid persisted value type of dictionary {id:?}: {error}")
+					});
+			let id_type = decode_value_type(&mut Reader::new(dictionary::get_id_type(bytes).as_bytes()))
+				.unwrap_or_else(|error| {
+					panic!("invalid persisted id type of dictionary {id:?}: {error}")
+				});
 
 			dictionaries.push(Dictionary {
 				id,
 				namespace,
 				name,
-				value_type: value_type_from_tag_byte(value_type_ordinal),
-				id_type: value_type_from_tag_byte(id_type_ordinal),
+				value_type,
+				id_type,
 			});
 		}
 

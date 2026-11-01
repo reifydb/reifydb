@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
 	value::{batch::batch, column::builder::ColumnBuilder},
@@ -14,7 +13,7 @@ use reifydb_value::value::value_type::ValueType;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext, system::type_constraint_text},
 };
 
 pub struct SystemEnumVariants {
@@ -59,7 +58,7 @@ impl BaseVTable for SystemEnumVariants {
 		let mut field_counts = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
 		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
 		let mut field_names = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
-		let mut field_types = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
+		let mut field_types = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 
 		for st in &sumtypes {
 			for variant in &st.variants {
@@ -70,18 +69,16 @@ impl BaseVTable for SystemEnumVariants {
 					field_counts.push(0u8);
 					field_indices.push(0u8);
 					field_names.push("");
-					field_types.push(0u8);
+					field_types.push("");
 				} else {
 					for (idx, field) in variant.fields.iter().enumerate() {
-						let extern_c = encode_type_constraint(&field.field_type)
-							.expect("constraint exceeds tag capacity");
 						ids.push(st.id.0);
 						variant_tags.push(variant.tag);
 						variant_names.push(variant.name.as_str());
 						field_counts.push(variant.fields.len() as u8);
 						field_indices.push(idx as u8);
 						field_names.push(field.name.as_str());
-						field_types.push(extern_c.base_type);
+						field_types.push(type_constraint_text(&field.field_type).as_str());
 					}
 				}
 			}

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
-		column::ColumnIndex,
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, QueueId},
 		property::ColumnPropertyKind,
 		queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
@@ -22,6 +22,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
+		definition::{reject_empty_text, reject_invalid_column_list, reject_invalid_time},
 		queue::shape::{encode_deduplicate, encode_dispatch, queue, queue_namespace},
 		sequence::system::SystemSequence,
 	},
@@ -53,6 +54,7 @@ use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_queue(txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue> {
+		Self::validate_queue(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_queue(txn, namespace_id, &to_create.name)?;
 
@@ -60,9 +62,56 @@ impl CatalogStore {
 
 		Self::store_queue(txn, queue_id, namespace_id, &to_create)?;
 		Self::link_queue_to_namespace(txn, namespace_id, queue_id, to_create.name.text())?;
-		Self::insert_queue_columns(txn, queue_id, to_create)?;
+		let built = Self::queue_without_columns(queue_id, &to_create);
+		let columns = Self::insert_queue_columns(txn, queue_id, to_create)?;
 
-		Self::get_queue(&mut Transaction::Admin(&mut *txn), queue_id)
+		Ok(Queue {
+			columns,
+			..built
+		})
+	}
+
+	fn validate_queue(to_create: &QueueToCreate) -> Result<()> {
+		reject_invalid_time(CatalogObjectKind::Queue, &to_create.name, &to_create.time)?;
+		reject_empty_text(
+			CatalogObjectKind::Queue,
+			&to_create.name,
+			"ordered_by",
+			to_create.dispatch.ordered_by(),
+		)?;
+		if let Some(deduplicate) = &to_create.deduplicate {
+			if deduplicate.by.is_empty() {
+				return Err(CatalogError::InvalidDefinition {
+					kind: CatalogObjectKind::Queue,
+					name: to_create.name.text().to_string(),
+					field: "deduplicate",
+					reason: "must name at least one column".to_string(),
+					fragment: to_create.name.clone(),
+				}
+				.into());
+			}
+			reject_invalid_column_list(
+				CatalogObjectKind::Queue,
+				&to_create.name,
+				"deduplicate",
+				&deduplicate.by,
+			)?;
+		}
+		Ok(())
+	}
+
+	fn queue_without_columns(id: QueueId, to_create: &QueueToCreate) -> Queue {
+		Queue {
+			id,
+			namespace: to_create.namespace,
+			name: to_create.name.text().to_string(),
+			columns: Vec::new(),
+			dispatch: to_create.dispatch.clone(),
+			deduplicate: to_create.deduplicate.clone(),
+			retention: to_create.retention.clone(),
+			retry: to_create.retry.clone(),
+			time: to_create.time.clone(),
+		}
 	}
 
 	pub(crate) fn create_queue_with_id(
@@ -72,14 +121,19 @@ impl CatalogStore {
 		column_ids: &[ColumnId],
 	) -> Result<Queue> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+		Self::validate_queue(&to_create)?;
 
 		let namespace_id = to_create.namespace;
 
 		Self::store_queue(txn, queue_id, namespace_id, &to_create)?;
 		Self::link_queue_to_namespace(txn, namespace_id, queue_id, to_create.name.text())?;
-		Self::insert_queue_columns_with_ids(txn, queue_id, to_create, column_ids)?;
+		let built = Self::queue_without_columns(queue_id, &to_create);
+		let columns = Self::insert_queue_columns_with_ids(txn, queue_id, to_create, column_ids)?;
 
-		Self::get_queue(&mut Transaction::Admin(&mut *txn), queue_id)
+		Ok(Queue {
+			columns,
+			..built
+		})
 	}
 
 	#[inline]
@@ -142,9 +196,14 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_queue_columns(txn: &mut AdminTransaction, queue_id: QueueId, to_create: QueueToCreate) -> Result<()> {
+	fn insert_queue_columns(
+		txn: &mut AdminTransaction,
+		queue_id: QueueId,
+		to_create: QueueToCreate,
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
-			CatalogStore::create_column(
+			columns.push(CatalogStore::create_column(
 				txn,
 				queue_id,
 				ColumnToCreate {
@@ -158,10 +217,10 @@ impl CatalogStore {
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 
 	fn insert_queue_columns_with_ids(
@@ -169,9 +228,10 @@ impl CatalogStore {
 		queue_id: QueueId,
 		to_create: QueueToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<()> {
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		for (idx, (col, column_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
-			CatalogStore::create_column_with_id(
+			columns.push(CatalogStore::create_column_with_id(
 				txn,
 				*column_id,
 				queue_id,
@@ -186,10 +246,10 @@ impl CatalogStore {
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)?);
 		}
 
-		Ok(())
+		Ok(columns)
 	}
 }
 

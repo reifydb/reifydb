@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, namespace::Namespace},
+	interface::catalog::namespace::Namespace,
 	key::{any::TaggedKey, namespace::NamespaceKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{CatalogStore, Result, store::namespace::shape::namespace};
+use crate::{CatalogStore, Result, store::namespace::convert_namespace};
 
 impl CatalogStore {
 	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<Namespace>> {
@@ -20,46 +19,10 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			if let TaggedKey::Namespace(namespace_key) = &entry.key {
-				let namespace_id = namespace_key.namespace;
-
-				let name = namespace::get_name(EncodedCatalogRow::view(&entry.bytes)).to_string();
-				let parent_id =
-					NamespaceId(namespace::get_parent_id(EncodedCatalogRow::view(&entry.bytes)));
-				let grpc = namespace::try_get_grpc(EncodedCatalogRow::view(&entry.bytes))
-					.map(|s| s.to_string())
-					.filter(|s| !s.is_empty());
-				let local_name = namespace::try_get_local_name(EncodedCatalogRow::view(&entry.bytes))
-					.filter(|s| !s.is_empty())
-					.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
-					.to_string();
-				let namespace = if let Some(address) = grpc {
-					let token = namespace::try_get_token(EncodedCatalogRow::view(&entry.bytes))
-						.map(|s| s.to_string())
-						.filter(|s| !s.is_empty());
-					Namespace::Remote {
-						id: namespace_id,
-						name,
-						local_name,
-						parent_id,
-						address,
-						token,
-					}
-				} else {
-					Namespace::Local {
-						id: namespace_id,
-						name,
-						local_name,
-						parent_id,
-					}
-				};
-
-				result.push(namespace);
+			if let TaggedKey::Namespace(_) = &entry.key {
+				result.push(convert_namespace(entry)?);
 			}
 		}
-
-		result.push(Namespace::system());
-		result.push(Namespace::default_namespace());
 
 		Ok(result)
 	}

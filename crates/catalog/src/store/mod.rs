@@ -8,6 +8,7 @@ pub mod column;
 pub mod column_block;
 pub(crate) mod column_property;
 pub(crate) mod config;
+pub(crate) mod definition;
 pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;

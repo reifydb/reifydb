@@ -7,8 +7,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	durability::Durability,
 	event::EventBus,
-	interface::catalog::{config::ConfigKey, id::NamespaceId},
-	key::config::ConfigStorageKey,
+	interface::catalog::{config::ConfigKey, id::NamespaceId, namespace::Namespace},
+	key::{
+		config::ConfigStorageKey,
+		system::{SystemVersion, SystemVersionKey},
+	},
 };
 use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{store::multi::scan_tiers_latest, tier::persistent::MultiPersistentTier};
@@ -56,6 +59,7 @@ pub fn bootstrap_system_objects(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
+	bootstrap_root_namespaces(multi, single, catalog, eventbus)?;
 	identity::bootstrap_identities(multi, single, catalog, eventbus)?;
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
@@ -72,6 +76,50 @@ pub fn bootstrap_system_objects(
 	completeness::bootstrap_completeness(multi, single, catalog, eventbus)?;
 	policy::bootstrap_call_policies(multi, single, eventbus)?;
 	load_catalog_cache(multi, single, catalog)?;
+	Ok(())
+}
+
+pub fn bootstrap_root_namespaces(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &CatalogCache,
+	eventbus: &EventBus,
+) -> Result<()> {
+	let version_key = SystemVersionKey {
+		version: SystemVersion::Storage,
+	}
+	.encode();
+	let mut version_txn = single.begin_query([&version_key])?;
+	let initialized = version_txn.get(&[version_key.clone()])?.remove(0).is_some();
+	drop(version_txn);
+	if initialized {
+		return Ok(());
+	}
+
+	let catalog_api = Catalog::new(catalog.clone());
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+		Durability::Async,
+	)?;
+	for namespace in [Namespace::system(), Namespace::default_namespace()] {
+		catalog_api.create_namespace_with_id(
+			&mut admin,
+			namespace.id(),
+			NamespaceToCreate {
+				namespace_fragment: None,
+				name: namespace.name().to_string(),
+				local_name: namespace.local_name().to_string(),
+				parent_id: namespace.parent_id(),
+				token: None,
+				grpc: None,
+			},
+		)?;
+	}
+	admin.commit()?;
 	Ok(())
 }
 

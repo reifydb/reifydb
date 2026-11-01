@@ -55,7 +55,16 @@ impl CatalogStore {
 		Self::store_source(txn, object_id, namespace_id, &to_create)?;
 		Self::link_source_to_namespace(txn, namespace_id, object_id, to_create.name.text())?;
 
-		Self::get_source(&mut Transaction::Admin(&mut *txn), object_id)
+		Ok(Source {
+			id: object_id,
+			namespace: namespace_id,
+			name: to_create.name.text().to_string(),
+			connector: to_create.connector,
+			config: to_create.config,
+			target_namespace: to_create.target_namespace,
+			target_name: to_create.target_name,
+			status: FlowStatus::Active,
+		})
 	}
 
 	fn store_source(

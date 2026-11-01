@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{constraint::encode_type_constraint, row::shape::RowShape};
+use reifydb_codec::{constraint::encode_type_constraint_info, row::shape::RowShape};
 use reifydb_core::key::row::{RowShapeFieldKey, RowShapeKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
@@ -32,14 +32,13 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 	)])?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
-		let extern_c = encode_type_constraint(&field.constraint).expect("constraint exceeds tag capacity");
+		let mut type_constraint = Vec::new();
+		encode_type_constraint_info(&field.constraint, &mut type_constraint)
+			.unwrap_or_else(|error| panic!("row shape field {} cannot be encoded: {error}", field.name));
 
 		let mut field_row = shape_field::SHAPE.allocate_catalog();
 		shape_field::SHAPE.set_utf8(&mut field_row, shape_field::NAME, &field.name);
-		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::TYPE, extern_c.base_type);
-		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::CONSTRAINT_TYPE, extern_c.constraint_type);
-		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P1, extern_c.constraint_param1);
-		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P2, extern_c.constraint_param2);
+		shape_field::SHAPE.set_blob_from_slice(&mut field_row, shape_field::TYPE_CONSTRAINT, &type_constraint);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::OFFSET, field.offset);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::SIZE, field.size);
 

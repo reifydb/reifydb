@@ -33,7 +33,12 @@ impl CatalogStore {
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_flow(txn, namespace_id, &to_create.name)?;
 		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
+		Ok(Flow {
+			id: flow_id,
+			namespace: namespace_id,
+			name: to_create.name.text().to_string(),
+			status: to_create.status,
+		})
 	}
 
 	#[inline]

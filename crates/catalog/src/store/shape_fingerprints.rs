@@ -87,19 +87,19 @@ fn pinned() -> Vec<Pin> {
 		(
 			"authentication::authentication",
 			&*AUTHENTICATION_SHAPE,
-			0x348d84f39b551800,
+			0xa444757e7ac1ce67,
 			&["id", "identity", "method", "properties"],
 		),
 		(
 			"authentication_method::authentication_method",
 			&*AUTHENTICATION_METHOD_SHAPE,
-			0x9d8672aaa269cabe,
+			0xa7d6456116c81106,
 			&["id", "name", "ttl", "promote_guest", "properties"],
 		),
 		(
 			"binding::binding",
 			&*BINDING_SHAPE,
-			0x694b474c52fc9ba2,
+			0xcfeae7d7cd567f09,
 			&[
 				"id",
 				"namespace",
@@ -112,24 +112,33 @@ fn pinned() -> Vec<Pin> {
 				"format",
 			],
 		),
-		("binding::binding_namespace", &*BINDING_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("binding::binding_namespace", &*BINDING_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"column_property::column_property",
 			&*COLUMN_PROPERTY_SHAPE,
-			0x2bfd8568eb0bff3f,
+			0xd5d8d32ddc4e7685,
 			&["id", "column", "policy", "value"],
 		),
 		(
 			"column::column",
 			&*COLUMN_SHAPE,
-			0xebe75c523479eab9,
-			&["id", "object", "name", "value", "index", "auto_increment", "constraint", "dictionary_id"],
+			0x3cef33dd10d9f45c,
+			&[
+				"id",
+				"object",
+				"name",
+				"value_type",
+				"index",
+				"auto_increment",
+				"constraint",
+				"dictionary_id",
+			],
 		),
-		("column::object_column", &*OBJECT_COLUMN_SHAPE, 0x0c2cd6dc1e3f9c7a, &["id", "name", "index"]),
+		("column::object_column", &*OBJECT_COLUMN_SHAPE, 0xf634b05ae4ef37e2, &["id", "name", "index"]),
 		(
 			"column_block::column_block",
 			&*COLUMN_BLOCK_SHAPE,
-			0xadbf44c755e89b12,
+			0xbffe6445d29d3e7c,
 			&[
 				"id",
 				"namespace",
@@ -145,82 +154,82 @@ fn pinned() -> Vec<Pin> {
 				"stats",
 			],
 		),
-		("config::config", &*CONFIG_SHAPE, 0x1b6097b4d09a7c76, &["value"]),
+		("config::config", &*CONFIG_SHAPE, 0x100afb9034c112f2, &["value"]),
 		(
 			"dictionary::dictionary",
 			&*DICTIONARY_SHAPE,
-			0xaae7182a0136c3fe,
+			0x20dfbda7eceae371,
 			&["id", "namespace", "name", "value_type", "id_type"],
 		),
-		("dictionary::dictionary_namespace", &*DICTIONARY_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
-		("flow_edge::flow_edge", &*FLOW_EDGE_SHAPE, 0xc1e33b21552a7666, &["id", "flow", "source", "target"]),
-		("flow_edge::flow_edge_by_flow", &*FLOW_EDGE_BY_FLOW_SHAPE, 0x9486e81a3cbbeed4, &["flow", "id"]),
-		("flow::flow", &*FLOW_SHAPE, 0x6f6fa7840877d5a4, &["id", "namespace", "name", "status"]),
-		("flow::flow_namespace", &*FLOW_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
-		("granted_role::granted_role", &*GRANTED_ROLE_SHAPE, 0xc03109d375f3c585, &["identity", "role_id"]),
+		("dictionary::dictionary_namespace", &*DICTIONARY_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		("flow_edge::flow_edge", &*FLOW_EDGE_SHAPE, 0x4ba50fb1043e45f5, &["id", "flow", "source", "target"]),
+		("flow_edge::flow_edge_by_flow", &*FLOW_EDGE_BY_FLOW_SHAPE, 0x511118ba66efb6ed, &["flow", "id"]),
+		("flow::flow", &*FLOW_SHAPE, 0xfb91b105c29c9ab4, &["id", "namespace", "name", "status"]),
+		("flow::flow_namespace", &*FLOW_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		("granted_role::granted_role", &*GRANTED_ROLE_SHAPE, 0x6bc1886b8cfaa464, &["identity", "role_id"]),
 		(
 			"handler::handler",
 			&*HANDLER_SHAPE,
-			0x600d014356243a4b,
+			0x1a0132879eacab96,
 			&["id", "namespace", "name", "on_sumtype_id", "on_variant_tag", "body_source"],
 		),
-		("handler::handler_namespace", &*HANDLER_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("handler::handler_namespace", &*HANDLER_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"identity_attribute::identity_attribute",
 			&*IDENTITY_ATTRIBUTE_SHAPE,
-			0x46281ccd82110d21,
+			0x27d41b1e9ecfac69,
 			&["id", "name", "value_type"],
 		),
 		(
 			"identity_attribute_value::identity_attribute_value",
 			&*IDENTITY_ATTRIBUTE_VALUE_SHAPE,
-			0x0d4888ba97084b01,
+			0x61a5b4645e0d8ee8,
 			&["identity", "attribute", "value"],
 		),
-		("identity::identity", &*IDENTITY_SHAPE, 0xea254e7af84813ba, &["identity", "name", "enabled", "kind"]),
+		("identity::identity", &*IDENTITY_SHAPE, 0x47f502a317cd4a61, &["identity", "name", "enabled", "kind"]),
 		(
 			"migration::migration",
 			&*MIGRATION_SHAPE,
-			0x585864c1dc20f7a0,
+			0x86f1c05ec3364668,
 			&["id", "name", "body", "rollback_body", "hash"],
 		),
 		(
 			"migration::migration_event",
 			&*MIGRATION_EVENT_SHAPE,
-			0x64877986abbbc1e2,
+			0x1437e06604d16155,
 			&["id", "migration_id", "action"],
 		),
 		(
 			"namespace::namespace",
 			&*NAMESPACE_SHAPE,
-			0xded5f2ae8d70fea5,
+			0x9c6a56d9c54b58c3,
 			&["id", "name", "parent_id", "grpc", "local_name", "token"],
 		),
 		(
 			"operator_retention::operator_retention",
 			&*OPERATOR_RETENTION_SHAPE,
-			0x0292a82467ba43c4,
+			0xf8e6653f9f9c4f19,
 			&["duration"],
 		),
-		("operator::operator", &*OPERATOR_SHAPE, 0x7a8cd42d0f4b6e96, &["id", "flow", "type", "data"]),
-		("operator::operator_by_flow", &*OPERATOR_BY_FLOW_SHAPE, 0x9486e81a3cbbeed4, &["flow", "id"]),
+		("operator::operator", &*OPERATOR_SHAPE, 0xa93d5c45f91e4225, &["id", "flow", "type", "data"]),
+		("operator::operator_by_flow", &*OPERATOR_BY_FLOW_SHAPE, 0x511118ba66efb6ed, &["flow", "id"]),
 		(
 			"policy::policy",
 			&*POLICY_SHAPE,
-			0x2d8044426d5d0dba,
+			0xba67c6b2ac10a9d9,
 			&["id", "name", "target_type", "target_namespace", "target_object", "enabled"],
 		),
 		(
 			"policy::policy_op",
 			&*POLICY_OP_SHAPE,
-			0x11dcb638f55cbf27,
+			0x31fc7d5d42e7bed1,
 			&["policy_id", "operation", "body_source"],
 		),
-		("primary_key::primary_key", &*PRIMARY_KEY_SHAPE, 0xb89cc69a5a765085, &["id", "source", "column_ids"]),
+		("primary_key::primary_key", &*PRIMARY_KEY_SHAPE, 0x39d0e44addf6fe09, &["id", "source", "column_ids"]),
 		(
 			"procedure::procedure",
 			&*PROCEDURE_SHAPE,
-			0xeed3cfe19154ea43,
+			0x34aaf2aedb0b0d99,
 			&[
 				"id",
 				"namespace",
@@ -234,17 +243,17 @@ fn pinned() -> Vec<Pin> {
 				"run_as",
 			],
 		),
-		("procedure::namespace_procedure", &*NAMESPACE_PROCEDURE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("procedure::namespace_procedure", &*NAMESPACE_PROCEDURE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"procedure::procedure_param",
 			&*PROCEDURE_PARAM_SHAPE,
-			0x92be3c99eaa34ca8,
+			0x9a8f6ccb6c1e2fba,
 			&["procedure_id", "index", "name", "type_constraint"],
 		),
 		(
 			"queue::queue",
 			&*QUEUE_SHAPE,
-			0x74ea460e829c6fd5,
+			0xfcb2b18fc36a7c1b,
 			&[
 				"id",
 				"namespace",
@@ -261,11 +270,11 @@ fn pinned() -> Vec<Pin> {
 				"time_domain",
 			],
 		),
-		("queue::queue_namespace", &*QUEUE_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("queue::queue_namespace", &*QUEUE_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"relationship::relationship",
 			&*RELATIONSHIP_SHAPE,
-			0x5ad9666f4e6d2f70,
+			0x89a86deee1d0b810,
 			&[
 				"id",
 				"namespace_id",
@@ -283,22 +292,22 @@ fn pinned() -> Vec<Pin> {
 		(
 			"ringbuffer::ringbuffer",
 			&*RINGBUFFER_SHAPE,
-			0x214a1dd4472ba5ee,
+			0x42f90939729c56cb,
 			&["id", "namespace", "name", "capacity", "primary_key", "partition_by", "ts", "time_domain"],
 		),
-		("ringbuffer::ringbuffer_namespace", &*RINGBUFFER_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
-		("role::role", &*ROLE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
-		("row_settings::row_settings", &*ROW_SETTINGS_SHAPE, 0x7a5ec2164996219f, &["duration", "persistent"]),
+		("ringbuffer::ringbuffer_namespace", &*RINGBUFFER_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		("role::role", &*ROLE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		("row_settings::row_settings", &*ROW_SETTINGS_SHAPE, 0x7798573f24eddf53, &["duration", "persistent"]),
 		(
 			"row_shape::shape_field",
 			&*SHAPE_FIELD_SHAPE,
-			0xb9845fd1335edcbd,
-			&["name", "base_type", "constraint_type", "constraint_p1", "constraint_p2", "offset", "size"],
+			0x0e785ed9dfee4ada,
+			&["name", "type_constraint", "offset", "size"],
 		),
 		(
 			"series::series",
 			&*SERIES_SHAPE,
-			0x4a9854d847a282b2,
+			0x51234689f486f11d,
 			&[
 				"id",
 				"namespace",
@@ -315,11 +324,11 @@ fn pinned() -> Vec<Pin> {
 				"encoding_config",
 			],
 		),
-		("series::series_namespace", &*SERIES_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("series::series_namespace", &*SERIES_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"sink::sink",
 			&*SINK_SHAPE,
-			0x23ce8d4d52c47d9b,
+			0x7ad955b8deed3222,
 			&[
 				"id",
 				"namespace",
@@ -331,11 +340,11 @@ fn pinned() -> Vec<Pin> {
 				"status",
 			],
 		),
-		("sink::sink_namespace", &*SINK_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("sink::sink_namespace", &*SINK_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"source::source",
 			&*SOURCE_SHAPE,
-			0xabf2c6378d530295,
+			0xfcdf21b149c9012d,
 			&[
 				"id",
 				"namespace",
@@ -347,31 +356,31 @@ fn pinned() -> Vec<Pin> {
 				"status",
 			],
 		),
-		("source::source_namespace", &*SOURCE_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("source::source_namespace", &*SOURCE_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"sumtype::sumtype",
 			&*SUMTYPE_SHAPE,
-			0x2d33916420752127,
+			0x9b7790b5d1541b01,
 			&["id", "namespace", "name", "variants_json", "kind"],
 		),
-		("sumtype::sumtype_namespace", &*SUMTYPE_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("sumtype::sumtype_namespace", &*SUMTYPE_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"table::table",
 			&*TABLE_SHAPE,
-			0x944ecbd87b2290c7,
+			0xa25e438ef3e2e1de,
 			&["id", "namespace", "name", "primary_key", "partition_by", "ts", "time_domain"],
 		),
-		("table::table_namespace", &*TABLE_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("table::table_namespace", &*TABLE_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 		(
 			"token::token",
 			&*TOKEN_SHAPE,
-			0xb55c98a7257c20c9,
+			0x40c303a7adf7386e,
 			&["id", "token", "identity", "expires_at", "created_at", "kind"],
 		),
 		(
 			"view::view",
 			&*VIEW_SHAPE,
-			0x5133239a60bde4af,
+			0x55a46edaba9bc51a,
 			&[
 				"id",
 				"namespace",
@@ -388,7 +397,7 @@ fn pinned() -> Vec<Pin> {
 				"sort",
 			],
 		),
-		("view::view_namespace", &*VIEW_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
+		("view::view_namespace", &*VIEW_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
 	]
 }
 
@@ -417,10 +426,10 @@ fn the_pin_table_covers_every_catalog_shape() {
 #[test]
 fn structurally_identical_shapes_share_one_fingerprint() {
 	let id_name: Vec<&str> =
-		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x6ac7ea1f39781c6f).map(|(n, ..)| *n).collect();
+		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x4ba761281fac062e).map(|(n, ..)| *n).collect();
 	assert_eq!(id_name.len(), 14, "the id/name index shapes must stay interchangeable by fingerprint");
 
 	let flow_id: Vec<&str> =
-		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x9486e81a3cbbeed4).map(|(n, ..)| *n).collect();
+		pinned().iter().filter(|(_, _, fp, _)| *fp == 0x511118ba66efb6ed).map(|(n, ..)| *n).collect();
 	assert_eq!(flow_id.len(), 2, "the flow/id index shapes must stay interchangeable by fingerprint");
 }

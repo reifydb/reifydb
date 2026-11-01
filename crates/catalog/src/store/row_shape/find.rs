@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	constraint::{EncodedTypeConstraint, decode_type_constraint},
+	constraint::decode_type_constraint_info,
+	reader::Reader,
 	row::{
 		pod::EncodedPodRow,
 		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
@@ -60,17 +61,10 @@ pub(crate) fn find_row_shape_by_fingerprint(
 		})?;
 
 		let name = shape_field::SHAPE.get_utf8(&field_entry.bytes, shape_field::NAME).to_string();
-		let base_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::TYPE);
-		let constraint_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::CONSTRAINT_TYPE);
-		let constraint_param1 = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P1);
-		let constraint_param2 = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P2);
-		let constraint = decode_type_constraint(&EncodedTypeConstraint {
-			base_type,
-			constraint_type,
-			constraint_param1,
-			constraint_param2,
-		})
-		.expect("invalid persisted type constraint tag");
+		let constraint = decode_type_constraint_info(&mut Reader::new(
+			shape_field::SHAPE.get_blob_slice(&field_entry.bytes, shape_field::TYPE_CONSTRAINT),
+		))
+		.unwrap_or_else(|error| panic!("invalid persisted type of row shape field {name}: {error}"));
 		let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
 		let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
 
@@ -131,20 +125,10 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 			})?;
 
 			let name = shape_field::SHAPE.get_utf8(&field_entry.bytes, shape_field::NAME).to_string();
-			let base_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::TYPE);
-			let constraint_type =
-				shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::CONSTRAINT_TYPE);
-			let constraint_param1 =
-				shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P1);
-			let constraint_param2 =
-				shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P2);
-			let constraint = decode_type_constraint(&EncodedTypeConstraint {
-				base_type,
-				constraint_type,
-				constraint_param1,
-				constraint_param2,
-			})
-			.expect("invalid persisted type constraint tag");
+			let constraint = decode_type_constraint_info(&mut Reader::new(
+				shape_field::SHAPE.get_blob_slice(&field_entry.bytes, shape_field::TYPE_CONSTRAINT),
+			))
+			.unwrap_or_else(|error| panic!("invalid persisted type of row shape field {name}: {error}"));
 			let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
 			let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
 

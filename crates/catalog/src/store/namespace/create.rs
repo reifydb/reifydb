@@ -39,22 +39,7 @@ impl CatalogStore {
 		}
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
-
-		let mut row = namespace::allocate();
-		namespace::set_id(&mut row, u64::from(namespace_id));
-		namespace::set_name(&mut row, &to_create.name);
-		namespace::set_parent_id(&mut row, to_create.parent_id.0);
-		if let Some(ref grpc) = to_create.grpc {
-			namespace::set_grpc(&mut row, grpc);
-		}
-		if let Some(ref token) = to_create.token {
-			namespace::set_token(&mut row, token);
-		}
-		namespace::set_local_name(&mut row, &to_create.local_name);
-
-		txn.set(vec![(NamespaceKey::new(namespace_id).into(), row.freeze().into())])?;
-
-		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
+		Self::store_namespace(txn, namespace_id, to_create)
 	}
 
 	pub(crate) fn create_namespace_with_id(
@@ -62,21 +47,59 @@ impl CatalogStore {
 		namespace_id: NamespaceId,
 		to_create: NamespaceToCreate,
 	) -> Result<Namespace> {
+		Self::store_namespace(txn, namespace_id, to_create)
+	}
+
+	fn store_namespace(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		to_create: NamespaceToCreate,
+	) -> Result<Namespace> {
+		let namespace = Self::normalized_namespace(namespace_id, to_create);
+
 		let mut row = namespace::allocate();
 		namespace::set_id(&mut row, u64::from(namespace_id));
-		namespace::set_name(&mut row, &to_create.name);
-		namespace::set_parent_id(&mut row, to_create.parent_id.0);
-		if let Some(ref grpc) = to_create.grpc {
-			namespace::set_grpc(&mut row, grpc);
+		namespace::set_name(&mut row, namespace.name());
+		namespace::set_parent_id(&mut row, namespace.parent_id().0);
+		namespace::set_local_name(&mut row, namespace.local_name());
+		if let Namespace::Remote {
+			address,
+			token,
+			..
+		} = &namespace
+		{
+			namespace::set_grpc(&mut row, address);
+			if let Some(token) = token {
+				namespace::set_token(&mut row, token);
+			}
 		}
-		if let Some(ref token) = to_create.token {
-			namespace::set_token(&mut row, token);
-		}
-		namespace::set_local_name(&mut row, &to_create.local_name);
 
 		txn.set(vec![(NamespaceKey::new(namespace_id).into(), row.freeze().into())])?;
+		Ok(namespace)
+	}
 
-		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
+	fn normalized_namespace(id: NamespaceId, to_create: NamespaceToCreate) -> Namespace {
+		let local_name = if to_create.local_name.is_empty() {
+			to_create.name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&to_create.name).to_string()
+		} else {
+			to_create.local_name
+		};
+		match to_create.grpc.filter(|address| !address.is_empty()) {
+			Some(address) => Namespace::Remote {
+				id,
+				name: to_create.name,
+				local_name,
+				parent_id: to_create.parent_id,
+				address,
+				token: to_create.token.filter(|token| !token.is_empty()),
+			},
+			None => Namespace::Local {
+				id,
+				name: to_create.name,
+				local_name,
+				parent_id: to_create.parent_id,
+			},
+		}
 	}
 }
 

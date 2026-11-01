@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{constraint::encode_type_constraint, tag::type_tag_byte};
+use reifydb_codec::{constraint::encode_constraint_info, typeinfo::encode_value_type};
 use reifydb_core::{
 	interface::catalog::{object::ObjectId, property::ColumnPropertyKind},
 	key::column::{ColumnKey, ColumnsKey},
@@ -17,36 +17,18 @@ use reifydb_value::{
 	},
 };
 
-fn encode_constraint(type_constraint: &TypeConstraint) -> Vec<u8> {
-	let encoded = encode_type_constraint(type_constraint).unwrap_or_else(|error| {
-		panic!("column type {} cannot be encoded: {error}", type_constraint.get_type())
+fn value_type_blob(ty: &ValueType) -> Blob {
+	let mut bytes = Vec::new();
+	encode_value_type(ty, &mut bytes).unwrap_or_else(|error| panic!("column type {ty} cannot be encoded: {error}"));
+	Blob::from(bytes)
+}
+
+fn constraint_blob(type_constraint: &TypeConstraint) -> Blob {
+	let mut bytes = Vec::new();
+	encode_constraint_info(type_constraint.constraint().as_ref(), &mut bytes).unwrap_or_else(|error| {
+		panic!("constraint of column type {} cannot be encoded: {error}", type_constraint.get_type())
 	});
-	match type_constraint.constraint() {
-		None if matches!(encoded.constraint_type, 2 | 5) => {
-			let mut bytes = vec![encoded.constraint_type];
-			bytes.extend_from_slice(&encoded.constraint_param1.to_le_bytes());
-			bytes.extend_from_slice(&encoded.constraint_param2.to_le_bytes());
-			bytes
-		}
-		None => vec![0],
-		Some(Constraint::MaxBytes(max_bytes)) => {
-			let mut bytes = vec![1];
-			let max_value: u32 = (*max_bytes).into();
-			bytes.extend_from_slice(&max_value.to_le_bytes());
-			bytes
-		}
-		Some(Constraint::Dictionary(dict_id, id_type)) => {
-			let mut bytes = vec![3];
-			bytes.extend_from_slice(&dict_id.to_u64().to_le_bytes());
-			bytes.push(type_tag_byte(id_type));
-			bytes
-		}
-		Some(Constraint::SumType(id)) => {
-			let mut bytes = vec![4];
-			bytes.extend_from_slice(&id.to_u64().to_le_bytes());
-			bytes
-		}
-	}
+	Blob::from(bytes)
 }
 
 use reifydb_core::interface::catalog::{
@@ -79,11 +61,12 @@ impl CatalogStore {
 	pub(crate) fn create_column(
 		txn: &mut AdminTransaction,
 		object: impl Into<ObjectId>,
-		column_to_create: ColumnToCreate,
+		mut column_to_create: ColumnToCreate,
 	) -> Result<Column> {
 		let object = object.into();
 
 		Self::reject_existing_column(txn, object, &column_to_create)?;
+		column_to_create.constraint = Self::stored_constraint(txn, &column_to_create)?;
 		if let Some(ty) = Self::invalid_auto_increment_type(&column_to_create) {
 			return Err(CatalogError::AutoIncrementInvalidType {
 				column: column_to_create.column.clone(),
@@ -104,14 +87,41 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		id: ColumnId,
 		object: impl Into<ObjectId>,
-		column_to_create: ColumnToCreate,
+		mut column_to_create: ColumnToCreate,
 	) -> Result<Column> {
 		let object = object.into();
 
+		column_to_create.constraint = Self::stored_constraint(txn, &column_to_create)?;
 		Self::store_column_row(txn, id, object, &column_to_create)?;
 		Self::store_object_column_row(txn, id, object, &column_to_create)?;
 
 		Self::create_properties_and_build(txn, id, column_to_create)
+	}
+
+	fn stored_constraint(txn: &mut AdminTransaction, column_to_create: &ColumnToCreate) -> Result<TypeConstraint> {
+		let Some(dict_id) = column_to_create.dictionary_id else {
+			return Ok(column_to_create.constraint.clone());
+		};
+		if u64::from(dict_id) == 0 {
+			return Err(CatalogError::InvalidDefinition {
+				kind: CatalogObjectKind::Column,
+				name: column_to_create.column.clone(),
+				field: "dictionary_id",
+				reason: "must not be 0".to_string(),
+				fragment: column_to_create.fragment.clone().unwrap_or(Fragment::None),
+			}
+			.into());
+		}
+		if matches!(column_to_create.constraint.constraint(), Some(Constraint::Dictionary(..))) {
+			return Ok(column_to_create.constraint.clone());
+		}
+		Ok(match Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dict_id)? {
+			Some(dictionary) => TypeConstraint::with_constraint(
+				column_to_create.constraint.get_type(),
+				Constraint::Dictionary(dict_id, dictionary.id_type),
+			),
+			None => column_to_create.constraint.clone(),
+		})
 	}
 
 	#[inline]
@@ -167,13 +177,10 @@ impl CatalogStore {
 		column::set_id(&mut row, u64::from(id));
 		column::set_object(&mut row, u64::from(object));
 		column::set_name(&mut row, &column_to_create.column);
-		column::set_value(&mut row, type_tag_byte(&column_to_create.constraint.get_type()));
+		column::set_value_type(&mut row, &value_type_blob(&column_to_create.constraint.get_type()));
 		column::set_index(&mut row, u8::from(column_to_create.index));
 		column::set_auto_increment(&mut row, column_to_create.auto_increment);
-
-		let constraint_bytes = encode_constraint(&column_to_create.constraint);
-		let blob = Blob::from(constraint_bytes);
-		column::set_constraint(&mut row, &blob);
+		column::set_constraint(&mut row, &constraint_blob(&column_to_create.constraint));
 
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::set_dictionary_id(&mut row, dict_id_value);
@@ -430,7 +437,7 @@ pub mod test {
 		assert_eq!(diagnostic.code, "CA_107");
 	}
 
-	fn stored_type_and_constraint(txn: &mut AdminTransaction, id: ColumnId) -> (u8, Vec<u8>) {
+	fn stored_type_and_constraint(txn: &mut AdminTransaction, id: ColumnId) -> (Vec<u8>, Vec<u8>) {
 		let multi = Transaction::Admin(&mut *txn)
 			.get(&[ColumnsKey::new(id).into()])
 			.unwrap()
@@ -438,12 +445,12 @@ pub mod test {
 			.flatten()
 			.unwrap();
 		let row = EncodedCatalogRow::try_from(multi.bytes).unwrap();
-		(column::get_value(&row), column::get_constraint(&row).as_bytes().to_vec())
+		(column::get_value_type(&row).as_bytes().to_vec(), column::get_constraint(&row).as_bytes().to_vec())
 	}
 
 	#[test]
 	fn test_digest_column_constraint_bytes_are_pinned() {
-		// Tag 5, ppm then inner type tag as u32 LE is on disk; any change strands stored digest columns.
+		// The full type is on disk as typeinfo bytes; any change strands stored digest columns.
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
@@ -483,10 +490,10 @@ pub mod test {
 			})),
 		);
 
-		assert_eq!(stored_type_and_constraint(&mut txn, plain), (30, vec![5, 0x10, 0x27, 0, 0, 18, 0, 0, 0]));
+		assert_eq!(stored_type_and_constraint(&mut txn, plain), (vec![30, 18, 0x10, 0x27, 0, 0], vec![0]));
 		assert_eq!(
 			stored_type_and_constraint(&mut txn, optional),
-			(0x40 | 30, vec![5, 0xa0, 0x86, 0x01, 0x00, 14, 0, 0, 0])
+			(vec![0x40 | 30, 14, 0xa0, 0x86, 0x01, 0x00], vec![0])
 		);
 	}
 
@@ -513,7 +520,8 @@ pub mod test {
 		)
 		.unwrap();
 
-		let stored = CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), created.id).unwrap();
+		let stored =
+			CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 
 		assert_eq!(stored.len(), 1, "exactly one property must be stored for the column");
 		assert_eq!(created.properties.len(), stored.len());

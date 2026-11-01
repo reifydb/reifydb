@@ -3,13 +3,13 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		column::ColumnIndex,
+		column::{Column, ColumnIndex},
 		id::{NamespaceId, ViewId},
 		ringbuffer::{RingBufferMetadata, encode_ringbuffer_metadata},
 		series::SeriesKey,
 		storage::StorageId,
 		view::{
-			View, ViewKind,
+			RingBufferView, SeriesView, TableView, View, ViewKind,
 			ViewKind::{Deferred, Transactional},
 			ViewSortKey, ViewStorageKind,
 		},
@@ -27,6 +27,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
+		definition::{reject_invalid_column_list, reject_zero_tag},
 		sequence::system::SystemSequence,
 		view::shape::{encode_view_sort, view, view_namespace},
 	},
@@ -101,6 +102,7 @@ impl CatalogStore {
 	}
 
 	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<View> {
+		Self::validate_view(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_view(txn, namespace_id, &to_create.name)?;
 
@@ -109,9 +111,83 @@ impl CatalogStore {
 		Self::link_view_to_namespace(txn, namespace_id, view_id, to_create.name.text())?;
 		Self::initialize_view_family_metadata(txn, view_id, &to_create.storage)?;
 
-		Self::insert_columns_for_view(txn, view_id, to_create)?;
+		let name = to_create.name.text().to_string();
+		let storage = to_create.storage.clone();
+		let sort = to_create.sort.clone();
+		let columns = Self::insert_columns_for_view(txn, view_id, to_create)?;
+		Ok(Self::built_view(view_id, namespace_id, name, kind, storage, sort, columns))
+	}
 
-		Self::get_view(&mut Transaction::Admin(&mut *txn), view_id)
+	fn validate_view(to_create: &ViewToCreate) -> Result<()> {
+		reject_invalid_column_list(
+			CatalogObjectKind::View,
+			&to_create.name,
+			"partition_by",
+			to_create.storage.partition_by(),
+		)?;
+		if let ViewStorage::Series {
+			tag,
+			..
+		} = &to_create.storage
+		{
+			reject_zero_tag(CatalogObjectKind::View, &to_create.name, *tag)?;
+		}
+		Ok(())
+	}
+
+	fn built_view(
+		id: ViewId,
+		namespace: NamespaceId,
+		name: String,
+		kind: ViewKind,
+		storage: ViewStorage,
+		sort: Vec<ViewSortKey>,
+		columns: Vec<Column>,
+	) -> View {
+		match storage {
+			ViewStorage::Table {
+				partition_by,
+			} => View::Table(TableView {
+				id,
+				namespace,
+				name,
+				kind,
+				columns,
+				primary_key: None,
+				partition_by,
+				sort,
+			}),
+			ViewStorage::RingBuffer {
+				capacity,
+				partition_by,
+			} => View::RingBuffer(RingBufferView {
+				id,
+				namespace,
+				name,
+				kind,
+				columns,
+				primary_key: None,
+				partition_by,
+				capacity,
+				sort,
+			}),
+			ViewStorage::Series {
+				key,
+				tag,
+				partition_by,
+			} => View::Series(SeriesView {
+				id,
+				namespace,
+				name,
+				kind,
+				columns,
+				primary_key: None,
+				partition_by,
+				key,
+				tag,
+				sort,
+			}),
+		}
 	}
 
 	#[inline]
@@ -244,11 +320,16 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns_for_view(txn: &mut AdminTransaction, view: ViewId, to_create: ViewToCreate) -> Result<()> {
+	fn insert_columns_for_view(
+		txn: &mut AdminTransaction,
+		view: ViewId,
+		to_create: ViewToCreate,
+	) -> Result<Vec<Column>> {
+		let mut columns = Vec::new();
 		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
-			Self::create_column(
+			columns.push(Self::create_column(
 				txn,
 				view,
 				ColumnToCreate {
@@ -262,9 +343,9 @@ impl CatalogStore {
 					auto_increment: false,
 					dictionary_id: column_to_create.dictionary_id,
 				},
-			)?;
+			)?);
 		}
-		Ok(())
+		Ok(columns)
 	}
 }
 

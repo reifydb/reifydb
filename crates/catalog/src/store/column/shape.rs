@@ -8,7 +8,7 @@ catalog_shape! {
 		id: u64,
 		object: u64,
 		name: utf8,
-		value: u8,
+		value_type: blob,
 		index: u8,
 		auto_increment: bool,
 		constraint: blob,

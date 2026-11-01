@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::value::constraint::{Constraint, TypeConstraint};
+
 pub mod authentication;
 pub mod bindings;
 pub mod cdc_consumers;
@@ -56,3 +58,13 @@ pub mod virtual_table_columns;
 
 #[cfg(test)]
 mod schema_conformance_tests;
+
+pub(crate) fn type_constraint_text(type_constraint: &TypeConstraint) -> String {
+	let ty = type_constraint.get_type();
+	match type_constraint.constraint() {
+		None => ty.to_string(),
+		Some(Constraint::MaxBytes(max)) => format!("{ty}({})", max.value()),
+		Some(Constraint::Dictionary(id, id_type)) => format!("{ty} dictionary {} {id_type}", id.to_u64()),
+		Some(Constraint::SumType(id)) => format!("{ty} sumtype {}", id.to_u64()),
+	}
+}

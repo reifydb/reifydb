@@ -299,23 +299,8 @@ impl Default for CatalogCache {
 
 impl CatalogCache {
 	pub fn new() -> Self {
-		let system_namespace = Namespace::system();
-		let system_namespace_id = system_namespace.id();
-
 		let namespaces = SkipMap::new();
-		let container = MultiVersionContainer::new();
-		container.insert(1, system_namespace);
-		namespaces.insert(system_namespace_id, container);
-
-		let default_namespace = Namespace::default_namespace();
-		let default_namespace_id = default_namespace.id();
-		let container = MultiVersionContainer::new();
-		container.insert(1, default_namespace);
-		namespaces.insert(default_namespace_id, container);
-
 		let namespaces_by_name = SkipMap::new();
-		namespaces_by_name.insert("system".to_string(), system_namespace_id);
-		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
 		let inner = CatalogCacheInner {
 			bindings: SkipMap::new(),

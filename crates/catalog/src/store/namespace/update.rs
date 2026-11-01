@@ -18,8 +18,8 @@ impl CatalogStore {
 		namespace::set_id(&mut row, existing.id().0);
 		namespace::set_name(&mut row, existing.name());
 		namespace::set_parent_id(&mut row, existing.parent_id().0);
-		if let Some(ref grpc) = grpc {
-			namespace::set_grpc(&mut row, grpc);
+		if let Some(grpc) = grpc.filter(|grpc| !grpc.is_empty()) {
+			namespace::set_grpc(&mut row, &grpc);
 		}
 		namespace::set_local_name(&mut row, existing.local_name());
 

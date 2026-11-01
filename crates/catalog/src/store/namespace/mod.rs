@@ -23,14 +23,13 @@ pub(crate) fn convert_namespace<K>(multi: MultiVersionRow<K>) -> Result<Namespac
 	let id = NamespaceId(namespace::get_id(&bytes));
 	let name = namespace::get_name(&bytes).to_string();
 	let parent_id = NamespaceId(namespace::get_parent_id(&bytes));
-	let grpc = namespace::try_get_grpc(&bytes).map(|s| s.to_string()).filter(|s| !s.is_empty());
+	let grpc = namespace::try_get_grpc(&bytes).map(|s| s.to_string());
 	let local_name = namespace::try_get_local_name(&bytes)
-		.filter(|s| !s.is_empty())
-		.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
+		.unwrap_or_else(|| panic!("namespace {id:?} is stored without a local name"))
 		.to_string();
 
 	Ok(if let Some(address) = grpc {
-		let token = namespace::try_get_token(&bytes).map(|s| s.to_string()).filter(|s| !s.is_empty());
+		let token = namespace::try_get_token(&bytes).map(|s| s.to_string());
 		Namespace::Remote {
 			id,
 			name,

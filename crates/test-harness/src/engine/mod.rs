@@ -10,6 +10,7 @@ use std::{ops::Deref, sync::Arc, thread};
 
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
+	bootstrap::bootstrap_root_namespaces,
 	cache::CatalogCache,
 	catalog::{
 		Catalog,
@@ -366,6 +367,9 @@ impl TestEngineBuilder {
 			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
 		));
 		ioc = ioc.register(flow_backlog.clone());
+
+		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus)
+			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
 		let ioc_for_cdc = ioc.clone();
 

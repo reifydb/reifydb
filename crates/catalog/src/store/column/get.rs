@@ -2,66 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	constraint::{EncodedTypeConstraint, decode_type_constraint},
-	row::catalog::EncodedCatalogRow,
-	tag::value_type_from_tag_byte,
+	constraint::decode_constraint_info, reader::Reader, row::catalog::EncodedCatalogRow,
+	typeinfo::decode_value_type,
 };
-use reifydb_core::{internal, key::column::ColumnsKey};
+use reifydb_core::{
+	interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::ColumnId,
+	},
+	internal,
+	key::column::ColumnsKey,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
-	value::{
-		constraint::{Constraint, TypeConstraint},
-		dictionary::DictionaryId,
-		sumtype::SumTypeId,
-	},
-};
-
-fn decode_parameterized_type(type_byte: u8, bytes: &[u8]) -> Option<TypeConstraint> {
-	let [constraint_type @ (2 | 5), p1_0, p1_1, p1_2, p1_3, p2_0, p2_1, p2_2, p2_3] = *bytes else {
-		return None;
-	};
-	let encoded = EncodedTypeConstraint {
-		base_type: type_byte,
-		constraint_type,
-		constraint_param1: u32::from_le_bytes([p1_0, p1_1, p1_2, p1_3]),
-		constraint_param2: u32::from_le_bytes([p2_0, p2_1, p2_2, p2_3]),
-	};
-	Some(decode_type_constraint(&encoded)
-		.unwrap_or_else(|error| panic!("invalid persisted column type {encoded:?}: {error}")))
-}
-
-fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
-	if bytes.is_empty() {
-		return None;
-	}
-
-	match bytes[0] {
-		0 => None,
-		1 if bytes.len() >= 5 => {
-			let max_bytes = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-			Some(Constraint::MaxBytes(max_bytes.into()))
-		}
-		3 if bytes.len() >= 10 => {
-			let dict_id = u64::from_le_bytes([
-				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
-			]);
-			let id_type = value_type_from_tag_byte(bytes[9]);
-			Some(Constraint::Dictionary(DictionaryId(dict_id), id_type))
-		}
-		4 if bytes.len() >= 9 => {
-			let id = u64::from_le_bytes([
-				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
-			]);
-			Some(Constraint::SumType(SumTypeId(id)))
-		}
-		_ => None,
-	}
-}
-
-use reifydb_core::interface::catalog::{
-	column::{Column, ColumnIndex},
-	id::ColumnId,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 
 use crate::{CatalogStore, Result, store::column::shape::column};
@@ -79,11 +34,8 @@ impl CatalogStore {
 
 		let id = ColumnId(column::get_id(&bytes));
 		let name = column::get_name(&bytes).to_string();
-		let type_byte = column::get_value(&bytes);
 		let index = ColumnIndex(column::get_index(&bytes));
 		let auto_increment = column::get_auto_increment(&bytes);
-
-		let constraint_bytes = column::get_constraint(&bytes);
 
 		let dict_id_raw = column::get_dictionary_id(&bytes);
 		let dictionary_id = if dict_id_raw == 0 {
@@ -92,38 +44,16 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let constraint = match decode_parameterized_type(type_byte, constraint_bytes.as_bytes()) {
-			Some(digest) => digest,
-			None => {
-				let base_type = value_type_from_tag_byte(type_byte);
-				let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
-				match (&decoded_constraint, dictionary_id) {
-					(Some(c @ Constraint::Dictionary(..)), _) => {
-						TypeConstraint::with_constraint(base_type, c.clone())
-					}
-
-					(_, Some(dict_id)) => {
-						if let Some(dict) = Self::find_dictionary(rx, dict_id)? {
-							TypeConstraint::with_constraint(
-								base_type,
-								Constraint::Dictionary(dict_id, dict.id_type),
-							)
-						} else {
-							match decoded_constraint {
-								Some(c) => {
-									TypeConstraint::with_constraint(base_type, c)
-								}
-								None => TypeConstraint::unconstrained(base_type),
-							}
-						}
-					}
-
-					(Some(c), None) => TypeConstraint::with_constraint(base_type, c.clone()),
-
-					(None, None) => TypeConstraint::unconstrained(base_type),
-				}
-			}
-		};
+		let value_type = decode_value_type(&mut Reader::new(column::get_value_type(&bytes).as_bytes()))
+			.unwrap_or_else(|error| panic!("invalid persisted type of column {id:?}: {error}"));
+		let constraint =
+			match decode_constraint_info(&mut Reader::new(column::get_constraint(&bytes).as_bytes()))
+				.unwrap_or_else(|error| {
+					panic!("invalid persisted constraint of column {id:?}: {error}")
+				}) {
+				Some(constraint) => TypeConstraint::with_constraint(value_type, constraint),
+				None => TypeConstraint::unconstrained(value_type),
+			};
 
 		let properties = Self::list_column_properties(rx, id)?;
 
