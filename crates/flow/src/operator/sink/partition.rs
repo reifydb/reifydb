@@ -18,16 +18,6 @@ use crate::txn::{Batch, Get};
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
-pub fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post: Partition) -> Result<()> {
-	if pre != post {
-		return Err(PartitionError::ImmutablePartitionColumn {
-			object,
-		}
-		.into());
-	}
-	Ok(())
-}
-
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
 pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) -> Result<BatchPartitions> {
 	let keys = indices

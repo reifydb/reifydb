@@ -56,7 +56,7 @@ use crate::{
 	error::FlowSinkError,
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
-		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
+		partition::{partition_batch, resolve_partitions_flow},
 		shape_field_columns, stored_created_at,
 		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
@@ -212,31 +212,33 @@ impl TableSink {
 		let partitions = if self.is_partitioned() {
 			let pre = partition_batch(&self.view, &self.partition_indices, source_pre)?;
 			let post = partition_batch(&self.view, &self.partition_indices, source_post)?;
-			for (&pre_partition, &post_partition) in pre.rows.iter().zip(&post.rows) {
-				ensure_partition_unchanged(
-					ObjectId::from(self.storage),
-					pre_partition,
-					post_partition,
-				)?;
-			}
 			resolve_partitions_flow(
 				txn,
 				ObjectId::from(self.storage),
 				&post.distinct,
 				&mut self.verified_partitions,
 			)?;
-			Some(post.rows)
+			Some((pre.rows, post.rows))
 		} else {
 			None
 		};
 		let mut keys: Vec<(EncodedKey, EncodedKey)> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let (pre_row_number, post_row_number) = (pre_row_numbers[row_idx], post_row_numbers[row_idx]);
-			keys.push(if let Some(partitions) = &partitions {
-				let partition = partitions[row_idx];
+			keys.push(if let Some((pre_partitions, post_partitions)) = &partitions {
 				(
-					partitioned_key(self.storage, pre_runs.next(), partition, pre_row_number),
-					partitioned_key(self.storage, post_runs.next(), partition, post_row_number),
+					partitioned_key(
+						self.storage,
+						pre_runs.next(),
+						pre_partitions[row_idx],
+						pre_row_number,
+					),
+					partitioned_key(
+						self.storage,
+						post_runs.next(),
+						post_partitions[row_idx],
+						post_row_number,
+					),
 				)
 			} else {
 				(

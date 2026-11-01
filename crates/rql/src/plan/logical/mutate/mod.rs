@@ -4,7 +4,6 @@
 pub mod delete;
 pub mod dispatch;
 pub mod insert;
-mod partition_guard;
 pub mod update;
 
 use reifydb_core::expression::Expression;

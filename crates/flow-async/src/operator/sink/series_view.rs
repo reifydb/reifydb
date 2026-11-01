@@ -27,7 +27,7 @@ use reifydb_flow::{
 	operator::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
-			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
+			partition::{partition_batch, resolve_partitions_flow},
 			shape_field_columns, stored_created_at,
 			table::{
 				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
@@ -287,11 +287,8 @@ impl SinkSeriesViewOperator {
 		let partitions = if self.is_partitioned() {
 			let pre = partition_batch(view, &self.partition_indices, source_pre)?;
 			let post = partition_batch(view, &self.partition_indices, source_post)?;
-			for (&pre_partition, &post_partition) in pre.rows.iter().zip(&post.rows) {
-				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
-			}
 			resolve_partitions_flow(txn, object_id.into(), &post.distinct, &mut self.verified_partitions)?;
-			Some(post.rows)
+			Some((pre.rows, post.rows))
 		} else {
 			None
 		};
@@ -302,19 +299,18 @@ impl SinkSeriesViewOperator {
 			let pre_series_key = pre_series_keys[row_idx];
 			let post_series_key = post_series_keys[row_idx];
 
-			let (pre_key, post_key) = if let Some(partitions) = &partitions {
-				let partition = partitions[row_idx];
+			let (pre_key, post_key) = if let Some((pre_partitions, post_partitions)) = &partitions {
 				(
 					PartitionedSeriesRowKey::encoded(
 						object_id,
-						partition,
+						pre_partitions[row_idx],
 						None,
 						pre_series_key,
 						pre_row_number.0,
 					),
 					PartitionedSeriesRowKey::encoded(
 						object_id,
-						partition,
+						post_partitions[row_idx],
 						None,
 						post_series_key,
 						post_row_number.0,

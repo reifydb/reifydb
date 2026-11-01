@@ -62,7 +62,7 @@ use reifydb_flow::{
 	operator::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
-			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
+			partition::{partition_batch, resolve_partitions_flow},
 			shape_field_columns,
 			table::{
 				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
@@ -574,7 +574,13 @@ impl DurableSink for SinkRingBufferViewOperator {
 					..
 				} => {
 					self.flush_inserts(txn, view, &mut ring, &mut inserts, &mut touched)?;
-					let (kept, replaced) = split_by_sequence(pre, post)?;
+					let (kept, mut replaced) = split_by_sequence(pre, post)?;
+					let moved = self.partition_moves(txn, view, pre, post)?;
+					let kept: Vec<usize> =
+						kept.into_iter().filter(|row_idx| !moved.contains(row_idx)).collect();
+					replaced.extend(moved);
+					replaced.sort_unstable();
+					replaced.dedup();
 					if replaced.is_empty() {
 						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
 					} else {
@@ -891,11 +897,7 @@ impl SinkRingBufferViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let pre_row_numbers = require_row_numbers(source_pre)?;
 		let post_partitions: Option<Vec<Partition>> = if self.is_partitioned() {
-			let pre_parts = partition_batch(view, &self.partition_indices, source_pre)?;
 			let post_parts = partition_batch(view, &self.partition_indices, source_post)?;
-			for (&pre_partition, &post_partition) in pre_parts.rows.iter().zip(&post_parts.rows) {
-				ensure_partition_unchanged(self.storage.into(), pre_partition, post_partition)?;
-			}
 			resolve_partitions_flow(
 				txn,
 				self.storage.into(),
@@ -947,6 +949,34 @@ impl SinkRingBufferViewOperator {
 			)?;
 		}
 		Ok(())
+	}
+
+	fn partition_moves(
+		&self,
+		txn: &mut DeferredTransaction,
+		view: &View,
+		pre: &RecordBatch,
+		post: &RecordBatch,
+	) -> Result<Vec<usize>> {
+		if !self.is_partitioned() || post.num_rows() == 0 {
+			return Ok(Vec::new());
+		}
+		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
+		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
+		let dict_pre = dictionary_lookup_partition_columns(txn, view, &self.partition_indices, &coerced_pre)?;
+		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
+		let pre_parts =
+			partition_batch(view, &self.partition_indices, dict_pre.as_ref().unwrap_or(&coerced_pre))?;
+		let post_parts =
+			partition_batch(view, &self.partition_indices, dict_post.as_ref().unwrap_or(&coerced_post))?;
+		Ok(pre_parts
+			.rows
+			.iter()
+			.zip(&post_parts.rows)
+			.enumerate()
+			.filter(|(_, (pre_partition, post_partition))| pre_partition != post_partition)
+			.map(|(row_idx, _)| row_idx)
+			.collect())
 	}
 
 	#[inline]

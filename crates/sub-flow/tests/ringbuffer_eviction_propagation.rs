@@ -11,13 +11,6 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
-fn err_code(db: &TestDb, rql: &str) -> String {
-	match db.try_command(rql) {
-		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
-		Err(e) => e.diagnostic().code.clone(),
-	}
-}
-
 fn agg_group(db: &TestDb, region: &str) -> Option<(i64, i32)> {
 	// None means the group has no row at all: a full retraction must make it disappear, which is
 	// observably different from a lingering zero row.
@@ -182,9 +175,8 @@ fn partitioned_within_batch_overflow_nets_to_capacity() {
 }
 
 #[test]
-fn update_driven_partition_move_is_rejected_and_downstream_is_unaffected() {
-	// A cross-partition move is refused at compile time, so it never reaches the eviction path and
-	// neither partition's membership nor the aggregate over them changes.
+fn update_driven_partition_move_evicts_the_destinations_oldest_and_the_aggregate_follows() {
+	// A move into a full partition must evict there and retract from the source, or the aggregate double counts.
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
@@ -198,20 +190,8 @@ fn update_driven_partition_move_is_rejected_and_downstream_is_unaffected() {
 	assert_eq!(await_agg_group(&db, "eu", Some((2, 30))), Some((2, 30)), "eu starts with both its rows");
 	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "us starts with both its rows");
 
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"a cross-partition move must be rejected"
-	);
+	db.command("UPDATE test::events { region: \"eu\" } FILTER n == 1");
 
-	assert_eq!(
-		await_agg_group(&db, "eu", Some((2, 30))),
-		Some((2, 30)),
-		"eu must be unaffected by the rejected update"
-	);
-	assert_eq!(
-		await_agg_group(&db, "us", Some((2, 3))),
-		Some((2, 3)),
-		"us must be unaffected by the rejected update"
-	);
+	assert_eq!(await_agg_group(&db, "eu", Some((2, 21))), Some((2, 21)), "eu must hold n 20 and the moved n 1");
+	assert_eq!(await_agg_group(&db, "us", Some((1, 2))), Some((1, 2)), "us must keep only n 2");
 }

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::expression::{Expression, IdentExpression};
+use reifydb_core::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 
-use super::partition_guard::{UpdateTarget, check_partition_immutability};
 use crate::{
 	Result,
 	ast::{
@@ -18,7 +17,7 @@ use crate::{
 	error::RqlError,
 	expression::ExpressionCompiler,
 	plan::logical::{
-		Compiler, FilterNode, LogicalPlan, PatchNode, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
+		Compiler, FilterNode, LogicalPlan, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
 		UpdateTableNode, mutate::compile_returning_clause,
 	},
 	token::token::Token,
@@ -42,10 +41,9 @@ impl<'bump> Compiler<'bump> {
 		let from_plan = self.compile_update_from(token, target.clone(), tx)?;
 		let filter_plan = compile_update_filter(filter)?;
 		let patch_plan = self.compile_update_patch(token, assignments)?;
-		let assigned_columns = assigned_columns_of(&patch_plan);
 		let take_plan = self.compile_optional_take(take)?;
 		let pipeline = self.assemble_update_pipeline(from_plan, filter_plan, take_plan, patch_plan);
-		self.wrap_update_target(target, pipeline, returning, &assigned_columns, tx)
+		self.wrap_update_target(target, pipeline, returning, tx)
 	}
 
 	#[inline]
@@ -121,7 +119,6 @@ impl<'bump> Compiler<'bump> {
 		target: UnresolvedObjectIdentifier<'bump>,
 		pipeline: LogicalPlan<'bump>,
 		returning: Option<Vec<Expression>>,
-		assigned_columns: &[IdentExpression],
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let target_name = target.name.text();
@@ -133,7 +130,6 @@ impl<'bump> Compiler<'bump> {
 			return Ok(self.update_table_node(name, namespace, pipeline, returning));
 		};
 		let namespace_id = ns.id();
-		let ns_name = ns.name().to_string();
 
 		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
 			return Err(RqlError::QueueImmutable {
@@ -142,15 +138,7 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		if let Some(ringbuffer) = self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)? {
-			check_partition_immutability(
-				&self.catalog,
-				tx,
-				&ns_name,
-				target_name,
-				UpdateTarget::RingBuffer(ringbuffer.id),
-				assigned_columns,
-			)?;
+		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut t = MaybeQualifiedRingBufferIdentifier::new(name);
 			if !namespace.is_empty() {
 				t = t.with_namespace(namespace);
@@ -161,15 +149,7 @@ impl<'bump> Compiler<'bump> {
 				returning,
 			}));
 		}
-		if let Some(series) = self.catalog.find_series_by_name(tx, namespace_id, target_name)? {
-			check_partition_immutability(
-				&self.catalog,
-				tx,
-				&ns_name,
-				target_name,
-				UpdateTarget::Series(series.id),
-				assigned_columns,
-			)?;
+		if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut t = MaybeQualifiedSeriesIdentifier::new(name);
 			if !namespace.is_empty() {
 				t = t.with_namespace(namespace);
@@ -179,16 +159,6 @@ impl<'bump> Compiler<'bump> {
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
 				returning,
 			}));
-		}
-		if let Some(table) = self.catalog.find_table_by_name(tx, namespace_id, target_name)? {
-			check_partition_immutability(
-				&self.catalog,
-				tx,
-				&ns_name,
-				target_name,
-				UpdateTarget::Table(table.id),
-				assigned_columns,
-			)?;
 		}
 		Ok(self.update_table_node(name, namespace, pipeline, returning))
 	}
@@ -223,22 +193,4 @@ fn compile_update_filter<'bump>(filter: BumpBox<'bump, Ast<'bump>>) -> Result<Lo
 		condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
 		rql: filter_ast.rql.to_string(),
 	}))
-}
-
-#[inline]
-fn assigned_columns_of(patch_plan: &LogicalPlan) -> Vec<IdentExpression> {
-	let LogicalPlan::Patch(PatchNode {
-		assignments,
-		..
-	}) = patch_plan
-	else {
-		return Vec::new();
-	};
-	assignments
-		.iter()
-		.filter_map(|expr| match expr {
-			Expression::Alias(alias) => Some(alias.alias.clone()),
-			_ => None,
-		})
-		.collect()
 }

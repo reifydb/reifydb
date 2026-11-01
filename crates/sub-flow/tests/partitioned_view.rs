@@ -13,8 +13,7 @@ fn setup() -> TestDb {
 }
 
 fn err_code(db: &TestDb, rql: &str) -> String {
-	// Callers need the exact code to tell PART_002 (own partition column, runtime, value-based)
-	// from PART_004 (downstream view's partition column, compile time, column-identity-based).
+	// Callers need the exact code, since only a table's own partition column refuses an update (PART_002).
 	match db.try_command(rql) {
 		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
 		Err(e) => e.diagnostic().code.clone(),
@@ -196,9 +195,8 @@ fn ringbuffer_backed_view_update_remaps_row_number() {
 }
 
 #[test]
-fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
-	// Partition columns are immutable, so this is refused at compile time rather than silently
-	// relocating the row.
+fn ringbuffer_backed_partitioned_view_update_of_partition_column_moves_row() {
+	// A row left under its old partition after its partition column changed is read in the wrong partition.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -207,25 +205,23 @@ fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
 	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
 	db.await_row_count("FROM test::rb", 1, Duration::from_seconds_const(5));
 
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"updating a column that feeds a downstream partitioned view's partition key must be rejected"
-	);
+	db.command("UPDATE test::events { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::rb FILTER region == \"eu\"", 1, Duration::from_seconds_const(5));
 
-	// Rejected at compile time: nothing changed.
 	assert_eq!(
-		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
+		collect_n(&db, "FROM test::rb FILTER region == \"eu\""),
 		vec![1],
-		"row must remain under its original partition after the rejected update"
+		"the row must sit in its new partition"
 	);
-	assert!(collect_n(&db, "FROM test::rb FILTER region == \"eu\"").is_empty(), "row must not have moved");
+	assert!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\"").is_empty(),
+		"the old partition must not keep it"
+	);
 }
 
 #[test]
-fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
-	// A move that would also evict the destination partition's oldest row must be refused like any
-	// other partition-column update, and atomically: neither partition is touched.
+fn ringbuffer_backed_partitioned_view_update_into_full_partition_evicts_its_oldest() {
+	// A row moved into a full partition counts against its capacity, so the destination's oldest row must go.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -237,19 +233,23 @@ fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
 	);
 	db.await_row_count("FROM test::rb", 4, Duration::from_seconds_const(5));
 
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"a move into an already-full destination partition must be rejected outright"
-	);
+	db.command("UPDATE test::events { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::rb FILTER region == \"eu\" and n == 1", 1, Duration::from_seconds_const(5));
 
-	// Nothing evicted, nothing moved: both partitions remain exactly as they were.
-	let mut eu = collect_n(&db, "FROM test::rb FILTER region == \"eu\"");
-	eu.sort();
-	assert_eq!(eu, vec![10, 20], "eu partition must be untouched by the rejected update");
-	let mut us = collect_n(&db, "FROM test::rb FILTER region == \"us\"");
-	us.sort();
-	assert_eq!(us, vec![1, 2], "us partition must be untouched by the rejected update");
+	assert_eq!(
+		{
+			let mut rows = collect_n(&db, "FROM test::rb FILTER region == \"eu\"");
+			rows.sort();
+			rows
+		},
+		vec![1, 20],
+		"eu must evict its oldest row, n 10, for the moved one"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::rb FILTER region == \"us\""),
+		vec![2],
+		"us must keep only the row that stayed"
+	);
 }
 
 #[test]
@@ -397,9 +397,7 @@ fn partition_column_must_exist() {
 
 #[test]
 fn table_own_partition_column_update_rejected() {
-	// Two guards make partition columns immutable: PART_002 compares the row's own computed
-	// partition at runtime, so same-value reassignment passes; PART_004 rejects by column name at
-	// compile time, because a downstream view's partition key has no row values to compare.
+	// A table's own partition column is immutable: PART_002 fails only when the computed partition changes.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
@@ -504,39 +502,56 @@ fn ringbuffer_own_partition_column_same_value_reassignment_allowed() {
 }
 
 #[test]
-fn table_source_feeds_table_view_partition_column_update_rejected() {
+fn table_source_feeds_table_view_partition_column_update_moves_row() {
+	// A downstream partitioned view must move the row with its source, or it files the row under a stale value.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
 		 AS { FROM test::events }");
 	db.await_row_count("FROM test::v", 3, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::events { region: \"north\" } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER region == \"north\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
-		"PART_004",
-		"updating an unpartitioned table's column that feeds a downstream table-backed partitioned \
-		 view must be rejected"
+		collect_n(&db, "FROM test::v FILTER region == \"north\""),
+		vec![1],
+		"the row must sit in its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::v FILTER region == \"us\""),
+		vec![3],
+		"the old partition must keep only the rows that stayed"
 	);
 }
 
 #[test]
-fn table_source_feeds_ringbuffer_view_partition_column_update_rejected() {
+fn table_source_feeds_ringbuffer_view_partition_column_update_moves_row() {
+	// A downstream partitioned view must move the row with its source, or it files the row under a stale value.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rv { region: utf8, n: int4 } \
 		 WITH { capacity: 8, partition: { by: { region } } } AS { FROM test::events }");
 	db.await_row_count("FROM test::rv", 3, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::events { region: \"north\" } FILTER n == 1");
+	db.await_row_count("FROM test::rv FILTER region == \"north\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
-		"PART_004",
-		"updating an unpartitioned table's column that feeds a downstream ring-buffer-backed \
-		 partitioned view must be rejected"
+		collect_n(&db, "FROM test::rv FILTER region == \"north\""),
+		vec![1],
+		"the row must sit in its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::rv FILTER region == \"us\""),
+		vec![3],
+		"the old partition must keep only the rows that stayed"
 	);
 }
 
 #[test]
-fn table_source_feeds_series_view_partition_column_update_rejected() {
+fn table_source_feeds_series_view_partition_column_update_moves_row() {
+	// A downstream partitioned view must move the row with its source, or it files the row under a stale value.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
@@ -545,16 +560,24 @@ fn table_source_feeds_series_view_partition_column_update_rejected() {
 		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }");
 	db.await_row_count("FROM test::sv", 1, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::ticks { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::sv FILTER region == \"eu\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::ticks { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"updating an unpartitioned table's column that feeds a downstream series-backed partitioned \
-		 view must be rejected"
+		collect_n(&db, "FROM test::sv FILTER region == \"eu\""),
+		vec![1],
+		"the row must sit in its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::sv FILTER region == \"us\""),
+		Vec::<i32>::new(),
+		"the old partition must keep only the rows that stayed"
 	);
 }
 
 #[test]
-fn series_source_feeds_table_view_partition_column_update_rejected() {
+fn series_source_feeds_table_view_partition_column_update_moves_row() {
+	// A downstream partitioned view must move the row with its source, or it files the row under a stale value.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE SERIES test::s { ts: int8, region: utf8, n: int4 } WITH { key: ts }");
@@ -563,16 +586,24 @@ fn series_source_feeds_table_view_partition_column_update_rejected() {
 		 WITH { partition: { by: { region } } } AS { FROM test::s }");
 	db.await_row_count("FROM test::v", 1, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::s { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER region == \"eu\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::s { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"updating an unpartitioned series' column that feeds a downstream partitioned view must be \
-		 rejected"
+		collect_n(&db, "FROM test::v FILTER region == \"eu\""),
+		vec![1],
+		"the row must sit in its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::v FILTER region == \"us\""),
+		Vec::<i32>::new(),
+		"the old partition must keep only the rows that stayed"
 	);
 }
 
 #[test]
-fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
+fn ringbuffer_source_feeds_table_view_partition_column_update_moves_row() {
+	// A downstream partitioned view must move the row with its source, or it files the row under a stale value.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE RINGBUFFER test::rb { region: utf8, n: int4 } WITH { capacity: 8 }");
@@ -581,18 +612,24 @@ fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
 		 AS { FROM test::rb }");
 	db.await_row_count("FROM test::v", 1, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::rb { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER region == \"eu\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::rb { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"updating an unpartitioned ring buffer's column that feeds a downstream partitioned view must \
-		 be rejected"
+		collect_n(&db, "FROM test::v FILTER region == \"eu\""),
+		vec![1],
+		"the row must sit in its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::v FILTER region == \"us\""),
+		Vec::<i32>::new(),
+		"the old partition must keep only the rows that stayed"
 	);
 }
 
 #[test]
-fn nested_view_chain_partition_column_update_rejected_transitively() {
-	// An unpartitioned intermediate view sits between the table and the partitioned one, so a
-	// one-hop dependency scan would miss it.
+fn nested_view_chain_partition_column_update_moves_the_row_through_both_views() {
+	// The move must pass through an unpartitioned intermediate view, or the partitioned one keeps the old row.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v1 { region: utf8, n: int4 } AS { FROM test::events }");
@@ -601,10 +638,18 @@ fn nested_view_chain_partition_column_update_rejected_transitively() {
 		 AS { FROM test::v1 }");
 	db.await_row_count("FROM test::v2", 3, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::events { region: \"north\" } FILTER n == 1");
+	db.await_row_count("FROM test::v2 FILTER region == \"north\"", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"north\" } FILTER n == 1"),
-		"PART_004",
-		"rejection must propagate transitively through an intermediate unpartitioned view"
+		collect_n(&db, "FROM test::v2 FILTER region == \"north\""),
+		vec![1],
+		"the row must reach its new partition"
+	);
+	assert_eq!(
+		collect_n(&db, "FROM test::v2 FILTER region == \"us\""),
+		vec![3],
+		"the old partition must keep only n 3"
 	);
 }
 
@@ -620,7 +665,8 @@ fn downstream_view_zero_partition_columns_update_allowed() {
 }
 
 #[test]
-fn downstream_view_two_partition_columns_update_either_rejected() {
+fn downstream_view_two_partition_columns_update_either_moves_the_row() {
+	// A change to either partition column changes the partition, so both must move the row.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
@@ -632,20 +678,21 @@ fn downstream_view_two_partition_columns_update_either_rejected() {
 		 WITH { partition: { by: { region, tier } } } AS { FROM test::events }");
 	db.await_row_count("FROM test::v", 2, Duration::from_seconds_const(5));
 
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"updating the first of two partition columns must be rejected"
-	);
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { tier: \"silver\" } FILTER n == 2"),
-		"PART_004",
-		"updating the second of two partition columns must be rejected"
+	db.command("UPDATE test::events { region: \"eu\" } FILTER n == 1");
+	db.command("UPDATE test::events { tier: \"silver\" } FILTER n == 2");
+	db.await_row_count("FROM test::v FILTER tier == \"silver\"", 1, Duration::from_seconds_const(5));
+
+	assert_eq!(collect_n(&db, "FROM test::v FILTER region == \"eu\" and tier == \"gold\""), vec![1]);
+	assert_eq!(collect_n(&db, "FROM test::v FILTER region == \"us\" and tier == \"silver\""), vec![2]);
+	assert!(
+		collect_n(&db, "FROM test::v FILTER region == \"us\" and tier == \"gold\"").is_empty(),
+		"the old partition must be empty"
 	);
 }
 
 #[test]
-fn downstream_view_four_partition_columns_update_any_rejected() {
+fn downstream_view_four_partition_columns_update_any_moves_the_row() {
+	// `c` is neither the first nor the last partition column, so a move must read every partition column.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { a: utf8, b: utf8, c: utf8, d: utf8, n: int4 }");
@@ -657,59 +704,62 @@ fn downstream_view_four_partition_columns_update_any_rejected() {
 		 WITH { partition: { by: { a, b, c, d } } } AS { FROM test::events }");
 	db.await_row_count("FROM test::v", 2, Duration::from_seconds_const(5));
 
-	// `c` is neither the first nor the last partition column - proves the check scans every
-	// assignment, not just the first or last.
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { c: \"2\" } FILTER n == 1"),
-		"PART_004",
-		"updating a middle partition column (of four) must be rejected"
-	);
+	db.command("UPDATE test::events { c: \"2\" } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER c == \"2\"", 1, Duration::from_seconds_const(5));
+	assert_eq!(collect_n(&db, "FROM test::v FILTER c == \"2\""), vec![1], "the row must sit in its new partition");
+	assert_eq!(collect_n(&db, "FROM test::v FILTER c == \"1\""), vec![2], "the old partition must keep only n 2");
 
-	// A non-partition column update must still succeed normally.
 	db.command("UPDATE test::events { n: 99 } FILTER n == 2");
 	db.await_row_count("FROM test::v FILTER n == 99", 1, Duration::from_seconds_const(5));
 }
 
 #[test]
-fn downstream_view_update_mixed_columns_rejected_when_any_is_partition_key() {
+fn downstream_view_update_mixed_columns_moves_the_row_with_every_assignment_applied() {
+	// A move that dropped the non-partition assignment would publish the moved row with a stale value.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
 		 AS { FROM test::events }");
 	db.await_row_count("FROM test::v", 3, Duration::from_seconds_const(5));
 
-	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"north\", n: 100 } FILTER n == 1"),
-		"PART_004",
-		"a mixed SET clause must be rejected if ANY assignment touches a partition column, even \
-		 alongside unrelated columns"
-	);
-	assert!(
-		collect_n(&db, "FROM test::v FILTER n == 100").is_empty(),
-		"nothing in the rejected statement must apply, including the non-partition column"
-	);
+	db.command("UPDATE test::events { region: \"north\", n: 100 } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER region == \"north\"", 1, Duration::from_seconds_const(5));
+
+	assert_eq!(collect_n(&db, "FROM test::v FILTER region == \"north\""), vec![100]);
+	assert!(collect_n(&db, "FROM test::v FILTER n == 1").is_empty(), "the old row must be gone");
 }
 
 #[test]
-fn downstream_view_same_value_reassignment_still_rejected() {
-	// The downstream guard is column-identity-based with no row values to compare at compile time,
-	// so even reassigning the partition column to its current value is rejected.
+fn downstream_view_same_value_reassignment_leaves_the_row_in_its_partition() {
+	// Reassigning the partition column to its own value must update in place, not move or duplicate the row.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \
 		 AS { FROM test::events }");
 	db.await_row_count("FROM test::v", 3, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::events { region: region, n: 7 } FILTER n == 1");
+	db.await_row_count("FROM test::v FILTER n == 7", 1, Duration::from_seconds_const(5));
+
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: region } FILTER n == 1"),
-		"PART_004",
-		"same-value reassignment of a downstream view's partition column must still be rejected - \
-		 test::events itself is unpartitioned, so only Part B (identity-based) applies here"
+		{
+			let mut rows = collect_n(&db, "FROM test::v FILTER region == \"us\"");
+			rows.sort();
+			rows
+		},
+		vec![3, 7],
+		"the row must stay in us with its new value"
+	);
+	assert_eq!(
+		db.await_exact_row_count("FROM test::v", 3, Duration::from_seconds_const(5)),
+		3,
+		"no row may be duplicated"
 	);
 }
 
 #[test]
-fn two_downstream_views_different_partition_columns_both_enforced() {
+fn two_downstream_views_different_partition_columns_each_move_the_row_by_their_own_key() {
+	// Each view partitions by its own column, so each must move the row only when its own key changes.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, tier: utf8, n: int4 }");
@@ -721,16 +771,28 @@ fn two_downstream_views_different_partition_columns_both_enforced() {
 	db.await_row_count("FROM test::by_region", 1, Duration::from_seconds_const(5));
 	db.await_row_count("FROM test::by_tier", 1, Duration::from_seconds_const(5));
 
+	db.command("UPDATE test::events { tier: \"silver\" } FILTER n == 1");
+	db.await_row_count("FROM test::by_tier FILTER tier == \"silver\"", 1, Duration::from_seconds_const(5));
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { tier: \"silver\" } FILTER n == 1"),
-		"PART_004",
-		"`tier` is not by_region's partition key, but IS by_tier's - the second view alone must still \
-		 block the update"
+		collect_n(&db, "FROM test::by_region FILTER region == \"us\""),
+		vec![1],
+		"by_region keeps the row in us"
+	);
+	assert!(
+		collect_n(&db, "FROM test::by_tier FILTER tier == \"gold\"").is_empty(),
+		"by_tier must move it out of gold"
+	);
+
+	db.command("UPDATE test::events { region: \"eu\" } FILTER n == 1");
+	db.await_row_count("FROM test::by_region FILTER region == \"eu\"", 1, Duration::from_seconds_const(5));
+	assert!(
+		collect_n(&db, "FROM test::by_region FILTER region == \"us\"").is_empty(),
+		"by_region must move it out of us"
 	);
 	assert_eq!(
-		err_code(&db, "UPDATE test::events { region: \"eu\" } FILTER n == 1"),
-		"PART_004",
-		"symmetric check: `region` is only by_region's partition key"
+		collect_n(&db, "FROM test::by_tier FILTER tier == \"silver\""),
+		vec![1],
+		"by_tier keeps the row in silver"
 	);
 }
 

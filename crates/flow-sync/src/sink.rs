@@ -31,7 +31,6 @@ mod tests {
 	};
 	use reifydb_flow::{
 		operator::sink::{
-			partition::ensure_partition_unchanged,
 			table::TableSink,
 			view::{partitioned_key, row_key, sort_runs, sorted_view_key},
 		},
@@ -305,29 +304,28 @@ mod tests {
 	}
 
 	#[test]
-	fn an_update_that_moves_a_row_to_another_partition_is_refused_before_anything_is_written() {
+	fn an_update_that_changes_a_rows_partition_moves_the_row_to_the_new_partition() {
+		// A row left under its old partition key would be read in the wrong partition.
 		let mut txn = TestingTx::default();
 		let view = view(plain_symbol(), Vec::new(), &["sym"]);
+		let storage = view.storage_id();
+		let sol = partition_of(view.columns(), &["sym".to_string()], &[utf8("sol")]);
+		let eth = partition_of(view.columns(), &["sym".to_string()], &[utf8("eth")]);
 		let mut sink = sink(&view);
 		sink.apply(&mut txn, change(vec![Diff::insert(inserted(&[(1, "sol", 10)]))])).unwrap();
-		let rows_before = txn.rows.clone();
-		let expected = ensure_partition_unchanged(
-			ObjectId::view(VIEW),
-			partition_of(view.columns(), &["sym".to_string()], &[utf8("sol")]),
-			partition_of(view.columns(), &["sym".to_string()], &[utf8("eth")]),
+
+		sink.apply(
+			&mut txn,
+			change(vec![Diff::update(inserted(&[(1, "sol", 10)]), inserted(&[(1, "eth", 10)]))]),
 		)
-		.unwrap_err();
+		.unwrap();
 
-		let err = sink
-			.apply(
-				&mut txn,
-				change(vec![Diff::update(inserted(&[(1, "sol", 10)]), inserted(&[(1, "eth", 10)]))]),
-			)
-			.unwrap_err();
-
-		assert_eq!(err.code, expected.code);
-		assert_eq!(txn.rows, rows_before);
-		assert_eq!(txn.emitted.len(), 1);
+		assert!(!txn.rows.contains_key(&partitioned_key(storage, None, sol, RowNumber(1))));
+		assert_eq!(
+			stored(&txn, &view, &partitioned_key(storage, None, eth, RowNumber(1))),
+			vec![utf8("eth"), Value::Int8(10)]
+		);
+		assert_eq!(txn.emitted.len(), 2);
 	}
 
 	#[test]
