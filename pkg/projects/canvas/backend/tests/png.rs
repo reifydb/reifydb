@@ -160,13 +160,16 @@ fn palette_chunk_carries_the_published_canvas_colors() {
 	let db = build();
 	put_tile(&db, 0, 0, &[0u8; TILE_BYTES]);
 	let png = decode(&png_of(&db, &[(0, 0)], "64").expect("png query must succeed"));
-	assert_eq!(png.palette.len(), 32 * 3, "palette must have exactly 32 colors");
+	assert_eq!(png.palette.len(), 64 * 3, "palette must have exactly 64 colors");
 	let rgb = |i: usize| &png.palette[i * 3..i * 3 + 3];
 	assert_eq!(rgb(0), &[0xff, 0xff, 0xff], "index 0 must be white");
 	assert_eq!(rgb(3), &[0xff, 0x45, 0x00], "index 3 must be #ff4500");
 	assert_eq!(rgb(13), &[0x24, 0x50, 0xa4], "index 13 must be #2450a4");
 	assert_eq!(rgb(28), &[0x00, 0x00, 0x00], "index 28 must be black");
 	assert_eq!(rgb(31), &[0xd4, 0xd7, 0xd9], "index 31 must be #d4d7d9");
+	assert_eq!(rgb(32), &[0xff, 0xdb, 0xa1], "index 32 must be #ffdba1");
+	assert_eq!(rgb(60), &[0x14, 0x15, 0x16], "index 60 must be #141516");
+	assert_eq!(rgb(63), &[0x27, 0x2b, 0x2f], "index 63 must be #272b2f");
 	assert_eq!((png.width, png.height), (1, 1), "scale 64 must shrink a tile to one pixel");
 }
 

@@ -32,7 +32,7 @@ never need older changes.
 
 - One table, `canvas::tile`, holds the canvas as 16,384 rows: one row per 64 x 64
   tile, partitioned by `(tile_x, tile_y)`. The tile's 4,096 pixels (one byte per
-  pixel, row-major, a palette index 0-31) are stored deflate-compressed, so a blank
+  pixel, row-major, a palette index 0-63) are stored deflate-compressed, so a blank
   tile takes about 20 bytes. Every tile filter pins both partition keys, so reads
   and writes touch one partition.
 - The binary seeds all tiles at boot. A tile stored twice or with the wrong size
@@ -48,8 +48,9 @@ never need older changes.
   an index outside the tile, a color outside the palette or a malformed edit, and
   any refusal rolls back the whole commit. They are registered by the binary and
   the test bridge.
-- The palette is the 32-color palette of r/canvas 2022, with white at index 0 so a
-  freshly seeded canvas is white.
+- The palette has 64 colors: indexes 0-31 are the palette of r/canvas 2022, with
+  white at index 0 so a freshly seeded canvas is white, and indexes 32-63 add skin
+  tones, dark shades, muted colors, pale tints and greys. Indexes are append-only.
 - Two commits that touch the same tile at the same time conflict; the browser
   retries a conflicted commit up to 5 times with exponential backoff and jitter,
   and keeps the pixels pending if it still fails.

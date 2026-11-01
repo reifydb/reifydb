@@ -46,7 +46,7 @@ use reifydb::{
 pub const TILE: usize = 64;
 pub const TILES_PER_SIDE: u8 = 128;
 pub const TILE_BYTES: usize = TILE * TILE;
-pub const COLORS: i32 = 32;
+pub const COLORS: i32 = 64;
 pub const CANVAS: u32 = (TILE * TILES_PER_SIDE as usize) as u32;
 pub const MAX_SPRITE: usize = 128;
 
@@ -97,7 +97,10 @@ pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 pub const PALETTE: [u32; COLORS as usize] = [
 	0xffffff, 0x6d001a, 0xbe0039, 0xff4500, 0xffa800, 0xffd635, 0xfff8b8, 0x00a368, 0x00cc78, 0x7eed56, 0x00756f,
 	0x009eaa, 0x00ccc0, 0x2450a4, 0x3690ea, 0x51e9f4, 0x493ac1, 0x6a5cff, 0x94b3ff, 0x811e9f, 0xb44ac0, 0xe4abff,
-	0xde107f, 0xff3881, 0xff99aa, 0x6d482f, 0x9c6926, 0xffb470, 0x000000, 0x515252, 0x898d90, 0xd4d7d9,
+	0xde107f, 0xff3881, 0xff99aa, 0x6d482f, 0x9c6926, 0xffb470, 0x000000, 0x515252, 0x898d90, 0xd4d7d9, 0xffdba1,
+	0xeec5a6, 0xd99a6c, 0xb3774e, 0x8c4f2e, 0x5a3220, 0x152c5e, 0x004d2c, 0x4a0f1d, 0x003c41, 0x30175a, 0x3e230a,
+	0x454a16, 0x4a1441, 0x7a7f2a, 0x8fae8b, 0x688cb1, 0xc25b36, 0xc9a227, 0x4f6276, 0x9c6b8a, 0xc8b98a, 0xbff0cf,
+	0xb1e7ff, 0xdfd0ff, 0xffd0da, 0xffe9d6, 0xc8fefd, 0x141516, 0xb0b3b5, 0x6d7072, 0x272b2f,
 ];
 
 pub fn pack_tile(key: u16, blob: &[u8]) -> Vec<u8> {
@@ -343,7 +346,10 @@ impl Accumulator for PngAccumulator {
 						.failed(format!("packed tile of {} bytes has no key", packed.len())));
 				}
 				let key = u16::from_le_bytes([packed[0], packed[1]]);
-				let pixels = shrink(decode_tile(&packed[2..]).map_err(|reason| self.failed(reason))?, self.scale);
+				let pixels = shrink(
+					decode_tile(&packed[2..]).map_err(|reason| self.failed(reason))?,
+					self.scale,
+				);
 				decoded.push((key, pixels));
 			}
 			self.tiles.or_insert(group, Vec::new()).extend(decoded);

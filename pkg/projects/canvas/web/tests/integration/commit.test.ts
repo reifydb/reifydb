@@ -100,12 +100,12 @@ describe('commit', () => {
     expect(pending.add({ x: 8191, y: 8191, color: 1 })).toBe(true)
   })
 
-  it('refuses colors outside the 32-color palette', () => {
+  it('refuses colors outside the 64-color palette', () => {
     // The server refuses a color past the palette and the whole commit with it, so pending must never hold one.
     const pending = new Pending()
-    expect(pending.add({ x: 0, y: 0, color: 32 })).toBe(false)
+    expect(pending.add({ x: 0, y: 0, color: 64 })).toBe(false)
     expect(pending.add({ x: 0, y: 0, color: -1 })).toBe(false)
-    expect(pending.add({ x: 0, y: 0, color: 31 })).toBe(true)
+    expect(pending.add({ x: 0, y: 0, color: 63 })).toBe(true)
   })
 })
 

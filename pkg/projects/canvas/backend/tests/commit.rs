@@ -288,12 +288,12 @@ fn a_color_outside_the_32_color_palette_is_refused_whole() {
 	seed_tile(&db, 0, 0);
 	mark_ready(&db);
 
-	let err = commit(&db, vec![pack(1, 1, 5), pack(2, 1, 32)]).unwrap_err();
-	assert!(err.contains("color 32 is outside the palette"), "color 32: {err}");
+	let err = commit(&db, vec![pack(1, 1, 5), pack(2, 1, 64)]).unwrap_err();
+	assert!(err.contains("color 64 is outside the palette"), "color 64: {err}");
 	assert_eq!(tile(&db, 0, 0), vec![0u8; TILE_BYTES]);
 
-	commit(&db, vec![pack(1, 1, 31)]).expect("the last palette color");
-	assert_eq!(pixel(&db, 1, 1), 31);
+	commit(&db, vec![pack(1, 1, 63)]).expect("the last palette color");
+	assert_eq!(pixel(&db, 1, 1), 63);
 }
 
 #[test]

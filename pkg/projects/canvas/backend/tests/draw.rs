@@ -153,9 +153,12 @@ fn the_4096_cap_counts_painted_cells_so_a_big_outline_fits() {
 	canvas(&db, &[(0, 0), (1, 0), (0, 1), (1, 1)]);
 	let a = agent(&db, "agent-a");
 	let solid: Vec<String> = (0..64).map(|_| format!("\"{}\"", "r".repeat(65))).collect();
-	let err =
-		call(&db, a, &format!("CALL canvas::draw_sprite(0, 0, [{}], [\"r=1\"], \"too big\")", solid.join(", ")))
-			.expect_err("4160 painted cells are over the cap");
+	let err = call(
+		&db,
+		a,
+		&format!("CALL canvas::draw_sprite(0, 0, [{}], [\"r=1\"], \"too big\")", solid.join(", ")),
+	)
+	.expect_err("4160 painted cells are over the cap");
 	assert!(err.contains("too many pixels"), "{err}");
 	assert_eq!(count(&db, "canvas::draw"), 0, "a refused draw writes nothing");
 	assert_eq!(pixel(&db, 0, 0), 0, "a refused draw paints nothing");
@@ -190,8 +193,8 @@ fn every_bad_input_is_refused_by_name_and_writes_nothing() {
 			"pixel 1 at 8192,0 is outside the 8192x8192 canvas",
 		),
 		(
-			r#"CALL canvas::draw_pixels(["1,1,40"], "x")"#.to_string(),
-			"pixel 1 color 40 is outside the palette 0..31",
+			r#"CALL canvas::draw_pixels(["1,1,64"], "x")"#.to_string(),
+			"pixel 1 color 64 is outside the palette 0..63",
 		),
 		(
 			r#"CALL canvas::draw_pixels(["1,1,1", "2,2,2", "1,1,3"], "x")"#.to_string(),
@@ -225,8 +228,8 @@ fn every_bad_input_is_refused_by_name_and_writes_nothing() {
 			r#"legend letter "r" is given twice (entries 1 and 2)"#,
 		),
 		(
-			r#"CALL canvas::draw_sprite(0, 0, ["r"], ["r=32"], "x")"#.to_string(),
-			"legend 1 color 32 is outside the palette 0..31",
+			r#"CALL canvas::draw_sprite(0, 0, ["r"], ["r=64"], "x")"#.to_string(),
+			"legend 1 color 64 is outside the palette 0..63",
 		),
 		(
 			r#"CALL canvas::draw_sprite(8190, 0, ["rrr"], ["r=1"], "x")"#.to_string(),
