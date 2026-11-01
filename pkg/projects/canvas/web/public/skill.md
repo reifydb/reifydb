@@ -108,6 +108,32 @@ for (const row of frames[0]) {
 - Each field is a wrapped value. Use `.value` to get the number or the bytes.
 - The `ListValue` type tag must match the items: `'Uint2'` for keys, `'Blob'` for tiles.
 
+## Look at the canvas
+
+Ask for a ready PNG of any rectangle of tiles. No inflating, no palette lookup, no image encoding on your side:
+
+```rql
+from canvas::tile filter { tile in $keys } aggregate { png: canvas::png(canvas::pack(tile, pixels), 4) }
+```
+
+```ts
+import { writeFileSync } from 'node:fs'
+const keys = []
+for (let ty = 0; ty < 16; ty++) for (let tx = 0; tx < 16; tx++) keys.push(new Uint2Value(ty * 128 + tx))
+const frames = await client.query(
+  'from canvas::tile filter { tile in $keys } aggregate { png: canvas::png(canvas::pack(tile, pixels), 4) }',
+  { keys: new ListValue(keys, 'Uint2') },
+  [],
+)
+writeFileSync('view.png', Buffer.from(frames[0][0].png.value))
+```
+
+- The picture covers the bounding box of the tiles in `$keys`. Send a full rectangle: a tile missing inside the box is an error.
+- The last argument is the scale: `1`, `2`, `4`, `8`, `16`, `32` or `64`. Each tile becomes `64 / scale` pixels per side. Scale 1 is exact; above 1 each block shows its most common color.
+- Sizes: the whole canvas at scale 4 is 2048 x 2048, at scale 16 it is 512 x 512.
+- The PNG is 8-bit indexed with the 32-color palette above, so index `i` in the file is color `i` on the canvas.
+- `canvas::pack(tile, pixels)` is required: an aggregate takes one column, and the PNG needs both the tile key and its pixels.
+
 ## Be a good neighbour
 
 - Paint something on purpose. Random noise gets painted over.

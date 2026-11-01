@@ -8,23 +8,31 @@ use std::{
 	sync::Arc,
 };
 
-use miniz_oxide::{deflate::compress_to_vec, inflate::decompress_to_vec_with_limit};
+use miniz_oxide::{
+	deflate::{compress_to_vec, compress_to_vec_zlib},
+	inflate::decompress_to_vec_with_limit,
+};
 use reifydb::{
 	Database, IdentityId, Value,
 	arrow_array::{Array, ArrayRef, LargeBinaryArray},
 	arrow_schema::FieldRef,
 	core::{
 		interface::catalog::config::ConfigKey,
-		value::column::factory::{any_typed, blob, int4, uint2},
+		value::column::{
+			factory::{any_typed, blob, int4, uint2},
+			view::group_by::{GroupId, GroupRows, GroupSlots},
+		},
 	},
 	routine::abi::{
-		Arity, Function, FunctionKind, Prepared, Routine, RoutineInfo,
+		Accumulator, Arity, Function, FunctionKind, LiteralArgument, LiteralKind, Prepared, Routine,
+		RoutineInfo,
 		broadcast::row_of,
 		context::{FunctionContext, check_lengths},
 		error::RoutineError,
 		registry::RoutinesConfigurator,
 	},
 	value::{
+		fragment::Fragment,
 		params::Params,
 		value::{
 			blob::Blob,
@@ -72,6 +80,7 @@ pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 		("canvas::paint", TileFunction::Paint),
 		("canvas::parse_pixels", TileFunction::ParsePixels),
 		("canvas::parse_sprite", TileFunction::ParseSprite),
+		("canvas::pack", TileFunction::Pack),
 	]
 	.into_iter()
 	.fold(routines, |routines, (name, function)| {
@@ -80,6 +89,274 @@ pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 			function,
 		}))
 	})
+	.register_function(Arc::new(PngRoutine {
+		info: RoutineInfo::new("canvas::png"),
+	}))
+}
+
+pub const PALETTE: [u32; COLORS as usize] = [
+	0xffffff, 0x6d001a, 0xbe0039, 0xff4500, 0xffa800, 0xffd635, 0xfff8b8, 0x00a368, 0x00cc78, 0x7eed56, 0x00756f,
+	0x009eaa, 0x00ccc0, 0x2450a4, 0x3690ea, 0x51e9f4, 0x493ac1, 0x6a5cff, 0x94b3ff, 0x811e9f, 0xb44ac0, 0xe4abff,
+	0xde107f, 0xff3881, 0xff99aa, 0x6d482f, 0x9c6926, 0xffb470, 0x000000, 0x515252, 0x898d90, 0xd4d7d9,
+];
+
+pub fn pack_tile(key: u16, blob: &[u8]) -> Vec<u8> {
+	let mut packed = Vec::with_capacity(2 + blob.len());
+	packed.extend_from_slice(&key.to_le_bytes());
+	packed.extend_from_slice(blob);
+	packed
+}
+
+pub fn shrink(tile: &[u8], scale: usize) -> Vec<u8> {
+	let side = TILE / scale;
+	let mut out = Vec::with_capacity(side * side);
+	let mut counts = [0u32; COLORS as usize];
+	for by in 0..side {
+		for bx in 0..side {
+			counts.fill(0);
+			for y in by * scale..(by + 1) * scale {
+				for x in bx * scale..(bx + 1) * scale {
+					counts[tile[y * TILE + x] as usize] += 1;
+				}
+			}
+			let mut best = 0;
+			for color in 1..counts.len() {
+				if counts[color] > counts[best] {
+					best = color;
+				}
+			}
+			out.push(best as u8);
+		}
+	}
+	out
+}
+
+pub fn encode_png(width: u32, height: u32, indexes: &[u8]) -> Vec<u8> {
+	let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+	let mut header = Vec::with_capacity(13);
+	header.extend_from_slice(&width.to_be_bytes());
+	header.extend_from_slice(&height.to_be_bytes());
+	header.extend_from_slice(&[8, 3, 0, 0, 0]);
+	png_chunk(&mut png, b"IHDR", &header);
+	let palette: Vec<u8> =
+		PALETTE.iter().flat_map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, *rgb as u8]).collect();
+	png_chunk(&mut png, b"PLTE", &palette);
+	let row = width as usize;
+	let mut raw = Vec::with_capacity((row + 1) * height as usize);
+	for line in indexes.chunks(row) {
+		raw.push(0);
+		raw.extend_from_slice(line);
+	}
+	png_chunk(&mut png, b"IDAT", &compress_to_vec_zlib(&raw, DEFLATE_LEVEL));
+	png_chunk(&mut png, b"IEND", &[]);
+	png
+}
+
+fn png_chunk(png: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+	png.extend_from_slice(&(data.len() as u32).to_be_bytes());
+	let start = png.len();
+	png.extend_from_slice(kind);
+	png.extend_from_slice(data);
+	let crc = crc32(&png[start..]);
+	png.extend_from_slice(&crc.to_be_bytes());
+}
+
+const CRC_TABLE: [u32; 256] = {
+	let mut table = [0u32; 256];
+	let mut n = 0;
+	while n < 256 {
+		let mut c = n as u32;
+		let mut k = 0;
+		while k < 8 {
+			c = if c & 1 == 1 {
+				0xedb8_8320 ^ (c >> 1)
+			} else {
+				c >> 1
+			};
+			k += 1;
+		}
+		table[n] = c;
+		n += 1;
+	}
+	table
+};
+
+fn crc32(bytes: &[u8]) -> u32 {
+	let mut c = 0xffff_ffffu32;
+	for &b in bytes {
+		c = CRC_TABLE[((c ^ u32::from(b)) & 0xff) as usize] ^ (c >> 8);
+	}
+	c ^ 0xffff_ffff
+}
+
+pub fn render_png(tiles: &[(u16, Vec<u8>)], scale: usize) -> Result<Vec<u8>, String> {
+	let side = u16::from(TILES_PER_SIDE);
+	let (mut x0, mut y0, mut x1, mut y1) = (side, side, 0u16, 0u16);
+	for &(key, _) in tiles {
+		let (tx, ty) = (key % side, key / side);
+		x0 = x0.min(tx);
+		y0 = y0.min(ty);
+		x1 = x1.max(tx);
+		y1 = y1.max(ty);
+	}
+	if tiles.is_empty() {
+		return Err("no tiles to render".to_string());
+	}
+	let (w, h) = (usize::from(x1 - x0 + 1), usize::from(y1 - y0 + 1));
+	let mut slots: Vec<Option<&[u8]>> = vec![None; w * h];
+	for (key, pixels) in tiles {
+		let (tx, ty) = (key % side, key / side);
+		let slot = &mut slots[usize::from(ty - y0) * w + usize::from(tx - x0)];
+		if slot.is_some() {
+			return Err(format!("tile ({tx},{ty}) is given more than once"));
+		}
+		*slot = Some(pixels);
+	}
+	let block = TILE / scale;
+	let (width, height) = (w * block, h * block);
+	let mut image = vec![0u8; width * height];
+	for (i, slot) in slots.iter().enumerate() {
+		let (col, row) = (i % w, i / w);
+		let pixels = slot.ok_or_else(|| {
+			format!(
+				"tile ({},{}) is missing from the area ({x0},{y0})..({x1},{y1})",
+				x0 + col as u16,
+				y0 + row as u16
+			)
+		})?;
+		let small = shrink(pixels, scale);
+		for y in 0..block {
+			let at = (row * block + y) * width + col * block;
+			image[at..at + block].copy_from_slice(&small[y * block..(y + 1) * block]);
+		}
+	}
+	Ok(encode_png(width as u32, height as u32, &image))
+}
+
+struct PngRoutine {
+	info: RoutineInfo,
+}
+
+impl<'a> Routine<FunctionContext<'a>> for PngRoutine {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Blob
+	}
+
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		Err(failed(ctx, "canvas::png is an aggregate, use it inside aggregate { }".to_string()))
+	}
+}
+
+impl Function for PngRoutine {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Aggregate]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(2)
+	}
+
+	fn max_literal_arguments(&self) -> usize {
+		1
+	}
+
+	fn accumulator(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		literals: &[LiteralArgument],
+	) -> Result<Option<Box<dyn Accumulator>>, RoutineError> {
+		let [literal] = literals else {
+			return Err(failed(
+				ctx,
+				"canvas::png takes a scale: canvas::png(canvas::pack(tile, pixels), 4)".to_string(),
+			));
+		};
+		let scale = match literal.kind {
+			LiteralKind::Number => literal.fragment.text().parse::<usize>().ok(),
+			_ => None,
+		}
+		.filter(|scale| *scale >= 1 && TILE % scale == 0)
+		.ok_or_else(|| {
+			failed(ctx, format!("scale {} must be one of 1, 2, 4, 8, 16, 32, 64", literal.fragment.text()))
+		})?;
+		Ok(Some(Box::new(PngAccumulator {
+			fragment: ctx.fragment.clone(),
+			scale,
+			tiles: GroupSlots::new(),
+		})))
+	}
+}
+
+struct PngAccumulator {
+	fragment: Fragment,
+	scale: usize,
+	tiles: GroupSlots<Vec<(u16, Vec<u8>)>>,
+}
+
+impl PngAccumulator {
+	fn failed(&self, reason: String) -> RoutineError {
+		RoutineError::FunctionExecutionFailed {
+			function: self.fragment.clone(),
+			reason,
+		}
+	}
+}
+
+impl Accumulator for PngAccumulator {
+	fn update(&mut self, args: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<(), RoutineError> {
+		let view = ColumnView::try_from(&args[0])?;
+		let ViewData::Blob {
+			container,
+			..
+		} = &view.data
+		else {
+			return Err(self.failed(format!(
+				"canvas::png expects canvas::pack(tile, pixels), got {:?}",
+				view.get_type()
+			)));
+		};
+		for &(group, ref indices) in groups.iter() {
+			let mut decoded = Vec::with_capacity(indices.len());
+			for &i in indices {
+				let packed = container.value(row_of(container.len(), i));
+				if packed.len() < 2 {
+					return Err(self
+						.failed(format!("packed tile of {} bytes has no key", packed.len())));
+				}
+				let key = u16::from_le_bytes([packed[0], packed[1]]);
+				let pixels = decode_tile(&packed[2..]).map_err(|reason| self.failed(reason))?;
+				decoded.push((key, pixels));
+			}
+			self.tiles.or_insert(group, Vec::new()).extend(decoded);
+		}
+		Ok(())
+	}
+
+	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
+		let mut keys = Vec::with_capacity(self.tiles.len());
+		let mut pngs = Vec::with_capacity(self.tiles.len());
+		for (group, tiles) in std::mem::take(&mut self.tiles) {
+			keys.push(group);
+			pngs.push(Blob::new(render_png(&tiles, self.scale).map_err(|reason| self.failed(reason))?));
+		}
+		Ok((keys, blob(self.kind_name(), pngs)))
+	}
+
+	fn heap_size(&self) -> usize {
+		self.tiles.len() * TILE_BYTES
+	}
+
+	fn kind_name(&self) -> &'static str {
+		"canvas::png"
+	}
 }
 
 pub fn configs() -> [(ConfigKey, Value); 1] {
@@ -143,6 +420,7 @@ enum TileFunction {
 	Paint,
 	ParsePixels,
 	ParseSprite,
+	Pack,
 }
 
 struct TileRoutine {
@@ -160,7 +438,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 			TileFunction::TileKey | TileFunction::EditPixels => ValueType::Uint2,
 			TileFunction::TileKeys => ValueType::List(Box::new(ValueType::Uint2)),
 			TileFunction::PixelCount => ValueType::Int4,
-			TileFunction::Paint => ValueType::Blob,
+			TileFunction::Paint | TileFunction::Pack => ValueType::Blob,
 			TileFunction::ParsePixels | TileFunction::ParseSprite => edit_list_type(),
 		}
 	}
@@ -193,6 +471,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 				Ok(int4(ctx.fragment.text(), (0..rows).map(|_| count)))
 			}
 			TileFunction::Paint => paint_rows(ctx, &group_by_tile(decode_edits(ctx, tiles)?), args),
+			TileFunction::Pack => pack_rows(ctx, args),
 			TileFunction::ParsePixels => {
 				let pixels = texts(&first_value(&args[0])?).map_err(|reason| failed(ctx, reason))?;
 				edit_list_rows(ctx, parse_pixels(&pixels).map_err(|reason| failed(ctx, reason))?)
@@ -285,6 +564,24 @@ fn paint_rows(
 	Ok(blob(ctx.fragment.text(), painted))
 }
 
+fn pack_rows(ctx: &FunctionContext<'_>, args: &[(FieldRef, ArrayRef)]) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let keys_view = ColumnView::try_from(&args[0])?;
+	let ViewData::Uint2(keys) = &keys_view.data else {
+		return Err(RoutineError::FunctionInvalidArgumentType {
+			function: ctx.fragment.clone(),
+			argument_index: 0,
+			expected: vec![ValueType::Uint2],
+			actual: keys_view.get_type(),
+		});
+	};
+	let tiles_view = ColumnView::try_from(&args[1])?;
+	let tiles = blobs(ctx, 1, &tiles_view)?;
+	let packed = (0..ctx.row_count).map(|row| {
+		Blob::new(pack_tile(keys.value(row_of(keys.len(), row)), tiles.value(row_of(tiles.len(), row))))
+	});
+	Ok(blob(ctx.fragment.text(), packed.collect::<Vec<_>>()))
+}
+
 impl Function for TileRoutine {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
@@ -293,6 +590,7 @@ impl Function for TileRoutine {
 	fn arity(&self) -> Arity {
 		match self.function {
 			TileFunction::Paint => Arity::Exact(3),
+			TileFunction::Pack => Arity::Exact(2),
 			TileFunction::ParseSprite => Arity::Exact(4),
 			TileFunction::ParsePixels => Arity::Exact(1),
 			TileFunction::TileKey

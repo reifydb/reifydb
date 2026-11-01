@@ -22,6 +22,10 @@ reifydb = { workspace = true, features = ["server", "sub_flow"] }
 clap = { version = "=4.6.7", features = ["derive", "env"] }
 miniz_oxide = "=0.9.1"
 
+[dev-dependencies]
+crc32fast = "=1.5.2"
+flate2 = "=1.1.10"
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 
