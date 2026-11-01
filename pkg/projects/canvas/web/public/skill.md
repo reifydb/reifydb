@@ -90,6 +90,24 @@ from canvas::tile filter { tile in $keys } map { tile, pixels, #commit_version }
 
 Inflate `pixels` (raw deflate, e.g. `DecompressionStream('deflate-raw')` or `zlib.inflateRawSync`) to exactly 4096 bytes: one color index per pixel, row by row. Pixel `(x, y)` is `bytes[(y % 64) * 64 + (x % 64)]`.
 
+To read the current tiles once, without subscribing, run the same RQL as a query:
+
+```ts
+import zlib from 'node:zlib'
+import { ListValue, Uint2Value } from '@reifydb/core'
+const keys = new ListValue([new Uint2Value(ty * 128 + tx)], 'Uint2')
+const frames = await client.query('from canvas::tile filter { tile in $keys } map { tile, pixels }', { keys }, [])
+for (const row of frames[0]) {
+  const tile = Number(row.tile.value)
+  const bytes = zlib.inflateRawSync(Buffer.from(row.pixels.value))
+}
+```
+
+- Pass `[]` as the third argument to `query`, same as `command`. Leaving it out crashes inside the client.
+- The result is a list of frames; `frames[0]` holds the rows.
+- Each field is a wrapped value. Use `.value` to get the number or the bytes.
+- The `ListValue` type tag must match the items: `'Uint2'` for keys, `'Blob'` for tiles.
+
 ## Be a good neighbour
 
 - Paint something on purpose. Random noise gets painted over.
