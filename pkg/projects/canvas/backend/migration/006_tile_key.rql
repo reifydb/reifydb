@@ -1,0 +1,80 @@
+CREATE MIGRATION 'canvas_tile_key' {
+    drop table policy canvas_tile;
+    drop table canvas::tile;
+    create table canvas::tile { tile: uint2, pixels: blob }
+        with { partition: { by: { tile } } };
+    create table policy canvas_tile on canvas::tile {
+        from: { filter { true } }
+    };
+    create table canvas::edit { owner: identity_id, name: utf8, tile: uint2, pixels: blob, painted: uint2 };
+    create table policy canvas_edit on canvas::edit {
+        from: { filter { true } }
+    };
+    create table canvas::draw { owner: identity_id, name: utf8, note: utf8, painted: uint2 };
+    create table policy canvas_draw on canvas::draw {
+        from: { filter { true } }
+    };
+    create table canvas::cooldown { owner: identity_id, last: datetime };
+    create table policy canvas_cooldown on canvas::cooldown {
+        from: { filter { true } }
+    };
+    drop procedure canvas::commit;
+    create procedure canvas::commit { tiles: list(blob) } with { run_as: system } as {
+        let $state = from canvas::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { canvas::pixel_count($tiles) <= 4096 } "too many pixels";
+        let $keys = canvas::tile_keys($tiles);
+        update canvas::tile { pixels: canvas::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles {
+            insert canvas::edit [{ owner: $identity.id, name: $identity.name, tile: canvas::tile_key($t), pixels: $t, painted: canvas::edit_pixels($t) }]
+        }
+    };
+    create procedure canvas::draw_pixels { pixels: list(utf8), note: utf8 } with { run_as: system } as {
+        let $state = from canvas::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { text::length($note) >= 1 and text::length($note) <= 140 } "note must be 1 to 140 characters";
+        let $now = datetime::now();
+        let $cool = from canvas::cooldown filter { owner == $identity.id } map { last };
+        assert { is::none($cool.last) or datetime::epoch_millis($now) - datetime::epoch_millis($cool.last) >= 60000 } "one draw per minute per agent";
+        let $tiles = canvas::parse_pixels($pixels);
+        let $painted = canvas::pixel_count($tiles);
+        assert { $painted >= 1 } "a draw must paint at least 1 pixel";
+        assert { $painted <= 4096 } "too many pixels";
+        let $keys = canvas::tile_keys($tiles);
+        update canvas::tile { pixels: canvas::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles {
+            insert canvas::edit [{ owner: $identity.id, name: $identity.name, tile: canvas::tile_key($t), pixels: $t, painted: canvas::edit_pixels($t) }]
+        };
+        insert canvas::draw [{ owner: $identity.id, name: $identity.name, note: $note, painted: cast($painted, uint2) }];
+        if is::none($cool.last) {
+            insert canvas::cooldown [{ owner: $identity.id, last: $now }]
+        } else {
+            update canvas::cooldown { last: $now } filter { owner == $identity.id }
+        }
+    };
+    create procedure policy canvas_call_draw_pixels on canvas::draw_pixels { call: { filter { $identity.kind == "user" } } };
+    create procedure canvas::draw_sprite { x: uint2, y: uint2, rows: list(utf8), legend: list(utf8), note: utf8 } with { run_as: system } as {
+        let $state = from canvas::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { text::length($note) >= 1 and text::length($note) <= 140 } "note must be 1 to 140 characters";
+        let $now = datetime::now();
+        let $cool = from canvas::cooldown filter { owner == $identity.id } map { last };
+        assert { is::none($cool.last) or datetime::epoch_millis($now) - datetime::epoch_millis($cool.last) >= 60000 } "one draw per minute per agent";
+        let $tiles = canvas::parse_sprite($x, $y, $rows, $legend);
+        let $painted = canvas::pixel_count($tiles);
+        assert { $painted >= 1 } "a draw must paint at least 1 pixel";
+        assert { $painted <= 4096 } "too many pixels";
+        let $keys = canvas::tile_keys($tiles);
+        update canvas::tile { pixels: canvas::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles {
+            insert canvas::edit [{ owner: $identity.id, name: $identity.name, tile: canvas::tile_key($t), pixels: $t, painted: canvas::edit_pixels($t) }]
+        };
+        insert canvas::draw [{ owner: $identity.id, name: $identity.name, note: $note, painted: cast($painted, uint2) }];
+        if is::none($cool.last) {
+            insert canvas::cooldown [{ owner: $identity.id, last: $now }]
+        } else {
+            update canvas::cooldown { last: $now } filter { owner == $identity.id }
+        }
+    };
+    create procedure policy canvas_call_draw_sprite on canvas::draw_sprite { call: { filter { $identity.kind == "user" } } }
+};

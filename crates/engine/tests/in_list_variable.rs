@@ -102,7 +102,7 @@ fn a_list_of_an_incomparable_type_is_refused() {
 
 #[test]
 fn update_with_in_a_list_parameter_changes_only_the_listed_rows() {
-	// this is the shape place::commit uses, so an update must touch exactly the listed keys.
+	// this is the shape canvas::commit uses, so an update must touch exactly the listed keys.
 	let t = engine();
 	t.command_with_params(
 		"UPDATE test::p { v: 0 } FILTER { k in $ks }",

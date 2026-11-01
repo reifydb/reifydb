@@ -1,0 +1,30 @@
+[package]
+name = "reifydb-canvas-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Node native addon exposing canvas's real engine for web tests"
+publish = false
+
+[lib]
+name = "canvas_bridge"
+crate-type = ["cdylib"]
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+reifydb-node = { workspace = true }
+reifydb = { workspace = true, features = ["sub_flow"] }
+reifydb-canvas-backend = { path = "../backend" }
+napi = { workspace = true }
+napi-derive = { workspace = true }
+
+[build-dependencies]
+napi-build = { workspace = true }
+reifydb-build = { workspace = true }
+
+[target.'cfg(not(any(target_arch = "wasm32", fuzzing)))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

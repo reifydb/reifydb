@@ -1,0 +1,22 @@
+CREATE MIGRATION 'canvas_tiles' {
+    create table canvas::tile { tile_x: uint1, tile_y: uint1, pixels: blob }
+        with { partition: { by: { tile_x, tile_y } } };
+    drop procedure canvas::commit;
+    create procedure canvas::commit { tiles: list(blob) } as {
+        let $state = from canvas::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        let $n = 0;
+        for $t in $tiles { $n = $n + canvas::pixel_count($t) };
+        assert { $n <= 1024 } "too many pixels";
+        for $t in $tiles {
+            let $tx = canvas::tile_x($t);
+            let $ty = canvas::tile_y($t);
+            update canvas::tile { pixels: canvas::paint_tile(pixels, $t) } filter { tile_x == $tx and tile_y == $ty }
+        }
+    };
+    create table policy canvas_tile on canvas::tile {
+        from: { filter { true } },
+        update: { filter { $identity.kind == "anonymous" } }
+    };
+    drop table canvas::live
+};

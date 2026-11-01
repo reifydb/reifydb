@@ -1,0 +1,21 @@
+CREATE MIGRATION 'canvas_commit_requires_ready_canvas' {
+    create table canvas::state { key: utf8, ready: bool };
+    drop procedure canvas::commit;
+    create procedure canvas::commit { pixels: list(uint8) } as {
+        let $state = from canvas::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        let $n = 0;
+        for $p in $pixels { $n = $n + 1 };
+        assert { $n <= 1024 } "too many pixels";
+        for $p in $pixels {
+            let $x = cast($p / 2097152, uint2);
+            let $y = cast(($p / 256) % 8192, uint2);
+            let $c = cast($p % 256, uint1);
+            assert { $x < 2048 and $y < 2048 } "pixel out of bounds";
+            let $tx = cast($x / 64, uint1);
+            let $ty = cast($y / 64, uint1);
+            update canvas::live { color: $c } filter { tile_x == $tx and tile_y == $ty and x == $x and y == $y }
+        }
+    };
+    create table policy canvas_state on canvas::state { from: { filter { true } } }
+};
