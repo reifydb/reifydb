@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, fmt::Debug};
+use std::fmt::Debug;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -39,6 +39,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
+			Routing,
 			guest_as_host::GuestAsHost,
 			observe_batch,
 			operator::{CarryEmit, Contribution, WindowedOperator, extract_rows},
@@ -56,6 +57,8 @@ type CarryEngine<A> = TumblingCarryEngine<
 	<A as WindowedOperator>::Output,
 >;
 type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+type Routed<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+type WindowOrder<A> = [(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)];
 type WindowResults<A> = Vec<
 	WindowResult<
 		<A as WindowedOperator>::GroupKey,
@@ -92,8 +95,8 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
-		let mut buckets: Buckets<A> = BTreeMap::new();
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Routed<A>> {
+		let mut buckets: Routed<A> = Routing::default();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -127,7 +130,7 @@ where
 		&self,
 		ctx: &mut impl GuestContext,
 		cols: &C,
-		buckets: &mut Buckets<A>,
+		buckets: &mut Routed<A>,
 		is_add: bool,
 	) -> Result<()> {
 		let rows: Vec<usize> = (0..cols.row_count()).collect();
@@ -138,7 +141,7 @@ where
 			} else {
 				AccumulatorEvent::Remove(contribution)
 			};
-			buckets.entry((group, span)).or_default().push(event);
+			buckets.push(group, span, event);
 		}
 		Ok(())
 	}
@@ -227,7 +230,12 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::accumulate", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn accumulate(&mut self, ctx: &mut impl GuestContext, buckets: Buckets<A>) -> Result<WindowResults<A>> {
+	fn accumulate(
+		&mut self,
+		ctx: &mut impl GuestContext,
+		buckets: Buckets<A>,
+		order: &WindowOrder<A>,
+	) -> Result<WindowResults<A>> {
 		let Self {
 			aggregator,
 			engine,
@@ -238,6 +246,7 @@ where
 		Ok(engine.apply(
 			&mut store,
 			buckets,
+			order,
 			|group, window_start| Self::row_key(group, window_start),
 			|| aggregator.new_accumulator(settings),
 			|group, span, value, prev_carry| aggregator.build_output(group, span, value, prev_carry),
@@ -324,21 +333,23 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets = self.route(ctx, &change)?;
-		if buckets.is_empty() {
+		let routing = self.route(ctx, &change)?;
+		if routing.is_empty() {
 			return Ok(());
 		}
+		let (mut buckets, mut order) = routing.finish();
 
 		let seal_span = self.seal_span;
 		if let Some(seal_span) = seal_span {
 			self.seal(ctx, &mut buckets, seal_span)?;
+			order.retain(|key| buckets.contains_key(key));
 			if buckets.is_empty() {
 				return Ok(());
 			}
 		}
 
 		let now = ctx.written_at();
-		let results = self.accumulate(ctx, buckets)?;
+		let results = self.accumulate(ctx, buckets, &order)?;
 
 		let mut inserts: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();

@@ -204,6 +204,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
+		order: &[(G, WindowSpan<S>)],
 		row_key: K,
 		new_accumulator: NA,
 		build_output: BO,
@@ -366,6 +367,15 @@ where
 				}
 			}
 		}
+
+		let rank: HashMap<(G, S), usize> = order
+			.iter()
+			.enumerate()
+			.map(|(position, (group, span))| ((group.clone(), span.start), position))
+			.collect();
+		pending.sort_by_key(|(group, emit)| {
+			rank.get(&(group.clone(), emit.span.start)).copied().unwrap_or(usize::MAX)
+		});
 
 		let mut results: Vec<WindowResult<G, S, Output>> = Vec::with_capacity(pending.len());
 		if !pending.is_empty() {
@@ -752,9 +762,11 @@ mod tests {
 		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
 		let span = WindowSpan::for_coord(ws, millis(WINDOW));
 		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws.to_order(), price))]);
+		let order: Vec<(String, WindowSpan<DateTime>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
 			buckets,
+			&order,
 			|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 			RetainedAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -872,9 +884,11 @@ mod tests {
 		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
 		let span = WindowSpan::for_coord(window_start, millis(WINDOW));
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add((ts, price))]);
+		let order: Vec<(String, WindowSpan<DateTime>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
 			buckets,
+			&order,
 			seal_key,
 			RetainedAccumulator::<u64, f64>::default,
 			|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, p: Option<&f64>| {
@@ -1107,10 +1121,12 @@ mod tests {
 			("BTC".to_string(), span),
 			vec![AccumulatorEvent::Remove((at_millis(0).to_order(), 5.0))],
 		);
+		let order: Vec<(String, WindowSpan<DateTime>)> = buckets.keys().cloned().collect();
 		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
+				&order,
 				|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -1160,10 +1176,12 @@ mod tests {
 			("G00".to_string(), span),
 			vec![AccumulatorEvent::Remove((at_millis(0).to_order(), 1.0))],
 		);
+		let order: Vec<(String, WindowSpan<DateTime>)> = buckets.keys().cloned().collect();
 		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
+				&order,
 				|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
 				|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
@@ -1186,6 +1204,61 @@ mod tests {
 		assert_eq!(
 			withdrawn[0].row_number, published_g00[0].row_number,
 			"the withdrawal targets the same row that was published for G00"
+		);
+	}
+
+	#[test]
+	fn row_numbers_follow_the_arrival_order_across_groups_not_the_group_order() {
+		// Row numbers must follow arrival order, otherwise a ring buffer evicts the wrong group's window.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		let w0 = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
+		let w1 = WindowSpan::for_coord(at_millis(WINDOW as i64), millis(WINDOW));
+		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
+		for (group, span, price) in [("A", w0, 1.0), ("B", w0, 2.0), ("A", w1, 3.0), ("B", w1, 4.0)] {
+			buckets.insert(
+				(group.to_string(), span),
+				vec![AccumulatorEvent::Add((span.start.to_order(), price))],
+			);
+		}
+		let order: Vec<(String, WindowSpan<DateTime>)> = vec![
+			("A".to_string(), w0),
+			("B".to_string(), w0),
+			("A".to_string(), w1),
+			("B".to_string(), w1),
+		];
+		let results: Vec<WindowResult<String, DateTime, f64>> = engine
+			.apply(
+				&mut store,
+				buckets,
+				&order,
+				|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
+				RetainedAccumulator::<u64, f64>::default,
+				|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
+				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+			)
+			.expect("apply");
+
+		assert_eq!(results.len(), 4, "every opened window publishes exactly once");
+		assert!(
+			results.iter().all(|r| r.kind == EmitKind::Insert),
+			"every window is new, so every emit is an insert"
+		);
+		let mut by_row: Vec<(u64, String, DateTime)> =
+			results.iter().map(|r| (r.row_number.0, r.group.clone(), r.span.start)).collect();
+		by_row.sort();
+		let numbered: Vec<(String, DateTime)> = by_row.into_iter().map(|(_, g, s)| (g, s)).collect();
+		assert_eq!(
+			numbered,
+			vec![
+				("A".to_string(), w0.start),
+				("B".to_string(), w0.start),
+				("A".to_string(), w1.start),
+				("B".to_string(), w1.start)
+			],
+			"row numbers must rise in arrival order, interleaving the groups, exactly like the native window"
 		);
 	}
 
