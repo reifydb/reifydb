@@ -11,13 +11,13 @@ use cfg_if::cfg_if;
 
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) mod host;
-#[cfg(loom)]
+#[cfg(reifydb_loom)]
 pub(crate) mod loom;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(loom)] {
+	if #[cfg(reifydb_loom)] {
 		type RwLockInnerImpl<T> = loom::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = loom::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = loom::RwLockWriteGuardInner<'a, T>;

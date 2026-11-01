@@ -9,15 +9,15 @@ use std::{
 
 use cfg_if::cfg_if;
 
-#[cfg(all(not(reifydb_single_threaded), not(loom)))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_loom)))]
 pub(crate) mod host;
-#[cfg(loom)]
+#[cfg(reifydb_loom)]
 pub(crate) mod loom;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(loom)] {
+	if #[cfg(reifydb_loom)] {
 		type MutexInnerImpl<T> = loom::MutexInner<T>;
 		type MutexGuardInnerImpl<'a, T> = loom::MutexGuardInner<'a, T>;
 	} else if #[cfg(not(reifydb_single_threaded))] {

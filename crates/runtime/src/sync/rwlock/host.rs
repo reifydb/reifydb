@@ -11,7 +11,7 @@ use std::{
 
 use parking_lot::{ArcRwLockReadGuard, ArcRwLockWriteGuard, RawRwLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-#[cfg_attr(loom, allow(dead_code))]
+#[cfg_attr(reifydb_loom, allow(dead_code))]
 pub struct RwLockInner<T> {
 	inner: RwLock<T>,
 }
@@ -22,7 +22,7 @@ impl<T: fmt::Debug> fmt::Debug for RwLockInner<T> {
 	}
 }
 
-#[cfg_attr(loom, allow(dead_code))]
+#[cfg_attr(reifydb_loom, allow(dead_code))]
 impl<T> RwLockInner<T> {
 	pub fn new(value: T) -> Self {
 		Self {
@@ -55,7 +55,7 @@ impl<T> RwLockInner<T> {
 	}
 }
 
-#[cfg_attr(loom, allow(dead_code))]
+#[cfg_attr(reifydb_loom, allow(dead_code))]
 pub struct RwLockReadGuardInner<'a, T> {
 	inner: RwLockReadGuard<'a, T>,
 }
@@ -68,7 +68,7 @@ impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 	}
 }
 
-#[cfg_attr(loom, allow(dead_code))]
+#[cfg_attr(reifydb_loom, allow(dead_code))]
 pub struct RwLockWriteGuardInner<'a, T> {
 	inner: RwLockWriteGuard<'a, T>,
 }

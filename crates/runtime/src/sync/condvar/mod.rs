@@ -6,15 +6,15 @@ use reifydb_value::value::duration::Duration;
 
 use crate::sync::mutex::MutexGuard;
 
-#[cfg(all(not(reifydb_single_threaded), not(loom)))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_loom)))]
 pub mod host;
-#[cfg(loom)]
+#[cfg(reifydb_loom)]
 pub mod loom;
 #[cfg(reifydb_single_threaded)]
 pub mod wasm;
 
 cfg_if! {
-	if #[cfg(loom)] {
+	if #[cfg(reifydb_loom)] {
 		type CondvarInner = loom::CondvarInner;
 	} else if #[cfg(not(reifydb_single_threaded))] {
 		type CondvarInner = host::CondvarInner;

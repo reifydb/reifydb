@@ -8,8 +8,8 @@ pub mod mutex;
 pub mod rwlock;
 pub mod waiter;
 
-#[cfg(not(loom))]
+#[cfg(not(reifydb_loom))]
 pub use std::sync::Arc;
 
-#[cfg(loom)]
+#[cfg(reifydb_loom)]
 pub use loom::sync::Arc;
