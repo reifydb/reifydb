@@ -40,7 +40,7 @@ export function Toolbar({
 
   return (
     <div
-      className="panel absolute left-4 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 p-1"
+      className="card absolute left-4 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 p-1"
       role="toolbar"
       aria-label="Tools"
       aria-orientation="vertical"
@@ -57,7 +57,7 @@ export function Toolbar({
             if (entry === 'image') inputRef.current?.click()
           }}
           className={`flex h-10 w-10 items-center justify-center outline-none ${
-            entry === tool ? 'bg-primary text-[#10123a] shadow-[inset_0_-2px_#2e39df4d]' : 'text-[#2a2f8f] hover:bg-[#eef0ff]'
+            entry === tool ? 'bg-text-primary text-bg-primary' : 'text-text-primary hover:bg-bg-tertiary'
           }`}
         >
           <Icon size={18} />

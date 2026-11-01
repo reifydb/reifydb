@@ -56,16 +56,16 @@ export function MinimapPanel({ minimap, view, size, onCenter, footer }: MinimapP
   const box = viewBox(view, size)
 
   return (
-    <div className="panel p-1">
+    <div className="card p-1">
       <div
-        className="dot-grid relative cursor-pointer overflow-hidden"
+        className="relative cursor-pointer overflow-hidden"
         style={{ width: MINIMAP_CSS_SIZE, height: MINIMAP_CSS_SIZE }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
       >
         <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full" />
         <div
-          className="pointer-events-none absolute border border-[#4b52d6]"
+          className="pointer-events-none absolute border border-text-primary"
           style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
         />
       </div>

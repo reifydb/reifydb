@@ -4,7 +4,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Activity, Edit } from '@/activity'
 import { cssColor } from '@/palette'
-import { Robot } from './sprites'
 
 export function useEdits(activity: Activity): readonly Edit[] {
   return useSyncExternalStore(
@@ -22,7 +21,7 @@ export function useNow(intervalMs: number): number {
   return now
 }
 
-function ago(now: number, at: number): string {
+export function ago(now: number, at: number): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
   return seconds < 2 ? 'now' : seconds < 60 ? `${seconds}s ago` : `${Math.round(seconds / 60)}m ago`
 }
@@ -33,9 +32,8 @@ export function ActivityFeed({ activity, rows }: { activity: Activity; rows: num
   if (edits.length === 0) return <p className="px-3 py-4 text-sm text-text-muted">Waiting for the next edit...</p>
   return (
     <ul className="overflow-hidden" aria-live="polite">
-      {edits.map((edit, index) => (
-        <li key={edit.id} className="activity-row grid grid-cols-[18px_1fr] items-center gap-2 border-b border-border-light px-3 py-2 text-xs">
-          <Robot blinking={index === 0} />
+      {edits.map((edit) => (
+        <li key={edit.id} className="activity-row border-b border-border-light px-3 py-2 text-xs">
           <span>
             <span className="font-semibold text-primary-dark">An agent</span> painted {edit.px} px{' '}
             <span className="inline-block h-2.5 w-2.5 border border-border-light align-middle" style={{ backgroundColor: cssColor(edit.color) }} />

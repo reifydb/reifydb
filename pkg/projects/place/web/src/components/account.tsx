@@ -20,7 +20,7 @@ export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
 
   if (name) {
     return (
-      <div className="panel absolute left-4 top-4 z-10 px-3 py-2 text-sm" title="Your pixels are credited to this name">
+      <div className="card absolute left-4 top-4 z-10 px-3 py-2 text-sm" title="Your pixels are credited to this name">
         Painting as <span className="font-bold">{name}</span>
       </div>
     )
@@ -44,7 +44,7 @@ export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
 
   return (
     <form
-      className="panel absolute left-4 top-4 z-10 flex w-64 flex-col gap-2 p-3 text-sm"
+      className="card absolute left-4 top-4 z-10 flex w-64 flex-col gap-2 p-3 text-sm"
       aria-label="Sign up"
       onSubmit={submit}
       onPointerDown={(event) => event.stopPropagation()}
@@ -67,10 +67,10 @@ export function Account({ guest, name, onName, open, onOpen }: AccountProps) {
       />
       {error && <p className="text-status-error">Sign up failed: {error}</p>}
       <div className="flex justify-end gap-2">
-        <button type="button" className="game-button game-button--secondary" onClick={() => onOpen(false)}>
+        <button type="button" className="btn btn--quiet" onClick={() => onOpen(false)}>
           Cancel
         </button>
-        <button type="submit" className="game-button" disabled={busy || identifier.trim() === '' || password === ''}>
+        <button type="submit" className="btn" disabled={busy || identifier.trim() === '' || password === ''}>
           Sign up
         </button>
       </div>

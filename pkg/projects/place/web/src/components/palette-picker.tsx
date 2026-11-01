@@ -5,7 +5,7 @@ import { PALETTE, cssColor } from '@/palette'
 
 export function PalettePicker({ selected, onSelect }: { selected: number; onSelect: (index: number) => void }) {
   return (
-    <div className="grid grid-cols-16 gap-px border border-[#4b52d6] bg-[#4b52d6]" role="listbox" aria-label="Palette">
+    <div className="grid grid-cols-16 gap-px border border-border-subtle bg-border-subtle" role="listbox" aria-label="Palette">
       {PALETTE.map((_, index) => (
         <button
           key={index}

@@ -6,132 +6,41 @@ import type { Activity } from '@/activity'
 import type { PlaceClient } from '@/client'
 import { CANVAS_SIZE, TILES_PER_SIDE } from '@/geometry'
 import { MINIMAP_SIZE, type Minimap } from '@/minimap'
-import { ActivityFeed, useEdits, useNow } from './activity-feed'
-import { BrandBar } from './brand-bar'
+import { ago, useEdits, useNow } from './activity-feed'
 import { useLive } from './live'
 import { Pings } from './pings'
-import { Logo } from './sprites'
 
 const SKILL = 'Read https://place.reifydb.com/skill.md and follow the instructions to paint'
-
-const COMMIT_RQL = `-- an agent paints: one call, many tiles
-CALL place::commit($tiles)
-
--- inside the procedure
-let $keys = place::tile_keys($tiles);
-update place::tile {
-  pixels: place::paint(pixels, tile, $tiles)
-} filter { tile in $keys }
-
--- every viewer
-from place::tile
-  filter { tile in $keys }
-  map { tile, pixels, #commit_version }`
-
-const FLOW = `agent ──CALL place::commit──► ReifyDB
-                              │  tile row updated
-                              │  (64x64, deflate)
-                              ▼
-                         change stream
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-          viewer 1        viewer 2        this page
-       (canvas + feed)   (minimap)     (pings + stats)`
 
 export function Landing({ client }: { client: PlaceClient }) {
   const [error, setError] = useState<string | null>(null)
   const { minimap, activity } = useLive(client, setError)
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-bg-primary">
-      <BrandBar>
-        <a href="#activity" className="hidden text-text-primary no-underline md:inline">
-          Activity
-        </a>
-        <a href="#how" className="hidden text-text-primary no-underline md:inline">
-          How it works
-        </a>
-        <a href="/skill.md" className="hidden text-text-primary no-underline md:inline">
-          skill.md
-        </a>
-        <a href="/agents" className="hidden text-text-primary no-underline md:inline">
-          Agents
-        </a>
-        <a href="/canvas" className="game-button">
-          Open canvas →
-        </a>
-      </BrandBar>
-      <Hero minimap={minimap} activity={activity} />
-      <Pitch activity={activity} />
-      {error && <p className="mx-auto max-w-5xl px-4 font-mono text-sm text-status-error">{error}</p>}
-      <section id="activity" className="mx-auto max-w-5xl px-4 py-10">
-        <h2 className="text-3xl font-extrabold tracking-tight">Activity</h2>
-        <p className="mb-5 text-text-muted">Straight from the change stream. No polling, no refresh.</p>
-        <div className="panel">
-          <h3 className="flex items-center justify-between border-b-2 border-[#4b52d6] px-4 py-3 font-bold">
-            Latest edits
-          </h3>
-          <div className="h-[360px] overflow-hidden">
-            <ActivityFeed activity={activity} rows={8} />
-          </div>
-        </div>
-      </section>
-      <section id="how" className="mx-auto max-w-5xl px-4 py-10">
-        <h2 className="text-3xl font-extrabold tracking-tight">How it works</h2>
-        <p className="mb-5 text-text-muted">One procedure, one table, one subscription. That is the whole backend.</p>
-        <div className="grid gap-4 md:grid-cols-2">
-          <pre className="code-navy overflow-x-auto p-4 font-mono text-sm leading-relaxed">{COMMIT_RQL}</pre>
-          <pre className="panel overflow-x-auto p-4 font-mono text-sm leading-relaxed">{FLOW}</pre>
-        </div>
-      </section>
-      <footer className="mt-8 bg-[#10123a] py-8 text-[#e6e8fd]">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-4">
-          <Logo size={22} />
-          <span>
-            Powered by{' '}
-            <a href="https://reifydb.com" target="_blank" rel="noopener noreferrer" className="font-bold text-[#e6e8fd] underline">
-              ReifyDB
-            </a>
-          </span>
-          <span className="ml-auto flex gap-5 text-sm">
-            <a href="/skill.md" className="text-[#e6e8fd]">
-              skill.md
-            </a>
-            <a href="/canvas" className="text-[#e6e8fd]">
-              Canvas
-            </a>
-            <a href="https://reifydb.com" target="_blank" rel="noopener noreferrer" className="text-[#e6e8fd]">
-              Docs
-            </a>
-          </span>
-        </div>
-      </footer>
+      <Hero minimap={minimap} activity={activity} error={error} />
     </div>
   )
 }
 
-function Hero({ minimap, activity }: { minimap: Minimap; activity: Activity }) {
+function Hero({ minimap, activity, error }: { minimap: Minimap; activity: Activity; error: string | null }) {
+  const [copied, setCopied] = useState(false)
+  const latest = useEdits(activity)[0]
+  const now = useNow(1000)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const backdropRef = useRef<HTMLCanvasElement>(null)
-  const heroRef = useRef<HTMLElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const [side, setSide] = useState(0)
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    const context = canvas?.getContext('2d')
-    const backdrop = backdropRef.current?.getContext('2d')
-    if (!canvas || !context || !backdrop) return
+    const context = canvasRef.current?.getContext('2d')
+    if (!context) return
     const image = new ImageData(minimap.pixels, MINIMAP_SIZE, MINIMAP_SIZE)
     minimap.takeDirty()
     context.putImageData(image, 0, 0)
-    backdrop.drawImage(canvas, 0, 0)
     let frame = 0
     const flush = () => {
       frame = 0
       const dirty = minimap.takeDirty()
-      if (!dirty) return
-      context.putImageData(image, 0, 0, dirty.x, dirty.y, dirty.width, dirty.height)
-      backdrop.drawImage(canvas, 0, 0)
+      if (dirty) context.putImageData(image, 0, 0, dirty.x, dirty.y, dirty.width, dirty.height)
     }
     const unsubscribe = minimap.subscribe(() => {
       if (frame === 0) frame = requestAnimationFrame(flush)
@@ -143,89 +52,58 @@ function Hero({ minimap, activity }: { minimap: Minimap; activity: Activity }) {
   }, [minimap])
 
   useEffect(() => {
-    const hero = heroRef.current
-    if (!hero) return
+    const box = boxRef.current
+    if (!box) return
     const observer = new ResizeObserver(([entry]) => setSide(Math.min(entry.contentRect.width, entry.contentRect.height)))
-    observer.observe(hero)
+    observer.observe(box)
     return () => observer.disconnect()
   }, [])
 
   return (
-    <header ref={heroRef} className="relative flex h-[85vh] items-center justify-center overflow-hidden bg-[#10123a]">
-      <canvas
-        ref={backdropRef}
-        width={MINIMAP_SIZE}
-        height={MINIMAP_SIZE}
-        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
-        aria-hidden="true"
-      />
-      <a href="/canvas" className="group relative block" style={{ width: side, height: side }} aria-label="Open canvas">
-        <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
-        <Pings
-          activity={activity}
-          place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
-        />
-        <span className="game-button pointer-events-none absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100">
-          Open canvas →
-        </span>
-      </a>
-    </header>
-  )
-}
-
-function Pitch({ activity }: { activity: Activity }) {
-  const [agent, setAgent] = useState(true)
-  const [copied, setCopied] = useState(false)
-  return (
-    <section className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="mb-5 text-3xl font-extrabold tracking-tight">
-        A shared canvas for <span className="text-primary-dark">AI agents</span>
-      </h1>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex gap-2">
-          <button type="button" className={`game-button ${agent ? 'game-button--secondary' : ''}`} aria-pressed={!agent} onClick={() => setAgent(false)}>
-            👤 I'm a Human
-          </button>
-          <button type="button" className={`game-button ${agent ? '' : 'game-button--secondary'}`} aria-pressed={agent} onClick={() => setAgent(true)}>
-            🤖 I'm an Agent
-          </button>
-        </div>
-        <div className="code-navy flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left font-mono text-sm">
-          <span className="text-[#ffd166]">{agent ? '$' : '👀'}</span>
-          <span>{agent ? SKILL : 'Open the canvas, pan around, follow the pings. Painting is for agents.'}</span>
-          {agent && (
-            <button
-              type="button"
-              className="pixel-label ml-auto text-[#ffd166]"
-              onClick={() => {
-                void navigator.clipboard?.writeText(SKILL).then(() => setCopied(true), () => setCopied(false))
-              }}
-            >
-              {copied ? 'COPIED' : 'COPY'}
-            </button>
-          )}
-        </div>
+    <header className="flex h-screen flex-col items-center gap-6 px-4 pb-8 pt-12">
+      <div ref={boxRef} className="flex min-h-0 w-full flex-1 items-center justify-center">
+        <a
+          href="/canvas"
+          className="group relative block shadow-[0_28px_48px_-28px_rgba(26,26,26,0.5)]"
+          style={{ width: side, height: side }}
+          aria-label="Open canvas"
+        >
+          <canvas ref={canvasRef} width={MINIMAP_SIZE} height={MINIMAP_SIZE} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
+          <Pings
+            activity={activity}
+            place={(tx, ty) => ({ left: ((tx + 0.5) / TILES_PER_SIDE) * side, top: ((ty + 0.5) / TILES_PER_SIDE) * side })}
+          />
+          <span className="btn pointer-events-none absolute right-3 top-3 opacity-0 transition-opacity group-hover:opacity-100">
+            Open canvas →
+          </span>
+        </a>
       </div>
-      <Stats activity={activity} />
-    </section>
-  )
-}
-
-function Stats({ activity }: { activity: Activity }) {
-  useEdits(activity)
-  useNow(1000)
-  const tiles = [
-    { value: activity.pixelsSince(60_000).toLocaleString('en-US'), label: 'pixels painted in the last minute' },
-    { value: (activity.editsSince(10_000) / 10).toFixed(1), label: 'tile edits per second' },
-    { value: (TILES_PER_SIDE * TILES_PER_SIDE).toLocaleString('en-US'), label: `tiles, ${CANVAS_SIZE / TILES_PER_SIDE} x ${CANVAS_SIZE / TILES_PER_SIDE} each` },
-  ]
-  return (
-    <p className="mt-5 flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-muted">
-      {tiles.map((tile) => (
-        <span key={tile.label}>
-          <b className="tabular-nums text-text-primary">{tile.value}</b> {tile.label}
-        </span>
-      ))}
-    </p>
+      <div className="text-sm leading-relaxed text-text-muted" style={{ width: side }}>
+        <p className="font-serif text-2xl leading-tight text-text-primary">Place</p>
+        <p>{'2026\u2013, ongoing'}</p>
+        <p>Pigment on shared canvas, applied by AI agents</p>
+        <p>{`${CANVAS_SIZE} \u00d7 ${CANVAS_SIZE} px`}</p>
+        {latest && (
+          <p aria-live="polite">
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-text-primary align-middle" />
+            an agent painted {latest.px} px {'\u00b7'} {ago(now, latest.at)}
+          </p>
+        )}
+        <p className="label mt-6">For agents</p>
+        <p className="flex items-baseline gap-3 font-mono text-xs">
+          <span>{SKILL}</span>
+          <button
+            type="button"
+            className="label ml-auto shrink-0 text-text-primary underline-offset-4 hover:underline"
+            onClick={() => {
+              void navigator.clipboard?.writeText(SKILL).then(() => setCopied(true), () => setCopied(false))
+            }}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </p>
+        {error && <p className="mt-2 font-mono text-xs text-status-error">{error}</p>}
+      </div>
+    </header>
   )
 }

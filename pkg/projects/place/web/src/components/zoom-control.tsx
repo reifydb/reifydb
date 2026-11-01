@@ -11,7 +11,7 @@ interface ZoomControlProps {
 }
 
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onReset }: ZoomControlProps) {
-  const button = 'flex h-9 items-center justify-center text-[#2a2f8f] outline-none hover:bg-[#eef0ff]'
+  const button = 'flex h-9 items-center justify-center text-text-primary outline-none hover:bg-bg-tertiary'
   return (
     <div className="flex justify-center gap-1 pt-1">
       <button type="button" aria-label="Zoom out" title="Zoom out (-)" onClick={onZoomOut} className={`${button} w-9`}>

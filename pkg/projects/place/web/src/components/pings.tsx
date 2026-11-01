@@ -4,7 +4,6 @@
 import type { Activity } from '@/activity'
 import { TILE_SIZE } from '@/geometry'
 import { useEdits, useNow } from './activity-feed'
-import { Robot } from './sprites'
 
 export const PING_MS = 2600
 
@@ -19,8 +18,8 @@ export function Pings({ activity, place }: { activity: Activity; place: (tx: num
         return (
           <div key={edit.id} style={{ left: at.left, top: at.top }} className="absolute">
             <span className="ping-dot" />
-            <span className="ping-card panel">
-              <Robot blinking />+{edit.px} px
+            <span className="ping-card card">
+              +{edit.px} px
             </span>
           </div>
         )

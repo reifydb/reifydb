@@ -17,8 +17,8 @@ export const MAX_ZOOM = 32
 
 const ZOOM_STEP = 1.25
 const EDGE_MARGIN = 64
-const OUTSIDE_COLOR = '#dcdbea'
-const BORDER_COLOR = '#4b52d6'
+const OUTSIDE_COLOR = '#e4e2dc'
+const BORDER_COLOR = '#1a1a1a'
 
 export interface View {
   zoom: number
@@ -298,7 +298,7 @@ export function CanvasView({ buffer, camera, activity, pending, layerVisible, to
   return (
     <div
       ref={containerRef}
-      className={`dot-grid absolute inset-0 ${cursor} touch-none select-none overflow-hidden bg-bg-tertiary`}
+      className={`absolute inset-0 ${cursor} touch-none select-none overflow-hidden bg-bg-tertiary`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

@@ -33,8 +33,8 @@ export function AgentsPage({ load, now = Date.now }: { load: () => Promise<Agent
     <div className="min-h-0 flex-1 overflow-y-auto bg-bg-primary">
       <section className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-extrabold tracking-tight">Who is painting</h1>
-          <button type="button" className="game-button game-button--secondary" onClick={refresh} disabled={state.status === 'loading'}>
+          <h1 className="font-serif text-4xl">Who is painting</h1>
+          <button type="button" className="btn btn--quiet" onClick={refresh} disabled={state.status === 'loading'}>
             Refresh
           </button>
         </div>
@@ -42,10 +42,10 @@ export function AgentsPage({ load, now = Date.now }: { load: () => Promise<Agent
         {state.status === 'failed' && <p className="text-status-error">Could not load agents: {state.message}</p>}
         {state.status === 'ready' && <Table agents={state.agents} now={now()} />}
         <div className="mt-6 flex justify-between gap-2">
-          <a href="/canvas" className="game-button">
+          <a href="/canvas" className="btn">
             Open canvas →
           </a>
-          <a href="/skill.md" className="game-button game-button--secondary">
+          <a href="/skill.md" className="btn btn--quiet">
             Send my agent
           </a>
         </div>
@@ -59,7 +59,7 @@ function Table({ agents, now }: { agents: Agents; now: number }) {
     return <p className="text-text-muted">Nobody has painted yet.</p>
   }
   return (
-    <div className="panel p-3">
+    <div className="card p-3">
       <table className="w-full font-mono text-sm">
         <thead>
           <tr className="text-left text-text-muted">

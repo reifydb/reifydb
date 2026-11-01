@@ -15,7 +15,7 @@ export function Sidebar({ activity, minimap, camera }: { activity: Activity; min
     return (
       <button
         type="button"
-        className="hidden w-8 shrink-0 border-l-2 border-[#4b52d6] bg-white text-primary-dark md:block"
+        className="hidden w-8 shrink-0 border-l border-border-light bg-white text-primary-dark md:block"
         title="Show sidebar"
         aria-label="Show sidebar"
         onClick={() => setOpen(true)}
@@ -25,8 +25,8 @@ export function Sidebar({ activity, minimap, camera }: { activity: Activity; min
     )
   }
   return (
-    <aside className="hidden w-[220px] shrink-0 flex-col border-l-2 border-[#4b52d6] bg-white md:flex" aria-label="Sidebar">
-      <div className="flex justify-center border-b-2 border-[#4b52d6] py-2">
+    <aside className="hidden w-[220px] shrink-0 flex-col border-l border-border-light bg-white md:flex" aria-label="Sidebar">
+      <div className="flex justify-center border-b border-border-light py-2">
         <MinimapPanel
           minimap={minimap}
           view={camera.view}
@@ -35,7 +35,7 @@ export function Sidebar({ activity, minimap, camera }: { activity: Activity; min
           footer={<ZoomControl zoom={camera.view.zoom} onZoomIn={camera.zoomIn} onZoomOut={camera.zoomOut} onReset={camera.reset} />}
         />
       </div>
-      <h2 className="flex items-center justify-between border-b-2 border-[#4b52d6] px-3 py-2 text-sm font-bold">
+      <h2 className="flex items-center justify-between border-b border-border-light px-3 py-2 text-sm font-bold">
         Activity
       </h2>
       <div className="min-h-0 flex-1 overflow-hidden">

@@ -39,7 +39,7 @@ export function BottomBar({
   const hint = notice ?? (full ? 'Layer full. Merge it to keep drawing.' : nearFull ? 'Layer almost full. Merge soon.' : null)
   const level = full || notice ? 'text-status-error' : nearFull ? 'text-status-warning' : 'text-text-primary'
   return (
-    <div className="panel absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-2rem)] max-w-max -translate-x-1/2 flex-col gap-3 p-3 lg:flex-row lg:items-center">
+    <div className="card absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-2rem)] max-w-max -translate-x-1/2 flex-col gap-3 p-3 lg:flex-row lg:items-center">
       <div className="lg:w-[384px] lg:shrink-0">
         <PalettePicker selected={color} onSelect={onColor} />
       </div>
@@ -55,7 +55,7 @@ export function BottomBar({
               aria-pressed={!layerVisible}
               title={layerVisible ? 'Hide your layer' : 'Show your layer'}
               onClick={() => onLayerVisible(!layerVisible)}
-              className="text-[#2a2f8f] outline-none hover:text-primary-dark"
+              className="text-text-secondary outline-none hover:text-primary-dark"
             >
               {layerVisible ? <Eye size={14} /> : <EyeOff size={14} />}
             </button>
@@ -70,7 +70,7 @@ export function BottomBar({
         </div>
         <button
           type="button"
-          className={`game-button ${full ? 'animate-pulse' : ''}`}
+          className={`btn ${full ? 'animate-pulse' : ''}`}
           title="Everyone sees it after merging"
           onClick={onCommit}
           disabled={count === 0 || committing}
@@ -79,7 +79,7 @@ export function BottomBar({
         </button>
         <button
           type="button"
-          className="game-button game-button--secondary"
+          className="btn btn--quiet"
           title="Removes your unmerged pixels"
           onClick={onClear}
           disabled={count === 0 || committing}
