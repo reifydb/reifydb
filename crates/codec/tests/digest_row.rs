@@ -6,18 +6,8 @@ use std::{
 	slice::from_ref,
 };
 
-use reifydb_codec::{
-	constraint::{EncodedTypeConstraint, decode_type_constraint, encode_type_constraint},
-	row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::compute_fingerprint},
-	tag::ValueKind,
-};
-use reifydb_value::value::{
-	Value,
-	constraint::{Constraint, TypeConstraint, bytes::MaxBytes},
-	digest::Digest,
-	duration::Duration,
-	value_type::ValueType,
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::compute_fingerprint};
+use reifydb_value::value::{Value, digest::Digest, duration::Duration, value_type::ValueType};
 
 fn digest_type(inner: ValueType, accuracy: u32) -> ValueType {
 	ValueType::Digest {
@@ -249,75 +239,6 @@ fn writing_a_digest_of_another_type_into_a_digest_field_panics_naming_the_column
 	});
 	assert!(message.contains("column \"c1\""), "{message}");
 	assert!(message.contains("Digest(Duration, 0.02)"), "{message}");
-}
-
-#[test]
-fn a_digest_constraint_stores_accuracy_ppm_in_p1_and_the_inner_type_tag_in_p2() {
-	// The persisted row shape is the only place a table's digest parameters survive a restart.
-	for (inner, accuracy) in [(ValueType::Float8, 10_000), (ValueType::Int4, 1_000), (ValueType::Duration, 100_000)]
-	{
-		for depth in 0..=3u8 {
-			let ty = (0..depth).fold(digest_type(inner.clone(), accuracy), |ty, _| option(ty));
-			let encoded = encode_type_constraint(&TypeConstraint::unconstrained(ty.clone())).unwrap();
-			assert_eq!(
-				encoded,
-				EncodedTypeConstraint {
-					base_type: (depth << 6) | ValueKind::Digest.byte(),
-					constraint_type: 5,
-					constraint_param1: accuracy,
-					constraint_param2: u32::from(ValueKind::of_type(&inner).byte()),
-				}
-			);
-			assert_eq!(decode_type_constraint(&encoded).unwrap(), TypeConstraint::unconstrained(ty));
-		}
-	}
-}
-
-#[test]
-fn a_digest_constraint_rejects_parameters_that_are_not_a_valid_digest_type() {
-	let valid =
-		encode_type_constraint(&TypeConstraint::unconstrained(digest_type(ValueType::Float8, 10_000))).unwrap();
-	let broken = [
-		EncodedTypeConstraint {
-			constraint_param2: u32::from(ValueKind::Utf8.byte()),
-			..valid
-		},
-		EncodedTypeConstraint {
-			constraint_param2: 0x100 | u32::from(ValueKind::Float8.byte()),
-			..valid
-		},
-		EncodedTypeConstraint {
-			constraint_param2: u32::from((1 << 6) | ValueKind::Float8.byte()),
-			..valid
-		},
-		EncodedTypeConstraint {
-			constraint_param1: 999,
-			..valid
-		},
-		EncodedTypeConstraint {
-			constraint_param1: 100_001,
-			..valid
-		},
-		EncodedTypeConstraint {
-			base_type: ValueKind::Float8.byte(),
-			..valid
-		},
-		EncodedTypeConstraint {
-			constraint_type: 0,
-			..valid
-		},
-	];
-	for encoded in broken {
-		assert!(decode_type_constraint(&encoded).is_err(), "{encoded:?} decoded as a digest type");
-	}
-
-	assert!(encode_type_constraint(&TypeConstraint::unconstrained(digest_type(ValueType::Utf8, 10_000))).is_err());
-	assert!(encode_type_constraint(&TypeConstraint::unconstrained(digest_type(ValueType::Float8, 999))).is_err());
-	let with_bytes = TypeConstraint::with_constraint(
-		digest_type(ValueType::Float8, 10_000),
-		Constraint::MaxBytes(MaxBytes::new(16)),
-	);
-	assert!(encode_type_constraint(&with_bytes).is_err(), "p1 and p2 cannot hold a digest and a byte limit");
 }
 
 #[test]

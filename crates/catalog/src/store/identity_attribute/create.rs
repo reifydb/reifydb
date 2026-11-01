@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::tag::type_tag_byte;
+use reifydb_codec::typeinfo::encode_value_type;
 use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity::IdentityAttributeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{blob::Blob, value_type::ValueType},
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -33,7 +36,11 @@ impl CatalogStore {
 		let mut row = identity_attribute::allocate();
 		identity_attribute::set_id(&mut row, attribute_id);
 		identity_attribute::set_name(&mut row, name);
-		identity_attribute::set_value_type(&mut row, type_tag_byte(&value_type));
+		let mut value_type_bytes = Vec::new();
+		encode_value_type(&value_type, &mut value_type_bytes).unwrap_or_else(|error| {
+			panic!("identity attribute type {value_type} cannot be encoded: {error}")
+		});
+		identity_attribute::set_value_type(&mut row, &Blob::from(value_type_bytes));
 
 		txn.set(vec![(IdentityAttributeKey::new(attribute_id).into(), row.freeze().into())])?;
 

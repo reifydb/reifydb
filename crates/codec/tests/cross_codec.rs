@@ -130,7 +130,10 @@ fn keycode_round_trips_the_same_values() {
 
 #[test]
 fn constraint_extern_c_round_trips_base_types() {
-	use reifydb_codec::constraint::{decode_type_constraint, encode_type_constraint};
+	use reifydb_codec::{
+		constraint::{decode_type_constraint_info, encode_type_constraint_info},
+		reader::Reader,
+	};
 
 	let types = [
 		ValueType::Boolean,
@@ -141,8 +144,9 @@ fn constraint_extern_c_round_trips_base_types() {
 	];
 	for ty in types {
 		let tc = TypeConstraint::unconstrained(ty.clone());
-		let extern_c = encode_type_constraint(&tc).unwrap();
-		let back = decode_type_constraint(&extern_c).unwrap();
+		let mut extern_c = Vec::new();
+		encode_type_constraint_info(&tc, &mut extern_c).unwrap();
+		let back = decode_type_constraint_info(&mut Reader::new(&extern_c)).unwrap();
 		assert_eq!(back.get_type(), ty, "constraint base type must round-trip");
 	}
 }

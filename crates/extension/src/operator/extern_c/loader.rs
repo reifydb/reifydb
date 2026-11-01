@@ -5,11 +5,12 @@ use std::{
 	collections::HashMap,
 	ffi::c_void,
 	path::{Path, PathBuf},
+	slice,
 	sync::OnceLock,
 };
 
 use libloading::Symbol;
-use reifydb_codec::constraint::{EncodedTypeConstraint, decode_type_constraint};
+use reifydb_codec::{constraint::decode_type_constraint_info, reader::Reader};
 use reifydb_core::{
 	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 	interface::catalog::flow::OperatorId,
@@ -264,13 +265,13 @@ pub unsafe fn extract_column_defs(column_defs: &ExternCOperatorColumns) -> Vec<C
 		// SAFETY: i < column_count and the pointer is non-null, so this stays inside the array.
 		let col = unsafe { &*column_defs.columns.add(i) };
 
-		let field_type = decode_type_constraint(&EncodedTypeConstraint {
-			base_type: col.base_type,
-			constraint_type: col.constraint_type,
-			constraint_param1: col.constraint_param1,
-			constraint_param2: col.constraint_param2,
-		})
-		.expect("invalid persisted type constraint tag");
+		assert!(!col.type_constraint.ptr.is_null(), "extern-C operator column carries no type constraint");
+		// SAFETY: the pointer is non-null and the buffer belongs to `col`, whose validity the caller
+		// guarantees.
+		let type_constraint =
+			unsafe { slice::from_raw_parts(col.type_constraint.ptr, col.type_constraint.len) };
+		let field_type = decode_type_constraint_info(&mut Reader::new(type_constraint))
+			.unwrap_or_else(|error| panic!("invalid extern-C operator column type constraint: {error}"));
 
 		// SAFETY: both buffers belong to `col`, whose validity the caller guarantees.
 		columns.push(ColumnInfo {

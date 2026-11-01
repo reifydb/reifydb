@@ -60,7 +60,7 @@ pub fn columns() -> Arc<VTable> {
 				Column {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,

@@ -295,10 +295,6 @@ pub(crate) fn peel_options(ty: &ValueType) -> (&ValueType, u32) {
 	(base, depth)
 }
 
-pub fn type_tag_byte(ty: &ValueType) -> u8 {
-	TypeTag::of_type(ty).expect("option nesting exceeds the type tag capacity").byte()
-}
-
 pub fn value_type_from_tag_byte(byte: u8) -> ValueType {
 	TypeTag::from_byte(byte).and_then(TypeTag::to_type).expect("invalid persisted type tag byte")
 }

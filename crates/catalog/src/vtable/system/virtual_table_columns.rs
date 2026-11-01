@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::{batch::batch, column::factory},
@@ -14,7 +13,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
+	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry, system::type_constraint_text},
 };
 
 pub struct SystemVirtualTableColumns {
@@ -55,7 +54,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				column_ids.push(col.id.0);
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
-				types.push(type_tag_byte(&col.constraint.get_type()));
+				types.push(type_constraint_text(&col.constraint));
 				positions.push(col.index.0);
 			}
 		}
@@ -65,7 +64,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				column_ids.push(col.id.0);
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
-				types.push(type_tag_byte(&col.constraint.get_type()));
+				types.push(type_constraint_text(&col.constraint));
 				positions.push(col.index.0);
 			}
 		}
@@ -74,7 +73,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 			factory::uint8("id", column_ids),
 			factory::uint8("vtable_id", vtable_ids),
 			factory::utf8("name", names),
-			factory::uint1("type", types),
+			factory::utf8("type", types),
 			factory::uint1("position", positions),
 		];
 

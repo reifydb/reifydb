@@ -10,13 +10,7 @@ use crate::common::extern_c::wire::buffer::ExternCBuffer;
 pub struct ExternCOperatorColumn {
 	pub name: ExternCBuffer,
 
-	pub base_type: u8,
-
-	pub constraint_type: u8,
-
-	pub constraint_param1: u32,
-
-	pub constraint_param2: u32,
+	pub type_constraint: ExternCBuffer,
 
 	pub description: ExternCBuffer,
 }

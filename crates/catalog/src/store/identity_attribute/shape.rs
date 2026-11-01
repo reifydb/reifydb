@@ -7,6 +7,6 @@ catalog_shape! {
 	pub(crate) identity_attribute {
 		id: u64,
 		name: utf8,
-		value_type: u8,
+		value_type: blob,
 	}
 }

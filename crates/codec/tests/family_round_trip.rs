@@ -7,7 +7,7 @@ use arrow_array::{ArrayRef, RecordBatch, make_array};
 use arrow_buffer::NullBuffer;
 use arrow_schema::{FieldRef, Schema};
 use reifydb_codec::{
-	constraint::{EncodedTypeConstraint, decode_type_constraint, encode_type_constraint},
+	constraint::{decode_type_constraint_info, encode_type_constraint_info},
 	extern_c::cells::{decode_decimal_cell, encode_decimal_cell},
 	frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions},
 	json::{from::frames_from_json, to::frames_to_json},
@@ -19,7 +19,7 @@ use reifydb_codec::{
 use reifydb_value::value::{
 	Value,
 	column_view::ColumnView,
-	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
+	constraint::{TypeConstraint, precision::Precision, scale::Scale},
 	container::decimal_array::decimal_array,
 	decimal::Decimal,
 	frame::frame::Frame,
@@ -88,44 +88,18 @@ fn typeinfo_rejects_params_no_layout_can_hold() {
 }
 
 #[test]
-fn a_family_type_encodes_as_constraint_code_two_with_its_params() {
-	// Code 2 was PrecisionScale, so decimal(p, s) keeps the fingerprint catalogs already stored for it.
-	let encoded = encode_type_constraint(&TypeConstraint::unconstrained(ValueType::decimal(p(10), s(2)))).unwrap();
-	assert_eq!(encoded.base_type, ValueKind::Decimal.byte());
-	assert_eq!((encoded.constraint_type, encoded.constraint_param1, encoded.constraint_param2), (2, 10, 2));
-}
-
-#[test]
 fn a_family_type_constraint_round_trips_including_options() {
 	for base in family_types() {
 		for ty in [base.clone(), option(base.clone()), option(option(base))] {
 			// An option around the family must keep the params, or a nullable column decodes at the
 			// defaults.
 			let tc = TypeConstraint::unconstrained(ty.clone());
-			let decoded = decode_type_constraint(&encode_type_constraint(&tc).unwrap()).unwrap();
+			let mut bytes = Vec::new();
+			encode_type_constraint_info(&tc, &mut bytes).unwrap();
+			let decoded = decode_type_constraint_info(&mut Reader::new(&bytes)).unwrap();
 			assert_eq!(decoded.get_type(), ty, "{ty}");
 		}
 	}
-}
-
-#[test]
-fn a_family_constraint_with_impossible_params_is_rejected() {
-	// Scale on an int, or a precision past 76, has no storage layout and must not decode.
-	let wide = EncodedTypeConstraint {
-		base_type: ValueKind::Decimal.byte(),
-		constraint_type: 2,
-		constraint_param1: 300,
-		constraint_param2: 0,
-	};
-	assert!(decode_type_constraint(&wide).is_err());
-}
-
-#[test]
-fn a_family_type_with_an_extra_constraint_is_refused_on_encode() {
-	// The params occupy the constraint slot, so a second constraint would be silently dropped.
-	let tc =
-		TypeConstraint::with_constraint(ValueType::decimal(p(5), s(2)), Constraint::MaxBytes(MaxBytes::new(4)));
-	assert!(encode_type_constraint(&tc).is_err());
 }
 
 #[test]

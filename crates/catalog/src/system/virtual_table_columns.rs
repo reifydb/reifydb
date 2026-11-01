@@ -51,7 +51,7 @@ pub fn virtual_table_columns() -> Arc<VTable> {
 				Column {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

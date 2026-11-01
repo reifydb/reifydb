@@ -177,7 +177,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"identity_attribute::identity_attribute",
 			&*IDENTITY_ATTRIBUTE_SHAPE,
-			0x27d41b1e9ecfac69,
+			0x24580d0fa4179527,
 			&["id", "name", "value_type"],
 		),
 		(

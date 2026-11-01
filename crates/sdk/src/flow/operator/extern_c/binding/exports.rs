@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
-use reifydb_codec::{constraint::encode_type_constraint, value::decode_params};
+use reifydb_codec::{constraint::encode_type_constraint_info, value::decode_params};
 use reifydb_core::{
 	common::WindowRequirements,
 	interface::{catalog::flow::OperatorId, flow::to_bitmask},
@@ -49,14 +49,18 @@ fn columns_to_extern_c(columns: &'static [OperatorColumn]) -> ExternCOperatorCol
 	let extern_c_columns: Vec<ExternCOperatorColumn> = columns
 		.iter()
 		.map(|c| {
-			let extern_c_type =
-				encode_type_constraint(&c.type_constraint).expect("constraint exceeds tag capacity");
+			let mut type_constraint = Vec::new();
+			encode_type_constraint_info(&c.type_constraint, &mut type_constraint).unwrap_or_else(|error| {
+				panic!("type of operator column {} cannot be encoded: {error}", c.name)
+			});
+			let type_constraint: &'static [u8] = Box::leak(type_constraint.into_boxed_slice());
 			ExternCOperatorColumn {
 				name: str_to_buffer(c.name),
-				base_type: extern_c_type.base_type,
-				constraint_type: extern_c_type.constraint_type,
-				constraint_param1: extern_c_type.constraint_param1,
-				constraint_param2: extern_c_type.constraint_param2,
+				type_constraint: ExternCBuffer {
+					ptr: type_constraint.as_ptr(),
+					len: type_constraint.len(),
+					cap: type_constraint.len(),
+				},
 				description: str_to_buffer(c.description),
 			}
 		})

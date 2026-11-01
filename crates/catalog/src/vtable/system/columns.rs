@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::{batch::batch, column::factory},
@@ -13,7 +12,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext, system::type_constraint_text},
 };
 
 pub struct SystemColumnsTable {
@@ -62,7 +61,7 @@ impl BaseVTable for SystemColumnsTable {
 			object_ids.push(info.object_id.as_u64());
 			object_types.push(info.object_id.type_tag());
 			column_names.push(info.column.name);
-			column_types.push(type_tag_byte(&info.column.constraint.get_type()));
+			column_types.push(type_constraint_text(&info.column.constraint));
 			positions.push(info.column.index.0);
 			auto_increments.push(info.column.auto_increment);
 			dictionary_ids.push(info.column.dictionary_id.map(|d| d.0).unwrap_or(0));
@@ -73,7 +72,7 @@ impl BaseVTable for SystemColumnsTable {
 			factory::uint8("object_id", object_ids),
 			factory::uint1("object_type", object_types),
 			factory::utf8("name", column_names),
-			factory::uint1("type", column_types),
+			factory::utf8("type", column_types),
 			factory::uint1("position", positions),
 			factory::bool("auto_increment", auto_increments),
 			factory::uint8("dictionary_id", dictionary_ids),

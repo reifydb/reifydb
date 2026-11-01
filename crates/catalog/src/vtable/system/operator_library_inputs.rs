@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::{batch::batch, column::builder::ColumnBuilder},
@@ -15,7 +14,7 @@ use super::operator_libary::OperatorLibrary;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext, system::type_constraint_text},
 };
 
 pub struct SystemOperatorLibraryInputs {
@@ -52,7 +51,7 @@ impl BaseVTable for SystemOperatorLibraryInputs {
 		let mut operators = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 		let mut positions = ColumnBuilder::with_capacity(ValueType::Uint1, capacity);
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
-		let mut column_types = ColumnBuilder::with_capacity(ValueType::Uint1, capacity);
+		let mut column_types = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 		let mut descriptions = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 
 		for info in infos {
@@ -60,7 +59,7 @@ impl BaseVTable for SystemOperatorLibraryInputs {
 				operators.push(info.operator.as_str());
 				positions.push(position as u8);
 				names.push(col.name.as_str());
-				column_types.push(type_tag_byte(&col.field_type.get_type()));
+				column_types.push(type_constraint_text(&col.field_type).as_str());
 				descriptions.push(col.description.as_str());
 			}
 		}
