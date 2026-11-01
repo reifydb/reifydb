@@ -48,3 +48,6 @@ arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

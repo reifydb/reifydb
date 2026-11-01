@@ -14,3 +14,6 @@ doctest = false
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

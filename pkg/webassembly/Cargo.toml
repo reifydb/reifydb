@@ -53,3 +53,6 @@ serde_json = { workspace = true }
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 wasm-bindgen-test = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

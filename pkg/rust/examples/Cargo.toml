@@ -159,3 +159,6 @@ path = "examples/queue/09_introspection.rs"
 [[bin]]
 name = "queue-long-poll"
 path = "examples/queue/10_long_poll.rs"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

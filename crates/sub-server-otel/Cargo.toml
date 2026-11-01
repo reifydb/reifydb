@@ -35,3 +35,6 @@ reifydb-build = { workspace = true }
 [features]
 default = ["otlp"]
 otlp = ["dep:opentelemetry-otlp"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

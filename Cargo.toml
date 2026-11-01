@@ -51,6 +51,7 @@ members = [
     "crates/wal",
     "crates/wasm",
     "crates/benches",
+    "crates/workspace-hack",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-core",
@@ -323,6 +324,7 @@ reifydb-sub-console = { version = "0.10.1", path = "crates/sub-console" }
 reifydb-sub-subscription = { version = "0.10.1", path = "crates/sub-subscription" }
 reifydb-remote-proxy = { version = "0.10.1", path = "crates/remote-proxy" }
 reifydb-subscription = { version = "0.10.1", path = "crates/subscription" }
+reifydb-workspace-hack = { version = "0.10.1", path = "crates/workspace-hack" }
 
 # External dependencies
 

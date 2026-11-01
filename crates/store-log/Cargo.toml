@@ -24,3 +24,6 @@ reifydb-value = { workspace = true }
 
 [dev-dependencies]
 reifydb-runtime = { workspace = true, features = ["testing"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

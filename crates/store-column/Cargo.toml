@@ -54,3 +54,6 @@ vortex-zigzag = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-runtime = { workspace = true, features = ["testing"] }
 uuid = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

@@ -521,7 +521,9 @@ fn parse_composite(name: &str, args: &[&str]) -> Result<ValueType, ()> {
 			Ok(ValueType::decimal(precision, scale))
 		}
 		("ENUM", [name]) => Ok(ValueType::Enum(name.to_string())),
-		("TUPLE", types) => types.iter().map(|ty| ValueType::from_str(ty)).collect::<Result<_, _>>().map(ValueType::Tuple),
+		("TUPLE", types) => {
+			types.iter().map(|ty| ValueType::from_str(ty)).collect::<Result<_, _>>().map(ValueType::Tuple)
+		}
 		("RECORD", fields) => fields
 			.iter()
 			.map(|field| {
@@ -588,7 +590,8 @@ mod tests {
 
 	#[test]
 	fn every_displayed_type_parses_back_to_itself() {
-		// Readers of system::columns rebuild types from this text, so a lossy parse silently drops Option or decimal scale.
+		// Readers of system::columns rebuild types from this text, so a lossy parse silently drops Option or
+		// decimal scale.
 		let types = vec![
 			ValueType::Int4,
 			ValueType::DECIMAL,

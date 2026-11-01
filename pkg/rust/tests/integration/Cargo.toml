@@ -15,3 +15,6 @@ reifydb = { workspace = true, features = ["sub_flow", "sub_server", "testing"] }
 reifydb-sub-metrics = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-test-harness = { workspace = true, features = ["auth"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

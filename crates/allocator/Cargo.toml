@@ -19,3 +19,6 @@ reifydb-build = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 reifydb-allocator-jemalloc = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

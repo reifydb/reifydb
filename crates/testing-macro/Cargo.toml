@@ -10,3 +10,6 @@ description = "Proc-macro backing reifydb-testing's chaos_test! (internal testin
 [lib]
 proc-macro = true
 doctest = false
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

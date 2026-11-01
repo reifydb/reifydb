@@ -149,3 +149,6 @@ required-features = ["sub_server_ws", "sub_flow"]
 name = "console"
 path = "tests/console.rs"
 required-features = ["sub_console"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

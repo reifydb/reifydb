@@ -28,3 +28,6 @@ reifydb-build = { workspace = true }
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 tokio = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

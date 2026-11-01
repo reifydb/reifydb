@@ -23,6 +23,7 @@ reifydb-value = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }
+reifydb-workspace-hack = { workspace = true }
 
 [dev-dependencies]
 wat = { workspace = true }

@@ -28,3 +28,6 @@ tokio = { workspace = true }
 [build-dependencies]
 napi-build = { workspace = true }
 reifydb-build = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

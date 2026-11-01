@@ -40,6 +40,7 @@ smallvec = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }
 
 [dev-dependencies]
 reifydb-test-harness = { workspace = true }

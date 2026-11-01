@@ -16,3 +16,6 @@ reifydb = { workspace = true, features = ["alloc-jemalloc", "server", "sub_flow"
 
 [build-dependencies]
 reifydb-build = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

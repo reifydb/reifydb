@@ -134,6 +134,42 @@ if [ $SKIP_CRATES -eq 0 ]; then
         echo -e "${GREEN}  ✓ Cargo config disabled${NC}"
     fi
 
+    HACK_STUB_DIR="$(mktemp -d)"
+    mkdir -p "$HACK_STUB_DIR/src"
+    : > "$HACK_STUB_DIR/src/lib.rs"
+    cat > "$HACK_STUB_DIR/Cargo.toml" <<EOF
+[package]
+name = "reifydb-workspace-hack"
+version = "$VERSION"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/reifydb/reifydb"
+description = "workspace-hack package, managed by hakari"
+
+[workspace]
+EOF
+    HACK_STUB_ARGS="publish --manifest-path $HACK_STUB_DIR/Cargo.toml --no-verify"
+    if [ $DRY_RUN -eq 1 ]; then
+        HACK_STUB_ARGS="$HACK_STUB_ARGS --dry-run"
+    fi
+    if [ -n "${CRATES_TOKEN:-}" ]; then
+        HACK_STUB_ARGS="$HACK_STUB_ARGS --token ${CRATES_TOKEN}"
+    elif [ -n "${CARGO_REGISTRY_TOKEN:-}" ]; then
+        HACK_STUB_ARGS="$HACK_STUB_ARGS --token ${CARGO_REGISTRY_TOKEN}"
+    fi
+    echo -e "${BLUE}  Publishing reifydb-workspace-hack stub ${VERSION}...${NC}"
+    if ! HACK_STUB_OUT="$(cargo $HACK_STUB_ARGS 2>&1)"; then
+        if echo "$HACK_STUB_OUT" | grep -q "already exists"; then
+            echo -e "${YELLOW}  reifydb-workspace-hack ${VERSION} already published${NC}"
+        else
+            echo "$HACK_STUB_OUT"
+            log_publish "crates:reifydb-workspace-hack" "FAILED"
+            exit 1
+        fi
+    fi
+    log_publish "crates:reifydb-workspace-hack" "SUCCESS"
+    rm -rf "$HACK_STUB_DIR"
+
     # Show publishing order
     echo -e "${BLUE}  Publishing order (automatically calculated):${NC}"
     cargo workspaces list | sed 's/^/    /'

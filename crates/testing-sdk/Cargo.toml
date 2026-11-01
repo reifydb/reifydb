@@ -52,3 +52,6 @@ path = "tests/operator.rs"
 [[test]]
 name = "sdk"
 path = "tests/sdk.rs"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

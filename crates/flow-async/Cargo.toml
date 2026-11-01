@@ -69,3 +69,6 @@ reifydb-testing-sdk = { workspace = true }
 [[test]]
 name = "operator"
 path = "tests/operator.rs"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

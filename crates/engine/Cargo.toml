@@ -63,6 +63,7 @@ reifydb-test-harness = { workspace = true, features = ["column"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reifydb-client = { workspace = true, features = ["grpc"] }
 tokio = { workspace = true }
+reifydb-workspace-hack = { workspace = true }
 
 [[test]]
 name = "suite"

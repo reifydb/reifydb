@@ -46,3 +46,6 @@ sha2 = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

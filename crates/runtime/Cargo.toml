@@ -39,6 +39,7 @@ crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
 moka = { workspace = true }
+reifydb-workspace-hack = { workspace = true }
 
 [target.'cfg(loom)'.dependencies]
 loom = { workspace = true }

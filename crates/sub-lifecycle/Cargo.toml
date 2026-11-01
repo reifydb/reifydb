@@ -38,3 +38,6 @@ reifydb-test-harness = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-testing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

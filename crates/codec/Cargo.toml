@@ -32,6 +32,7 @@ tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd = { workspace = true }
+reifydb-workspace-hack = { workspace = true }
 
 [dev-dependencies]
 reifydb-runtime = { workspace = true }

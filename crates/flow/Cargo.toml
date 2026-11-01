@@ -64,3 +64,6 @@ required-features = ["runtime"]
 name = "map"
 path = "tests/map.rs"
 required-features = ["runtime"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }

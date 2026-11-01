@@ -40,3 +40,6 @@ reifydb-testing = { workspace = true }
 reifydb-catalog = { workspace = true }
 test_each_file = { workspace = true }
 tokio = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reifydb-workspace-hack = { workspace = true }
