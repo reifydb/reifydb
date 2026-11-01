@@ -3,66 +3,72 @@
 
 import { describe, expect, it } from 'vitest'
 import { ACTIVITY_LIMIT, Activity } from '@/activity'
-import { TILE_BYTES } from '@/pixels'
 
 const RED = 2
 const BLUE = 13
 
-function tile(color = 0): Uint8Array {
-  return new Uint8Array(TILE_BYTES).fill(color)
-}
-
-function paint(base: Uint8Array, count: number, color: number, from = 0): Uint8Array {
-  const out = base.slice()
-  for (let i = from; i < from + count; i++) out[i] = color
+function edit(tx: number, ty: number, colors: number[]): Uint8Array {
+  // Must match the commit tile blob layout, or these tests check a format the server never sends.
+  const out = new Uint8Array(2 + colors.length * 3)
+  out[0] = tx
+  out[1] = ty
+  colors.forEach((color, i) => {
+    out[2 + i * 3] = i & 0xff
+    out[3 + i * 3] = i >> 8
+    out[4 + i * 3] = color
+  })
   return out
 }
 
 describe('Activity.put', () => {
-  it('ignores the first load of a tile', () => {
-    // Hydration delivers every tile once; reporting those would flood the feed with 16,384 fake edits.
-    const activity = new Activity(() => 0)
-    activity.put(3, 5, undefined, paint(tile(), 10, RED))
-
-    expect(activity.latest()).toEqual([])
-  })
-
-  it('counts only the pixels that changed and names the main new colour', () => {
-    // Counting all non-white pixels would report the whole drawing again on every edit.
+  it('logs the painter name, tile, pixel count and main colour of an edit row', () => {
+    // The name is the point of the log; a missing or swapped field credits the wrong painter or tile.
     const activity = new Activity(() => 42)
-    const before = paint(tile(), 100, BLUE)
-    const after = paint(paint(before, 7, RED, 200), 3, BLUE, 300)
-    activity.put(3, 5, before, after)
+    activity.put('alice', edit(3, 5, [RED, RED, BLUE, RED]), 4)
 
-    expect(activity.latest()).toEqual([{ id: 0, tx: 3, ty: 5, px: 10, color: RED, at: 42 }])
+    expect(activity.latest()).toEqual([{ id: 0, name: 'alice', tx: 3, ty: 5, px: 4, color: RED, at: 42 }])
   })
 
-  it('skips an update that changes nothing', () => {
-    // A re-sent identical tile, for example after reconnect, is not activity.
+  it('reads the colour byte, not the index bytes, of each pixel', () => {
+    // Index bytes at 300 hold 44 and 1; reading them as colours would name a colour nobody painted.
     const activity = new Activity(() => 0)
-    activity.put(0, 0, tile(RED), tile(RED))
+    const blob = new Uint8Array([0, 0, 0x2c, 0x01, BLUE, 0x2c, 0x01, BLUE])
+    activity.put('bob', blob, 2)
+
+    expect(activity.latest()[0].color).toBe(BLUE)
+  })
+
+  it('skips an edit row that painted nothing', () => {
+    // An empty edit is not activity and would show "painted 0 px".
+    const activity = new Activity(() => 0)
+    activity.put('alice', edit(0, 0, []), 0)
 
     expect(activity.latest()).toEqual([])
+  })
+
+  it('fails loud on a malformed edit blob', () => {
+    // A blob that is not 2 + 3n bytes means the wire format drifted; guessing would log garbage tiles.
+    const activity = new Activity(() => 0)
+    expect(() => activity.put('alice', new Uint8Array([1, 2, 3, 4]), 1)).toThrow()
   })
 
   it('keeps the newest edits first and drops the oldest past the limit', () => {
     // Unbounded history would grow forever on a busy canvas.
     const activity = new Activity(() => 0)
-    for (let i = 0; i <= ACTIVITY_LIMIT; i++) activity.put(i % 128, 0, tile(), paint(tile(), 1, RED))
+    for (let i = 0; i <= ACTIVITY_LIMIT; i++) activity.put('alice', edit(i % 128, 0, [RED]), 1)
 
     expect(activity.latest()).toHaveLength(ACTIVITY_LIMIT)
     expect(activity.latest()[0].id).toBe(ACTIVITY_LIMIT)
   })
 
-  it('notifies once per real edit and not for ignored updates', () => {
-    // A notify on hydration would re-render the feed thousands of times at load.
+  it('notifies once per logged edit and not for skipped ones', () => {
+    // A notify for an empty edit would re-render the feed for nothing.
     const activity = new Activity(() => 0)
     let calls = 0
     activity.subscribe(() => calls++)
 
-    activity.put(0, 0, undefined, tile(RED))
-    activity.put(0, 0, tile(RED), tile(RED))
-    activity.put(0, 0, tile(), tile(RED))
+    activity.put('alice', edit(0, 0, []), 0)
+    activity.put('alice', edit(0, 0, [RED]), 1)
 
     expect(calls).toBe(1)
   })
@@ -73,9 +79,9 @@ describe('Activity windows', () => {
     // A window that ignores time would show lifetime totals as "last minute".
     let now = 0
     const activity = new Activity(() => now)
-    activity.put(0, 0, tile(), paint(tile(), 5, RED))
+    activity.put('alice', edit(0, 0, [RED, RED, RED, RED, RED]), 5)
     now = 61_000
-    activity.put(1, 0, tile(), paint(tile(), 7, RED))
+    activity.put('alice', edit(1, 0, [RED, RED, RED, RED, RED, RED, RED]), 7)
 
     expect(activity.pixelsSince(60_000)).toBe(7)
     expect(activity.editsSince(60_000)).toBe(1)

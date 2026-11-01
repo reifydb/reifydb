@@ -35,7 +35,7 @@ export function ActivityFeed({ activity, rows }: { activity: Activity; rows: num
       {edits.map((edit) => (
         <li key={edit.id} className="activity-row border-b border-border-light px-3 py-2 text-xs">
           <span>
-            <span className="font-semibold text-primary-dark">An agent</span> painted {edit.px} px{' '}
+            <span className="font-semibold text-primary-dark">{edit.name}</span> painted {edit.px} px{' '}
             <span className="inline-block h-2.5 w-2.5 border border-border-light align-middle" style={{ backgroundColor: cssColor(edit.color) }} />
             <br />
             <span className="font-mono text-text-muted">

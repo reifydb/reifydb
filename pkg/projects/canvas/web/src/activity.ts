@@ -2,12 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 import { PALETTE } from './palette'
-import { TILE_BYTES } from './pixels'
 
 export const ACTIVITY_LIMIT = 50
 
+export const EDIT_RQL = 'from canvas::edit map { name, pixels, painted }'
+
 export interface Edit {
   id: number
+  name: string
   tx: number
   ty: number
   px: number
@@ -23,20 +25,14 @@ export class Activity {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  put(tx: number, ty: number, before: Uint8Array | undefined, after: Uint8Array): void {
-    if (!before) return
-    if (before.length !== TILE_BYTES || after.length !== TILE_BYTES) throw new Error(`tile (${tx},${ty}) is not ${TILE_BYTES} bytes`)
-    this.counts.fill(0)
-    let px = 0
-    for (let i = 0; i < TILE_BYTES; i++) {
-      if (before[i] === after[i]) continue
-      px++
-      this.counts[after[i]]++
-    }
+  put(name: string, edit: Uint8Array, px: number): void {
+    if (edit.length < 2 || (edit.length - 2) % 3 !== 0) throw new Error(`edit of ${name} has ${edit.length} bytes, expected 2 + 3n`)
     if (px === 0) return
+    this.counts.fill(0)
+    for (let i = 4; i < edit.length; i += 3) this.counts[edit[i]]++
     let color = 0
     for (let c = 1; c < this.counts.length; c++) if (this.counts[c] > this.counts[color]) color = c
-    this.edits = [{ id: this.next++, tx, ty, px, color, at: this.now() }, ...this.edits].slice(0, ACTIVITY_LIMIT)
+    this.edits = [{ id: this.next++, name, tx: edit[0], ty: edit[1], px, color, at: this.now() }, ...this.edits].slice(0, ACTIVITY_LIMIT)
     for (const listener of this.listeners) listener()
   }
 

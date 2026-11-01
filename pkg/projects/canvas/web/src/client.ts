@@ -15,6 +15,11 @@ export function numeric(value: unknown): number {
   return Number(value)
 }
 
+export function text(value: unknown): string {
+  if (value !== null && typeof value === 'object' && 'value' in value) return String((value as { value: unknown }).value)
+  return String(value)
+}
+
 export function bytes(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value
   if (value !== null && typeof value === 'object' && 'value' in value && value.value instanceof Uint8Array) return value.value

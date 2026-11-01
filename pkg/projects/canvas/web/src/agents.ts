@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { type CanvasClient, numeric } from './client'
+import { type CanvasClient, numeric, text } from './client'
 
 export const AGENTS_RQL = `from canvas::edit
   map { owner, name, painted, at: datetime::epoch_millis(#created_at) }
@@ -23,11 +23,6 @@ export interface Painter {
 
 export interface Agents {
   painters: Painter[]
-}
-
-function text(value: unknown): string {
-  if (value !== null && typeof value === 'object' && 'value' in value) return String((value as { value: unknown }).value)
-  return String(value)
 }
 
 export function summarize(rows: readonly PainterRow[]): Agents {
