@@ -75,6 +75,7 @@ pub enum ConfigKey {
 	FlowTick,
 	FlowSampleInterval,
 	FlowWakeCoalesce,
+	FlowFullWakeInterval,
 	FlowLinger,
 	FlowActorBatchSize,
 	FlowCommitterShards,
@@ -132,6 +133,7 @@ impl ConfigKey {
 			Self::FlowTick,
 			Self::FlowSampleInterval,
 			Self::FlowWakeCoalesce,
+			Self::FlowFullWakeInterval,
 			Self::FlowLinger,
 			Self::FlowActorBatchSize,
 			Self::FlowCommitterShards,
@@ -215,6 +217,7 @@ impl ConfigKey {
 			Self::FlowTick => Value::Duration(default::flow::TICK),
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL),
 			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE),
+			Self::FlowFullWakeInterval => Value::Duration(default::flow::FULL_WAKE_INTERVAL),
 			Self::FlowLinger => Value::Duration(default::flow::LINGER),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
@@ -298,6 +301,7 @@ impl ConfigKey {
 			Self::FlowTick => Value::Duration(default::flow::TICK_TESTING),
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL_TESTING),
 			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE_TESTING),
+			Self::FlowFullWakeInterval => Value::Duration(default::flow::FULL_WAKE_INTERVAL_TESTING),
 			Self::FlowLinger => Value::Duration(default::flow::LINGER_TESTING),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
@@ -465,6 +469,10 @@ impl ConfigKey {
 				 steps inside the window merge into one drain. Zero wakes on every step. Read once at boot; \
 				 changing it requires a restart."
 			}
+			Self::FlowFullWakeInterval => {
+				"How often the flow supervisor wakes every flow after a commit, so a flow with nothing to do moves \
+				 its position forward. Read once at boot; changing it requires a restart."
+			}
 			Self::FlowLinger => {
 				"How long a flow that folds its input waits, from the first change after it went idle, before it \
 				 pulls, so changes arriving inside the window are taken as one step and one commit. Zero pulls \
@@ -608,6 +616,7 @@ impl ConfigKey {
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
 			Self::FlowWakeCoalesce => true,
+			Self::FlowFullWakeInterval => true,
 			Self::FlowLinger => true,
 			Self::FlowActorBatchSize => true,
 			Self::FlowCommitterShards => true,
@@ -665,6 +674,7 @@ impl ConfigKey {
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
 			Self::FlowWakeCoalesce => &[ValueType::Duration],
+			Self::FlowFullWakeInterval => &[ValueType::Duration],
 			Self::FlowLinger => &[ValueType::Duration],
 			Self::FlowActorBatchSize => &[ValueType::Uint2],
 			Self::FlowCommitterShards => &[ValueType::Uint2],
@@ -722,6 +732,7 @@ impl ConfigKey {
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
 			Self::FlowWakeCoalesce => false,
+			Self::FlowFullWakeInterval => false,
 			Self::FlowLinger => false,
 			Self::FlowActorBatchSize => false,
 			Self::FlowCommitterShards => false,
@@ -923,6 +934,12 @@ impl ConfigKey {
 				Value::Duration(d) if d.is_negative() => Err("FLOW_WAKE_COALESCE must not be negative".to_string()),
 				_ => Ok(()),
 			},
+			Self::FlowFullWakeInterval => match value {
+				Value::Duration(d) if d.is_negative() || d.is_zero() => {
+					Err("FLOW_FULL_WAKE_INTERVAL must be positive".to_string())
+				}
+				_ => Ok(()),
+			},
 			Self::FlowLinger => match value {
 				Value::Duration(d) if d.is_negative() => Err("FLOW_LINGER must not be negative".to_string()),
 				_ => Ok(()),
@@ -1074,6 +1091,7 @@ impl fmt::Display for ConfigKey {
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
 			Self::FlowWakeCoalesce => write!(f, "FLOW_WAKE_COALESCE"),
+			Self::FlowFullWakeInterval => write!(f, "FLOW_FULL_WAKE_INTERVAL"),
 			Self::FlowLinger => write!(f, "FLOW_LINGER"),
 			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
 			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
@@ -1135,6 +1153,7 @@ impl FromStr for ConfigKey {
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
 			"FLOW_WAKE_COALESCE" => Ok(Self::FlowWakeCoalesce),
+			"FLOW_FULL_WAKE_INTERVAL" => Ok(Self::FlowFullWakeInterval),
 			"FLOW_LINGER" => Ok(Self::FlowLinger),
 			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
 			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
@@ -1335,7 +1354,8 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 52);
+		assert_eq!(all.len(), 53);
+		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
@@ -1467,6 +1487,21 @@ mod tests {
 
 		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::FlowSampleInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
+	}
+
+	#[test]
+	fn test_flow_full_wake_interval_keeps_production_at_the_old_constant_and_rejects_a_busy_loop() {
+		// a production value that drifts changes every deployment, and a zero interval loops the supervisor on
+		// wake all
+		let key = ConfigKey::FlowFullWakeInterval;
+		assert_eq!(key.production_value(), Value::duration_milliseconds(100));
+		assert_eq!(key.testing_value(), Value::duration_milliseconds(1));
+		assert!(key.requires_restart());
+		assert!(!key.is_optional());
+		assert_eq!(key.to_string().parse::<ConfigKey>().unwrap(), key);
+		assert!(key.accept(Value::duration_milliseconds(0)).is_err());
+		assert!(key.accept(Value::duration_milliseconds(-1)).is_err());
+		assert!(key.accept(Value::duration_milliseconds(1)).is_ok());
 	}
 
 	#[test]

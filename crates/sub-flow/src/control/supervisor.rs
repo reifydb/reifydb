@@ -83,8 +83,6 @@ const FLOW_STALL_TIMEOUT_MS: i64 = 30_000;
 
 const FLOW_STALL_CHECK_INTERVAL_MS: i64 = 1_000;
 
-const FLOW_FULL_WAKE_INTERVAL_MS: i64 = 100;
-
 pub type FlowSupervisorHandle = ActorHandle<FlowSupervisorMessage>;
 
 pub enum FlowSupervisorMessage {
@@ -168,6 +166,7 @@ pub struct FlowSupervisor {
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
 	frontier_persist: Duration,
+	full_wake_interval: Duration,
 }
 
 pub struct SupervisorState {
@@ -196,6 +195,7 @@ type PreparedFlow = (FlowDag, FlowStart, Arc<BTreeSet<ObjectId>>, Option<Arc<BTr
 
 impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
+		let full_wake_interval = params.engine.catalog().get_config_duration(ConfigKey::FlowFullWakeInterval);
 		Self {
 			engine: params.engine,
 			committers: params.committers,
@@ -220,6 +220,7 @@ impl FlowSupervisor {
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
 			frontier_persist: params.frontier_persist,
+			full_wake_interval,
 		}
 	}
 
@@ -493,9 +494,7 @@ impl FlowSupervisor {
 		self.flow_tracker.wake_flows(targets);
 		if !state.full_wake_armed {
 			state.full_wake_armed = true;
-			ctx.schedule_once(Duration::from_milliseconds(FLOW_FULL_WAKE_INTERVAL_MS).unwrap(), || {
-				FlowSupervisorMessage::WakeAll
-			});
+			ctx.schedule_once(self.full_wake_interval, || FlowSupervisorMessage::WakeAll);
 		}
 	}
 

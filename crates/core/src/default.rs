@@ -127,6 +127,9 @@ pub mod flow {
 	pub const LINGER: Duration = Duration::from_milliseconds_const(0);
 	pub const LINGER_TESTING: Duration = Duration::from_milliseconds_const(0);
 
+	pub const FULL_WAKE_INTERVAL: Duration = Duration::from_milliseconds_const(100);
+	pub const FULL_WAKE_INTERVAL_TESTING: Duration = Duration::from_milliseconds_const(1);
+
 	pub const ACTOR_BATCH_SIZE: u16 = 8;
 	pub const ACTOR_BATCH_SIZE_TESTING: u16 = 8;
 
