@@ -57,14 +57,14 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			RollingGroups, Routing, WindowGroups, group_of,
+			RollingGroups, Routing, WindowGroups, all_rows, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Contribution, Emit, KindSet, WindowedOperator, batch_len, extract_rows},
+			operator::{Contribution, Emit, Extracted, KindSet, WindowedOperator, batch_len, extract_rows},
 			partition_of,
 			publish::{Emitted, UpdateRow, publish_row},
-			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
-			window_engine_config,
+			rolling_cutoff, rolling_output, route_rolling, seal_frontier, straddling, timer_frontier,
+			update_horizon, window_engine_config,
 		},
 	},
 };
@@ -171,6 +171,10 @@ where
 
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
 		let mut buckets: Buckets<A> = Routing::default();
+		let horizon = match self.sliding.is_some() || self.rolling.is_some() {
+			true => None,
+			false => update_horizon::<A::Coord>(&mut GuestAsHost(ctx), change, self.seal_span)?,
+		};
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -185,9 +189,27 @@ where
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
 						if A::UPDATE_PRE_RETRACTS {
-							self.push_all(ctx, &pre, &mut buckets, false)?;
+							let before = extract_rows(
+								&self.aggregator,
+								ctx,
+								&pre,
+								&all_rows(&pre),
+							)?;
+							let after = extract_rows(
+								&self.aggregator,
+								ctx,
+								&post,
+								&all_rows(&post),
+							)?;
+							let straddled =
+								straddling::<A>(&before, &after, horizon, |coord| {
+									self.window_span(coord).start
+								});
+							self.push_extracted(before, &straddled, &mut buckets, false);
+							self.push_extracted(after, &straddled, &mut buckets, true);
+						} else {
+							self.push_all(ctx, &post, &mut buckets, true)?;
 						}
-						self.push_all(ctx, &post, &mut buckets, true)?;
 					}
 				}
 				DiffType::Remove => {
@@ -207,8 +229,21 @@ where
 		buckets: &mut Buckets<A>,
 		is_add: bool,
 	) -> Result<()> {
-		let rows: Vec<usize> = (0..cols.row_count()).collect();
-		for (_, coord, group, contribution) in extract_rows(&self.aggregator, ctx, cols, &rows)? {
+		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
+		self.push_extracted(extracted, &BTreeSet::new(), buckets, is_add);
+		Ok(())
+	}
+
+	fn push_extracted(
+		&self,
+		extracted: Vec<Extracted<A>>,
+		straddled: &BTreeSet<usize>,
+		buckets: &mut Buckets<A>,
+		is_add: bool,
+	) {
+		for (_, coord, group, contribution) in
+			extracted.into_iter().filter(|(row, ..)| !straddled.contains(row))
+		{
 			match &self.sliding {
 				Some(mode) => {
 					for span in mode.engine.spans(coord) {
@@ -231,7 +266,6 @@ where
 				}
 			}
 		}
-		Ok(())
 	}
 }
 

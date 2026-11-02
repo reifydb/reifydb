@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -39,11 +39,11 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			Routing,
+			Routing, all_rows,
 			guest_as_host::GuestAsHost,
 			observe_batch,
-			operator::{CarryEmit, Contribution, WindowedOperator, extract_rows},
-			seal_frontier, timer_frontier, window_engine_config,
+			operator::{CarryEmit, Contribution, Extracted, WindowedOperator, extract_rows},
+			seal_frontier, straddling, timer_frontier, update_horizon, window_engine_config,
 		},
 	},
 };
@@ -97,6 +97,7 @@ where
 	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Routed<A>> {
 		let mut buckets: Routed<A> = Routing::default();
+		let horizon = update_horizon::<A::Coord>(&mut GuestAsHost(ctx), change, self.seal_span)?;
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -111,9 +112,27 @@ where
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
 						if A::UPDATE_PRE_RETRACTS {
-							self.push_all(ctx, &pre, &mut buckets, false)?;
+							let before = extract_rows(
+								&self.aggregator,
+								ctx,
+								&pre,
+								&all_rows(&pre),
+							)?;
+							let after = extract_rows(
+								&self.aggregator,
+								ctx,
+								&post,
+								&all_rows(&post),
+							)?;
+							let straddled =
+								straddling::<A>(&before, &after, horizon, |coord| {
+									self.window_span(coord).start
+								});
+							self.push_extracted(before, &straddled, &mut buckets, false);
+							self.push_extracted(after, &straddled, &mut buckets, true);
+						} else {
+							self.push_all(ctx, &post, &mut buckets, true)?;
 						}
-						self.push_all(ctx, &post, &mut buckets, true)?;
 					}
 				}
 				DiffType::Remove => {
@@ -133,8 +152,21 @@ where
 		buckets: &mut Routed<A>,
 		is_add: bool,
 	) -> Result<()> {
-		let rows: Vec<usize> = (0..cols.row_count()).collect();
-		for (_, coord, group, contribution) in extract_rows(&self.aggregator, ctx, cols, &rows)? {
+		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
+		self.push_extracted(extracted, &BTreeSet::new(), buckets, is_add);
+		Ok(())
+	}
+
+	fn push_extracted(
+		&self,
+		extracted: Vec<Extracted<A>>,
+		straddled: &BTreeSet<usize>,
+		buckets: &mut Routed<A>,
+		is_add: bool,
+	) {
+		for (_, coord, group, contribution) in
+			extracted.into_iter().filter(|(row, ..)| !straddled.contains(row))
+		{
 			let span = self.window_span(coord);
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
@@ -143,7 +175,6 @@ where
 			};
 			buckets.push(group, span, event);
 		}
-		Ok(())
 	}
 
 	#[inline]

@@ -35,6 +35,7 @@ runtime = [
 [dependencies]
 arrow-arith = { workspace = true }
 arrow-array = { workspace = true }
+arrow-ord = { workspace = true }
 arrow-schema = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }

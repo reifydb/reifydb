@@ -398,19 +398,55 @@ fn a_delete_of_a_row_in_a_sealed_window_keeps_its_published_total() {
 }
 
 #[test]
-fn an_update_moving_a_row_out_of_a_sealed_window_counts_it_in_both_windows() {
-	// Taking the row back out of the sealed window would rewrite a total already published as final.
+fn an_update_moving_a_row_out_of_a_sealed_window_is_dropped_whole() {
+	// Applying only the new side would count the row in the sealed window and again in the open one.
 	let db = setup();
 	sealed_window_source(&db);
 
 	db.command(r#"UPDATE app::t { ts: "1970-01-01T00:00:30Z" } FILTER { id == 1 }"#);
-	db.await_row_count("FROM app::w FILTER { g == 1 }", 2, TIMEOUT);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
-		db.await_exact_row_count("FROM app::w FILTER { g == 1 and total == 10 }", 2, TIMEOUT),
-		2,
-		"the 20s window is sealed and keeps 10, and the 30s window gains the moved 10; view now: {:?}",
+		db.await_exact_row_count("FROM app::w FILTER { g == 1 }", 1, TIMEOUT),
+		1,
+		"the update must not open a second window for the moved row; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+	assert_eq!(
+		db.await_exact_row_count(
+			"FROM app::w FILTER { g == 1 and total == 10 and s == cast('1970-01-01T00:00:20Z', datetime) }",
+			1,
+			TIMEOUT
+		),
+		1,
+		"the sealed 20s window must keep 10; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+}
+
+#[test]
+fn an_update_moving_a_row_into_a_sealed_window_is_dropped_whole() {
+	// Applying only the old side would take the row out of the open window while the sealed one never gains it.
+	let db = setup();
+	sealed_window_source(&db);
+
+	db.command(r#"UPDATE app::t { ts: "1970-01-01T00:00:20Z" } FILTER { id == 2 }"#);
+	db.await_all_flows(TIMEOUT);
+
+	assert_eq!(
+		db.await_exact_row_count("FROM app::w FILTER { g == 2 }", 1, TIMEOUT),
+		1,
+		"the update must leave exactly one window for the row; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+	assert_eq!(
+		db.await_exact_row_count(
+			"FROM app::w FILTER { g == 2 and total == 20 and s == cast('1970-01-01T00:00:30Z', datetime) }",
+			1,
+			TIMEOUT
+		),
+		1,
+		"the open 30s window must keep 20; view now: {:?}",
 		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
 	);
 }

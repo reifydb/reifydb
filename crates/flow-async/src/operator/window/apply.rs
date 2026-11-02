@@ -5,18 +5,29 @@ use std::{
 	slice::from_ref,
 };
 
-use arrow_array::RecordBatch;
+use arrow_array::{Array, BooleanArray, RecordBatch, Scalar, TimestampNanosecondArray};
+use arrow_ord::cmp::{eq, gt_eq};
+use arrow_schema::DataType;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
 	interface::change::{Change, Diff},
+	internal,
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::{StateStore, TimerKind},
+	value::batch::filter,
 };
 use reifydb_value::{
 	Result,
+	error::Error,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{
+		Value,
+		datetime::DateTime,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, system_column},
+	},
 };
 use tracing::{Span, instrument};
 
@@ -80,6 +91,37 @@ fn route_engine_columns(
 		},
 		routing,
 	)
+}
+
+fn first_open_window(gate: &SealGate, window_size: Duration) -> DateTime {
+	let floor = WindowSpan::for_coord(gate.horizon(), window_size).start;
+	match gate.admits(floor.to_order()) {
+		true => floor,
+		false => floor.add_span(window_size),
+	}
+}
+
+fn drop_straddling(
+	pre: &RecordBatch,
+	post: &RecordBatch,
+	open_from: DateTime,
+) -> Result<(RecordBatch, RecordBatch, usize)> {
+	let open = |batch: &RecordBatch| -> Result<BooleanArray> {
+		let times = system_column(batch, SystemColumn::Time).expect("a windowed batch carries its event time");
+		let zone = match times.data_type() {
+			DataType::Timestamp(_, zone) => zone.clone(),
+			_ => None,
+		};
+		let threshold =
+			Scalar::new(TimestampNanosecondArray::from(vec![open_from.to_nanos()]).with_timezone_opt(zone));
+		gt_eq(times, &threshold).map_err(|err| Error(Box::new(internal!(err.to_string()))))
+	};
+	let kept = eq(&open(pre)?, &open(post)?).map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
+	let dropped = kept.false_count();
+	if dropped == 0 {
+		return Ok((pre.clone(), post.clone(), 0));
+	}
+	Ok((filter(pre, kept.values())?, filter(post, kept.values())?, dropped))
 }
 
 fn push_count_event(
@@ -149,6 +191,12 @@ pub fn apply_tumbling_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 
 	let mut routing = Routing::default();
+	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
+	let open_from = match change.diffs.iter().any(|diff| matches!(diff, Diff::Update { .. })) {
+		true => Some(first_open_window(&operator.seal_gate(host, rule)?, window_size)),
+		false => None,
+	};
+	let mut straddled = 0u64;
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -165,12 +213,19 @@ pub fn apply_tumbling_engine(
 				post,
 				..
 			} => {
+				let open_from =
+					open_from.expect("the seal gate is read for every change that holds an update");
 				for (pre, post) in distinct_row_runs(pre, post)? {
+					let (pre, post, dropped) = drop_straddling(&pre, &post, open_from)?;
+					straddled += dropped as u64;
 					route_engine_columns(operator, &pre, false, window_size, &mut routing)?;
 					route_engine_columns(operator, &post, true, window_size, &mut routing)?;
 				}
 			}
 		}
+	}
+	if straddled > 0 {
+		operator.note_sealed_drops(straddled * 2);
 	}
 
 	let Routed {
@@ -179,7 +234,6 @@ pub fn apply_tumbling_engine(
 		mut arrival,
 		window_max_ts,
 	} = routing.finish();
-	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 	drop_sealed_events(
 		operator,
 		host,
