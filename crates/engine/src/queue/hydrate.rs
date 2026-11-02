@@ -19,13 +19,13 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::Transaction,
 };
-use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{identity::IdentityId, partition::Partition, row_number::RowNumber};
 use tracing::{info, instrument};
 
 use crate::{
 	Result,
 	engine::StandardEngine,
-	queue::partition::{ordered_by_index, placement_of},
+	queue::partition::{ordered_by_index, partition_by_indices, placement_of},
 };
 
 const HYDRATE_BATCH: usize = 1024;
@@ -57,8 +57,9 @@ fn hydrate_queue(
 	queue: &Queue,
 ) -> Result<u64> {
 	let ordered_by = ordered_by_index(queue)?;
+	let partition_by = partition_by_indices(queue);
 
-	let mut pending: BTreeMap<u16, Vec<QueueAdmission>> = BTreeMap::new();
+	let mut pending: BTreeMap<Partition, Vec<QueueAdmission>> = BTreeMap::new();
 	let mut last_key: Option<TaggedKey> = None;
 	let mut admitted = 0u64;
 
@@ -90,7 +91,7 @@ fn hydrate_queue(
 			let store = single.read_store();
 
 			for (row_number, encoded) in &batch {
-				let placement = placement_of(queue, &shape, encoded, ordered_by, *row_number);
+				let placement = placement_of(&shape, encoded, &partition_by, ordered_by);
 				let state_key = QueueItemStateKey::encoded(queue.id, placement.partition, *row_number);
 				if SingleVersionGet::get(&store, slice::from_ref(&state_key))?.pop().flatten().is_some()
 				{
@@ -122,7 +123,12 @@ fn hydrate_queue(
 	Ok(admitted)
 }
 
-fn flush(single: &SingleTransaction, queue: QueueId, partition: u16, items: &mut Vec<QueueAdmission>) -> Result<u64> {
+fn flush(
+	single: &SingleTransaction,
+	queue: QueueId,
+	partition: Partition,
+	items: &mut Vec<QueueAdmission>,
+) -> Result<u64> {
 	let admitted = admit_ready_items(single, queue, partition, items)?;
 	items.clear();
 	Ok(admitted)

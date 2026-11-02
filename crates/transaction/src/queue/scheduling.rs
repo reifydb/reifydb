@@ -1,25 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice::from_ref;
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
-	interface::catalog::{
-		id::QueueId,
-		queue::{
-			QueueItemState, QueueItemStatus, QueuePartitionCounters, decode_queue_item_state,
-			decode_queue_partition_counters, encode_queue_item_state, encode_queue_partition_counters,
+	interface::{
+		catalog::{
+			id::QueueId,
+			queue::{
+				QueueItemState, QueueItemStatus, QueuePartitionCounters, decode_queue_item_state,
+				decode_queue_partition_counters, encode_queue_item_state,
+				encode_queue_partition_counters,
+			},
 		},
+		store::SingleVersionRange,
 	},
 	key::{
 		any::TaggedKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 	},
+	return_internal_error,
 };
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -28,6 +33,8 @@ use crate::{
 	queue::chain::{ChainHead, ChainOverlay, chain_add, chain_peek, chain_remove},
 	single::{SingleTransaction, write::SingleWriteTransaction},
 };
+
+const PARTITION_COUNTER_PAGE: u64 = 1024;
 
 pub struct QueueAdmission {
 	pub row: RowNumber,
@@ -40,7 +47,46 @@ struct TransitionEffect {
 	blocked_delta: i64,
 }
 
-fn partition_ranges(queue: QueueId, partition: u16) -> Vec<EncodedKeyRange> {
+pub struct PartitionCounterPage {
+	pub counters: Vec<(Partition, QueuePartitionCounters)>,
+	pub next: Option<EncodedKeyRange>,
+}
+
+pub fn partition_counters_page(single: &SingleTransaction, range: EncodedKeyRange) -> Result<PartitionCounterPage> {
+	let store = single.read_store();
+	let batch = SingleVersionRange::range_batch(&store, range.clone(), PARTITION_COUNTER_PAGE)?;
+	let next = match (batch.has_more, batch.items.last()) {
+		(true, Some(last)) => Some(EncodedKeyRange::new(Bound::Excluded(last.key.clone()), range.end)),
+		_ => None,
+	};
+	let mut counters = Vec::with_capacity(batch.items.len());
+	for item in &batch.items {
+		let Some(key) = QueuePartitionKey::decode(&item.key) else {
+			return_internal_error!("a queue partition scan yielded a key that is not a QueuePartitionKey");
+		};
+		counters.push((key.partition, decode_queue_partition_counters(EncodedPodRow::view(&item.bytes))));
+	}
+	Ok(PartitionCounterPage {
+		counters,
+		next,
+	})
+}
+
+pub fn queue_partition_counters(
+	single: &SingleTransaction,
+	queue: QueueId,
+) -> Result<Vec<(Partition, QueuePartitionCounters)>> {
+	let mut counters = Vec::new();
+	let mut next = Some(QueuePartitionKey::queue_scan(queue).encode());
+	while let Some(range) = next {
+		let page = partition_counters_page(single, range)?;
+		counters.extend(page.counters);
+		next = page.next;
+	}
+	Ok(counters)
+}
+
+fn partition_ranges(queue: QueueId, partition: Partition) -> Vec<EncodedKeyRange> {
 	vec![
 		QueueItemStateKey::partition_scan(queue, partition).encode(),
 		QueueDueKey::partition_scan(queue, partition).encode(),
@@ -51,7 +97,7 @@ fn partition_ranges(queue: QueueId, partition: u16) -> Vec<EncodedKeyRange> {
 pub fn admit_ready_items(
 	single: &SingleTransaction,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	items: &[QueueAdmission],
 ) -> Result<u64> {
 	if items.is_empty() {
@@ -112,7 +158,7 @@ pub fn admit_ready_items(
 pub fn apply_ack_transitions(
 	single: &SingleTransaction,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	acks: &[QueueRowAck],
 ) -> Result<u64> {
 	if acks.is_empty() {
@@ -134,7 +180,12 @@ pub fn apply_ack_transitions(
 	for ack in acks {
 		let state_key = QueueItemStateKey::new(queue, partition, ack.row_number);
 		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
-			debug!(queue = queue.0, partition, item = ack.row_number.0, "ack has no item state");
+			debug!(
+				queue = queue.0,
+				partition = partition.0,
+				item = ack.row_number.0,
+				"ack has no item state"
+			);
 			continue;
 		};
 		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -144,7 +195,7 @@ pub fn apply_ack_transitions(
 		if state.status != QueueItemStatus::Leased || state.attempt != ack.attempt {
 			debug!(
 				queue = queue.0,
-				partition,
+				partition = partition.0,
 				item = ack.row_number.0,
 				attempt = ack.attempt,
 				"ack no longer matches the lease it was issued for"
@@ -186,7 +237,7 @@ pub struct ExpiredLease {
 pub fn apply_reap_transitions(
 	single: &SingleTransaction,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	reaps: &[(ExpiredLease, QueueAckTransition)],
 	now: DateTime,
 ) -> Result<Vec<bool>> {
@@ -222,7 +273,7 @@ pub fn apply_reap_transitions(
 		{
 			debug!(
 				queue = queue.0,
-				partition,
+				partition = partition.0,
 				item = lease.row.0,
 				attempt = lease.attempt,
 				"the lease moved between the reaper's scan and its compare-and-set"
@@ -258,7 +309,7 @@ pub enum ReplayOutcome {
 pub fn apply_replay_transition(
 	single: &SingleTransaction,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	row: RowNumber,
 	key_hash: Option<u64>,
 ) -> Result<ReplayOutcome> {
@@ -318,7 +369,7 @@ pub fn apply_replay_transition(
 pub fn remove_item_states(
 	single: &SingleTransaction,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	rows: &[RowNumber],
 ) -> Result<u64> {
 	if rows.is_empty() {
@@ -346,7 +397,7 @@ pub fn remove_item_states(
 		if state.status != QueueItemStatus::Done && state.status != QueueItemStatus::Dead {
 			debug!(
 				queue = queue.0,
-				partition,
+				partition = partition.0,
 				item = row.0,
 				"retention skipped an item that stopped being terminal under it"
 			);
@@ -364,13 +415,13 @@ pub fn remove_item_states(
 
 struct TransitionTarget {
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	row: RowNumber,
 	key_hash: Option<u64>,
 }
 
 impl TransitionTarget {
-	fn for_ack(queue: QueueId, partition: u16, ack: &QueueRowAck) -> Self {
+	fn for_ack(queue: QueueId, partition: Partition, ack: &QueueRowAck) -> Self {
 		Self {
 			queue,
 			partition,
@@ -379,7 +430,7 @@ impl TransitionTarget {
 		}
 	}
 
-	fn for_lease(queue: QueueId, partition: u16, lease: &ExpiredLease) -> Self {
+	fn for_lease(queue: QueueId, partition: Partition, lease: &ExpiredLease) -> Self {
 		Self {
 			queue,
 			partition,
@@ -446,7 +497,7 @@ fn promote_next(
 	tx: &mut SingleWriteTransaction<'_>,
 	overlay: &mut ChainOverlay,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	key_hash: u64,
 ) -> Result<i64> {
 	let (successor, blocked_delta) = match chain_peek(single, overlay, queue, partition, key_hash)? {
@@ -457,7 +508,12 @@ fn promote_next(
 
 	let state_key = QueueItemStateKey::new(queue, partition, successor);
 	let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
-		debug!(queue = queue.0, partition, item = successor.0, "the successor of a key has no item state");
+		debug!(
+			queue = queue.0,
+			partition = partition.0,
+			item = successor.0,
+			"the successor of a key has no item state"
+		);
 		return Ok(blocked_delta);
 	};
 	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -467,7 +523,7 @@ fn promote_next(
 	if state.status != QueueItemStatus::Parked {
 		debug!(
 			queue = queue.0,
-			partition,
+			partition = partition.0,
 			item = successor.0,
 			"the successor of a key was not parked when its predecessor finished"
 		);
@@ -484,7 +540,7 @@ fn promote_next(
 fn expose_due(
 	tx: &mut SingleWriteTransaction<'_>,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	row: RowNumber,
 	state: &QueueItemState,
 ) -> Result<()> {

@@ -11,7 +11,7 @@ use reifydb_transaction::{
 	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions},
 	single::SingleTransaction,
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, partition::Partition};
 use tracing::instrument;
 
 use crate::{Result, queue::wake::QueueWakeRegistry};
@@ -35,9 +35,9 @@ impl QueueSchedulingInterceptor {
 		name = "queue::interceptor::enqueue",
 		level = "debug",
 		skip_all,
-		fields(queue = queue.0, partition = partition, items = items.len())
+		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
-	fn admit(&self, queue: QueueId, partition: u16, items: &[QueueAdmission]) -> Result<()> {
+	fn admit(&self, queue: QueueId, partition: Partition, items: &[QueueAdmission]) -> Result<()> {
 		admit_ready_items(&self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|item| is_due(item.not_before, now)).count());
@@ -48,9 +48,9 @@ impl QueueSchedulingInterceptor {
 		name = "queue::interceptor::ack",
 		level = "debug",
 		skip_all,
-		fields(queue = queue.0, partition = partition, items = items.len())
+		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
-	fn ack(&self, queue: QueueId, partition: u16, items: &[QueueRowAck]) -> Result<()> {
+	fn ack(&self, queue: QueueId, partition: Partition, items: &[QueueRowAck]) -> Result<()> {
 		apply_ack_transitions(&self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|ack| releases_work(ack, now)).count());
@@ -77,8 +77,8 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 			return Ok(());
 		}
 
-		let mut admissions: BTreeMap<(QueueId, u16), Vec<QueueAdmission>> = BTreeMap::new();
-		let mut acks: BTreeMap<(QueueId, u16), Vec<QueueRowAck>> = BTreeMap::new();
+		let mut admissions: BTreeMap<(QueueId, Partition), Vec<QueueAdmission>> = BTreeMap::new();
+		let mut acks: BTreeMap<(QueueId, Partition), Vec<QueueRowAck>> = BTreeMap::new();
 		for change in &ctx.row_changes {
 			match change {
 				RowChange::QueueInsert(insertion) => {
@@ -101,7 +101,7 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 			if let Err(err) = self.admit(queue, partition, &items) {
 				panic!(
 					"queue admit failed after commit: queue {} partition {} version {}: {}",
-					queue.0, partition, ctx.version.0, err
+					queue.0, partition.0, ctx.version.0, err
 				);
 			}
 		}
@@ -110,7 +110,7 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 			if let Err(err) = self.ack(queue, partition, &items) {
 				panic!(
 					"queue ack failed after commit: queue {} partition {} version {}: {}",
-					queue.0, partition, ctx.version.0, err
+					queue.0, partition.0, ctx.version.0, err
 				);
 			}
 		}

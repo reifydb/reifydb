@@ -20,8 +20,7 @@ fn main() {
 		.unwrap();
 
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
-	db.admin_as_root("CREATE QUEUE jobs::tasks { name: utf8 } WITH { fifo: { partitions: 1 } }", Params::None)
-		.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::tasks { name: utf8 } WITH { fifo: {} }", Params::None).unwrap();
 
 	info!("A plain claim on an empty queue returns nothing at once - polling it in a loop burns cpu...");
 	command(&db, r#"CALL queue::claim("worker-1", "jobs::tasks", 10, duration::seconds(30))"#);

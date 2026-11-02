@@ -13,20 +13,24 @@ fn main() {
 
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
 
-	info!("partitions is how many workers can claim at once without contending on the same lock...");
-	db.admin_as_root("CREATE QUEUE jobs::thumbs { image: utf8 } WITH { fifo: { partitions: 4 } }", Params::None)
-		.unwrap();
+	info!("partition by gives each distinct value its own FIFO, so workers on different values do not contend...");
+	db.admin_as_root(
+		"CREATE QUEUE jobs::thumbs { tenant: utf8, image: utf8 } WITH { partition: { by: { tenant } }, fifo: {} }",
+		Params::None,
+	)
+	.unwrap();
 
-	let rows: Vec<String> = (1..=12).map(|i| format!(r#"{{ image: "photo-{i}.jpg" }}"#)).collect();
+	let rows: Vec<String> =
+		(1..=12).map(|i| format!(r#"{{ tenant: "tenant-{}", image: "photo-{i}.jpg" }}"#, i % 4)).collect();
 	command(&db, &format!("INSERT jobs::thumbs [{}]", rows.join(", ")));
 
 	let queue_id = uint8_column(&query(&db, r#"FROM system::queues FILTER { name == "thumbs" } MAP { id }"#), "id")
 		.remove(0);
 
-	info!("Items are spread across partitions on insert, so no single partition holds them all...");
+	info!("Each item lands in the FIFO of its tenant, so no single FIFO holds them all...");
 	partitions(&db, queue_id);
 
-	info!("Two workers claim side by side - each takes whole partitions, never the same item...");
+	info!("Two workers claim side by side - each starts at its own partition, never the same item...");
 	let first = command(&db, r#"CALL queue::claim("worker-1", "jobs::thumbs", 4, duration::seconds(30))"#);
 	let second = command(&db, r#"CALL queue::claim("worker-2", "jobs::thumbs", 4, duration::seconds(30))"#);
 
@@ -48,7 +52,7 @@ fn partitions(db: &Database, queue_id: u64) {
 	query(
 		db,
 		&format!(
-			"FROM system::queue_partitions filter {{ queue_id == {queue_id} }} map {{ partition, depth, in_flight }} sort {{ partition:asc }}"
+			"FROM system::queue::partitions filter {{ queue_id == {queue_id} }} map {{ partition, depth, in_flight }} sort {{ partition:asc }}"
 		),
 	);
 }

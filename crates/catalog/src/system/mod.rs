@@ -445,7 +445,7 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
-			pub const PARTITIONS: ColumnId = ColumnId(4);
+			pub const PARTITION_BY: ColumnId = ColumnId(4);
 			pub const ORDERED_BY: ColumnId = ColumnId(5);
 			pub const DEDUPLICATE_BY: ColumnId = ColumnId(6);
 			pub const DEDUPLICATE_TTL: ColumnId = ColumnId(7);
@@ -462,7 +462,7 @@ pub mod ids {
 				ID,
 				NAMESPACE_ID,
 				NAME,
-				PARTITIONS,
+				PARTITION_BY,
 				ORDERED_BY,
 				DEDUPLICATE_BY,
 				DEDUPLICATE_TTL,

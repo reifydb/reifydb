@@ -15,7 +15,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			id::QueueId,
 			queue::{
-				AttemptOutcome, QueueAttemptRecord, QueueItemState, QueueItemStatus,
+				AttemptOutcome, Queue, QueueAttemptRecord, QueueItemState, QueueItemStatus,
 				QueuePartitionCounters, decode_queue_attempt, decode_queue_item_state,
 				decode_queue_partition_counters, encode_queue_attempt,
 			},
@@ -34,8 +34,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId, row_number::RowNumber};
 
-const ONE_PARTITION: &str =
-	"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 2 } }";
+const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }";
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -78,7 +77,7 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, 0)])
+	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, Queue::UNPARTITIONED)])
 		.unwrap()
 		.pop()
 		.flatten()
@@ -409,4 +408,24 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 	);
 	assert_eq!(attempts(&t, queue).len(), 6, "one loss per item, no duplicates across slices");
 	assert_eq!(counters(&t, queue).in_flight, 0);
+}
+
+#[test]
+fn test_the_reaper_reaches_an_expired_lease_in_every_partition() {
+	// Partitions have no fixed range, so a reaper that missed one would strand its leases forever.
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {}, retry: { attempts: 2 } }",
+	);
+	t.command(r#"INSERT test::jobs [{ id: 1, region: "eu" }, { id: 2, region: "us" }, { id: 3, region: "ap" }]"#);
+	let queue = queue_id(&t, "jobs");
+	t.mock_clock().set_millis(0);
+	t.command(r#"CALL queue::claim("doomed", "test::jobs", 3, duration::seconds(30))"#);
+	assert!(states(&t, queue).iter().all(|state| state.status == QueueItemStatus::Leased));
+
+	t.mock_clock().set_millis(31_000);
+	assert_eq!(reaper(&t).run_slice(), Progress::Exhausted);
+
+	let states = states(&t, queue);
+	assert_eq!(states.len(), 3);
+	assert!(states.iter().all(|state| state.status == QueueItemStatus::Ready), "every partition must be reaped");
 }

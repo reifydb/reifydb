@@ -55,7 +55,7 @@ impl BaseVTable for SystemQueues {
 		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
 		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
-		let mut partitions = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
+		let mut partition_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut ordered_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut deduplicate_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut deduplicate_ttl = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
@@ -70,7 +70,11 @@ impl BaseVTable for SystemQueues {
 			ids.push(queue.id.0);
 			namespaces.push(queue.namespace.0);
 			names.push(queue.name.as_str());
-			partitions.push(queue.partitions() as u64);
+			partition_by.push_value(if queue.partition_by.is_empty() {
+				Value::none_of(ValueType::Utf8)
+			} else {
+				Value::Utf8(queue.partition_by.join(","))
+			});
 			ordered_by.push_value(
 				queue.ordered_by()
 					.map(|column| Value::Utf8(column.to_string()))
@@ -126,7 +130,7 @@ impl BaseVTable for SystemQueues {
 			ids.finish("id"),
 			namespaces.finish("namespace_id"),
 			names.finish("name"),
-			partitions.finish("partitions"),
+			partition_by.finish("partition_by"),
 			ordered_by.finish("ordered_by"),
 			deduplicate_by.finish("deduplicate_by"),
 			deduplicate_ttl.finish("deduplicate_ttl"),

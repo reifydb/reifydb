@@ -44,7 +44,8 @@ use reifydb_core::{
 	row::{OperatorRetention, RowSettings},
 };
 use reifydb_value::value::{
-	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
+	datetime::DateTime, dictionary::DictionaryId, identity::IdentityId, partition::Partition,
+	row_number::RowNumber, sumtype::SumTypeId,
 };
 
 use crate::TransactionId;
@@ -1315,7 +1316,7 @@ pub struct TableRowInsertion {
 #[derive(Debug, Clone)]
 pub struct QueueRowInsertion {
 	pub queue_id: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub key_hash: Option<u64>,
 	pub row_number: RowNumber,
 	pub not_before: Option<DateTime>,
@@ -1334,7 +1335,7 @@ pub enum QueueAckTransition {
 #[derive(Debug, Clone)]
 pub struct QueueRowAck {
 	pub queue_id: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub key_hash: Option<u64>,
 	pub row_number: RowNumber,
 	pub attempt: u32,

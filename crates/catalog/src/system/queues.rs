@@ -49,9 +49,9 @@ pub fn queues() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: PARTITIONS,
-					name: "partitions".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					id: PARTITION_BY,
+					name: "partition_by".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

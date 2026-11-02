@@ -3,13 +3,14 @@
 
 use std::sync::Arc;
 
+use reifydb_core::interface::catalog::queue::Queue;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::RowChange,
 	interceptor::{interceptors::Interceptors, transaction::post_commit},
 };
-use reifydb_value::value::{Value, system_columns::user_columns};
+use reifydb_value::value::{Value, partition::Partition, system_columns::user_columns};
 
 /// Every `RowChange` the committed transactions produced, in commit order.
 #[derive(Clone, Default)]
@@ -87,7 +88,7 @@ fn test_row_changes_carry_one_queue_insert_per_item() {
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 
 	let inserts = recorded.queue_inserts();
@@ -97,22 +98,22 @@ fn test_row_changes_carry_one_queue_insert_per_item() {
 	assert_eq!(row_numbers[1], row_numbers[0] + 1, "row numbers must be consecutive in enqueue order");
 
 	for insert in &inserts {
-		assert!(insert.partition < 8, "partition {} must fall inside the declared 8 buckets", insert.partition);
+		assert_eq!(insert.partition, Queue::UNPARTITIONED, "an unpartitioned queue is one FIFO");
 		assert_eq!(insert.not_before, None, "an insert without WITH is immediately due");
 		assert!(!insert.encoded.is_empty(), "the record must carry the encoded item row");
 	}
 }
 
 #[test]
-fn test_partition_assignment_is_deterministic_per_ordered_by_value() {
-	// Two items of one key in different buckets could be consumed out of order.
+fn test_partition_assignment_is_deterministic_per_partition_value() {
+	// Two items of one partition value in different FIFOs could be consumed out of order.
 	let t = TestEngine::new();
 	let recorded = RecordedChanges::default();
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
 	t.admin(
-		r#"CREATE QUEUE test::jobs { tenant: utf8, id: int4 } WITH { fifo: { partitions: 16, ordered_by: tenant } }"#,
+		r#"CREATE QUEUE test::jobs { tenant: utf8, id: int4 } WITH { partition: { by: { tenant } }, fifo: {} }"#,
 	);
 
 	t.command(r#"INSERT test::jobs [{ tenant: "acme", id: 1 }]"#);
@@ -122,65 +123,70 @@ fn test_partition_assignment_is_deterministic_per_ordered_by_value() {
 	assert_eq!(inserts.len(), 2);
 	assert_eq!(
 		inserts[0].partition, inserts[1].partition,
-		"the same ordered_by value must map to the same partition across statements"
+		"the same partition value must map to the same partition across statements"
 	);
+	assert_ne!(inserts[0].partition, Queue::UNPARTITIONED, "a partitioned row must carry its value hash");
 }
 
 #[test]
-fn test_distinct_ordered_by_values_reach_more_than_one_partition() {
-	// Every key in one bucket leaves the queue unconsumable in parallel.
+fn test_distinct_partition_values_reach_distinct_partitions() {
+	// Two values sharing a partition would share one FIFO, so one value's head would hold back the other.
 	let t = TestEngine::new();
 	let recorded = RecordedChanges::default();
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8 } WITH { fifo: { partitions: 16, ordered_by: tenant } }"#);
+	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8 } WITH { partition: { by: { tenant } }, fifo: {} }"#);
 
 	let rows: Vec<String> = (0..32).map(|i| format!(r#"{{ tenant: "tenant-{i}" }}"#)).collect();
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
 
-	let partitions: Vec<u16> = recorded.queue_inserts().iter().map(|i| i.partition).collect();
+	let partitions: Vec<Partition> = recorded.queue_inserts().iter().map(|i| i.partition).collect();
 	assert_eq!(partitions.len(), 32);
 
 	let mut distinct = partitions.clone();
 	distinct.sort_unstable();
 	distinct.dedup();
-	assert!(distinct.len() > 1, "32 distinct keys collapsed into one partition: {partitions:?}");
+	assert_eq!(distinct.len(), 32, "every distinct value must own one partition: {partitions:?}");
 }
 
 #[test]
-fn test_a_queue_without_ordered_by_still_spreads_across_partitions() {
-	// With no key to hash the row number is the fallback; forgetting it piles everything into bucket 0.
+fn test_ordered_by_does_not_choose_the_partition() {
+	// Only partition_by places a row, so an ordered queue without partition columns must remain one FIFO.
 	let t = TestEngine::new();
 	let recorded = RecordedChanges::default();
 	recorded.install(&t);
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 16 } }");
+	t.admin(r#"CREATE QUEUE test::jobs { tenant: utf8 } WITH { fifo: { ordered_by: tenant } }"#);
+
+	let rows: Vec<String> = (0..32).map(|i| format!(r#"{{ tenant: "tenant-{i}" }}"#)).collect();
+	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
+
+	for insert in recorded.queue_inserts() {
+		assert_eq!(insert.partition, Queue::UNPARTITIONED, "ordered_by must not spread an unpartitioned queue");
+		assert!(insert.key_hash.is_some(), "ordered_by must still produce a key hash");
+	}
+}
+
+#[test]
+fn test_an_unpartitioned_queue_places_every_item_in_one_partition() {
+	// Row numbers no longer hash: any spread here would split an unpartitioned queue across several FIFOs.
+	let t = TestEngine::new();
+	let recorded = RecordedChanges::default();
+	recorded.install(&t);
+
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let rows: Vec<String> = (0..32).map(|i| format!("{{ id: {i} }}")).collect();
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
 
-	let mut partitions: Vec<u16> = recorded.queue_inserts().iter().map(|i| i.partition).collect();
-	assert_eq!(partitions.len(), 32);
-	partitions.sort_unstable();
-	partitions.dedup();
-	assert!(partitions.len() > 1, "row-number fallback collapsed every item into one partition");
-}
-
-#[test]
-fn test_a_single_partition_queue_places_every_item_in_bucket_zero() {
-	// A single partition is legal and must not divide by zero or overflow the u16 bucket.
-	let t = TestEngine::new();
-	let recorded = RecordedChanges::default();
-	recorded.install(&t);
-
-	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
-	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
-
-	let partitions: Vec<u16> = recorded.queue_inserts().iter().map(|i| i.partition).collect();
-	assert_eq!(partitions, vec![0, 0, 0]);
+	let inserts = recorded.queue_inserts();
+	assert_eq!(inserts.len(), 32);
+	for insert in inserts {
+		assert_eq!(insert.partition, Queue::UNPARTITIONED);
+	}
 }
 
 #[test]
@@ -313,24 +319,6 @@ fn test_every_declared_column_round_trips_through_the_shape() {
 	assert_eq!(row.get::<i32>("a").unwrap().unwrap(), 42);
 	assert_eq!(row.get::<String>("b").unwrap().unwrap(), "text");
 	assert!(row.get::<bool>("c").unwrap().unwrap());
-}
-
-#[test]
-fn test_the_maximum_partition_count_still_yields_an_in_range_bucket() {
-	// The declared partition count bounds the bucket, not the hash; the maximum must not wrap the u16.
-	let t = TestEngine::new();
-	let recorded = RecordedChanges::default();
-	recorded.install(&t);
-
-	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1024 } }");
-
-	let rows: Vec<String> = (0..64).map(|i| format!("{{ id: {i} }}")).collect();
-	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
-
-	for insert in recorded.queue_inserts() {
-		assert!(insert.partition < 1024, "partition {} escaped the declared range", insert.partition);
-	}
 }
 
 #[test]

@@ -3,7 +3,10 @@
 
 use reifydb_core::interface::catalog::id::QueueId;
 use reifydb_routine_abi::error::QueueError;
-use reifydb_value::{fragment::Fragment, value::row_number::RowNumber};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{partition::Partition, row_number::RowNumber},
+};
 
 const PREFIX: &str = "qt1";
 const FIELDS: usize = 6;
@@ -11,7 +14,7 @@ const FIELDS: usize = 6;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClaimToken {
 	pub queue: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub row: RowNumber,
 	pub attempt: u32,
 	pub worker: String,
@@ -21,7 +24,7 @@ impl ClaimToken {
 	pub fn format(&self) -> String {
 		format!(
 			"{}:{}:{}:{}:{}:{}",
-			PREFIX, self.queue.0, self.partition, self.row.0, self.attempt, self.worker
+			PREFIX, self.queue.0, self.partition.0, self.row.0, self.attempt, self.worker
 		)
 	}
 
@@ -41,7 +44,7 @@ impl ClaimToken {
 		}
 
 		let queue = parts.next()?.parse::<u64>().ok()?;
-		let partition = parts.next()?.parse::<u16>().ok()?;
+		let partition = Partition(parts.next()?.parse::<u128>().ok()?);
 		let row = parts.next()?.parse::<u64>().ok()?;
 		let attempt = parts.next()?.parse::<u32>().ok()?;
 		let worker = parts.next()?;
@@ -69,7 +72,7 @@ mod tests {
 	fn token(worker: &str) -> ClaimToken {
 		ClaimToken {
 			queue: QueueId(9),
-			partition: 3,
+			partition: Partition(u128::MAX),
 			row: RowNumber(17),
 			attempt: 2,
 			worker: worker.to_string(),
@@ -105,7 +108,7 @@ mod tests {
 		// type would wrap at the boundary and address a different partition or attempt.
 		let original = ClaimToken {
 			queue: QueueId(u64::MAX),
-			partition: u16::MAX,
+			partition: Partition(u128::MAX),
 			row: RowNumber(u64::MAX),
 			attempt: u32::MAX,
 			worker: "w".to_string(),
@@ -125,7 +128,7 @@ mod tests {
 			"qt1:9:3:17:2",
 			"qt0:9:3:17:2:w",
 			"qt1:nine:3:17:2:w",
-			"qt1:9:70000:17:2:w",
+			"qt1:9:340282366920938463463374607431768211456:17:2:w",
 			"qt1:9:3:17:99999999999999999999:w",
 			"qt1:-9:3:17:2:w",
 			"qt1:9:3:17:2:",

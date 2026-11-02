@@ -60,7 +60,7 @@ fn queue_definition_survives_sqlite_reopen() {
 	let before = {
 		let mut db = TestDb::sqlite_at(&path);
 		db.admin(
-			"create namespace p; create queue p::jobs { id: int4, msg: utf8 } with { fifo: { partitions: 8, ordered_by: msg } };",
+			"create namespace p; create queue p::jobs { id: int4, msg: utf8 } with { fifo: { ordered_by: msg } };",
 		);
 		let before = rows(&db.query("from system::queues"));
 		db.stop();

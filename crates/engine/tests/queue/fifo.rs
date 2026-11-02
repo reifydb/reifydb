@@ -11,5 +11,6 @@ mod introspection;
 mod longpoll;
 mod ordered;
 mod ordered_hydration;
+mod partition;
 mod replay;
 mod schedule;

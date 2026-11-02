@@ -25,7 +25,10 @@ use crate::{
 	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
-		create::{column_saturation_property, reject_column_default, reject_dictionary_on_decimal},
+		create::{
+			column_saturation_property, reject_column_default, reject_dictionary_on_decimal,
+			reject_digest_partition_columns,
+		},
 		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
@@ -135,6 +138,23 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
+		let partition_by: Vec<String> = ast.partition_by.iter().map(|s| s.to_string()).collect();
+		for column in &partition_by {
+			if !columns.iter().any(|c| c.name.text() == column.as_str()) {
+				return Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Column,
+					namespace: queue_ns_segments.join("::"),
+					name: column.clone(),
+					fragment: Fragment::internal(column.as_str()),
+				}
+				.into());
+			}
+		}
+		reject_digest_partition_columns(
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			&partition_by,
+		)?;
+
 		let dispatch = compile_dispatch(&ast.dispatch, &columns, &queue_ns_segments)?;
 		let deduplicate = compile_deduplicate(ast.deduplicate.as_ref(), &columns, &queue_ns_segments)?;
 		let retention = compile_retention(ast.retention.as_ref())?;
@@ -150,6 +170,7 @@ impl<'bump> Compiler<'bump> {
 			queue: ast.queue,
 			if_not_exists: false,
 			columns,
+			partition_by,
 			dispatch,
 			deduplicate,
 			retention,
@@ -166,18 +187,12 @@ fn compile_dispatch(
 ) -> Result<QueueDispatch> {
 	match ast {
 		AstQueueDispatch::Fifo(fifo) => {
-			let partitions = match &fifo.partitions {
-				Some(token) => compile_partitions(token)?,
-				None => Queue::DEFAULT_PARTITIONS,
-			};
-
 			let ordered_by = match &fifo.ordered_by {
 				Some(token) => Some(compile_column_reference(token, columns, namespace)?),
 				None => None,
 			};
 
 			Ok(QueueDispatch::Fifo {
-				partitions,
 				ordered_by,
 			})
 		}
@@ -196,22 +211,6 @@ fn compile_column_reference(token: &Token<'_>, columns: &[QueueColumnToCreate], 
 		.into());
 	}
 	Ok(column.to_string())
-}
-
-fn compile_partitions(token: &Token<'_>) -> Result<u16> {
-	let text = token.fragment.text();
-	let parsed = text
-		.parse::<u32>()
-		.ok()
-		.filter(|value| *value >= Queue::MIN_PARTITIONS as u32 && *value <= Queue::MAX_PARTITIONS as u32);
-
-	match parsed {
-		Some(value) => Ok(value as u16),
-		None => Err(invalid_option(
-			token,
-			&format!("'partitions' between {} and {}", Queue::MIN_PARTITIONS, Queue::MAX_PARTITIONS),
-		)),
-	}
 }
 
 fn compile_deduplicate(

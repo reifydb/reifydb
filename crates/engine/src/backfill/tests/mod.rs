@@ -1060,7 +1060,7 @@ fn a_source_kind_without_a_scan_node_is_an_error_not_a_panic() {
 	let db = Db::new();
 	db.commit(&[
 		"CREATE NAMESPACE ns",
-		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: { partitions: 1 } }",
+		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: {} }",
 		"CREATE DICTIONARY ns::syms FOR utf8 AS uint2",
 	]);
 	let mut q = db.query();
@@ -1082,7 +1082,7 @@ fn an_unscannable_source_stops_the_run_after_the_sources_before_it() {
 	db.commit(&[
 		"CREATE NAMESPACE ns",
 		"CREATE TABLE ns::t { id: int4, v: int4 }",
-		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: { partitions: 1 } }",
+		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: {} }",
 		"CREATE DICTIONARY ns::syms FOR utf8 AS uint2",
 		"CREATE SERIES ns::s { ts: int8, val: int4 } WITH { key: ts }",
 		"INSERT ns::t [{ id: 1, v: 10 }, { id: 2, v: 20 }, { id: 3, v: 30 }]",
@@ -1228,7 +1228,7 @@ fn a_refused_open_keeps_pulling_the_source_already_open() {
 	db.commit(&[
 		"CREATE NAMESPACE ns",
 		"CREATE TABLE ns::t { id: int4, v: int4 }",
-		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: { partitions: 1 } }",
+		"CREATE QUEUE ns::q { id: int4 } WITH { fifo: {} }",
 		"INSERT ns::t [{ id: 1, v: 10 }, { id: 2, v: 20 }, { id: 3, v: 30 }]",
 	]);
 	let mut q = db.query();

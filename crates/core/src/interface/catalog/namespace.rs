@@ -17,6 +17,7 @@ impl NamespaceId {
 	pub const RETIRED_SYSTEM_METRICS_CDC: NamespaceId = NamespaceId(6);
 	pub const SYSTEM_PROCEDURES: NamespaceId = NamespaceId(7);
 	pub const SYSTEM_BINDINGS: NamespaceId = NamespaceId(8);
+	pub const SYSTEM_QUEUE: NamespaceId = NamespaceId(59);
 	pub const RQL: NamespaceId = NamespaceId(9);
 	pub const SYSTEM_METRICS_PROFILER: NamespaceId = NamespaceId(10);
 	pub const SYSTEM_METRICS_PROFILER_SPANS: NamespaceId = NamespaceId(11);

@@ -19,11 +19,12 @@ use reifydb_core::{
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_transaction::{
+	queue::scheduling::queue_partition_counters, single::write::SingleWriteTransaction, transaction::Transaction,
+};
+use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
-const KEYED: &str =
-	"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant } }";
+const KEYED: &str = "CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant } }";
 
 const SCAN_LIMIT: u64 = 8192;
 
@@ -81,7 +82,15 @@ fn chain_rows(t: &TestEngine, queue: &Queue) -> Vec<u64> {
 	rows
 }
 
-fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCounters {
+fn partitions(t: &TestEngine, queue: &Queue) -> Vec<Partition> {
+	queue_partition_counters(t.inner().single(), queue.id)
+		.unwrap()
+		.into_iter()
+		.map(|(partition, _)| partition)
+		.collect()
+}
+
+fn counters(t: &TestEngine, queue: &Queue, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue.id, partition)])
 		.unwrap()
@@ -95,7 +104,7 @@ fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<TaggedKey> {
 	scan(t, range).into_iter().map(|item| TaggedKey::decode(&item.key).unwrap()).collect()
 }
 
-fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)
+fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: Partition, f: F)
 where
 	F: FnOnce(&mut SingleWriteTransaction<'_>),
 {
@@ -116,7 +125,7 @@ where
 }
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
-	for partition in 0..queue.partitions() {
+	for partition in partitions(t, queue) {
 		let keys: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode())
 			.into_iter()
 			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode()))
@@ -136,27 +145,33 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 }
 
 fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64) {
-	let doomed: Vec<TaggedKey> = keys_in(t, QueueItemStateKey::partition_scan(queue.id, 0).encode())
-		.into_iter()
-		.filter(|key| matches!(key, TaggedKey::QueueItemState(key) if rows.contains(&key.row.0)))
-		.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, 0).encode())
+	let doomed: Vec<TaggedKey> =
+		keys_in(t, QueueItemStateKey::partition_scan(queue.id, Queue::UNPARTITIONED).encode())
 			.into_iter()
-			.filter(|key| matches!(key, TaggedKey::QueueDue(key) if rows.contains(&key.row.0))))
-		.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, 0).encode())
-			.into_iter()
-			.filter(|key| matches!(key, TaggedKey::QueueKeyActive(key) if rows.contains(&key.row.0))))
-		.collect();
+			.filter(|key| matches!(key, TaggedKey::QueueItemState(key) if rows.contains(&key.row.0)))
+			.chain(keys_in(t, QueueDueKey::partition_scan(queue.id, Queue::UNPARTITIONED).encode())
+				.into_iter()
+				.filter(|key| matches!(key, TaggedKey::QueueDue(key) if rows.contains(&key.row.0))))
+			.chain(keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, Queue::UNPARTITIONED).encode())
+				.into_iter()
+				.filter(
+					|key| matches!(key, TaggedKey::QueueKeyActive(key) if rows.contains(&key.row.0)),
+				))
+			.collect();
 
-	let mut counters = counters(t, queue, 0);
+	let mut counters = counters(t, queue, Queue::UNPARTITIONED);
 	counters.depth -= rows.len() as u64;
 	counters.blocked_keys -= blocked_delta;
 
-	with_partition(t, queue, 0, |tx| {
+	with_partition(t, queue, Queue::UNPARTITIONED, |tx| {
 		for key in &doomed {
 			tx.remove(from_ref(key)).unwrap();
 		}
-		tx.set(vec![(QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters))])
-			.unwrap();
+		tx.set(vec![(
+			QueuePartitionKey::new(queue.id, Queue::UNPARTITIONED),
+			encode_queue_partition_counters(&counters),
+		)])
+		.unwrap();
 	});
 }
 
@@ -208,14 +223,14 @@ fn test_hydration_of_an_untouched_queue_changes_nothing() {
 	let before_states = states(&t, &queue);
 	let before_dues = due_rows(&t, &queue);
 	let before_chain = chain_rows(&t, &queue);
-	let before_counters = counters(&t, &queue, 0);
+	let before_counters = counters(&t, &queue, Queue::UNPARTITIONED);
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 0, "nothing is missing, so nothing is admitted");
 
 	assert_eq!(states(&t, &queue), before_states);
 	assert_eq!(due_rows(&t, &queue), before_dues);
 	assert_eq!(chain_rows(&t, &queue), before_chain);
-	assert_eq!(counters(&t, &queue, 0), before_counters);
+	assert_eq!(counters(&t, &queue, Queue::UNPARTITIONED), before_counters);
 }
 
 #[test]
@@ -229,6 +244,6 @@ fn test_hydration_rebuilds_the_chain_of_every_recovered_item() {
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 3);
 
 	assert_eq!(chain_rows(&t, &queue), vec![1, 2, 3], "every pending item is back in its key's chain");
-	assert_eq!(counters(&t, &queue, 0).depth, 3);
-	assert_eq!(counters(&t, &queue, 0).blocked_keys, 1, "tenant a blocks, tenant b does not");
+	assert_eq!(counters(&t, &queue, Queue::UNPARTITIONED).depth, 3);
+	assert_eq!(counters(&t, &queue, Queue::UNPARTITIONED).blocked_keys, 1, "tenant a blocks, tenant b does not");
 }

@@ -141,8 +141,8 @@ fn create_queue_identity_covers_name_namespace_and_columns() {
 #[test]
 fn create_queue_is_stable_across_identical_statements() {
 	assert_eq!(
-		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 8 } }"),
-		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 8 } }")
+		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {} }"),
+		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {} }")
 	);
 }
 

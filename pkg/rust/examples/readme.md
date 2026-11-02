@@ -58,10 +58,10 @@ Each example demonstrates exactly one use case.
 | `make queue-retry` | `retry: { attempts, backoff }`: `ack "err"` puts a job back, an exhausted budget buries it | None |
 | `make queue-dead-replay` | `ack "dead"` buries a job, `queue::replay` puts it back once the cause is fixed | None |
 | `make queue-ordered` | `ordered_by`: one job in flight per key, siblings park, `blocked_keys` counts them | None |
-| `make queue-partitions` | `partitions`: two workers claim side by side and never receive the same item | None |
+| `make queue-partitions` | `partition`: one FIFO per value, two workers claim side by side and never receive the same item | None |
 | `make queue-deduplication` | `deduplicate` and `deduplication_key`: a retrying producer enqueues the work once | None |
 | `make queue-delayed` | `not_before`: a job stays invisible to `queue::claim` until it comes due | None |
-| `make queue-introspection` | `system::queues` and `system::queue_partitions`: the operator's view of a queue | None |
+| `make queue-introspection` | `system::queues` and `system::queue::partitions`: the operator's view of a queue | None |
 | `make queue-long-poll` | `claim_wait`: a worker parks until a producer inserts, instead of polling | None |
 
 ### Interceptor Examples
@@ -102,10 +102,10 @@ bin/examples/
         ├── 03_retry_on_failure.rs       # retry attempts + backoff
         ├── 04_dead_and_replay.rs        # ack "dead" + queue::replay
         ├── 05_ordered_by_key.rs         # ordered_by, per-key exclusivity
-        ├── 06_partitions.rs             # partitions, parallel workers
+        ├── 06_partitions.rs             # partition by, parallel workers
         ├── 07_deduplication.rs          # deduplicate / deduplication_key
         ├── 08_delayed_jobs.rs           # not_before
-        ├── 09_introspection.rs          # system::queues, system::queue_partitions
+        ├── 09_introspection.rs          # system::queues, system::queue::partitions
         └── 10_long_poll.rs              # claim_wait
     └── intercept/      # Interceptor examples
         └── 01_table_view_interceptors.rs # Table and view hooks

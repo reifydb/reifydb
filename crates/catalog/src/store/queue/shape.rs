@@ -11,7 +11,7 @@ catalog_shape! {
 		id: u64,
 		namespace: u64,
 		name: utf8,
-		partitions: u16,
+		partition_by: utf8,
 		ordered_by: utf8,
 		retention_done: Duration?,
 		retry_attempts: u32,
@@ -30,21 +30,25 @@ catalog_shape! {
 }
 
 pub(crate) fn decode_dispatch(bytes: &EncodedCatalogRow) -> QueueDispatch {
-	let partitions = queue::get_partitions(bytes);
 	let ordered_by = match queue::get_ordered_by(bytes) {
 		"" => None,
 		column => Some(column.to_string()),
 	};
 	QueueDispatch::Fifo {
-		partitions,
 		ordered_by,
 	}
 }
 
 pub(crate) fn encode_dispatch(row: &mut EncodedCatalogRowBuilder, dispatch: &QueueDispatch) {
 	queue::set_dispatch(row, dispatch.tag());
-	queue::set_partitions(row, dispatch.partitions());
 	queue::set_ordered_by(row, dispatch.ordered_by().unwrap_or(""));
+}
+
+pub(crate) fn decode_partition_by(bytes: &EncodedCatalogRow) -> Vec<String> {
+	match queue::get_partition_by(bytes) {
+		"" => Vec::new(),
+		columns => columns.split(',').map(|column| column.to_string()).collect(),
+	}
 }
 
 pub(crate) fn decode_deduplicate(bytes: &EncodedCatalogRow) -> Option<QueueDeduplicate> {

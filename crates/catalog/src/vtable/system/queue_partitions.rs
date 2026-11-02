@@ -50,7 +50,7 @@ impl BaseVTable for SystemQueuePartitions {
 		let queues = CatalogStore::list_queues(txn)?;
 
 		let mut queue_ids = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
-		let mut partitions = ColumnBuilder::with_capacity(ValueType::Uint2, queues.len());
+		let mut partitions = ColumnBuilder::with_capacity(ValueType::Uint16, queues.len());
 		let mut depths = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
 		let mut in_flights = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
 		let mut blocked_keys = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
@@ -63,7 +63,7 @@ impl BaseVTable for SystemQueuePartitions {
 
 			for partition in stats {
 				queue_ids.push(queue.id.0);
-				partitions.push(partition.partition);
+				partitions.push(partition.partition.0);
 				depths.push(partition.counters.depth);
 				in_flights.push(partition.counters.in_flight);
 				blocked_keys.push(partition.counters.blocked_keys);

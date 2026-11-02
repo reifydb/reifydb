@@ -7,8 +7,8 @@ use reifydb_core::{
 		catalog::{
 			id::QueueId,
 			queue::{
-				QueueItemState, QueueItemStatus, QueuePartitionCounters, decode_queue_item_state,
-				decode_queue_partition_counters,
+				Queue, QueueItemState, QueueItemStatus, QueuePartitionCounters,
+				decode_queue_item_state, decode_queue_partition_counters,
 			},
 		},
 		store::{SingleVersionGet, SingleVersionRange},
@@ -21,10 +21,9 @@ use reifydb_transaction::{
 	queue::scheduling::{ExpiredLease, apply_reap_transitions},
 	transaction::Transaction,
 };
-use reifydb_value::value::{Value, frame::frame::Frame, row_number::RowNumber};
+use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
 
-const KEYED: &str =
-	"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant } }";
+const KEYED: &str = "CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant } }";
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -91,7 +90,7 @@ fn chains(t: &TestEngine, queue: QueueId) -> Vec<QueueKeyActiveKey> {
 		.collect()
 }
 
-fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCounters {
+fn counters(t: &TestEngine, queue: QueueId, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
@@ -163,7 +162,7 @@ fn reap(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition
 		key_hash: Some(state.key_hash),
 		lease_deadline: state.lease_deadline.expect("a reaped item must hold a lease"),
 	};
-	apply_reap_transitions(t.inner().single(), queue, 0, &[(lease, transition)], now).unwrap()[0]
+	apply_reap_transitions(t.inner().single(), queue, Queue::UNPARTITIONED, &[(lease, transition)], now).unwrap()[0]
 }
 
 #[test]
@@ -190,7 +189,7 @@ fn test_a_younger_sibling_is_never_claimable_while_its_head_is_pending() {
 #[test]
 fn test_a_retrying_head_keeps_blocking_across_its_backoff() {
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant }, retry: { attempts: 5 } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 5 } }",
 	);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -254,7 +253,7 @@ fn test_a_head_delayed_by_not_before_blocks_its_younger_sibling() {
 #[test]
 fn test_a_dead_head_releases_the_key_to_its_successor() {
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant }, retry: { attempts: 1 } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 1 } }",
 	);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -270,7 +269,7 @@ fn test_a_dead_head_releases_the_key_to_its_successor() {
 #[test]
 fn test_a_dead_head_leaves_no_chain_entry_behind() {
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant }, retry: { attempts: 1 } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 1 } }",
 	);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -286,7 +285,7 @@ fn test_a_dead_head_leaves_no_chain_entry_behind() {
 #[test]
 fn test_a_replayed_item_parks_behind_the_sibling_that_took_its_key() {
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant }, retry: { attempts: 1 } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 1 } }",
 	);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -297,7 +296,7 @@ fn test_a_replayed_item_parks_behind_the_sibling_that_took_its_key() {
 	assert_eq!(replay(&t, 1), "parked", "the key is occupied, so replay must report a parked item");
 	assert_eq!(status_of(&t, queue, 1), QueueItemStatus::Parked);
 	assert_eq!(due_rows(&t, queue), vec![2], "a replayed item must not add a second due entry for its key");
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 1, "the key is blocked again");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).blocked_keys, 1, "the key is blocked again");
 
 	ack(&t, &claim_row(&t, "w2", 2));
 
@@ -307,7 +306,7 @@ fn test_a_replayed_item_parks_behind_the_sibling_that_took_its_key() {
 #[test]
 fn test_a_replayed_item_takes_an_empty_key_immediately() {
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant }, retry: { attempts: 1 } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 1 } }",
 	);
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
@@ -317,15 +316,13 @@ fn test_a_replayed_item_takes_an_empty_key_immediately() {
 
 	assert_eq!(replay(&t, 1), "ready");
 	assert_eq!(due_rows(&t, queue), vec![1]);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).blocked_keys, 0);
 	assert_eq!(claimed_rows(&t, "w1", 10), vec![1]);
 }
 
 #[test]
 fn test_an_unkeyed_queue_writes_no_chain_entries_and_never_parks() {
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 	let queue = queue_id(&t, "jobs");
 
@@ -353,7 +350,7 @@ fn test_an_unkeyed_queue_writes_no_chain_entries_and_never_parks() {
 		states(&t, queue).iter().all(|(_, state)| state.status != QueueItemStatus::Parked),
 		"an unkeyed queue must never park an item"
 	);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).blocked_keys, 0);
 }
 
 #[test]
@@ -362,27 +359,39 @@ fn test_blocked_keys_counts_keys_that_hold_a_waiting_sibling() {
 	let queue = queue_id(&t, "jobs");
 
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }]"#);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 0, "a key with one item blocks nothing");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).blocked_keys, 0, "a key with one item blocks nothing");
 
 	t.command(r#"INSERT test::jobs [{ id: 2, tenant: "a" }]"#);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 1, "the second item of a key makes it blocked");
+	assert_eq!(
+		counters(&t, queue, Queue::UNPARTITIONED).blocked_keys,
+		1,
+		"the second item of a key makes it blocked"
+	);
 
 	t.command(r#"INSERT test::jobs [{ id: 3, tenant: "a" }]"#);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 1, "a third item does not block the key twice");
+	assert_eq!(
+		counters(&t, queue, Queue::UNPARTITIONED).blocked_keys,
+		1,
+		"a third item does not block the key twice"
+	);
 
 	t.command(r#"INSERT test::jobs [{ id: 4, tenant: "b" }, { id: 5, tenant: "b" }]"#);
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 2, "a second blocked key counts separately");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).blocked_keys, 2, "a second blocked key counts separately");
 
 	let claimed = claim(&t, "w1", 10);
 	assert_eq!(claimed.len(), 2, "exactly one head per key is exposed at a time");
 	let head_of = |item: u64| claimed.iter().find(|(row, _)| *row == item).expect("head must be claimed").1.clone();
 
 	ack(&t, &head_of(1));
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 2, "tenant a still has two items behind its new head");
+	assert_eq!(
+		counters(&t, queue, Queue::UNPARTITIONED).blocked_keys,
+		2,
+		"tenant a still has two items behind its new head"
+	);
 
 	ack(&t, &head_of(4));
 	assert_eq!(
-		counters(&t, queue, 0).blocked_keys,
+		counters(&t, queue, Queue::UNPARTITIONED).blocked_keys,
 		1,
 		"tenant b's last item is now its head, so only tenant a stays blocked"
 	);
@@ -396,6 +405,10 @@ fn test_blocked_keys_counts_keys_that_hold_a_waiting_sibling() {
 			ack(&t, &token);
 		}
 	}
-	assert_eq!(counters(&t, queue, 0).blocked_keys, 0, "draining both keys must return the counter to zero");
-	assert_eq!(counters(&t, queue, 0).depth, 0);
+	assert_eq!(
+		counters(&t, queue, Queue::UNPARTITIONED).blocked_keys,
+		0,
+		"draining both keys must return the counter to zero"
+	);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 0);
 }

@@ -19,7 +19,7 @@ fn main() {
 		CREATE QUEUE jobs::updates {
 			account: utf8,
 			change: utf8
-		} WITH { fifo: { partitions: 1, ordered_by: account } };
+		} WITH { fifo: { ordered_by: account } };
 		"#,
 		Params::None,
 	)

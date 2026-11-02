@@ -18,8 +18,8 @@ pub fn queue_partitions() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: QUEUE_PARTITIONS,
-			namespace: NamespaceId::SYSTEM,
-			name: "queue_partitions".to_string(),
+			namespace: NamespaceId::SYSTEM_QUEUE,
+			name: "partitions".to_string(),
 			columns: vec![
 				Column {
 					id: QUEUE_ID,
@@ -33,7 +33,7 @@ pub fn queue_partitions() -> Arc<VTable> {
 				Column {
 					id: PARTITION,
 					name: "partition".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint16),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

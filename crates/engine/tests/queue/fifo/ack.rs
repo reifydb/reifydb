@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::{
 			id::QueueId,
 			queue::{
-				AttemptOutcome, QueueAttemptRecord, QueueItemState, QueueItemStatus,
+				AttemptOutcome, Queue, QueueAttemptRecord, QueueItemState, QueueItemStatus,
 				QueuePartitionCounters, decode_queue_attempt, decode_queue_item_state,
 				decode_queue_partition_counters,
 			},
@@ -25,7 +25,7 @@ use reifydb_transaction::{
 	queue::scheduling::apply_ack_transitions,
 	transaction::Transaction,
 };
-use reifydb_value::value::{Value, frame::frame::Frame, row_number::RowNumber};
+use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -71,7 +71,7 @@ fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 		.collect()
 }
 
-fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCounters {
+fn counters(t: &TestEngine, queue: QueueId, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
@@ -139,7 +139,7 @@ fn claimable(t: &TestEngine) -> usize {
 	TestEngine::row_count(&t.command(r#"CALL queue::claim("probe", "test::jobs", 10, duration::seconds(30))"#))
 }
 
-const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }";
+const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }";
 
 #[test]
 fn test_an_ok_ack_finishes_the_item_for_good() {
@@ -157,8 +157,8 @@ fn test_an_ok_ack_finishes_the_item_for_good() {
 	let state = state_of(&t, queue);
 	assert_eq!(state.status, QueueItemStatus::Done);
 	assert_eq!(state.lease_deadline, None, "a finished item must not keep a live lease");
-	assert_eq!(counters(&t, queue, 0).in_flight, 0);
-	assert_eq!(counters(&t, queue, 0).depth, 0, "depth already fell at claim time");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 0, "depth already fell at claim time");
 	assert_eq!(claimable(&t), 0, "a done item must never be delivered again");
 }
 
@@ -189,17 +189,15 @@ fn test_an_err_ack_requeues_the_item_until_the_retry_budget_is_spent() {
 	// The retry budget is what stops a permanently failing item from cycling forever. Both halves
 	// matter: an err inside budget must return the item to the ready set with a fresh due entry,
 	// and the ack at the budget must bury it instead.
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 2 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 
 	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Ready, "attempt 1 of 2 must be retried");
 	assert_eq!(dues(&t, queue).len(), 1, "a retried item needs a due entry or no scan will find it");
-	assert_eq!(counters(&t, queue, 0).depth, 1);
-	assert_eq!(counters(&t, queue, 0).in_flight, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 1);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 0);
 
 	// The retry is parked behind the backoff; redelivering it now would defeat the load-shedding
 	// the backoff exists for.
@@ -211,7 +209,7 @@ fn test_an_err_ack_requeues_the_item_until_the_retry_budget_is_spent() {
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "the budget is spent at attempt 2");
 	assert_eq!(claimable(&t), 0);
-	assert_eq!(counters(&t, queue, 0).in_flight, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 0);
 }
 
 #[test]
@@ -219,9 +217,7 @@ fn test_an_err_ack_places_the_due_entry_at_the_backoff_instant() {
 	// The due-index key IS the redelivery schedule: claim scans it by instant and never consults
 	// backoff_until on its own. A due entry written at the wrong instant would hand the item back
 	// immediately no matter what the state record says.
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(50_000);
@@ -247,9 +243,7 @@ fn test_an_err_ack_places_the_due_entry_at_the_backoff_instant() {
 fn test_consecutive_failures_double_the_wait() {
 	// One retry proves the delay exists; two prove it grows. A constant delay would let a
 	// permanently failing item hammer a struggling endpoint at a fixed rate for its whole budget.
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(0);
@@ -267,9 +261,7 @@ fn test_a_retry_does_not_overwrite_the_user_declared_not_before() {
 	// not_before is the caller's scheduling instruction and part of the item's history; the retry
 	// delay is the queue's own. Collapsing the two would erase what the caller asked for, and the
 	// next backoff would be computed against a value the caller never set.
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(10000) }"#);
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(10_000);
@@ -289,9 +281,7 @@ fn test_a_retry_does_not_overwrite_the_user_declared_not_before() {
 fn test_a_dead_ack_buries_the_item_immediately() {
 	// "dead" is the worker saying the work is unrecoverable. Honouring the retry budget here
 	// instead would keep re-running work already known to be poison.
-	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 5 } }",
-	);
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 
@@ -311,12 +301,12 @@ fn test_a_repeated_ack_is_a_no_op() {
 	let token = claim_one(&t, "w1");
 
 	assert_eq!(ack(&t, &token), "ok");
-	let after_first = counters(&t, queue, 0);
+	let after_first = counters(&t, queue, Queue::UNPARTITIONED);
 
 	assert_eq!(ack(&t, &token), "repeat");
 
 	assert_eq!(attempts(&t, queue).len(), 1, "a repeat must not write a second attempt record");
-	assert_eq!(counters(&t, queue, 0), after_first, "a repeat must not move the counters");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED), after_first, "a repeat must not move the counters");
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Done);
 }
 
@@ -368,13 +358,13 @@ fn test_an_ack_after_the_item_was_already_finished_does_not_resurrect_it() {
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
 	ack(&t, &token);
-	let before = counters(&t, queue, 0);
+	let before = counters(&t, queue, Queue::UNPARTITIONED);
 
 	let other_attempt = token.replace(":1:w1", ":2:w1");
 	assert_eq!(fail(&t, &other_attempt), "stale");
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Done);
-	assert_eq!(counters(&t, queue, 0), before);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED), before);
 }
 
 /// Builds the ack row change the procedure would emit, so the interceptor's compare-and-set can be
@@ -385,10 +375,10 @@ fn apply_ack(t: &TestEngine, queue: QueueId, row: RowNumber, attempt: u32, trans
 	apply_ack_transitions(
 		t.inner().single(),
 		queue,
-		0,
+		Queue::UNPARTITIONED,
 		&[QueueRowAck {
 			queue_id: queue,
-			partition: 0,
+			partition: Queue::UNPARTITIONED,
 			key_hash: None,
 			row_number: row,
 			attempt,
@@ -408,13 +398,13 @@ fn test_the_interceptor_refuses_an_ack_whose_attempt_no_longer_matches_the_lease
 	let queue = queue_id(&t, "jobs");
 	claim_one(&t, "w1");
 	let row = states(&t, queue)[0].0.row;
-	let before = counters(&t, queue, 0);
+	let before = counters(&t, queue, Queue::UNPARTITIONED);
 
 	let applied = apply_ack(&t, queue, row, 99, QueueAckTransition::Done);
 
 	assert_eq!(applied, 0, "a mismatched attempt must apply no transition");
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Leased);
-	assert_eq!(counters(&t, queue, 0), before, "a refused ack must not move the counters");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED), before, "a refused ack must not move the counters");
 }
 
 #[test]
@@ -427,12 +417,12 @@ fn test_the_interceptor_refuses_an_ack_against_an_item_that_is_no_longer_leased(
 	let token = claim_one(&t, "w1");
 	let row = states(&t, queue)[0].0.row;
 	ack(&t, &token);
-	let before = counters(&t, queue, 0);
+	let before = counters(&t, queue, Queue::UNPARTITIONED);
 
 	let applied = apply_ack(&t, queue, row, 1, QueueAckTransition::Done);
 
 	assert_eq!(applied, 0, "an item that is already Done must not transition again");
-	assert_eq!(counters(&t, queue, 0), before);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED), before);
 }
 
 #[test]

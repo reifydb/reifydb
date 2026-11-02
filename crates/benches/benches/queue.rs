@@ -170,6 +170,7 @@ struct Sample {
 struct Shared<'a> {
 	queue: &'a str,
 	knobs: &'a Knobs,
+	partitions: usize,
 	claim: Claim,
 	origin: Instant,
 	enqueued_at: &'a [AtomicU64],
@@ -232,22 +233,35 @@ fn mint_token(db: &Database, serve: bool) -> Option<String> {
 }
 
 fn create_queue_rql(queue: &str, partitions: usize, keys: u64) -> String {
+	let (shard_column, shard_option) = match partitions {
+		0 | 1 => ("", ""),
+		_ => (", shard: int8", "partition: { by: { shard } }, "),
+	};
 	if keys == 0 {
-		format!("CREATE QUEUE {queue} {{ seq: int8 }} WITH {{ fifo: {{ partitions: {partitions} }} }}")
+		format!("CREATE QUEUE {queue} {{ seq: int8{shard_column} }} WITH {{ {shard_option}fifo: {{}} }}")
 	} else {
 		format!(
-			"CREATE QUEUE {queue} {{ seq: int8, tenant: utf8 }} WITH {{ fifo: {{ partitions: {partitions}, ordered_by: tenant }} }}"
+			"CREATE QUEUE {queue} {{ seq: int8, tenant: utf8{shard_column} }} WITH {{ {shard_option}fifo: {{ ordered_by: tenant }} }}"
 		)
 	}
 }
 
-fn insert_rql(queue: &str, from: u64, count: u64, keys: u64) -> String {
+fn insert_rql(queue: &str, from: u64, count: u64, keys: u64, partitions: usize) -> String {
 	let rows: Vec<String> = (from..from + count)
 		.map(|seq| {
-			if keys == 0 {
-				format!("{{ seq: {seq} }}")
+			let spread = if keys == 0 {
+				seq
 			} else {
-				format!("{{ seq: {seq}, tenant: \"k{}\" }}", seq % keys)
+				seq % keys
+			};
+			let shard = match partitions {
+				0 | 1 => String::new(),
+				_ => format!(", shard: {}", spread % partitions as u64),
+			};
+			if keys == 0 {
+				format!("{{ seq: {seq}{shard} }}")
+			} else {
+				format!("{{ seq: {seq}, tenant: \"k{}\"{shard} }}", seq % keys)
 			}
 		})
 		.collect();
@@ -396,7 +410,7 @@ fn produce(driver: &Driver, shared: &Shared<'_>) {
 			shared.enqueued_at[(seq + offset) as usize].store(stamp, Ordering::Release);
 		}
 
-		driver.command_frames(&insert_rql(shared.queue, seq, count, shared.knobs.keys));
+		driver.command_frames(&insert_rql(shared.queue, seq, count, shared.knobs.keys, shared.partitions));
 		seq += count;
 	}
 
@@ -476,7 +490,10 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 		let mut seq = 0u64;
 		while seq < knobs.depth {
 			let count = INSERT_BATCH.min(knobs.depth - seq);
-			setup.execute(OperationKind::Command, &insert_rql(&queue, seq, count, knobs.keys));
+			setup.execute(
+				OperationKind::Command,
+				&insert_rql(&queue, seq, count, knobs.keys, cell.partitions),
+			);
 			seq += count;
 		}
 	}
@@ -496,6 +513,7 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 	let shared = Shared {
 		queue: &queue,
 		knobs,
+		partitions: cell.partitions,
 		claim: cell.claim,
 		origin: Clock::Real.instant(),
 		enqueued_at: &enqueued_at,

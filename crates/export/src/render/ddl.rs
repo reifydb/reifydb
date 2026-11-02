@@ -190,7 +190,11 @@ pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, Ex
 	let name = qualified_name(resolver, queue.namespace.0, &queue.name, &queue.name)?;
 	let columns = render_columns_block(&queue.columns, resolver, &queue.name)?;
 
-	let mut options: Vec<String> = vec![render_queue_dispatch(&queue.dispatch)];
+	let mut options: Vec<String> = Vec::new();
+	if !queue.partition_by.is_empty() {
+		options.push(format!("partition: {{ by: {{ {} }} }}", queue.partition_by.join(", ")));
+	}
+	options.push(render_queue_dispatch(&queue.dispatch));
 	if let Some(deduplicate) = &queue.deduplicate {
 		let by = deduplicate.by.join(", ");
 		if deduplicate.is_forever() {
@@ -216,22 +220,11 @@ pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, Ex
 fn render_queue_dispatch(dispatch: &QueueDispatch) -> String {
 	match dispatch {
 		QueueDispatch::Fifo {
-			partitions,
 			ordered_by,
-		} => {
-			let mut inner: Vec<String> = Vec::new();
-			if *partitions != Queue::DEFAULT_PARTITIONS {
-				inner.push(format!("partitions: {}", partitions));
-			}
-			if let Some(ordered_by) = ordered_by {
-				inner.push(format!("ordered_by: {}", ordered_by));
-			}
-			if inner.is_empty() {
-				"fifo: {}".to_string()
-			} else {
-				format!("fifo: {{ {} }}", inner.join(", "))
-			}
-		}
+		} => match ordered_by {
+			Some(ordered_by) => format!("fifo: {{ ordered_by: {} }}", ordered_by),
+			None => "fifo: {}".to_string(),
+		},
 	}
 }
 

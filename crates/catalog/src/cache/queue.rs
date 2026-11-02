@@ -78,8 +78,8 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			columns: vec![],
+			partition_by: vec![],
 			dispatch: QueueDispatch::Fifo {
-				partitions: Queue::DEFAULT_PARTITIONS,
 				ordered_by: None,
 			},
 			retention: QueueRetention::default(),

@@ -47,7 +47,7 @@ fn queue_row(t: &TestEngine, name: &str) -> Vec<Frame> {
 }
 
 fn partition_rows(t: &TestEngine, queue_id: u64) -> Vec<Frame> {
-	t.query(&format!("FROM system::queue_partitions filter {{ queue_id == {queue_id} }}"))
+	t.query(&format!("FROM system::queue::partitions filter {{ queue_id == {queue_id} }}"))
 }
 
 fn queue_id(t: &TestEngine, name: &str) -> u64 {
@@ -75,7 +75,7 @@ fn test_depth_and_in_flight_follow_every_transition() {
 	// forgets its delta corrupts them silently forever, because nothing recomputes them outside
 	// startup hydration. Walking insert -> claim -> ack is the only way to catch a writer that
 	// moves an item without moving the counter with it.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let row = queue_row(&t, "jobs");
@@ -104,7 +104,7 @@ fn test_blocked_keys_counts_parked_siblings_only_on_ordered_queues() {
 	// park anything, so a nonzero count there means the parked-sibling accounting leaked into a
 	// path where per-key exclusivity does not apply.
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant } }",
 	);
 	t.command(
 		r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }, { id: 3, tenant: "a" }, { id: 4, tenant: "b" }]"#,
@@ -114,7 +114,7 @@ fn test_blocked_keys_counts_parked_siblings_only_on_ordered_queues() {
 	assert_eq!(only_uint8(&row, "depth"), 4, "parked siblings are still waiting work");
 	assert_eq!(only_uint8(&row, "blocked_keys"), 1, "tenant a is blocked, tenant b is not");
 
-	let t = engine_with_queue("CREATE QUEUE test::plain { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::plain { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::plain [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let row = queue_row(&t, "plain");
@@ -124,26 +124,22 @@ fn test_blocked_keys_counts_parked_siblings_only_on_ordered_queues() {
 
 #[test]
 fn test_partition_rows_sum_to_the_queue_row_and_cover_every_partition() {
-	// The queue row is an aggregate over the partition rows, and a partition that never took work
-	// has no counter record at all. If an absent record were skipped instead of read as zero, the
-	// partition list would be ragged and an operator could not tell an idle partition from one
-	// that does not exist. This also catches an aggregation that double-counts or drops a
-	// partition.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
+	// The queue row aggregates the partition rows, so a double-counted or dropped partition must show here.
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { partition: { by: { id } }, fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]");
 	claim(&t, "w1", 2);
 
 	let id = queue_id(&t, "jobs");
 	let rows = partition_rows(&t, id);
 
-	let partitions: BTreeSet<u64> = column(&rows, "partition")
+	let partitions: BTreeSet<u128> = column(&rows, "partition")
 		.into_iter()
 		.map(|v| match v {
-			Value::Uint2(n) => u64::from(n),
-			other => panic!("partition must be Uint2, got {other:?}"),
+			Value::Uint16(n) => n,
+			other => panic!("partition must be Uint16, got {other:?}"),
 		})
 		.collect();
-	assert_eq!(partitions, (0..8).collect::<BTreeSet<_>>(), "every declared partition must appear exactly once");
+	assert_eq!(partitions.len(), 5, "every partition holding work must appear exactly once");
 
 	let queue = queue_row(&t, "jobs");
 	assert_eq!(uint8s(&rows, "depth").iter().sum::<u64>(), only_uint8(&queue, "depth"));
@@ -158,7 +154,7 @@ fn test_oldest_due_at_reports_the_earliest_instant_not_the_latest() {
 	// A peek that forgets to scan in reverse reports the furthest-future item as "oldest", which
 	// makes the column read exactly backwards and would tell an operator a starving queue is
 	// healthy. Claiming the currently-due item must then advance the column to the next instant.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.mock_clock().set_millis(1_000);
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(50000) }"#);
 	t.command(r#"INSERT test::jobs [{ id: 2 }] WITH { not_before: datetime::from_epoch_millis(20000) }"#);
@@ -184,11 +180,8 @@ fn test_oldest_due_at_reports_the_earliest_instant_not_the_latest() {
 
 #[test]
 fn test_an_empty_queue_reports_zero_counters_and_no_oldest_due_at() {
-	// An untouched partition has no counter record and no due entry. The counters must still read
-	// as 0 rather than none, because operators filter and sum on them; only oldest_due_at is
-	// genuinely absent when there is nothing to be due. Getting this backwards would make
-	// `filter { depth > 0 }` silently drop every idle queue from an operator's dashboards.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 4 } }");
+	// Counters must read as 0 rather than none, otherwise `filter { depth > 0 }` loses idle queues silently.
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	let row = queue_row(&t, "jobs");
 	assert_eq!(only_uint8(&row, "depth"), 0);
@@ -201,19 +194,18 @@ fn test_an_empty_queue_reports_zero_counters_and_no_oldest_due_at() {
 	);
 
 	let rows = partition_rows(&t, queue_id(&t, "jobs"));
-	assert_eq!(uint8s(&rows, "depth").len(), 4, "an untouched partition still gets a row");
-	assert!(uint8s(&rows, "depth").iter().all(|d| *d == 0));
+	assert!(uint8s(&rows, "depth").is_empty(), "a partition exists only once it has taken work");
 }
 
 #[test]
 fn test_a_dropped_queue_leaves_no_partition_rows_behind() {
 	// Queue ids are reused after a drop. A partition row that outlived its queue would be
 	// re-attributed to whatever queue takes the id next and report phantom depth.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 2 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let id = queue_id(&t, "jobs");
-	assert_eq!(uint8s(&partition_rows(&t, id), "depth").len(), 2);
+	assert_eq!(uint8s(&partition_rows(&t, id), "depth").len(), 1);
 
 	t.admin("DROP QUEUE test::jobs");
 

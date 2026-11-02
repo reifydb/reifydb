@@ -7,14 +7,14 @@ use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, write::Write},
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
 
 use crate::Result;
 
 #[derive(Debug, Clone)]
 pub struct QueueInsertRow {
 	pub row_number: RowNumber,
-	pub partition: u16,
+	pub partition: Partition,
 	pub key_hash: Option<u64>,
 	pub not_before: Option<DateTime>,
 	pub encoded: EncodedBytes,

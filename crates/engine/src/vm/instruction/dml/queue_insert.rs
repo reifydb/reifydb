@@ -28,6 +28,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			queue::{Queue, decode_queue_deduplication, encode_queue_deduplication},
 		},
@@ -58,7 +59,6 @@ use reifydb_value::{
 		datetime::DateTime,
 		duration::Duration,
 		identity::IdentityId,
-		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
 		value_type::ValueType,
@@ -68,12 +68,14 @@ use tracing::instrument;
 
 use super::{
 	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
+	partition::queue_batch_partitions,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 };
 use crate::{
 	Result,
+	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	queue::partition::{ordered_by_index, placement_for},
+	queue::partition::{QueuePlacement, ordered_by_index},
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
 		instruction::dml::{
@@ -162,11 +164,10 @@ pub(crate) fn insert_queue(
 				if let Some(key) = &item.deduplication_key {
 					records.push(deduplication_record(&queue, key, row_number, now));
 				}
-				let placement = placement_for(&queue, item.ordered, row_number);
 				rows.push(QueueInsertRow {
 					row_number,
-					partition: placement.partition,
-					key_hash: placement.key_hash,
+					partition: item.placement.partition,
+					key_hash: item.placement.key_hash,
 					not_before: item.not_before,
 					encoded: item.encoded.clone(),
 				});
@@ -210,7 +211,7 @@ pub(crate) fn insert_queue(
 
 struct PendingItem {
 	encoded: EncodedBytes,
-	ordered: Option<Partition>,
+	placement: QueuePlacement,
 	deduplication_key: Option<Vec<u8>>,
 	not_before: Option<DateTime>,
 }
@@ -511,7 +512,10 @@ fn validate_and_encode_input_rows(
 
 	let populator = populator_index(&target.queue.time, shape);
 	let mut pending: Vec<PendingItem> = Vec::new();
+	let mut verified = HashMap::new();
 	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {
+		let partitions = queue_batch_partitions(target.queue, cast)?;
+		resolve_partitions(txn, ObjectId::queue(target.queue.id), &partitions.distinct, &mut verified)?;
 		let ordered = ordered_by
 			.map(|index| cast.view(index).map(|view| partitions_of_batch(&[view]).rows))
 			.transpose()?;
@@ -544,23 +548,25 @@ fn validate_and_encode_input_rows(
 		for (index, ((encoded, deduplication_key), not_before)) in
 			encoded.into_iter().zip(keys).zip(not_before).enumerate()
 		{
-			let ordered = ordered.as_ref().map(|hashes| hashes[index]);
+			let placement = QueuePlacement::new(
+				partitions.rows.get(index).copied(),
+				ordered.as_ref().map(|hashes| hashes[index]),
+			);
 			reifydb_assertions! {
-				if let (Some(column), Some(hash)) = (ordered_by, ordered) {
-					assert_eq!(
-						crate::queue::partition::stored_ordered_hash(
-							shape,
-							reifydb_codec::row::queue::EncodedQueueRow::view(&encoded),
-							column,
-						),
-						hash,
-						"a queue row must be placed where hydration places its stored row"
-					);
-				}
+				assert_eq!(
+					crate::queue::partition::placement_of(
+						shape,
+						reifydb_codec::row::queue::EncodedQueueRow::view(&encoded),
+						&crate::queue::partition::partition_by_indices(target.queue),
+						ordered_by,
+					),
+					placement,
+					"a queue row must be placed where hydration places its stored row"
+				);
 			}
 			pending.push(PendingItem {
 				encoded,
-				ordered,
+				placement,
 				deduplication_key,
 				not_before,
 			});

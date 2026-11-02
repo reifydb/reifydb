@@ -2,14 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
-use reifydb_core::{interface::catalog::queue::Queue, internal_error};
-use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
+use reifydb_core::{interface::catalog::queue::Queue, internal_error, partition::partition_col_indices};
+use reifydb_value::value::{Value, partition::Partition};
 
 use crate::Result;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueuePlacement {
-	pub partition: u16,
+	pub partition: Partition,
 	pub key_hash: Option<u64>,
+}
+
+impl QueuePlacement {
+	pub fn new(partition: Option<Partition>, ordered: Option<Partition>) -> Self {
+		Self {
+			partition: partition.unwrap_or(Queue::UNPARTITIONED),
+			key_hash: ordered.map(|hash| hash.0 as u64),
+		}
+	}
 }
 
 pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
@@ -22,32 +32,29 @@ pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
 	Ok(Some(index))
 }
 
+pub fn partition_by_indices(queue: &Queue) -> Vec<usize> {
+	partition_col_indices(&queue.columns, &queue.partition_by)
+}
+
 pub fn placement_of(
-	queue: &Queue,
 	shape: &RowShape,
 	row: &EncodedQueueRow,
-	ordered_by_index: Option<usize>,
-	row_number: RowNumber,
+	partition_by: &[usize],
+	ordered_by: Option<usize>,
 ) -> QueuePlacement {
-	placement_for(queue, ordered_by_index.map(|index| stored_ordered_hash(shape, row, index)), row_number)
+	QueuePlacement::new(
+		stored_hash(shape, row, partition_by),
+		ordered_by.and_then(|index| stored_hash(shape, row, &[index])),
+	)
 }
 
 #[allow(clippy::disallowed_methods)]
-pub fn stored_ordered_hash(shape: &RowShape, row: &EncodedQueueRow, index: usize) -> Partition {
-	Partition::of(&[shape.get_value(row.as_slice(), index)])
-}
-
-pub fn placement_for(queue: &Queue, ordered: Option<Partition>, row_number: RowNumber) -> QueuePlacement {
-	#[allow(clippy::disallowed_methods)]
-	let hash = ordered.unwrap_or_else(|| Partition::of(&[Value::Uint8(row_number.0)]));
-	placement_from_hash(hash, queue.partitions(), ordered.is_some())
-}
-
-fn placement_from_hash(hash: Partition, partitions: u16, keyed: bool) -> QueuePlacement {
-	QueuePlacement {
-		partition: (hash.0 % partitions as u128) as u16,
-		key_hash: keyed.then_some(hash.0 as u64),
+fn stored_hash(shape: &RowShape, row: &EncodedQueueRow, indices: &[usize]) -> Option<Partition> {
+	if indices.is_empty() {
+		return None;
 	}
+	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row.as_slice(), index)).collect();
+	Some(Partition::of(&values))
 }
 
 #[cfg(test)]
@@ -55,27 +62,28 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_partition_is_the_full_hash_modulo_the_partition_count() {
+	fn test_a_queue_without_partition_columns_is_one_fifo_at_the_named_partition() {
+		// Any other partition here would spread an unpartitioned queue away from where claim and drop look.
+		let placement = QueuePlacement::new(None, Some(Partition(1)));
+
+		assert_eq!(placement.partition, Queue::UNPARTITIONED);
+		assert_eq!(Queue::UNPARTITIONED, Partition(0));
+	}
+
+	#[test]
+	fn test_the_partition_is_the_full_hash_of_the_partition_values() {
+		// A truncated hash would merge two partitions into one FIFO and put them under one lock.
 		let hash = Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210);
 
-		let placement = placement_from_hash(hash, 1000, true);
-
-		assert_eq!(placement.partition, 40);
-		assert_eq!(((hash.0 as u64) % 1000) as u16, 720, "the truncated hash would have placed it elsewhere");
+		assert_eq!(QueuePlacement::new(Some(hash), None).partition, hash);
 	}
 
 	#[test]
 	fn test_a_keyed_queue_truncates_the_hash_and_an_unkeyed_one_reports_no_key() {
+		// The key hash is the one-active-per-key discriminator, so an unkeyed row must not block on anything.
 		let hash = Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210);
 
-		assert_eq!(placement_from_hash(hash, 16, true).key_hash, Some(0xFEDC_BA98_7654_3210));
-		assert_eq!(placement_from_hash(hash, 16, false).key_hash, None);
-	}
-
-	#[test]
-	fn test_a_single_partition_queue_places_everything_in_partition_zero() {
-		for hash in [0u128, 1, u128::MAX] {
-			assert_eq!(placement_from_hash(Partition(hash), 1, true).partition, 0);
-		}
+		assert_eq!(QueuePlacement::new(None, Some(hash)).key_hash, Some(0xFEDC_BA98_7654_3210));
+		assert_eq!(QueuePlacement::new(Some(hash), None).key_hash, None);
 	}
 }

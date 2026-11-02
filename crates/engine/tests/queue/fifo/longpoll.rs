@@ -12,7 +12,7 @@ use reifydb_runtime::context::clock::Clock;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::duration::Duration;
 
-const QUEUE: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }";
+const QUEUE: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }";
 
 fn engine() -> TestEngine {
 	let t = TestEngine::new();

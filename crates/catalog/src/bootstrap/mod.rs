@@ -117,6 +117,14 @@ pub fn bootstrap_root_namespaces(
 			},
 		)?;
 	}
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_QUEUE,
+		"system::queue",
+		"queue",
+		NamespaceId::SYSTEM,
+	)?;
 	admin.commit()?;
 	Ok(())
 }

@@ -12,8 +12,7 @@ fn main() {
 		.unwrap();
 
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
-	db.admin_as_root("CREATE QUEUE jobs::imports { file: utf8 } WITH { fifo: { partitions: 1 } }", Params::None)
-		.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::imports { file: utf8 } WITH { fifo: {} }", Params::None).unwrap();
 
 	command(&db, r#"INSERT jobs::imports [{ file: "customers.csv" }]"#);
 

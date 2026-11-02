@@ -164,6 +164,7 @@ pub struct CreateQueueNode {
 	pub queue: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<QueueColumnToCreate>,
+	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,

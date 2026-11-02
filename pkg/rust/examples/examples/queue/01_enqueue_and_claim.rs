@@ -18,7 +18,7 @@ fn main() {
 		CREATE QUEUE jobs::emails {
 			recipient: utf8,
 			subject: utf8
-		} WITH { fifo: { partitions: 1 } };
+		} WITH { fifo: {} };
 		"#,
 		Params::None,
 	)

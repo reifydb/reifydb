@@ -18,7 +18,7 @@ const WORKERS: usize = 8;
 const KEYS: usize = 16;
 const PER_KEY: usize = 8;
 
-const KEYED: &str = "CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 4, ordered_by: tenant }, retry: { attempts: 5 } }";
+const KEYED: &str = "CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant }, retry: { attempts: 5 } }";
 
 struct Delivery {
 	item: u64,
@@ -283,7 +283,7 @@ fn test_items_enqueued_during_a_drain_keep_their_key_order() {
 fn test_a_claim_never_hands_out_an_item_whose_payload_it_cannot_read() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE diag");
-	t.admin("CREATE QUEUE diag::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 4 } }");
+	t.admin("CREATE QUEUE diag::jobs { id: int4, tenant: utf8 } WITH { fifo: {} }");
 
 	let missing = Mutex::new(0usize);
 	let barrier = Barrier::new(2);

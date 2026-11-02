@@ -57,9 +57,9 @@ use crate::{
 	},
 };
 
-const QUEUE_OPTION_KEYS: &str = "'fifo', 'deduplicate', 'retention', 'retry', or 'time'";
+const QUEUE_OPTION_KEYS: &str = "'partition', 'fifo', 'deduplicate', 'retention', 'retry', or 'time'";
 const TIME_VALUES: &str = "'none', 'event(<column>)', or 'processing'";
-const QUEUE_FIFO_KEYS: &str = "'partitions' or 'ordered_by'";
+const QUEUE_FIFO_KEYS: &str = "'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
@@ -1685,6 +1685,7 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
+		let mut partition_by: Vec<String> = Vec::new();
 		let mut dispatch = None;
 		let mut deduplicate = None;
 		let mut retention = None;
@@ -1705,6 +1706,9 @@ impl<'bump> Parser<'bump> {
 				self.consume_operator(Operator::Colon)?;
 
 				match key.fragment.text() {
+					"partition" => {
+						partition_by = self.parse_partition_config()?;
+					}
 					"fifo" => {
 						if dispatch.is_some() {
 							return Err(duplicate_queue_dispatch(&key));
@@ -1750,6 +1754,7 @@ impl<'bump> Parser<'bump> {
 			token,
 			queue,
 			columns,
+			partition_by,
 			dispatch,
 			deduplicate,
 			retention,
@@ -1761,7 +1766,6 @@ impl<'bump> Parser<'bump> {
 	fn parse_queue_fifo(&mut self, token: Token<'bump>) -> Result<AstQueueFifo<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut partitions = None;
 		let mut ordered_by = None;
 
 		loop {
@@ -1775,9 +1779,6 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"partitions" => {
-					partitions = Some(self.consume(TokenKind::Literal(Literal::Number))?);
-				}
 				"ordered_by" => {
 					ordered_by = Some(self.consume_identifier()?);
 				}
@@ -1799,7 +1800,6 @@ impl<'bump> Parser<'bump> {
 
 		Ok(AstQueueFifo {
 			token,
-			partitions,
 			ordered_by,
 		})
 	}
@@ -4522,6 +4522,7 @@ pub mod tests {
 			AstCreate::Queue(AstCreateQueue {
 				queue,
 				columns,
+				partition_by,
 				dispatch,
 				retention,
 				retry,
@@ -4529,11 +4530,11 @@ pub mod tests {
 			}) => {
 				let AstQueueDispatch::Fifo(fifo) = dispatch;
 				format!(
-					"ns={:?} name={} columns={:?} partitions={:?} ordered_by={:?} retention={:?} retry={:?}",
+					"ns={:?} name={} columns={:?} partition_by={:?} ordered_by={:?} retention={:?} retry={:?}",
 					queue.namespace.iter().map(|n| n.text().to_string()).collect::<Vec<_>>(),
 					queue.name.text(),
 					columns.iter().map(|c| c.name.text().to_string()).collect::<Vec<_>>(),
-					fifo.partitions.map(|t| t.fragment.text().to_string()),
+					partition_by,
 					fifo.ordered_by.map(|t| t.fragment.text().to_string()),
 					retention.as_ref().map(|r| r.done.map(|t| t.fragment.text().to_string())),
 					retry.as_ref().map(|r| (
@@ -4559,7 +4560,8 @@ pub mod tests {
 		// A silently dropped option leaves a queue on default partitioning and retry with no way to notice.
 		let rendered = parse_queue_ast(
 			r#"CREATE QUEUE ns::jobs { order_id: uuid7, kind: utf8 } WITH {
-				fifo: { partitions: 32, ordered_by: order_id },
+				partition: { by: { kind } },
+				fifo: { ordered_by: order_id },
 				retention: { done: 7d },
 				retry: { attempts: 5, backoff: 10s }
 			}"#,
@@ -4567,7 +4569,7 @@ pub mod tests {
 
 		assert_eq!(
 			rendered,
-			r#"ns=["ns"] name=jobs columns=["order_id", "kind"] partitions=Some("32") ordered_by=Some("order_id") retention=Some(Some("7d")) retry=Some((Some("5"), Some("10s")))"#
+			r#"ns=["ns"] name=jobs columns=["order_id", "kind"] partition_by=["kind"] ordered_by=Some("order_id") retention=Some(Some("7d")) retry=Some((Some("5"), Some("10s")))"#
 		);
 	}
 
@@ -4579,7 +4581,7 @@ pub mod tests {
 
 		assert_eq!(
 			rendered,
-			r#"ns=["ns"] name=jobs columns=["order_id"] partitions=None ordered_by=None retention=None retry=None"#
+			r#"ns=["ns"] name=jobs columns=["order_id"] partition_by=[] ordered_by=None retention=None retry=None"#
 		);
 	}
 
@@ -4605,18 +4607,37 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_rejects_dispatch_options_at_the_top_level() {
-		// partitions and ordered_by only mean anything inside a discipline; at the top level they would need
-		// re-validating against every discipline added later.
-		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 8 }");
-		assert!(err.contains("partitions"), "got: {}", err);
+		// ordered_by must stay inside a discipline, otherwise every later discipline has to re-validate it.
+		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { ordered_by: id }");
+		assert!(err.contains("ordered_by"), "got: {}", err);
 	}
 
 	#[test]
-	fn test_create_queue_with_partitions_only() {
-		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	fn test_create_queue_with_partition_by_only() {
+		// A dropped partition clause would silently collapse every partition into one FIFO.
+		let rendered = parse_queue_ast(
+			"CREATE QUEUE ns::jobs { id: int4, region: utf8 } WITH { partition: { by: { region, id } }, fifo: {} }",
+		);
 
-		assert!(rendered.contains(r#"partitions=Some("1")"#), "got: {}", rendered);
+		assert!(rendered.contains(r#"partition_by=["region", "id"]"#), "got: {}", rendered);
 		assert!(rendered.contains("ordered_by=None retention=None retry=None"), "got: {}", rendered);
+	}
+
+	#[test]
+	fn test_create_queue_partitions_key_in_fifo_is_rejected() {
+		// Lanes are gone: accepting the old key would silently hand a caller one FIFO they asked to split.
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
+
+		assert!(msg.contains("ordered_by"), "error should name the valid fifo key, got: {}", msg);
+		assert!(!msg.contains("'partitions'"), "the removed key must not be offered, got: {}", msg);
+	}
+
+	#[test]
+	fn test_create_queue_partition_clause_must_name_by() {
+		// The bare count form of the old lanes must not parse as a partition clause.
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, partition: 4 }");
+
+		assert!(!msg.is_empty(), "expected a parse error message");
 	}
 
 	#[test]
@@ -4624,7 +4645,7 @@ pub mod tests {
 		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { ordered_by: id } }");
 
 		assert!(rendered.contains(r#"ordered_by=Some("id")"#), "got: {}", rendered);
-		assert!(rendered.contains("partitions=None"), "got: {}", rendered);
+		assert!(rendered.contains("partition_by=[]"), "got: {}", rendered);
 	}
 
 	#[test]
@@ -4649,7 +4670,7 @@ pub mod tests {
 	#[test]
 	fn test_create_queue_unknown_option_rejected() {
 		// Swallowing a misspelled option produces a queue whose behaviour differs from its statement.
-		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, partition: 4 }");
+		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retain: 4 }");
 
 		assert!(msg.contains("'fifo'"), "error should name the valid options, got: {}", msg);
 	}
@@ -4678,15 +4699,6 @@ pub mod tests {
 		// assumes.
 		let msg = parse_queue_must_fail(
 			"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { backoff: 10 } }",
-		);
-
-		assert!(!msg.is_empty(), "expected a parse error message");
-	}
-
-	#[test]
-	fn test_create_queue_non_number_partitions_rejected() {
-		let msg = parse_queue_must_fail(
-			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: "32" } }"#,
 		);
 
 		assert!(!msg.is_empty(), "expected a parse error message");

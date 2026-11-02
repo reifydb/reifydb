@@ -18,7 +18,7 @@ fn main() {
 			endpoint: utf8,
 			body: utf8
 		} WITH {
-			fifo: { partitions: 2, ordered_by: endpoint },
+			fifo: { ordered_by: endpoint },
 			retry: { attempts: 5, backoff: 10s },
 			deduplicate: { by: {endpoint, body}, ttl: 1d }
 		};
@@ -40,7 +40,7 @@ fn main() {
 	command(&db, r#"CALL queue::claim("worker-1", "jobs::webhooks", 1, duration::seconds(30))"#);
 
 	info!("system::queues is the shape of every queue - how it dispatches, retries and dedups...");
-	query(&db, r#"FROM system::queues FILTER { name == "webhooks" } MAP { name, partitions, ordered_by }"#);
+	query(&db, r#"FROM system::queues FILTER { name == "webhooks" } MAP { name, partition_by, ordered_by }"#);
 	query(
 		&db,
 		r#"FROM system::queues FILTER { name == "webhooks" } MAP { name, deduplicate_by, deduplicate_ttl }"#,
@@ -54,7 +54,7 @@ fn main() {
 		r#"FROM system::queues FILTER { name == "webhooks" } MAP { depth, in_flight, blocked_keys, oldest_due_at }"#,
 	);
 
-	info!("system::queue_partitions breaks the same counters down per partition...");
+	info!("system::queue::partitions breaks the same counters down per partition...");
 	info!("An even total hiding one hot partition is invisible in the summary above.");
 	let queue_id =
 		uint8_column(&query(&db, r#"FROM system::queues FILTER { name == "webhooks" } MAP { id }"#), "id")
@@ -62,7 +62,7 @@ fn main() {
 	query(
 		&db,
 		&format!(
-			"FROM system::queue_partitions filter {{ queue_id == {queue_id} }} map {{ partition, depth, in_flight, blocked_keys }} sort {{ partition:asc }}"
+			"FROM system::queue::partitions filter {{ queue_id == {queue_id} }} map {{ partition, depth, in_flight, blocked_keys }} sort {{ partition:asc }}"
 		),
 	);
 

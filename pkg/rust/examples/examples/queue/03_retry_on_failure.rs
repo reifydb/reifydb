@@ -21,7 +21,7 @@ fn main() {
 		r#"
 		CREATE QUEUE jobs::charges {
 			order_id: int4
-		} WITH { fifo: { partitions: 1 }, retry: { attempts: 2, backoff: 1s } };
+		} WITH { fifo: {}, retry: { attempts: 2, backoff: 1s } };
 		"#,
 		Params::None,
 	)

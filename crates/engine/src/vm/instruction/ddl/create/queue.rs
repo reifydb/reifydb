@@ -35,6 +35,7 @@ pub(crate) fn create_queue(
 			name: plan.queue.clone(),
 			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
+			partition_by: plan.partition_by,
 			dispatch: plan.dispatch,
 			deduplicate: plan.deduplicate,
 			retention: plan.retention,

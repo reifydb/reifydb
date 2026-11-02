@@ -63,8 +63,8 @@ pub mod tests {
 			name: Fragment::internal(name),
 			namespace,
 			columns: vec![],
+			partition_by: vec![],
 			dispatch: QueueDispatch::Fifo {
-				partitions: 16,
 				ordered_by: None,
 			},
 			retention: QueueRetention::default(),

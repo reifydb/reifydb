@@ -19,7 +19,7 @@ use crate::{
 	CatalogStore, Result,
 	store::queue::{
 		decode_queue_time,
-		shape::{decode_deduplicate, decode_dispatch, queue},
+		shape::{decode_deduplicate, decode_dispatch, decode_partition_by, queue},
 	},
 };
 
@@ -54,6 +54,7 @@ fn convert_queue<K>(multi: MultiVersionRow<K>) -> Result<Queue> {
 		namespace,
 		name,
 		columns: vec![],
+		partition_by: decode_partition_by(&bytes),
 		dispatch: decode_dispatch(&bytes),
 		retention: QueueRetention {
 			done: queue::try_get_retention_done(&bytes),

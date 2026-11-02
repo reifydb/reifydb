@@ -90,7 +90,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 
 #[test]
 fn committed_create_preserves_every_option() {
-	// A queue that loses its partition count on commit is silently mis-scheduled later.
+	// A queue that loses its partition columns on commit is silently mis-scheduled later.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_create_e");
@@ -98,7 +98,7 @@ fn committed_create_preserves_every_option() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { fifo: { partitions: 64, ordered_by: msg }, retention: { done: 3d }, retry: { attempts: 2, backoff: 5s } }"#,
+		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { partition: { by: { msg } }, fifo: { ordered_by: msg }, retention: { done: 3d }, retry: { attempts: 2, backoff: 5s } }"#,
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -107,7 +107,7 @@ fn committed_create_preserves_every_option() {
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let queue = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().unwrap();
 
-	assert_eq!(queue.partitions(), 64);
+	assert_eq!(queue.partition_by, vec!["msg".to_string()]);
 	assert_eq!(queue.ordered_by(), Some("msg"));
 	assert!(queue.retention.done.is_some());
 	assert_eq!(queue.retry.attempts, 2);

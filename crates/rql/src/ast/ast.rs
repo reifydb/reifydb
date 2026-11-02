@@ -894,6 +894,7 @@ pub struct AstCreateQueue<'bump> {
 	pub token: Token<'bump>,
 	pub queue: MaybeQualifiedQueueIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub partition_by: Vec<String>,
 	pub dispatch: AstQueueDispatch<'bump>,
 	pub deduplicate: Option<AstQueueDeduplicate<'bump>>,
 	pub retention: Option<AstQueueRetention<'bump>>,
@@ -909,7 +910,6 @@ pub enum AstQueueDispatch<'bump> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstQueueFifo<'bump> {
 	pub token: Token<'bump>,
-	pub partitions: Option<Token<'bump>>,
 	pub ordered_by: Option<Token<'bump>>,
 }
 

@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::KeyCodec;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
 
 use super::KeyTag;
 use crate::{
@@ -251,7 +251,7 @@ mod queue_item_state_key_tests {
 	fn test_a_foreign_kind_does_not_decode() {
 		// Every family shares the single-lane and MVCC keyspace; decoding a neighbour's key
 		// as an attempt record would attribute another object's bytes to a queue item.
-		let foreign = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
+		let foreign = QueueItemStateKey::encoded(QueueId(1), Partition(0), RowNumber(1));
 
 		assert_eq!(QueueAttemptKey::decode(&foreign), None);
 	}
@@ -372,18 +372,18 @@ mod queue_deduplication_key_tests {
 #[key(tag = QueuePartition)]
 pub struct QueuePartitionKey {
 	pub queue: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 }
 
 impl QueuePartitionKey {
-	pub fn new(queue: impl Into<QueueId>, partition: u16) -> Self {
+	pub fn new(queue: impl Into<QueueId>, partition: Partition) -> Self {
 		Self {
 			queue: queue.into(),
 			partition,
 		}
 	}
 
-	pub fn encoded(queue: impl Into<QueueId>, partition: u16) -> EncodedKey {
+	pub fn encoded(queue: impl Into<QueueId>, partition: Partition) -> EncodedKey {
 		Self {
 			queue: queue.into(),
 			partition,
@@ -404,12 +404,12 @@ impl QueuePartitionKey {
 #[key(tag = QueueItemState)]
 pub struct QueueItemStateKey {
 	pub queue: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub row: RowNumber,
 }
 
 impl QueueItemStateKey {
-	pub fn new(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> Self {
+	pub fn new(queue: impl Into<QueueId>, partition: Partition, row: impl Into<RowNumber>) -> Self {
 		Self {
 			queue: queue.into(),
 			partition,
@@ -417,7 +417,7 @@ impl QueueItemStateKey {
 		}
 	}
 
-	pub fn encoded(queue: impl Into<QueueId>, partition: u16, row: impl Into<RowNumber>) -> EncodedKey {
+	pub fn encoded(queue: impl Into<QueueId>, partition: Partition, row: impl Into<RowNumber>) -> EncodedKey {
 		Self {
 			queue: queue.into(),
 			partition,
@@ -426,10 +426,10 @@ impl QueueItemStateKey {
 		.encode()
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+	pub fn partition_scan(queue: QueueId, partition: Partition) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(
 			Self::TAG,
-			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U128, partition.0)],
 		)
 	}
 
@@ -446,13 +446,13 @@ impl QueueItemStateKey {
 #[key(tag = QueueDue)]
 pub struct QueueDueKey {
 	pub queue: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub due: DateTime,
 	pub row: RowNumber,
 }
 
 impl QueueDueKey {
-	pub fn new(queue: impl Into<QueueId>, partition: u16, due: DateTime, row: impl Into<RowNumber>) -> Self {
+	pub fn new(queue: impl Into<QueueId>, partition: Partition, due: DateTime, row: impl Into<RowNumber>) -> Self {
 		Self {
 			queue: queue.into(),
 			partition,
@@ -463,17 +463,17 @@ impl QueueDueKey {
 
 	pub fn encoded(
 		queue: impl Into<QueueId>,
-		partition: u16,
+		partition: Partition,
 		due: DateTime,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
 		Self::new(queue, partition, due, row).encode()
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+	pub fn partition_scan(queue: QueueId, partition: Partition) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(
 			Self::TAG,
-			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U128, partition.0)],
 		)
 	}
 
@@ -490,13 +490,13 @@ impl QueueDueKey {
 #[key(tag = QueueKeyActive)]
 pub struct QueueKeyActiveKey {
 	pub queue: QueueId,
-	pub partition: u16,
+	pub partition: Partition,
 	pub key_hash: u64,
 	pub row: RowNumber,
 }
 
 impl QueueKeyActiveKey {
-	pub fn new(queue: impl Into<QueueId>, partition: u16, key_hash: u64, row: impl Into<RowNumber>) -> Self {
+	pub fn new(queue: impl Into<QueueId>, partition: Partition, key_hash: u64, row: impl Into<RowNumber>) -> Self {
 		Self {
 			queue: queue.into(),
 			partition,
@@ -507,7 +507,7 @@ impl QueueKeyActiveKey {
 
 	pub fn encoded(
 		queue: impl Into<QueueId>,
-		partition: u16,
+		partition: Partition,
 		key_hash: u64,
 		row: impl Into<RowNumber>,
 	) -> EncodedKey {
@@ -520,21 +520,21 @@ impl QueueKeyActiveKey {
 		.encode()
 	}
 
-	pub fn key_scan(queue: QueueId, partition: u16, key_hash: u64) -> TaggedKeyBoundRange {
+	pub fn key_scan(queue: QueueId, partition: Partition, key_hash: u64) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(
 			Self::TAG,
 			[
 				Field::UDesc(Width::U64, queue.0 as u128),
-				Field::UDesc(Width::U16, partition as u128),
+				Field::UDesc(Width::U128, partition.0),
 				Field::UDesc(Width::U64, key_hash as u128),
 			],
 		)
 	}
 
-	pub fn partition_scan(queue: QueueId, partition: u16) -> TaggedKeyBoundRange {
+	pub fn partition_scan(queue: QueueId, partition: Partition) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(
 			Self::TAG,
-			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U16, partition as u128)],
+			[Field::UDesc(Width::U64, queue.0 as u128), Field::UDesc(Width::U128, partition.0)],
 		)
 	}
 
@@ -574,7 +574,7 @@ mod queue_partition_key_tests {
 		// The counter row is addressed by this key and is also the lock key every claim
 		// serialises on. A codec that loses the partition would point two partitions at one
 		// counter, so depth accounting and the lock would silently merge.
-		for partition in [0u16, 1, 1023] {
+		for partition in [Partition(0), Partition(1), Partition(u128::MAX)] {
 			let encoded = QueuePartitionKey::encoded(QueueId(7), partition);
 			let decoded = QueuePartitionKey::decode(&encoded).unwrap();
 			assert_eq!(decoded.queue, QueueId(7));
@@ -586,10 +586,10 @@ mod queue_partition_key_tests {
 	fn test_item_state_key_roundtrips() {
 		// The state record is the compare-and-set target for every transition; a key that
 		// decodes to the wrong row would transition somebody else's item.
-		let encoded = QueueItemStateKey::encoded(QueueId(3), 5, RowNumber(42));
+		let encoded = QueueItemStateKey::encoded(QueueId(3), Partition(5), RowNumber(42));
 		let decoded = QueueItemStateKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
-		assert_eq!(decoded.partition, 5);
+		assert_eq!(decoded.partition, Partition(5));
 		assert_eq!(decoded.row, RowNumber(42));
 	}
 
@@ -600,11 +600,11 @@ mod queue_partition_key_tests {
 		// due index would resolve to the wrong instant.
 		for nanos in [0i64, 1, 4_102_444_800_000_000_000, i64::MAX] {
 			let due = DateTime::from_nanos(nanos);
-			let encoded = QueueDueKey::encoded(QueueId(1), 2, due, RowNumber(9));
+			let encoded = QueueDueKey::encoded(QueueId(1), Partition(2), due, RowNumber(9));
 			let decoded = QueueDueKey::decode(&encoded).unwrap();
 			assert_eq!(decoded.due.to_nanos(), nanos);
 			assert_eq!(decoded.row, RowNumber(9));
-			assert_eq!(decoded.partition, 2);
+			assert_eq!(decoded.partition, Partition(2));
 		}
 	}
 
@@ -613,7 +613,7 @@ mod queue_partition_key_tests {
 		// The obvious "partition - 1" end bound underflows at partition 0 and would scan the
 		// whole queue; this pins the prefix-derived range instead. A scan that leaked into a
 		// neighbouring partition would let a claim take work it does not hold the lock for.
-		for partition in [0u16, 1, 1023] {
+		for partition in [Partition(0), Partition(1), Partition(u128::MAX)] {
 			let range = QueueItemStateKey::partition_scan(QueueId(4), partition).encode();
 
 			assert!(contains(&range, &QueueItemStateKey::encoded(QueueId(4), partition, RowNumber(0))));
@@ -622,14 +622,11 @@ mod queue_partition_key_tests {
 				&QueueItemStateKey::encoded(QueueId(4), partition, RowNumber(u64::MAX))
 			));
 
-			for other in [partition.wrapping_sub(1), partition + 1] {
-				if other == partition {
-					continue;
-				}
+			for other in [Partition(partition.0.wrapping_sub(1)), Partition(partition.0.wrapping_add(1))] {
 				let neighbour = QueueItemStateKey::encoded(QueueId(4), other, RowNumber(1));
 				assert!(
 					!contains(&range, &neighbour),
-					"partition {other} must fall outside {partition}"
+					"partition {other:?} must fall outside {partition:?}"
 				);
 			}
 
@@ -644,13 +641,13 @@ mod queue_partition_key_tests {
 		// leaks records that hydration would later re-admit into a queue that no longer exists.
 		let range = QueueDueKey::queue_scan(QueueId(4)).encode();
 
-		for partition in [0u16, 1, 1023] {
+		for partition in [Partition(0), Partition(1), Partition(u128::MAX)] {
 			let inside = QueueDueKey::encoded(QueueId(4), partition, DateTime::from_nanos(7), RowNumber(1));
-			assert!(contains(&range, &inside), "partition {partition} must fall inside the queue scan");
+			assert!(contains(&range, &inside), "partition {partition:?} must fall inside the queue scan");
 		}
 
 		for queue in [QueueId(3), QueueId(5)] {
-			let outside = QueueDueKey::encoded(queue, 0, DateTime::from_nanos(7), RowNumber(1));
+			let outside = QueueDueKey::encoded(queue, Partition(0), DateTime::from_nanos(7), RowNumber(1));
 			assert!(!contains(&range, &outside), "queue {queue:?} must fall outside queue 4's scan");
 		}
 	}
@@ -660,8 +657,8 @@ mod queue_partition_key_tests {
 		// Keys are stored bitwise-inverted, so forward iteration yields the LATEST due time
 		// first. Step 4's claim must therefore scan in reverse; if this inversion ever
 		// changes, claims would silently drain newest-first and starve the oldest work.
-		let earlier = QueueDueKey::encoded(QueueId(1), 0, DateTime::from_nanos(1_000), RowNumber(1));
-		let later = QueueDueKey::encoded(QueueId(1), 0, DateTime::from_nanos(2_000), RowNumber(1));
+		let earlier = QueueDueKey::encoded(QueueId(1), Partition(0), DateTime::from_nanos(1_000), RowNumber(1));
+		let later = QueueDueKey::encoded(QueueId(1), Partition(0), DateTime::from_nanos(2_000), RowNumber(1));
 
 		assert!(later.as_slice() < earlier.as_slice(), "the later due time must encode to the smaller key");
 	}
@@ -670,7 +667,7 @@ mod queue_partition_key_tests {
 	fn test_a_foreign_kind_does_not_decode() {
 		// The three families share a prefix layout, so a mis-tagged key would otherwise
 		// decode cleanly and address the wrong record entirely.
-		let encoded = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
+		let encoded = QueueItemStateKey::encoded(QueueId(1), Partition(0), RowNumber(1));
 
 		assert_eq!(QueuePartitionKey::decode(&encoded), None);
 		assert_eq!(QueueDueKey::decode(&encoded), None);
@@ -679,19 +676,20 @@ mod queue_partition_key_tests {
 
 	#[test]
 	fn test_key_active_key_roundtrips() {
-		let encoded = QueueKeyActiveKey::encoded(QueueId(3), 5, 0xDEAD_BEEF_CAFE_F00D, RowNumber(42));
+		let encoded =
+			QueueKeyActiveKey::encoded(QueueId(3), Partition(5), 0xDEAD_BEEF_CAFE_F00D, RowNumber(42));
 		let decoded = QueueKeyActiveKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
-		assert_eq!(decoded.partition, 5);
+		assert_eq!(decoded.partition, Partition(5));
 		assert_eq!(decoded.key_hash, 0xDEAD_BEEF_CAFE_F00D);
 		assert_eq!(decoded.row, RowNumber(42));
 	}
 
 	#[test]
 	fn test_key_active_keys_sort_largest_row_first() {
-		let first = QueueKeyActiveKey::encoded(QueueId(1), 0, 77, RowNumber(1));
-		let middle = QueueKeyActiveKey::encoded(QueueId(1), 0, 77, RowNumber(5));
-		let last = QueueKeyActiveKey::encoded(QueueId(1), 0, 77, RowNumber(9));
+		let first = QueueKeyActiveKey::encoded(QueueId(1), Partition(0), 77, RowNumber(1));
+		let middle = QueueKeyActiveKey::encoded(QueueId(1), Partition(0), 77, RowNumber(5));
+		let last = QueueKeyActiveKey::encoded(QueueId(1), Partition(0), 77, RowNumber(9));
 
 		assert!(last.as_slice() < middle.as_slice());
 		assert!(middle.as_slice() < first.as_slice());
@@ -699,50 +697,53 @@ mod queue_partition_key_tests {
 
 	#[test]
 	fn test_key_scan_excludes_neighbouring_keys_and_partitions() {
-		let range = QueueKeyActiveKey::key_scan(QueueId(4), 2, 77).encode();
+		let range = QueueKeyActiveKey::key_scan(QueueId(4), Partition(2), 77).encode();
 
-		assert!(contains(&range, &QueueKeyActiveKey::encoded(QueueId(4), 2, 77, RowNumber(0))));
-		assert!(contains(&range, &QueueKeyActiveKey::encoded(QueueId(4), 2, 77, RowNumber(u64::MAX))));
+		assert!(contains(&range, &QueueKeyActiveKey::encoded(QueueId(4), Partition(2), 77, RowNumber(0))));
+		assert!(contains(
+			&range,
+			&QueueKeyActiveKey::encoded(QueueId(4), Partition(2), 77, RowNumber(u64::MAX))
+		));
 
 		for other_hash in [76u64, 78, 0, u64::MAX] {
-			let neighbour = QueueKeyActiveKey::encoded(QueueId(4), 2, other_hash, RowNumber(1));
+			let neighbour = QueueKeyActiveKey::encoded(QueueId(4), Partition(2), other_hash, RowNumber(1));
 			assert!(!contains(&range, &neighbour), "key hash {other_hash} must fall outside key 77");
 		}
 
-		let other_partition = QueueKeyActiveKey::encoded(QueueId(4), 3, 77, RowNumber(1));
+		let other_partition = QueueKeyActiveKey::encoded(QueueId(4), Partition(3), 77, RowNumber(1));
 		assert!(!contains(&range, &other_partition), "partition 3 must fall outside partition 2");
 
-		let other_queue = QueueKeyActiveKey::encoded(QueueId(5), 2, 77, RowNumber(1));
+		let other_queue = QueueKeyActiveKey::encoded(QueueId(5), Partition(2), 77, RowNumber(1));
 		assert!(!contains(&range, &other_queue), "queue 5 must fall outside queue 4");
 	}
 
 	#[test]
 	fn test_partition_scan_covers_every_key_of_one_partition_only() {
-		let range = QueueKeyActiveKey::partition_scan(QueueId(4), 2).encode();
+		let range = QueueKeyActiveKey::partition_scan(QueueId(4), Partition(2)).encode();
 
 		for key_hash in [0u64, 77, u64::MAX] {
-			let inside = QueueKeyActiveKey::encoded(QueueId(4), 2, key_hash, RowNumber(1));
+			let inside = QueueKeyActiveKey::encoded(QueueId(4), Partition(2), key_hash, RowNumber(1));
 			assert!(contains(&range, &inside), "key hash {key_hash} must fall inside the partition scan");
 		}
 
-		let other_partition = QueueKeyActiveKey::encoded(QueueId(4), 3, 77, RowNumber(1));
+		let other_partition = QueueKeyActiveKey::encoded(QueueId(4), Partition(3), 77, RowNumber(1));
 		assert!(!contains(&range, &other_partition));
 	}
 
 	#[test]
 	fn test_schedule_keys_match_legacy_byte_layout() {
 		let queue = QueueId(7);
-		let partition = 3u16;
+		let partition = Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210);
 		let row = RowNumber(42);
 
-		let mut legacy = KeySerializer::with_capacity(11);
-		legacy.extend_u8(KeyTag::QueuePartition as u8).extend_u64(queue).extend_u16(partition);
+		let mut legacy = KeySerializer::with_capacity(25);
+		legacy.extend_u8(KeyTag::QueuePartition as u8).extend_u64(queue).extend_u128(partition.0);
 		assert_eq!(legacy.to_encoded_key().as_slice(), QueuePartitionKey::encoded(queue, partition).as_slice());
 
-		let mut legacy = KeySerializer::with_capacity(19);
+		let mut legacy = KeySerializer::with_capacity(33);
 		legacy.extend_u8(KeyTag::QueueItemState as u8)
 			.extend_u64(queue)
-			.extend_u16(partition)
+			.extend_u128(partition.0)
 			.extend_u64(row.0);
 		assert_eq!(
 			legacy.to_encoded_key().as_slice(),
@@ -750,10 +751,10 @@ mod queue_partition_key_tests {
 		);
 
 		let due = DateTime::from_nanos(1_000);
-		let mut legacy = KeySerializer::with_capacity(27);
+		let mut legacy = KeySerializer::with_capacity(41);
 		legacy.extend_u8(KeyTag::QueueDue as u8)
 			.extend_u64(queue)
-			.extend_u16(partition)
+			.extend_u128(partition.0)
 			.extend_datetime(&due)
 			.extend_u64(row.0);
 		assert_eq!(
@@ -762,10 +763,10 @@ mod queue_partition_key_tests {
 		);
 
 		let key_hash = 0xDEAD_BEEFu64;
-		let mut legacy = KeySerializer::with_capacity(28);
+		let mut legacy = KeySerializer::with_capacity(42);
 		legacy.extend_u8(KeyTag::QueueKeyActive as u8)
 			.extend_u64(queue)
-			.extend_u16(partition)
+			.extend_u128(partition.0)
 			.extend_u64(key_hash)
 			.extend_u64(row.0);
 		assert_eq!(
@@ -778,14 +779,14 @@ mod queue_partition_key_tests {
 	fn queue_due_key_derive_matches_extend_datetime_before_the_epoch() {
 		// a derive that diverges from extend_datetime for negative nanos would sort due timers differently
 		let queue = QueueId(7);
-		let partition = 3u16;
+		let partition = Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210);
 		let row = RowNumber(42);
 		let due = DateTime::from_nanos(-1);
 
-		let mut legacy = KeySerializer::with_capacity(27);
+		let mut legacy = KeySerializer::with_capacity(41);
 		legacy.extend_u8(KeyTag::QueueDue as u8)
 			.extend_u64(queue)
-			.extend_u16(partition)
+			.extend_u128(partition.0)
 			.extend_datetime(&due)
 			.extend_u64(row.0);
 		assert_eq!(

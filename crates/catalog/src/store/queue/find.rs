@@ -15,7 +15,7 @@ use crate::{
 	CatalogStore, Result,
 	store::queue::{
 		decode_queue_time,
-		shape::{decode_deduplicate, decode_dispatch, queue, queue_namespace},
+		shape::{decode_deduplicate, decode_dispatch, decode_partition_by, queue, queue_namespace},
 	},
 };
 
@@ -42,6 +42,7 @@ impl CatalogStore {
 			namespace,
 			name,
 			columns: Self::list_columns(rx, id)?,
+			partition_by: decode_partition_by(&bytes),
 			dispatch: decode_dispatch(&bytes),
 			retention,
 			retry,
@@ -102,8 +103,8 @@ pub mod tests {
 				name: Fragment::internal(name),
 				namespace: namespace.id(),
 				columns: vec![],
+				partition_by: vec![],
 				dispatch: QueueDispatch::Fifo {
-					partitions: 16,
 					ordered_by: None,
 				},
 				retention: QueueRetention::default(),

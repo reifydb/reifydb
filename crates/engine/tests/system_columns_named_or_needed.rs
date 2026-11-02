@@ -277,7 +277,7 @@ fn queue_claim_keeps_the_row_numbers_of_the_claimed_items() {
 	// Claimed items are stored rows; dropping their row numbers leaves ack and kill nothing to address.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 	let frames = t.command(r#"CALL queue::claim("w1", "test::jobs", 2, duration::seconds(30))"#);
 	let frame = only_frame(&frames);

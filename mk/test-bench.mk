@@ -130,7 +130,7 @@ bench-queue-help:
 	@printf "  %-16s %s\n" "CLAIM"      "poll,longpoll (default: both; drain+longpoll is skipped)"
 	@printf "  %-16s %s\n" "TRANSPORTS" "embedded,http,ws,grpc (default: all four)"
 	@printf "  %-16s %s\n" "WORKERS"    "concurrent claim/ack workers (default: 1,4,16,32)"
-	@printf "  %-16s %s\n" "PARTITIONS" "queue partitions (default: 1,16,128; max 1024)"
+	@printf "  %-16s %s\n" "PARTITIONS" "distinct partition values, 1 means unpartitioned (default: 1,16,128)"
 	@echo ""
 	@echo "  Tuning knobs"
 	@echo "  ───────────────────────────────────────────────────────────────"

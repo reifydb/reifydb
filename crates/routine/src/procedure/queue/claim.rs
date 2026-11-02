@@ -2,13 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	ops::Bound,
 	slice,
 	sync::{Arc, LazyLock},
 };
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
-use reifydb_codec::row::{pod::EncodedPodRow, queue::EncodedQueueRow};
+use reifydb_codec::{
+	key::encoded::EncodedKeyRange,
+	row::{pod::EncodedPodRow, queue::EncodedQueueRow},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -30,7 +34,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_transaction::single::SingleTransaction;
+use reifydb_transaction::{queue::scheduling::partition_counters_page, single::SingleTransaction};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -71,7 +75,7 @@ impl QueueClaim {
 }
 
 struct Lease {
-	partition: u16,
+	partition: Partition,
 	row: RowNumber,
 	attempt: u32,
 	deadline: DateTime,
@@ -194,29 +198,48 @@ fn lease_due_items(
 	lease_ttl: Duration,
 	now: DateTime,
 ) -> Result<Vec<Lease>, RoutineError> {
-	let partitions = queue.partitions();
-	#[allow(clippy::disallowed_methods)]
-	let start = (Partition::of(&[Value::Utf8(worker.to_string())]).0 % u128::from(partitions)) as u16;
-
 	let mut leases = Vec::new();
-	for offset in 0..partitions {
-		if leases.len() >= max_n {
-			break;
-		}
+	for range in worker_partition_walk(queue, worker) {
+		let mut next = Some(range);
+		while let Some(range) = next {
+			let page = partition_counters_page(single, range)?;
+			for (partition, counters) in page.counters {
+				if leases.len() >= max_n {
+					return Ok(leases);
+				}
+				if counters.depth == 0 {
+					continue;
+				}
 
-		let partition = ((u32::from(start) + u32::from(offset)) % u32::from(partitions)) as u16;
-		let need = max_n - leases.len();
-		leases.extend(lease_from_partition(ctx, single, queue, partition, need, lease_ttl, now)?);
+				let need = max_n - leases.len();
+				leases.extend(lease_from_partition(
+					ctx, single, queue, partition, need, lease_ttl, now,
+				)?);
+			}
+			next = page.next;
+		}
 	}
 
 	Ok(leases)
+}
+
+fn worker_partition_walk(queue: &Queue, worker: &str) -> [EncodedKeyRange; 2] {
+	#[allow(clippy::disallowed_methods)]
+	let start = Partition::of(&[Value::Utf8(worker.to_string())]);
+	let start_key = QueuePartitionKey::encoded(queue.id, start);
+
+	let mut from_start = QueuePartitionKey::queue_scan(queue.id).encode();
+	let mut wrapped = from_start.clone();
+	from_start.start = Bound::Included(start_key.clone());
+	wrapped.end = Bound::Excluded(start_key);
+	[from_start, wrapped]
 }
 
 fn lease_from_partition(
 	ctx: &mut ProcedureContext<'_, '_>,
 	single: &SingleTransaction,
 	queue: &Queue,
-	partition: u16,
+	partition: Partition,
 	need: usize,
 	lease_ttl: Duration,
 	now: DateTime,
@@ -262,11 +285,11 @@ fn readable_candidates(
 	Ok(readable)
 }
 
-#[instrument(name = "queue::claim::scan", level = "trace", skip_all, fields(queue = queue.id.0, partition = partition))]
+#[instrument(name = "queue::claim::scan", level = "trace", skip_all, fields(queue = queue.id.0, partition = partition.0))]
 fn due_candidates(
 	single: &SingleTransaction,
 	queue: &Queue,
-	partition: u16,
+	partition: Partition,
 	now: DateTime,
 	need: usize,
 ) -> Result<Vec<RowNumber>, RoutineError> {
@@ -288,7 +311,7 @@ fn due_candidates(
 fn lease_candidates(
 	single: &SingleTransaction,
 	queue: &Queue,
-	partition: u16,
+	partition: Partition,
 	candidates: &[RowNumber],
 	lease_ttl: Duration,
 	now: DateTime,

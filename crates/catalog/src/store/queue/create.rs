@@ -43,6 +43,7 @@ pub struct QueueToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<QueueColumnToCreate>,
+	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
@@ -73,6 +74,12 @@ impl CatalogStore {
 
 	fn validate_queue(to_create: &QueueToCreate) -> Result<()> {
 		reject_invalid_time(CatalogObjectKind::Queue, &to_create.name, &to_create.time)?;
+		reject_invalid_column_list(
+			CatalogObjectKind::Queue,
+			&to_create.name,
+			"partition_by",
+			&to_create.partition_by,
+		)?;
 		reject_empty_text(
 			CatalogObjectKind::Queue,
 			&to_create.name,
@@ -106,6 +113,7 @@ impl CatalogStore {
 			namespace: to_create.namespace,
 			name: to_create.name.text().to_string(),
 			columns: Vec::new(),
+			partition_by: to_create.partition_by.clone(),
 			dispatch: to_create.dispatch.clone(),
 			deduplicate: to_create.deduplicate.clone(),
 			retention: to_create.retention.clone(),
@@ -166,6 +174,7 @@ impl CatalogStore {
 		queue::set_id(&mut row, u64::from(queue_id));
 		queue::set_namespace(&mut row, u64::from(namespace));
 		queue::set_name(&mut row, to_create.name.text());
+		queue::set_partition_by(&mut row, to_create.partition_by.join(","));
 		encode_dispatch(&mut row, &to_create.dispatch);
 		if let Some(done) = to_create.retention.done {
 			queue::set_retention_done(&mut row, done);
@@ -287,8 +296,8 @@ pub mod tests {
 				auto_increment: false,
 				dictionary_id: None,
 			}],
+			partition_by: vec!["payload".to_string()],
 			dispatch: QueueDispatch::Fifo {
-				partitions: 32,
 				ordered_by: Some("payload".to_string()),
 			},
 			retention: QueueRetention {
@@ -305,7 +314,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_queue_round_trips_every_option() {
-		// A queue that loses its partition count or retry budget in the def-row codec
+		// A queue that loses its partition columns or retry budget in the def-row codec
 		// silently changes behaviour.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
@@ -317,7 +326,7 @@ pub mod tests {
 
 		assert_eq!(created.name, "jobs");
 		assert_eq!(created.namespace, namespace.id());
-		assert_eq!(created.partitions(), 32);
+		assert_eq!(created.partition_by, vec!["payload".to_string()]);
 		assert_eq!(created.ordered_by(), Some("payload"));
 		assert_eq!(created.retention.done, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(created.retry.attempts, 9);
@@ -339,8 +348,8 @@ pub mod tests {
 				name: Fragment::internal("plain"),
 				namespace: namespace.id(),
 				columns: vec![],
+				partition_by: vec![],
 				dispatch: QueueDispatch::Fifo {
-					partitions: Queue::DEFAULT_PARTITIONS,
 					ordered_by: None,
 				},
 				retention: QueueRetention::default(),
@@ -351,7 +360,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(created.partitions(), Queue::DEFAULT_PARTITIONS);
+		assert!(created.partition_by.is_empty());
 		assert_eq!(created.ordered_by(), None);
 		assert_eq!(created.retention.done, None);
 		assert_eq!(created.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
@@ -416,8 +425,8 @@ mod time_declaration_tests {
 			name: Fragment::internal(name),
 			namespace,
 			columns: vec![],
+			partition_by: vec![],
 			dispatch: QueueDispatch::Fifo {
-				partitions: Queue::DEFAULT_PARTITIONS,
 				ordered_by: None,
 			},
 			deduplicate: None,

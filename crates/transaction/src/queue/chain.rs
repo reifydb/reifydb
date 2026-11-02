@@ -11,7 +11,11 @@ use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRangeRev},
 	key::queue::QueueKeyActiveKey,
 };
-use reifydb_value::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	util::cowvec::CowVec,
+	value::{partition::Partition, row_number::RowNumber},
+};
 
 use crate::single::{SingleTransaction, write::SingleWriteTransaction};
 
@@ -39,7 +43,7 @@ pub fn chain_peek(
 	single: &SingleTransaction,
 	overlay: &mut ChainOverlay,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	key_hash: u64,
 ) -> Result<ChainHead> {
 	let budget = 2 + ChainOverlay::of_key(&overlay.removed, key_hash).count() as u64;
@@ -77,7 +81,7 @@ pub fn chain_add(
 	tx: &mut SingleWriteTransaction<'_>,
 	overlay: &mut ChainOverlay,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
@@ -92,7 +96,7 @@ pub fn chain_remove(
 	tx: &mut SingleWriteTransaction<'_>,
 	overlay: &mut ChainOverlay,
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {

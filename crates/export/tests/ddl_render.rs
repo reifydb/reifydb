@@ -451,7 +451,7 @@ fn enum_structured_column_absorbs_field_columns() {
 	);
 }
 
-fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_by: Option<&str>) -> Queue {
+fn queue(retention: QueueRetention, retry: QueueRetry, partition_by: &[&str], ordered_by: Option<&str>) -> Queue {
 	Queue {
 		id: QueueId(1),
 		namespace: NamespaceId(NS),
@@ -460,8 +460,8 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_
 			column(1, "id", TypeConstraint::unconstrained(ValueType::Int4)),
 			column(2, "kind", TypeConstraint::unconstrained(ValueType::Utf8)),
 		],
+		partition_by: partition_by.iter().map(|s| s.to_string()).collect(),
 		dispatch: QueueDispatch::Fifo {
-			partitions,
 			ordered_by: ordered_by.map(|s| s.to_string()),
 		},
 		deduplicate: None,
@@ -482,13 +482,13 @@ fn queue_with_all_options() {
 			attempts: 9,
 			backoff: Duration::from_seconds_const(30),
 		},
-		32,
+		&["kind"],
 		Some("id"),
 	);
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
-		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 32, ordered_by: id }, retention: { done: 7d }, retry: { attempts: 9, backoff: 30s } };"
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { partition: { by: { kind } }, fifo: { ordered_by: id }, retention: { done: 7d }, retry: { attempts: 9, backoff: 30s } };"
 	);
 }
 
@@ -496,7 +496,7 @@ fn queue_with_all_options() {
 fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 	// The dispatch block is mandatory for the export to re-parse, but emitting the inner defaults
 	// would freeze today's values into every exported schema.
-	let q = queue(QueueRetention::default(), QueueRetry::default(), Queue::DEFAULT_PARTITIONS, None);
+	let q = queue(QueueRetention::default(), QueueRetry::default(), &[], None);
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
@@ -505,12 +505,13 @@ fn queue_with_only_defaults_still_renders_the_dispatch_block() {
 }
 
 #[test]
-fn queue_renders_only_the_options_that_differ_from_defaults() {
-	let q = queue(QueueRetention::default(), QueueRetry::default(), 4, None);
+fn queue_renders_every_partition_column_in_order() {
+	// Reordering the columns would re-hash every partition value after an import.
+	let q = queue(QueueRetention::default(), QueueRetry::default(), &["kind", "id"], None);
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
-		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 4 } };"
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { partition: { by: { kind, id } }, fifo: {} };"
 	);
 }
 

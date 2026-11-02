@@ -9,7 +9,9 @@ use reifydb_codec::row::{
 	queue_deduplication::EncodedQueueDeduplicationRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{
+	datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber, value_type::ValueType,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -26,6 +28,7 @@ pub struct Queue {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub columns: Vec<Column>,
+	pub partition_by: Vec<String>,
 	pub dispatch: QueueDispatch,
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
@@ -34,19 +37,13 @@ pub struct Queue {
 }
 
 impl Queue {
-	pub const DEFAULT_PARTITIONS: u16 = 16;
-	pub const MIN_PARTITIONS: u16 = 1;
-	pub const MAX_PARTITIONS: u16 = 1024;
+	pub const UNPARTITIONED: Partition = Partition(0);
 	pub const DEFAULT_RETRY_ATTEMPTS: u32 = 5;
 	pub const DEFAULT_RETRY_BACKOFF: Duration = Duration::from_seconds_const(10);
 	pub const DEFAULT_RETRY_BACKOFF_CAP: Duration = Duration::from_hours_const(1);
 
 	pub fn name(&self) -> &str {
 		&self.name
-	}
-
-	pub fn partitions(&self) -> u16 {
-		self.dispatch.partitions()
 	}
 
 	pub fn ordered_by(&self) -> Option<&str> {
@@ -57,7 +54,6 @@ impl Queue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QueueDispatch {
 	Fifo {
-		partitions: u16,
 		ordered_by: Option<String>,
 	},
 }
@@ -70,15 +66,6 @@ impl QueueDispatch {
 			Self::Fifo {
 				..
 			} => Self::TAG_FIFO,
-		}
-	}
-
-	pub fn partitions(&self) -> u16 {
-		match self {
-			Self::Fifo {
-				partitions,
-				..
-			} => *partitions,
 		}
 	}
 
@@ -95,7 +82,6 @@ impl QueueDispatch {
 impl Default for QueueDispatch {
 	fn default() -> Self {
 		Self::Fifo {
-			partitions: Queue::DEFAULT_PARTITIONS,
 			ordered_by: None,
 		}
 	}

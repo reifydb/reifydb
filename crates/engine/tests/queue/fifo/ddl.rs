@@ -16,14 +16,14 @@ fn find_queue(t: &TestEngine, namespace: &str, name: &str) -> Option<Queue> {
 
 #[test]
 fn test_create_queue_with_bare_dispatch_applies_defaults() {
-	// A queue landing 0 partitions or 0 retry attempts could never deliver work.
+	// A queue landing a phantom partition column or 0 retry attempts could never deliver work.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { order_id: uuid7, kind: utf8 } WITH { fifo: {} }");
 
 	let queue = find_queue(&t, "test", "jobs").expect("queue should exist");
 
-	assert_eq!(queue.partitions(), Queue::DEFAULT_PARTITIONS);
+	assert!(queue.partition_by.is_empty());
 	assert_eq!(queue.ordered_by(), None);
 	assert_eq!(queue.retention.done, None);
 	assert_eq!(queue.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
@@ -37,14 +37,15 @@ fn test_create_queue_with_all_options_round_trips() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(r#"CREATE QUEUE test::jobs { order_id: uuid7, kind: utf8 } WITH {
-			fifo: { partitions: 32, ordered_by: order_id },
+			partition: { by: { kind } },
+			fifo: { ordered_by: order_id },
 			retention: { done: 7d },
 			retry: { attempts: 9, backoff: 30s }
 		}"#);
 
 	let queue = find_queue(&t, "test", "jobs").expect("queue should exist");
 
-	assert_eq!(queue.partitions(), 32);
+	assert_eq!(queue.partition_by, vec!["kind".to_string()]);
 	assert_eq!(queue.ordered_by(), Some("order_id"));
 	assert_eq!(queue.retention.done, Some(Duration::from_days(7).unwrap()));
 	assert_eq!(queue.retry.attempts, 9);
@@ -52,30 +53,27 @@ fn test_create_queue_with_all_options_round_trips() {
 }
 
 #[test]
-fn test_create_queue_rejects_out_of_range_partitions() {
-	// 0 partitions makes the queue undeliverable; an unbounded count explodes the scheduling keyspace.
+fn test_create_queue_rejects_the_removed_partitions_key() {
+	// Accepting the old count would silently give the caller one FIFO instead of the lanes they asked for.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
-	let too_few = t.admin_err("CREATE QUEUE test::a { id: int4 } WITH { fifo: { partitions: 0 } }");
-	assert!(too_few.contains("partitions"), "error should name the option, got: {too_few}");
-
-	let too_many = t.admin_err("CREATE QUEUE test::b { id: int4 } WITH { fifo: { partitions: 1025 } }");
-	assert!(too_many.contains("partitions"), "error should name the option, got: {too_many}");
+	let refused = t.admin_err("CREATE QUEUE test::a { id: int4 } WITH { fifo: { partitions: 4 } }");
+	assert!(refused.contains("ordered_by"), "error should name the valid fifo key, got: {refused}");
 
 	assert!(find_queue(&t, "test", "a").is_none());
-	assert!(find_queue(&t, "test", "b").is_none());
 }
 
 #[test]
-fn test_create_queue_accepts_range_boundaries() {
+fn test_create_queue_rejects_an_unknown_partition_column() {
+	// An unresolved column would panic on the first insert instead of failing at DDL.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE QUEUE test::low { id: int4 } WITH { fifo: { partitions: 1 } }");
-	t.admin("CREATE QUEUE test::high { id: int4 } WITH { fifo: { partitions: 1024 } }");
 
-	assert_eq!(find_queue(&t, "test", "low").unwrap().partitions(), 1);
-	assert_eq!(find_queue(&t, "test", "high").unwrap().partitions(), 1024);
+	let refused = t.admin_err("CREATE QUEUE test::a { id: int4 } WITH { partition: { by: { nope } }, fifo: {} }");
+	assert!(refused.contains("nope"), "error should name the column, got: {refused}");
+
+	assert!(find_queue(&t, "test", "a").is_none());
 }
 
 #[test]
@@ -133,7 +131,7 @@ fn test_system_queues_lists_definitions() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::plain { id: int4 } WITH { fifo: {} }");
-	t.admin("CREATE QUEUE test::keyed { id: int4 } WITH { fifo: { partitions: 4, ordered_by: id } }");
+	t.admin("CREATE QUEUE test::keyed { id: int4 } WITH { partition: { by: { id } }, fifo: { ordered_by: id } }");
 
 	let frames = t.query("FROM system::queues SORT { name: asc }");
 	let rows: Vec<_> = frames[0].rows().collect();
@@ -141,11 +139,11 @@ fn test_system_queues_lists_definitions() {
 	assert_eq!(rows.len(), 2);
 
 	assert_eq!(rows[0].get::<String>("name").unwrap().unwrap(), "keyed");
-	assert_eq!(rows[0].get::<u64>("partitions").unwrap().unwrap(), 4);
+	assert_eq!(rows[0].get::<String>("partition_by").unwrap().unwrap(), "id");
 	assert_eq!(rows[0].get::<String>("ordered_by").unwrap().unwrap(), "id");
 
 	assert_eq!(rows[1].get::<String>("name").unwrap().unwrap(), "plain");
-	assert_eq!(rows[1].get::<u64>("partitions").unwrap().unwrap(), Queue::DEFAULT_PARTITIONS as u64);
+	assert_eq!(rows[1].get::<String>("partition_by").unwrap(), None);
 	assert_eq!(rows[1].get::<String>("ordered_by").unwrap(), None);
 }
 
@@ -171,11 +169,11 @@ fn test_dropped_queue_name_can_be_recreated() {
 	let first = find_queue(&t, "test", "jobs").unwrap().id;
 
 	t.admin("DROP QUEUE test::jobs");
-	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
+	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { partition: { by: { id } }, fifo: {} }");
 
 	let second = find_queue(&t, "test", "jobs").unwrap();
 	assert_ne!(second.id, first);
-	assert_eq!(second.partitions(), 8);
+	assert_eq!(second.partition_by, vec!["id".to_string()]);
 }
 
 #[test]

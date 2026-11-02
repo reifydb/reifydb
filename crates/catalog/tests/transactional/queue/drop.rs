@@ -37,7 +37,7 @@ fn rolled_back_drop_leaves_queue_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_drop_b");
-	t.admin("CREATE QUEUE qns_drop_b::jobs { msg: utf8 } WITH { fifo: { partitions: 8 } }");
+	t.admin("CREATE QUEUE qns_drop_b::jobs { msg: utf8 } WITH { partition: { by: { msg } }, fifo: {} }");
 	let ns_id = namespace_id(&t, "qns_drop_b");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
@@ -47,7 +47,7 @@ fn rolled_back_drop_leaves_queue_intact() {
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let queue = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().unwrap();
-	assert_eq!(queue.partitions(), 8);
+	assert_eq!(queue.partition_by, vec!["msg".to_string()]);
 	assert_eq!(queue.columns.len(), 1);
 }
 
@@ -74,20 +74,23 @@ fn drop_then_recreate_in_same_txn_ends_with_the_new_definition() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_drop_d");
-	t.admin("CREATE QUEUE qns_drop_d::jobs { msg: utf8 } WITH { fifo: { partitions: 2 } }");
+	t.admin("CREATE QUEUE qns_drop_d::jobs { msg: utf8 } WITH { fifo: {} }");
 	let ns_id = namespace_id(&t, "qns_drop_d");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("DROP QUEUE qns_drop_d::jobs", Params::None);
-	let r = txn.rql("CREATE QUEUE qns_drop_d::jobs { msg: utf8 } WITH { fifo: { partitions: 4 } }", Params::None);
+	let r = txn.rql(
+		"CREATE QUEUE qns_drop_d::jobs { msg: utf8 } WITH { partition: { by: { msg } }, fifo: {} }",
+		Params::None,
+	);
 	assert!(r.error.is_none(), "recreate failed: {:?}", r.error);
 
 	let queue = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().unwrap();
-	assert_eq!(queue.partitions(), 4);
+	assert_eq!(queue.partition_by, vec!["msg".to_string()]);
 
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let queue = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().unwrap();
-	assert_eq!(queue.partitions(), 4);
+	assert_eq!(queue.partition_by, vec!["msg".to_string()]);
 }

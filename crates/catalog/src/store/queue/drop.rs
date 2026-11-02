@@ -14,6 +14,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{
+	queue::scheduling::queue_partition_counters,
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
@@ -24,7 +25,7 @@ impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
 			txn.remove(vec![(NamespaceQueueKey::new(queue_def.namespace, queue).into(), None)])?;
-			remove_queue_scheduling_state(&txn.single, queue, queue_def.partitions())?;
+			remove_queue_scheduling_state(&txn.single, queue)?;
 		}
 
 		drop_object_metadata(txn, queue.into(), None)?;
@@ -35,9 +36,14 @@ impl CatalogStore {
 	}
 }
 
-fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, partitions: u16) -> Result<()> {
-	let lock_keys: Vec<EncodedKey> =
-		(0..partitions).map(|partition| QueuePartitionKey::encoded(queue, partition)).collect();
+fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId) -> Result<()> {
+	let lock_keys: Vec<EncodedKey> = queue_partition_counters(single, queue)?
+		.into_iter()
+		.map(|(partition, _)| QueuePartitionKey::encoded(queue, partition))
+		.collect();
+	if lock_keys.is_empty() {
+		return Ok(());
+	}
 	let ranges = vec![
 		QueueItemStateKey::queue_scan(queue).encode(),
 		QueueDueKey::queue_scan(queue).encode(),
@@ -99,8 +105,8 @@ pub mod tests {
 				name: Fragment::internal("jobs"),
 				namespace: namespace.id(),
 				columns: vec![],
+				partition_by: vec![],
 				dispatch: QueueDispatch::Fifo {
-					partitions: 16,
 					ordered_by: None,
 				},
 				retention: QueueRetention::default(),
@@ -142,8 +148,8 @@ pub mod tests {
 					auto_increment: false,
 					dictionary_id: None,
 				}],
+				partition_by: vec![],
 				dispatch: QueueDispatch::Fifo {
-					partitions: 16,
 					ordered_by: None,
 				},
 				retention: QueueRetention::default(),
@@ -172,8 +178,8 @@ pub mod tests {
 			name: Fragment::internal("jobs"),
 			namespace: namespace.id(),
 			columns: vec![],
+			partition_by: vec![],
 			dispatch: QueueDispatch::Fifo {
-				partitions: 16,
 				ordered_by: None,
 			},
 			retention: QueueRetention::default(),

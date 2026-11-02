@@ -99,6 +99,8 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		compile_procedures_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
 		compile_bindings_vtable(&table.name)
+	} else if namespace.id() == NamespaceId::SYSTEM_QUEUE {
+		compile_queue_vtable(&table.name)
 	} else if namespace.id() == NamespaceId::SYSTEM_AUTHENTICATION {
 		compile_authentication_vtable(&table.name)
 	} else {
@@ -151,7 +153,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"types" => VTables::Types(SystemTypes::new()),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),
-		"queue_partitions" => VTables::QueuePartitions(SystemQueuePartitions::new()),
 		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),
 		"row_shape_fields" => {
 			VTables::RowShapeFields(SystemRowShapeFields::new(context.services.catalog.clone()))
@@ -228,6 +229,13 @@ fn compile_bindings_vtable(name: &str) -> Option<VTables> {
 		"http" => VTables::BindingsHttp(SystemBindingsHttp::new()),
 		"grpc" => VTables::BindingsGrpc(SystemBindingsGrpc::new()),
 		"ws" => VTables::BindingsWs(SystemBindingsWs::new()),
+		_ => return None,
+	})
+}
+
+fn compile_queue_vtable(name: &str) -> Option<VTables> {
+	Some(match name {
+		"partitions" => VTables::QueuePartitions(SystemQueuePartitions::new()),
 		_ => return None,
 	})
 }

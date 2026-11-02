@@ -6,7 +6,10 @@ use std::slice::from_ref;
 use reifydb::{
 	core::{
 		interface::{
-			catalog::{id::QueueId, queue::decode_queue_partition_counters},
+			catalog::{
+				id::QueueId,
+				queue::{Queue, decode_queue_partition_counters},
+			},
 			store::{SingleVersionGet, SingleVersionRange},
 		},
 		key::{
@@ -18,7 +21,7 @@ use reifydb::{
 	transaction::transaction::Transaction,
 };
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::value::{identity::IdentityId, partition::Partition};
 
 fn queue_id(db: &TestDb, name: &str) -> QueueId {
 	let engine = db.engine();
@@ -39,7 +42,7 @@ fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<TaggedKey> {
 		.collect()
 }
 
-fn depth(db: &TestDb, queue: QueueId, partition: u16) -> u64 {
+fn depth(db: &TestDb, queue: QueueId, partition: Partition) -> u64 {
 	let store = db.engine().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
@@ -50,18 +53,18 @@ fn depth(db: &TestDb, queue: QueueId, partition: u16) -> u64 {
 }
 
 fn wipe_scheduling(db: &TestDb, queue: QueueId) {
-	let state_keys = keys(db, QueueItemStateKey::partition_scan(queue, 0).encode());
-	let due_keys = keys(db, QueueDueKey::partition_scan(queue, 0).encode());
+	let state_keys = keys(db, QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode());
+	let due_keys = keys(db, QueueDueKey::partition_scan(queue, Queue::UNPARTITIONED).encode());
 
 	let single = db.engine().single();
-	let lock = QueuePartitionKey::new(queue, 0);
+	let lock = QueuePartitionKey::new(queue, Queue::UNPARTITIONED);
 	let lock_key = lock.encode();
 	let mut tx = single
 		.begin_command_ranged(
 			[&lock_key],
 			vec![
-				QueueItemStateKey::partition_scan(queue, 0).encode(),
-				QueueDueKey::partition_scan(queue, 0).encode(),
+				QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode(),
+				QueueDueKey::partition_scan(queue, Queue::UNPARTITIONED).encode(),
 			],
 		)
 		.unwrap();
@@ -82,14 +85,14 @@ fn scheduling_state_is_rebuilt_after_a_sqlite_reopen() {
 
 	{
 		let mut db = TestDb::sqlite_at(&path);
-		db.admin("create namespace p; create queue p::jobs { id: int4 } with { fifo: { partitions: 1 } };");
+		db.admin("create namespace p; create queue p::jobs { id: int4 } with { fifo: {} };");
 		db.command("insert p::jobs [{ id: 1 }, { id: 2 }];");
 
 		let queue = queue_id(&db, "jobs");
-		assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(), 2);
+		assert_eq!(keys(&db, QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).len(), 2);
 
 		wipe_scheduling(&db, queue);
-		assert!(keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).is_empty());
+		assert!(keys(&db, QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).is_empty());
 
 		db.stop();
 	}
@@ -98,12 +101,12 @@ fn scheduling_state_is_rebuilt_after_a_sqlite_reopen() {
 	let queue = queue_id(&db, "jobs");
 
 	assert_eq!(
-		keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(),
+		keys(&db, QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).len(),
 		2,
 		"boot must re-admit both items"
 	);
-	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0).encode()).len(), 2);
-	assert_eq!(depth(&db, queue, 0), 2);
+	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).len(), 2);
+	assert_eq!(depth(&db, queue, Queue::UNPARTITIONED), 2);
 
 	db.stop();
 }
@@ -117,7 +120,7 @@ fn a_reopen_over_intact_state_changes_nothing() {
 
 	{
 		let mut db = TestDb::sqlite_at(&path);
-		db.admin("create namespace p; create queue p::jobs { id: int4 } with { fifo: { partitions: 1 } };");
+		db.admin("create namespace p; create queue p::jobs { id: int4 } with { fifo: {} };");
 		db.command("insert p::jobs [{ id: 1 }, { id: 2 }];");
 		db.stop();
 	}
@@ -126,12 +129,16 @@ fn a_reopen_over_intact_state_changes_nothing() {
 	let queue = queue_id(&db, "jobs");
 
 	assert_eq!(
-		keys(&db, QueueItemStateKey::partition_scan(queue, 0).encode()).len(),
+		keys(&db, QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).len(),
 		2,
 		"one state record per item"
 	);
-	assert_eq!(keys(&db, QueueDueKey::partition_scan(queue, 0).encode()).len(), 2, "one due entry per item");
-	assert_eq!(depth(&db, queue, 0), 2, "depth must not be inflated by the boot pass");
+	assert_eq!(
+		keys(&db, QueueDueKey::partition_scan(queue, Queue::UNPARTITIONED).encode()).len(),
+		2,
+		"one due entry per item"
+	);
+	assert_eq!(depth(&db, queue, Queue::UNPARTITIONED), 2, "depth must not be inflated by the boot pass");
 
 	db.stop();
 }

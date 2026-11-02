@@ -20,12 +20,12 @@ use reifydb_routine_abi::{
 	error::{QueueError, RoutineError},
 };
 use reifydb_transaction::{
-	queue::scheduling::{ReplayOutcome, apply_replay_transition},
+	queue::scheduling::{ReplayOutcome, apply_replay_transition, queue_partition_counters},
 	single::SingleTransaction,
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, row_number::RowNumber, value_type::ValueType},
+	value::{Value, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -162,9 +162,9 @@ fn locate(
 	single: &SingleTransaction,
 	queue: &Queue,
 	row: RowNumber,
-) -> Result<Option<(u16, Option<u64>)>, RoutineError> {
+) -> Result<Option<(Partition, Option<u64>)>, RoutineError> {
 	let store = single.read_store();
-	for partition in 0..queue.partitions() {
+	for (partition, _) in queue_partition_counters(single, queue.id)? {
 		let Some(stored) =
 			SingleVersionGet::get(&store, &[QueueItemStateKey::encoded(queue.id, partition, row)])?
 				.pop()

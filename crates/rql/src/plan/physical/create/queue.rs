@@ -44,6 +44,7 @@ impl<'bump> Compiler<'bump> {
 			queue: self.interner.intern_fragment(&create.queue.name),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
+			partition_by: create.partition_by,
 			dispatch: create.dispatch,
 			deduplicate: create.deduplicate,
 			retention: create.retention,

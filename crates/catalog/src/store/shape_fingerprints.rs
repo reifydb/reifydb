@@ -257,12 +257,12 @@ fn pinned() -> Vec<Pin> {
 		(
 			"queue::queue",
 			&*QUEUE_SHAPE,
-			0xfcb2b18fc36a7c1b,
+			0x40281c3e3664af79,
 			&[
 				"id",
 				"namespace",
 				"name",
-				"partitions",
+				"partition_by",
 				"ordered_by",
 				"retention_done",
 				"retry_attempts",

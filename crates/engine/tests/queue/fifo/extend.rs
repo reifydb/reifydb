@@ -16,7 +16,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, datetime::DateTime, frame::frame::Frame};
 
-const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }";
+const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }";
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();

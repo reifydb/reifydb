@@ -450,18 +450,18 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		.encode(),
 		KeyTag::QueuePartition => QueuePartitionKey {
 			queue: QueueId(1),
-			partition: 0,
+			partition: Partition(0),
 		}
 		.encode(),
 		KeyTag::QueueItemState => QueueItemStateKey {
 			queue: QueueId(1),
-			partition: 0,
+			partition: Partition(0),
 			row: RowNumber(1),
 		}
 		.encode(),
 		KeyTag::QueueDue => QueueDueKey {
 			queue: QueueId(1),
-			partition: 0,
+			partition: Partition(0),
 			due: DateTime::from_order(1),
 			row: RowNumber(1),
 		}
@@ -474,7 +474,7 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		.encode(),
 		KeyTag::QueueKeyActive => QueueKeyActiveKey {
 			queue: QueueId(1),
-			partition: 0,
+			partition: Partition(0),
 			key_hash: 1,
 			row: RowNumber(1),
 		}

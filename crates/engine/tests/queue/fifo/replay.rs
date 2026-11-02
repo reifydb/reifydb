@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::{
 			id::QueueId,
 			queue::{
-				QueueAttemptRecord, QueueItemState, QueueItemStatus, QueuePartitionCounters,
+				Queue, QueueAttemptRecord, QueueItemState, QueueItemStatus, QueuePartitionCounters,
 				decode_queue_attempt, decode_queue_item_state, decode_queue_partition_counters,
 			},
 		},
@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, frame::frame::Frame, system_columns::row_numbers};
+use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, system_columns::row_numbers};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -66,7 +66,7 @@ fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 		.collect()
 }
 
-fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCounters {
+fn counters(t: &TestEngine, queue: QueueId, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
@@ -141,9 +141,8 @@ fn kill(t: &TestEngine) {
 	t.command(&format!(r#"CALL queue::kill("{}", none)"#, claim_one(t, "w1")));
 }
 
-const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }";
-const TWO_ATTEMPTS: &str =
-	"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 }, retry: { attempts: 2 } }";
+const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }";
+const TWO_ATTEMPTS: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }";
 
 #[test]
 fn test_replay_returns_a_dead_item_to_the_ready_set() {
@@ -325,27 +324,24 @@ fn test_replay_returns_the_item_to_the_depth_counter() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	kill(&t);
-	assert_eq!(counters(&t, queue, 0).depth, 0, "a dead item is not backlog");
-	assert_eq!(counters(&t, queue, 0).in_flight, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 0, "a dead item is not backlog");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 0);
 	let item = states(&t, queue)[0].0.row;
 
 	replay(&t, item.0);
 
-	assert_eq!(counters(&t, queue, 0).depth, 1);
-	assert_eq!(counters(&t, queue, 0).in_flight, 0, "replay must not fake a lease");
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 1);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 0, "replay must not fake a lease");
 
 	claim_one(&t, "w1");
-	assert_eq!(counters(&t, queue, 0).depth, 0);
-	assert_eq!(counters(&t, queue, 0).in_flight, 1);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).in_flight, 1);
 }
 
 #[test]
 fn test_replay_finds_an_item_in_any_partition() {
-	// Items are spread across partitions by hash and the caller only knows the item number, never
-	// the partition. A lookup that checked partition 0 only would work in every single-partition
-	// test and fail against any real queue, so this fixture deliberately kills an item that does
-	// not hash to partition 0.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 8 } }");
+	// The caller only knows the item number, so a lookup checking only the unpartitioned slot must fail here.
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { partition: { by: { id } }, fifo: {} }");
 	for id in 1..=16 {
 		t.command(&format!("INSERT test::jobs [{{ id: {id} }}]"));
 	}
@@ -354,8 +350,8 @@ fn test_replay_finds_an_item_in_any_partition() {
 	let placed = states(&t, queue);
 	let (key, _) = placed
 		.iter()
-		.find(|(key, _)| key.partition != 0)
-		.expect("16 items over 8 partitions must land somewhere other than partition 0");
+		.find(|(key, _)| key.partition != Queue::UNPARTITIONED)
+		.expect("a partitioned queue must place its items by value hash");
 	let (partition, item) = (key.partition, key.row);
 
 	let token = t
@@ -404,7 +400,7 @@ fn test_replay_of_a_leased_item_is_refused_without_touching_it() {
 	assert!(err.contains("leased"), "{err}");
 	assert_eq!(state_of(&t, queue), before, "a refused replay must change nothing");
 	assert_eq!(dues(&t, queue).len(), 0, "a refused replay must not add a due entry");
-	assert_eq!(counters(&t, queue, 0).depth, 0);
+	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 0);
 }
 
 #[test]
@@ -439,7 +435,11 @@ fn test_replaying_the_same_item_twice_is_refused_the_second_time() {
 
 	assert!(err.contains("QUEUE_005"), "{err}");
 	assert!(err.contains("ready"), "{err}");
-	assert_eq!(counters(&t, queue, 0).depth, 1, "the refused second replay must not count the item twice");
+	assert_eq!(
+		counters(&t, queue, Queue::UNPARTITIONED).depth,
+		1,
+		"the refused second replay must not count the item twice"
+	);
 	assert_eq!(dues(&t, queue).len(), 1);
 }
 

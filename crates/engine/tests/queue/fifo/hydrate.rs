@@ -19,8 +19,10 @@ use reifydb_core::{
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_transaction::{
+	queue::scheduling::queue_partition_counters, single::write::SingleWriteTransaction, transaction::Transaction,
+};
+use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -46,7 +48,7 @@ fn scan(t: &TestEngine, range: EncodedKeyRange) -> Vec<SingleVersionRow> {
 	batch.items
 }
 
-fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, (u16, QueueItemState)> {
+fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, (Partition, QueueItemState)> {
 	scan(t, QueueItemStateKey::queue_scan(queue.id).encode())
 		.iter()
 		.map(|item| {
@@ -66,7 +68,15 @@ fn dues(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueDueKey> {
 		.collect()
 }
 
-fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCounters {
+fn partitions(t: &TestEngine, queue: &Queue) -> Vec<Partition> {
+	queue_partition_counters(t.inner().single(), queue.id)
+		.unwrap()
+		.into_iter()
+		.map(|(partition, _)| partition)
+		.collect()
+}
+
+fn counters(t: &TestEngine, queue: &Queue, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue.id, partition)])
 		.unwrap()
@@ -77,14 +87,14 @@ fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCoun
 }
 
 fn total_depth(t: &TestEngine, queue: &Queue) -> u64 {
-	(0..queue.partitions()).map(|partition| counters(t, queue, partition).depth).sum()
+	partitions(t, queue).into_iter().map(|partition| counters(t, queue, partition).depth).sum()
 }
 
 fn keys_in(t: &TestEngine, range: EncodedKeyRange) -> Vec<TaggedKey> {
 	scan(t, range).iter().map(|item| TaggedKey::decode(&item.key).unwrap()).collect()
 }
 
-fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: u16, f: F)
+fn with_partition<F>(t: &TestEngine, queue: &Queue, partition: Partition, f: F)
 where
 	F: FnOnce(&mut SingleWriteTransaction<'_>),
 {
@@ -105,7 +115,7 @@ where
 }
 
 fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
-	for partition in 0..queue.partitions() {
+	for partition in partitions(t, queue) {
 		let state_keys = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition).encode());
 		let due_keys = keys_in(t, QueueDueKey::partition_scan(queue.id, partition).encode());
 		let chain_keys = keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition).encode());
@@ -142,7 +152,7 @@ fn test_hydration_recreates_a_lost_handoff() {
 	// committed while the handoff was lost has no scheduling state at all. Without hydration that
 	// work is durable but permanently invisible: the row is queryable and nobody will ever claim
 	// it.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let queue = find_queue(&t, "jobs");
@@ -154,7 +164,7 @@ fn test_hydration_recreates_a_lost_handoff() {
 	let states = states(&t, &queue);
 	assert_eq!(states.len(), 3);
 	for (partition, state) in states.values() {
-		assert_eq!(*partition, 0);
+		assert_eq!(*partition, Queue::UNPARTITIONED);
 		assert_eq!(state.status, QueueItemStatus::Ready, "recovered items must be claimable, not parked");
 		assert_eq!(state.attempt, 0);
 	}
@@ -167,7 +177,7 @@ fn test_hydration_recovers_not_before_from_the_stored_row() {
 	// not_before lives in the item row precisely so a crash cannot lose it. If hydration admitted
 	// crash-window items at epoch instead, a job scheduled for next week would run at the next
 	// boot, which is the one failure mode a delayed enqueue must never have.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: datetime::from_epoch_millis(1700000000000) }"#);
 
 	let queue = find_queue(&t, "jobs");
@@ -187,7 +197,7 @@ fn test_hydration_admits_only_the_items_that_are_missing() {
 	// Create-if-absent is what makes hydration safe to run beside a live interceptor. If it
 	// re-admitted an item that already had state, the depth counter would double-count and the
 	// due index would hold two entries for one item, delivering it twice.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let queue = find_queue(&t, "jobs");
@@ -207,7 +217,7 @@ fn test_hydration_is_idempotent() {
 	// Hydration runs on every boot, including boots that never crashed. A second pass that
 	// admitted anything would inflate depth on every restart until the queue reported work it
 	// does not hold.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 4 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
 
 	let queue = find_queue(&t, "jobs");
@@ -226,22 +236,29 @@ fn test_hydration_does_not_re_admit_an_item_that_reached_a_terminal_status() {
 	// An acked item keeps its state record and loses its due entry. Hydration keys off the state
 	// record alone, so a rule that looked for a missing due entry instead would resurrect
 	// finished work on every boot - the exact duplicate-delivery ack exists to prevent.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 
 	let queue = find_queue(&t, "jobs");
 	let done = *states(&t, &queue).keys().next().unwrap();
 	let due = dues(&t, &queue)[&done].clone();
-	let mut counters = counters(&t, &queue, 0);
+	let mut counters = counters(&t, &queue, Queue::UNPARTITIONED);
 	counters.depth -= 1;
 
-	with_partition(&t, &queue, 0, |tx| {
+	with_partition(&t, &queue, Queue::UNPARTITIONED, |tx| {
 		let mut state = QueueItemState::ready(None);
 		state.status = QueueItemStatus::Done;
-		tx.set(vec![(QueueItemStateKey::new(queue.id, 0, done), encode_queue_item_state(&state))]).unwrap();
+		tx.set(vec![(
+			QueueItemStateKey::new(queue.id, Queue::UNPARTITIONED, done),
+			encode_queue_item_state(&state),
+		)])
+		.unwrap();
 		tx.remove(from_ref(&due)).unwrap();
-		tx.set(vec![(QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters))])
-			.unwrap();
+		tx.set(vec![(
+			QueuePartitionKey::new(queue.id, Queue::UNPARTITIONED),
+			encode_queue_partition_counters(&counters),
+		)])
+		.unwrap();
 	});
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 0, "a terminal item must not be re-admitted");
@@ -257,7 +274,7 @@ fn test_hydration_recovers_a_queue_that_outgrows_one_scan_batch() {
 	// single batch never moves the cursor, so this is the only test that fails if paging stalls or
 	// drops the tail - and a real queue would then come back from a crash with its first batch
 	// recovered and every later item permanently unclaimable.
-	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }");
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
 	const ITEMS: usize = 1100;
 	for chunk in 0..11 {
@@ -288,19 +305,20 @@ fn test_hydration_recomputes_the_original_partition_of_an_ordered_item() {
 	// recovered item in a different partition, per-key FIFO would break: two items of one key
 	// would sit in two partitions and could be worked concurrently and out of order.
 	let t = engine_with_queue(
-		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 8, ordered_by: tenant } }",
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { partition: { by: { tenant } }, fifo: { ordered_by: tenant } }",
 	);
 	t.command(
 		r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "b" }, { id: 3, tenant: "c" }, { id: 4, tenant: "a" }]"#,
 	);
 
 	let queue = find_queue(&t, "jobs");
-	let before: BTreeMap<RowNumber, u16> = states(&t, &queue).iter().map(|(row, (p, _))| (*row, *p)).collect();
+	let before: BTreeMap<RowNumber, Partition> =
+		states(&t, &queue).iter().map(|(row, (p, _))| (*row, *p)).collect();
 	crash_before_handoff(&t, &queue);
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 4);
 
-	let after: BTreeMap<RowNumber, u16> = states(&t, &queue).iter().map(|(row, (p, _))| (*row, *p)).collect();
+	let after: BTreeMap<RowNumber, Partition> = states(&t, &queue).iter().map(|(row, (p, _))| (*row, *p)).collect();
 	assert_eq!(after, before, "every recovered item must land in the partition it was enqueued to");
 
 	let dues = dues(&t, &queue);

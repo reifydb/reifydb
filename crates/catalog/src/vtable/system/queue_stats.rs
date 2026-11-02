@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
-		catalog::queue::{Queue, QueuePartitionCounters, decode_queue_partition_counters},
-		store::{SingleVersionGet, SingleVersionRangeRev},
+		catalog::queue::{Queue, QueuePartitionCounters},
+		store::SingleVersionRangeRev,
 	},
-	key::queue::{QueueDueKey, QueuePartitionKey},
+	key::queue::QueueDueKey,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_transaction::{queue::scheduling::queue_partition_counters, transaction::Transaction};
+use reifydb_value::value::{datetime::DateTime, partition::Partition};
 
 use crate::Result;
 
 pub(crate) struct PartitionStats {
-	pub partition: u16,
+	pub partition: Partition,
 	pub counters: QueuePartitionCounters,
 	pub oldest_due_at: Option<DateTime>,
 }
@@ -26,15 +25,10 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 	};
 
 	let store = single.read_store();
-	let mut stats = Vec::with_capacity(usize::from(queue.partitions()));
+	let partitions = queue_partition_counters(single, queue.id)?;
+	let mut stats = Vec::with_capacity(partitions.len());
 
-	for partition in 0..queue.partitions() {
-		let counters = SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue.id, partition)])?
-			.pop()
-			.flatten()
-			.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
-			.unwrap_or_default();
-
+	for (partition, counters) in partitions {
 		let batch = SingleVersionRangeRev::range_rev_batch(
 			&store,
 			QueueDueKey::partition_scan(queue.id, partition).encode(),

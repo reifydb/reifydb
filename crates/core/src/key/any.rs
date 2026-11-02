@@ -1776,13 +1776,13 @@ mod tests {
 			probe(series_row(None)),
 			probe(QueueDueKey {
 				queue: QueueId(1),
-				partition: 0,
+				partition: Partition(0),
 				due: DateTime::from_order(1),
 				row: RowNumber(1),
 			}),
 			probe(QueueDueKey {
 				queue: QueueId(1),
-				partition: 0,
+				partition: Partition(0),
 				due: DateTime::from_order(2),
 				row: RowNumber(1),
 			}),
@@ -2416,16 +2416,16 @@ mod tests {
 			}),
 			probe(QueuePartitionKey {
 				queue: QueueId(113),
-				partition: 114,
+				partition: Partition(114),
 			}),
 			probe(QueueItemStateKey {
 				queue: QueueId(115),
-				partition: 116,
+				partition: Partition(116),
 				row: RowNumber(117),
 			}),
 			probe(QueueDueKey {
 				queue: QueueId(118),
-				partition: 119,
+				partition: Partition(119),
 				due: DateTime::from_order(120),
 				row: RowNumber(121),
 			}),
@@ -2436,7 +2436,7 @@ mod tests {
 			}),
 			probe(QueueKeyActiveKey {
 				queue: QueueId(125),
-				partition: 126,
+				partition: Partition(126),
 				key_hash: 127,
 				row: RowNumber(128),
 			}),

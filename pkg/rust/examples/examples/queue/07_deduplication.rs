@@ -20,7 +20,7 @@ fn main() {
 		CREATE QUEUE jobs::receipts {
 			order_id: int4,
 			amount: int4
-		} WITH { fifo: { partitions: 1 }, deduplicate: { by: {order_id}, ttl: 30d } };
+		} WITH { fifo: {}, deduplicate: { by: {order_id}, ttl: 30d } };
 		"#,
 		Params::None,
 	)
@@ -45,8 +45,7 @@ fn main() {
 	command(&db, "INSERT jobs::receipts [{ order_id: 100, amount: 9999 }] RETURNING { order_id, amount }");
 
 	info!("The queue declaration is one way to key jobs; a producer can also key each statement.");
-	db.admin_as_root("CREATE QUEUE jobs::alerts { text: utf8 } WITH { fifo: { partitions: 1 } }", Params::None)
-		.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::alerts { text: utf8 } WITH { fifo: {} }", Params::None).unwrap();
 	command(&db, r#"INSERT jobs::alerts [{ text: "disk full" }] WITH { deduplication_key: "disk-full-host-3" }"#);
 	command(&db, r#"INSERT jobs::alerts [{ text: "disk full" }] WITH { deduplication_key: "disk-full-host-3" }"#);
 

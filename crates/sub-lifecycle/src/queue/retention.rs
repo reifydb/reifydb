@@ -37,10 +37,17 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::{multi::RangeScope, queue::scheduling::remove_item_states, transaction::Transaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	queue::scheduling::{queue_partition_counters, remove_item_states},
+	transaction::Transaction,
+};
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
+	value::{
+		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		row_number::RowNumber,
+	},
 };
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
@@ -48,7 +55,7 @@ use crate::plane::RetentionPlane;
 
 struct ItemCursor {
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	last: EncodedKey,
 }
 
@@ -86,10 +93,17 @@ impl QueueRetentionTask {
 		Ok(queues)
 	}
 
+	fn partitions(&self, queue: QueueId) -> Vec<Partition> {
+		match queue_partition_counters(&self.engine.single_owned(), queue) {
+			Ok(counters) => counters.into_iter().map(|(partition, _)| partition).collect(),
+			Err(e) => panic!("queue retention failed to list the partitions of queue {}: {}", queue.0, e),
+		}
+	}
+
 	fn scan_states(
 		&self,
 		queue: QueueId,
-		partition: u16,
+		partition: Partition,
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<(EncodedKey, RowNumber, QueueItemStatus, u32)>> {
@@ -299,9 +313,14 @@ impl LifecycleTask for QueueRetentionTask {
 			floor = Some(binding);
 
 			let resume_here = resume.as_ref().filter(|cursor| cursor.queue == queue.id);
-			let first_partition = resume_here.map(|cursor| cursor.partition).unwrap_or(0);
+			let partitions = self.partitions(queue.id);
+			let first_partition = resume_here
+				.and_then(|cursor| {
+					partitions.iter().position(|partition| *partition == cursor.partition)
+				})
+				.unwrap_or(0);
 
-			for partition in first_partition..queue.partitions() {
+			for &partition in &partitions[first_partition..] {
 				let mut after = resume_here
 					.filter(|cursor| cursor.partition == partition)
 					.map(|cursor| cursor.last.clone());
@@ -327,7 +346,7 @@ impl LifecycleTask for QueueRetentionTask {
 					) {
 						Ok(states) => states,
 						Err(e) => {
-							warn!(queue = queue.id.0, partition, error = %e, "queue retention failed to scan item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue retention failed to scan item state");
 							break;
 						}
 					};
@@ -370,7 +389,7 @@ impl LifecycleTask for QueueRetentionTask {
 							partition,
 							&rows,
 						) {
-							warn!(queue = queue.id.0, partition, error = %e, "queue retention failed to remove item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue retention failed to remove item state");
 						}
 					}
 

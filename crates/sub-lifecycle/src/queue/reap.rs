@@ -27,12 +27,15 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change::QueueAckTransition,
-	queue::scheduling::{ExpiredLease, apply_reap_transitions},
+	queue::scheduling::{ExpiredLease, apply_reap_transitions, queue_partition_counters},
 	transaction::Transaction,
 };
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
+	value::{
+		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
+		row_number::RowNumber,
+	},
 };
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
@@ -49,7 +52,7 @@ fn releases_work(queue: &Queue, transition: &QueueAckTransition, now: DateTime) 
 
 struct ReapCursor {
 	queue: QueueId,
-	partition: u16,
+	partition: Partition,
 	last: EncodedKey,
 }
 
@@ -86,10 +89,17 @@ impl QueueLeaseReapTask {
 		Ok(queues)
 	}
 
+	fn partitions(&self, queue: QueueId) -> Vec<Partition> {
+		match queue_partition_counters(&self.engine.single_owned(), queue) {
+			Ok(counters) => counters.into_iter().map(|(partition, _)| partition).collect(),
+			Err(e) => panic!("queue reaper failed to list the partitions of queue {}: {}", queue.0, e),
+		}
+	}
+
 	fn scan(
 		&self,
 		queue: QueueId,
-		partition: u16,
+		partition: Partition,
 		after: Option<&EncodedKey>,
 		limit: usize,
 	) -> Result<Vec<Candidate>> {
@@ -181,9 +191,9 @@ impl QueueLeaseReapTask {
 		name = "queue::reap::batch",
 		level = "trace",
 		skip_all,
-		fields(queue = queue.id.0, partition = partition, candidates = candidates.len())
+		fields(queue = queue.id.0, partition = partition.0, candidates = candidates.len())
 	)]
-	fn reap(&self, queue: &Queue, partition: u16, candidates: &[Candidate], now: DateTime) -> u64 {
+	fn reap(&self, queue: &Queue, partition: Partition, candidates: &[Candidate], now: DateTime) -> u64 {
 		let mut reaps = Vec::new();
 		for candidate in candidates {
 			let Some(lease_deadline) = candidate.state.lease_deadline else {
@@ -206,7 +216,7 @@ impl QueueLeaseReapTask {
 					transition,
 				)),
 				Err(e) => {
-					warn!(queue = queue.id.0, partition, item = candidate.row.0, error = %e, "queue reaper failed to transition an expired lease")
+					warn!(queue = queue.id.0, partition = partition.0, item = candidate.row.0, error = %e, "queue reaper failed to transition an expired lease")
 				}
 			}
 		}
@@ -220,7 +230,7 @@ impl QueueLeaseReapTask {
 		) {
 			Ok(applied) => applied,
 			Err(e) => {
-				warn!(queue = queue.id.0, partition, leases = reaps.len(), error = %e, "queue reaper failed to transition expired leases");
+				warn!(queue = queue.id.0, partition = partition.0, leases = reaps.len(), error = %e, "queue reaper failed to transition expired leases");
 				return 0;
 			}
 		};
@@ -281,9 +291,14 @@ impl LifecycleTask for QueueLeaseReapTask {
 
 		'queues: for queue in &queues[start.min(queues.len())..] {
 			let resume_here = resume.as_ref().filter(|cursor| cursor.queue == queue.id);
-			let first_partition = resume_here.map(|cursor| cursor.partition).unwrap_or(0);
+			let partitions = self.partitions(queue.id);
+			let first_partition = resume_here
+				.and_then(|cursor| {
+					partitions.iter().position(|partition| *partition == cursor.partition)
+				})
+				.unwrap_or(0);
 
-			for partition in first_partition..queue.partitions() {
+			for &partition in &partitions[first_partition..] {
 				let mut after = resume_here
 					.filter(|cursor| cursor.partition == partition)
 					.map(|cursor| cursor.last.clone());
@@ -305,7 +320,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 					{
 						Ok(candidates) => candidates,
 						Err(e) => {
-							warn!(queue = queue.id.0, partition, error = %e, "queue reaper failed to scan item state");
+							warn!(queue = queue.id.0, partition = partition.0, error = %e, "queue reaper failed to scan item state");
 							break;
 						}
 					};

@@ -12,7 +12,7 @@ use reifydb::{
 use reifydb_test_harness::engine::AsEngine;
 
 const ORDERED: &str = r#"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH {
-	fifo: { partitions: 1, ordered_by: tenant },
+	fifo: { ordered_by: tenant },
 	retry: { attempts: 5, backoff: 50ms }
 }"#;
 
@@ -30,7 +30,7 @@ fn seeded_db(attempts: u32) -> TestDb {
 	let db = built_db();
 	db.admin("CREATE NAMESPACE test");
 	db.admin(&format!(r#"CREATE QUEUE test::jobs {{ id: int4 }} WITH {{
-			fifo: {{ partitions: 1 }},
+			fifo: {{}},
 			retry: {{ attempts: {attempts}, backoff: 50ms }}
 		}}"#));
 	db.command("INSERT test::jobs [{ id: 1 }]");
