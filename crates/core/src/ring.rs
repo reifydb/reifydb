@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, ops::Bound};
 use indexmap::IndexMap;
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow};
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 
@@ -104,7 +104,18 @@ impl Ring {
 
 	fn load_free(&mut self, store: &mut impl RingStore, partition: Option<Partition>) -> Result<usize> {
 		if self.tracked(partition).free.is_none() {
-			let free = store.free(partition)?;
+			let free = match self.tracked(partition).current {
+				Some(metadata) if metadata.filled > metadata.count => store.free(partition)?,
+				_ => Vec::new(),
+			};
+			reifydb_assertions! {
+				let metadata = self.tracked(partition).current.unwrap_or_else(RingBufferMetadata::unpartitioned);
+				assert_eq!(
+					free.len() as u64,
+					metadata.filled - metadata.count,
+					"a ring's free list must hold exactly the filled slots no row occupies"
+				);
+			}
 			self.tracked(partition).free = Some(free);
 		}
 		Ok(self.tracked(partition).free.as_ref().map_or(0, Vec::len))
@@ -421,6 +432,7 @@ mod tests {
 		free: HashMap<Option<Partition>, Vec<RowNumber>>,
 		next_base: u64,
 		reads: Vec<(Option<Partition>, RowNumber)>,
+		free_reads: usize,
 	}
 
 	impl RingStore for MemoryStore {
@@ -456,6 +468,7 @@ mod tests {
 		}
 
 		fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+			self.free_reads += 1;
 			Ok(self.free.get(&partition).cloned().unwrap_or_default())
 		}
 	}
@@ -788,5 +801,28 @@ mod tests {
 		assert!(next[0].evicted.is_none(), "the freed slot is used first");
 		let overflow = insert(&mut store, 3, None, &[6]);
 		assert_eq!(sequence_of(overflow[0].evicted.as_ref().unwrap()), placed[2].sequence);
+	}
+
+	#[test]
+	fn a_ring_with_no_free_slots_never_reads_the_free_row() {
+		// Without this skip an append-only ring pays one storage read per commit for a list known to be empty.
+		let mut store = MemoryStore::default();
+		insert(&mut store, 2, None, &[1, 2]);
+		insert(&mut store, 2, None, &[3]);
+		assert_eq!(store.free_reads, 0);
+	}
+
+	#[test]
+	fn a_ring_with_a_freed_slot_still_reads_and_reuses_it() {
+		// The skip must never hide a real free slot, otherwise an insert evicts a live row while a slot is
+		// free.
+		let mut store = MemoryStore::default();
+		let placed = insert(&mut store, 3, None, &[1, 2, 3]);
+		delete(&mut store, 3, None, &[placed[1].row]);
+		let reads_before_reuse = store.free_reads;
+		let reused = insert(&mut store, 3, None, &[4]);
+		assert_eq!(store.free_reads, reads_before_reuse + 1);
+		assert_eq!(reused[0].row, placed[1].row);
+		assert!(reused[0].evicted.is_none());
 	}
 }
