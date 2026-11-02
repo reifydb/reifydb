@@ -21,7 +21,7 @@ use reifydb_value::{
 };
 use tracing::info;
 
-use super::{ensure_namespace, series_col};
+use super::{ensure_namespace, metric::ensure_snapshot_ttl, series_col};
 use crate::{
 	Result,
 	cache::CatalogCache,
@@ -97,6 +97,7 @@ pub fn bootstrap_profiler(
 		)?;
 		info!("Created system::metrics::profiler::spans::snapshots series");
 	}
+	ensure_snapshot_ttl(&catalog_api, &mut admin, SeriesId::PROFILER_SPANS_SNAPSHOTS)?;
 
 	admin.commit()?;
 	Ok(())

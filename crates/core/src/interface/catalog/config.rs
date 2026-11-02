@@ -94,6 +94,7 @@ pub enum ConfigKey {
 	MetricsFlushInterval,
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
+	MetricsSnapshotTtl,
 	QueueLeaseReapInterval,
 	QueueLeaseReapBatchSize,
 	QueueRetentionInterval,
@@ -150,6 +151,7 @@ impl ConfigKey {
 			Self::MetricsFlushInterval,
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
+			Self::MetricsSnapshotTtl,
 			Self::QueueLeaseReapInterval,
 			Self::QueueLeaseReapBatchSize,
 			Self::QueueRetentionInterval,
@@ -232,6 +234,7 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => Value::Duration(default::metrics::FLUSH_INTERVAL),
 			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL),
 			Self::MetricsSnapshotInterval => Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL),
+			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL),
 			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL),
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL),
@@ -318,6 +321,7 @@ impl ConfigKey {
 			Self::MetricsSnapshotInterval => {
 				Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL_TESTING)
 			}
+			Self::MetricsSnapshotTtl => Value::Duration(default::metrics::SNAPSHOT_TTL_TESTING),
 			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL_TESTING),
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL_TESTING),
@@ -553,6 +557,10 @@ impl ConfigKey {
 				 series. When none, no snapshot is ever written; when set, must be > 0 and not shorter than \
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
+			Self::MetricsSnapshotTtl => {
+				"How long a row stays in every system::metrics ::snapshots series before the retention evictor \
+				 drops it. Must be > 0. Applied to each snapshots series at boot; changing it requires a restart."
+			}
 			Self::QueueLeaseReapInterval => {
 				"How often the queue reaper scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
 			}
@@ -619,6 +627,7 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
+			Self::MetricsSnapshotTtl => true,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -675,6 +684,7 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
+			Self::MetricsSnapshotTtl => &[ValueType::Duration],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
 			Self::QueueRetentionInterval => &[ValueType::Duration],
@@ -731,6 +741,7 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
+			Self::MetricsSnapshotTtl => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -1000,6 +1011,16 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::MetricsSnapshotTtl => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRICS_SNAPSHOT_TTL must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
 			_ => Ok(()),
 		}
 	}
@@ -1079,6 +1100,7 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
+			Self::MetricsSnapshotTtl => write!(f, "METRICS_SNAPSHOT_TTL"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
 			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
@@ -1139,6 +1161,7 @@ impl FromStr for ConfigKey {
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
+			"METRICS_SNAPSHOT_TTL" => Ok(Self::MetricsSnapshotTtl),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
 			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
@@ -1319,7 +1342,8 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 52);
+		assert!(all.contains(&ConfigKey::MetricsSnapshotTtl));
 		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));

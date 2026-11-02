@@ -5,9 +5,12 @@ use reifydb_core::{
 	common::TimeSource,
 	event::EventBus,
 	interface::catalog::{
+		config::{ConfigKey, GetConfig},
 		id::{ColumnId, NamespaceId, RingBufferId, SeriesId},
 		series::{SeriesKey, TimestampPrecision},
+		storage::StorageId,
 	},
+	row::{RowSettings, Ttl},
 };
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -30,6 +33,7 @@ use crate::{
 		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
 		series::{SeriesColumnToCreate, SeriesToCreate},
 	},
+	store::row_settings::create::create_row_settings,
 };
 
 pub const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
@@ -204,6 +208,24 @@ pub(super) fn ensure_snapshot_series(
 			column_ids,
 		)?;
 		info!("Created {path}::snapshots series");
+	}
+	ensure_snapshot_ttl(catalog_api, admin, series_id)
+}
+
+pub(super) fn ensure_snapshot_ttl(
+	catalog_api: &Catalog,
+	admin: &mut AdminTransaction,
+	series_id: SeriesId,
+) -> Result<()> {
+	let storage = StorageId::Series(series_id);
+	let settings = RowSettings {
+		ttl: Some(Ttl {
+			duration: catalog_api.get_config_duration(ConfigKey::MetricsSnapshotTtl),
+		}),
+		persistent: true,
+	};
+	if catalog_api.find_row_settings(&mut Transaction::Admin(&mut *admin), storage)?.as_ref() != Some(&settings) {
+		create_row_settings(admin, storage, &settings)?;
 	}
 	Ok(())
 }

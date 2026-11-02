@@ -21,7 +21,7 @@ use reifydb_value::{
 };
 use tracing::info;
 
-use super::ensure_namespace;
+use super::{ensure_namespace, metric::ensure_snapshot_ttl};
 use crate::{
 	Result,
 	cache::CatalogCache,
@@ -86,6 +86,7 @@ pub fn bootstrap_runtime(
 			)?;
 			info!("Created {path}::snapshots series");
 		}
+		ensure_snapshot_ttl(&catalog_api, &mut admin, series_id)?;
 	}
 
 	admin.commit()?;
