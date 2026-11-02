@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, ops::Bound, sync::Arc};
+use std::{mem::take, ops::Bound, result::Result as StdResult, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -11,7 +11,7 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::{object::ObjectId, storage::StorageId},
+		catalog::{id::ViewId, object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin},
 		operator::OperatorSlice,
 		store::MultiVersionRow,
@@ -21,8 +21,17 @@ use reifydb_core::{
 		bound::TaggedKeyBoundRange,
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
+	marker::{Marker, MarkerSink},
+	util::ioc::IocContainer,
 };
-use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
+use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_value::{
+	Result,
+	error::{Diagnostic, Error},
+	params::Params,
+	reifydb_assertions,
+	value::identity::IdentityId,
+};
 use tracing::instrument;
 
 #[cfg(feature = "testing")]
@@ -90,6 +99,7 @@ use crate::{
 			ViewPreUpdateInterceptor,
 		},
 	},
+	marker::PendingMarkers,
 	multi::{
 		RangeScope,
 		lease::VersionLeaseGuard,
@@ -122,6 +132,10 @@ pub struct CommandTransaction {
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
 	poison_cause: Option<Diagnostic>,
+
+	marker_source: Option<(IocContainer, Clock)>,
+
+	pending_markers: Option<Box<PendingMarkers>>,
 
 	#[cfg(feature = "testing")]
 	committed_op_counts: OpCounts,
@@ -158,6 +172,8 @@ impl CommandTransaction {
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
+			marker_source: None,
+			pending_markers: None,
 			#[cfg(feature = "testing")]
 			committed_op_counts: OpCounts::default(),
 		})
@@ -173,6 +189,45 @@ impl CommandTransaction {
 
 	pub fn dictionary_allocators(&self) -> Option<DictionaryAllocatorRegistry> {
 		self.dictionary_allocators.clone()
+	}
+
+	pub fn set_marker_source(&mut self, ioc: IocContainer, clock: Clock) {
+		self.marker_source = Some((ioc, clock));
+	}
+
+	pub fn attach_marker(&mut self, t0s: Arc<[Instant]>) -> Result<()> {
+		self.check_active()?;
+		let Some(pending) = self.pending_markers_mut() else {
+			return Ok(());
+		};
+		let attached = pending.attach_writer(t0s);
+		self.poison_on_marker_error(attached)
+	}
+
+	pub fn attach_view_markers(&mut self, view: ViewId, markers: Vec<Marker>) -> Result<()> {
+		self.check_active()?;
+		let Some(pending) = self.pending_markers_mut() else {
+			return Ok(());
+		};
+		let attached = pending.attach_view(view, markers);
+		self.poison_on_marker_error(attached)
+	}
+
+	fn pending_markers_mut(&mut self) -> Option<&mut PendingMarkers> {
+		if self.pending_markers.is_none() {
+			let (ioc, clock) = self.marker_source.as_ref()?;
+			let sink = ioc.try_resolve::<Arc<dyn MarkerSink>>()?;
+			self.pending_markers = Some(Box::new(PendingMarkers::new(sink, clock.clone())));
+		}
+		self.pending_markers.as_deref_mut()
+	}
+
+	fn poison_on_marker_error(&mut self, attached: StdResult<(), TransactionError>) -> Result<()> {
+		attached.map_err(|err| {
+			let err = Error::from(err);
+			self.poison(*err.0.clone());
+			err
+		})
 	}
 
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
@@ -217,8 +272,12 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
+		let markers = self.pending_markers.take();
 		let (mut multi, row_changes) = self.take_for_commit();
-		let version = multi.commit()?;
+		let version = match markers {
+			None => multi.commit()?,
+			Some(markers) => multi.commit_with(|version| markers.insert_into_sink(version))?,
+		};
 		self.finish_commit(multi, row_changes, version)?;
 		Ok(version)
 	}
@@ -283,8 +342,12 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub fn commit_unchecked(&mut self) -> Result<Committed> {
 		self.check_active()?;
+		let markers = self.pending_markers.take();
 		let (mut multi, row_changes) = self.take_for_commit();
-		let committed = multi.commit_unchecked()?;
+		let committed = match markers {
+			None => multi.commit_unchecked()?,
+			Some(markers) => multi.commit_unchecked_with(|version| markers.insert_into_sink(version))?,
+		};
 		self.finish_commit(multi, row_changes, committed.version)?;
 		Ok(committed)
 	}

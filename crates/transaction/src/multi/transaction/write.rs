@@ -1014,8 +1014,16 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<Committed> {
+		self.commit_unchecked_with(|_| {})
+	}
+
+	pub(crate) fn commit_unchecked_with(
+		&mut self,
+		before_publish: impl FnOnce(CommitVersion),
+	) -> Result<Committed> {
 		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
+			before_publish(CommitVersion(0));
 			return Ok(Committed {
 				version: CommitVersion(0),
 				lsn: None,
@@ -1025,7 +1033,7 @@ impl MultiWriteTransaction {
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let (commit_version, lsn, at, deltas) = self.commit_pending_unchecked(deltas)?;
-		let version = self.finalize_commit(commit_version, lsn, at, deltas, |_| {})?;
+		let version = self.finalize_commit(commit_version, lsn, at, deltas, before_publish)?;
 		Ok(Committed {
 			version,
 			lsn: Some(lsn),

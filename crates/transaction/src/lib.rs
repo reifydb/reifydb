@@ -29,6 +29,7 @@ pub mod delta;
 pub mod dictionary;
 pub mod error;
 pub mod interceptor;
+pub(crate) mod marker;
 pub mod multi;
 pub mod queue;
 pub mod single;

@@ -128,6 +128,7 @@ impl StandardEngine {
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
+		txn.set_marker_source(self.executor.ioc.clone(), self.clock().clone());
 		Ok(txn)
 	}
 

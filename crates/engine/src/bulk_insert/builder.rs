@@ -35,6 +35,7 @@ use reifydb_core::{
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_runtime::context::clock::Instant;
 use reifydb_transaction::{
 	multi::transaction::write::Rewrite,
 	transaction::{Transaction, command::CommandTransaction},
@@ -142,6 +143,7 @@ pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
 	pending_series: Vec<PendingSeriesInsert>,
+	pending_markers: Vec<Arc<[Instant]>>,
 	_validation: PhantomData<V>,
 }
 
@@ -153,6 +155,7 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
 			pending_series: Vec::new(),
+			pending_markers: Vec::new(),
 			_validation: PhantomData,
 		}
 	}
@@ -166,6 +169,7 @@ impl<'e> BulkInsertBuilder<'e, Unchecked> {
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
 			pending_series: Vec::new(),
+			pending_markers: Vec::new(),
 			_validation: PhantomData,
 		}
 	}
@@ -185,6 +189,11 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	pub fn series<'a>(&'a mut self, qualified_name: &str) -> SeriesInsertBuilder<'a, 'e, V> {
 		let (namespace, series) = parse_qualified_name(qualified_name);
 		SeriesInsertBuilder::new(self, namespace, series)
+	}
+
+	pub fn marker(&mut self, t0s: Arc<[Instant]>) -> &mut Self {
+		self.pending_markers.push(t0s);
+		self
 	}
 
 	pub(super) fn add_table_insert(&mut self, pending: PendingTableInsert) {
@@ -213,11 +222,15 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_tables = &self.pending_tables;
 		let pending_ringbuffers = &self.pending_ringbuffers;
 		let pending_series = &self.pending_series;
+		let pending_markers = &self.pending_markers;
 		let identity = self.identity;
 		let checked_commit =
 			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, pending_tables)?;
 
 		let body = move |txn: &mut CommandTransaction| {
+			for t0s in pending_markers {
+				txn.attach_marker(t0s.clone())?;
+			}
 			let writer = Writer {
 				catalog: &catalog,
 				services: &services,

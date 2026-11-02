@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::catalog::id::ViewId};
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -72,6 +72,20 @@ pub enum TransactionError {
 	CommitLogPurged {
 		requested: Lsn,
 		oldest: Lsn,
+	},
+
+	#[error("Marker holds {count} t0s; the limit is {limit}")]
+	MarkerTooLarge {
+		count: usize,
+		limit: usize,
+	},
+
+	#[error("A marker is already attached to this transaction")]
+	MarkerAlreadyAttached,
+
+	#[error("Markers for view {view} are already attached to this transaction")]
+	ViewMarkersAlreadyAttached {
+		view: ViewId,
 	},
 
 	#[error(transparent)]
@@ -313,6 +327,50 @@ impl IntoDiagnostic for TransactionError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("The reader fell behind what the log keeps; its subscribers must resubscribe".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::MarkerTooLarge {
+				count,
+				limit,
+			} => Diagnostic {
+				code: "TXN_024".to_string(),
+				rql: None,
+				message: format!("Marker holds {} t0s; the limit is {}", count, limit),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Split the commit so that each marker holds fewer t0s".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::MarkerAlreadyAttached => Diagnostic {
+				code: "TXN_025".to_string(),
+				rql: None,
+				message: "A marker is already attached to this transaction".to_string(),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Attach one marker per transaction".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::ViewMarkersAlreadyAttached {
+				view,
+			} => Diagnostic {
+				code: "TXN_026".to_string(),
+				rql: None,
+				message: format!("Markers for view {} are already attached to this transaction", view),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Attach the markers of a view once per transaction".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

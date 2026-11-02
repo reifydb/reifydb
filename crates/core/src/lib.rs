@@ -22,6 +22,7 @@ pub mod flow;
 pub mod interface;
 pub mod key;
 pub mod lifecycle;
+pub mod marker;
 pub mod metrics;
 pub mod operator_with;
 pub mod partition;
