@@ -58,25 +58,6 @@ fn panic_message(build: impl FnOnce() -> Database) -> String {
 }
 
 #[test]
-fn default_builder_creates_no_wal_dir() {
-	// The wal is off unless asked for; a wal dir here means the default flipped back to the real log.
-	temp_dir(|path| {
-		{
-			let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-				.with_runtime_config(disarmed())
-				.build()
-				.expect("fresh database must build");
-			seed(&db);
-			insert(&db, 1);
-		}
-		assert!(path.join("db").exists(), "the database dir must exist, or this test proves nothing");
-		assert!(!path.join("db").join("wal").exists(), "a default boot must not write a commit log");
-		Ok(())
-	})
-	.expect("temp dir lifecycle must succeed");
-}
-
-#[test]
 fn disabled_boot_refuses_a_leftover_wal_dir() {
 	// Booting on the nop over a real log would silently drop every commit the log holds past the stores.
 	temp_dir(|path| {

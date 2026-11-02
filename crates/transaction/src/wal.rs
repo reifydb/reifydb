@@ -242,9 +242,16 @@ pub fn nop_wal() -> WalResult<CommitWal> {
 	Ok(wal)
 }
 
-#[derive(Default)]
 pub struct WalConfigurator {
 	enabled: bool,
+}
+
+impl Default for WalConfigurator {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+		}
+	}
 }
 
 impl WalConfigurator {
