@@ -548,6 +548,8 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(engine.clone());
 
+		let mut clear_on_failure = ClearIocOnFailure::new(self.ioc.clone());
+
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
 			auth_registry,
@@ -690,6 +692,8 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
+		clear_on_failure.disarm();
+
 		Ok(Database::new(
 			engine,
 			auth_service,
@@ -701,5 +705,31 @@ impl DatabaseBuilder {
 			runtime,
 		)
 		.fast_shutdown_on_drop(self.fast_shutdown))
+	}
+}
+
+struct ClearIocOnFailure {
+	ioc: IocContainer,
+	armed: bool,
+}
+
+impl ClearIocOnFailure {
+	fn new(ioc: IocContainer) -> Self {
+		Self {
+			ioc,
+			armed: true,
+		}
+	}
+
+	fn disarm(&mut self) {
+		self.armed = false;
+	}
+}
+
+impl Drop for ClearIocOnFailure {
+	fn drop(&mut self) {
+		if self.armed {
+			self.ioc.clear();
+		}
 	}
 }
