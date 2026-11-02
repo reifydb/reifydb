@@ -590,7 +590,7 @@ impl StandardMultiStore {
 
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		while collected.len() < batch_size {
+		loop {
 			if !cursor.commit.is_exhausted() {
 				scan_tier_chunk(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
@@ -609,6 +609,10 @@ impl StandardMultiStore {
 					continue;
 				}
 				cursor.exhausted = true;
+				break;
+			}
+
+			if collected.len() >= batch_size {
 				break;
 			}
 		}
@@ -716,7 +720,7 @@ impl StandardMultiStore {
 
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		while collected.len() < batch_size {
+		loop {
 			if !cursor.commit.is_exhausted() {
 				scan_tier_chunk_rev(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
@@ -735,6 +739,10 @@ impl StandardMultiStore {
 					continue;
 				}
 				cursor.exhausted = true;
+				break;
+			}
+
+			if collected.len() >= batch_size {
 				break;
 			}
 		}
@@ -1729,6 +1737,81 @@ mod cache_tests {
 			(1..=PERSISTED + BUFFERED).collect::<Vec<_>>(),
 			"the reverse merge dropped rows the flush moved from the buffer into a tier the scan had already read past"
 		);
+	}
+
+	#[test]
+	fn a_scan_over_many_batches_returns_each_row_once_after_the_absent_table_recheck() {
+		// a recheck that rereads from the start returns rows that earlier batches already handed out
+		let (store, _g) = store_without_read_tier();
+		for n in 1..=ROWS {
+			commit_row(&store, n, 1);
+		}
+		let scope = MultiVersionScope::AsOf {
+			read: CommitVersion(1),
+		};
+
+		let mut cursor = MultiVersionRangeCursor::new();
+		let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 2).unwrap();
+		let mut keys: Vec<_> = first.items.iter().map(|row| row.key.clone()).collect();
+
+		flush(&store, CommitVersion(1));
+
+		let mut has_more = first.has_more;
+		while has_more {
+			let batch =
+				store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 2).unwrap();
+			keys.extend(batch.items.iter().map(|row| row.key.clone()));
+			has_more = batch.has_more;
+		}
+
+		let total = keys.len();
+		keys.sort();
+		keys.dedup();
+		assert_eq!(total, keys.len(), "the scan returned {} rows more than once", total - keys.len());
+	}
+
+	#[test]
+	fn a_full_reverse_batch_is_not_repeated_after_the_absent_table_recheck() {
+		// the reverse recheck must merge into the batch that read the commit tier, otherwise a later call
+		// returns its rows again
+		let (store, _g) = store_without_read_tier();
+		for n in 1..=4 {
+			commit_row(&store, n, 1);
+		}
+		let scope = MultiVersionScope::AsOf {
+			read: CommitVersion(1),
+		};
+
+		let mut cursor = MultiVersionRangeCursor::new();
+		let first = store.range_rev_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 4).unwrap();
+		assert_eq!(first.items.len(), 4, "the batch must hold every row of the commit tier");
+
+		flush(&store, CommitVersion(1));
+
+		let second = store.range_rev_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 4).unwrap();
+		assert!(second.items.is_empty(), "the scan returned {} rows a second time", second.items.len());
+	}
+
+	#[test]
+	fn a_full_batch_is_not_repeated_after_the_absent_table_recheck() {
+		// the recheck must merge into the batch that read the commit tier, otherwise a later call returns its
+		// rows again
+		let (store, _g) = store_without_read_tier();
+		for n in 1..=4 {
+			commit_row(&store, n, 1);
+		}
+		let scope = MultiVersionScope::AsOf {
+			read: CommitVersion(1),
+		};
+
+		let mut cursor = MultiVersionRangeCursor::new();
+		let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 4).unwrap();
+		assert_eq!(first.items.len(), 4, "the batch must hold every row of the commit tier");
+
+		flush(&store, CommitVersion(1));
+
+		let second = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), scope, 4).unwrap();
+		assert!(second.items.is_empty(), "the scan returned {} rows a second time", second.items.len());
 	}
 
 	#[test]
