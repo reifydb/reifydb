@@ -22,6 +22,7 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::batch::{append_rows_fitted, from_encoded_bytes},
 };
+use reifydb_flow::writer::table::{TableDeleteRows, TableInsertRows, TableUpdateRows, TableWriter};
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::{WithInterceptors, table_row::TableRowInterceptor},
@@ -34,7 +35,7 @@ use reifydb_value::{
 };
 use smallvec::smallvec;
 
-use crate::{Result, partition::row_key_from_partition};
+use crate::{Result, partition::row_key_from_partition, transaction::operation::storage::DmlTransaction};
 
 fn build_table_insert_change(
 	table: &Table,
@@ -132,12 +133,23 @@ pub struct TableInsert<'a> {
 	pub key_columns: &'a [usize],
 }
 
-fn insert_rows<T: WithInterceptors + Write>(
-	txn: &mut T,
-	table: &Table,
-	shape: &RowShape,
-	insert: TableInsert<'_>,
-) -> Result<()> {
+trait TableDml: WithInterceptors + Write + Read {
+	fn transaction(&mut self) -> Transaction<'_>;
+}
+
+impl TableDml for CommandTransaction {
+	fn transaction(&mut self) -> Transaction<'_> {
+		Transaction::Command(self)
+	}
+}
+
+impl TableDml for AdminTransaction {
+	fn transaction(&mut self) -> Transaction<'_> {
+		Transaction::Admin(self)
+	}
+}
+
+fn insert_rows<T: TableDml>(txn: &mut T, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
 	let TableInsert {
 		ids,
 		partitions,
@@ -179,16 +191,20 @@ fn insert_rows<T: WithInterceptors + Write>(
 		refuse_changed_keys(table, shape, rows, key_columns, &keys)?;
 	}
 
-	let mut entries: Vec<(TaggedKey, EncodedBytes, SetPre)> = Vec::with_capacity(frozen.len() + index.len());
-	for (row_index, (row, &row_number)) in frozen.iter().zip(ids).enumerate() {
-		entries.push((
-			row_key_from_partition(table.id, partitions.get(row_index).copied(), row_number),
-			row.clone(),
-			SetPre::Absent,
-		));
-	}
-	entries.extend(index.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)));
-	txn.set_with_pre(entries)?;
+	let rows: Vec<(TaggedKey, EncodedBytes)> = frozen
+		.into_iter()
+		.zip(ids)
+		.enumerate()
+		.map(|(row_index, (row, &row_number))| {
+			(row_key_from_partition(table.id, partitions.get(row_index).copied(), row_number), row)
+		})
+		.collect();
+	let frozen = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.insert(TableInsertRows::WithPre {
+			rows,
+			index,
+		})?
+		.written;
 
 	TableRowInterceptor::post_insert(txn, table, ids, &frozen)?;
 
@@ -286,7 +302,7 @@ pub trait TableOperations {
 	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
 }
 
-fn update_rows<T: WithInterceptors + Write + Read>(
+fn update_rows<T: TableDml>(
 	txn: &mut T,
 	table: &Table,
 	ids: &[RowNumber],
@@ -315,13 +331,16 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		.into_iter()
 		.map(|committed| committed.map_or(SetPre::Unknown, |row| SetPre::Present(row.bytes)))
 		.collect();
-	txn.set_with_pre(
-		keys.into_iter()
-			.zip(posts.iter().cloned())
-			.zip(known)
-			.map(|((key, post), pre)| (key, post, pre))
-			.collect(),
-	)?;
+	let posts = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.update(TableUpdateRows::WithPre {
+			rows: keys
+				.into_iter()
+				.zip(posts)
+				.zip(known)
+				.map(|((key, post), pre)| (key, post, pre))
+				.collect(),
+		})?
+		.written;
 
 	TableRowInterceptor::post_update(txn, table, ids, &posts, pres)?;
 
@@ -337,7 +356,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	Ok(ids.iter().copied().zip(posts).collect())
 }
 
-fn remove_rows<T: WithInterceptors + Write + Read>(
+fn remove_rows<T: TableDml>(
 	txn: &mut T,
 	table: &Table,
 	ids: &[RowNumber],
@@ -365,9 +384,13 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 
 	TableRowInterceptor::pre_delete(txn, table, ids)?;
 
-	txn.remove(keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect())?;
+	let replaced = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.delete(TableDeleteRows::WithPre {
+			rows: keys.into_iter().zip(pre_for_cdc_bytes_vec).collect(),
+		})?
+		.replaced;
 
-	TableRowInterceptor::post_delete(txn, table, ids, &pre_for_cdc_bytes_vec)?;
+	TableRowInterceptor::post_delete(txn, table, ids, &replaced)?;
 
 	let object = ObjectId::Table(table.id);
 	txn.touch_flow_object(object);

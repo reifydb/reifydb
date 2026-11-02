@@ -137,7 +137,7 @@ pub(crate) struct FlowTransaction<'a> {
 	runtime_context: &'a RuntimeContext,
 }
 
-fn tagged(key: &EncodedKey) -> TaggedKey {
+pub(crate) fn tagged(key: &EncodedKey) -> TaggedKey {
 	TaggedKey::decode(key).unwrap_or_else(|| panic!("flow sync produced an undecodable key {key:?}"))
 }
 

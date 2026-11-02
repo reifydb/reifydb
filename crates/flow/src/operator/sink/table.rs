@@ -58,9 +58,10 @@ use crate::{
 		SourceRowEncoder, coerce_columns,
 		partition::{partition_batch, resolve_partitions_flow},
 		shape_field_columns, stored_created_at,
-		view::{partitioned_key, sort_runs, sorted_view_key},
+		view::sort_runs,
 	},
-	txn::{Batch, Emit, Get, Intern},
+	txn::{Batch, Emit, Get, Intern, StorageTxn},
+	writer::table::{TableDeleteRows, TableInsertRows, TableRowAddress, TableUpdateRows, TableWriter},
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
@@ -104,7 +105,7 @@ impl TableSink {
 		self.operator
 	}
 
-	pub fn apply<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
+	pub fn apply<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
@@ -130,6 +131,15 @@ impl TableSink {
 		!self.partition_indices.is_empty()
 	}
 
+	#[inline]
+	fn row_address(&self, partition: Option<Partition>, row: RowNumber) -> TableRowAddress {
+		TableRowAddress {
+			storage: self.storage,
+			partition,
+			row,
+		}
+	}
+
 	fn resolved_partitions<T: Get + Batch>(
 		&mut self,
 		txn: &mut T,
@@ -150,7 +160,7 @@ impl TableSink {
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_insert<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, post: &RecordBatch) -> Result<()> {
+	fn apply_insert<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, post: &RecordBatch) -> Result<()> {
 		if post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -168,24 +178,25 @@ impl TableSink {
 		let partitions = self.resolved_partitions(txn, source)?;
 
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let key = if let Some(partitions) = &partitions {
-				partitioned_key(self.storage, runs.next(), partitions[row_idx], row_number)
-			} else {
-				sorted_view_key(self.storage, runs.next(), row_number)
-			};
+			let key = self
+				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), row_number)
+				.encoded(runs.next());
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
 
-		txn.set(keys, encoded_bytes_list)?;
+		TableWriter::new(txn).insert(TableInsertRows::Plain {
+			keys,
+			rows: encoded_bytes_list,
+		})?;
 
 		txn.emit(self.view.id(), Diff::insert(coerced))
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_update<T: Get + Batch + Emit + Intern>(
+	fn apply_update<T: StorageTxn + Emit + Intern>(
 		&mut self,
 		txn: &mut T,
 		pre: &RecordBatch,
@@ -225,27 +236,14 @@ impl TableSink {
 		let mut keys: Vec<(EncodedKey, EncodedKey)> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let (pre_row_number, post_row_number) = (pre_row_numbers[row_idx], post_row_numbers[row_idx]);
-			keys.push(if let Some((pre_partitions, post_partitions)) = &partitions {
-				(
-					partitioned_key(
-						self.storage,
-						pre_runs.next(),
-						pre_partitions[row_idx],
-						pre_row_number,
-					),
-					partitioned_key(
-						self.storage,
-						post_runs.next(),
-						post_partitions[row_idx],
-						post_row_number,
-					),
-				)
-			} else {
-				(
-					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
-					sorted_view_key(self.storage, post_runs.next(), post_row_number),
-				)
-			});
+			let (pre_partition, post_partition) = match &partitions {
+				Some((pre, post)) => (Some(pre[row_idx]), Some(post[row_idx])),
+				None => (None, None),
+			};
+			keys.push((
+				self.row_address(pre_partition, pre_row_number).encoded(pre_runs.next()),
+				self.row_address(post_partition, post_row_number).encoded(post_runs.next()),
+			));
 		}
 
 		let may_clear = self.created_at.len() + row_count >= CREATED_AT_CACHE_CAPACITY;
@@ -292,19 +290,9 @@ impl TableSink {
 		let encoded = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
-		let mut writes = KeyWrites::with_capacity(row_count);
-		for ((pre_key, post_key), post_encoded) in keys.into_iter().zip(encoded) {
-			if pre_key.as_slice() != post_key.as_slice() {
-				writes.put(pre_key, None);
-			}
-			writes.put(post_key, Some(post_encoded));
-		}
-
-		let (removes, set_keys, set_rows) = writes.split();
-		if !removes.is_empty() {
-			txn.remove(removes)?;
-		}
-		txn.set(set_keys, set_rows)?;
+		TableWriter::new(txn).update(TableUpdateRows::Plain {
+			rows: keys.into_iter().zip(encoded).map(|((pre, post), row)| (pre, post, row)).collect(),
+		})?;
 
 		let emitted_pre = with_stored_created_at(coerced_pre, &created)?;
 		let emitted_post = with_stored_created_at(coerced_post, &created)?;
@@ -313,7 +301,7 @@ impl TableSink {
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
-	fn apply_remove<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, pre: &RecordBatch) -> Result<()> {
+	fn apply_remove<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, pre: &RecordBatch) -> Result<()> {
 		if pre.num_rows() == 0 {
 			return Ok(());
 		}
@@ -332,11 +320,9 @@ impl TableSink {
 		let mut cached: Vec<Option<DateTime>> = Vec::with_capacity(row_count);
 		let mut reads: Vec<(EncodedKey, Option<EncodedKey>)> = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let key = if let Some(partitions) = &partitions {
-				partitioned_key(self.storage, runs.next(), partitions[row_idx], row_number)
-			} else {
-				sorted_view_key(self.storage, runs.next(), row_number)
-			};
+			let key = self
+				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), row_number)
+				.encoded(runs.next());
 			let hit = cached_created_at(&self.created_at, row_number);
 			self.created_at.remove(&row_number);
 			if hit.is_none() {
@@ -363,7 +349,9 @@ impl TableSink {
 			created.push(stamp);
 		}
 
-		txn.remove(keys)?;
+		TableWriter::new(txn).delete(TableDeleteRows::Plain {
+			keys,
+		})?;
 
 		txn.emit(self.view.id(), Diff::remove(with_stored_created_at(coerced, &created)?))
 	}
@@ -559,44 +547,4 @@ fn value_sort_runs<T: Intern + ?Sized>(
 
 fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
 	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
-}
-
-struct KeyWrites {
-	writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
-	slots: HashMap<EncodedKey, usize>,
-}
-
-impl KeyWrites {
-	fn with_capacity(capacity: usize) -> Self {
-		Self {
-			writes: Vec::with_capacity(capacity * 2),
-			slots: HashMap::with_capacity(capacity * 2),
-		}
-	}
-
-	fn put(&mut self, key: EncodedKey, row: Option<EncodedBytes>) {
-		match self.slots.get(&key) {
-			Some(&slot) => self.writes[slot].1 = row,
-			None => {
-				self.slots.insert(key.clone(), self.writes.len());
-				self.writes.push((key, row));
-			}
-		}
-	}
-
-	fn split(self) -> (Vec<EncodedKey>, Vec<EncodedKey>, Vec<EncodedBytes>) {
-		let mut removes = Vec::new();
-		let mut set_keys = Vec::with_capacity(self.writes.len());
-		let mut set_rows = Vec::with_capacity(self.writes.len());
-		for (key, row) in self.writes {
-			match row {
-				Some(row) => {
-					set_keys.push(key);
-					set_rows.push(row);
-				}
-				None => removes.push(key),
-			}
-		}
-		(removes, set_keys, set_rows)
-	}
 }

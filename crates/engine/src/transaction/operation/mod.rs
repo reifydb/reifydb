@@ -6,4 +6,5 @@ pub mod dictionary;
 pub mod queue;
 pub mod ringbuffer;
 pub mod series;
+pub mod storage;
 pub mod table;

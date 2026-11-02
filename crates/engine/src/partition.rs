@@ -5,13 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId},
-	key::{
-		any::TaggedKey,
-		partition::PartitionKey,
-		row::{PartitionedRowKey, RowKey},
-	},
+	key::{any::TaggedKey, partition::PartitionKey},
 	partition::{PartitionError, registry_matches, registry_row},
 };
+use reifydb_flow::writer::table::TableRowAddress;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
@@ -21,10 +18,12 @@ use reifydb_value::{
 use crate::Result;
 
 pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
-	match partition {
-		None => RowKey::new(table_id, row_number).into(),
-		Some(partition) => PartitionedRowKey::new(table_id, partition, row_number).into(),
+	TableRowAddress {
+		storage: table_id.into(),
+		partition,
+		row: row_number,
 	}
+	.tagged()
 }
 
 pub fn resolve_partitions(

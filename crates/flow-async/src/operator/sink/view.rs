@@ -67,7 +67,11 @@ mod tests {
 		value_type::ValueType,
 	};
 
-	use crate::transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn};
+	use crate::transaction::{
+		FlowTransaction,
+		deferred::{DeferredTransaction, StorageCounts},
+		mock::FlowTxn,
+	};
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -138,6 +142,31 @@ mod tests {
 				.bytes()
 				.clone(),
 		)
+	}
+
+	#[test]
+	fn a_view_insert_and_a_cached_update_and_remove_make_no_store_read() {
+		// Each step gets a fresh transaction, otherwise pending writes would answer an added read and hide it.
+		let engine = TestEngine::new();
+		let mut sink = test_sink();
+		let change = |diff| {
+			Change::from_flow(
+				OperatorId(1),
+				ChangeVersion::from(CommitVersion(1)),
+				vec![diff],
+				DateTime::from_nanos(0),
+			)
+		};
+		for diff in [
+			Diff::insert(one_row(1.0, 1_000)),
+			Diff::update(one_row(1.0, 1_000), one_row(2.0, 5_000)),
+			Diff::remove(one_row(2.0, 5_000)),
+		] {
+			let mut txn = engine.flow_txn().clock_millis(0).deferred();
+			sink.apply(&mut txn, change(diff)).unwrap();
+			assert_eq!(txn.storage_counts, StorageCounts::default());
+			commit_flow_pending(&engine, &mut txn);
+		}
 	}
 
 	#[test]
