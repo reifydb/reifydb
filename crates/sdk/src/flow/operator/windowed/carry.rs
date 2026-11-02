@@ -21,7 +21,7 @@ use reifydb_flow_async::{
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
 		settings::WindowSettings,
-		span::{WindowAnchor, WindowSpan, window_row_key},
+		span::{WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
@@ -164,7 +164,6 @@ where
 			updates.iter().map(|(.., data)| data),
 			updates.iter().map(|(.., data)| data),
 			&row_numbers,
-			&times,
 			&times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
@@ -348,14 +347,13 @@ where
 			}
 		}
 
-		let now = ctx.written_at();
 		let results = self.accumulate(ctx, buckets, &order)?;
 
 		let mut inserts: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		let mut removes: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		for r in results {
-			let time = r.span.start.as_time().unwrap_or(now);
+			let time = r.first_time.expect("a carry result carries its first time");
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, time, r.value)),
 				EmitKind::Update => updates.push((r.row_number, time, r.value)),

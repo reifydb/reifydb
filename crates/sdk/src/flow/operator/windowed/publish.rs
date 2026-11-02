@@ -11,7 +11,7 @@ use crate::{
 
 pub(super) type Rows<A> = Vec<(RowNumber, DateTime, <A as WindowedOperator>::Output)>;
 pub(super) type UpdateRow<A> =
-	(RowNumber, DateTime, DateTime, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output);
+	(RowNumber, DateTime, Option<<A as WindowedOperator>::Output>, <A as WindowedOperator>::Output);
 pub(super) type UpdateRows<A> = Vec<UpdateRow<A>>;
 pub(super) type Emitted<A> = (Rows<A>, UpdateRows<A>, Rows<A>);
 
@@ -30,13 +30,14 @@ where
 	match (out, stored) {
 		(Some(out), None) => {
 			state.row = Some(out.clone());
+			state.first_time = time;
 			emitted.0.push((row_number, time, out));
 		}
 		(Some(out), Some(pre)) => {
 			state.row = Some(out.clone());
-			emitted.1.push((row_number, time, time, Some(pre), out));
+			emitted.1.push((row_number, state.first_time, Some(pre), out));
 		}
-		(None, Some(pre)) => emitted.2.push((row_number, time, pre)),
+		(None, Some(pre)) => emitted.2.push((row_number, state.first_time, pre)),
 		(None, None) => {}
 	}
 	Ok(())

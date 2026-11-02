@@ -333,15 +333,16 @@ pub(crate) fn finish_tumbling_engine(
 				}
 			}
 			Stamp::Session(gap, bounds, _) => {
-				let before =
+				let stored =
 					get_classified::<_, SessionState>(&mut store, from_ref(&SessionKey(group)))?
-						.remove(0)
-						.map(|state| {
-							(
-								<DateTime as Coord>::from_order(state.session_start),
-								<DateTime as Coord>::from_order(state.last_event_time),
-							)
-						});
+						.remove(0);
+				let first = stored.as_ref().map(|state| state.first_time);
+				let before = stored.map(|state| {
+					(
+						<DateTime as Coord>::from_order(state.session_start),
+						<DateTime as Coord>::from_order(state.last_event_time),
+					)
+				});
 				let now = bounds.get(&(r.group, window_start)).copied().or(before);
 				let pre = match r.kind {
 					EmitKind::Insert => now,
@@ -362,6 +363,7 @@ pub(crate) fn finish_tumbling_engine(
 								session_id: window_start,
 								last_event_time: now.1.to_order(),
 								session_start: now.0.to_order(),
+								first_time: first.unwrap_or(now.0),
 							},
 						)],
 					)?,

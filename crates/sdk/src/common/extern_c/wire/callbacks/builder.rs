@@ -48,8 +48,6 @@ pub struct BuilderCallbacks {
 		pre_row_count: usize,
 		pre_row_numbers_ptr: *const u64,
 		pre_row_numbers_len: usize,
-		pre_times_ptr: *const i64,
-		pre_times_len: usize,
 		post_handles_ptr: *const *mut ColumnBufferHandle,
 		post_name_ptrs: *const *const u8,
 		post_name_lens: *const usize,
@@ -57,7 +55,7 @@ pub struct BuilderCallbacks {
 		post_row_count: usize,
 		post_row_numbers_ptr: *const u64,
 		post_row_numbers_len: usize,
-		post_times_ptr: *const i64,
-		post_times_len: usize,
+		times_ptr: *const i64,
+		times_len: usize,
 	) -> i32,
 }

@@ -354,6 +354,7 @@ where
 				value: emit.value,
 				prior: emit.prior,
 				kind,
+				first_time: None,
 			});
 		}
 		if !withdrawn.is_empty() {

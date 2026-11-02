@@ -323,14 +323,12 @@ where
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let pre_times: Vec<DateTime> = updates.iter().map(|(_, pre_time, ..)| *pre_time).collect();
-		let post_times: Vec<DateTime> = updates.iter().map(|(_, _, post_time, ..)| *post_time).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
 			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
-			&pre_times,
-			&post_times,
+			&times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();

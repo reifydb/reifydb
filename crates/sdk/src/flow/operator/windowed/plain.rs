@@ -286,23 +286,24 @@ where
 		}
 		Ok(())
 	}
-	fn rolling_emitted(emits: RollingEmits<A>, now: DateTime) -> Emitted<A> {
+	fn rolling_emitted(emits: RollingEmits<A>) -> Emitted<A> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		for emit in emits {
 			match (emit.prior, emit.post) {
 				(None, Some(post)) => {
-					emitted.0.push((RowNumber(post.row_number), now, post.last_value))
+					emitted.0.push((RowNumber(post.row_number), post.first_time, post.last_value))
 				}
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
-					now,
-					now,
+					post.first_time,
 					Some(prior.last_value),
 					post.last_value,
 				)),
-				(Some(prior), None) => {
-					emitted.2.push((RowNumber(prior.row_number), now, prior.last_value))
-				}
+				(Some(prior), None) => emitted.2.push((
+					RowNumber(prior.row_number),
+					prior.first_time,
+					prior.last_value,
+				)),
 				(None, None) => {}
 			}
 		}
@@ -316,7 +317,6 @@ where
 		store: &mut GuestAsHost<'_, C>,
 		clock: A::Coord,
 	) -> Result<Emitted<A>> {
-		let now = store.0.written_at();
 		let pane = mode.pane;
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
@@ -335,7 +335,7 @@ where
 		};
 		let after = mode.engine.earliest_expiry(store)?;
 		<A::Coord as SealDomain>::rearm_decay(store, settings.fixed_size(), before, after)?;
-		Ok(Self::rolling_emitted(emits, now))
+		Ok(Self::rolling_emitted(emits))
 	}
 
 	fn apply_rolling<C: GuestContext>(
@@ -346,7 +346,6 @@ where
 		ctx: &mut C,
 		groups: RollingGroups<A>,
 	) -> Result<Emitted<A>> {
-		let now = ctx.written_at();
 		let mut store = GuestAsHost(ctx);
 		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
 		if let (Some(seal_span), Some(newest)) = (seal_span, newest) {
@@ -398,7 +397,7 @@ where
 		emits.extend(applied.emits);
 		let after = mode.engine.earliest_expiry(&mut store)?;
 		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
-		Ok(Self::rolling_emitted(emits, now))
+		Ok(Self::rolling_emitted(emits))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -964,7 +963,7 @@ where
 		let session_ids: Vec<GroupId> =
 			keys.iter().map(|(group, id)| Self::session_group(group, *id)).collect();
 		let records = mode.engine.load_records(&mut store, &session_ids)?;
-		let before: BTreeMap<(A::GroupKey, u64), (A::Coord, A::Coord)> = keys
+		let before: BTreeMap<(A::GroupKey, u64), (DateTime, A::Coord, A::Coord)> = keys
 			.iter()
 			.cloned()
 			.zip(records)
@@ -982,7 +981,7 @@ where
 		let bounds_of = |group: &A::GroupKey, span: &WindowSpan<A::Coord>| {
 			let id = span.start.to_order();
 			current(group, id)
-				.or_else(|| before.get(&(group.clone(), id)).copied())
+				.or_else(|| before.get(&(group.clone(), id)).map(|&(_, start, last)| (start, last)))
 				.expect("every emitted session is open or was recorded before this batch")
 		};
 
@@ -1000,12 +999,14 @@ where
 				continue;
 			};
 			let prior = before.get(&(group.clone(), *id)).copied();
-			if prior == Some((start, last)) {
+			if prior.is_some_and(|(_, prior_start, prior_last)| (prior_start, prior_last) == (start, last))
+			{
 				continue;
 			}
 			let session = Self::session_group(group, *id);
-			records.push((session, start, last));
-			moved.push((group, *id, session, prior.map(|(_, last)| last), Some(last)));
+			let first = prior.map_or_else(|| start.as_time().unwrap_or(now), |(first, ..)| first);
+			records.push((session, first, start, last));
+			moved.push((group, *id, session, prior.map(|(.., last)| last), Some(last)));
 		}
 		for (group, id) in &removed {
 			if current(group, *id).is_some() {
@@ -1013,7 +1014,7 @@ where
 			}
 			let session = Self::session_group(group, *id);
 			stale.push(session);
-			if let Some((_, last)) = before.get(&(group.clone(), *id)) {
+			if let Some((.., last)) = before.get(&(group.clone(), *id)) {
 				moved.push((group, *id, session, Some(*last), None));
 			}
 		}
@@ -1067,30 +1068,31 @@ where
 			let id = r.span.start.to_order();
 			let prior = before.get(&(r.group.clone(), id)).copied();
 			let (start, last) = match r.kind {
-				EmitKind::Remove => prior.unwrap_or_else(|| bounds_of(&r.group, &r.span)),
+				EmitKind::Remove => prior
+					.map(|(_, start, last)| (start, last))
+					.unwrap_or_else(|| bounds_of(&r.group, &r.span)),
 				EmitKind::Insert | EmitKind::Update => bounds_of(&r.group, &r.span),
 			};
 			let span = WindowSpan {
 				start,
 				end: last.add_span(gap),
 			};
-			let time = span.start.as_time().unwrap_or(now);
+			let time = prior.map_or_else(|| span.start.as_time().unwrap_or(now), |(first, ..)| first);
 			let Some(out) = aggregator.build_output(&r.group, span, &r.value) else {
 				continue;
 			};
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, time, out)),
 				EmitKind::Update => {
-					let pre_span = prior.map_or(span, |(start, last)| WindowSpan {
+					let pre_span = prior.map_or(span, |(_, start, last)| WindowSpan {
 						start,
 						end: last.add_span(gap),
 					});
-					let pre_time = pre_span.start.as_time().unwrap_or(now);
 					let pre = r
 						.prior
 						.as_ref()
 						.and_then(|prior| aggregator.build_output(&r.group, pre_span, prior));
-					updates.push((r.row_number, pre_time, time, pre, out))
+					updates.push((r.row_number, time, pre, out))
 				}
 				EmitKind::Remove => removes.push((r.row_number, time, out)),
 			}
@@ -1110,14 +1112,12 @@ where
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let pre_times: Vec<DateTime> = updates.iter().map(|(_, pre_time, ..)| *pre_time).collect();
-		let post_times: Vec<DateTime> = updates.iter().map(|(_, _, post_time, ..)| *post_time).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
 			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
-			&pre_times,
-			&post_times,
+			&times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();

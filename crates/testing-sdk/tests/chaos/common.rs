@@ -152,13 +152,7 @@ fn emit_insert(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<
 fn emit_update(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
 	let (pre, _) = rows_of(&diff.pre().expect("an update carries a pre batch"))?;
 	let (post, numbers) = rows_of(&diff.post().expect("an update carries a post batch"))?;
-	ctx.emit_update(
-		&pre,
-		&post,
-		&numbers,
-		&vec![ctx.written_at(); (&numbers).len()],
-		&vec![ctx.written_at(); (&numbers).len()],
-	)
+	ctx.emit_update(&pre, &post, &numbers, &vec![ctx.written_at(); (&numbers).len()])
 }
 
 fn emit_remove(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {

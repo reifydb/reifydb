@@ -20,7 +20,10 @@ use reifydb_core::{
 	state::{timer::StateStore, typed::typed_key},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use serde::de::DeserializeOwned;
 
 use crate::operator::{
@@ -46,6 +49,7 @@ pub struct SessionState {
 	pub session_id: u64,
 	pub last_event_time: u64,
 	pub session_start: u64,
+	pub first_time: DateTime,
 }
 
 impl HeapSize for SessionState {
@@ -85,6 +89,7 @@ pub struct RollingPublished<K, O> {
 	pub row_number: u64,
 	pub key: K,
 	pub last_value: O,
+	pub first_time: DateTime,
 }
 
 impl<K: HeapSize, O: HeapSize> HeapSize for RollingPublished<K, O> {

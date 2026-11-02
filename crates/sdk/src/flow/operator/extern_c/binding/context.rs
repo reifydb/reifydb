@@ -96,7 +96,7 @@ impl<'a> GuestUpdateEmit for ExternCUpdateEmit<'a> {
 	fn post(&mut self) -> &mut ExternCRowSink<'a> {
 		&mut self.post
 	}
-	fn finish(self, row_numbers: &[RowNumber], pre_times: &[DateTime], post_times: &[DateTime]) -> Result<()> {
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<()> {
 		let mut builder = self.builder;
 		let pre_names = self.pre.names();
 		let post_names = self.post.names();
@@ -107,12 +107,11 @@ impl<'a> GuestUpdateEmit for ExternCUpdateEmit<'a> {
 			pre_names,
 			pre_columns.first().map_or(0, CommittedColumn::row_count),
 			row_numbers,
-			pre_times,
 			&post_columns,
 			post_names,
 			post_columns.first().map_or(0, CommittedColumn::row_count),
 			row_numbers,
-			post_times,
+			times,
 		)
 	}
 }

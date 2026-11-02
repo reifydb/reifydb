@@ -28,7 +28,12 @@ use reifydb_flow_async::{
 		settings::WindowSettings,
 	},
 };
-use reifydb_value::{Result as ValueResult, config::ExtensionParams, error::Error, value::row_number::RowNumber};
+use reifydb_value::{
+	Result as ValueResult,
+	config::ExtensionParams,
+	error::Error,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use tracing::debug;
 
 use crate::{
@@ -53,12 +58,12 @@ use crate::{
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Sk<A> = <<A as WindowedOperator>::Output as OutputRows>::Key;
 type Rw<A> = <<A as WindowedOperator>::Output as OutputRows>::Row;
-type Ranking<A> = BTreeMap<Sk<A>, (RowNumber, Rw<A>)>;
+type Ranking<A> = BTreeMap<Sk<A>, (RowNumber, DateTime, Rw<A>)>;
 
 pub(crate) enum TopKRow<R> {
-	Insert(RowNumber, R),
-	Update(RowNumber, R, R),
-	Remove(RowNumber, R),
+	Insert(RowNumber, DateTime, R),
+	Update(RowNumber, DateTime, R, R),
+	Remove(RowNumber, DateTime, R),
 }
 
 pub(crate) struct TopKPublisher<'f, A: Emit> {
@@ -101,28 +106,29 @@ where
 		let numbers = store.get_or_create_row_numbers(group_id, &added_keys)?;
 		let mut next: Ranking<A> = BTreeMap::new();
 		let mut freed: Vec<EncodedKey> = Vec::new();
-		for (sk, (number, old)) in prior {
+		for (sk, (number, first, old)) in prior {
 			match ranking.get(&sk) {
 				Some(new) => {
 					if *new != old {
-						applied.emits.push(TopKRow::Update(number, old, new.clone()));
+						applied.emits.push(TopKRow::Update(number, first, old, new.clone()));
 					}
-					next.insert(sk, (number, new.clone()));
+					next.insert(sk, (number, first, new.clone()));
 				}
 				None => {
 					freed.push(row_key(group, &sk));
-					applied.emits.push(TopKRow::Remove(number, old));
+					applied.emits.push(TopKRow::Remove(number, first, old));
 				}
 			}
 		}
+		let now = store.written_at();
 		for (sk, (number, is_new)) in added.into_iter().zip(numbers) {
 			let new = ranking[sk].clone();
 			applied.emits.push(if is_new {
-				TopKRow::Insert(number, new.clone())
+				TopKRow::Insert(number, now, new.clone())
 			} else {
-				TopKRow::Update(number, new.clone(), new.clone())
+				TopKRow::Update(number, now, new.clone(), new.clone())
 			});
-			next.insert(sk.clone(), (number, new));
+			next.insert(sk.clone(), (number, now, new));
 		}
 		if !freed.is_empty() {
 			store.remove_row_number(group_id, &freed)?;
@@ -235,29 +241,32 @@ where
 	}
 
 	fn emit_rows(ctx: &mut impl GuestContext, rows: Vec<TopKRow<Rw<A>>>) -> Result<()> {
-		let mut inserts: Vec<(RowNumber, Rw<A>)> = Vec::new();
-		let mut updates: Vec<(RowNumber, Rw<A>, Rw<A>)> = Vec::new();
-		let mut removes: Vec<(RowNumber, Rw<A>)> = Vec::new();
+		let mut inserts: Vec<(RowNumber, DateTime, Rw<A>)> = Vec::new();
+		let mut updates: Vec<(RowNumber, DateTime, Rw<A>, Rw<A>)> = Vec::new();
+		let mut removes: Vec<(RowNumber, DateTime, Rw<A>)> = Vec::new();
 		for row in rows {
 			match row {
-				TopKRow::Insert(number, value) => inserts.push((number, value)),
-				TopKRow::Update(number, prior, value) => updates.push((number, prior, value)),
-				TopKRow::Remove(number, value) => removes.push((number, value)),
+				TopKRow::Insert(number, time, value) => inserts.push((number, time, value)),
+				TopKRow::Update(number, time, prior, value) => {
+					updates.push((number, time, prior, value))
+				}
+				TopKRow::Remove(number, time, value) => removes.push((number, time, value)),
 			}
 		}
-		let now = ctx.written_at();
-		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers, &vec![now; row_numbers.len()])?;
+		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
-			updates.iter().map(|(_, prior, _)| prior),
-			updates.iter().map(|(_, _, new)| new),
+			updates.iter().map(|(_, _, prior, _)| prior),
+			updates.iter().map(|(.., new)| new),
 			&row_numbers,
-			&vec![now; row_numbers.len()],
-			&vec![now; row_numbers.len()],
+			&times,
 		)?;
-		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
-		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers, &vec![now; row_numbers.len()])?;
+		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
+		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();
+		ctx.emit_remove(removes.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		Ok(())
 	}
 }

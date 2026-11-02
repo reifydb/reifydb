@@ -38,7 +38,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	util::hash::{Hash128, xxh3_128},
-	value::row_number::RowNumber,
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 use tracing::{debug, instrument};
 
@@ -83,6 +83,7 @@ pub struct WindowResult<G, Coord, Output> {
 	pub value: Output,
 	pub prior: Option<Output>,
 	pub kind: EmitKind,
+	pub first_time: Option<DateTime>,
 }
 
 #[operator_state]

@@ -14,7 +14,10 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{
@@ -183,31 +186,42 @@ where
 			.map(record_of))
 	}
 
-	pub fn load_records(&self, store: &mut dyn StateStore, sessions: &[GroupId]) -> Result<Vec<Option<(S, S)>>> {
+	pub fn load_records(
+		&self,
+		store: &mut dyn StateStore,
+		sessions: &[GroupId],
+	) -> Result<Vec<Option<(DateTime, S, S)>>> {
 		let keys: Vec<RunningKey> = sessions.iter().map(|session| session_state_key(*session)).collect();
 		Ok(get_classified::<_, SessionState>(store, &keys)?
 			.into_iter()
-			.map(|state| state.map(record_of))
+			.map(|state| {
+				state.map(|state| {
+					let first = state.first_time;
+					let (start, last) = record_of(state);
+					(first, start, last)
+				})
+			})
 			.collect())
 	}
 
 	pub fn save_records(
 		&self,
 		store: &mut dyn StateStore,
-		records: &[(GroupId, S, S)],
+		records: &[(GroupId, DateTime, S, S)],
 		drops: &[GroupId],
 	) -> Result<()> {
 		if !records.is_empty() {
 			set(
 				store,
 				records.iter()
-					.map(|(session, start, last)| {
+					.map(|(session, first, start, last)| {
 						(
 							session_state_key(*session),
 							SessionState {
 								session_id: 0,
 								last_event_time: last.to_order(),
 								session_start: start.to_order(),
+								first_time: *first,
 							},
 						)
 					})
@@ -319,11 +333,11 @@ mod tests {
 		let (first, second) = (group_id("s0"), group_id("s1"));
 
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), None);
-		engine.save_records(&mut store, &[(first, at_millis(95), at_millis(107))], &[]).unwrap();
+		engine.save_records(&mut store, &[(first, at_millis(99), at_millis(95), at_millis(107))], &[]).unwrap();
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), Some((at_millis(95), at_millis(107))));
 		assert_eq!(
 			engine.load_records(&mut store, &[first, second]).unwrap(),
-			vec![Some((at_millis(95), at_millis(107))), None]
+			vec![Some((at_millis(99), at_millis(95), at_millis(107))), None]
 		);
 		engine.save_records(&mut store, &[], &[first]).unwrap();
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), None);

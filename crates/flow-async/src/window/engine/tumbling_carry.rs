@@ -21,7 +21,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	operator::{
@@ -45,6 +45,7 @@ pub struct WindowEntry<S, Carry, Output> {
 	span: WindowSpan<S>,
 	carry_out: Option<Carry>,
 	last_output: Option<Output>,
+	first_time: DateTime,
 }
 
 impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<S, Carry, Output> {
@@ -102,6 +103,7 @@ struct PendingCarry<S, Output> {
 	span: WindowSpan<S>,
 	value: Output,
 	withdraw: bool,
+	first_time: DateTime,
 }
 
 pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
@@ -220,6 +222,7 @@ where
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
+		let now = store.written_at();
 		let mut groups: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
 		groups.dedup();
 		let mut meta_keys: Vec<MetaKey> = Vec::with_capacity(groups.len());
@@ -262,6 +265,7 @@ where
 				span,
 				carry_out: None,
 				last_output: None,
+				first_time: span.start.as_time().unwrap_or(now),
 			});
 			if entry.high_water.is_none_or(|hw| span.start > hw) {
 				entry.high_water = Some(span.start);
@@ -311,6 +315,7 @@ where
 						let w = meta.windows.get_mut(&window).expect("window entry present");
 						w.carry_out = new_carry.clone();
 						w.last_output = Some(out.clone());
+						let first_time = w.first_time;
 						if new_carry.is_some() {
 							prev_carry = new_carry;
 						}
@@ -321,13 +326,15 @@ where
 								span,
 								value: out,
 								withdraw: false,
+								first_time,
 							},
 						));
 					}
 					None => {
-						if let Some(prev) =
-							meta.windows.get(&window).and_then(|w| w.last_output.clone())
-						{
+						if let Some((prev, first_time)) =
+							meta.windows.get(&window).and_then(|w| {
+								w.last_output.clone().map(|prev| (prev, w.first_time))
+							}) {
 							pending.push((
 								group.clone(),
 								PendingCarry {
@@ -335,6 +342,7 @@ where
 									span,
 									value: prev,
 									withdraw: true,
+									first_time,
 								},
 							));
 						}
@@ -407,6 +415,7 @@ where
 					value: emit.value,
 					prior: None,
 					kind,
+					first_time: Some(emit.first_time),
 				});
 			}
 		}
@@ -1280,6 +1289,7 @@ mod tests {
 				span: WindowSpan::new(at_millis(10), at_millis(20)),
 				carry_out: Some(7i64),
 				last_output: Some(3i64),
+				first_time: at_millis(10),
 			},
 		);
 		let bytes = meta.encode_state().unwrap();

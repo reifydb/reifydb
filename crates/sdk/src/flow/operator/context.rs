@@ -112,7 +112,7 @@ pub trait GuestUpdateEmit {
 	type Sink: RowSink;
 	fn pre(&mut self) -> &mut Self::Sink;
 	fn post(&mut self) -> &mut Self::Sink;
-	fn finish(self, row_numbers: &[RowNumber], pre_times: &[DateTime], post_times: &[DateTime]) -> Result<()>;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<()>;
 }
 
 pub trait GuestState {
@@ -351,8 +351,7 @@ pub trait GuestEmitContext {
 		pre: P,
 		post: Q,
 		row_numbers: &[RowNumber],
-		pre_times: &[DateTime],
-		post_times: &[DateTime],
+		times: &[DateTime],
 	) -> Result<()>
 	where
 		P: IntoIterator<Item = &'r R>,
@@ -364,15 +363,14 @@ pub trait GuestEmitContext {
 		let post = post.into_iter();
 		check_emit_count(pre.len(), row_numbers.len())?;
 		check_emit_count(post.len(), row_numbers.len())?;
-		check_emit_count(pre_times.len(), row_numbers.len())?;
-		check_emit_count(post_times.len(), row_numbers.len())?;
+		check_emit_count(times.len(), row_numbers.len())?;
 		if row_numbers.is_empty() {
 			return Ok(());
 		}
 		let mut emit = self.update_emit::<R>(row_numbers.len())?;
 		R::encode_rows(pre, emit.pre())?;
 		R::encode_rows(post, emit.post())?;
-		emit.finish(row_numbers, pre_times, post_times)
+		emit.finish(row_numbers, times)
 	}
 
 	fn emit_remove<'r, R: Row + 'r, I>(

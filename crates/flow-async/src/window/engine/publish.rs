@@ -3,7 +3,10 @@
 
 use reifydb_core::{internal_err, key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::window::{
 	engine::pane::{PaneApplied, PanePublisher, RollingEmit},
@@ -14,6 +17,7 @@ use crate::window::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishState<O> {
 	pub row: Option<O>,
+	pub first_time: DateTime,
 }
 
 impl<O: HeapSize> HeapSize for PublishState<O> {
@@ -26,6 +30,7 @@ impl<O> Default for PublishState<O> {
 	fn default() -> Self {
 		Self {
 			row: None,
+			first_time: DateTime::default(),
 		}
 	}
 }
@@ -41,7 +46,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 
 	fn publish(
 		&self,
-		_store: &mut dyn StateStore,
+		store: &mut dyn StateStore,
 		group: &G,
 		group_id: GroupId,
 		newest: C,
@@ -61,6 +66,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 					row_number: 0,
 					key: key(group),
 					last_value: out,
+					first_time: store.written_at(),
 				};
 				applied.emits.push(RollingEmit {
 					group: group.clone(),
@@ -76,6 +82,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 					row_number: prior.row_number,
 					key: prior.key.clone(),
 					last_value: out,
+					first_time: prior.first_time,
 				};
 				applied.emits.push(RollingEmit {
 					group: group.clone(),
@@ -150,6 +157,7 @@ mod tests {
 				start: DateTime::from_epoch_millis(1_700_000_000_123).unwrap(),
 				best: None,
 			}),
+			first_time: DateTime::from_epoch_millis(1_700_000_000_123).unwrap(),
 		};
 		let bytes = state.encode_state().unwrap();
 		assert_eq!(decode::<PublishState<Published>>(&bytes).unwrap(), state);
