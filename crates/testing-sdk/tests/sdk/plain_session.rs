@@ -227,16 +227,16 @@ fn a_remove_of_a_row_in_a_sealed_session_is_dropped() {
 }
 
 #[test]
-fn the_driver_refuses_a_session_with_a_lateness() {
-	// a session seals on its gap, so a lateness the driver accepted would never be honoured
-	let err = harness!(SumTumblingOnly, session(10, Some(1))).err().expect("create must fail");
+fn the_driver_builds_a_session_with_a_lateness() {
+	// refusing a lateness here would split the sdk from the native session window, which honours it
+	let built = harness!(SumTumblingOnly, session(10, Some(1)));
 
-	assert!(err.to_string().contains("FLOW_078"), "expected FLOW_078, got: {err}");
+	assert!(built.is_ok(), "a session lateness must build, got: {:?}", built.err().map(|e| e.to_string()));
 }
 
 #[test]
 fn the_driver_builds_a_session_with_no_or_zero_lateness() {
-	// refusing any declared lateness would reject the lateness: 0s that the FLOW_078 help tells users to write
+	// refusing a declared zero would reject a session whose lateness adds nothing to its seal
 	for lateness in [None, Some(0)] {
 		let built = harness!(SumTumblingOnly, session(10, lateness));
 

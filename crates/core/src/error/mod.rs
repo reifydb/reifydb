@@ -87,11 +87,6 @@ pub enum CoreError {
 		slide: Duration,
 	},
 
-	#[error("a session window seals on its gap and takes no lateness (lateness: {lateness})")]
-	OperatorWithSessionLateness {
-		lateness: Duration,
-	},
-
 	#[error("a session window needs a gap above zero")]
 	OperatorWithSessionZeroGap,
 

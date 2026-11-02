@@ -167,14 +167,7 @@ impl ApplyWith {
 		if !gap.is_positive() {
 			return Err(CoreError::OperatorWithSessionZeroGap.into());
 		}
-		if let Some(lateness) = self.lateness_duration()?
-			&& lateness.is_positive()
-		{
-			return Err(CoreError::OperatorWithSessionLateness {
-				lateness,
-			}
-			.into());
-		}
+		self.lateness_duration()?;
 		match duration_span("immutable", self.immutable)? {
 			Some(immutable) if immutable.is_positive() => Err(CoreError::OperatorWithSessionImmutable {
 				immutable,
@@ -859,8 +852,9 @@ mod tests {
 	}
 
 	#[test]
-	fn check_session_window_refuses_a_zero_gap_and_a_positive_lateness_only_on_a_session() {
-		// A zero gap spans no row and a lateness misfiles late rows; any other kind must keep its lateness.
+	fn check_session_window_refuses_a_zero_gap_and_a_count_lateness_only_on_a_session() {
+		// A zero gap spans no row and a count lateness is the wrong unit; refusing a duration lateness would
+		// split the sdk from native.
 		let session = |gap: Duration, lateness: Option<WithSpan>| ApplyWith {
 			window: Some(WindowKind::Session {
 				gap,
@@ -873,7 +867,7 @@ mod tests {
 
 		assert!(session(secs(30), None).check_session_window().is_ok());
 		assert!(session(secs(30), Some(WithSpan::Duration(secs(0)))).check_session_window().is_ok());
-		assert_eq!(code(session(secs(30), Some(WithSpan::Duration(secs(1))))), "FLOW_078");
+		assert!(session(secs(30), Some(WithSpan::Duration(secs(1)))).check_session_window().is_ok());
 		assert_eq!(code(session(secs(0), None)), "FLOW_079");
 		assert_eq!(
 			code(session(secs(0), Some(WithSpan::Duration(secs(1))))),

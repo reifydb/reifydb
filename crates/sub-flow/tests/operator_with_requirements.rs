@@ -564,20 +564,20 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_plain_operator() {
 }
 
 #[test]
-fn a_session_window_with_a_lateness_fails_the_create() {
-	// A session seals on its gap, so an accepted lateness would be silently ignored at runtime.
+fn a_session_window_with_a_lateness_creates() {
+	// Refusing it here would split the sdk from the native session window, which honours it.
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	assert_eq!(
-		refused_code(&db, "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
-		"FLOW_078"
-	);
+	let statement = view("late_v", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }");
+	if let Err(err) = db.try_admin(&statement) {
+		panic!("a session with a lateness must create: {statement}: {:?}", err.diagnostic());
+	}
 }
 
 #[test]
 fn a_session_window_with_no_or_zero_lateness_creates() {
-	// Refusing every declared lateness would reject the lateness: 0s that the FLOW_078 help tells users to write.
+	// Refusing a declared zero would reject a session whose lateness adds nothing to its seal.
 	let db = windowed_memory();
 	event_time_source(&db);
 
@@ -649,7 +649,6 @@ fn every_create_time_refusal_leaves_no_flow_and_no_poison() {
 		("FLOW_071", "nostate_probe{} WITH { lateness: 2s }"),
 		("FLOW_072", "managed_probe{}"),
 		("WINDOW_011", "top_k_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
-		("FLOW_078", "time_window_probe{} WITH { window: session, gap: 10s, lateness: 1ms }"),
 		("FLOW_079", "time_window_probe{} WITH { window: session, gap: 0s }"),
 		("FLOW_080", "unmanaged_probe{} WITH { retention: 1h }"),
 		("AST_005", "managed_probe{} WITH { lateness: 2s, retention: 1s }"),
