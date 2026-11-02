@@ -275,6 +275,8 @@ pub(crate) fn compute_unit_backfill(
 		checkpoint_deletes: Vec::new(),
 		emitted,
 		source: Some(SourceVersion(version.0)),
+		written_views: Vec::new(),
+		input_markers: None,
 	};
 	Ok((slice, holds))
 }

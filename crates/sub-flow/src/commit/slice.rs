@@ -45,7 +45,10 @@ use reifydb_value::{
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
-use crate::commit::committer::{FlowSlice, produced_output};
+use crate::{
+	commit::committer::{FlowSlice, produced_output},
+	marker::{MarkerMap, written_views},
+};
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
@@ -90,6 +93,7 @@ pub struct SliceComputer {
 	engine: StandardEngine,
 	lookup: Option<LookupContext>,
 	members: UnitMembers,
+	markers: Option<MarkerMap>,
 }
 
 impl SliceComputer {
@@ -98,6 +102,7 @@ impl SliceComputer {
 			engine,
 			lookup: None,
 			members: Arc::from([]),
+			markers: None,
 		}
 	}
 
@@ -106,6 +111,7 @@ impl SliceComputer {
 			engine: self.engine.clone(),
 			lookup,
 			members: Arc::clone(&self.members),
+			markers: self.markers.clone(),
 		}
 	}
 
@@ -114,7 +120,13 @@ impl SliceComputer {
 			engine: self.engine.clone(),
 			lookup: self.lookup.clone(),
 			members,
+			markers: self.markers.clone(),
 		}
+	}
+
+	pub(crate) fn with_markers(mut self, markers: Option<MarkerMap>) -> Self {
+		self.markers = markers;
+		self
 	}
 
 	fn unit_ids(&self, head: FlowId) -> Vec<FlowId> {
@@ -230,6 +242,7 @@ impl SliceComputer {
 		}
 		*hold_cache = None;
 
+		let input_markers = self.markers.as_ref().and_then(|markers| markers.input_markers(&changes));
 		let (combined, emitted, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
@@ -240,6 +253,10 @@ impl SliceComputer {
 			});
 		}
 
+		let written_views = match &input_markers {
+			Some(_) => written_views(&combined, &self.members)?,
+			None => Vec::new(),
+		};
 		let checkpoint = FlowCheckpoint {
 			version: advance_to,
 			lsn,
@@ -251,6 +268,8 @@ impl SliceComputer {
 				checkpoint_deletes: Vec::new(),
 				emitted,
 				source,
+				written_views,
+				input_markers,
 			},
 			advance_to,
 			lsn,

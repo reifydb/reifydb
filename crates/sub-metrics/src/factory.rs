@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	internal,
 	lifecycle::metrics::RetentionMetrics,
+	marker::LatencyConsumer,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -70,6 +71,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let operator_store = ioc.resolve::<OperatorStore>()?;
 		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
+		ioc.register_service(LatencyConsumer);
 
 		let collectors = Collectors {
 			engine: engine.clone(),

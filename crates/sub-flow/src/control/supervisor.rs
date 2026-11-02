@@ -70,6 +70,7 @@ use crate::{
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
 		routing,
 	},
+	marker::MarkerMap,
 	progress::{
 		frontier::ControlFrontier,
 		output_frontier,
@@ -142,6 +143,7 @@ pub struct FlowSupervisorParams {
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
 	pub frontier_persist: Duration,
+	pub markers: Option<MarkerMap>,
 }
 
 pub struct FlowSupervisor {
@@ -169,6 +171,7 @@ pub struct FlowSupervisor {
 	checkpoint_max_age: Duration,
 	frontier_persist: Duration,
 	full_wake_interval: Duration,
+	markers: Option<MarkerMap>,
 }
 
 pub struct SupervisorState {
@@ -223,6 +226,7 @@ impl FlowSupervisor {
 			checkpoint_max_age: params.checkpoint_max_age,
 			frontier_persist: params.frontier_persist,
 			full_wake_interval,
+			markers: params.markers,
 		}
 	}
 
@@ -1090,7 +1094,8 @@ impl FlowSupervisor {
 			FlowStart::Backfill(version, _, lease, pin) => {
 				FlowActor::backfilling(params, (version, lease, pin))
 			}
-		};
+		}
+		.with_markers(self.markers.clone());
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&name, actor);
 		let waker = FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone())

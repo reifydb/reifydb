@@ -12,6 +12,7 @@ pub(crate) mod commit;
 pub(crate) mod control;
 pub(crate) mod discovery;
 pub mod error;
+pub mod marker;
 pub mod operator;
 pub(crate) mod progress;
 pub mod subsystem;

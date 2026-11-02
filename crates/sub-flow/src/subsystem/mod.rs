@@ -39,6 +39,7 @@ use reifydb_core::{
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	lifecycle::watermark::ConsumerPositions,
+	marker::LatencyConsumer,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -75,6 +76,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		supervisor::{FlowSupervisor, FlowSupervisorHandle, FlowSupervisorMessage, FlowSupervisorParams},
 	},
+	marker::MarkerPlane,
 	progress::{
 		frontier::ControlFrontier,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
@@ -123,11 +125,13 @@ impl FlowSubsystem {
 		});
 		let poll_frontier = ReaderWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
+		let markers = ioc.try_resolve::<LatencyConsumer>().map(|_| MarkerPlane::register(ioc));
 		let committer = Committer::new(
 			flow_tracker.clone(),
 			materialization.clone(),
 			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
-		);
+		)
+		.with_markers(markers.clone());
 		let shards = engine.catalog().get_config_uint2(ConfigKey::FlowCommitterShards).max(1) as usize;
 		let mut committer_handles = Vec::with_capacity(shards * 2);
 		let mut committer_refs = Vec::with_capacity(shards);
@@ -193,6 +197,7 @@ impl FlowSubsystem {
 				checkpoint_lag: FLOW_CHECKPOINT_LAG,
 				checkpoint_max_age: Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
 				frontier_persist: Duration::from_milliseconds(FLOW_FRONTIER_PERSIST_MS).unwrap(),
+				markers: markers.map(|plane| plane.map().clone()),
 			}),
 		);
 

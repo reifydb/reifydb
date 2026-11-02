@@ -70,6 +70,7 @@ use crate::{
 		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
+	marker::MarkerMap,
 	operator::provider::StandardOperatorProvider,
 	progress::{
 		frontier::ControlFrontier,
@@ -222,6 +223,11 @@ impl FlowActor {
 			backfill: false,
 			create_snapshot: Mutex::new(None),
 		}
+	}
+
+	pub(crate) fn with_markers(mut self, markers: Option<MarkerMap>) -> Self {
+		self.computer = self.computer.with_markers(markers);
+		self
 	}
 
 	pub fn backfilling(

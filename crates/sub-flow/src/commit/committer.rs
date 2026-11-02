@@ -38,7 +38,11 @@ use reifydb_value::value::identity::IdentityId;
 use reifydb_value::{Result, byte_size::ByteSize, util::hex::display as hex_display};
 use tracing::instrument;
 
-use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPositionTracker};
+use crate::{
+	commit::quiescence::FlowMaterialization,
+	marker::{InputMarkers, MarkerPlane, WrittenView},
+	progress::tracker::FlowPositionTracker,
+};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
@@ -239,6 +243,10 @@ pub struct FlowSlice {
 	pub emitted: bool,
 
 	pub source: Option<SourceVersion>,
+
+	pub written_views: Vec<WrittenView>,
+
+	pub input_markers: Option<InputMarkers>,
 }
 
 impl FlowSlice {
@@ -249,6 +257,8 @@ impl FlowSlice {
 			checkpoint_deletes: Vec::new(),
 			emitted: false,
 			source: None,
+			written_views: Vec::new(),
+			input_markers: None,
 		}
 	}
 
@@ -266,6 +276,7 @@ pub struct Committer {
 	flow_tracker: FlowPositionTracker,
 	materialization: FlowMaterialization,
 	operators: OperatorStore,
+	markers: Option<MarkerPlane>,
 }
 
 impl Committer {
@@ -278,7 +289,13 @@ impl Committer {
 			flow_tracker,
 			materialization,
 			operators,
+			markers: None,
 		}
+	}
+
+	pub(crate) fn with_markers(mut self, markers: Option<MarkerPlane>) -> Self {
+		self.markers = markers;
+		self
 	}
 
 	#[instrument(name = "flow::committer::commit_slices", level = "debug", skip_all, fields(
@@ -393,6 +410,11 @@ impl Committer {
 		}
 		push_if_not_empty(transaction, operator)?;
 		apply_pending_writes(transaction, &slice.combined)?;
+		if let Some(input) = &slice.input_markers {
+			for written in &slice.written_views {
+				transaction.attach_view_markers(written.view, input.markers())?;
+			}
+		}
 		Ok(())
 	}
 
@@ -409,6 +431,9 @@ impl Committer {
 	) -> CommitVersion {
 		self.apply_operator_slice(operator, sizes, committed);
 		let version = committed.version;
+		if let Some(markers) = &self.markers {
+			markers.record(version, slice);
+		}
 		if slice.produced_output() {
 			self.materialization.record_output(version);
 		}
