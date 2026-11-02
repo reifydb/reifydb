@@ -4,8 +4,8 @@
 use napi::{Error as NapiError, Result as NapiResult};
 use napi_derive::napi;
 use reifydb::{WithSubsystem, embedded};
-use reifydb_node::ReifydbNode;
 use reifydb_canvas::{migration_path, routines};
+use reifydb_node::ReifydbNode;
 
 #[napi]
 pub fn create() -> NapiResult<ReifydbNode> {

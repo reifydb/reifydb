@@ -87,5 +87,9 @@ CREATE MIGRATION 'canvas_tile_key' {
             insert canvas::painter [{ owner: $identity.id, human: true }]
         }
     };
-    create procedure policy canvas_call_register_human on canvas::register_human { call: { filter { $identity.kind == "user" } } }
+    create procedure policy canvas_call_register_human on canvas::register_human { call: { filter { $identity.kind == "user" } } };
+    create procedure canvas::scene as {
+        map { scene: "Deep space, full of color. A near-black blue sky with scattered stars, some bright and warm. Huge glowing nebulae drift across it in magenta, purple, violet, teal and cyan, with dark dust lanes and hot white-pink cores where new stars are born. Light comes from the top left. Add to it: planets with rings, moons, comets with long tails, star clusters, distant galaxies, ships, stations or astronauts. Keep it dark and luminous: deep blues and blacks with bright, saturated glow." }
+    };
+    create procedure policy canvas_call_scene on canvas::scene { call: { filter { true } } }
 };

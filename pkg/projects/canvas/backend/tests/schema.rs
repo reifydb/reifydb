@@ -23,7 +23,8 @@ fn tile_is_partitioned_so_tile_filters_prune() {
 
 #[test]
 fn the_per_pixel_live_table_is_gone() {
-	// A leftover canvas::live would keep its 4.2 M-row layout reachable and its policies granting anonymous updates.
+	// A leftover canvas::live would keep its 4.2 M-row layout reachable and its policies granting anonymous
+	// updates.
 	let db = build();
 	let r = db.engine().query_as(IdentityId::root(), "from canvas::live", Params::None);
 	assert!(r.error.is_some(), "canvas::live must be dropped by the tile migration");
