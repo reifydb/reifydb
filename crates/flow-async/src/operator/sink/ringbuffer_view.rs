@@ -19,6 +19,8 @@ use reifydb_codec::{
 		shape::{RowFamily, RowShape},
 	},
 };
+#[cfg(test)]
+use reifydb_core::key::row::{PartitionedRowKey, RowKey};
 use reifydb_core::{
 	common::ChangeVersion,
 	interface::{
@@ -26,8 +28,7 @@ use reifydb_core::{
 			flow::OperatorId,
 			ringbuffer::{
 				EvictionVisibility, RingBufferMetadata, decode_ringbuffer_metadata,
-				decode_ringbuffer_order, decode_ringbuffer_slots, encode_ringbuffer_metadata,
-				encode_ringbuffer_slots,
+				encode_ringbuffer_metadata,
 			},
 			storage::StorageId,
 			view::View,
@@ -48,12 +49,11 @@ use reifydb_core::{
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		},
-		ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey, ring_order_key, ring_order_range},
-		row::{PartitionedRowKey, RowKey},
+		ringbuffer::RingBufferMetadataKey,
 		typed::direction::Asc,
 	},
 	partition::partition_col_indices,
-	ring::{MetadataWrite, Ring, RingStore, oldest},
+	ring::{Ring, oldest},
 	row::row_shape_from_columns,
 	state::{timer::TimerKind, typed::typed_key},
 	value::batch::{from_encoded_bytes, take_rows},
@@ -71,10 +71,12 @@ use reifydb_flow::{
 		},
 		source::decode_change_keeping,
 	},
-	txn::{Batch, Emit, Get},
+	txn::{Emit, Get},
+	writer::ring::{
+		RingAdapter, RingCounters, RingDeleteRows, RingInsertRows, RingUpdateRows, RingWriter, ring_row_encoded,
+	},
 };
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -110,55 +112,6 @@ pub struct SinkRingBufferViewOperator {
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
 	runtime_context: RuntimeContext,
-}
-
-struct SinkRing<'a> {
-	op: &'a SinkRingBufferViewOperator,
-	txn: &'a mut DeferredTransaction,
-}
-
-impl RingStore for SinkRing<'_> {
-	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
-		self.op.read_metadata(self.txn, partition)
-	}
-
-	fn reserve(&mut self, capacity: u64) -> Result<u64> {
-		let base = self.op.read_next_row(self.txn)?;
-		self.op.write_next_row(self.txn, base + capacity)?;
-		Ok(base)
-	}
-
-	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
-		if rows.is_empty() {
-			return Ok(Vec::new());
-		}
-		let keys: Vec<EncodedKey> = rows.iter().map(|&row| self.op.rb_key(row, partition)).collect();
-		self.txn.get(&keys)
-	}
-
-	fn order(
-		&mut self,
-		partition: Option<Partition>,
-		after: Option<u64>,
-		limit: usize,
-	) -> Result<Vec<(u64, RowNumber)>> {
-		let storage = self.op.storage;
-		let resume = after.map(|sequence| ring_order_key(storage, partition, sequence));
-		let range = ring_order_range(storage, partition).resume_after(resume.as_ref());
-		let mut entries = Vec::with_capacity(limit);
-		for row in self.txn.range(range, RangeScope::All, limit).take(limit) {
-			let row = row?;
-			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
-		}
-		Ok(entries)
-	}
-
-	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
-		match self.txn.get(&[RingBufferFreeKey::encoded_of(self.op.storage, partition)])?.pop().flatten() {
-			None => Ok(Vec::new()),
-			Some(bytes) => decode_ringbuffer_slots(EncodedPodRow::view(&bytes)),
-		}
-	}
 }
 
 struct Placed {
@@ -213,10 +166,7 @@ impl SinkRingBufferViewOperator {
 
 	#[inline]
 	fn rb_key(&self, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
-		match partition {
-			Some(partition) => PartitionedRowKey::encoded(self.storage, partition, rn),
-			None => RowKey::encoded(self.storage, rn),
-		}
+		ring_row_encoded(self.storage, partition, rn)
 	}
 
 	fn meta_key(&self, partition: Option<Partition>) -> GroupStateKey {
@@ -311,29 +261,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn save_ring(&self, txn: &mut DeferredTransaction, ring: &Ring) -> Result<()> {
-		for write in ring.writes() {
-			match write {
-				MetadataWrite::Save(partition, metadata) => {
-					self.write_metadata(txn, partition, &metadata)?
-				}
-				MetadataWrite::Remove(partition) => self.remove_metadata(txn, partition)?,
-				MetadataWrite::Order(partition, sequence, Some(row)) => txn.set_one(
-					&ring_order_key(self.storage, partition, sequence).encode(),
-					encode_ringbuffer_slots(&[row]).into_bytes(),
-				)?,
-				MetadataWrite::Order(partition, sequence, None) => {
-					txn.remove_one(&ring_order_key(self.storage, partition, sequence).encode())?
-				}
-				MetadataWrite::Free(partition, free) if free.is_empty() => {
-					txn.remove_one(&RingBufferFreeKey::encoded_of(self.storage, partition))?
-				}
-				MetadataWrite::Free(partition, free) => txn.set_one(
-					&RingBufferFreeKey::encoded_of(self.storage, partition),
-					encode_ringbuffer_slots(&free).into_bytes(),
-				)?,
-			}
-		}
-		Ok(())
+		RingWriter::new(txn, self.storage).save(self, ring)
 	}
 
 	fn next_row_key(&self) -> GroupStateKey {
@@ -430,6 +358,35 @@ impl SinkRingBufferViewOperator {
 			removes.push(self.row_entry_key(partition, rn));
 		}
 		Ok(())
+	}
+}
+
+impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
+	fn metadata(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+	) -> Result<Option<RingBufferMetadata>> {
+		self.read_metadata(txn, partition)
+	}
+
+	fn reserve(&self, txn: &mut DeferredTransaction, capacity: u64) -> Result<u64> {
+		let base = self.read_next_row(txn)?;
+		self.write_next_row(txn, base + capacity)?;
+		Ok(base)
+	}
+
+	fn save_metadata(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		self.write_metadata(txn, partition, metadata)
+	}
+
+	fn remove_metadata(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<()> {
+		SinkRingBufferViewOperator::remove_metadata(self, txn, partition)
 	}
 }
 
@@ -661,9 +618,10 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn earliest_expiry(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<i64>> {
-		let mut store = SinkRing {
-			op: self,
+		let mut store = RingAdapter {
 			txn,
+			counters: self,
+			storage: self.storage,
 		};
 		let head = oldest(&mut store, partition)?;
 		Ok(head.and_then(|(_, bytes)| self.expires_at(EncodedRingBufferRow::view(&bytes).time())))
@@ -713,9 +671,10 @@ impl SinkRingBufferViewOperator {
 		let cutoff = DateTime::from_millis(at.saturating_sub(ttl_ms).saturating_add(1));
 		let mut ring = Ring::new(self.capacity);
 		let expired = {
-			let mut store = SinkRing {
-				op: self,
+			let mut store = RingAdapter {
 				txn: &mut *txn,
+				counters: self,
+				storage: self.storage,
 			};
 			ring.expire(&mut store, partition, cutoff, EXPIRY_WALK)?
 		};
@@ -799,11 +758,9 @@ impl SinkRingBufferViewOperator {
 		for (partition, rows) in self.partition_groups(txn, view, source)? {
 			touched.insert(partition);
 			let kept = &rows[rows.len().saturating_sub(self.capacity as usize)..];
-			let mut store = SinkRing {
-				op: self,
-				txn: &mut *txn,
-			};
-			for (&row_idx, placement) in kept.iter().zip(ring.place(&mut store, partition, kept.len())?) {
+			let placements =
+				RingWriter::new(&mut *txn, self.storage).place(&*self, ring, partition, kept.len())?;
+			for (&row_idx, placement) in kept.iter().zip(placements) {
 				sequences.push(placement.sequence);
 				placed.push(Placed {
 					row_idx,
@@ -849,7 +806,10 @@ impl SinkRingBufferViewOperator {
 			}
 		}
 		self.state_set(txn, sets)?;
-		txn.set(row_keys, values)?;
+		RingWriter::new(&mut *txn, self.storage).insert(RingInsertRows::Plain {
+			keys: row_keys,
+			rows: values,
+		})?;
 
 		if !fresh.is_empty() {
 			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &fresh)?))?;
@@ -936,8 +896,16 @@ impl SinkRingBufferViewOperator {
 		let encoded = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
-		for ((key, &row_idx), sequence) in keys.iter().zip(&applied).zip(sequences) {
-			txn.set_one(key, with_sequence(encoded[row_idx].clone(), sequence))?;
+		let rows: Vec<EncodedBytes> = applied
+			.iter()
+			.zip(sequences)
+			.map(|(&row_idx, sequence)| with_sequence(encoded[row_idx].clone(), sequence))
+			.collect();
+		if !keys.is_empty() {
+			RingWriter::new(&mut *txn, self.storage).update(RingUpdateRows::Plain {
+				keys,
+				rows,
+			})?;
 		}
 		if !applied.is_empty() {
 			txn.emit(
@@ -1028,18 +996,20 @@ impl SinkRingBufferViewOperator {
 		let mut applied: Vec<usize> = Vec::with_capacity(row_numbers.len());
 		for (partition, rows) in grouped {
 			let storage_rns: Vec<RowNumber> = rows.iter().map(|(_, rn)| *rn).collect();
-			let mut store = SinkRing {
-				op: self,
-				txn: &mut *txn,
-			};
-			for ((row_idx, storage_rn), removed) in
-				rows.into_iter().zip(ring.remove(&mut store, partition, &storage_rns)?)
-			{
+			let mut writer = RingWriter::new(&mut *txn, self.storage);
+			let removed = writer.release(self, ring, partition, &storage_rns)?;
+			let mut keys: Vec<EncodedKey> = Vec::with_capacity(rows.len());
+			for ((row_idx, storage_rn), removed) in rows.into_iter().zip(removed) {
 				if removed.is_none() {
 					continue;
 				}
-				txn.remove_one(&self.rb_key(storage_rn, partition))?;
+				keys.push(self.rb_key(storage_rn, partition));
 				applied.push(row_idx);
+			}
+			if !keys.is_empty() {
+				writer.delete(RingDeleteRows::Plain {
+					keys,
+				})?;
 			}
 		}
 		applied.sort_unstable();
@@ -1579,6 +1549,33 @@ mod tests {
 		let incoming = rows_of(partitioned, evicted, 100);
 		let first_rn = stored.len() as u64 + 1;
 		counted(&engine, &mut op, Diff::insert(columns_at(partitioned, &incoming, first_rn, T0)))
+	}
+
+	#[test]
+	fn a_ring_view_write_makes_exactly_the_reads_it_has_always_made() {
+		// Pinned on the code before the ring writer; any added read on the view path changes these counts.
+		let counts = |get_many_calls, state_fetch_calls, ranges| StorageCounts {
+			gets: 0,
+			get_many_calls,
+			state_fetch_calls,
+			ranges,
+		};
+		let fresh = |partitioned: bool| {
+			let engine = TestEngine::new();
+			let mut op = build_capped(partitioned, 3);
+			let rows = rows_of(partitioned, 1, 1);
+			counted(&engine, &mut op, Diff::insert(columns_at(partitioned, &rows, 1, T0)))
+		};
+		assert_eq!(fresh(false), counts(1, 2, 1));
+		assert_eq!(eviction_counts(false, 1), counts(2, 3, 2));
+		assert_eq!(update_counts(false, 1), counts(1, 3, 1));
+		assert_eq!(remove_counts(false, 1), counts(2, 3, 1));
+		assert_eq!(expiry_counts(false, 1), counts(1, 3, 3));
+		assert_eq!(fresh(true), counts(4, 5, 2));
+		assert_eq!(eviction_counts(true, 1), counts(4, 5, 4));
+		assert_eq!(update_counts(true, 1), counts(1, 5, 2));
+		assert_eq!(remove_counts(true, 1), counts(4, 5, 2));
+		assert_eq!(expiry_counts(true, 1), counts(1, 3, 3));
 	}
 
 	#[test]

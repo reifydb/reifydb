@@ -35,7 +35,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	transaction::operation::ringbuffer::{RingTxn, ringbuffer_key, save_ring},
+	transaction::operation::ringbuffer::{release_ring_rows, ringbuffer_key, save_ring},
 	vm::instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
 };
 use reifydb_flow::writer::series::{SeriesDeleteTally, apply_series_metadata_after_delete};
@@ -575,12 +575,7 @@ impl Evictor {
 		let mut evicted = 0u64;
 		for (partition, rows) in groups {
 			let mut tx = Transaction::Command(&mut txn);
-			let mut store = RingTxn {
-				catalog: &catalog,
-				txn: &mut tx,
-				ringbuffer: &ringbuffer,
-			};
-			let removed = ring.remove(&mut store, partition, &rows)?;
+			let removed = release_ring_rows(&catalog, &mut tx, &ringbuffer, &mut ring, partition, &rows)?;
 			let keys: Vec<TaggedKey> = rows
 				.iter()
 				.zip(removed)

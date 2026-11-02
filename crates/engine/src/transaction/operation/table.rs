@@ -133,7 +133,7 @@ pub struct TableInsert<'a> {
 	pub key_columns: &'a [usize],
 }
 
-trait TableDml: WithInterceptors + Write + Read {
+pub(crate) trait TableDml: WithInterceptors + Write + Read {
 	fn transaction(&mut self) -> Transaction<'_>;
 }
 

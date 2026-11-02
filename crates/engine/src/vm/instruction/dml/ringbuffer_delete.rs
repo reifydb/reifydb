@@ -23,7 +23,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
 	internal_err,
-	ring::{Ring, oldest_first},
+	ring::Ring,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -49,7 +49,9 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::{RingBufferOperations, RingTxn, save_ring},
+	transaction::operation::ringbuffer::{
+		RingBufferOperations, release_ring_rows, ring_rows_oldest_first, save_ring,
+	},
 	vm::{
 		services::Services,
 		volcano::{
@@ -235,12 +237,10 @@ fn delete_ringbuffer_rows(
 		}
 		None => {
 			for listed in catalog.list_ringbuffer_partitions(txn, ringbuffer.id.into())? {
-				let mut store = RingTxn {
-					catalog,
-					txn: &mut *txn,
-					ringbuffer,
-				};
-				grouped.push((listed.partition, oldest_first(&mut store, listed.partition)?));
+				grouped.push((
+					listed.partition,
+					ring_rows_oldest_first(catalog, txn, ringbuffer, listed.partition)?,
+				));
 			}
 		}
 	}
@@ -248,12 +248,7 @@ fn delete_ringbuffer_rows(
 	let mut deleted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	for (partition, rows) in grouped {
-		let mut store = RingTxn {
-			catalog,
-			txn: &mut *txn,
-			ringbuffer,
-		};
-		let removed = ring.remove(&mut store, partition, &rows)?;
+		let removed = release_ring_rows(catalog, txn, ringbuffer, &mut ring, partition, &rows)?;
 		let (doomed, doomed_rows): (Vec<RowNumber>, Vec<EncodedBytes>) = rows
 			.into_iter()
 			.zip(removed)

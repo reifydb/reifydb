@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
-use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
+use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Range, Resolve};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -465,6 +465,16 @@ impl Batch for DeferredTransaction {
 	}
 }
 
+impl Range for DeferredTransaction {
+	fn range(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		Ok(FlowTransaction::range(self, range, RangeScope::All, batch_size))
+	}
+}
+
 impl Emit for DeferredTransaction {
 	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
 		self.emitted |= diff.row_count() > 0;
@@ -715,11 +725,36 @@ mod tests {
 	use std::sync::Arc;
 
 	use arrow_array::{ArrayRef, Int32Array, RecordBatch};
-	use reifydb_core::value::batch::empty_batch;
+	use reifydb_core::{
+		interface::catalog::storage::StorageId,
+		key::row::{RowKey, RowKeyRange},
+		value::batch::empty_batch,
+	};
 	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::*;
 	use crate::transaction::mock::FlowTxn;
+
+	#[test]
+	fn a_forward_range_sees_pending_rows_in_key_order() {
+		// The ring reads its order index here, so a range skipping pending writes would miss rows just placed.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let storage = StorageId::from(ViewId(1));
+		let row = |row: u64| EncodedBytes(CowVec::new(vec![row as u8]));
+		Batch::set(
+			&mut txn,
+			vec![RowKey::encoded(storage, RowNumber(2)), RowKey::encoded(storage, RowNumber(1))],
+			vec![row(2), row(1)],
+		)
+		.unwrap();
+		let rows: Vec<EncodedBytes> = Range::range(&mut txn, RowKeyRange::storage_scan(storage), 16)
+			.unwrap()
+			.map(|found| found.unwrap().bytes)
+			.collect();
+		assert_eq!(rows, vec![row(2), row(1)], "row keys encode the row number descending");
+	}
 
 	#[test]
 	fn emit_marks_the_transaction_only_for_a_diff_with_rows() {

@@ -53,7 +53,7 @@ use crate::{
 	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::{RingBufferOperations, RingTxn, save_ring},
+	transaction::operation::ringbuffer::{RingBufferOperations, place_ring_rows, save_ring},
 	vm::{
 		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
@@ -250,12 +250,7 @@ pub(crate) fn insert_ringbuffer_chunks(
 		let mut evicted = vec![None; count];
 		let mut stamped: Vec<EncodedBytes> = rows[start..end].to_vec();
 		for (partition, members) in &held {
-			let mut store = RingTxn {
-				catalog,
-				txn: &mut *txn,
-				ringbuffer,
-			};
-			let placements = ring.place(&mut store, *partition, members.len())?;
+			let placements = place_ring_rows(catalog, txn, ringbuffer, ring, *partition, members.len())?;
 			for (&offset, placement) in members.iter().zip(placements) {
 				ids[offset] = placement.row;
 				evicted[offset] = placement.evicted;

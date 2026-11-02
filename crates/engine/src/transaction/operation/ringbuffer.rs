@@ -4,48 +4,41 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	pod::EncodedPodRow,
 	ringbuffer::EncodedRingBufferRow,
 	shape::{RowFamily, RowShape},
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
-	delta::SetPre,
 	interface::{
 		catalog::{
 			object::ObjectId,
-			ringbuffer::{
-				RingBuffer, RingBufferMetadata, decode_ringbuffer_order, decode_ringbuffer_slots,
-				encode_ringbuffer_slots,
-			},
+			ringbuffer::{RingBuffer, RingBufferMetadata},
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{
-		any::TaggedKey,
-		ringbuffer::{RingBufferFreeKey, ring_order_key, ring_order_range},
-		row::{PartitionedRowKey, RowKey},
-	},
+	key::any::TaggedKey,
 	partition::{PartitionError, partition_col_indices, partitions_of_rows},
-	ring::{MetadataWrite, Ring, RingStore},
+	ring::{Placement, Ring, oldest_first},
 	row::row_shape_from_columns,
 	value::batch::from_encoded_bytes,
 };
+use reifydb_flow::writer::ring::{
+	RingAdapter, RingCounters, RingDeleteRows, RingInsertRows, RingUpdateRows, RingWriter, ring_row_tagged,
+};
 use reifydb_transaction::{
-	interceptor::{WithInterceptors, ringbuffer_row::RingBufferRowInterceptor},
-	multi::RangeScope,
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, read::Read, write::Write},
+	interceptor::ringbuffer_row::RingBufferRowInterceptor,
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
 use smallvec::{SmallVec, smallvec};
 
-use crate::Result;
+use crate::{
+	Result,
+	transaction::operation::{storage::DmlTransaction, table::TableDml},
+};
 
 pub fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
-	match partition {
-		None => RowKey::new(ringbuffer.id, row_number).into(),
-		Some(partition) => PartitionedRowKey::new(ringbuffer.id, partition, row_number).into(),
-	}
+	ring_row_tagged(ringbuffer.id.into(), partition, row_number)
 }
 
 fn moved_partitions(
@@ -58,82 +51,96 @@ fn moved_partitions(
 	Ok(!indices.is_empty() && partitions_of_rows(shape, &indices, rows)? != partitions)
 }
 
-pub struct RingTxn<'a, 'b, 't> {
-	pub catalog: &'a Catalog,
-	pub txn: &'a mut Transaction<'t>,
-	pub ringbuffer: &'b RingBuffer,
+struct CatalogRing<'a> {
+	catalog: &'a Catalog,
+	ringbuffer: &'a RingBuffer,
 }
 
-impl RingStore for RingTxn<'_, '_, '_> {
-	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
-		self.catalog.find_partition_metadata(self.txn, self.ringbuffer, partition)
-	}
-
-	fn reserve(&mut self, capacity: u64) -> Result<u64> {
-		Ok(self.catalog.reserve_ringbuffer_row_numbers(self.txn, self.ringbuffer.id, capacity)?.0)
-	}
-
-	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
-		if rows.is_empty() {
-			return Ok(Vec::new());
-		}
-		let keys: Vec<TaggedKey> =
-			rows.iter().map(|&row| ringbuffer_key(self.ringbuffer, partition, row)).collect();
-		Ok(self.txn.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
-	}
-
-	fn order(
-		&mut self,
+impl RingCounters<DmlTransaction<'_>> for CatalogRing<'_> {
+	fn metadata(
+		&self,
+		txn: &mut DmlTransaction<'_>,
 		partition: Option<Partition>,
-		after: Option<u64>,
-		limit: usize,
-	) -> Result<Vec<(u64, RowNumber)>> {
-		let storage = self.ringbuffer.id;
-		let resume = after.map(|sequence| ring_order_key(storage, partition, sequence));
-		let range = ring_order_range(storage, partition).resume_after(resume.as_ref());
-		let mut entries = Vec::with_capacity(limit);
-		for row in self.txn.range(range, RangeScope::All, limit)?.take(limit) {
-			let row = row?;
-			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
-		}
-		Ok(entries)
+	) -> Result<Option<RingBufferMetadata>> {
+		self.catalog.find_partition_metadata(&mut txn.tx, self.ringbuffer, partition)
 	}
 
-	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
-		let key: TaggedKey = RingBufferFreeKey::of(self.ringbuffer.id, partition).into();
-		match self.txn.get(&[key])?.pop().flatten() {
-			None => Ok(Vec::new()),
-			Some(row) => decode_ringbuffer_slots(EncodedPodRow::view(&row.bytes)),
-		}
+	fn reserve(&self, txn: &mut DmlTransaction<'_>, capacity: u64) -> Result<u64> {
+		Ok(self.catalog.reserve_ringbuffer_row_numbers(&mut txn.tx, self.ringbuffer.id, capacity)?.0)
 	}
+
+	fn save_metadata(
+		&self,
+		txn: &mut DmlTransaction<'_>,
+		partition: Option<Partition>,
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		self.catalog.save_partition_metadata(&mut txn.tx, self.ringbuffer, partition, metadata)
+	}
+
+	fn remove_metadata(&self, txn: &mut DmlTransaction<'_>, partition: Option<Partition>) -> Result<()> {
+		self.catalog.remove_partition_metadata(&mut txn.tx, self.ringbuffer, partition)
+	}
+}
+
+pub fn place_ring_rows(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	ring: &mut Ring,
+	partition: Option<Partition>,
+	count: usize,
+) -> Result<Vec<Placement>> {
+	let counters = CatalogRing {
+		catalog,
+		ringbuffer,
+	};
+	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
+		.place(&counters, ring, partition, count)
+}
+
+pub fn release_ring_rows(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	ring: &mut Ring,
+	partition: Option<Partition>,
+	rows: &[RowNumber],
+) -> Result<Vec<Option<EncodedBytes>>> {
+	let counters = CatalogRing {
+		catalog,
+		ringbuffer,
+	};
+	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
+		.release(&counters, ring, partition, rows)
+}
+
+pub fn ring_rows_oldest_first(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	partition: Option<Partition>,
+) -> Result<Vec<RowNumber>> {
+	let counters = CatalogRing {
+		catalog,
+		ringbuffer,
+	};
+	oldest_first(
+		&mut RingAdapter {
+			txn: &mut DmlTransaction::over(txn.reborrow()),
+			counters: &counters,
+			storage: ringbuffer.id.into(),
+		},
+		partition,
+	)
 }
 
 pub fn save_ring(catalog: &Catalog, txn: &mut Transaction<'_>, ringbuffer: &RingBuffer, ring: &Ring) -> Result<()> {
-	for write in ring.writes() {
-		match write {
-			MetadataWrite::Save(partition, metadata) => {
-				catalog.save_partition_metadata(txn, ringbuffer, partition, &metadata)?
-			}
-			MetadataWrite::Remove(partition) => {
-				catalog.remove_partition_metadata(txn, ringbuffer, partition)?
-			}
-			MetadataWrite::Order(partition, sequence, Some(row)) => txn.set(vec![(
-				ring_order_key(ringbuffer.id, partition, sequence),
-				encode_ringbuffer_slots(&[row]).into_bytes(),
-			)])?,
-			MetadataWrite::Order(partition, sequence, None) => {
-				txn.remove(vec![(ring_order_key(ringbuffer.id, partition, sequence), None)])?
-			}
-			MetadataWrite::Free(partition, free) if free.is_empty() => {
-				txn.remove(vec![(RingBufferFreeKey::of(ringbuffer.id, partition).into(), None)])?
-			}
-			MetadataWrite::Free(partition, free) => txn.set(vec![(
-				RingBufferFreeKey::of(ringbuffer.id, partition).into(),
-				encode_ringbuffer_slots(&free).into_bytes(),
-			)])?,
-		}
-	}
-	Ok(())
+	let counters = CatalogRing {
+		catalog,
+		ringbuffer,
+	};
+	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into()).save(&counters, ring)
 }
 
 fn ringbuffer_change(ringbuffer: &RingBuffer, diffs: SmallVec<[Diff; 4]>) -> Change {
@@ -229,7 +236,7 @@ pub trait RingBufferOperations {
 	) -> Result<()>;
 }
 
-fn write_rows<T: WithInterceptors + Write + Read>(
+fn write_rows<T: TableDml>(
 	txn: &mut T,
 	ringbuffer: &RingBuffer,
 	shape: &RowShape,
@@ -275,12 +282,11 @@ fn write_rows<T: WithInterceptors + Write + Read>(
 		written
 	};
 
-	txn.set_with_pre(
-		keys.into_iter()
-			.zip(written.iter().cloned())
-			.map(|(key, bytes)| (key, bytes, SetPre::Unknown))
-			.collect(),
-	)?;
+	let written = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
+		.insert(RingInsertRows::Tagged {
+			rows: keys.into_iter().zip(written).collect(),
+		})?
+		.written;
 
 	if !txn.ringbuffer_row_post_insert_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_insert(txn, ringbuffer, ids, &written)?;
@@ -295,7 +301,7 @@ fn write_rows<T: WithInterceptors + Write + Read>(
 	Ok(written)
 }
 
-fn update_rows<T: WithInterceptors + Write + Read>(
+fn update_rows<T: TableDml>(
 	txn: &mut T,
 	ringbuffer: &RingBuffer,
 	partitions: &[Partition],
@@ -329,7 +335,11 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		posts
 	};
 
-	txn.set(keys.into_iter().zip(posts.iter().cloned()).collect())?;
+	let posts = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
+		.update(RingUpdateRows::Tagged {
+			rows: keys.into_iter().zip(posts).collect(),
+		})?
+		.written;
 
 	if !txn.ringbuffer_row_post_update_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_update(txn, ringbuffer, ids, &posts, pres)?;
@@ -344,7 +354,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	Ok(posts)
 }
 
-fn remove_rows<T: WithInterceptors + Write + Read>(
+fn remove_rows<T: TableDml>(
 	txn: &mut T,
 	ringbuffer: &RingBuffer,
 	partitions: &[Partition],
@@ -373,7 +383,11 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, ids)?;
 	}
 
-	txn.remove(keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?;
+	let removed = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
+		.delete(RingDeleteRows::WithPre {
+			rows: keys.into_iter().zip(removed).collect(),
+		})?
+		.replaced;
 
 	if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_delete(txn, ringbuffer, ids, &removed)?;
@@ -512,5 +526,171 @@ impl RingBufferOperations for Transaction<'_> {
 			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod hook_tests {
+	use std::sync::{Arc, Mutex};
+
+	use reifydb_core::{
+		common::TimeSource,
+		delta::{Delta, RemoveAnnounce, SetPre},
+		interface::catalog::id::{NamespaceId, RingBufferId},
+	};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::interceptor::{
+		WithInterceptors,
+		ringbuffer_row::{
+			ringbuffer_row_post_delete, ringbuffer_row_post_insert, ringbuffer_row_post_update,
+			ringbuffer_row_pre_delete, ringbuffer_row_pre_insert, ringbuffer_row_pre_update,
+		},
+	};
+
+	use super::*;
+
+	type Log = Arc<Mutex<Vec<String>>>;
+
+	fn ringbuffer() -> RingBuffer {
+		RingBuffer {
+			id: RingBufferId(1),
+			namespace: NamespaceId(1),
+			name: "r".to_string(),
+			columns: vec![],
+			capacity: 2,
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::None,
+		}
+	}
+
+	fn row(sequence: u64) -> EncodedBytes {
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer().columns);
+		let mut builder = shape.allocate_ringbuffer();
+		builder.set_sequence(sequence);
+		builder.freeze_bytes()
+	}
+
+	fn sequence_of(row: &EncodedBytes) -> u64 {
+		EncodedRingBufferRow::view(row).sequence()
+	}
+
+	fn hooked(txn: &mut AdminTransaction) -> Log {
+		let log: Log = Arc::new(Mutex::new(Vec::new()));
+		let entry = |log: &Log| log.clone();
+		let at = entry(&log);
+		txn.ringbuffer_row_pre_delete_interceptors().add(Arc::new(ringbuffer_row_pre_delete(move |ctx| {
+			at.lock().unwrap().push(format!("pre_delete {:?}", ctx.ids));
+			Ok(())
+		})));
+		let at = entry(&log);
+		txn.ringbuffer_row_post_delete_interceptors().add(Arc::new(ringbuffer_row_post_delete(move |ctx| {
+			let rows: Vec<u64> = ctx.deleted_rows.iter().map(sequence_of).collect();
+			at.lock().unwrap().push(format!("post_delete {rows:?}"));
+			Ok(())
+		})));
+		let at = entry(&log);
+		txn.ringbuffer_row_pre_insert_interceptors().add(Arc::new(ringbuffer_row_pre_insert(move |_| {
+			at.lock().unwrap().push("pre_insert".to_string());
+			Ok(())
+		})));
+		let at = entry(&log);
+		txn.ringbuffer_row_post_insert_interceptors().add(Arc::new(ringbuffer_row_post_insert(move |ctx| {
+			let rows: Vec<u64> = ctx.rows.iter().map(sequence_of).collect();
+			at.lock().unwrap().push(format!("post_insert {rows:?}"));
+			Ok(())
+		})));
+		let at = entry(&log);
+		txn.ringbuffer_row_pre_update_interceptors().add(Arc::new(ringbuffer_row_pre_update(move |_| {
+			at.lock().unwrap().push("pre_update".to_string());
+			Ok(())
+		})));
+		let at = entry(&log);
+		txn.ringbuffer_row_post_update_interceptors().add(Arc::new(ringbuffer_row_post_update(move |ctx| {
+			let posts: Vec<u64> = ctx.posts.iter().map(sequence_of).collect();
+			let pres: Vec<u64> = ctx.pres.iter().map(sequence_of).collect();
+			at.lock().unwrap().push(format!("post_update {posts:?} {pres:?}"));
+			Ok(())
+		})));
+		log
+	}
+
+	fn pending(txn: &AdminTransaction, key: &TaggedKey) -> Delta {
+		txn.cmd.as_ref().unwrap().pending_writes().get(key).unwrap().delta.clone()
+	}
+
+	#[test]
+	fn evicted_delete_hooks_fire_with_the_evicted_row_before_insert_hooks() {
+		// Delete hooks after insert hooks would show a consumer the new row while the old one still counts.
+		let mut txn = create_test_admin_transaction();
+		let log = hooked(&mut txn);
+		let ids = [RowNumber(1), RowNumber(2)];
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer().columns);
+		let written = txn
+			.write_ringbuffer(&ringbuffer(), &shape, &[], &ids, &[row(5), row(6)], &[Some(row(3)), None])
+			.unwrap();
+		assert_eq!(written, vec![row(5), row(6)]);
+		assert_eq!(
+			*log.lock().unwrap(),
+			vec![
+				"pre_delete [RowNumber(1)]".to_string(),
+				"post_delete [3]".to_string(),
+				"pre_insert".to_string(),
+				"post_insert [5, 6]".to_string(),
+			]
+		);
+		let key = ringbuffer_key(&ringbuffer(), None, RowNumber(1));
+		assert!(matches!(
+			pending(&txn, &key),
+			Delta::Set {
+				pre: SetPre::Unknown,
+				..
+			}
+		));
+	}
+
+	#[test]
+	fn an_insert_without_evictions_fires_no_delete_hook() {
+		// A delete hook for a fresh slot would report a row that never existed.
+		let mut txn = create_test_admin_transaction();
+		let log = hooked(&mut txn);
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer().columns);
+		txn.write_ringbuffer(&ringbuffer(), &shape, &[], &[RowNumber(1)], &[row(5)], &[None]).unwrap();
+		assert_eq!(*log.lock().unwrap(), vec!["pre_insert".to_string(), "post_insert [5]".to_string()]);
+	}
+
+	#[test]
+	fn an_update_keeps_the_callers_pre_for_its_hook_and_tells_the_store_none() {
+		// Ring update DML gives the store no pre today; passing one would change the CDC pre-image source.
+		let mut txn = create_test_admin_transaction();
+		let log = hooked(&mut txn);
+		let stored = txn.update_ringbuffer(&ringbuffer(), &[], &[RowNumber(1)], &[row(7)], &[row(4)]).unwrap();
+		assert_eq!(stored, vec![row(7)]);
+		assert_eq!(*log.lock().unwrap(), vec!["pre_update".to_string(), "post_update [7] [4]".to_string()]);
+		let key = ringbuffer_key(&ringbuffer(), None, RowNumber(1));
+		assert!(matches!(
+			pending(&txn, &key),
+			Delta::Set {
+				pre: SetPre::Unknown,
+				..
+			}
+		));
+	}
+
+	#[test]
+	fn a_remove_hands_the_displayed_pre_to_the_store_and_the_post_delete_hook() {
+		// With nothing committed the displayed row is the pre-image; dropping it would lose the CDC remove.
+		let mut txn = create_test_admin_transaction();
+		let log = hooked(&mut txn);
+		txn.remove_from_ringbuffer(&ringbuffer(), &[], &[RowNumber(1)], &[row(4)]).unwrap();
+		assert_eq!(
+			*log.lock().unwrap(),
+			vec!["pre_delete [RowNumber(1)]".to_string(), "post_delete [4]".to_string()]
+		);
+		let key = ringbuffer_key(&ringbuffer(), None, RowNumber(1));
+		assert!(matches!(
+			pending(&txn, &key),
+			Delta::Remove { announce: RemoveAnnounce::Announced { pre }, .. } if pre == row(4)
+		));
 	}
 }
