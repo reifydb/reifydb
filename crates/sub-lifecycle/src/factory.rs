@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	default,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
 		class::RetentionClass,
@@ -124,7 +125,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			registry.register(Box::new(Measured::new(
 				CommitLogCheckpointTask::new(
 					checkpoint,
-					catalog.get_config_duration(ConfigKey::SyncInterval),
+					default::store::COMMIT_LOG_CHECKPOINT_INTERVAL,
 				),
 				plane.clone(),
 			)));

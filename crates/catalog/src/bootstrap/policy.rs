@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::policy::{CallableOp, PolicyOpToCreate, PolicyTargetType, PolicyToCreate},
 };
@@ -52,7 +51,6 @@ pub fn bootstrap_call_policies(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 
 	for (name, namespace, object) in missing {

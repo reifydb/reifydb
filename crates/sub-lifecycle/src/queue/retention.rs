@@ -11,7 +11,6 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	durability::Durability,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -152,7 +151,7 @@ impl QueueRetentionTask {
 			return Ok(0);
 		}
 
-		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
+		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let mut attempt_keys = Vec::new();
 		for item in &purge {
 			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
@@ -194,7 +193,7 @@ impl QueueRetentionTask {
 			return Ok((0, drained));
 		}
 
-		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
+		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		for key in &expired.keys {
 			txn.remove(vec![(key.clone().into(), None)])?;
 		}

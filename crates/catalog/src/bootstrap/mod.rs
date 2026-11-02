@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::{config::ConfigKey, id::NamespaceId, namespace::Namespace},
 	key::{
@@ -103,7 +102,6 @@ pub fn bootstrap_root_namespaces(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 	for namespace in [Namespace::system(), Namespace::default_namespace()] {
 		catalog_api.create_namespace_with_id(
@@ -165,7 +163,6 @@ pub fn apply_bootstrap_configs(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 
 	let catalog_api = Catalog::new(catalog.clone());

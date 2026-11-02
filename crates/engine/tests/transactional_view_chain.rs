@@ -3,13 +3,10 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb_core::{
-	durability::Durability,
-	interface::{
-		catalog::object::ObjectId,
-		change::{ChangeOrigin, Diff},
-		commit::CommitEntry,
-	},
+use reifydb_core::interface::{
+	catalog::object::ObjectId,
+	change::{ChangeOrigin, Diff},
+	commit::CommitEntry,
 };
 use reifydb_engine::lift::lift_entry_changes;
 use reifydb_test_harness::engine::TestEngine;
@@ -163,7 +160,7 @@ fn a_delete_leaves_both_views() {
 fn a_read_later_in_the_same_txn_sees_both_hops() {
 	// The second hop must also run inside the writing txn, not only at commit.
 	let t = chain();
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("INSERT ns::src [{ id: 2, v: 50 }]", Params::None);
 	assert!(r.error.is_none(), "insert failed: {:?}", r.error);
 	assert_eq!(ids(&txn.rql("FROM ns::b", Params::None).frames), vec![2]);
@@ -175,7 +172,7 @@ fn a_read_later_in_the_same_txn_sees_both_hops() {
 fn a_rollback_leaves_both_views_unchanged() {
 	// Rows of both hops live in the txn's write set, so a rollback must drop them all.
 	let t = chain();
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("INSERT ns::src [{ id: 2, v: 50 }]", Params::None);
 	assert!(r.error.is_none(), "insert failed: {:?}", r.error);
 	assert_eq!(ids(&txn.rql("FROM ns::b", Params::None).frames), vec![2]);
@@ -199,7 +196,7 @@ fn a_chain_created_and_written_in_one_admin_txn_is_maintained() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::src { id: int4, v: int4 }");
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	for rql in [
 		"CREATE TRANSACTIONAL VIEW ns::a { id: int4, v: int4 } AS { FROM ns::src | filter { v > 10 } }",
 		"CREATE TRANSACTIONAL VIEW ns::b { id: int4, v: int4 } AS { FROM ns::a | filter { v < 90 } }",

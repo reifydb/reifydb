@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -11,7 +10,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE USER idn_create_a", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
@@ -26,12 +25,12 @@ fn rolled_back_create_is_not_visible() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE USER idn_create_b", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "idn_create_b").unwrap().is_none(),
 		"rolled-back create must not leave identity behind"
@@ -43,12 +42,12 @@ fn committed_create_is_visible_in_new_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE USER idn_create_c", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "idn_create_c").unwrap().is_some(),
 		"committed identity must be findable in new txn"
@@ -60,11 +59,11 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn1.rql("CREATE USER idn_create_d", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "idn_create_d").unwrap().is_none(),
 		"concurrent txn must not see uncommitted identity"
@@ -73,7 +72,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn3), "idn_create_d").unwrap().is_some(),
 		"after commit, identity must be findable in a fresh txn"
@@ -86,7 +85,7 @@ fn create_drop_create_same_name_in_one_txn_succeeds() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE USER idn_create_rec", Params::None);
 	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
 	let first = catalog

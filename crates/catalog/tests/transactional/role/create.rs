@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -12,7 +11,7 @@ fn create_drop_create_same_name_in_one_txn_succeeds() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE ROLE role_create_rec", Params::None);
 	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
 	let first = catalog

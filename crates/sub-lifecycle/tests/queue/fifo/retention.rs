@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	durability::Durability,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -260,7 +259,7 @@ fn test_a_terminal_item_with_no_attempt_record_is_left_alone() {
 	t.mock_clock().set_millis(0);
 	finish(&t);
 
-	let mut txn = t.inner().begin_command(TestEngine::identity(), Durability::Async).unwrap();
+	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
 	txn.remove(vec![(QueueAttemptKey::new(queue, reifydb_value::value::row_number::RowNumber(1), 1).into(), None)])
 		.unwrap();
 	txn.commit().unwrap();
@@ -285,7 +284,7 @@ fn test_an_orphan_state_record_from_a_crashed_sweep_is_collected() {
 	t.mock_clock().set_millis(0);
 	finish(&t);
 
-	let mut txn = t.inner().begin_command(TestEngine::identity(), Durability::Async).unwrap();
+	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
 	txn.remove(vec![(
 		reifydb_core::key::row::RowKey::new(queue, reifydb_value::value::row_number::RowNumber(1)).into(),
 		None,

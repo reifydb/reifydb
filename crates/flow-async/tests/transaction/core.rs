@@ -10,7 +10,6 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	interface::catalog::{
 		id::{IndexId, TableId},
 		object::ObjectId,
@@ -104,12 +103,12 @@ fn test_get_from_committed() {
 	let value = make_value("value1");
 
 	{
-		let mut cmd_txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 		cmd_txn.set(vec![(make_typed_key("key1").into(), value.clone())]).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
-	let parent = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -213,12 +212,12 @@ fn test_contains_key_committed() {
 	let key = make_key("key1");
 
 	{
-		let mut cmd_txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 		cmd_txn.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
-	let parent = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,

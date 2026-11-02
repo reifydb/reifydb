@@ -8,13 +8,12 @@ use std::{
 };
 
 use reifydb::{
-	Database, Params, SqliteConfig, embedded,
+	Database, Params, SqliteConfig, WalMode, embedded,
 	runtime::{
 		RuntimeConfig,
 		fatal::{FatalConfig, disarm},
 	},
 };
-use reifydb_core::durability::Durability;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_value::value::{frame::frame::Frame, identity::IdentityId};
 
@@ -22,7 +21,13 @@ fn boot(path: &Path, enabled: bool) -> Database {
 	embedded::sqlite(SqliteConfig::new(path.join("db")))
 		.with_runtime_config(disarmed())
 		.with_fast_shutdown()
-		.with_wal(move |wal| wal.enabled(enabled))
+		.with_wal(move |wal| {
+			wal.mode(if enabled {
+				WalMode::default()
+			} else {
+				WalMode::Off
+			})
+		})
 		.build()
 		.expect("sqlite database must build")
 }
@@ -85,7 +90,7 @@ fn enabled_boot_refuses_a_saved_lsn_past_the_wal_head() {
 		{
 			let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
 				.with_runtime_config(disarmed())
-				.with_wal(|wal| wal.enabled(true))
+				.with_wal(|wal| wal.mode(WalMode::default()))
 				.build()
 				.expect("fresh database must build");
 			seed(&db);
@@ -120,18 +125,17 @@ fn enabled_wal_replays_single_records_after_restart() {
 }
 
 #[test]
-fn fsync_commit_returns_with_the_wal_disabled() {
-	// With the nop, fsync must not block on or panic over a log that never syncs.
+fn a_commit_returns_with_the_wal_off() {
+	// With the nop, a commit must not block on or panic over a log that never syncs.
 	temp_dir(|path| {
 		let db = boot(path, false);
 		seed(&db);
-		let mut txn =
-			db.engine().begin_command(IdentityId::root(), Durability::Fsync).expect("begin fsync command");
+		let mut txn = db.engine().begin_command(IdentityId::root()).expect("begin command");
 		let inserted = txn.rql("INSERT app::t [{ id: 1 }]", Params::None);
-		assert!(inserted.error.is_none(), "insert in fsync command failed: {:?}", inserted.error);
-		txn.commit().expect("fsync commit returns");
+		assert!(inserted.error.is_none(), "insert in command failed: {:?}", inserted.error);
+		txn.commit().expect("commit returns");
 		let frames = db.query_as_root("FROM app::t", Params::None).expect("query rows");
-		assert_eq!(row_count(&frames), 1, "the fsync commit must be visible");
+		assert_eq!(row_count(&frames), 1, "the commit must be visible");
 		Ok(())
 	})
 	.expect("temp dir lifecycle must succeed");

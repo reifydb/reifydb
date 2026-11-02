@@ -19,7 +19,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	event::EventBus,
 	interface::{
 		catalog::{
@@ -171,7 +170,7 @@ impl Runner for MvccRunner {
 						unreachable!("can not call commit on rx")
 					}
 					TransactionHandle::Write(mut tx) => {
-						tx.commit(Durability::Async)?;
+						tx.commit()?;
 					}
 				}
 			}
@@ -271,7 +270,7 @@ impl Runner for MvccRunner {
 					}
 				}
 				args.reject_rest()?;
-				tx.commit(Durability::Async)?;
+				tx.commit()?;
 			}
 
 			// tx: rollback

@@ -16,34 +16,42 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyncMode {
-	GroupCommit {
-		window: Duration,
+pub enum WalMode {
+	Async {
+		interval: Duration,
 	},
-	EveryAppend,
-	Never,
+	Sync,
+	CheckpointSync,
+	Off,
+}
+
+impl Default for WalMode {
+	fn default() -> Self {
+		Self::Async {
+			interval: Duration::from_seconds_const(1),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncMessage {
 	Tick,
-	Appended,
 }
 
 pub(crate) struct SyncActor<T, L> {
 	wal: Wal<T, L>,
-	window: Option<Duration>,
+	interval: Duration,
 }
 
 pub(crate) struct SyncState {
-	_timer: Option<TimerHandle>,
+	_timer: TimerHandle,
 }
 
 impl<T, L> SyncActor<T, L> {
-	pub(crate) fn new(wal: Wal<T, L>, window: Option<Duration>) -> Self {
+	pub(crate) fn new(wal: Wal<T, L>, interval: Duration) -> Self {
 		Self {
 			wal,
-			window,
+			interval,
 		}
 	}
 }
@@ -55,7 +63,7 @@ impl<T: Body + Send + Sync + 'static, L: Append + Flush> Actor for SyncActor<T, 
 
 	fn init(&self, ctx: &Context<SyncMessage>) -> SyncState {
 		SyncState {
-			_timer: self.window.map(|window| ctx.schedule_tick(window, |_| SyncMessage::Tick)),
+			_timer: ctx.schedule_tick(self.interval, |_| SyncMessage::Tick),
 		}
 	}
 

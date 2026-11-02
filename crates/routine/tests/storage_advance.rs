@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::{durability::Durability, event::EventBus};
+use reifydb_core::event::EventBus;
 use reifydb_routine::procedure::storage::advance::StorageAdvanceProcedure;
 use reifydb_routine_abi::{Routine, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
@@ -69,7 +69,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 	let services = t.inner().services();
 	let catalog = services.catalog.clone();
 	let params = Params::from(args);
-	let mut txn = t.inner().begin_command(identity, Durability::Async).expect("command transaction");
+	let mut txn = t.inner().begin_command(identity).expect("command transaction");
 	let mut tx = Transaction::Command(&mut txn);
 	let mut ctx = ProcedureContext {
 		fragment: Fragment::internal("storage::advance"),
@@ -328,8 +328,8 @@ fn concurrent_assertions_on_different_objects_both_commit() {
 	assert_through(&t, "app::quotes", "2026-08-07T09:00:00");
 
 	let instant = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
-	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
-	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut first = t.inner().begin_command(IdentityId::root()).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root()).expect("command transaction");
 	advance_in(&t, &mut first, "app::trades", instant).expect("first assertion");
 	advance_in(&t, &mut second, "app::quotes", instant).expect("second assertion");
 
@@ -352,8 +352,8 @@ fn concurrent_first_assertions_on_different_objects_both_commit() {
 	let quotes = object_id(&t, "quotes");
 
 	let instant = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
-	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
-	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut first = t.inner().begin_command(IdentityId::root()).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root()).expect("command transaction");
 	advance_in(&t, &mut first, "app::trades", instant).expect("first assertion");
 	advance_in(&t, &mut second, "app::quotes", instant).expect("second assertion");
 
@@ -376,8 +376,8 @@ fn concurrent_assertions_on_the_same_object_conflict() {
 
 	let early = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
 	let late = DateTime::from_ymd_hms(2026, 8, 7, 11, 0, 0).expect("datetime");
-	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
-	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut first = t.inner().begin_command(IdentityId::root()).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root()).expect("command transaction");
 	advance_in(&t, &mut first, "app::trades", late).expect("first assertion");
 	advance_in(&t, &mut second, "app::trades", early).expect("second assertion");
 

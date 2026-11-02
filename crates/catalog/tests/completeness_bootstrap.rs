@@ -11,7 +11,6 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	common::TimeSource,
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, TableId},
 };
@@ -52,7 +51,6 @@ fn a_store_whose_completeness_table_predates_the_primary_key_refuses_to_start() 
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)
 	.expect("admin transaction");
 	let namespace = catalog_api

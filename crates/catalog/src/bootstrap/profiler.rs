@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	common::TimeSource,
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::{
 		id::{ColumnId, NamespaceId, SeriesId},
@@ -45,7 +44,6 @@ pub fn bootstrap_profiler(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 
 	ensure_namespace(

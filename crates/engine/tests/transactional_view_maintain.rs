@@ -4,13 +4,10 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_core::{
-	durability::Durability,
-	interface::{
-		catalog::object::ObjectId,
-		change::{ChangeOrigin, Diff},
-		commit::CommitEntry,
-	},
+use reifydb_core::interface::{
+	catalog::object::ObjectId,
+	change::{ChangeOrigin, Diff},
+	commit::CommitEntry,
 };
 use reifydb_engine::lift::lift_entry_changes;
 use reifydb_test_harness::engine::TestEngine;
@@ -66,7 +63,7 @@ fn a_delete_removes_the_row_from_the_view() {
 fn a_read_later_in_the_same_txn_sees_the_view_updated() {
 	// This is the whole point of a transactional view: no lag, not even inside the writing txn.
 	let t = setup();
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("INSERT ns::src [{ id: 2 }]", Params::None);
 	assert!(r.error.is_none(), "insert failed: {:?}", r.error);
 	let r = txn.rql("FROM ns::v", Params::None);
@@ -153,7 +150,7 @@ fn object_origins(t: &TestEngine, entry: &CommitEntry) -> Vec<ObjectId> {
 fn a_rollback_leaves_the_view_unchanged() {
 	// View rows live in the user txn's write set, so a rollback must drop them with the source rows.
 	let t = setup();
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("INSERT ns::src [{ id: 2 }]", Params::None);
 	assert!(r.error.is_none(), "insert failed: {:?}", r.error);
 	assert_eq!(ids(&txn.rql("FROM ns::v", Params::None).frames), vec![2]);
@@ -204,7 +201,7 @@ fn a_view_created_and_written_in_one_admin_txn_is_maintained() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::src { id: int4 }");
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE TRANSACTIONAL VIEW ns::v { id: int4 } AS { FROM ns::src }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	let r = txn.rql("INSERT ns::src [{ id: 2 }]", Params::None);
@@ -219,7 +216,7 @@ fn a_view_row_changed_then_removed_in_one_txn_is_gone_after_commit() {
 	// The set then remove on a committed view row must not cancel out, or commit brings the old row back.
 	let t = setup();
 	t.command("INSERT ns::src [{ id: 2 }]");
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("UPDATE ns::src { id: 3 } FILTER { id == 2 }", Params::None);
 	assert!(r.error.is_none(), "update failed: {:?}", r.error);
 	let r = txn.rql("DELETE ns::src FILTER { id == 3 }", Params::None);
@@ -234,7 +231,7 @@ fn a_row_that_entered_the_view_earlier_in_the_txn_leaves_it_on_delete() {
 	// The delete must retract the row as the txn last saw it, not as committed, or the filter drops the retraction.
 	let t = setup();
 	t.command("INSERT ns::src [{ id: 1 }]");
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("UPDATE ns::src { id: 5 } FILTER { id == 1 }", Params::None);
 	assert!(r.error.is_none(), "update failed: {:?}", r.error);
 	assert_eq!(ids(&txn.rql("FROM ns::v", Params::None).frames), vec![5]);

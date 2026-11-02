@@ -7,6 +7,7 @@ use std::{
 };
 
 use reifydb_store_log::error::LogError;
+use reifydb_value::value::duration::Duration;
 
 use crate::lsn::Lsn;
 
@@ -33,7 +34,7 @@ pub enum WalError {
 		requested: Lsn,
 		oldest: Lsn,
 	},
-	SyncStopped,
+	NonPositiveInterval(Duration),
 	Body(String),
 }
 
@@ -75,7 +76,9 @@ impl Display for WalError {
 				requested.as_u64(),
 				oldest.as_u64()
 			),
-			Self::SyncStopped => write!(f, "the wal sync loop has stopped"),
+			Self::NonPositiveInterval(interval) => {
+				write!(f, "the wal sync interval must be greater than zero, found {interval}")
+			}
 			Self::Body(reason) => write!(f, "{reason}"),
 		}
 	}

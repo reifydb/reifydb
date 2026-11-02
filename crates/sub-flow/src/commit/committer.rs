@@ -563,7 +563,6 @@ mod commit_integration {
 	use reifydb_core::{
 		commit::watermark::ReaderWatermark,
 		delta::{Delta, RemoveAnnounce, SetPre},
-		durability::Durability,
 		interface::{
 			catalog::{
 				flow::OperatorId,
@@ -603,7 +602,7 @@ mod commit_integration {
 		util::cowvec::CowVec,
 		value::{duration::Duration, row_number::RowNumber},
 	};
-	use reifydb_wal::lsn::Lsn;
+	use reifydb_wal::{lsn::Lsn, sync::WalMode};
 
 	use super::*;
 	use crate::commit::next_lsn;
@@ -704,8 +703,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		let replies = SliceReplies::new(2);
@@ -733,8 +731,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		let replies = SliceReplies::new(2);
@@ -818,8 +815,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 		let store = committer.operators.clone();
 
@@ -877,7 +873,7 @@ mod commit_integration {
 			if let Some(gate) = first {
 				gate.recv().expect("the test must release the first commit");
 			}
-			begin_engine.begin_command(IdentityId::system(), Durability::Async)
+			begin_engine.begin_command(IdentityId::system())
 		});
 		let (handle, committer) = build_committer_actor(engine, CommitHandle::new(begin));
 		(handle, committer, release)
@@ -949,8 +945,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		for (round, source) in [(1u64, 7u64), (2, 8), (3, 8)] {
@@ -1072,8 +1067,7 @@ mod commit_integration {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		commit_one(&handle, control_slice(false));
@@ -1117,7 +1111,7 @@ mod commit_integration {
 	}
 
 	fn seed(engine: &StandardEngine, rows: &[(EncodedKey, u8)]) {
-		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("begin seed");
+		let mut txn = engine.begin_command(IdentityId::system()).expect("begin seed");
 		for (key, tag) in rows {
 			txn.set(vec![(tagged(key), payload(*tag))]).expect("seed row");
 		}
@@ -1126,7 +1120,7 @@ mod commit_integration {
 
 	fn commit_pending(te: &TestEngine, pending: &Pending) -> (OpCounts, Vec<Delta>) {
 		let engine = te.inner();
-		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("begin");
+		let mut txn = engine.begin_command(IdentityId::system()).expect("begin");
 		apply_pending_writes(&mut txn, pending).expect("apply pending writes");
 		let counts = txn.op_counts();
 		let version = txn.commit().expect("commit");
@@ -1367,8 +1361,7 @@ mod commit_integration {
 			store.clone(),
 		);
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let replies = SliceReplies::new(2);
 		committer.commit_slices(
 			"commit-test",
@@ -1409,12 +1402,12 @@ mod commit_integration {
 	}
 
 	fn logged_engine() -> TestEngine {
-		TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build()
+		TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build()
 	}
 
 	fn logged_handle(engine: &StandardEngine) -> CommitHandle {
 		let begin_engine = engine.clone();
-		CommitHandle::new(Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async)))
+		CommitHandle::new(Arc::new(move || begin_engine.begin_command(IdentityId::system())))
 	}
 
 	fn logged_sections(engine: &StandardEngine) -> Vec<(Lsn, CommitRecord)> {

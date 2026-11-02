@@ -19,7 +19,6 @@ use reifydb_core::{
 		queue::{CommitPull, CommitQueue},
 	},
 	common::{CommitVersion, SourceVersion},
-	durability::Durability,
 	error::diagnostic::flow::flow_step_panicked,
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
@@ -370,7 +369,7 @@ impl FlowActor {
 	}
 
 	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
-		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
+		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		flow_engine.register(&mut txn, self.flow.clone())?;
 		for (member, _) in &self.members {
 			flow_engine.register(&mut txn, member.clone())?;
@@ -1326,7 +1325,6 @@ mod pull_protocol {
 			watermark::ReaderWatermark,
 		},
 		delta::{Delta, RemoveAnnounce, SetPre},
-		durability::Durability,
 		interface::{
 			catalog::{
 				flow::OperatorId,
@@ -1362,6 +1360,7 @@ mod pull_protocol {
 		byte_size::ByteSize,
 		value::{Value, system_columns::row_numbers},
 	};
+	use reifydb_wal::sync::WalMode;
 
 	use super::*;
 	use crate::{
@@ -1399,13 +1398,12 @@ mod pull_protocol {
 	}
 
 	fn harness_with(table_rql: &str, view_rql: &str) -> Harness {
-		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.enabled(true)).build();
+		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		let engine = te.inner().clone();
 
 		{
 			let catalog = engine.catalog();
-			let mut admin =
-				engine.begin_admin(IdentityId::system(), Durability::Async).expect("begin admin");
+			let mut admin = engine.begin_admin(IdentityId::system()).expect("begin admin");
 			catalog.set_config(&mut admin, ConfigKey::FlowTick, Value::duration_seconds(3600))
 				.expect("set flow tick");
 			admin.commit().expect("commit config");
@@ -1429,7 +1427,7 @@ mod pull_protocol {
 			substrate.clone(),
 			OperatorSampleRegistry::new(),
 		);
-		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
+		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
 		let flow =
 			engine.catalog().get_flow_dag(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
 		probe.register(&mut txn, flow.clone()).expect("register probe");
@@ -1449,8 +1447,7 @@ mod pull_protocol {
 			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
 		let begin_engine = engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let committer_handle = engine.spawner().spawn_flow(
 			"pull-protocol-committer",
 			CommitterActor::new(committer, CommitHandle::new(begin)),
@@ -1792,8 +1789,7 @@ mod pull_protocol {
 				self.substrate.clone(),
 				OperatorSampleRegistry::new(),
 			);
-			let mut txn =
-				self.engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
+			let mut txn = self.engine.begin_command(IdentityId::system()).expect("command");
 			let reader = self
 				.engine
 				.catalog()
@@ -2735,8 +2731,7 @@ mod pull_protocol {
 			operators2.clone(),
 		);
 		let begin_engine = h.engine.clone();
-		let begin: CommitBegin =
-			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let committer2_handle = h.engine.spawner().spawn_flow(
 			"pull-protocol-committer-restart",
 			CommitterActor::new(committer2, CommitHandle::new(begin)),

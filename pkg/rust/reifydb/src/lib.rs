@@ -119,6 +119,7 @@ pub use reifydb_sub_task as sub_task;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_subscription as subscription;
+pub use reifydb_wal::sync::WalMode;
 #[cfg(feature = "testing")]
 pub mod testing {
 	//! Test-only surface behind the `testing` feature. [`sdk`] here is `reifydb-testing-sdk`, a

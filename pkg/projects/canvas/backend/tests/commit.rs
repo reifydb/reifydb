@@ -632,7 +632,10 @@ fn register_human_flags_only_the_caller_once() {
 	register_human(&db, alice).expect("a repeat register must be harmless");
 
 	assert_eq!(painter_rows(&db), vec![(alice, true)]);
-	assert!(!painter_rows(&db).iter().any(|(owner, _)| *owner == agent), "an agent that never registered stays unflagged");
+	assert!(
+		!painter_rows(&db).iter().any(|(owner, _)| *owner == agent),
+		"an agent that never registered stays unflagged"
+	);
 }
 
 #[test]

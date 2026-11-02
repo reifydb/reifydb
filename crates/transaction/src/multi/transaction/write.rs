@@ -16,7 +16,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
-	durability::Durability,
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
@@ -41,7 +40,7 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, partition::Partition},
 };
-use reifydb_wal::lsn::Lsn;
+use reifydb_wal::{lsn::Lsn, sync::WalMode};
 use tracing::{instrument, warn};
 
 use super::{MultiTransaction, version::StandardVersionProvider};
@@ -985,22 +984,18 @@ impl MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub fn commit(&mut self, durability: Durability) -> Result<CommitVersion> {
-		self.commit_with(|_| {}, durability)
+	pub fn commit(&mut self) -> Result<CommitVersion> {
+		self.commit_with(|_| {})
 	}
 
-	pub fn commit_with(
-		&mut self,
-		before_publish: impl FnOnce(CommitVersion),
-		durability: Durability,
-	) -> Result<CommitVersion> {
+	pub fn commit_with(&mut self, before_publish: impl FnOnce(CommitVersion)) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
 			before_publish(CommitVersion(0));
 			return Ok(CommitVersion(0));
 		}
 		let deltas = self.prepare_commit()?;
-		self.commit_prepared(deltas, before_publish, durability)
+		self.commit_prepared(deltas, before_publish)
 	}
 
 	fn prepare_commit(&mut self) -> Result<CowVec<Delta>> {
@@ -1012,14 +1007,13 @@ impl MultiWriteTransaction {
 		&mut self,
 		deltas: CowVec<Delta>,
 		before_publish: impl FnOnce(CommitVersion),
-		durability: Durability,
 	) -> Result<CommitVersion> {
 		let (commit_version, lsn, at, deltas) = self.commit_pending(deltas)?;
-		self.finalize_commit(commit_version, lsn, at, deltas, before_publish, durability)
+		self.finalize_commit(commit_version, lsn, at, deltas, before_publish)
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub(crate) fn commit_unchecked(&mut self, durability: Durability) -> Result<Committed> {
+	pub(crate) fn commit_unchecked(&mut self) -> Result<Committed> {
 		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
 			return Ok(Committed {
@@ -1031,7 +1025,7 @@ impl MultiWriteTransaction {
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let (commit_version, lsn, at, deltas) = self.commit_pending_unchecked(deltas)?;
-		let version = self.finalize_commit(commit_version, lsn, at, deltas, |_| {}, durability)?;
+		let version = self.finalize_commit(commit_version, lsn, at, deltas, |_| {})?;
 		Ok(Committed {
 			version,
 			lsn: Some(lsn),
@@ -1046,7 +1040,6 @@ impl MultiWriteTransaction {
 		at: DateTime,
 		deltas: CowVec<Delta>,
 		before_publish: impl FnOnce(CommitVersion),
-		durability: Durability,
 	) -> Result<CommitVersion> {
 		reifydb_assertions! {
 			assert_ne!(
@@ -1072,7 +1065,7 @@ impl MultiWriteTransaction {
 			self.oracle.query.mark_finished(v);
 		}
 		self.discard();
-		if durability == Durability::Fsync && self.oracle.wal.durable() < Some(lsn) {
+		if self.oracle.wal.mode() == WalMode::Sync && self.oracle.wal.durable() < Some(lsn) {
 			self.oracle.wal.sync().unwrap_or_else(|err| {
 				panic!("commit {} failed to flush the commit log: {err}", commit_version.0)
 			});
@@ -1517,7 +1510,7 @@ mod tests {
 			racer.0, commit_version.0
 		);
 
-		let result = txn.finalize_commit(commit_version, lsn, at, deltas, |_| {}, Durability::Async);
+		let result = txn.finalize_commit(commit_version, lsn, at, deltas, |_| {});
 		assert_eq!(
 			result.unwrap(),
 			commit_version,
@@ -1616,7 +1609,7 @@ mod tests {
 		for (key, bytes) in writes {
 			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 	}
 
 	fn stored(engine: &MultiTransaction, key: &str) -> Option<EncodedBytes> {
@@ -1641,7 +1634,7 @@ mod tests {
 		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
 		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
 		txn.remove(vec![(test_key("fresh").into(), None)]).unwrap();
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!((stored(&engine, "committed"), stored(&engine, "fresh")), (None, None));
 	}
@@ -1656,7 +1649,7 @@ mod tests {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
-		txn.commit_unchecked(Durability::Async).unwrap();
+		txn.commit_unchecked().unwrap();
 
 		assert_eq!(stored(&engine, "committed"), None);
 	}
@@ -1722,7 +1715,7 @@ mod tests {
 		)])
 		.unwrap();
 		txn.remove(vec![(test_key("tagged").into(), None)]).unwrap();
-		txn.commit_unchecked(Durability::Async).unwrap();
+		txn.commit_unchecked().unwrap();
 
 		assert_eq!(txn.op_counts.get_committed_calls(), 1);
 	}
@@ -1764,7 +1757,7 @@ mod tests {
 		let savepoint = txn.savepoint();
 		txn.remove(vec![(test_key("kept").into(), None)]).unwrap();
 		txn.restore_savepoint(savepoint);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "kept"), Some(test_bytes("v2")));
 	}
@@ -1801,10 +1794,7 @@ mod tests {
 		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		committed_with(&engine, &[("rolled_back", "v3")]);
 
-		assert!(
-			txn.commit(Durability::Async).is_ok(),
-			"the rolled-back key must not take part in conflict detection"
-		);
+		assert!(txn.commit().is_ok(), "the rolled-back key must not take part in conflict detection");
 		#[cfg(feature = "testing")]
 		assert_eq!(txn.op_counts.get_committed_calls(), 0);
 		assert_eq!(stored(&engine, "rolled_back"), Some(test_bytes("v3")));
@@ -1815,7 +1805,7 @@ mod tests {
 		for (key, bytes) in writes {
 			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
-		txn.commit_unchecked(Durability::Async).unwrap();
+		txn.commit_unchecked().unwrap();
 	}
 
 	fn appended(bytes: &EncodedBytes, tag: &str) -> EncodedBytes {
@@ -1838,7 +1828,7 @@ mod tests {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
 	}
@@ -1877,7 +1867,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(appended(&appended(&test_bytes("v2"), "+a"), "+b")));
 	}
@@ -1892,7 +1882,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(test_bytes("plain")));
 	}
@@ -1909,7 +1899,7 @@ mod tests {
 		let written = appended(&test_bytes("plain"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(written));
 	}
@@ -1927,7 +1917,7 @@ mod tests {
 		let written = appended(&test_bytes("plain"), "+b");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+b")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(written));
 	}
@@ -1949,7 +1939,7 @@ mod tests {
 		let written = appended(&first, "+c");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+c")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(written));
 	}
@@ -1968,7 +1958,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
 		txn.restore_savepoint(savepoint);
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+a")));
 	}
@@ -1981,7 +1971,7 @@ mod tests {
 		let mut txn = engine.begin_command().unwrap();
 		let written = appended(&test_bytes("fresh"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(written));
 	}
@@ -1997,7 +1987,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit_prepared(deltas, |_| {}, Durability::Async).unwrap();
+		txn.commit_prepared(deltas, |_| {}).unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
 	}
@@ -2043,7 +2033,7 @@ mod tests {
 		unchecked_with(&engine, &[("meta", "v2")]);
 		let published = Arc::new(Mutex::new(Vec::new()));
 		engine.event_bus.register::<PostCommitEvent, _>(Published(published.clone()));
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 		engine.event_bus.wait_for_completion();
 
 		assert_eq!(
@@ -2066,7 +2056,7 @@ mod tests {
 		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		txn.commit(Durability::Async).unwrap();
+		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "other"), Some(test_bytes("o1")));
 		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
@@ -2083,7 +2073,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
-		assert!(txn.commit(Durability::Async).is_err(), "the checked write after the read must conflict");
+		assert!(txn.commit().is_err(), "the checked write after the read must conflict");
 		assert_eq!(stored(&engine, "meta"), Some(test_bytes("v2")));
 	}
 
@@ -2100,7 +2090,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
-		assert_eq!(txn.commit(Durability::Async).unwrap_err().0.code, "TXN_001");
+		assert_eq!(txn.commit().unwrap_err().0.code, "TXN_001");
 	}
 
 	#[test]

@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_core::{actors::pending::Pending, durability::Durability};
+use reifydb_core::actors::pending::Pending;
 use reifydb_flow_async::transaction::substrate::operator_section;
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_test_harness::engine::TestEngine;
@@ -14,7 +14,7 @@ use reifydb_wal::lsn::Lsn;
 pub fn create_test_transaction() -> (TestEngine, AdminTransaction, OperatorStore) {
 	let t = TestEngine::new();
 	let operators = t.inner().operator_state();
-	let parent = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	(t, parent, operators)
 }
 

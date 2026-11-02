@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId},
 };
@@ -32,7 +31,6 @@ pub fn bootstrap_lifecycle(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 
 	let ns = ensure_namespace(

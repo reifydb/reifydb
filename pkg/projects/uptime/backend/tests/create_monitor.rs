@@ -4,9 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb::{
-	Database, IdentityId, Value, WithSubsystem,
-	core::durability::Durability,
-	server,
+	Database, IdentityId, Value, WithSubsystem, server,
 	value::{
 		params::Params,
 		value::{
@@ -68,7 +66,7 @@ fn new_user(db: &Database, name: &str) -> IdentityId {
 }
 
 fn new_guest(db: &Database) -> IdentityId {
-	let mut txn = db.engine().begin_admin(IdentityId::root(), Durability::Async).expect("begin admin");
+	let mut txn = db.engine().begin_admin(IdentityId::root()).expect("begin admin");
 	let guest = db
 		.catalog()
 		.create_identity(&mut txn, "guest:visitor", IdentityKind::Guest, db.clock(), db.engine().rng())

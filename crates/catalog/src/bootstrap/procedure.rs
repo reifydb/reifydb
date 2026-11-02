@@ -5,7 +5,6 @@ use std::{collections::HashMap, path::PathBuf};
 
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	event::EventBus,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
@@ -186,7 +185,6 @@ pub fn bootstrap_system_procedures(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Durability::Async,
 	)?;
 
 	ensure_namespace(

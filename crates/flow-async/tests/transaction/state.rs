@@ -8,7 +8,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
-	durability::Durability,
 	interface::{
 		catalog::{
 			flow::OperatorId,
@@ -92,7 +91,7 @@ fn seed_state_tombstone(engine: &TestEngine, operator: OperatorId, key: &GroupSt
 
 fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	// Shares the engine's operator state store like every production deferred txn.
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
@@ -388,7 +387,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 	let row_key_encoded = row_key.encode();
 	let row_value = make_value("own_row").into_bytes();
 
-	let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
 	cmd.set(vec![(
 		QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()).into(),
@@ -397,7 +396,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap().version;
 
-	let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
 	cmd.set(vec![(row_key.clone().into(), row_value.clone())]).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap().version;

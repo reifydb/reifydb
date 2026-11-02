@@ -31,7 +31,6 @@ use reifydb_core::{
 		queue::{CommitQueue, FlowQueueFloor},
 		watermark::{FlowCaughtUpWatermark, ReaderWatermark},
 	},
-	durability::Durability,
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
@@ -117,8 +116,7 @@ impl FlowSubsystem {
 
 		let commit_handle = ioc.try_resolve::<CommitHandle>().unwrap_or_else(|| {
 			let begin_engine = engine.clone();
-			let begin: CommitBegin =
-				Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			CommitHandle::new(begin)
 		});
 		let poll_frontier = ReaderWatermark::default();

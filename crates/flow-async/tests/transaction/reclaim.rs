@@ -8,7 +8,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
-	durability::Durability,
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
@@ -38,7 +37,7 @@ fn payload() -> EncodedPodRow {
 }
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version,

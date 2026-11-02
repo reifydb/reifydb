@@ -5,12 +5,8 @@ use std::{collections::BTreeSet, marker::PhantomData};
 
 use reifydb_codec::log::{LogIndex, RecordKind, Term, record::Record};
 use reifydb_runtime::{
-	actor::{
-		context::CancellationToken,
-		mailbox::{ActorRef, SendError},
-		system::{ActorHandle, ActorSpawner},
-	},
-	sync::{Arc, condvar::Condvar, mutex::Mutex},
+	actor::system::{ActorHandle, ActorSpawner},
+	sync::{Arc, mutex::Mutex},
 };
 use reifydb_store_log::{error::LogError, segment::Scan};
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
@@ -24,7 +20,7 @@ use crate::{
 	lsn::Lsn,
 	recovered::Recovered,
 	replay::Replay,
-	sync::{SyncActor, SyncMessage, SyncMode},
+	sync::{SyncActor, SyncMessage, WalMode},
 };
 
 pub struct Wal<T, L>(Arc<Inner<T, L>>);
@@ -34,18 +30,12 @@ struct Inner<T, L> {
 	appender: Mutex<Appender>,
 	progress: Mutex<Progress>,
 	held: Mutex<BTreeSet<String>>,
-	syncer: Mutex<Option<Syncer>>,
-	flushed: Condvar,
+	mode: WalMode,
 	body: PhantomData<T>,
 }
 
 struct Appender {
 	last: Option<Lsn>,
-}
-
-struct Syncer {
-	actor: ActorRef<SyncMessage>,
-	cancel: Option<CancellationToken>,
 }
 
 struct Progress {
@@ -60,7 +50,13 @@ impl<T, L> Clone for Wal<T, L> {
 }
 
 impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
-	pub fn open(device: L, scans: Vec<Scan>) -> Result<(Self, Recovered)> {
+	pub fn open(device: L, scans: Vec<Scan>, mode: WalMode) -> Result<(Self, Recovered)> {
+		if let WalMode::Async {
+			interval,
+		} = mode && !interval.is_positive()
+		{
+			return Err(WalError::NonPositiveInterval(interval));
+		}
 		let [scan] = scans.as_slice() else {
 			return Err(WalError::Partitions {
 				found: scans.len() as u32,
@@ -82,8 +78,7 @@ impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
 				failed: None,
 			}),
 			held: Mutex::new(BTreeSet::new()),
-			syncer: Mutex::new(None),
-			flushed: Condvar::new(),
+			mode,
 			body: PhantomData,
 		}));
 		Ok((
@@ -100,6 +95,10 @@ impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
 }
 
 impl<T, L> Wal<T, L> {
+	pub fn mode(&self) -> WalMode {
+		self.0.mode
+	}
+
 	pub(crate) fn device(&self) -> &L {
 		&self.0.device
 	}
@@ -239,24 +238,7 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 			appender.last = Some(lsn);
 			lsn
 		};
-		self.notify()?;
 		Ok(lsn)
-	}
-
-	fn notify(&self) -> Result<()> {
-		let syncer = self.0.syncer.lock();
-		let Some(syncer) = syncer.as_ref() else {
-			return Ok(());
-		};
-		match syncer.actor.send(SyncMessage::Appended) {
-			Ok(()) | Err(SendError::Full(_)) => Ok(()),
-			Err(SendError::Closed(_)) => {
-				if syncer.cancel.as_ref().is_some_and(CancellationToken::is_cancelled) {
-					return Ok(());
-				}
-				Err(WalError::SyncStopped)
-			}
-		}
 	}
 
 	pub fn sync(&self) -> Result<Option<Lsn>> {
@@ -268,7 +250,6 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 			Ok(found) => found.and_then(Lsn::from_version),
 			Err(error) => {
 				self.0.progress.lock().failed = Some(error.clone());
-				self.0.flushed.notify_all();
 				return Err(error);
 			}
 		};
@@ -280,48 +261,23 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 				 that was never framed (durable={found:?}, appended={appended:?})"
 			);
 		}
-		let durable = {
-			let mut progress = self.0.progress.lock();
-			progress.durable = progress.durable.max(found);
-			progress.durable
-		};
-		self.0.flushed.notify_all();
-		Ok(durable)
+		let mut progress = self.0.progress.lock();
+		progress.durable = progress.durable.max(found);
+		Ok(progress.durable)
 	}
 
 	pub fn durable(&self) -> Option<Lsn> {
 		self.0.progress.lock().durable
 	}
-
-	#[cfg(not(reifydb_single_threaded))]
-	pub fn wait_durable(&self, lsn: Lsn) -> Result<()> {
-		let mut progress = self.0.progress.lock();
-		while progress.durable.is_none_or(|found| found < lsn) {
-			if let Some(failed) = &progress.failed {
-				return Err(failed.clone());
-			}
-			self.0.flushed.wait(&mut progress);
-		}
-		Ok(())
-	}
 }
 
 impl<T: Body + Send + Sync + 'static, L: Append + Flush> Wal<T, L> {
-	pub fn spawn_sync(&self, spawner: &ActorSpawner, mode: SyncMode) -> Option<ActorHandle<SyncMessage>> {
-		let window = match mode {
-			SyncMode::Never => return None,
-			SyncMode::GroupCommit {
-				window,
-			} => Some(window),
-			SyncMode::EveryAppend => None,
-		};
-		let handle = spawner.spawn_coordination("wal-sync", SyncActor::new(self.clone(), window));
-		if mode == SyncMode::EveryAppend {
-			*self.0.syncer.lock() = Some(Syncer {
-				actor: handle.actor_ref().clone(),
-				cancel: spawner.cancellation_token(),
-			});
+	pub fn spawn_sync(&self, spawner: &ActorSpawner) -> Option<ActorHandle<SyncMessage>> {
+		match self.mode() {
+			WalMode::Async {
+				interval,
+			} => Some(spawner.spawn_coordination("wal-sync", SyncActor::new(self.clone(), interval))),
+			WalMode::Sync | WalMode::CheckpointSync | WalMode::Off => None,
 		}
-		Some(handle)
 	}
 }

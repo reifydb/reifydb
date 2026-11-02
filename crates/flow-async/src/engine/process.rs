@@ -364,7 +364,6 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::{JoinType, TimeDomain},
-		durability::Durability,
 		flow::operator::{FlowNode, LookupObject, OperatorDef},
 		interface::{
 			catalog::{
@@ -408,7 +407,7 @@ mod tests {
 	}
 
 	fn deferred(engine: &TestEngine) -> DeferredTransaction {
-		let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams::from_parent(
 			&parent,

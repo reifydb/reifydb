@@ -20,7 +20,6 @@ use reifydb_benches::{
 use reifydb_codec::{key as keycode, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
@@ -141,7 +140,7 @@ fn spawn_stall_writer(multi: &MultiTransaction, stall_keys: u64, running: &Arc<A
 				)])
 				.expect("set must succeed");
 			}
-			txn.commit(Durability::Async).expect("stall writer keys are disjoint from every other thread");
+			txn.commit().expect("stall writer keys are disjoint from every other thread");
 			round += 1;
 		}
 	})
@@ -205,7 +204,7 @@ fn run_once(
 				txn.set(vec![(encoded_key(layout, thread_id, index).into(), encoded_bytes(index))])
 					.expect("set must succeed");
 				let commit_start = Clock::Real.instant();
-				txn.commit(Durability::Async).expect("disjoint keys must not conflict");
+				txn.commit().expect("disjoint keys must not conflict");
 				commit_histogram
 					.record(commit_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");

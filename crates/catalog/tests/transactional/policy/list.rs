@@ -4,7 +4,6 @@
 // `list_all_policies` bypasses the admin-transaction change log, so each policy is
 // tracked individually through `find_policy_by_name`.
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
@@ -17,7 +16,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE TABLE pol_list_a::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_list_a_keep ON pol_list_a::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
 		"CREATE TABLE POLICY pol_list_a_new ON pol_list_a::t { from: { filter { true } } }",
 		Params::None,
@@ -42,7 +41,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE TABLE pol_list_b::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_list_b_keep ON pol_list_b::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
 		"CREATE TABLE POLICY pol_list_b_new ON pol_list_b::t { from: { filter { true } } }",
 		Params::None,
@@ -50,7 +49,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	txn.rql("DROP TABLE POLICY pol_list_b_keep", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_list_b_new")
@@ -73,7 +72,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE TABLE pol_list_c::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_list_c_keep ON pol_list_c::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
 		"CREATE TABLE POLICY pol_list_c_new ON pol_list_c::t { from: { filter { true } } }",
 		Params::None,
@@ -81,7 +80,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	txn.rql("DROP TABLE POLICY pol_list_c_keep", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_list_c_new")
@@ -104,14 +103,14 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE TABLE pol_list_d::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_list_d_keep ON pol_list_d::t { from: { filter { true } } }");
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	txn1.rql(
 		"CREATE TABLE POLICY pol_list_d_new ON pol_list_d::t { from: { filter { true } } }",
 		Params::None,
 	);
 	txn1.rql("DROP TABLE POLICY pol_list_d_keep", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_list_d_new")
@@ -128,7 +127,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_list_d_new")

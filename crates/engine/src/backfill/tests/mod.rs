@@ -8,7 +8,6 @@ use reifydb_catalog::{interceptor::CatalogCacheInterceptor, system::ids::vtable:
 use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
-	durability::Durability,
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, object::ObjectId, view::View},
@@ -107,7 +106,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Durability::Async,
 		)
 		.unwrap();
 		txn.set_dictionary_allocators(self.allocators.clone());
@@ -121,7 +119,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Durability::Async,
 		)
 		.unwrap()
 	}

@@ -21,7 +21,6 @@ use reifydb_catalog::{
 use reifydb_core::{
 	commit::queue::{CommitPull, CommitQueue, FlowQueueFloor},
 	common::{CommitVersion, TimeSource},
-	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		catalog::{config::ConfigKey, id::NamespaceId},
@@ -56,7 +55,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::{CheckpointedStore, WalConfigurator, flow_wal, memory_wal, nop_wal, replay},
+	wal::{CheckpointedStore, WalConfigurator, flow_wal, memory_wal_with_mode, nop_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -64,6 +63,7 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
+use reifydb_wal::sync::WalMode;
 
 pub struct TestEngine {
 	engine: StandardEngine,
@@ -142,7 +142,7 @@ impl TestEngine {
 
 	pub fn set_config(&self, key: ConfigKey, value: Value) {
 		let catalog = self.engine.catalog();
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut admin = self.engine.begin_admin(IdentityId::system()).unwrap();
 		catalog.set_config(&mut admin, key, value).unwrap();
 		admin.commit().unwrap();
 	}
@@ -302,11 +302,12 @@ impl TestEngineBuilder {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
 		let (operator_store, operator_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		let wal_enabled =
+		let wal_mode =
 			self.wal.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
 				.configure();
+		let wal_enabled = wal_mode != WalMode::Off;
 		let wal = if wal_enabled {
-			memory_wal(clock.clone())
+			memory_wal_with_mode(clock.clone(), wal_mode)
 		} else {
 			nop_wal()
 		}
@@ -446,15 +447,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
-	let mut txn = AdminTransaction::new(
-		multi,
-		single,
-		event_bus,
-		Interceptors::new(),
-		IdentityId::system(),
-		Durability::Async,
-	)
-	.unwrap();
+	let mut txn =
+		AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap();
 	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
@@ -495,7 +489,6 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
-		Durability::Async,
 	)
 	.unwrap();
 	result.set_dictionary_allocators(dictionary_allocators);

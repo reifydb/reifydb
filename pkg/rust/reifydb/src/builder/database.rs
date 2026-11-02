@@ -20,7 +20,6 @@ use reifydb_core::commit::queue::{FlowQueueFloor, SubscriptionQueueFloor};
 use reifydb_core::{
 	CoreVersion,
 	commit::queue::CommitQueue,
-	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		auth::AuthenticationProvider,
@@ -82,9 +81,9 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{Value, duration::Duration, identity::IdentityId},
+	value::{Value, identity::IdentityId},
 };
-use reifydb_wal::sync::SyncMode;
+use reifydb_wal::sync::WalMode;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
@@ -94,8 +93,6 @@ use crate::{
 
 pub struct DatabaseBuilder {
 	version_epoch: VersionEpoch,
-	sync_interval: Option<Duration>,
-	wal_enabled: bool,
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
@@ -152,8 +149,6 @@ impl DatabaseBuilder {
 
 		Self {
 			version_epoch,
-			sync_interval: None,
-			wal_enabled: false,
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
@@ -209,16 +204,6 @@ impl DatabaseBuilder {
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
-		self
-	}
-
-	pub fn with_sync_interval(mut self, interval: Duration) -> Self {
-		self.sync_interval = Some(interval);
-		self
-	}
-
-	pub fn with_wal_enabled(mut self, enabled: bool) -> Self {
-		self.wal_enabled = enabled;
 		self
 	}
 
@@ -408,14 +393,7 @@ impl DatabaseBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 		let runtime_handle = runtime.handle();
-		let sync_mode = if self.wal_enabled {
-			SyncMode::GroupCommit {
-				window: self.sync_interval.expect("Sync interval must be set via with_sync_interval()"),
-			}
-		} else {
-			SyncMode::Never
-		};
-		multi.wal().spawn_sync(&spawner, sync_mode);
+		multi.wal().spawn_sync(&spawner);
 		#[cfg(not(reifydb_single_threaded))]
 		let tokio_handle = runtime.tokio();
 
@@ -433,7 +411,7 @@ impl DatabaseBuilder {
 
 		let commit_queue = CommitQueue::new(
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
-			self.wal_enabled,
+			multi.wal().mode() != WalMode::Off,
 			resumed_at,
 		);
 		self.ioc = self.ioc.register(commit_queue.clone());
@@ -576,8 +554,7 @@ impl DatabaseBuilder {
 
 		let commit_handle = {
 			let begin_engine = engine.clone();
-			let begin: CommitBegin =
-				Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			CommitHandle::new(begin)
 		};
 		self.ioc = self.ioc.register(commit_handle);

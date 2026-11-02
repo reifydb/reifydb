@@ -99,7 +99,6 @@ pub enum ConfigKey {
 	QueueLeaseReapBatchSize,
 	QueueRetentionInterval,
 	QueueRetentionBatchSize,
-	SyncInterval,
 	CommitMergeInterval,
 }
 
@@ -157,7 +156,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize,
 			Self::QueueRetentionInterval,
 			Self::QueueRetentionBatchSize,
-			Self::SyncInterval,
 			Self::CommitMergeInterval,
 		]
 	}
@@ -241,7 +239,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL),
 			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE),
-			Self::SyncInterval => Value::Duration(default::store::SYNC_INTERVAL),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL),
 		}
 	}
@@ -329,7 +326,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL_TESTING),
 			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE_TESTING),
-			Self::SyncInterval => Value::Duration(default::store::SYNC_INTERVAL_TESTING),
 			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL_TESTING),
 		}
 	}
@@ -581,9 +577,6 @@ impl ConfigKey {
 			Self::QueueRetentionBatchSize => {
 				"Max records one queue retention slice may scan across its item and deduplication sweeps. Remaining work drains on the next slice."
 			}
-			Self::SyncInterval => {
-				"How often the commit log is flushed to disk for commits that do not wait for their own flush."
-			}
 		}
 	}
 
@@ -640,7 +633,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
 			Self::QueueRetentionBatchSize => false,
-			Self::SyncInterval => true,
 			Self::CommitMergeInterval => true,
 		}
 	}
@@ -698,7 +690,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
 			Self::QueueRetentionInterval => &[ValueType::Duration],
 			Self::QueueRetentionBatchSize => &[ValueType::Uint8],
-			Self::SyncInterval => &[ValueType::Duration],
 			Self::CommitMergeInterval => &[ValueType::Duration],
 		}
 	}
@@ -756,7 +747,6 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
 			Self::QueueRetentionBatchSize => false,
-			Self::SyncInterval => false,
 			Self::CommitMergeInterval => false,
 		}
 	}
@@ -1026,11 +1016,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::SyncInterval => match value {
-				Value::Duration(d) if d.is_positive() => Ok(()),
-				Value::Duration(_) => Err("SYNC_INTERVAL must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
 			_ => Ok(()),
 		}
 	}
@@ -1115,7 +1100,6 @@ impl fmt::Display for ConfigKey {
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
 			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
 			Self::QueueRetentionBatchSize => write!(f, "QUEUE_RETENTION_BATCH_SIZE"),
-			Self::SyncInterval => write!(f, "SYNC_INTERVAL"),
 			Self::CommitMergeInterval => write!(f, "COMMIT_MERGE_INTERVAL"),
 		}
 	}
@@ -1177,7 +1161,6 @@ impl FromStr for ConfigKey {
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
 			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
 			"QUEUE_RETENTION_BATCH_SIZE" => Ok(Self::QueueRetentionBatchSize),
-			"SYNC_INTERVAL" => Ok(Self::SyncInterval),
 			"COMMIT_MERGE_INTERVAL" => Ok(Self::CommitMergeInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
@@ -1354,7 +1337,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 52);
 		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));
@@ -1396,7 +1379,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::QueueLeaseReapBatchSize));
 		assert!(all.contains(&ConfigKey::QueueRetentionInterval));
 		assert!(all.contains(&ConfigKey::QueueRetentionBatchSize));
-		assert!(all.contains(&ConfigKey::SyncInterval));
 		assert!(all.contains(&ConfigKey::CommitMergeInterval));
 	}
 

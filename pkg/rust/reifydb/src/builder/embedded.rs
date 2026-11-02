@@ -31,6 +31,7 @@ use reifydb_transaction::{
 	wal::{CommitWal, Recovery, WalConfigurator, replay},
 };
 use reifydb_value::value::{Value, duration::Duration};
+use reifydb_wal::sync::WalMode;
 
 type PoolConfigSources = (
 	CommitStore,
@@ -42,7 +43,6 @@ type PoolConfigSources = (
 	u32,
 	ResidentLimits,
 	Duration,
-	Duration,
 	CommitWal,
 	Recovery,
 );
@@ -50,7 +50,7 @@ type PoolConfigSources = (
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-	wal_enabled: bool,
+	wal_mode: WalMode,
 	wal_fs: Option<(Fs, PathBuf)>,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
@@ -60,7 +60,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock, wal_enabled, wal_fs);
+	let wal = commit_wal(factory, clock, wal_mode, wal_fs);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -76,7 +76,6 @@ fn pool_config_from_sources(
 		resolved.operator_wal_autocheckpoint,
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
-		resolved.sync_interval,
 		wal,
 		recovery,
 	))
@@ -276,7 +275,7 @@ impl EmbeddedBuilder {
 
 	pub fn build(self) -> Result<Database> {
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
-		let wal_enabled = self
+		let wal_mode = self
 			.wal_configurator
 			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
 			.configure();
@@ -290,13 +289,12 @@ impl EmbeddedBuilder {
 			operator_wal_autocheckpoint,
 			operator_resident,
 			operator_flush_interval,
-			sync_interval,
 			wal,
 			recovery,
 		) = pool_config_from_sources(
 			&self.storage_factory,
 			&self.bootstrap_configs,
-			wal_enabled,
+			wal_mode,
 			self.wal_fs,
 			&boot_clock,
 		)?;
@@ -325,7 +323,7 @@ impl EmbeddedBuilder {
 				operator_flush_interval,
 				self.operator_persistent,
 				&wal,
-				wal_enabled,
+				wal_mode != WalMode::Off,
 				&clock,
 				&spawner,
 			);
@@ -343,8 +341,6 @@ impl EmbeddedBuilder {
 		);
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
-			.with_sync_interval(sync_interval)
-			.with_wal_enabled(wal_enabled)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store, operator_store);

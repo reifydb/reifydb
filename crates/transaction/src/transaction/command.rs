@@ -7,7 +7,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	delta::SetPre,
-	durability::Durability,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
@@ -118,8 +117,6 @@ pub struct CommandTransaction {
 
 	pub identity: IdentityId,
 
-	durability: Durability,
-
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
@@ -146,7 +143,6 @@ impl CommandTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
-		durability: Durability,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		Ok(Self {
@@ -159,7 +155,6 @@ impl CommandTransaction {
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
 			identity,
-			durability,
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
@@ -223,7 +218,7 @@ impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let (mut multi, row_changes) = self.take_for_commit();
-		let version = multi.commit(self.durability)?;
+		let version = multi.commit()?;
 		self.finish_commit(multi, row_changes, version)?;
 		Ok(version)
 	}
@@ -289,7 +284,7 @@ impl CommandTransaction {
 	pub fn commit_unchecked(&mut self) -> Result<Committed> {
 		self.check_active()?;
 		let (mut multi, row_changes) = self.take_for_commit();
-		let committed = multi.commit_unchecked(self.durability)?;
+		let committed = multi.commit_unchecked()?;
 		self.finish_commit(multi, row_changes, committed.version)?;
 		Ok(committed)
 	}

@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::{JoinType, TimeDomain},
-	durability::Durability,
 	flow::{
 		dag::FlowDag,
 		operator::{FlowNode, LookupObject, OperatorDef},
@@ -41,8 +40,7 @@ fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_err
 		"CREATE DEFERRED VIEW s::bad { g: int4, p: Option(float8) } AS { FROM s::t | aggregate { p: stats::approx_percentile(latency, 1.5, 0.01) } by { g } }",
 	);
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let catalog = engine.catalog();
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(&mut txn), "s")
@@ -176,8 +174,7 @@ fn a_lookup_whose_left_key_is_text_against_an_int4_partition_column_fails_regist
 	engine.admin("CREATE TABLE s::l { k: utf8, a: int4 }");
 	engine.admin("CREATE TABLE s::r { k: int4, b: int4 } WITH { partition: { by: { k } } }");
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = table_id(&engine, &mut txn, "r");
 
@@ -200,8 +197,7 @@ fn a_lookup_whose_int8_left_key_meets_an_int4_partition_column_registers() {
 	engine.admin("CREATE TABLE s::l { k: int8, a: int4 }");
 	engine.admin("CREATE TABLE s::r { k: int4, b: int4 } WITH { partition: { by: { k } } }");
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = table_id(&engine, &mut txn, "r");
 
@@ -220,8 +216,7 @@ fn a_lookup_whose_text_left_key_meets_a_dictionary_partition_column_registers() 
 		"CREATE TABLE s::r { mint: utf8 with { dictionary: s::syms }, b: int4 } WITH { partition: { by: { mint } } }",
 	);
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = table_id(&engine, &mut txn, "r");
 
@@ -240,8 +235,7 @@ fn a_lookup_whose_text_left_key_meets_a_dictionary_ringbuffer_partition_column_r
 		"CREATE RINGBUFFER s::info { pool: utf8 with { dictionary: s::keys }, b: int4 } WITH { capacity: 1, partition: { by: { pool } } }",
 	);
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = ringbuffer_id(&engine, &mut txn, "info");
 
@@ -257,8 +251,7 @@ fn a_lookup_whose_text_left_key_meets_an_int4_ringbuffer_partition_column_fails_
 	engine.admin("CREATE TABLE s::l { k: utf8, a: int4 }");
 	engine.admin("CREATE RINGBUFFER s::r { k: int4, b: int4 } WITH { capacity: 1, partition: { by: { k } } }");
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = ringbuffer_id(&engine, &mut txn, "r");
 
@@ -279,8 +272,7 @@ fn a_lookup_on_a_sorted_view_fails_registration_with_lookup_001() {
 		"CREATE DEFERRED VIEW s::sorted { k: int4, b: int4 } WITH { partition: { by: { k } } } AS { FROM s::src SORT { b } }",
 	);
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = view_id(&engine, &mut txn, "sorted");
 
@@ -301,8 +293,7 @@ fn a_lookup_on_a_ringbuffer_view_fails_registration_with_lookup_001() {
 		"CREATE DEFERRED RINGBUFFER VIEW s::rb { k: int4, b: int4 } WITH { capacity: 10, partition: { by: { k } } } AS { FROM s::src }",
 	);
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = view_id(&engine, &mut txn, "rb");
 
@@ -320,8 +311,7 @@ fn a_lookup_with_two_inputs_fails_registration_instead_of_reading_the_second_as_
 	engine.admin("CREATE TABLE s::l { k: int4, a: int4 }");
 	engine.admin("CREATE TABLE s::r { k: int4, b: int4 } WITH { partition: { by: { k } } }");
 
-	let mut txn =
-		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = table_id(&engine, &mut txn, "r");
 

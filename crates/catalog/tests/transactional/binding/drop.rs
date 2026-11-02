@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -17,7 +16,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	);
 
 	let (ns_id, proc_id, binding_id) = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_drop_a")
 			.unwrap()
@@ -35,7 +34,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP BINDING bnd_drop_a::greet_http", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -62,7 +61,7 @@ fn rolled_back_drop_leaves_binding_intact() {
 	);
 
 	let (ns_id, proc_id, binding_id) = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_drop_b")
 			.unwrap()
@@ -80,12 +79,12 @@ fn rolled_back_drop_leaves_binding_intact() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP BINDING bnd_drop_b::greet_http", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_binding(&mut Transaction::Admin(&mut txn2), binding_id).unwrap().is_some(),
 		"rolled-back drop must leave binding intact"
@@ -109,7 +108,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	);
 
 	let (ns_id, proc_id, binding_id) = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_drop_c")
 			.unwrap()
@@ -127,12 +126,12 @@ fn committed_drop_is_invisible_in_new_txn() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP BINDING bnd_drop_c::greet_http", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_binding(&mut Transaction::Admin(&mut txn2), binding_id).unwrap().is_none(),
 		"committed drop must not be findable in new txn"
@@ -156,7 +155,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	);
 
 	let (proc_id, binding_id) = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_drop_d")
 			.unwrap()
@@ -174,11 +173,11 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 		ids
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn1.rql("DROP BINDING bnd_drop_d::greet_http", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_binding(&mut Transaction::Admin(&mut txn2), binding_id).unwrap().is_some(),
 		"concurrent txn must still see binding while drop is uncommitted"
@@ -187,7 +186,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_binding(&mut Transaction::Admin(&mut txn3), binding_id).unwrap().is_none(),
 		"after commit, binding must be gone"

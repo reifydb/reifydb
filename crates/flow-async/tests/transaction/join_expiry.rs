@@ -5,7 +5,6 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::Pending,
-	durability::Durability,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
@@ -53,7 +52,7 @@ const LEFT: u8 = 0;
 const RIGHT: u8 = 1;
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,

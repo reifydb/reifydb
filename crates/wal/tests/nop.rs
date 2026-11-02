@@ -9,6 +9,7 @@ use reifydb_wal::{
 	error::{Result, WalError},
 	lsn::Lsn,
 	nop::NopDevice,
+	sync::WalMode,
 	wal::Wal,
 };
 
@@ -36,7 +37,7 @@ fn open() -> Wal<Ping, NopDevice> {
 		end: Position::ZERO,
 		stop: Stop::Unwritten,
 	};
-	let (wal, _) = Wal::open(NopDevice::new(), vec![scan]).unwrap();
+	let (wal, _) = Wal::open(NopDevice::new(), vec![scan], WalMode::Off).unwrap();
 	wal
 }
 

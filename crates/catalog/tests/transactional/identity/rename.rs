@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::{IdentityId, IdentityKind};
 
 fn identity_id(t: &TestEngine, name: &str) -> IdentityId {
 	let catalog = t.catalog();
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), name)
 		.unwrap()
 		.unwrap_or_else(|| panic!("identity `{name}` not found"))
@@ -22,7 +21,7 @@ fn uncommitted_rename_is_visible_within_txn() {
 	t.admin("CREATE USER idn_rename_a");
 	let id = identity_id(&t, "idn_rename_a");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.rename_identity(&mut txn, id, "idn_rename_a_new").unwrap();
 
 	assert!(
@@ -42,11 +41,11 @@ fn rolled_back_rename_leaves_the_old_name() {
 	t.admin("CREATE USER idn_rename_b");
 	let id = identity_id(&t, "idn_rename_b");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.rename_identity(&mut txn, id, "idn_rename_b_new").unwrap();
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "idn_rename_b").unwrap().is_some(),
 		"rolled-back rename must leave the original name in place"
@@ -69,11 +68,11 @@ fn committed_rename_reindexes_the_name_in_a_new_txn() {
 	t.admin("CREATE USER idn_rename_c");
 	let id = identity_id(&t, "idn_rename_c");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.rename_identity(&mut txn, id, "idn_rename_c_new").unwrap();
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog
 		.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "idn_rename_c_new")
 		.unwrap()
@@ -95,7 +94,7 @@ fn rename_preserves_id_kind_and_enabled() {
 	t.admin("CREATE SERVICE idn_rename_d");
 	let id = identity_id(&t, "idn_rename_d");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let renamed = catalog.rename_identity(&mut txn, id, "idn_rename_d_new").unwrap();
 	txn.commit().unwrap();
 
@@ -103,7 +102,7 @@ fn rename_preserves_id_kind_and_enabled() {
 	assert_eq!(renamed.kind, IdentityKind::Service);
 	assert!(renamed.enabled);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn2), id).unwrap().unwrap();
 	assert_eq!(found.name, "idn_rename_d_new");
 	assert_eq!(found.kind, IdentityKind::Service);
@@ -120,7 +119,7 @@ fn rename_onto_a_taken_name_is_rejected() {
 	t.admin("CREATE USER idn_rename_e_taken");
 	let id = identity_id(&t, "idn_rename_e");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let err = catalog.rename_identity(&mut txn, id, "idn_rename_e_taken").unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_040");
 
@@ -135,7 +134,7 @@ fn rename_to_the_same_name_is_a_noop() {
 	t.admin("CREATE USER idn_rename_f");
 	let id = identity_id(&t, "idn_rename_f");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let renamed = catalog.rename_identity(&mut txn, id, "idn_rename_f").unwrap();
 	assert_eq!(renamed.id, id);
 	assert_eq!(renamed.name, "idn_rename_f");
@@ -152,7 +151,7 @@ fn rename_of_a_builtin_identity_is_rejected() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let err = catalog.rename_identity(&mut txn, IdentityId::root(), "not_root").unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_095");
 }
@@ -163,7 +162,7 @@ fn rename_of_an_unknown_identity_is_rejected() {
 	let catalog = t.catalog();
 	let unknown = IdentityId::generate(t.clock(), t.rng());
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let err = catalog.rename_identity(&mut txn, unknown, "idn_rename_ghost").unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_043");
 }
@@ -178,8 +177,8 @@ fn concurrent_renames_to_the_same_free_name_cannot_both_commit() {
 	let id1 = identity_id(&t, "idn_rename_g1");
 	let id2 = identity_id(&t, "idn_rename_g2");
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.rename_identity(&mut txn1, id1, "idn_rename_g_taken").unwrap();
 	catalog.rename_identity(&mut txn2, id2, "idn_rename_g_taken").unwrap();
 

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -30,14 +29,14 @@ fn test_identity_propagates_to_all_transaction_types() {
 
 	let identity = IdentityId::system();
 
-	let txn = t.begin_admin(identity, Durability::Async).unwrap();
+	let txn = t.begin_admin(identity).unwrap();
 	assert_eq!(txn.identity, identity);
 	let mut txn = txn;
 	let tx = Transaction::Admin(&mut txn);
 	assert_eq!(tx.identity(), identity);
 	drop(txn);
 
-	let txn = t.begin_command(identity, Durability::Async).unwrap();
+	let txn = t.begin_command(identity).unwrap();
 	assert_eq!(txn.identity, identity);
 	let mut txn = txn;
 	let tx = Transaction::Command(&mut txn);
@@ -61,7 +60,7 @@ fn test_rql_select_through_all_transaction_types() {
 
 	let expected = vec![(1i64, "alice".to_string())];
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {
 		panic!("{e:?}");
@@ -69,7 +68,7 @@ fn test_rql_select_through_all_transaction_types() {
 	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {
 		panic!("{e:?}");
@@ -92,7 +91,7 @@ fn test_rql_insert_and_commit() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -105,7 +104,7 @@ fn test_rql_insert_and_commit() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_command(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 2, name: "bob" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -118,7 +117,7 @@ fn test_rql_insert_and_commit() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 3, name: "charlie" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -137,7 +136,7 @@ fn test_rql_error_poisons_transaction() {
 
 		match label {
 			"admin" => {
-				let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+				let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
 				if let Some(e) = r.error {
 					panic!("{e:?}");
@@ -147,7 +146,7 @@ fn test_rql_error_poisons_transaction() {
 				assert!(txn.commit().is_err(), "commit after poison must fail for {label}");
 			}
 			"command" => {
-				let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+				let mut txn = t.begin_command(IdentityId::system()).unwrap();
 				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
 				if let Some(e) = r.error {
 					panic!("{e:?}");
@@ -157,7 +156,7 @@ fn test_rql_error_poisons_transaction() {
 				assert!(txn.commit().is_err(), "commit after poison must fail for {label}");
 			}
 			"subscription" => {
-				let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+				let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
 				if let Some(e) = r.error {
 					panic!("{e:?}");
@@ -183,7 +182,7 @@ fn test_drop_without_commit_rolls_back() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -196,7 +195,7 @@ fn test_drop_without_commit_rolls_back() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_command(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "bob" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -209,7 +208,7 @@ fn test_drop_without_commit_rolls_back() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "charlie" }]"#, Params::None);
 		if let Some(e) = r.error {
 			panic!("{e:?}");
@@ -225,7 +224,7 @@ fn test_rql_after_commit_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		txn.commit().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -234,7 +233,7 @@ fn test_rql_after_commit_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_command(IdentityId::system()).unwrap();
 		txn.commit().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -243,7 +242,7 @@ fn test_rql_after_commit_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		txn.commit().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -255,7 +254,7 @@ fn test_rql_after_rollback_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		txn.rollback().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -264,7 +263,7 @@ fn test_rql_after_rollback_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_command(IdentityId::system()).unwrap();
 		txn.rollback().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -273,7 +272,7 @@ fn test_rql_after_rollback_errors() {
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		txn.rollback().unwrap();
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
@@ -285,11 +284,11 @@ fn test_rql_syntax_error_returns_err() {
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
-	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
@@ -297,7 +296,7 @@ fn test_rql_syntax_error_returns_err() {
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 }
@@ -309,7 +308,7 @@ fn test_transaction_enum_rql() {
 	t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 	t.command(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#);
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let mut tx = Transaction::Admin(&mut txn);
 	let r = tx.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {

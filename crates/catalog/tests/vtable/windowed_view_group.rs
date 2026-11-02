@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::windowed_view_group::WindowedViewGroupToCreate;
-use reifydb_core::{
-	durability::Durability,
-	interface::catalog::{flow::FlowId, id::ViewId},
-};
+use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -21,7 +18,7 @@ fn vtables_list_one_group_row_and_one_row_per_member_in_declaration_order() {
 	let catalog = t.catalog();
 
 	let group = {
-		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 		let namespace = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "wvg_vtable_a")
 			.unwrap()

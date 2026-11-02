@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
@@ -13,7 +12,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE NAMESPACE nsf_keep_a");
 
 	let keep_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "nsf_keep_a")
 			.unwrap()
@@ -23,7 +22,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE NAMESPACE nsf_new_a", Params::None);
 	txn.rql("DROP NAMESPACE nsf_keep_a", Params::None);
 
@@ -86,7 +85,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE NAMESPACE nsf_keep_b");
 
 	let keep_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "nsf_keep_b")
 			.unwrap()
@@ -96,12 +95,12 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE NAMESPACE nsf_new_b", Params::None);
 	txn.rql("DROP NAMESPACE nsf_keep_b", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "nsf_new_b")
@@ -139,7 +138,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE NAMESPACE nsf_keep_c");
 
 	let keep_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "nsf_keep_c")
 			.unwrap()
@@ -149,12 +148,12 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE NAMESPACE nsf_new_c", Params::None);
 	txn.rql("DROP NAMESPACE nsf_keep_c", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let new_ns = catalog
 		.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "nsf_new_c")
 		.unwrap()
@@ -208,7 +207,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE NAMESPACE nsf_keep_d");
 
 	let keep_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "nsf_keep_d")
 			.unwrap()
@@ -218,11 +217,11 @@ fn concurrent_txn_sees_only_committed_state() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	txn1.rql("CREATE NAMESPACE nsf_new_d", Params::None);
 	txn1.rql("DROP NAMESPACE nsf_keep_d", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
 		catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "nsf_new_d")
@@ -255,7 +254,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	let new_ns = catalog
 		.find_namespace_by_name(&mut Transaction::Admin(&mut txn3), "nsf_new_d")
 		.unwrap()

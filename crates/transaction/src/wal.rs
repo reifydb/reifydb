@@ -44,6 +44,7 @@ use reifydb_wal::{
 	floor::Floor,
 	lsn::Lsn,
 	nop::{NopCursor, NopDevice},
+	sync::WalMode,
 	wal::Wal,
 };
 
@@ -179,7 +180,7 @@ impl Mark for CommitDevice {
 
 pub(crate) const SEGMENT_BYTES: ByteSize = ByteSize::from_mib(64);
 
-pub fn open_wal(fs: Fs, clock: Clock, dir: &Path) -> WalResult<CommitWal> {
+pub fn open_wal(fs: Fs, clock: Clock, dir: &Path, mode: WalMode) -> WalResult<CommitWal> {
 	let parent = dir.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
 	let exists = fs.read_dir(parent).map_err(LogError::from)?.iter().any(|entry| entry == dir);
 	let complete =
@@ -196,7 +197,7 @@ pub fn open_wal(fs: Fs, clock: Clock, dir: &Path) -> WalResult<CommitWal> {
 		drop(Log::create_detached(fs.clone(), clock.clone(), dir, config, 1)?);
 	}
 	let (log, scans) = Log::open_detached(fs, clock, dir)?;
-	let (wal, _) = Wal::open(CommitDevice::Log(log), scans)?;
+	let (wal, _) = Wal::open(CommitDevice::Log(log), scans, mode)?;
 	Ok(wal)
 }
 
@@ -229,7 +230,11 @@ impl MetricsCollector for CommitLogMetrics {
 }
 
 pub fn memory_wal(clock: Clock) -> WalResult<CommitWal> {
-	open_wal(Fs::Memory(MemoryFs::new()), clock, Path::new("/wal"))
+	memory_wal_with_mode(clock, WalMode::default())
+}
+
+pub fn memory_wal_with_mode(clock: Clock, mode: WalMode) -> WalResult<CommitWal> {
+	open_wal(Fs::Memory(MemoryFs::new()), clock, Path::new("/wal"), mode)
 }
 
 pub fn nop_wal() -> WalResult<CommitWal> {
@@ -238,20 +243,13 @@ pub fn nop_wal() -> WalResult<CommitWal> {
 		end: Position::ZERO,
 		stop: Stop::Unwritten,
 	};
-	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new()), vec![scan])?;
+	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new()), vec![scan], WalMode::Off)?;
 	Ok(wal)
 }
 
+#[derive(Default)]
 pub struct WalConfigurator {
-	enabled: bool,
-}
-
-impl Default for WalConfigurator {
-	fn default() -> Self {
-		Self {
-			enabled: true,
-		}
-	}
+	mode: WalMode,
 }
 
 impl WalConfigurator {
@@ -259,13 +257,13 @@ impl WalConfigurator {
 		Self::default()
 	}
 
-	pub fn enabled(mut self, enabled: bool) -> Self {
-		self.enabled = enabled;
+	pub fn mode(mut self, mode: WalMode) -> Self {
+		self.mode = mode;
 		self
 	}
 
-	pub fn configure(self) -> bool {
-		self.enabled
+	pub fn configure(self) -> WalMode {
+		self.mode
 	}
 }
 

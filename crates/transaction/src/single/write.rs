@@ -15,6 +15,7 @@ use reifydb_value::{
 	Result, reifydb_assertions,
 	util::{cowvec::CowVec, hex::encode},
 };
+use reifydb_wal::sync::WalMode;
 
 use super::*;
 use crate::{error::TransactionError, wal::check_record_size};
@@ -187,20 +188,28 @@ impl<'a> SingleWriteTransaction<'a> {
 		let mut encoded = Vec::new();
 		SingleRecord::encode_deltas(&deltas, &mut encoded);
 		check_record_size(&encoded)?;
-		let store = self.inner.store.write();
-		let _in_flight = store.begin_commit();
-		let lsn = self
-			.inner
-			.wal
-			.append_encoded(self.inner.clock.now(), SingleRecord::KIND, encoded)
-			.unwrap_or_else(|err| {
-				panic!(
-					"single commit of {} deltas failed to append to the commit log: {err}",
-					deltas.len()
-				)
+		let lsn = {
+			let store = self.inner.store.write();
+			let _in_flight = store.begin_commit();
+			let lsn = self
+				.inner
+				.wal
+				.append_encoded(self.inner.clock.now(), SingleRecord::KIND, encoded)
+				.unwrap_or_else(|err| {
+					panic!(
+						"single commit of {} deltas failed to append to the commit log: {err}",
+						deltas.len()
+					)
+				});
+			if let Err(err) = store.commit_logged(CowVec::new(deltas), lsn) {
+				panic!("single commit is in the commit log but failed to install in the store: {err}");
+			}
+			lsn
+		};
+		if self.inner.wal.mode() == WalMode::Sync && self.inner.wal.durable() < Some(lsn) {
+			self.inner.wal.sync().unwrap_or_else(|err| {
+				panic!("single commit at lsn {} failed to flush the commit log: {err}", lsn.as_u64())
 			});
-		if let Err(err) = store.commit_logged(CowVec::new(deltas), lsn) {
-			panic!("single commit is in the commit log but failed to install in the store: {err}");
 		}
 		Ok(())
 	}

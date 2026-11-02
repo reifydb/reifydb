@@ -70,6 +70,7 @@ use reifydb_transaction::{
 	wal::{CommitWal, Recovery, WalConfigurator, replay},
 };
 use reifydb_value::value::{Value, duration::Duration};
+use reifydb_wal::sync::WalMode;
 #[cfg(all(feature = "sub_metric_profiler", feature = "sub_tracing"))]
 use tracing_subscriber::filter::LevelFilter;
 
@@ -85,7 +86,6 @@ type PoolConfigSources = (
 	u32,
 	ResidentLimits,
 	Duration,
-	Duration,
 	CommitWal,
 	Recovery,
 );
@@ -93,7 +93,7 @@ type PoolConfigSources = (
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-	wal_enabled: bool,
+	wal_mode: WalMode,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
@@ -102,7 +102,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock, wal_enabled, None);
+	let wal = commit_wal(factory, clock, wal_mode, None);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -118,7 +118,6 @@ fn pool_config_from_sources(
 		resolved.operator_wal_autocheckpoint,
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
-		resolved.sync_interval,
 		wal,
 		recovery,
 	))
@@ -370,7 +369,7 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
-		let wal_enabled = self
+		let wal_mode = self
 			.wal_configurator
 			.take()
 			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
@@ -386,10 +385,9 @@ impl ServerBuilder {
 			operator_wal_autocheckpoint,
 			operator_resident,
 			operator_flush_interval,
-			sync_interval,
 			wal,
 			recovery,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, wal_enabled, &boot_clock)?;
+		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, wal_mode, &boot_clock)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -411,7 +409,7 @@ impl ServerBuilder {
 				operator_flush_interval,
 				None,
 				&wal,
-				wal_enabled,
+				wal_mode != WalMode::Off,
 				&clock,
 				&spawner,
 			);
@@ -430,8 +428,6 @@ impl ServerBuilder {
 
 		let mut database_builder =
 			DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone(), version_epoch)
-				.with_sync_interval(sync_interval)
-				.with_wal_enabled(wal_enabled)
 				.with_interceptor_builder(self.interceptors)
 				.with_stores(multi_store, single_store, operator_store);
 

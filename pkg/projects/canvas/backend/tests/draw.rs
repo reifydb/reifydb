@@ -280,7 +280,8 @@ fn only_signed_up_users_may_draw_and_nobody_writes_the_draw_tables_directly() {
 	canvas(&db, &[(0, 0)]);
 	let a = agent(&db, "agent-a");
 
-	let err = call(&db, IdentityId::anonymous(), r#"CALL canvas::draw_pixels(["1,1,1"], "anonymous")"#).expect_err("anonymous");
+	let err = call(&db, IdentityId::anonymous(), r#"CALL canvas::draw_pixels(["1,1,1"], "anonymous")"#)
+		.expect_err("anonymous");
 	assert!(err.starts_with("POLICY_"), "{err}");
 
 	for rql in [

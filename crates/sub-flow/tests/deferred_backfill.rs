@@ -14,7 +14,7 @@ use std::{
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb::{
-	ConfigKey, SqliteConfig, WithSubsystem, embedded,
+	ConfigKey, SqliteConfig, WalMode, WithSubsystem, embedded,
 	routine::abi::{
 		Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 	},
@@ -113,7 +113,7 @@ fn memory_with(batch: u16) -> TestDb {
 fn open(path: &TempDbPath, flow: bool, hooks: Option<Arc<dyn ScanHooks>>) -> TestDb {
 	let mut builder = embedded::sqlite(SqliteConfig::new(path))
 		.with_runtime_config(runtime())
-		.with_wal(|wal| wal.enabled(true))
+		.with_wal(|wal| wal.mode(WalMode::default()))
 		.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(4));
 	if let Some(hooks) = hooks {
 		builder = builder.with_dependency(InstalledScanHooks(hooks));

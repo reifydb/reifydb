@@ -14,7 +14,6 @@ use arrow_select::take::take;
 use reifydb_catalog::{catalog::Catalog, store::column_block::create::ColumnBlockToCreate};
 use reifydb_core::{
 	common::CommitVersion,
-	durability::Durability,
 	interface::{
 		catalog::{
 			column_block::{ColumnBlock, ColumnBlockSource, ColumnStats},
@@ -248,7 +247,7 @@ impl SeriesMaterializationActor {
 		} else {
 			Some(partition)
 		};
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let stale: Vec<ColumnBlock> = catalog
 			.list_column_blocks_for_series(&mut Transaction::Admin(&mut admin), series.id)?
@@ -277,7 +276,7 @@ impl SeriesMaterializationActor {
 	}
 
 	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<()> {
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let mut tx = Transaction::Admin(&mut admin);
 		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
@@ -305,7 +304,7 @@ impl SeriesMaterializationActor {
 		if observed.dirty_from_key >= observed.dirty_to_key {
 			return Ok(());
 		}
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let mut tx = Transaction::Admin(&mut admin);
 		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
@@ -363,7 +362,7 @@ impl SeriesMaterializationActor {
 	}
 
 	fn materialize_bucket(&self, series: &Series, scope: PartitionScope<'_>, bucket: &Bucket) -> Result<()> {
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let sealed_at_commit_version = admin.version();
 		let resolved_series = self.resolve_series_target(&mut Transaction::Admin(&mut admin), series)?;
 		let tags = self.bucket_scan_tags(&mut Transaction::Admin(&mut admin), series)?;
@@ -646,7 +645,7 @@ impl SeriesMaterializationActor {
 		} else {
 			Some(scope.partition)
 		};
-		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let block = catalog.create_column_block(
 			&mut admin,
@@ -840,7 +839,7 @@ fn arrow_error(e: ArrowError) -> Error {
 mod tests {
 	use std::{cell::Cell, thread::scope};
 
-	use reifydb_core::{durability::Durability, interface::catalog::series::SeriesPartitionMetadata};
+	use reifydb_core::interface::catalog::series::SeriesPartitionMetadata;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::error::TransactionError;
 	use reifydb_value::params;
@@ -849,7 +848,7 @@ mod tests {
 
 	fn stored_metadata(engine: &StandardEngine) -> SeriesPartitionMetadata {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let mut tx = Transaction::Command(&mut txn);
 		let namespace = catalog.find_namespace_by_name(&mut tx, "test").unwrap().unwrap();
 		let series = catalog.find_series_by_name(&mut tx, namespace.id(), "s").unwrap().unwrap();
@@ -880,7 +879,7 @@ mod tests {
 		);
 		let series = {
 			let catalog = engine.catalog();
-			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+			let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 			let mut tx = Transaction::Command(&mut txn);
 			let namespace = catalog.find_namespace_by_name(&mut tx, "test").unwrap().unwrap();
 			let series = catalog.find_series_by_name(&mut tx, namespace.id(), "s").unwrap().unwrap();

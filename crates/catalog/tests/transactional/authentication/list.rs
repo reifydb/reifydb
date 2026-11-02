@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -16,7 +15,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE USER aul_new_a");
 
 	let keep_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_keep_a")
 			.unwrap()
@@ -26,7 +25,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		id
 	};
 	let new_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_new_a")
 			.unwrap()
@@ -36,7 +35,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE AUTHENTICATION FOR aul_new_a { method: password; password: 'x' }", Params::None);
 	txn.rql("DROP AUTHENTICATION FOR aul_keep_a { method: password }", Params::None);
 
@@ -58,7 +57,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE USER aul_new_b");
 
 	let keep_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_keep_b")
 			.unwrap()
@@ -68,7 +67,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		id
 	};
 	let new_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_new_b")
 			.unwrap()
@@ -78,12 +77,12 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE AUTHENTICATION FOR aul_new_b { method: password; password: 'x' }", Params::None);
 	txn.rql("DROP AUTHENTICATION FOR aul_keep_b { method: password }", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let all = catalog.list_authentications_by_method(&mut Transaction::Admin(&mut txn2), "password").unwrap();
 	assert!(!all.iter().any(|a| a.identity == new_ident_id));
 	assert!(all.iter().any(|a| a.identity == keep_ident_id));
@@ -99,7 +98,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE USER aul_new_c");
 
 	let keep_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_keep_c")
 			.unwrap()
@@ -109,7 +108,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		id
 	};
 	let new_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_new_c")
 			.unwrap()
@@ -119,12 +118,12 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql("CREATE AUTHENTICATION FOR aul_new_c { method: password; password: 'x' }", Params::None);
 	txn.rql("DROP AUTHENTICATION FOR aul_keep_c { method: password }", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let all = catalog.list_authentications_by_method(&mut Transaction::Admin(&mut txn2), "password").unwrap();
 	assert!(all.iter().any(|a| a.identity == new_ident_id));
 	assert!(!all.iter().any(|a| a.identity == keep_ident_id));
@@ -140,7 +139,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE USER aul_new_d");
 
 	let keep_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_keep_d")
 			.unwrap()
@@ -150,7 +149,7 @@ fn concurrent_txn_sees_only_committed_state() {
 		id
 	};
 	let new_ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aul_new_d")
 			.unwrap()
@@ -160,11 +159,11 @@ fn concurrent_txn_sees_only_committed_state() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	txn1.rql("CREATE AUTHENTICATION FOR aul_new_d { method: password; password: 'x' }", Params::None);
 	txn1.rql("DROP AUTHENTICATION FOR aul_keep_d { method: password }", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let all_txn2 = catalog.list_authentications_by_method(&mut Transaction::Admin(&mut txn2), "password").unwrap();
 	assert!(!all_txn2.iter().any(|a| a.identity == new_ident_id));
 	assert!(all_txn2.iter().any(|a| a.identity == keep_ident_id));
@@ -172,7 +171,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	let all_txn3 = catalog.list_authentications_by_method(&mut Transaction::Admin(&mut txn3), "password").unwrap();
 	assert!(all_txn3.iter().any(|a| a.identity == new_ident_id));
 	assert!(!all_txn3.iter().any(|a| a.identity == keep_ident_id));

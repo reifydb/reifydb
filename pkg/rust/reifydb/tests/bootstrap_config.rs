@@ -3,7 +3,7 @@
 
 use std::{fs, io, path::Path};
 
-use reifydb::{Params, SqliteConfig, embedded, multi_storage::MultiStore};
+use reifydb::{Params, SqliteConfig, WalMode, embedded, multi_storage::MultiStore};
 use reifydb_testing::tempdir::temp_dir;
 
 fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
@@ -22,7 +22,7 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 
 fn range_shards(path: &Path) -> usize {
 	let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-		.with_wal(|wal| wal.enabled(true))
+		.with_wal(|wal| wal.mode(WalMode::default()))
 		.build()
 		.expect("sqlite database must reopen");
 	let store = db.engine().ioc().try_resolve::<MultiStore>().expect("MultiStore must be registered");
@@ -35,7 +35,7 @@ fn a_startup_config_set_before_a_crash_shapes_the_next_boot() {
 	temp_dir(|path| {
 		{
 			let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-				.with_wal(|wal| wal.enabled(true))
+				.with_wal(|wal| wal.mode(WalMode::default()))
 				.with_fast_shutdown()
 				.build()
 				.expect("fresh sqlite database must build");

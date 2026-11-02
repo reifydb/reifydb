@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	env::var_os,
+	mem::take,
 	path::PathBuf,
 	sync::Arc,
 };
@@ -360,7 +361,7 @@ impl Accumulator for PngAccumulator {
 	fn finalize(&mut self) -> Result<(Vec<GroupId>, (FieldRef, ArrayRef)), RoutineError> {
 		let mut keys = Vec::with_capacity(self.tiles.len());
 		let mut pngs = Vec::with_capacity(self.tiles.len());
-		for (group, tiles) in std::mem::take(&mut self.tiles) {
+		for (group, tiles) in take(&mut self.tiles) {
 			keys.push(group);
 			pngs.push(Blob::new(render_png(&tiles, self.scale).map_err(|reason| self.failed(reason))?));
 		}

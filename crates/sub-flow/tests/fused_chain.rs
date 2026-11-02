@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	SqliteConfig, WithSubsystem, embedded,
+	SqliteConfig, WalMode, WithSubsystem, embedded,
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
 use reifydb_codec::key::encoded::EncodedKey;
@@ -47,7 +47,7 @@ const CHAIN: [&str; 3] = [
 ];
 
 fn open(path: &TempDbPath, flow: bool) -> TestDb {
-	let mut builder = embedded::sqlite(SqliteConfig::new(path)).with_wal(|wal| wal.enabled(true));
+	let mut builder = embedded::sqlite(SqliteConfig::new(path)).with_wal(|wal| wal.mode(WalMode::default()));
 	if flow {
 		builder = builder.with_flow(|f| f);
 	}
@@ -316,7 +316,7 @@ impl UnmanagedOperator for SymIds {
 fn open_with_sym_ids(path: &TempDbPath) -> TestDb {
 	TestDb::from(
 		embedded::sqlite(SqliteConfig::new(path))
-			.with_wal(|wal| wal.enabled(true))
+			.with_wal(|wal| wal.mode(WalMode::default()))
 			.with_flow(|f| f.register_unmanaged_operator::<SymIds>())
 			.build()
 			.expect("open the sqlite db"),

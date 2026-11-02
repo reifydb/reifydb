@@ -563,6 +563,22 @@ mod tests {
 		}
 	}
 
+	struct DurableThrough {
+		version: CommitVersion,
+		saved: Mutex<Option<CommitVersion>>,
+	}
+
+	impl WalCheckpoint for DurableThrough {
+		fn make_durable(&self) -> Result<CommitVersion> {
+			Ok(self.version)
+		}
+
+		fn saved_through(&self, version: CommitVersion) -> Result<()> {
+			*self.saved.lock() = Some(version);
+			Ok(())
+		}
+	}
+
 	fn no_wal_checkpoint() -> Arc<OnceLock<Arc<dyn WalCheckpoint>>> {
 		let lock: Arc<OnceLock<Arc<dyn WalCheckpoint>>> = Arc::new(OnceLock::new());
 		let _ = lock.set(Arc::new(NoWalCheckpoint));
@@ -1116,6 +1132,64 @@ mod tests {
 				VersionedGetResult::NotFound
 			),
 			"a full flush drains the buffer after persisting"
+		);
+	}
+
+	#[test]
+	fn a_sweep_saves_nothing_past_what_the_log_made_durable() {
+		// A row saved above the durable mark has no log record behind it after a power cut, so the store
+		// outruns the log.
+		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
+		let _ = persistence_lock.set(Arc::new(AllPersistent));
+		let checkpoint = Arc::new(DurableThrough {
+			version: CommitVersion(100),
+			saved: Mutex::new(None),
+		});
+		let checkpoint_lock: Arc<OnceLock<Arc<dyn WalCheckpoint>>> = Arc::new(OnceLock::new());
+		let _ = checkpoint_lock.set(checkpoint.clone());
+		let engine = FlushEngine::new(
+			CommitStore::new(),
+			persistent,
+			persistence_lock,
+			checkpoint_lock,
+			Arc::new(RwLock::new(None)),
+			Clock::Real,
+			testing_event_bus(),
+		);
+		let kind = EntryKind::Source(StorageId::Table(TableId(34)), EntryLayout::Row);
+		let durable = ek("durable");
+		let ahead = ek("ahead");
+		write(&engine.commit, kind, &durable, 100, "durable");
+		write(&engine.commit, kind, &ahead, 101, "ahead");
+
+		engine.sweep(CommitVersion(200));
+
+		assert_eq!(
+			engine.persistent
+				.get(kind, from_ref(&durable.as_ref()), CommitVersion(u64::MAX))
+				.unwrap()
+				.remove(0)
+				.value()
+				.as_deref(),
+			Some(b"durable".as_slice()),
+			"a row the log has made durable must reach the store"
+		);
+		assert!(
+			!matches!(
+				engine.persistent
+					.get(kind, from_ref(&ahead.as_ref()), CommitVersion(u64::MAX))
+					.unwrap()
+					.remove(0),
+				VersionedGetResult::Value { .. }
+			),
+			"a row above the durable mark must not reach the store"
+		);
+		assert_eq!(engine.persistent.saved_through().unwrap(), CommitVersion(100));
+		assert_eq!(
+			*checkpoint.saved.lock(),
+			Some(CommitVersion(100)),
+			"the floor must not pass the durable mark"
 		);
 	}
 

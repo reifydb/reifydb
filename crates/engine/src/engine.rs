@@ -25,7 +25,6 @@ use reifydb_catalog::{
 use reifydb_core::{
 	commit::{queue::CommitQueue, watermark::ReaderWatermark},
 	common::CommitVersion,
-	durability::Durability,
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
 	execution::ExecutionResult,
@@ -97,7 +96,7 @@ impl WithEventBus for StandardEngine {
 
 impl AuthEngine for StandardEngine {
 	fn begin_admin(&self) -> Result<AdminTransaction> {
-		StandardEngine::begin_admin(self, IdentityId::system(), Durability::Async)
+		StandardEngine::begin_admin(self, IdentityId::system())
 	}
 
 	fn begin_query(&self) -> Result<QueryTransaction> {
@@ -111,7 +110,7 @@ impl AuthEngine for StandardEngine {
 
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self, identity: IdentityId, durability: Durability) -> Result<CommandTransaction> {
+	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
 		reifydb_assertions! {
 			assert!(
 				!self.is_read_only(),
@@ -126,7 +125,6 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
-			durability,
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
@@ -134,7 +132,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self, identity: IdentityId, durability: Durability) -> Result<AdminTransaction> {
+	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
 		let interceptors = self.interceptors.create();
 		let mut txn = AdminTransaction::new(
 			self.multi.clone(),
@@ -142,7 +140,6 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
-			durability,
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
@@ -177,7 +174,7 @@ impl StandardEngine {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
-		let mut txn = match self.begin_admin(identity, Durability::Async) {
+		let mut txn = match self.begin_admin(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
@@ -240,7 +237,7 @@ impl StandardEngine {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
-		let mut txn = match self.begin_command(identity, Durability::Async) {
+		let mut txn = match self.begin_command(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());

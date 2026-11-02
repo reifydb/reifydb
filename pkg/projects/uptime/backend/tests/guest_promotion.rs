@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use reifydb::{
 	Database, IdentityId, Value, WithSubsystem,
 	auth::service::AuthResponse,
-	core::durability::Durability,
 	server,
 	value::{
 		params::Params,
@@ -351,7 +350,7 @@ fn a_promoted_account_cannot_be_turned_back_into_a_guest() {
 	add_monitor(&db, identity);
 	promote(&db, identity, "settled@example.com");
 
-	let mut txn = db.engine().begin_admin(IdentityId::root(), Durability::Async).expect("admin txn");
+	let mut txn = db.engine().begin_admin(IdentityId::root()).expect("admin txn");
 	let err = db.catalog().promote_guest_to_user(&mut txn, identity).expect_err("must be refused");
 	assert_eq!(err.diagnostic().code, "CA_095");
 	txn.rollback().expect("rollback");

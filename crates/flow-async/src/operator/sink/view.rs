@@ -36,7 +36,6 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::{ChangeVersion, CommitVersion},
-		durability::Durability,
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -114,7 +113,7 @@ mod tests {
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		let pending = txn.take_pending();
-		let mut cmd = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
 			let key = TaggedKey::decode(key).unwrap();
 			match pw {

@@ -4,12 +4,9 @@
 use reifydb_catalog::{
 	bootstrap::load_catalog_cache, cache::CatalogCache, catalog::windowed_view_group::WindowedViewGroupToCreate,
 };
-use reifydb_core::{
-	durability::Durability,
-	interface::catalog::{
-		flow::FlowId,
-		id::{NamespaceId, ViewId},
-	},
+use reifydb_core::interface::catalog::{
+	flow::FlowId,
+	id::{NamespaceId, ViewId},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -22,7 +19,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_a");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let group = catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 
 	let by_name = catalog
@@ -39,11 +36,11 @@ fn rolled_back_create_is_invisible_to_new_txn() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_b");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 	txn.rollback().unwrap();
 
-	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog
 		.find_windowed_view_group_by_name(&mut Transaction::Admin(&mut probe), namespace, "ohlcv")
 		.unwrap();
@@ -57,11 +54,11 @@ fn committed_create_is_visible_via_materialized_in_new_txn() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_c");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let group = catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 	txn.commit().unwrap();
 
-	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog
 		.find_windowed_view_group_by_name(&mut Transaction::Admin(&mut probe), namespace, "ohlcv")
 		.unwrap()
@@ -83,7 +80,7 @@ fn restart_recovery_repopulates_materialized_catalog() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_d");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let group = catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 	txn.commit().unwrap();
 
@@ -104,15 +101,15 @@ fn dropped_group_is_gone_after_commit() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_e");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let group = catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.drop_windowed_view_group(&mut txn, group).unwrap();
 	txn.commit().unwrap();
 
-	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog
 		.find_windowed_view_group_by_name(&mut Transaction::Admin(&mut probe), namespace, "ohlcv")
 		.unwrap();
@@ -127,20 +124,20 @@ fn drop_namespace_removes_its_groups() {
 	let catalog = t.catalog();
 	let namespace = create_namespace(&t, "wvg_create_f");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.create_windowed_view_group(&mut txn, mk_group(namespace, "ohlcv")).unwrap();
 	txn.commit().unwrap();
 
 	t.admin("DROP NAMESPACE wvg_create_f");
 
-	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	let listed = catalog.list_windowed_view_groups_all(&mut Transaction::Admin(&mut probe)).unwrap();
 	assert!(listed.iter().all(|g| g.namespace != namespace), "group survived its namespace: {:?}", listed);
 }
 
 fn create_namespace(t: &TestEngine, name: &str) -> NamespaceId {
 	t.admin(&format!("CREATE NAMESPACE {name}"));
-	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	t.catalog().find_namespace_by_name(&mut Transaction::Admin(&mut probe), name).unwrap().unwrap().id()
 }
 

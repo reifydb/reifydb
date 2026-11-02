@@ -7,7 +7,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::SetPre,
-	durability::Durability,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
@@ -116,8 +115,6 @@ pub struct AdminTransaction {
 
 	pub identity: IdentityId,
 
-	durability: Durability,
-
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
@@ -141,7 +138,6 @@ impl AdminTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
-		durability: Durability,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		let txn_id = cmd.id();
@@ -156,7 +152,6 @@ impl AdminTransaction {
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
 			identity,
-			durability,
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
@@ -265,17 +260,11 @@ impl AdminTransaction {
 	) -> Result<CommitVersion> {
 		let id = multi.id();
 		let pre_publish = &self.interceptors.pre_publish;
-		let version = multi.commit_with(
-			|version| {
-				if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
-					panic!(
-						"catalog cache fill for committed version {} failed: {}",
-						version.0, err
-					);
-				}
-			},
-			self.durability,
-		)?;
+		let version = multi.commit_with(|version| {
+			if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
+				panic!("catalog cache fill for committed version {} failed: {}", version.0, err);
+			}
+		})?;
 		let _self_lease = multi.take_self_lease();
 		self.remove_dropped_dictionaries(&changes)?;
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;

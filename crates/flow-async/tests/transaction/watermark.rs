@@ -4,7 +4,6 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::Pending,
-	durability::Durability,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
@@ -22,7 +21,7 @@ const SOURCE_A: OperatorId = OperatorId(1);
 const SOURCE_B: OperatorId = OperatorId(2);
 
 fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,

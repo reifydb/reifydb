@@ -20,6 +20,7 @@ reifydb-value = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-core = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true, optional = true }
+reifydb-wal = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-auth = { workspace = true, optional = true }
@@ -53,6 +54,7 @@ engine = [
     "dep:reifydb-store-operator",
     "dep:reifydb-store-single",
     "dep:reifydb-transaction",
+    "dep:reifydb-wal",
 ]
 auth = ["engine", "dep:reifydb-runtime"]
 operator = [

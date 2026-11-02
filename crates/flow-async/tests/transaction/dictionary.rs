@@ -6,7 +6,6 @@ use std::{slice, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::Pending,
-	durability::Durability,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
 use reifydb_flow_async::transaction::{
@@ -41,7 +40,7 @@ fn registry_on(single: &SingleTransaction) -> DictionaryAllocatorRegistry {
 }
 
 fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,
@@ -64,7 +63,7 @@ fn resolves_a_mint_a_concurrent_flow_interned_after_this_flows_snapshot() {
 	let engine = TestEngine::new();
 	let dictionary = mints();
 
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 
 	let interned = registry_on(&parent.single).intern_batch(&dictionary, &[mint()]).unwrap().remove(0).id.to_u128();
 
@@ -91,7 +90,7 @@ fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
 	let engine = TestEngine::new();
 	let dictionary = mints();
 
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let interned = registry_on(&parent.single).intern_batch(&dictionary, &[mint()]).unwrap().remove(0).id;
 
 	let mut txn = flow_txn(&engine, registry_on(&parent.single));
@@ -116,7 +115,7 @@ fn a_rolled_back_slice_leaves_its_mint_durable_and_the_retry_reuses_that_id() {
 	let engine = TestEngine::new();
 	let dictionary = mints();
 
-	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let registry = registry_on(&parent.single);
 
 	let interned = {

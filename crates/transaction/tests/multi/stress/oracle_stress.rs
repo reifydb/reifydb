@@ -3,8 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_core::durability::Durability;
-
 use super::test_multi;
 use crate::{as_key, as_values};
 
@@ -24,7 +22,7 @@ fn test_oracle_committed_txns_cleanup() {
 
 		tx.set(vec![(key.clone(), value)]).unwrap();
 
-		tx.commit(Durability::Async).unwrap();
+		tx.commit().unwrap();
 
 		if i > 0 && i % 1000 == 0 {
 			assert!(i < NUM_TXNS, "Should be able to create {} transactions", NUM_TXNS);
@@ -35,7 +33,7 @@ fn test_oracle_committed_txns_cleanup() {
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
 	final_tx.set(vec![(final_key.clone(), final_value)]).unwrap();
-	final_tx.commit(Durability::Async).unwrap();
+	final_tx.commit().unwrap();
 }
 
 #[test]
@@ -59,7 +57,7 @@ fn test_oracle_high_concurrency() {
 
 				tx.set(vec![(key.clone(), value)]).unwrap();
 
-				match tx.commit(Durability::Async) {
+				match tx.commit() {
 					Ok(_) => {}
 					Err(e) => panic!("Unexpected error: {:?}", e),
 				}
@@ -76,7 +74,7 @@ fn test_oracle_high_concurrency() {
 	let final_key = as_key!("concurrent_test");
 	let final_value = as_values!("passed".to_string());
 	final_tx.set(vec![(final_key.clone(), final_value)]).unwrap();
-	final_tx.commit(Durability::Async).unwrap();
+	final_tx.commit().unwrap();
 }
 
 #[test]
@@ -89,6 +87,6 @@ fn test_oracle_version_boundaries() {
 		let key = as_key!(format!("boundary_{}", i));
 		let value = as_values!("test".to_string());
 		tx.set(vec![(key.clone(), value)]).unwrap();
-		tx.commit(Durability::Async).unwrap();
+		tx.commit().unwrap();
 	}
 }

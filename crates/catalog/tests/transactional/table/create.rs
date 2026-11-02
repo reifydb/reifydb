@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +12,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	t.admin("CREATE NAMESPACE tabns_create_a");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "tabns_create_a")
 			.unwrap()
@@ -23,7 +22,7 @@ fn uncommitted_create_is_visible_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE TABLE tabns_create_a::t { id: int4 }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
@@ -41,7 +40,7 @@ fn rolled_back_create_is_not_visible() {
 	t.admin("CREATE NAMESPACE tabns_create_b");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "tabns_create_b")
 			.unwrap()
@@ -51,12 +50,12 @@ fn rolled_back_create_is_not_visible() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE TABLE tabns_create_b::t { id: int4 }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found.is_none());
 }
@@ -68,7 +67,7 @@ fn committed_create_is_visible_in_new_txn() {
 	t.admin("CREATE NAMESPACE tabns_create_c");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "tabns_create_c")
 			.unwrap()
@@ -78,12 +77,12 @@ fn committed_create_is_visible_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE TABLE tabns_create_c::t { id: int4 }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found.is_some());
 }
@@ -95,7 +94,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE NAMESPACE tabns_create_d");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "tabns_create_d")
 			.unwrap()
@@ -105,18 +104,18 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn1.rql("CREATE TABLE tabns_create_d::t { id: int4 }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let found_in_txn2 = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found_in_txn2.is_none());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
 	let found_in_txn3 = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "t").unwrap();
 	assert!(found_in_txn3.is_some());
 }
@@ -128,7 +127,7 @@ fn create_drop_create_same_name_in_one_txn_succeeds() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE tabns_create_rec");
 
-	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let ns_id = catalog
 		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "tabns_create_rec")
 		.unwrap()

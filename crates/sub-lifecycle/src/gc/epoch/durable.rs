@@ -3,7 +3,6 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	durability::Durability,
 	event::lifecycle::VersionEpochSampledEvent,
 	interface::{
 		WithEventBus,
@@ -110,7 +109,7 @@ impl EpochLogTask {
 		}
 
 		let drained = expired.len();
-		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
+		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		for key in expired {
 			txn.remove(vec![(key.clone().into(), None)])?;
 		}
