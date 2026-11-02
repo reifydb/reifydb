@@ -4,11 +4,19 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_runtime::context::clock::Instant;
-use reifydb_value::value::{digest::Digest, duration::Duration};
+use reifydb_value::value::{digest::Digest, duration::Duration, value_type::ValueType};
 
 use crate::{common::CommitVersion, interface::catalog::id::ViewId};
 
 pub const MARKER_T0_CAP: usize = 64;
+pub const LATENCY_DIGEST_ACCURACY_PPM: u32 = 10_000;
+
+pub fn latency_digest_type() -> ValueType {
+	ValueType::Digest {
+		inner: Box::new(ValueType::Duration),
+		accuracy: LATENCY_DIGEST_ACCURACY_PPM,
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Marker {

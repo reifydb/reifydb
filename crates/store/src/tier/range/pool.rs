@@ -684,7 +684,7 @@ mod tests {
 	}
 
 	fn reading(out: &[MetricsSample], scope: &str, metric: &str) -> Option<Reading> {
-		out.iter().find(|sample| sample.scope == scope && sample.metric == metric).map(|sample| sample.reading)
+		out.iter().find(|sample| sample.scope == scope && sample.metric == metric).map(|sample| sample.reading.clone())
 	}
 
 	#[test]

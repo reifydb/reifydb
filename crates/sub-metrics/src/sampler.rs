@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	default,
-	lifecycle::metrics::RetentionMetrics,
+	interface::catalog::id::ViewId,
+	internal_error,
+	lifecycle::{metrics::RetentionMetrics, watermark::ConsumerPositions},
+	marker::{LatencyReader, MarkerSweep, ViewLatency},
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -23,11 +26,15 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{range::tiers::RangeKeyspaceMetrics, store::OperatorStore};
 use reifydb_store_single::SingleStore;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, digest::Digest, duration::Duration, identity::IdentityId,
+		value_type::ValueType,
+	},
 };
 
 use crate::{
@@ -226,12 +233,19 @@ impl MetricsSamplerActor {
 			epoch_rows(&self.collectors.engine, &self.epoch_gauge),
 		);
 		accumulator.push(MetricsDomain::Lifecycle, Surface::Current, lifecycle_rows(&self.retention_metrics));
+		accumulator.replace(
+			MetricsDomain::FlowLatency,
+			Surface::Current,
+			latency_rows(&self.collectors.engine)?,
+		);
+		sweep_markers(&self.collectors.engine);
 
 		let now = self.clock.now();
 		let snapshot_due = self.snapshot_due(state, now);
 		let rolled = state.accumulator.roll(now)?;
 		for published in rolled {
-			if snapshot_due && published.surface == Surface::Current {
+			let every_tick = self.snapshot_interval.is_some() && published.domain.snapshot_every_tick();
+			if (snapshot_due || every_tick) && published.surface == Surface::Current {
 				self.append_snapshot(&published)?;
 			}
 			self.surfaces.store(published);
@@ -326,6 +340,14 @@ fn level_bytes(metric: &'static str, bytes: ByteSize) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Bytes(bytes),
+		kind: MetricKind::Level,
+	}
+}
+
+fn level_duration(metric: &'static str, duration: Duration) -> Measure {
+	Measure {
+		metric,
+		reading: Reading::Duration(duration),
 		kind: MetricKind::Level,
 	}
 }
@@ -544,6 +566,89 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 			}
 		})
 		.collect()
+}
+
+fn sweep_markers(engine: &StandardEngine) {
+	let ioc = engine.ioc();
+	if let Some(markers) = ioc.try_resolve::<Arc<dyn MarkerSweep>>() {
+		let floor =
+			ioc.try_resolve::<Arc<dyn ConsumerPositions>>().and_then(|positions| positions.min_position());
+		markers.sweep(floor);
+	}
+}
+
+fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
+	let Some(reader) = engine.ioc().try_resolve::<Arc<dyn LatencyReader>>() else {
+		return Ok(Vec::new());
+	};
+	let mut taken: BTreeMap<ViewId, ViewLatency> =
+		reader.take().into_iter().map(|latency| (latency.view, latency)).collect();
+	let catalog = engine.catalog();
+	let mut query = engine.begin_query(IdentityId::system())?;
+	let mut txn = Transaction::Query(&mut query);
+	let mut rows = Vec::new();
+	for view in catalog.list_views_all(&mut txn)? {
+		let Some(namespace) = catalog.find_namespace(&mut txn, view.namespace())? else {
+			return Err(internal_error!("view {} has no namespace {:?}", view.name(), view.namespace()));
+		};
+		let measures = match taken.remove(&view.id()) {
+			Some(latency) => latency_measures(latency)?,
+			None => vec![level_count("n", 0)],
+		};
+		rows.push(MetricsRow {
+			dimensions: vec![
+				Value::Uint8(view.id().0),
+				Value::Utf8(format!("{}::{}", namespace.name(), view.name())),
+			],
+			measures,
+		});
+	}
+	Ok(rows)
+}
+
+fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>> {
+	let mut measures = vec![level_count("n", latency.n)];
+	digest_measures(&mut measures, ["p50", "p90", "p99"], "max", "digest", latency.max, latency.end_to_end)?;
+	digest_measures(
+		&mut measures,
+		["hop_p50", "hop_p90", "hop_p99"],
+		"hop_max",
+		"hop_digest",
+		latency.hop_max,
+		latency.hop,
+	)?;
+	Ok(measures)
+}
+
+fn digest_measures(
+	measures: &mut Vec<Measure>,
+	percentiles: [&'static str; 3],
+	max_metric: &'static str,
+	digest_metric: &'static str,
+	max: Duration,
+	digest: Digest,
+) -> Result<()> {
+	if digest.count() > 0 {
+		for (metric, p) in percentiles.into_iter().zip([0.5, 0.9, 0.99]) {
+			let Value::Duration(value) = digest.percentile_value(p).map_err(|cause| {
+				internal_error!("reading {} of a latency digest: {}", metric, cause)
+			})?
+			else {
+				return Err(internal_error!(
+					"a latency digest must hold durations, {} does not",
+					metric
+				));
+			};
+			measures.push(level_duration(metric, value));
+		}
+		measures.push(level_duration(max_metric, max));
+	}
+	measures.push(Measure {
+		metric: digest_metric,
+		reading: Reading::Digest(Arc::new(digest)),
+		kind: MetricKind::Level,
+	});
+	Ok(())
 }
 
 #[cfg(test)]

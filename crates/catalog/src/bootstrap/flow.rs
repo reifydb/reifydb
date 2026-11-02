@@ -4,6 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId},
+	marker::latency_digest_type,
 };
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
@@ -82,6 +83,23 @@ pub fn bootstrap_flow(
 		flow_state_snapshot_columns(),
 		&ColumnId::FLOW_STATE_SNAPSHOTS_COLUMNS,
 	)?;
+	let ns = ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_METRICS_FLOW_LATENCY,
+		"system::metrics::flow::latency",
+		"latency",
+		NamespaceId::SYSTEM_METRICS_FLOW,
+	)?;
+	ensure_snapshot_series(
+		&catalog_api,
+		&mut admin,
+		ns,
+		"system::metrics::flow::latency",
+		SeriesId::FLOW_LATENCY_SNAPSHOTS,
+		flow_latency_snapshot_columns(),
+		&ColumnId::FLOW_LATENCY_SNAPSHOTS_COLUMNS,
+	)?;
 
 	admin.commit()?;
 	Ok(())
@@ -99,5 +117,24 @@ fn flow_state_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("key_bytes", ValueType::Uint8),
 		series_col("value_bytes", ValueType::Uint8),
 		series_col("total_bytes", ValueType::Uint8),
+	]
+}
+
+fn flow_latency_snapshot_columns() -> Vec<SeriesColumnToCreate> {
+	vec![
+		series_col("ts", ValueType::DateTime),
+		series_col("view", ValueType::Uint8),
+		series_col("name", ValueType::Utf8),
+		series_col("n", ValueType::Uint8),
+		series_col("p50", ValueType::Duration),
+		series_col("p90", ValueType::Duration),
+		series_col("p99", ValueType::Duration),
+		series_col("max", ValueType::Duration),
+		series_col("digest", latency_digest_type()),
+		series_col("hop_p50", ValueType::Duration),
+		series_col("hop_p90", ValueType::Duration),
+		series_col("hop_p99", ValueType::Duration),
+		series_col("hop_max", ValueType::Duration),
+		series_col("hop_digest", latency_digest_type()),
 	]
 }

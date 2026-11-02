@@ -20,7 +20,9 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 	key::any::TaggedKey,
-	marker::{LatencyReader, Marker, MarkerEntry, MarkerSink, MarkerSweep, ViewLatency},
+	marker::{
+		LATENCY_DIGEST_ACCURACY_PPM, LatencyReader, Marker, MarkerEntry, MarkerSink, MarkerSweep, ViewLatency,
+	},
 	return_internal_error,
 	util::ioc::IocContainer,
 };
@@ -36,8 +38,6 @@ use reifydb_value::{
 };
 
 use crate::commit::committer::FlowSlice;
-
-const DIGEST_ACCURACY_PPM: u32 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WrittenView {
@@ -211,9 +211,9 @@ fn empty_latency(view: ViewId) -> ViewLatency {
 }
 
 fn empty_digest() -> Digest {
-	match Digest::new(ValueType::Duration, DIGEST_ACCURACY_PPM) {
+	match Digest::new(ValueType::Duration, LATENCY_DIGEST_ACCURACY_PPM) {
 		Ok(digest) => digest,
-		Err(e) => panic!("the latency digest accuracy of {DIGEST_ACCURACY_PPM} ppm must be valid: {e}"),
+		Err(e) => panic!("the latency digest accuracy of {LATENCY_DIGEST_ACCURACY_PPM} ppm must be valid: {e}"),
 	}
 }
 

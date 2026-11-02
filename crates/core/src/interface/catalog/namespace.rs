@@ -51,6 +51,7 @@ impl NamespaceId {
 	pub const STORAGE: NamespaceId = NamespaceId(42);
 	pub const SYSTEM_METRICS_FLOW: NamespaceId = NamespaceId(43);
 	pub const SYSTEM_METRICS_FLOW_STATE: NamespaceId = NamespaceId(44);
+	pub const SYSTEM_METRICS_FLOW_LATENCY: NamespaceId = NamespaceId(60);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE: NamespaceId = NamespaceId(46);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE: NamespaceId = NamespaceId(47);
 	pub const SYSTEM_METRICS_STORE_MULTI_RANGE: NamespaceId = NamespaceId(52);

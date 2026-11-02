@@ -15,7 +15,7 @@ use reifydb_value::{
 	count::Count,
 	error::Error,
 	reifydb_assertions,
-	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, digest::Digest, duration::Duration, value_type::ValueType},
 };
 
 use crate::framework::spec::{DomainShape, DomainSpec, MeasureSpec, MetricsDomain, PushKind, Surface};
@@ -118,6 +118,11 @@ impl MetricsAccumulator {
 		}
 	}
 
+	pub fn replace(&mut self, domain: MetricsDomain, surface: Surface, rows: Vec<MetricsRow>) {
+		self.push(domain, surface, Vec::new());
+		self.push(domain, surface, rows);
+	}
+
 	pub fn roll(&mut self, now: DateTime) -> Result<Vec<PublishedSurface>> {
 		let mut published = Vec::new();
 		for state in self.domains.values_mut() {
@@ -160,7 +165,7 @@ impl RowState {
 			}
 			MetricKind::Counter => {
 				match self.measures.entry(measure.metric).or_insert_with(|| MeasureState::Counter {
-					total: measure.reading,
+					total: measure.reading.clone(),
 					baseline: None,
 				}) {
 					MeasureState::Counter {
@@ -271,7 +276,7 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Re
 						latest,
 					},
 					Surface::Current,
-				) => Some((*latest, MetricKind::Level)),
+				) => Some((latest.clone(), MetricKind::Level)),
 				(
 					MeasureState::Counter {
 						total,
@@ -285,13 +290,13 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Re
 						..
 					},
 					Surface::Total,
-				) => Some((*total, MetricKind::Counter)),
+				) => Some((total.clone(), MetricKind::Counter)),
 				(
 					MeasureState::Cumulative {
 						latest,
 					},
 					Surface::Current,
-				) => Some((*latest, MetricKind::Cumulative)),
+				) => Some((latest.clone(), MetricKind::Cumulative)),
 				(
 					MeasureState::Cumulative {
 						..
@@ -304,14 +309,14 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Re
 						..
 					},
 					Surface::Current,
-				) => current.map(|reading| (reading, MetricKind::Distribution)),
+				) => current.clone().map(|reading| (reading, MetricKind::Distribution)),
 				(
 					MeasureState::Distribution {
 						total,
 						..
 					},
 					Surface::Total,
-				) => total.map(|reading| (reading, MetricKind::Distribution)),
+				) => total.clone().map(|reading| (reading, MetricKind::Distribution)),
 				(
 					MeasureState::Level {
 						..
@@ -406,7 +411,7 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 				latest,
 			}),
 			Surface::Current,
-		) => Some(*latest),
+		) => Some(latest.clone()),
 		(
 			Some(MeasureState::Counter {
 				total,
@@ -420,27 +425,27 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 				..
 			}),
 			Surface::Total,
-		) => Some(*total),
+		) => Some(total.clone()),
 		(
 			Some(MeasureState::Cumulative {
 				latest,
 			}),
 			Surface::Current,
-		) => Some(*latest),
+		) => Some(latest.clone()),
 		(
 			Some(MeasureState::Distribution {
 				current,
 				..
 			}),
 			Surface::Current,
-		) => *current,
+		) => current.clone(),
 		(
 			Some(MeasureState::Distribution {
 				total,
 				..
 			}),
 			Surface::Total,
-		) => *total,
+		) => total.clone(),
 		_ => None,
 	};
 	match reading {
@@ -449,7 +454,7 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 			if spec.optional {
 				Ok(Value::none_of(spec.data_type.clone()))
 			} else {
-				Ok(zero_value(&spec.data_type))
+				zero_value(&spec.data_type)
 			}
 		}
 	}
@@ -471,19 +476,37 @@ fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
 			Reading::Duration(duration) => Ok(Value::Duration(*duration)),
 			other => Ok(Value::Duration(micros_duration(other.as_f64())?)),
 		},
+		ValueType::Digest {
+			..
+		} => match reading {
+			Reading::Digest(digest) => Ok(Value::Digest(Box::new(digest.as_ref().clone()))),
+			other => Err(internal_error!(
+				"a {} reading cannot fill the digest column {}",
+				other.unit(),
+				target
+			)),
+		},
 		_ => Ok(Value::float8(reading.as_f64())),
 	}
 }
 
-fn zero_value(target: &ValueType) -> Value {
-	match target {
+fn zero_value(target: &ValueType) -> Result<Value> {
+	Ok(match target {
 		ValueType::Uint2 => Value::Uint2(0),
 		ValueType::Uint4 => Value::Uint4(0),
 		ValueType::Uint8 => Value::Uint8(0),
 		ValueType::Duration => Value::Duration(Duration::zero()),
 		ValueType::Utf8 => Value::Utf8(String::new()),
+		ValueType::Digest {
+			inner,
+			accuracy,
+		} => {
+			let empty = Digest::new(inner.as_ref().clone(), *accuracy)
+				.map_err(|cause| internal_error!("an empty {} has no zero: {}", target, cause))?;
+			Value::Digest(Box::new(empty))
+		}
 		_ => Value::float8(0.0),
-	}
+	})
 }
 
 fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
@@ -495,6 +518,7 @@ fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
 		Reading::Ratio(_) => Reading::Ratio(delta),
 		Reading::Version(_) => Reading::Version(delta as u64),
 		Reading::Duration(_) => Reading::Duration(micros_duration(delta)?),
+		Reading::Digest(_) => return Err(internal_error!("a digest reading has no delta")),
 	})
 }
 

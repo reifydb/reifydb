@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::vtable::user::UserVTableColumn;
-use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricKind};
+use reifydb_core::{interface::catalog::id::NamespaceId, marker::latency_digest_type, metrics::sample::MetricKind};
 use reifydb_value::value::value_type::ValueType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -31,6 +31,7 @@ pub enum MetricsDomain {
 	Storage,
 	ProfilerSpans,
 	FlowState,
+	FlowLatency,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -238,7 +239,7 @@ fn long_spec(domain: MetricsDomain, namespace: NamespaceId, has_total: bool) -> 
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 24] = [
+	pub const ALL: [MetricsDomain; 25] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -263,12 +264,14 @@ impl MetricsDomain {
 		MetricsDomain::Storage,
 		MetricsDomain::ProfilerSpans,
 		MetricsDomain::FlowState,
+		MetricsDomain::FlowLatency,
 	];
 
 	pub fn push_kind(self) -> PushKind {
 		match self {
 			MetricsDomain::Storage
 			| MetricsDomain::FlowState
+			| MetricsDomain::FlowLatency
 			| MetricsDomain::ProcProcessIo
 			| MetricsDomain::ProcProcessMemory
 			| MetricsDomain::ProcProcessSched
@@ -305,6 +308,7 @@ impl MetricsDomain {
 			MetricsDomain::Storage => Some("system::metrics::storage::snapshots"),
 			MetricsDomain::ProfilerSpans => Some("system::metrics::profiler::spans::snapshots"),
 			MetricsDomain::FlowState => Some("system::metrics::flow::state::snapshots"),
+			MetricsDomain::FlowLatency => Some("system::metrics::flow::latency::snapshots"),
 			MetricsDomain::ProcProcessIo
 			| MetricsDomain::ProcProcessMemory
 			| MetricsDomain::ProcProcessSched
@@ -321,6 +325,10 @@ impl MetricsDomain {
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent => None,
 		}
+	}
+
+	pub fn snapshot_every_tick(self) -> bool {
+		self == MetricsDomain::FlowLatency
 	}
 
 	pub fn spec(self) -> DomainSpec {
@@ -674,6 +682,26 @@ impl MetricsDomain {
 					level("key_bytes", ValueType::Uint8),
 					level("value_bytes", ValueType::Uint8),
 					level("total_bytes", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::FlowLatency => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_FLOW_LATENCY,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("view", ValueType::Uint8), dim("name", ValueType::Utf8)],
+				measures: vec![
+					level("n", ValueType::Uint8),
+					level_optional("p50", ValueType::Duration),
+					level_optional("p90", ValueType::Duration),
+					level_optional("p99", ValueType::Duration),
+					level_optional("max", ValueType::Duration),
+					level("digest", latency_digest_type()),
+					level_optional("hop_p50", ValueType::Duration),
+					level_optional("hop_p90", ValueType::Duration),
+					level_optional("hop_p99", ValueType::Duration),
+					level_optional("hop_max", ValueType::Duration),
+					level("hop_digest", latency_digest_type()),
 				],
 				has_total: false,
 			},

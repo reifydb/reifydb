@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
-use reifydb_value::{byte_size::ByteSize, count::Count, value::duration::Duration};
+use reifydb_value::{
+	byte_size::ByteSize,
+	count::Count,
+	value::{digest::Digest, duration::Duration},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetricsSample {
@@ -36,7 +40,7 @@ impl MetricKind {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Reading {
 	Heap(ByteSize),
 	Bytes(ByteSize),
@@ -44,6 +48,7 @@ pub enum Reading {
 	Ratio(f64),
 	Version(u64),
 	Duration(Duration),
+	Digest(Arc<Digest>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,6 +175,7 @@ impl Reading {
 			Reading::Ratio(ratio) => *ratio,
 			Reading::Version(version) => *version as f64,
 			Reading::Duration(duration) => duration.to_std().as_micros() as f64,
+			Reading::Digest(_) => panic!("a digest reading has no single number"),
 		}
 	}
 
@@ -180,6 +186,7 @@ impl Reading {
 			Reading::Ratio(_) => "ratio",
 			Reading::Version(_) => "versions",
 			Reading::Duration(_) => "us",
+			Reading::Digest(_) => "digest",
 		}
 	}
 
