@@ -171,13 +171,15 @@ where
 	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>> {
 		let dir = self.dir_of(partition)?;
 		let after = version_of(&self.fs, &dir, id)?;
-		Cursor::open(&self.fs, &dir, (after != LogVersion::ZERO).then_some(after))
+		let torn = self.writer(partition)?.with(|partition| partition.torn());
+		Cursor::open(&self.fs, &dir, (after != LogVersion::ZERO).then_some(after), torn)
 	}
 
 	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>> {
 		let dir = self.dir_of(partition)?;
 		let after = LogVersion::new(version.as_u64().saturating_sub(1));
-		Cursor::open(&self.fs, &dir, Some(after))
+		let torn = self.writer(partition)?.with(|partition| partition.torn());
+		Cursor::open(&self.fs, &dir, Some(after), torn)
 	}
 
 	pub fn readers(&self, partition: u32) -> Result<Vec<(String, LogVersion)>> {

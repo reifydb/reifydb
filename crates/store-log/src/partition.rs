@@ -28,7 +28,7 @@ use crate::{
 	error::{LogError, Result},
 	index::{Index, find_at, header, read},
 	reader::{clamp, floor, record, register, unregister, version_of},
-	segment::{STAGING_SUFFIX, Scan, Segment, parent, scan, sync_path},
+	segment::{STAGING_SUFFIX, Scan, Segment, Torn, parent, scan, sync_path},
 	vote::Vote,
 };
 
@@ -302,7 +302,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 
 	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>> {
 		let after = version_of(&self.fs, &self.dir, id)?;
-		Cursor::open(&self.fs, &self.dir, (after != LogVersion::ZERO).then_some(after))
+		Cursor::open(&self.fs, &self.dir, (after != LogVersion::ZERO).then_some(after), self.torn())
 	}
 
 	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>> {
@@ -342,6 +342,13 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 
 	pub fn segment(&self) -> &Segment<F> {
 		&self.segment
+	}
+
+	pub fn torn(&self) -> Option<Torn> {
+		self.segment.torn().then(|| Torn {
+			base: self.base(),
+			from: self.segment.head(),
+		})
 	}
 
 	pub fn index(&self) -> &Index<F> {

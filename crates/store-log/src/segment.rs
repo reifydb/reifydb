@@ -32,6 +32,12 @@ pub struct Scan {
 	pub stop: Stop,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Torn {
+	pub base: LogVersion,
+	pub from: Position,
+}
+
 pub struct Segment<F: Filesystem> {
 	path: PathBuf,
 	file: F::FileMut,
@@ -74,7 +80,7 @@ impl<F: Filesystem> Segment<F> {
 		let file = fs.open_mut(path)?;
 		file.sync_data()?;
 		let capacity = ByteSize::from_bytes(file.len()?);
-		let scan = walk(&file, path, capacity, Position::ZERO, None, None, false)?;
+		let scan = walk(&file, path, capacity, Position::ZERO, None, None, false, None)?;
 		let torn = matches!(scan.stop, Stop::Corrupt(_) | Stop::Stale(_));
 		let segment = Self {
 			path: path.to_path_buf(),
@@ -149,6 +155,10 @@ impl<F: Filesystem> Segment<F> {
 		self.head
 	}
 
+	pub fn torn(&self) -> bool {
+		self.torn
+	}
+
 	pub fn capacity(&self) -> ByteSize {
 		self.capacity
 	}
@@ -161,7 +171,7 @@ pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan> {
 pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
-	walk(&file, path, capacity, from, None, None, true)
+	walk(&file, path, capacity, from, None, None, true, None)
 }
 
 pub fn scan_upto<F: Open>(
@@ -170,10 +180,11 @@ pub fn scan_upto<F: Open>(
 	from: Position,
 	after: Option<LogVersion>,
 	limit: usize,
+	torn: Option<Position>,
 ) -> Result<Scan> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
-	walk(&file, path, capacity, from, after, Some(limit), true)
+	walk(&file, path, capacity, from, after, Some(limit), true, torn)
 }
 
 fn walk<H: Pread>(
@@ -184,6 +195,7 @@ fn walk<H: Pread>(
 	after: Option<LogVersion>,
 	limit: Option<usize>,
 	strict: bool,
+	torn: Option<Position>,
 ) -> Result<Scan> {
 	let mut records = Vec::new();
 	let mut position = from;
@@ -220,7 +232,7 @@ fn walk<H: Pread>(
 		let mut payload = vec![0u8; payload_len];
 		read_exact(file, position.as_u64() + HEADER_BYTES as u64, &mut payload)?;
 		if !header.verify(&payload) {
-			if !strict {
+			if !strict || torn == Some(position) {
 				return Ok(stopped(records, position, Stop::Corrupt(position)));
 			}
 			first_corrupt.get_or_insert(position);

@@ -10,7 +10,7 @@ use crate::{
 	error::{LogError, Result},
 	index::{position_of, read},
 	partition::{bases_in, index_name, log_name, rebuildable},
-	segment::{Stop, scan_upto},
+	segment::{Stop, Torn, scan_upto},
 };
 
 const SEEK_BATCH: usize = 64;
@@ -22,10 +22,11 @@ pub struct Cursor<'a, F: Filesystem> {
 	at: usize,
 	position: Position,
 	last: Option<LogVersion>,
+	torn: Option<Torn>,
 }
 
 impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
-	pub fn open(fs: &'a F, dir: &Path, after: Option<LogVersion>) -> Result<Self> {
+	pub fn open(fs: &'a F, dir: &Path, after: Option<LogVersion>, torn: Option<Torn>) -> Result<Self> {
 		let bases = bases_in(fs, dir)?;
 		let Some(oldest) = bases.first().copied() else {
 			return Err(LogError::NotFound(dir.to_path_buf()));
@@ -47,7 +48,8 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 			Err(error) if rebuildable(&error) => Vec::new(),
 			Err(error) => return Err(error),
 		};
-		let (position, last) = seek(fs, &path, position_of(&entries, after), after)?;
+		let from = torn.filter(|torn| torn.base == bases[at]).map(|torn| torn.from);
+		let (position, last) = seek(fs, &path, position_of(&entries, after), after, from)?;
 		Ok(Self {
 			fs,
 			dir: dir.to_path_buf(),
@@ -55,6 +57,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 			at,
 			position,
 			last,
+			torn,
 		})
 	}
 
@@ -62,7 +65,8 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		let mut out = Vec::new();
 		while out.len() < max {
 			let path = self.dir.join(log_name(self.bases[self.at]));
-			let scan = scan_upto(self.fs, &path, self.position, self.last, max - out.len())?;
+			let from = self.torn.filter(|torn| torn.base == self.bases[self.at]).map(|torn| torn.from);
+			let scan = scan_upto(self.fs, &path, self.position, self.last, max - out.len(), from)?;
 			for record in &scan.records {
 				self.position = self.position.advance(record.encoded_len() as u64);
 				self.last = Some(record.version);
@@ -140,7 +144,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 
 #[cfg(test)]
 pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<Record>> {
-	let mut cursor = Cursor::open(fs, dir, None)?;
+	let mut cursor = Cursor::open(fs, dir, None, None)?;
 	let mut out = Vec::new();
 	loop {
 		let batch = cursor.next_batch(1024)?;
@@ -152,7 +156,7 @@ pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Resul
 }
 
 fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
-	match scan_upto(fs, path, Position::ZERO, None, 1)?.records.first() {
+	match scan_upto(fs, path, Position::ZERO, None, 1, None)?.records.first() {
 		Some(record) => Ok(record.version),
 		None => Err(LogError::SegmentIncomplete {
 			end: Position::ZERO,
@@ -167,11 +171,12 @@ fn seek<F: Filesystem + Open>(
 	path: &Path,
 	from: Position,
 	after: LogVersion,
+	torn: Option<Position>,
 ) -> Result<(Position, Option<LogVersion>)> {
 	let mut at = from;
 	let mut last = None;
 	loop {
-		let scan = scan_upto(fs, path, at, last, SEEK_BATCH)?;
+		let scan = scan_upto(fs, path, at, last, SEEK_BATCH, torn)?;
 		for record in &scan.records {
 			if record.version > after {
 				return Ok((at, last));
@@ -265,7 +270,7 @@ mod tests {
 		let len = fs.open(&path).unwrap().len().unwrap();
 		fs.open_mut(&path).unwrap().pwrite(len, &[0u8; 64]).unwrap();
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
 		assert!(matches!(error, LogError::SegmentIncomplete { end, len: found, .. }
@@ -285,7 +290,7 @@ mod tests {
 		let stale = record(BASE.as_u64(), &[0u8; 40]);
 		fs.open_mut(&second).unwrap().pwrite(0, &stale.encode()).unwrap();
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
 		assert!(matches!(error, LogError::SegmentOutOfOrder { found, .. } if found == BASE));
@@ -295,7 +300,7 @@ mod tests {
 	fn a_cursor_from_zero_reads_every_record_in_order() {
 		let (fs, _partition) = fixture(6);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![500, 501, 502, 503, 504, 505]);
 	}
@@ -305,7 +310,7 @@ mod tests {
 		// the cap is what keeps a reader off a 256 MiB segment in one allocation, so a batch
 		// that quietly overruns it defeats the whole point of reading in batches.
 		let (fs, _partition) = fixture(6);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		let first = cursor.next_batch(2).unwrap();
 		let second = cursor.next_batch(2).unwrap();
@@ -323,7 +328,7 @@ mod tests {
 		// is a duplicate-delivery bug.
 		let (fs, _partition) = fixture(6);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502))).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502)), None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![503, 504, 505]);
 	}
@@ -331,7 +336,7 @@ mod tests {
 	#[test]
 	fn a_caught_up_cursor_returns_nothing_and_stays_where_it_is() {
 		let (fs, _partition) = fixture(3);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 		cursor.next_batch(10).unwrap();
 
 		let again = cursor.next_batch(10).unwrap();
@@ -345,7 +350,7 @@ mod tests {
 		// a reader that has drained the log must not need reopening to see the next write,
 		// or every idle reader stalls until something else restarts it.
 		let (fs, mut partition) = fixture(3);
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 		assert_eq!(versions(&cursor.next_batch(10).unwrap()), vec![500, 501, 502]);
 
 		partition.append(&record(503, b"later")).unwrap();
@@ -364,7 +369,7 @@ mod tests {
 		sync(&fs, partition.dir(), partition.base()).unwrap();
 		assert_eq!(partition.bases().len(), 2);
 
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(20).unwrap()), vec![500, 501, 502, 503, 504, 505, 600]);
 	}
@@ -377,7 +382,7 @@ mod tests {
 		partition.seal().unwrap();
 		partition.append(&record_at(600, 7, b"next")).unwrap();
 		sync(&fs, partition.dir(), partition.base()).unwrap();
-		let mut cursor = Cursor::open(&fs, Path::new(DIR), None).unwrap();
+		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		assert_eq!(versions(&cursor.next_batch(6).unwrap()), vec![500, 501, 502, 503, 504, 505]);
 		assert_eq!(versions(&cursor.next_batch(6).unwrap()), vec![600]);
@@ -397,7 +402,7 @@ mod tests {
 		partition.purge(Duration::from_seconds_const(0)).unwrap();
 		assert_eq!(partition.bases(), [LogVersion::new(600)]);
 
-		let error = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502))).err().unwrap();
+		let error = Cursor::open(&fs, Path::new(DIR), Some(LogVersion::new(502)), None).err().unwrap();
 
 		assert!(
 			matches!(
