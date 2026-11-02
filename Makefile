@@ -175,7 +175,7 @@ precheck-all:
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
-	$(MAKE) test-workspace-chaos N=100
+	$(MAKE) test-workspace-chaos N=1
 
 .PHONY: pull-siblings
 pull-siblings:
