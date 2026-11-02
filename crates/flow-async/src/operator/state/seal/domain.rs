@@ -124,7 +124,9 @@ impl SealDomain for DateTime {
 	}
 
 	fn horizon(frontier: Self, seal_span: Duration) -> Self {
-		frontier.saturating_sub(seal_span)
+		SealRule::of(seal_span)
+			.horizon_at(frontier)
+			.map_or(DateTime::MIN, |horizon| horizon.saturating_add(Duration::from_nanoseconds_const(1)))
 	}
 
 	fn rearm_decay(
@@ -201,10 +203,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_may_go_pre_epoch() {
+	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_the_gate_step_and_may_go_pre_epoch() {
 		// wrapping high instead of going negative would report every window sealed
-		assert_eq!(DateTime::horizon(at_millis(6_060_000), ms(60_000)), at_millis(6_000_000));
-		assert_eq!(DateTime::horizon(at_millis(1_000), ms(60_000)), at_millis(-59_000));
+		let step_past = |millis| at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1));
+		assert_eq!(DateTime::horizon(at_millis(6_060_000), ms(60_000)), step_past(5_999_999));
+		assert_eq!(DateTime::horizon(at_millis(1_000), ms(60_000)), step_past(-59_001));
 	}
 
 	#[test]
