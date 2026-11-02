@@ -8,6 +8,7 @@ use arrow_row::{RowConverter, Rows, SortField};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
+	queue::EncodedQueueRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::{
@@ -22,7 +23,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	interface::catalog::{column::Column, object::ObjectId},
+	interface::catalog::{column::Column, object::ObjectId, queue::Queue},
+	internal_error,
 	value::{batch::decode_cells, column::builder::ColumnBuilder},
 };
 
@@ -163,6 +165,56 @@ pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec
 				.expect("partition column must exist (validated during planning)")
 		})
 		.collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueuePlacement {
+	pub partition: Partition,
+	pub key_hash: Option<u64>,
+}
+
+impl QueuePlacement {
+	pub fn new(partition: Option<Partition>, ordered: Option<Partition>) -> Self {
+		Self {
+			partition: partition.unwrap_or(Queue::UNPARTITIONED),
+			key_hash: ordered.map(|hash| hash.0 as u64),
+		}
+	}
+}
+
+pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
+	let Some(ordered_by) = queue.ordered_by() else {
+		return Ok(None);
+	};
+	let index = queue.columns.iter().position(|c| c.name == *ordered_by).ok_or_else(|| {
+		internal_error!("queue {} declares ordered_by {} which is not a column", queue.name, ordered_by)
+	})?;
+	Ok(Some(index))
+}
+
+pub fn partition_by_indices(queue: &Queue) -> Vec<usize> {
+	partition_col_indices(&queue.columns, &queue.partition_by)
+}
+
+pub fn placement_of(
+	shape: &RowShape,
+	row: &EncodedQueueRow,
+	partition_by: &[usize],
+	ordered_by: Option<usize>,
+) -> QueuePlacement {
+	QueuePlacement::new(
+		stored_hash(shape, row, partition_by),
+		ordered_by.and_then(|index| stored_hash(shape, row, &[index])),
+	)
+}
+
+#[allow(clippy::disallowed_methods)]
+fn stored_hash(shape: &RowShape, row: &EncodedQueueRow, indices: &[usize]) -> Option<Partition> {
+	if indices.is_empty() {
+		return None;
+	}
+	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row.as_slice(), index)).collect();
+	Some(Partition::of(&values))
 }
 
 #[derive(Debug, thiserror::Error)]

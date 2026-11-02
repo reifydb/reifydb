@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, ViewId},
 		series::SeriesKey,
-		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
+		view::{QueueView, RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
 	key::{catalog::ViewKey, namespace::NamespaceViewKey},
 };
@@ -15,7 +15,7 @@ use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{
 	CatalogStore, Result,
-	store::view::shape::{parse_view_sort, view, view_namespace},
+	store::view::shape::{get_queue_id, parse_view_sort, view, view_namespace},
 };
 
 impl CatalogStore {
@@ -155,6 +155,17 @@ pub(crate) fn decode_view(
 				sort,
 			})
 		}
+		x if x == ViewStorageKind::Queue as u8 => View::Queue(QueueView {
+			id,
+			name,
+			namespace,
+			kind,
+			columns,
+			primary_key,
+			partition_by,
+			queue: get_queue_id(bytes),
+			sort,
+		}),
 
 		_ => View::Table(TableView {
 			id,
@@ -257,5 +268,56 @@ pub mod tests {
 		)
 		.unwrap();
 		assert!(result.is_none());
+	}
+}
+
+#[cfg(test)]
+mod queue_view_tests {
+	use reifydb_core::interface::catalog::{id::QueueId, storage::StorageId, view::View};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, value_type::ValueType},
+	};
+
+	use crate::{
+		CatalogStore,
+		store::view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
+		test_utils::ensure_test_namespace,
+	};
+
+	#[test]
+	fn test_a_queue_view_row_keeps_its_queue_link_and_partition_through_the_store() {
+		// Losing the link turns the view into a scan of an empty storage while items pile up unseen.
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+		let created = CatalogStore::create_deferred_view(
+			&mut txn,
+			ViewToCreate {
+				name: Fragment::internal("q"),
+				namespace: namespace.id(),
+				columns: vec![ViewColumnToCreate {
+					name: Fragment::internal("k"),
+					fragment: Fragment::None,
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					dictionary_id: None,
+				}],
+				storage: ViewStorage::Queue {
+					queue: QueueId(4321),
+					partition_by: vec!["k".to_string()],
+				},
+				sort: vec![],
+			},
+		)
+		.unwrap();
+
+		let found = CatalogStore::find_view(&mut Transaction::Admin(&mut txn), created.id()).unwrap().unwrap();
+		let View::Queue(view) = &found else {
+			panic!("expected a queue view, got {found:?}");
+		};
+		assert_eq!(view.queue, QueueId(4321));
+		assert_eq!(view.partition_by, vec!["k".to_string()]);
+		assert_eq!(found.storage_id(), StorageId::Queue(QueueId(4321)));
 	}
 }

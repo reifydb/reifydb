@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	flow::dag::FlowDag,
-	interface::catalog::{flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId},
+	interface::catalog::{
+		flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId, view::View,
+	},
+	internal_err,
 };
 use reifydb_flow::operator::{first_input, sink::table::TableSink};
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +14,10 @@ use reifydb_value::Result;
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::sink::{ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator},
+	operator::sink::{
+		queue_view::SinkQueueViewOperator, ringbuffer_view::SinkRingBufferViewOperator,
+		series_view::SinkSeriesViewOperator,
+	},
 };
 
 impl FlowEngineInner {
@@ -68,6 +74,36 @@ impl FlowEngineInner {
 				)
 				.with_ttl_eviction(ttl_eviction),
 			),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	pub(super) fn add_sink_queue_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		view: ViewId,
+	) -> Result<()> {
+		self.require_parent(flow.id, first_input(inputs)?)?;
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let View::Queue(queue_view) = resolved.def() else {
+			return internal_err!("a queue view sink resolved view {} of another storage", view.0);
+		};
+		let queue = self.catalog.get_queue(&mut txn.reborrow(), queue_view.queue)?;
+		let shape = self.catalog.get_or_create_queue_shape(&mut txn.reborrow(), &queue)?;
+		self.durable_sinks.insert(
+			(flow.id, operator_id),
+			Box::new(SinkQueueViewOperator::new(
+				operator_id,
+				resolved,
+				queue,
+				shape,
+				self.runtime_context.clone(),
+			)?),
 		);
 		Ok(())
 	}

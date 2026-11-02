@@ -71,6 +71,7 @@ impl BaseVTable for SystemViews {
 				View::Table(_) => "table",
 				View::RingBuffer(_) => "ringbuffer",
 				View::Series(_) => "series",
+				View::Queue(_) => "queue",
 			});
 			primary_keys.push_value(
 				view.primary_key()

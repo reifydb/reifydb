@@ -3617,6 +3617,45 @@ mod tick_failures {
 	}
 
 	#[test]
+	fn a_commit_conflict_from_a_concurrent_view_drop_neither_panics_nor_wedges_the_flow() {
+		// The slice loses to the drop, so a panic here kills the actor and a wedge stalls the supervisor's
+		// stop.
+		let (te, health, actor) = quiet_actor();
+		let flow_id = actor.flow_id;
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().backfilling = false;
+		harness.state_mut().committing = true;
+		te.admin("DROP VIEW app::v");
+
+		harness.send(FlowActorMessage::SliceCommitted {
+			advance_to: CommitVersion(7),
+			more: false,
+			result: Err(internal_error!("the drop won the conflict")),
+			committed: None,
+		});
+		assert_eq!(
+			harness.process_one(),
+			Some(Directive::Continue),
+			"a lost commit must not stop the actor alone"
+		);
+		assert!(harness.state().poisoned, "a flow whose view is gone cannot rebuild, so it must stop working");
+		assert!(!harness.state().committing, "a lost commit must release the stop it could be holding");
+
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+		harness.send(FlowActorMessage::Stop {
+			delete_checkpoint: false,
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Stop), "the supervisor's stop must still land");
+		assert!(replied.load(Ordering::SeqCst), "the supervisor waits on this reply");
+		assert!(
+			health.poisoned().iter().all(|(id, _)| *id != flow_id),
+			"the dropped flow must leave no health mark behind"
+		);
+	}
+
+	#[test]
 	fn a_stop_during_a_commit_waits_for_the_commit_to_land() {
 		// Without the wait, a respawn starts while the old commit is in flight and applies its version twice.
 		let (_te, _health, actor) = quiet_actor();

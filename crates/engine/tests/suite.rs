@@ -190,6 +190,8 @@ mod procedure_shadowing_type_arguments;
 mod promote_int_with_float;
 #[path = "queue/main.rs"]
 mod queue;
+#[path = "queue_view_catalog.rs"]
+mod queue_view_catalog;
 #[path = "read_only.rs"]
 mod read_only;
 #[path = "returning.rs"]

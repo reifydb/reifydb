@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
 use reifydb_core::{
-	interface::catalog::{column::ColumnIndex, view::ViewSortKey},
+	interface::catalog::{column::ColumnIndex, id::QueueId, view::ViewSortKey},
 	sort::SortDirection,
 };
 use reifydb_macro::catalog_shape;
@@ -28,6 +29,14 @@ catalog_shape! {
 		id: u64,
 		name: utf8,
 	}
+}
+
+pub(crate) fn set_queue_id(row: &mut EncodedCatalogRowBuilder, queue: QueueId) {
+	view::set_capacity(row, queue.0);
+}
+
+pub(crate) fn get_queue_id(bytes: &EncodedCatalogRow) -> QueueId {
+	QueueId(view::get_capacity(bytes))
 }
 
 pub(crate) fn encode_view_sort(sort: &[ViewSortKey]) -> String {

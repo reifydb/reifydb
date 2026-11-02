@@ -2,27 +2,56 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::{
-	catalog::view::ViewColumnToCreate,
+	catalog::{queue::QueueColumnToCreate, view::ViewColumnToCreate},
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
+use reifydb_core::interface::catalog::{ringbuffer::EvictionVisibility, view::QueueView};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
-	value::constraint::{Constraint, TypeConstraint},
+	value::{
+		constraint::{Constraint, TypeConstraint},
+		value_type::ValueType,
+	},
 };
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstColumnToCreate, AstCreateDeferredView},
+	ast::ast::{AstColumnProperty, AstColumnToCreate, AstCreateDeferredView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateDeferredViewNode, LogicalPlan,
-		create::{check_view_partition, reject_dictionary_on_decimal},
+		create::{
+			check_view_partition,
+			queue::{compile_dispatch, compile_retention, compile_retry},
+			reject_dictionary_on_decimal,
+		},
 		reserved::reject_reserved_column_name,
 	},
 };
+
+fn queue_view_columns(columns: &[ViewColumnToCreate]) -> Vec<QueueColumnToCreate> {
+	columns.iter()
+		.map(|column| QueueColumnToCreate {
+			name: column.name.clone(),
+			fragment: column.fragment.clone(),
+			constraint: column.constraint.clone(),
+			properties: vec![],
+			auto_increment: false,
+			dictionary_id: column.dictionary_id,
+		})
+		.collect()
+}
+
+fn change_column() -> ViewColumnToCreate {
+	ViewColumnToCreate {
+		name: Fragment::internal(QueueView::CHANGE_COLUMN),
+		fragment: Fragment::internal(QueueView::CHANGE_COLUMN),
+		constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+		dictionary_id: None,
+	}
+}
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_deferred_view(
@@ -31,9 +60,46 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
-		let columns = self.compile_view_columns(ast.columns, &view_ns_segments, tx)?;
+		let mut columns = self.compile_view_columns(ast.columns, &view_ns_segments, tx)?;
 
 		check_view_partition(&columns, &ast.storage_kind, &view_ns_segments)?;
+
+		let storage_kind = match ast.queue {
+			Some(options) => {
+				if let Some(column) = columns.iter().find(|c| c.name.text() == QueueView::CHANGE_COLUMN)
+				{
+					return Err(CatalogError::InvalidDefinition {
+						kind: CatalogObjectKind::View,
+						name: ast.view.name.text().to_string(),
+						field: "column change",
+						reason: "is reserved on a queue view: the sink writes it on every item"
+							.to_string(),
+						fragment: column.name.clone(),
+					}
+					.into());
+				}
+				let queue_columns = queue_view_columns(&columns);
+				let partition_by = match ast.storage_kind {
+					AstViewStorageKind::Queue {
+						partition_by,
+						..
+					} => partition_by,
+					_ => unreachable!("queue options come only from a queue view"),
+				};
+				columns.push(change_column());
+				AstViewStorageKind::Queue {
+					partition_by,
+					dispatch: compile_dispatch(
+						&options.dispatch,
+						&queue_columns,
+						&view_ns_segments,
+					)?,
+					retention: compile_retention(options.retention.as_ref())?,
+					retry: compile_retry(options.retry.as_ref())?,
+				}
+			}
+			None => ast.storage_kind,
+		};
 
 		let view = ast.view;
 
@@ -57,7 +123,7 @@ impl<'bump> Compiler<'bump> {
 			if_not_exists: false,
 			columns,
 			as_clause: with,
-			storage_kind: ast.storage_kind,
+			storage_kind,
 			ttl,
 			persistent,
 			ttl_eviction,

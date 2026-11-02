@@ -390,7 +390,7 @@ impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
 	}
 }
 
-fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
+pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
 	encode(&value).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state,
@@ -399,7 +399,7 @@ fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
 	})
 }
 
-fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
+pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
 	decode(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state,

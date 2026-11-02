@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem::take, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem::take,
+	sync::Arc,
+};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -9,10 +13,10 @@ use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	delta::RemoveVisibility,
 	interface::{
-		catalog::flow::FlowId,
+		catalog::{flow::FlowId, id::QueueId, object::ObjectId, storage::StorageId},
 		operator::{FlowCheckpoint, OperatorSlice},
 	},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, queue::QueueKey},
 	return_internal_error,
 };
 #[cfg(test)]
@@ -25,6 +29,7 @@ use reifydb_runtime::actor::{
 };
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_transaction::{
+	change::{QueueRowInsertion, RowChange},
 	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission, Committed},
 	transaction::command::CommandTransaction,
 };
@@ -489,6 +494,7 @@ fn release_slices(slices: Arc<Vec<FlowSlice>>) {
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	let mut writes: Vec<(TaggedKey, &PendingWrite)> = Vec::with_capacity(combined.len());
+	let dropped = dropped_queues(transaction, combined)?;
 	for (encoded, pw) in combined.rows_ordered() {
 		let Some(key) = TaggedKey::decode(encoded) else {
 			return_internal_error!(
@@ -496,7 +502,9 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 				hex_display(encoded.as_ref())
 			)
 		};
-		writes.push((key, pw));
+		if !writes_to_dropped_queue(&key, &dropped) {
+			writes.push((key, pw));
+		}
 	}
 	let observed: Vec<TaggedKey> = writes
 		.iter()
@@ -542,12 +550,49 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 	if !sets.is_empty() {
 		transaction.set(sets)?;
 	}
+	transaction.track_row_change(&queue_row_changes(combined, &dropped));
 	Ok(())
+}
+
+fn dropped_queues(transaction: &mut CommandTransaction, combined: &Pending) -> Result<BTreeSet<QueueId>> {
+	let queues: BTreeSet<QueueId> = combined.queue_items().iter().map(|item| item.queue).collect();
+	if queues.is_empty() {
+		return Ok(BTreeSet::new());
+	}
+	let keys: Vec<TaggedKey> = queues.iter().map(|queue| QueueKey::new(*queue).into()).collect();
+	let found = transaction.get(&keys)?;
+	Ok(queues.into_iter().zip(found).filter(|(_, row)| row.is_none()).map(|(queue, _)| queue).collect())
+}
+
+fn writes_to_dropped_queue(key: &TaggedKey, dropped: &BTreeSet<QueueId>) -> bool {
+	match key {
+		TaggedKey::Row(key) => matches!(key.storage, StorageId::Queue(queue) if dropped.contains(&queue)),
+		TaggedKey::Partition(key) => matches!(key.object, ObjectId::Queue(queue) if dropped.contains(&queue)),
+		_ => false,
+	}
+}
+
+fn queue_row_changes(combined: &Pending, dropped: &BTreeSet<QueueId>) -> Vec<RowChange> {
+	combined.queue_items()
+		.iter()
+		.filter(|item| !dropped.contains(&item.queue))
+		.map(|item| {
+			RowChange::QueueInsert(QueueRowInsertion {
+				queue_id: item.queue,
+				partition: item.partition,
+				key_hash: item.key_hash,
+				row_number: item.row_number,
+				not_before: None,
+				encoded: item.encoded.clone(),
+			})
+		})
+		.collect()
 }
 
 #[cfg(test)]
 mod commit_integration {
 	use std::{
+		ops::RangeInclusive,
 		slice::from_ref,
 		sync::{
 			atomic::{AtomicUsize, Ordering},
@@ -561,14 +606,13 @@ mod commit_integration {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
+		actors::pending::PendingQueueItem,
 		commit::watermark::ReaderWatermark,
 		delta::{Delta, RemoveAnnounce, SetPre},
 		interface::{
 			catalog::{
 				flow::OperatorId,
 				id::{IndexId, TableId},
-				object::ObjectId,
-				storage::StorageId,
 			},
 			commit::CommitEntry,
 			operator::OperatorStateWrite,
@@ -579,6 +623,7 @@ mod commit_integration {
 			any::TaggedKey,
 			catalog::IndexEntryKey,
 			operator::state::{GroupStateKey, OperatorStateKey, unmanaged_key},
+			partition::PartitionKey,
 			row::RowKey,
 			series::SeriesRowKey,
 			tag::KeyTag,
@@ -596,11 +641,14 @@ mod commit_integration {
 		types::OperatorWrite,
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{commit::CommitBegin, counting::OpCounts, transaction::Transaction, wal::CommitWal};
+	use reifydb_transaction::{
+		commit::CommitBegin, counting::OpCounts, queue::scheduling::queue_partition_counters,
+		transaction::Transaction, wal::CommitWal,
+	};
 	use reifydb_value::{
 		byte_size::ByteSize,
 		util::cowvec::CowVec,
-		value::{duration::Duration, row_number::RowNumber},
+		value::{duration::Duration, partition::Partition, row_number::RowNumber},
 	};
 	use reifydb_wal::{lsn::Lsn, sync::WalMode};
 
@@ -746,6 +794,168 @@ mod commit_integration {
 				 the same transaction as the state it belongs to"
 			);
 		}
+	}
+
+	fn queue_engine() -> (TestEngine, StandardEngine, QueueId) {
+		let te = TestEngine::builder().with_commit_queue().build();
+		te.admin("CREATE NAMESPACE test");
+		te.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
+		let engine = te.inner().clone();
+		let catalog = engine.catalog();
+		let mut query = engine.begin_query(IdentityId::system()).unwrap();
+		let mut txn = Transaction::Query(&mut query);
+		let namespace = catalog.find_namespace_by_name(&mut txn, "test").unwrap().unwrap();
+		let queue = catalog.find_queue_by_name(&mut txn, namespace.id(), "jobs").unwrap().unwrap().id;
+		drop(txn);
+		(te, engine, queue)
+	}
+
+	fn queue_items(queue: QueueId, rows: RangeInclusive<u64>) -> Vec<PendingQueueItem> {
+		rows.map(|row| PendingQueueItem {
+			queue,
+			partition: Partition(7),
+			key_hash: None,
+			row_number: RowNumber(row),
+			encoded: EncodedBytes(CowVec::new(vec![1])),
+		})
+		.collect()
+	}
+
+	fn depth(engine: &StandardEngine, queue: QueueId) -> Vec<(Partition, u64)> {
+		queue_partition_counters(engine.single(), queue)
+			.unwrap()
+			.into_iter()
+			.map(|(partition, counters)| (partition, counters.depth))
+			.collect()
+	}
+
+	#[test]
+	fn a_committed_slice_admits_its_queue_items_through_the_plain_queue_interceptor() {
+		// Without this a queue view row exists but has no scheduling state, so no worker can ever claim it.
+		let (_te, engine, queue) = queue_engine();
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		let mut slice = synthetic_slice(1);
+		slice.combined.admit_queue_items(queue_items(queue, 1..=2));
+		let replies = SliceReplies::new(1);
+		let sent = handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: replies.reply(0),
+			})
+			.is_ok();
+		assert!(sent, "send slice");
+		replies.wait();
+
+		assert_eq!(depth(&engine, queue), vec![(Partition(7), 2)]);
+	}
+
+	#[test]
+	fn a_committed_tick_admits_its_queue_items_too() {
+		// A tick takes its own apply path, so an item carried there must not lose its scheduling state.
+		let (_te, engine, queue) = queue_engine();
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		let mut pending = Pending::new();
+		pending.insert(vec![synthetic_key(2)], vec![EncodedBytes(CowVec::new(vec![2u8; 4]))]);
+		pending.admit_queue_items(queue_items(queue, 1..=3));
+		let (done, finished) = mpsc::channel();
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Tick {
+				flow_id: FlowId(1),
+				members: Vec::new(),
+				source: SourceVersion(1),
+				pending,
+				reply: Box::new(move |result| done.send(result).expect("the test waits for the tick")),
+			})
+			.is_ok());
+		finished.recv_timeout(StdDuration::from_secs(10))
+			.expect("the tick must reply")
+			.expect("the tick commits");
+
+		assert_eq!(depth(&engine, queue), vec![(Partition(7), 3)]);
+	}
+
+	#[test]
+	fn a_retried_slice_admits_its_queue_items_exactly_once() {
+		// The failed batch never committed, so counting its items as well as the retry's would double the
+		// depth.
+		let (_te, engine, queue) = queue_engine();
+		let attempts = Arc::new(AtomicUsize::new(0));
+		let begin_engine = engine.clone();
+		let counted = attempts.clone();
+		let begin: CommitBegin = Arc::new(move || {
+			if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+				return Err(internal_error!("the batch commit fails once"));
+			}
+			begin_engine.begin_command(IdentityId::system())
+		});
+		let commit = CommitHandle::new(begin);
+		let (_handle, committer) = build_committer_actor(&engine, commit.clone());
+
+		let mut first = synthetic_slice(1);
+		first.combined.admit_queue_items(queue_items(queue, 1..=1));
+		let mut second = synthetic_slice(2);
+		second.combined.admit_queue_items(queue_items(queue, 2..=2));
+		let replies = SliceReplies::new(2);
+		committer.commit_slices(
+			"retry-test",
+			&commit,
+			Arc::new(vec![first, second]),
+			vec![(0, replies.reply(0)), (1, replies.reply(1))],
+		);
+		replies.wait();
+
+		assert_eq!(replies.versions().len(), 2, "both slices must land through their retries");
+		assert_eq!(attempts.load(Ordering::SeqCst), 3, "one failed batch, then one retry per slice");
+		assert_eq!(depth(&engine, queue), vec![(Partition(7), 2)]);
+	}
+
+	#[test]
+	fn a_slice_committing_after_its_queue_was_dropped_leaves_nothing_behind() {
+		// A slice still in flight when the view drops must not recreate rows or counters no drop will ever
+		// sweep.
+		let (te, engine, queue) = queue_engine();
+		te.admin("DROP QUEUE test::jobs");
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, _committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		let mut slice = synthetic_slice(1);
+		let row = RowKey::new(queue, RowNumber(1));
+		let partition = PartitionKey::new(ObjectId::Queue(queue), Partition(7));
+		slice.combined.insert(
+			vec![row.encode(), partition.encode()],
+			vec![EncodedBytes(CowVec::new(vec![1])), EncodedBytes(CowVec::new(vec![1]))],
+		);
+		slice.combined.admit_queue_items(queue_items(queue, 1..=1));
+		let replies = SliceReplies::new(1);
+		let sent = handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: replies.reply(0),
+			})
+			.is_ok();
+		assert!(sent, "send slice");
+		replies.wait();
+		assert_eq!(replies.versions().len(), 1, "the rest of the slice still commits");
+
+		assert!(depth(&engine, queue).is_empty(), "no scheduling state may outlive the queue");
+		let mut query = engine.begin_query(IdentityId::system()).unwrap();
+		let mut txn = Transaction::Query(&mut query);
+		assert!(
+			txn.get(&[row.clone().into(), partition.clone().into()]).unwrap().iter().all(Option::is_none),
+			"no row or partition entry may outlive the queue"
+		);
+		let other = TaggedKey::decode(&synthetic_key(1)).expect("the synthetic key decodes");
+		assert!(txn.get(&[other]).unwrap()[0].is_some(), "the slice's other writes must still land");
 	}
 
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {

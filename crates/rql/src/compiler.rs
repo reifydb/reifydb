@@ -395,6 +395,17 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 				partition_by,
 			}
 		}
+		AstViewStorageKind::Queue {
+			partition_by,
+			dispatch,
+			retention,
+			retry,
+		} => CompiledViewStorageKind::Queue {
+			partition_by,
+			dispatch,
+			retention,
+			retry,
+		},
 	}
 }
 

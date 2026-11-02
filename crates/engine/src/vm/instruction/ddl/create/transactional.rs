@@ -61,6 +61,9 @@ pub(crate) fn create_transactional_view(
 		CompiledViewStorageKind::Series {
 			..
 		} => return Err(error!(flow_transactional_not_supported("series storage"))),
+		CompiledViewStorageKind::Queue {
+			..
+		} => return Err(error!(flow_transactional_not_supported("queue storage"))),
 	};
 
 	let sort = extract_view_sort(&plan.as_clause, &plan.columns);

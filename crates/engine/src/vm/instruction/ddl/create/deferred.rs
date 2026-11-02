@@ -2,15 +2,22 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
-use reifydb_catalog::{catalog::view::ViewToCreate, store::row_settings::create::create_row_settings};
+use reifydb_catalog::{
+	catalog::{
+		queue::{QueueColumnToCreate, QueueToCreate},
+		view::ViewToCreate,
+	},
+	store::{row_settings::create::create_row_settings, view::create::ViewStorage},
+};
 use reifydb_core::{
+	common::TimeSource,
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
 	row::RowSettings,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_rql::nodes::CreateDeferredViewNode;
+use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{return_error, value::Value};
 
@@ -31,7 +38,45 @@ pub(crate) fn create_deferred_view(
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 
-	let storage = view_storage(&plan.storage_kind);
+	let storage = match &plan.storage_kind {
+		CompiledViewStorageKind::Queue {
+			partition_by,
+			dispatch,
+			retention,
+			retry,
+		} => {
+			let queue = services.catalog.create_queue(
+				txn,
+				QueueToCreate {
+					name: plan.view.clone(),
+					namespace: plan.namespace.id(),
+					columns: plan
+						.columns
+						.iter()
+						.map(|column| QueueColumnToCreate {
+							name: column.name.clone(),
+							fragment: column.fragment.clone(),
+							constraint: column.constraint.clone(),
+							properties: vec![],
+							auto_increment: false,
+							dictionary_id: column.dictionary_id,
+						})
+						.collect(),
+					partition_by: partition_by.clone(),
+					dispatch: dispatch.clone(),
+					deduplicate: None,
+					retention: retention.clone(),
+					retry: retry.clone(),
+					time: TimeSource::None,
+				},
+			)?;
+			ViewStorage::Queue {
+				queue: queue.id,
+				partition_by: partition_by.clone(),
+			}
+		}
+		other => view_storage(other),
+	};
 
 	let sort = extract_view_sort(&plan.as_clause, &plan.columns);
 

@@ -123,7 +123,8 @@ impl ViewScanNode {
 		let headers = scan_headers(view.columns().iter().map(|col| col.name.as_str()), &system_columns);
 		let series = view.def().storage_kind() == ViewStorageKind::Series;
 		let sorted = !view.def().sort().is_empty() && view.def().storage_kind() == ViewStorageKind::Table;
-		let partitioned = !view.def().partition_by().is_empty();
+		let partitioned =
+			!view.def().partition_by().is_empty() && view.def().storage_kind() != ViewStorageKind::Queue;
 
 		let resume = if partitioned && !series && !sorted {
 			Resume::Partitioned(None)

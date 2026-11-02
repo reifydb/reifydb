@@ -163,6 +163,10 @@ pub(crate) fn check_view_partition(
 			partition_by,
 			..
 		} => partition_by,
+		AstViewStorageKind::Queue {
+			partition_by,
+			..
+		} => partition_by,
 	};
 
 	for pb_col in partition_by {

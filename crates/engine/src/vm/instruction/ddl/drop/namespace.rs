@@ -149,7 +149,7 @@ pub(crate) fn drop_namespace(
 			&flows,
 			|node_type| {
 				matches!(node_type, OperatorDef::SourceView { view } if view_ids.contains(view))
-					|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } if view_ids.contains(view))
+					|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } | OperatorDef::SinkQueueView { view } if view_ids.contains(view))
 					|| matches!(node_type, OperatorDef::Lookup { right: LookupObject::View(view), .. } if view_ids.contains(view))
 			},
 		)?);

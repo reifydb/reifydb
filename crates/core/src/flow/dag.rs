@@ -146,6 +146,9 @@ impl FlowDag {
 			| Some(OperatorDef::SinkSeriesView {
 				view,
 				..
+			})
+			| Some(OperatorDef::SinkQueueView {
+				view,
 			}) => Some(*view),
 			_ => None,
 		})

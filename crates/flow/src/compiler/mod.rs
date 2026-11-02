@@ -237,6 +237,9 @@ impl FlowCompiler {
 				view: sink_view.id(),
 				key: s.key.clone(),
 			},
+			View::Queue(_) => OperatorDef::SinkQueueView {
+				view: sink_view.id(),
+			},
 		};
 		let result_node = self.add_node(txn, node_type)?;
 		self.add_edge(txn, root_node_id, &result_node)

@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{procedure::RunAs, ringbuffer::EvictionVisibility},
+	interface::catalog::{
+		procedure::RunAs,
+		queue::{QueueDispatch, QueueRetention, QueueRetry},
+		ringbuffer::EvictionVisibility,
+	},
 	sort::SortDirection,
 };
 use reifydb_value::{
@@ -23,10 +27,10 @@ use crate::{
 			AstCreateRingBuffer, AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTest,
 			AstCreateTransactionalView, AstIndexColumn, AstOperatorWithEntry, AstOperatorWithKey,
 			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate,
-			AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
-			AstRelationshipJunction, AstRowSettings, AstSeriesEncoding, AstStatement, AstTimeDeclaration,
-			AstTimestampPrecision, AstTtl, AstType, AstTypeParameter, AstVariant, AstViewStorageKind,
-			AstViewWithClause, AstWindowedViewGroupMember,
+			AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry, AstQueueViewOptions,
+			AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings, AstSeriesEncoding,
+			AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType, AstTypeParameter,
+			AstVariant, AstViewStorageKind, AstViewWithClause, AstWindowedViewGroupMember,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -59,6 +63,7 @@ use crate::{
 
 const QUEUE_OPTION_KEYS: &str = "'partition', 'fifo', 'deduplicate', 'retention', 'retry', or 'time'";
 const TIME_VALUES: &str = "'none', 'event(<column>)', or 'processing'";
+const QUEUE_VIEW_OPTION_KEYS: &str = "'partition', 'fifo', 'retention', or 'retry'";
 const QUEUE_FIFO_KEYS: &str = "'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
@@ -84,6 +89,37 @@ fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 			expected: expected.to_string(),
 		},
 		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn unsupported_queue_view_option(token: &Token<'_>, reason: &str) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: QUEUE_VIEW_OPTION_KEYS.to_string(),
+		},
+		message: format!("a queue view does not support `{}`: {}", token.fragment.text(), reason),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn missing_queue_view_dispatch(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "'fifo'".to_string(),
+		},
+		message: "CREATE DEFERRED QUEUE VIEW requires a dispatch block, for example WITH { fifo: {} }"
+			.to_string(),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn transactional_queue_view(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "'create deferred queue view'".to_string(),
+		},
+		message: "a queue view is deferred only".to_string(),
 		fragment: token.fragment.to_owned(),
 	})
 }
@@ -240,6 +276,10 @@ impl<'bump> Parser<'bump> {
 				self.consume_keyword(View)?;
 				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::Series);
 			}
+			if (self.consume_if(TokenKind::Keyword(Keyword::Queue))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_deferred_queue_view(token);
+			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_deferred_view(token);
 			}
@@ -256,6 +296,9 @@ impl<'bump> Parser<'bump> {
 			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
 				self.consume_keyword(View)?;
 				return self.parse_transactional_view_with_storage(token, ViewStorageKindHint::Series);
+			}
+			if let Some(queue) = self.consume_if(TokenKind::Keyword(Keyword::Queue))? {
+				return Err(transactional_queue_view(&queue));
 			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_transactional_view(token);
@@ -1066,6 +1109,7 @@ impl<'bump> Parser<'bump> {
 				partition_by,
 			},
 			settings,
+			queue: None,
 		}))
 	}
 
@@ -1344,6 +1388,94 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			settings,
+			queue: None,
+		}))
+	}
+
+	fn parse_deferred_queue_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
+
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut partition_by: Vec<String> = Vec::new();
+		let mut dispatch = None;
+		let mut retention = None;
+		let mut retry = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_queue_option_key(QUEUE_VIEW_OPTION_KEYS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"partition" => partition_by = self.parse_partition_config()?,
+				"fifo" => {
+					if dispatch.is_some() {
+						return Err(duplicate_queue_dispatch(&key));
+					}
+					dispatch = Some(AstQueueDispatch::Fifo(self.parse_queue_fifo(key)?));
+				}
+				"retention" => retention = Some(self.parse_queue_retention()?),
+				"retry" => retry = Some(self.parse_queue_retry()?),
+				"deduplicate" => {
+					return Err(unsupported_queue_view_option(
+						&key,
+						"every upstream change must become a new item",
+					));
+				}
+				"time" => {
+					return Err(unsupported_queue_view_option(
+						&key,
+						"a queue view item takes its time from the source row",
+					));
+				}
+				"row" | "eviction" => {
+					return Err(unsupported_queue_view_option(
+						&key,
+						"queue items leave by ack and retention, not by row ttl or eviction",
+					));
+				}
+				_ => return Err(unexpected_queue_option(&key, QUEUE_VIEW_OPTION_KEYS)),
+			}
+
+			self.skip_new_line()?;
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let Some(dispatch) = dispatch else {
+			return Err(missing_queue_view_dispatch(&token));
+		};
+
+		let as_clause = self.parse_view_as_clause()?;
+
+		Ok(AstCreate::DeferredView(AstCreateDeferredView {
+			token,
+			view,
+			columns,
+			as_clause,
+			storage_kind: AstViewStorageKind::Queue {
+				partition_by,
+				dispatch: QueueDispatch::default(),
+				retention: QueueRetention::default(),
+				retry: QueueRetry::default(),
+			},
+			settings: None,
+			queue: Some(AstQueueViewOptions {
+				dispatch,
+				retention,
+				retry,
+			}),
 		}))
 	}
 
@@ -5470,5 +5602,96 @@ mod windowed_view_group_storage_tests {
 			"create deferred windowed ringbuffer view group ns::g {{ a: int4 }} with {{ capacity: 5 }} {AS}"
 		));
 		assert!(message.contains("'members'"), "{message}");
+	}
+}
+
+#[cfg(test)]
+mod queue_view_tests {
+	use crate::{
+		Result,
+		ast::{
+			ast::{Ast, AstCreate, AstQueueDispatch, AstViewStorageKind},
+			parse::Parser,
+		},
+		bump::{Bump, BumpBox},
+		token::tokenize,
+	};
+
+	const AS: &str = "as { from ns::t }";
+
+	fn parse_queue_view(with: &str) -> Result<()> {
+		let source = format!("create deferred queue view ns::v {{ id: int4 }} with {{ {with} }} {AS}");
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, &source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, &source, tokens);
+		parser.parse().map(|_| ())
+	}
+
+	#[test]
+	fn a_queue_view_carries_every_plain_queue_option_to_the_plan() {
+		// A dropped option would silently leave the queue on default ordering or retry.
+		let source = format!(
+			"create deferred queue view ns::v {{ id: int4 }} with {{ partition: {{ by: {{ id }} }}, fifo: {{ ordered_by: id }}, retention: {{ done: 1h }}, retry: {{ attempts: 3, backoff: 1s }} }} {AS}"
+		);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, &source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, &source, tokens);
+		let mut statements = parser.parse().unwrap();
+		let Ast::Create(create) = statements[0].nodes.remove(0) else {
+			panic!("expected a create statement");
+		};
+		let AstCreate::DeferredView(view) = BumpBox::into_inner(create) else {
+			panic!("expected a deferred view");
+		};
+		let AstViewStorageKind::Queue {
+			partition_by,
+			..
+		} = &view.storage_kind
+		else {
+			panic!("expected queue storage, got {:?}", view.storage_kind);
+		};
+		assert_eq!(partition_by, &vec!["id".to_string()]);
+		let options = view.queue.expect("the options must reach the logical plan");
+		assert!(options.retention.is_some());
+		assert!(options.retry.is_some());
+		let AstQueueDispatch::Fifo(fifo) = options.dispatch;
+		assert_eq!(fifo.ordered_by.map(|t| t.fragment.text().to_string()), Some("id".to_string()));
+	}
+
+	#[test]
+	fn a_queue_view_refuses_what_only_other_storage_supports() {
+		// A silently ignored ttl or time would promise expiry and event time the item path never applies.
+		for (key, with) in [
+			("deduplicate", "fifo: {}, deduplicate: { by: { id } }"),
+			("time", "fifo: {}, time: processing"),
+			("row", "fifo: {}, row: { ttl: 1s }"),
+			("eviction", "fifo: {}, eviction: { ttl: silent }"),
+		] {
+			let message = parse_queue_view(with).expect_err(with).to_string();
+			assert!(message.contains(&format!("does not support `{key}`")), "{key}: {message}");
+		}
+		let message = parse_queue_view("fifo: {}, capacity: 5").expect_err("capacity").to_string();
+		assert!(message.contains("'retention'"), "an unknown key must name the valid ones: {message}");
+	}
+
+	#[test]
+	fn a_queue_view_needs_exactly_one_dispatch_block() {
+		// Without a dispatch the view would invent an order the plain queue path never allows.
+		let missing = parse_queue_view("retry: { attempts: 3 }").expect_err("no dispatch").to_string();
+		assert!(missing.contains("CREATE DEFERRED QUEUE VIEW requires a dispatch block"), "{missing}");
+		assert!(parse_queue_view("fifo: {}, fifo: {}").is_err());
+		assert!(parse_queue_view("fifo: {}").is_ok());
+	}
+
+	#[test]
+	fn a_transactional_queue_view_is_refused_rather_than_panicking() {
+		// A worker must never see a change before it commits, and the parser must fail, not reach
+		// unimplemented.
+		let source = format!("create transactional queue view ns::v {{ id: int4 }} with {{ fifo: {{}} }} {AS}");
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, &source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, &source, tokens);
+		let message = parser.parse().map(|_| ()).expect_err("transactional must fail").to_string();
+		assert!(message.contains("deferred only"), "{message}");
 	}
 }

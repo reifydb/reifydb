@@ -2,38 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
-use reifydb_core::{interface::catalog::queue::Queue, internal_error, partition::partition_col_indices};
-use reifydb_value::value::{Value, partition::Partition};
+use reifydb_core::{interface::catalog::queue::Queue, partition, partition::QueuePlacement};
+#[cfg(test)]
+use reifydb_value::value::partition::Partition;
 
 use crate::Result;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QueuePlacement {
-	pub partition: Partition,
-	pub key_hash: Option<u64>,
-}
-
-impl QueuePlacement {
-	pub fn new(partition: Option<Partition>, ordered: Option<Partition>) -> Self {
-		Self {
-			partition: partition.unwrap_or(Queue::UNPARTITIONED),
-			key_hash: ordered.map(|hash| hash.0 as u64),
-		}
-	}
-}
-
 pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
-	let Some(ordered_by) = queue.ordered_by() else {
-		return Ok(None);
-	};
-	let index = queue.columns.iter().position(|c| c.name == *ordered_by).ok_or_else(|| {
-		internal_error!("queue {} declares ordered_by {} which is not a column", queue.name, ordered_by)
-	})?;
-	Ok(Some(index))
+	partition::ordered_by_index(queue)
 }
 
 pub fn partition_by_indices(queue: &Queue) -> Vec<usize> {
-	partition_col_indices(&queue.columns, &queue.partition_by)
+	partition::partition_by_indices(queue)
 }
 
 pub fn placement_of(
@@ -42,19 +22,7 @@ pub fn placement_of(
 	partition_by: &[usize],
 	ordered_by: Option<usize>,
 ) -> QueuePlacement {
-	QueuePlacement::new(
-		stored_hash(shape, row, partition_by),
-		ordered_by.and_then(|index| stored_hash(shape, row, &[index])),
-	)
-}
-
-#[allow(clippy::disallowed_methods)]
-fn stored_hash(shape: &RowShape, row: &EncodedQueueRow, indices: &[usize]) -> Option<Partition> {
-	if indices.is_empty() {
-		return None;
-	}
-	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row.as_slice(), index)).collect();
-	Some(Partition::of(&values))
+	partition::placement_of(shape, row, partition_by, ordered_by)
 }
 
 #[cfg(test)]

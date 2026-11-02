@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod partition;
+pub mod queue_view;
 pub mod ringbuffer_view;
 pub mod series_view;
 pub mod view;

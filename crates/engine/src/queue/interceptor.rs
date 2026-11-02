@@ -8,7 +8,7 @@ use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change::{QueueAckTransition, QueueRowAck, RowChange},
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor},
-	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions},
+	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions, remove_queue_scheduling_state},
 	single::SingleTransaction,
 };
 use reifydb_value::value::{datetime::DateTime, partition::Partition};
@@ -73,7 +73,22 @@ fn releases_work(ack: &QueueRowAck, now: DateTime) -> bool {
 
 impl PostCommitInterceptor for QueueSchedulingInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
-		if ctx.version == CommitVersion(0) || ctx.row_changes.is_empty() {
+		if ctx.version == CommitVersion(0) {
+			return Ok(());
+		}
+
+		for change in &ctx.changes.queue {
+			if let (Some(queue), None) = (&change.pre, &change.post)
+				&& let Err(err) = remove_queue_scheduling_state(&self.single, queue.id)
+			{
+				panic!(
+					"queue scheduling sweep failed after drop: queue {} version {}: {}",
+					queue.id.0, ctx.version.0, err
+				);
+			}
+		}
+
+		if ctx.row_changes.is_empty() {
 			return Ok(());
 		}
 

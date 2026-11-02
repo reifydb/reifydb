@@ -226,6 +226,9 @@ impl FlowGraphAnalyzer {
 					| OperatorDef::SinkSeriesView {
 						view,
 						..
+					}
+					| OperatorDef::SinkQueueView {
+						view,
 					} => Some(view),
 					_ => None,
 				};

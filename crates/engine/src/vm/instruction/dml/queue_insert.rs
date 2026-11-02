@@ -36,7 +36,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
-	partition::partitions_of_batch,
+	partition::{QueuePlacement, partitions_of_batch},
 	return_internal_error,
 	value::{
 		batch::{batch, decode_cells, single_row},
@@ -75,7 +75,7 @@ use crate::{
 	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	queue::partition::{QueuePlacement, ordered_by_index},
+	queue::partition::ordered_by_index,
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
 		instruction::dml::{

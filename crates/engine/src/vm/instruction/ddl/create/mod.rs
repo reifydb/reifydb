@@ -77,6 +77,9 @@ pub(crate) fn view_storage(kind: &CompiledViewStorageKind) -> ViewStorage {
 			tag: None,
 			partition_by: partition_by.clone(),
 		},
+		CompiledViewStorageKind::Queue {
+			..
+		} => unreachable!("a queue view creates its queue before its view storage"),
 	}
 }
 
@@ -487,6 +490,9 @@ fn transactional_unsupported(ty: &OperatorDef) -> Option<&'static str> {
 		OperatorDef::SinkSeriesView {
 			..
 		} => Some("series storage"),
+		OperatorDef::SinkQueueView {
+			..
+		} => Some("queue storage"),
 		OperatorDef::SinkSubscription {
 			..
 		} => Some("subscription sink"),

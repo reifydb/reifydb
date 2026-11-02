@@ -4,12 +4,12 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::{Column, ColumnIndex},
-		id::{NamespaceId, ViewId},
+		id::{NamespaceId, QueueId, ViewId},
 		ringbuffer::{RingBufferMetadata, encode_ringbuffer_metadata},
 		series::SeriesKey,
 		storage::StorageId,
 		view::{
-			RingBufferView, SeriesView, TableView, View, ViewKind,
+			QueueView, RingBufferView, SeriesView, TableView, View, ViewKind,
 			ViewKind::{Deferred, Transactional},
 			ViewSortKey, ViewStorageKind,
 		},
@@ -29,7 +29,7 @@ use crate::{
 		column::create::ColumnToCreate,
 		definition::{reject_invalid_column_list, reject_zero_tag},
 		sequence::system::SystemSequence,
-		view::shape::{encode_view_sort, view, view_namespace},
+		view::shape::{encode_view_sort, set_queue_id, view, view_namespace},
 	},
 };
 
@@ -55,6 +55,10 @@ pub enum ViewStorage {
 		tag: Option<SumTypeId>,
 		partition_by: Vec<String>,
 	},
+	Queue {
+		queue: QueueId,
+		partition_by: Vec<String>,
+	},
 }
 
 impl ViewStorage {
@@ -68,6 +72,10 @@ impl ViewStorage {
 				..
 			} => partition_by,
 			ViewStorage::Series {
+				partition_by,
+				..
+			} => partition_by,
+			ViewStorage::Queue {
 				partition_by,
 				..
 			} => partition_by,
@@ -187,6 +195,20 @@ impl CatalogStore {
 				tag,
 				sort,
 			}),
+			ViewStorage::Queue {
+				queue,
+				partition_by,
+			} => View::Queue(QueueView {
+				id,
+				namespace,
+				name,
+				kind,
+				columns,
+				primary_key: None,
+				partition_by,
+				queue,
+				sort,
+			}),
 		}
 	}
 
@@ -272,6 +294,17 @@ impl CatalogStore {
 				view::set_precision(&mut row, precision_u8);
 				view::set_tag_id(&mut row, tag.map(|t| t.0).unwrap_or(0));
 			}
+			ViewStorage::Queue {
+				queue,
+				..
+			} => {
+				view::set_storage_kind(&mut row, ViewStorageKind::Queue as u8);
+				set_queue_id(&mut row, *queue);
+				view::set_key_column(&mut row, "");
+				view::set_key_kind(&mut row, 0u8);
+				view::set_precision(&mut row, 0u8);
+				view::set_tag_id(&mut row, 0u64);
+			}
 		}
 
 		txn.set(vec![(ViewKey::new(view).into(), row.freeze().into())])?;
@@ -302,6 +335,9 @@ impl CatalogStore {
 				Ok(())
 			}
 			ViewStorage::Series {
+				..
+			}
+			| ViewStorage::Queue {
 				..
 			} => Ok(()),
 		}

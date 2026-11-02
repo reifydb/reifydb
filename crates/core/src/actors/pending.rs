@@ -10,9 +10,12 @@ use reifydb_codec::{
 	key::{encode_u8, encoded::EncodedKey},
 	row::bytes::EncodedBytes,
 };
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{partition::Partition, row_number::RowNumber},
+};
 
-use crate::{delta::RemoveVisibility, key::tag::KeyTag};
+use crate::{delta::RemoveVisibility, interface::catalog::id::QueueId, key::tag::KeyTag};
 
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
@@ -22,12 +25,22 @@ pub enum PendingWrite {
 	},
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingQueueItem {
+	pub queue: QueueId,
+	pub partition: Partition,
+	pub key_hash: Option<u64>,
+	pub row_number: RowNumber,
+	pub encoded: EncodedBytes,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Pending {
 	state: BTreeMap<EncodedKey, PendingWrite>,
 	entries: Vec<(EncodedKey, PendingWrite)>,
 	index: BTreeMap<EncodedKey, usize>,
 	pre: BTreeMap<EncodedKey, Option<ByteSize>>,
+	queue_items: Vec<PendingQueueItem>,
 }
 
 impl Pending {
@@ -37,7 +50,16 @@ impl Pending {
 			entries: Vec::new(),
 			index: BTreeMap::new(),
 			pre: BTreeMap::new(),
+			queue_items: Vec::new(),
 		}
+	}
+
+	pub fn admit_queue_items(&mut self, items: impl IntoIterator<Item = PendingQueueItem>) {
+		self.queue_items.extend(items);
+	}
+
+	pub fn queue_items(&self) -> &[PendingQueueItem] {
+		&self.queue_items
 	}
 
 	pub fn classify(&mut self, key: EncodedKey, pre: Option<ByteSize>) {
@@ -209,7 +231,7 @@ fn holds_keys(start: Bound<&[u8]>, end: Bound<&[u8]>) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-	use std::vec;
+	use std::{mem::take, vec};
 
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -437,6 +459,25 @@ pub mod tests {
 		let mut tombstones = Pending::new();
 		tombstones.remove(vec![make_key("key1")]);
 		assert!(!tombstones.is_empty());
+	}
+
+	#[test]
+	fn test_queue_items_survive_taking_the_pending_and_keep_their_order() {
+		// The committer reads items from the taken pending, so an item lost here is a row workers never see.
+		let item = |row: u64| PendingQueueItem {
+			queue: QueueId(1),
+			partition: Partition(0),
+			key_hash: None,
+			row_number: RowNumber(row),
+			encoded: make_value("item"),
+		};
+		let mut pending = Pending::new();
+		pending.admit_queue_items([item(1), item(2)]);
+		pending.admit_queue_items([item(3)]);
+		let taken = take(&mut pending);
+		let rows: Vec<u64> = taken.queue_items().iter().map(|item| item.row_number.0).collect();
+		assert_eq!(rows, vec![1, 2, 3]);
+		assert!(pending.queue_items().is_empty());
 	}
 
 	#[test]

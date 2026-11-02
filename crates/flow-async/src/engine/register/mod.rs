@@ -18,8 +18,8 @@ use reifydb_core::{
 			FlowNode,
 			OperatorDef::{
 				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Lookup, Map,
-				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
-				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				SinkQueueView, SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView,
+				Sort, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
 				Window,
 			},
 		},
@@ -186,6 +186,14 @@ impl FlowEngineInner {
 				}
 				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, key)
 			}
+			SinkQueueView {
+				view,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
+				}
+				self.add_sink_queue_view(txn, flow, operator_id, &inputs, view)
+			}
 			_ => self.add_core(txn, flow, operator, ctx),
 		}
 	}
@@ -244,6 +252,13 @@ impl FlowEngineInner {
 			} => {
 				return Err(Error::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkSeriesView",
+				}));
+			}
+			SinkQueueView {
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkQueueView",
 				}));
 			}
 			SinkSubscription {
@@ -380,7 +395,7 @@ fn produces(dag: &FlowDag, view: ViewId) -> bool {
 	dag.get_operator_ids().filter_map(|id| dag.get_operator(&id)).any(|node| {
 		matches!(
 			&node.ty,
-			SinkTableView { view: sink } | SinkRingBufferView { view: sink, .. } | SinkSeriesView { view: sink, .. }
+			SinkTableView { view: sink } | SinkRingBufferView { view: sink, .. } | SinkSeriesView { view: sink, .. } | SinkQueueView { view: sink }
 				if *sink == view
 		)
 	})

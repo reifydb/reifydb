@@ -330,7 +330,7 @@ impl Evictor {
 				budget,
 				stats,
 			),
-			ViewStorageKind::RingBuffer => {
+			ViewStorageKind::RingBuffer | ViewStorageKind::Queue => {
 				state.forget(storage);
 				Ok(())
 			}

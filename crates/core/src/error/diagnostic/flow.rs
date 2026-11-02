@@ -58,6 +58,23 @@ pub fn flow_source_required() -> Diagnostic {
 	}
 }
 
+pub fn flow_queue_view_source_not_supported(view: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_040".to_string(),
+		rql: None,
+		message: format!("Queue view '{view}' cannot be read by a flow"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("A queue view is an outbox for workers: read its items with queue::claim, \
+			or read the source it mirrors."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_window_requires_a_timed_source() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_014".to_string(),

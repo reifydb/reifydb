@@ -5,7 +5,11 @@ use std::ops::Index;
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
-	interface::catalog::{procedure::RunAs, ringbuffer::EvictionVisibility},
+	interface::catalog::{
+		procedure::RunAs,
+		queue::{QueueDispatch, QueueRetention, QueueRetry},
+		ringbuffer::EvictionVisibility,
+	},
 	sort::SortDirection,
 };
 use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
@@ -674,6 +678,19 @@ pub enum AstViewStorageKind {
 		precision: Option<AstTimestampPrecision>,
 		partition_by: Vec<String>,
 	},
+	Queue {
+		partition_by: Vec<String>,
+		dispatch: QueueDispatch,
+		retention: QueueRetention,
+		retry: QueueRetry,
+	},
+}
+
+#[derive(Debug)]
+pub struct AstQueueViewOptions<'bump> {
+	pub dispatch: AstQueueDispatch<'bump>,
+	pub retention: Option<AstQueueRetention<'bump>>,
+	pub retry: Option<AstQueueRetry<'bump>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -692,6 +709,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub settings: Option<AstRowSettings<'bump>>,
+	pub queue: Option<AstQueueViewOptions<'bump>>,
 }
 
 #[derive(Debug)]

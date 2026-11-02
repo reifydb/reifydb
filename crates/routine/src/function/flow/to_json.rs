@@ -210,6 +210,9 @@ impl From<&OperatorDef> for JsonOperatorDef {
 			| OperatorDef::SinkSeriesView {
 				view,
 				..
+			}
+			| OperatorDef::SinkQueueView {
+				view,
 			} => JsonOperatorDef::SinkView {
 				view: view.0,
 			},

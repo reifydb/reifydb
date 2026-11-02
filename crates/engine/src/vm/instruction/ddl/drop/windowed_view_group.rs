@@ -48,7 +48,7 @@ pub(crate) fn drop_windowed_view_group(
 	let members = group.members.clone();
 	let dependents = find_flow_dependents(&services.catalog, txn, &external_dags, &flows, |node_type| {
 		matches!(node_type, OperatorDef::SourceView { view } if members.contains(view))
-			|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } if members.contains(view))
+			|| matches!(node_type, OperatorDef::SinkTableView { view, .. } | OperatorDef::SinkRingBufferView { view, .. } | OperatorDef::SinkSeriesView { view, .. } | OperatorDef::SinkQueueView { view } if members.contains(view))
 			|| matches!(node_type, OperatorDef::Lookup { right: LookupObject::View(view), .. } if members.contains(view))
 	})?;
 	if !dependents.is_empty() {

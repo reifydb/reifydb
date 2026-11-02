@@ -64,6 +64,12 @@ pub enum CompiledViewStorageKind {
 		key: SeriesKey,
 		partition_by: Vec<String>,
 	},
+	Queue {
+		partition_by: Vec<String>,
+		dispatch: QueueDispatch,
+		retention: QueueRetention,
+		retry: QueueRetry,
+	},
 }
 
 #[derive(Debug, Clone)]

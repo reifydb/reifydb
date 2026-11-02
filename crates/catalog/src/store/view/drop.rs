@@ -56,7 +56,7 @@ impl CatalogStore {
 				}
 				Self::drop_ring_index(txn, StorageId::View(view))
 			}
-			ViewStorageKind::Series => Ok(()),
+			ViewStorageKind::Series | ViewStorageKind::Queue => Ok(()),
 		}
 	}
 }

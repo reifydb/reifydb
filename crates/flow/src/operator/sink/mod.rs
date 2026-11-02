@@ -222,6 +222,9 @@ impl<'a> SourceRowEncoder<'a> {
 			RowFamily::RingBuffer => {
 				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_ringbuffer()).collect())
 			}
+			RowFamily::Queue => {
+				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_queue()).collect())
+			}
 			other => Err(Error::from(FlowSinkError::NotASourceFamily {
 				family: format!("{:?}", other),
 			})),

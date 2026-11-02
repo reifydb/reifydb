@@ -3,7 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::expression::{AliasExpression, Expression, IdentExpression};
+use reifydb_catalog::error::CatalogError;
+use reifydb_core::{
+	expression::{AliasExpression, Expression, IdentExpression},
+	interface::catalog::view::ViewStorageKind,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
@@ -126,6 +130,17 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		if self.catalog.find_queue_by_name(tx, namespace_id, target_name)?.is_some() {
+			if let Some(view) = self.catalog.find_view_by_name(tx, namespace_id, target_name)?
+				&& view.storage_kind() == ViewStorageKind::Queue
+			{
+				return Err(CatalogError::QueueOwnedByView {
+					name: target_name.to_string(),
+					operation: "INSERT",
+					help: "its flow writes every item: insert into the source the view reads instead",
+					fragment: name.to_owned(),
+				}
+				.into());
+			}
 			let mut target = MaybeQualifiedQueueIdentifier::new(name);
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);

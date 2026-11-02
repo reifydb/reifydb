@@ -102,6 +102,9 @@ pub enum OperatorDef {
 		alias: Option<String>,
 		with: LookupWith,
 	},
+	SinkQueueView {
+		view: ViewId,
+	},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,6 +219,9 @@ impl OperatorDef {
 			OperatorDef::SinkSeriesView {
 				..
 			} => "SinkSeriesView".into(),
+			OperatorDef::SinkQueueView {
+				..
+			} => "SinkQueueView".into(),
 			OperatorDef::SinkSubscription {
 				..
 			} => "SinkSubscription".into(),
@@ -296,6 +302,9 @@ impl OperatorDef {
 			OperatorDef::Lookup {
 				..
 			} => 22,
+			OperatorDef::SinkQueueView {
+				..
+			} => 23,
 		}
 	}
 
@@ -359,6 +368,9 @@ impl OperatorDef {
 				..
 			}
 			| OperatorDef::SinkSeriesView {
+				..
+			}
+			| OperatorDef::SinkQueueView {
 				..
 			}
 			| OperatorDef::SinkSubscription {

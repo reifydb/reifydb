@@ -3,7 +3,10 @@
 
 use std::{ops::Bound, slice::from_ref};
 
-use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -566,6 +569,41 @@ fn adjust_counters(
 	counters.depth += requeued;
 	counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
 	tx.set(vec![(lock_key.clone(), encode_queue_partition_counters(&counters))])?;
+
+	Ok(())
+}
+pub fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId) -> Result<()> {
+	let lock_keys: Vec<EncodedKey> = queue_partition_counters(single, queue)?
+		.into_iter()
+		.map(|(partition, _)| QueuePartitionKey::encoded(queue, partition))
+		.collect();
+	if lock_keys.is_empty() {
+		return Ok(());
+	}
+	let ranges = vec![
+		QueueItemStateKey::queue_scan(queue).encode(),
+		QueueDueKey::queue_scan(queue).encode(),
+		QueuePartitionKey::queue_scan(queue).encode(),
+	];
+
+	for range in &ranges {
+		loop {
+			let store = single.read_store();
+			let batch = SingleVersionRange::range_batch(&store, range.clone(), 1024)?;
+			if batch.items.is_empty() {
+				break;
+			}
+
+			let mut tx = single.begin_command_ranged(lock_keys.iter(), ranges.clone())?;
+			for item in &batch.items {
+				let Some(key) = TaggedKey::decode(&item.key) else {
+					return_internal_error!("scan yielded a key no typed key decodes");
+				};
+				tx.remove(from_ref(&key))?;
+			}
+			tx.commit()?;
+		}
+	}
 
 	Ok(())
 }

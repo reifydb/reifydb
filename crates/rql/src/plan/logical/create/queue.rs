@@ -180,7 +180,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_dispatch(
+pub(crate) fn compile_dispatch(
 	ast: &AstQueueDispatch<'_>,
 	columns: &[QueueColumnToCreate],
 	namespace: &[&str],
@@ -256,7 +256,7 @@ fn compile_deduplicate(
 	}))
 }
 
-fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention> {
+pub(crate) fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention> {
 	let Some(ast) = ast else {
 		return Ok(QueueRetention::default());
 	};
@@ -271,7 +271,7 @@ fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetenti
 	})
 }
 
-fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
+pub(crate) fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
 	let Some(ast) = ast else {
 		return Ok(QueueRetry::default());
 	};

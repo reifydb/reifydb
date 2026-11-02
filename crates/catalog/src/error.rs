@@ -307,6 +307,14 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("queue `{name}` belongs to its queue view: {operation} is not allowed")]
+	QueueOwnedByView {
+		name: String,
+		operation: &'static str,
+		help: &'static str,
+		fragment: Fragment,
+	},
+
 	#[error("invalid relationship: {reason}")]
 	InvalidRelationship {
 		reason: String,
@@ -1538,6 +1546,24 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("source config encoding failed".to_string()),
 				help: Some("ensure the source config is valid".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::QueueOwnedByView {
+				name,
+				operation,
+				help,
+				fragment,
+			} => Diagnostic {
+				code: "CA_136".to_string(),
+				rql: None,
+				message: format!("queue `{name}` belongs to its queue view: {operation} is not allowed"),
+				fragment,
+				label: Some("owned by a queue view".to_string()),
+				help: Some(help.to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

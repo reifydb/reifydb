@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::error::diagnostic::catalog::{
-	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, queue_not_found,
-	ringbuffer_not_found, series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
+use reifydb_catalog::error::CatalogError;
+use reifydb_core::{
+	error::diagnostic::catalog::{
+		dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, queue_not_found,
+		ringbuffer_not_found, series_not_found, sumtype_not_found, table_not_found, test_not_found,
+		view_not_found,
+	},
+	interface::catalog::view::ViewStorageKind,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, return_error};
@@ -205,6 +210,19 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		match self.catalog.find_queue_by_name(rx, namespace.id(), drop.queue.name.text())? {
+			Some(_) if self
+				.catalog
+				.find_view_by_name(rx, namespace.id(), drop.queue.name.text())?
+				.is_some_and(|view| view.storage_kind() == ViewStorageKind::Queue) =>
+			{
+				Err(CatalogError::QueueOwnedByView {
+					name: drop.queue.name.text().to_string(),
+					operation: "DROP QUEUE",
+					help: "use DROP VIEW, which removes the queue and its scheduling state with the view",
+					fragment: queue_name,
+				}
+				.into())
+			}
 			Some(def) => Ok(PhysicalPlan::DropQueue(nodes::DropQueueNode {
 				namespace_name: ns_fragment,
 				queue_name,

@@ -265,6 +265,10 @@ impl Catalog {
 
 	#[instrument(name = "catalog::view::drop", level = "info", skip(self, txn))]
 	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<()> {
+		if let View::Queue(queue_view) = &view {
+			let queue = self.get_queue(&mut Transaction::Admin(&mut *txn), queue_view.queue)?;
+			self.drop_queue(txn, queue)?;
+		}
 		CatalogStore::drop_view(txn, view.id())?;
 		txn.track_view_deleted(view)?;
 		Ok(())

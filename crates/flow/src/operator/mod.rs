@@ -59,10 +59,7 @@ pub(crate) fn forward_system_columns(batch: &RecordBatch) -> Result<RecordBatch>
 	keep_system_columns(batch, &FORWARDED_SYSTEM_COLUMNS)
 }
 
-pub(crate) fn with_system_columns_of(
-	mut columns: Vec<(FieldRef, ArrayRef)>,
-	from: &RecordBatch,
-) -> Result<RecordBatch> {
+pub fn with_system_columns_of(mut columns: Vec<(FieldRef, ArrayRef)>, from: &RecordBatch) -> Result<RecordBatch> {
 	columns.extend(from
 		.schema_ref()
 		.fields()
