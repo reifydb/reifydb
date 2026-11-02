@@ -35,12 +35,10 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	transaction::operation::{
-		ringbuffer::{RingTxn, ringbuffer_key, save_ring},
-		series::{SeriesDeleteTally, apply_series_metadata_after_delete},
-	},
+	transaction::operation::ringbuffer::{RingTxn, ringbuffer_key, save_ring},
 	vm::instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
 };
+use reifydb_flow::writer::series::{SeriesDeleteTally, apply_series_metadata_after_delete};
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{

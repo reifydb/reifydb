@@ -30,10 +30,7 @@ use reifydb_core::{
 		store::MultiVersionRow,
 	},
 	internal_error,
-	key::{
-		any::TaggedKey,
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-	},
+	key::any::TaggedKey,
 	partition::PartitionError,
 	value::{
 		batch::{decode_cells, single_row, take_rows},
@@ -41,6 +38,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_flow::writer::series::{SeriesRowAddress, SeriesUpdateRows, SeriesWriter};
 use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
 use reifydb_transaction::{
@@ -76,7 +74,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::moved_series_partitions,
+	transaction::operation::{series::moved_series_partitions, storage::DmlTransaction},
 	vm::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
@@ -192,25 +190,14 @@ pub(crate) fn update_series(
 
 		let storage_keys: Vec<TaggedKey> = (0..row_count)
 			.map(|row| {
-				let sequence = u64::from(row_numbers[row]);
-				if partitioned {
-					PartitionedSeriesRowKey::new(
-						StorageId::series(series.id),
-						sidecar_partitions[row],
-						tags[row],
-						keys[row],
-						sequence,
-					)
-					.into()
-				} else {
-					SeriesRowKey {
-						storage: StorageId::series(series.id),
-						variant_tag: tags[row],
-						key: keys[row],
-						sequence,
-					}
-					.into()
+				SeriesRowAddress {
+					storage: StorageId::series(series.id),
+					partition: partitioned.then(|| sidecar_partitions[row]),
+					variant_tag: tags[row],
+					key: keys[row],
+					sequence: u64::from(row_numbers[row]),
 				}
+				.tagged()
 			})
 			.collect();
 		let mut builders: Vec<EncodedSeriesRowBuilder> =
@@ -278,10 +265,16 @@ pub(crate) fn update_series(
 			}
 			.into());
 		}
-		if !posts.is_empty() {
+		let posts = if posts.is_empty() {
+			posts
+		} else {
 			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
-			txn.set(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
-		}
+			SeriesWriter::new(&mut DmlTransaction::over(txn.reborrow()))
+				.update(SeriesUpdateRows::Tagged {
+					rows: written_keys.into_iter().zip(posts).collect(),
+				})?
+				.written
+		};
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
 		}

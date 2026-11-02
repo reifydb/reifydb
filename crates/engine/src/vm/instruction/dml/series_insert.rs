@@ -34,10 +34,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{
-		any::TaggedKey,
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-	},
+	key::any::TaggedKey,
 	partition::{BatchPartitions, partitions_of_batch},
 	value::{
 		batch::single_row,
@@ -45,6 +42,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_flow::writer::series::{SeriesRowAddress, update_series_metadata_for_insert};
 use reifydb_rql::nodes::InsertSeriesNode;
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{
@@ -506,17 +504,14 @@ pub(crate) fn assign_series_keys(
 		partition_metadata.sequence_counter += 1;
 		let sequence = partition_metadata.sequence_counter;
 		update_series_metadata_for_insert(partition_metadata, key_value);
-		let storage_key: TaggedKey = if partitioned {
-			PartitionedSeriesRowKey::new(storage_id, partition, variant_tag, key_value, sequence).into()
-		} else {
-			SeriesRowKey {
-				storage: storage_id,
-				variant_tag,
-				key: key_value,
-				sequence,
-			}
-			.into()
-		};
+		let storage_key = SeriesRowAddress {
+			storage: storage_id,
+			partition: partitioned.then_some(partition),
+			variant_tag,
+			key: key_value,
+			sequence,
+		}
+		.tagged();
 		assigned.keys.push(key_value);
 		assigned.storage.push(storage_key);
 		assigned.row_numbers.push(RowNumber::from(sequence));
@@ -696,23 +691,6 @@ pub(crate) fn write_inserted_series_metadata(
 		latest.last_write_at = now;
 		Ok(())
 	})
-}
-
-pub(crate) fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key_value: u64) {
-	if metadata.row_count == 0 {
-		metadata.oldest_key = key_value;
-		metadata.newest_key = key_value;
-	} else {
-		if key_value < metadata.oldest_key {
-			metadata.oldest_key = key_value;
-		}
-		if key_value > metadata.newest_key {
-			metadata.newest_key = key_value;
-		}
-	}
-	metadata.dirty_from_key = metadata.dirty_from_key.min(key_value);
-	metadata.dirty_to_key = metadata.dirty_to_key.max(key_value.saturating_add(1));
-	metadata.row_count += 1;
 }
 
 #[inline]

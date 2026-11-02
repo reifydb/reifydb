@@ -20,7 +20,6 @@ use reifydb_core::{
 		change::Change,
 		store::MultiVersionRow,
 	},
-	internal_err,
 	key::{
 		any::TaggedKey,
 		bound::TaggedKeyBoundRange,
@@ -236,30 +235,6 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		self.pending_mut().remove_silent(key.clone());
-		Ok(())
-	}
-
-	fn replace_batch(
-		&mut self,
-		pre_keys: Vec<EncodedKey>,
-		post_keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	) -> Result<()> {
-		if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
-			return internal_err!(
-				"replace_batch got {} pre keys, {} post keys and {} rows",
-				pre_keys.len(),
-				post_keys.len(),
-				rows.len()
-			);
-		}
-		let pending = self.pending_mut();
-		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
-			if pre_key != post_key {
-				pending.remove(vec![pre_key]);
-			}
-			pending.insert(vec![post_key], vec![row]);
-		}
 		Ok(())
 	}
 

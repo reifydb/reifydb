@@ -18,7 +18,6 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::series::{PartitionedSeriesRowKey, SeriesRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 };
@@ -36,7 +35,8 @@ use reifydb_flow::{
 		},
 		source::decode_change_keeping,
 	},
-	txn::{Batch, Emit},
+	txn::Emit,
+	writer::series::{SeriesAppendRows, SeriesDeleteRows, SeriesRowAddress, SeriesUpdateRows, SeriesWriter},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -54,7 +54,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::DurableSink;
-use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
+use crate::transaction::deferred::DeferredTransaction;
 
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
@@ -93,6 +93,17 @@ impl SinkSeriesViewOperator {
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
+	}
+
+	#[inline]
+	fn row_address(&self, partition: Option<Partition>, key: u64, sequence: u64) -> SeriesRowAddress {
+		SeriesRowAddress {
+			storage: self.storage,
+			partition,
+			variant_tag: None,
+			key,
+			sequence,
+		}
 	}
 
 	fn series_key_view<'a>(&self, columns: &'a RecordBatch) -> Result<Option<ColumnView<'a>>> {
@@ -189,7 +200,7 @@ impl DurableSink for SinkSeriesViewOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_series_view_remove(txn, view, object_id, pre)?,
+				} => self.apply_series_view_remove(txn, view, pre)?,
 			}
 		}
 
@@ -225,28 +236,20 @@ impl SinkSeriesViewOperator {
 		let series_keys = self.checked_series_keys(&series_keys)?;
 		let partitions = self.resolved_partitions(txn, view, object_id, source)?;
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let series_key = series_keys[row_idx];
-			let key = if let Some(partitions) = &partitions {
-				PartitionedSeriesRowKey::encoded(
-					object_id,
-					partitions[row_idx],
-					None,
-					series_key,
+			let key = self
+				.row_address(
+					partitions.as_ref().map(|rows| rows[row_idx]),
+					series_keys[row_idx],
 					row_number.0,
 				)
-			} else {
-				SeriesRowKey {
-					storage: object_id,
-					variant_tag: None,
-					key: series_key,
-					sequence: row_number.0,
-				}
-				.encode()
-			};
+				.encoded();
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
-		txn.set(keys, encoded_bytes_list)?;
+		SeriesWriter::new(txn).append(SeriesAppendRows::Plain {
+			keys,
+			rows: encoded_bytes_list,
+		})?;
 		txn.emit(view.id(), Diff::insert(coerced))?;
 		Ok(())
 	}
@@ -299,41 +302,12 @@ impl SinkSeriesViewOperator {
 			let pre_series_key = pre_series_keys[row_idx];
 			let post_series_key = post_series_keys[row_idx];
 
-			let (pre_key, post_key) = if let Some((pre_partitions, post_partitions)) = &partitions {
-				(
-					PartitionedSeriesRowKey::encoded(
-						object_id,
-						pre_partitions[row_idx],
-						None,
-						pre_series_key,
-						pre_row_number.0,
-					),
-					PartitionedSeriesRowKey::encoded(
-						object_id,
-						post_partitions[row_idx],
-						None,
-						post_series_key,
-						post_row_number.0,
-					),
-				)
-			} else {
-				(
-					SeriesRowKey {
-						storage: object_id,
-						variant_tag: None,
-						key: pre_series_key,
-						sequence: pre_row_number.0,
-					}
-					.encode(),
-					SeriesRowKey {
-						storage: object_id,
-						variant_tag: None,
-						key: post_series_key,
-						sequence: post_row_number.0,
-					}
-					.encode(),
-				)
+			let (pre_partition, post_partition) = match &partitions {
+				Some((pre, post)) => (Some(pre[row_idx]), Some(post[row_idx])),
+				None => (None, None),
 			};
+			let pre_key = self.row_address(pre_partition, pre_series_key, pre_row_number.0).encoded();
+			let post_key = self.row_address(post_partition, post_series_key, post_row_number.0).encoded();
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
 		}
@@ -352,7 +326,11 @@ impl SinkSeriesViewOperator {
 		let encoded = SourceRowEncoder::new(source_post, shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
-		txn.replace_batch(pre_keys, post_keys, encoded)?;
+		SeriesWriter::new(txn).update(SeriesUpdateRows::Plain {
+			pre_keys,
+			post_keys,
+			rows: encoded,
+		})?;
 		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
 	}
@@ -363,7 +341,6 @@ impl SinkSeriesViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		view: &View,
-		object_id: StorageId,
 		pre: &RecordBatch,
 	) -> Result<()> {
 		if pre.num_rows() == 0 {
@@ -383,27 +360,148 @@ impl SinkSeriesViewOperator {
 		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			let series_key = self.series_key_at(&series_keys, row_idx)?;
-			let key = if let Some(partitions) = &partitions {
-				PartitionedSeriesRowKey::encoded(
-					object_id,
-					partitions[row_idx],
-					None,
-					series_key,
-					row_number.0,
-				)
-			} else {
-				SeriesRowKey {
-					storage: object_id,
-					variant_tag: None,
-					key: series_key,
-					sequence: row_number.0,
-				}
-				.encode()
-			};
+			let key = self
+				.row_address(partitions.as_ref().map(|rows| rows[row_idx]), series_key, row_number.0)
+				.encoded();
 			keys.push(key);
 		}
-		txn.remove(keys)?;
+		SeriesWriter::new(txn).delete(SeriesDeleteRows::Plain {
+			keys,
+		})?;
 		txn.emit(view.id(), Diff::remove(coerced))?;
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, UInt64Array};
+	use reifydb_core::{
+		common::{ChangeVersion, CommitVersion},
+		interface::{
+			catalog::{
+				column::{Column, ColumnIndex},
+				id::{ColumnId, NamespaceId, ViewId},
+				namespace::Namespace,
+				view::{SeriesView, ViewKind},
+			},
+			resolved::ResolvedNamespace,
+		},
+		value::{batch::batch, column::factory::int4_optional},
+	};
+	use reifydb_flow::txn::Get;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			constraint::TypeConstraint, container::temporal_array::datetime_array, datetime::DateTime,
+			system_columns::with_system_column,
+		},
+	};
+
+	use super::*;
+	use crate::transaction::{deferred::StorageCounts, mock::FlowTxn};
+
+	fn sink() -> SinkSeriesViewOperator {
+		let key = SeriesKey::Integer {
+			column: "k".to_string(),
+		};
+		let def = View::Series(SeriesView {
+			id: ViewId(1),
+			namespace: NamespaceId(1),
+			name: "s".to_string(),
+			kind: ViewKind::Deferred,
+			columns: vec![Column {
+				id: ColumnId(1),
+				name: "k".to_string(),
+				constraint: TypeConstraint::unconstrained(ValueType::Int4),
+				properties: vec![],
+				index: ColumnIndex(0),
+				auto_increment: false,
+				dictionary_id: None,
+			}],
+			primary_key: None,
+			partition_by: vec![],
+			key: key.clone(),
+			tag: None,
+			sort: vec![],
+		});
+		let namespace = Namespace::Local {
+			id: NamespaceId(1),
+			name: "n".to_string(),
+			local_name: "n".to_string(),
+			parent_id: NamespaceId::ROOT,
+		};
+		let resolved = ResolvedView::new(
+			Fragment::internal("s"),
+			ResolvedNamespace::new(Fragment::internal("n"), namespace),
+			def,
+		);
+		SinkSeriesViewOperator::new(
+			OperatorId(1),
+			resolved,
+			key,
+			vec![],
+			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+		)
+	}
+
+	fn one_row(key: i32) -> RecordBatch {
+		let user = batch(vec![int4_optional("k", [Some(key)])]).unwrap();
+		let stamp = || -> ArrayRef { Arc::new(datetime_array([DateTime::from_nanos(1_000)])) };
+		let system: [(SystemColumn, ArrayRef); 4] = [
+			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))),
+			(SystemColumn::CreatedAt, stamp()),
+			(SystemColumn::UpdatedAt, stamp()),
+			(SystemColumn::Time, stamp()),
+		];
+		system.into_iter()
+			.fold(user, |columns, (column, array)| with_system_column(columns, column, array).unwrap())
+	}
+
+	fn change(diff: Diff) -> Change {
+		Change::from_flow(
+			OperatorId(1),
+			ChangeVersion::from(CommitVersion(1)),
+			vec![diff],
+			DateTime::from_nanos(0),
+		)
+	}
+
+	#[test]
+	fn a_series_view_write_makes_only_the_reads_it_has_always_made() {
+		// Each step gets a fresh transaction, otherwise pending writes would answer an added read and hide it.
+		let engine = TestEngine::new();
+		let mut sink = sink();
+		for (diff, expected) in [
+			(Diff::insert(one_row(1)), StorageCounts::default()),
+			(
+				Diff::update(one_row(1), one_row(2)),
+				StorageCounts {
+					get_many_calls: 1,
+					..StorageCounts::default()
+				},
+			),
+			(Diff::remove(one_row(2)), StorageCounts::default()),
+		] {
+			let mut txn = engine.flow_txn().clock_millis(0).deferred();
+			DurableSink::apply(&mut sink, &mut txn, change(diff)).unwrap();
+			assert_eq!(txn.storage_counts, expected);
+		}
+	}
+
+	#[test]
+	fn a_series_view_update_that_moves_the_key_removes_the_old_row_and_keeps_the_new_one() {
+		// The writer owns this order; leaving the old key behind would show the row twice.
+		let engine = TestEngine::new();
+		let mut sink = sink();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		DurableSink::apply(&mut sink, &mut txn, change(Diff::update(one_row(1), one_row(2)))).unwrap();
+		let key = |key: u64| sink.row_address(None, key, 1).encoded();
+		assert_eq!(txn.get(&[key(1)]).unwrap(), vec![None]);
+		assert!(txn.get(&[key(2)]).unwrap()[0].is_some());
 	}
 }

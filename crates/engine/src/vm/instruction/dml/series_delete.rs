@@ -19,16 +19,14 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{
-		any::TaggedKey,
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-	},
+	key::any::TaggedKey,
 	value::{
 		batch::{single_row, take_rows},
 		column::builder::ColumnBuilder,
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_flow::writer::series::{SeriesDeleteTally, SeriesRowAddress, apply_series_metadata_after_delete};
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -57,9 +55,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{
-		SeriesDeleteTally, apply_series_metadata_after_delete, emit_series_remove_change, remove_series_rows,
-	},
+	transaction::operation::series::{emit_series_remove_change, remove_series_rows},
 	vm::{
 		services::Services,
 		volcano::{
@@ -267,24 +263,14 @@ fn drive_series_delete_input(
 			} else {
 				Partition::default()
 			};
-			let key: TaggedKey = if partitioned {
-				PartitionedSeriesRowKey::new(
-					StorageId::series(series.id),
-					partition,
-					variant_tag,
-					key_value,
-					sequence,
-				)
-				.into()
-			} else {
-				SeriesRowKey {
-					storage: StorageId::series(series.id),
-					variant_tag,
-					key: key_value,
-					sequence,
-				}
-				.into()
-			};
+			let key = SeriesRowAddress {
+				storage: StorageId::series(series.id),
+				partition: partitioned.then_some(partition),
+				variant_tag,
+				key: key_value,
+				sequence,
+			}
+			.tagged();
 
 			candidates.push((row_idx, key, partition, key_value, RowNumber::from(sequence)));
 		}
@@ -321,7 +307,7 @@ fn drive_series_delete_input(
 			}
 			removals.push((key, pre_for_cdc));
 		}
-		remove_series_rows(txn, series, &removed.row_numbers, &removals)?;
+		remove_series_rows(txn, series, &removed.row_numbers, removals)?;
 		if removed.row_numbers.is_empty() {
 			continue;
 		}
