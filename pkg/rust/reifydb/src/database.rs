@@ -349,7 +349,12 @@ impl Database {
 				return;
 			}
 
-			sleep(Duration::from_milliseconds(50).unwrap().to_std());
+			let wait = if consumer >= producer {
+				2
+			} else {
+				50
+			};
+			sleep(Duration::from_milliseconds(wait).unwrap().to_std());
 		}
 	}
 
