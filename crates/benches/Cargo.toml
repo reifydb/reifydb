@@ -64,6 +64,10 @@ name = "queue"
 harness = false
 
 [[bench]]
+name = "ring"
+harness = false
+
+[[bench]]
 name = "columns"
 harness = false
 

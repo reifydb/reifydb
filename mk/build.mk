@@ -42,6 +42,14 @@ check-flow-async-no-features:
 	@echo "Checking reifydb-flow-async compiles without features..."
 	@MAKEFLAGS= cargo check --profile $(PROFILE) -p reifydb-flow-async $(CARGO_OFFLINE)
 
+.PHONY: check-dst
+check-dst:
+	MAKEFLAGS= REIFYDB_DST=1 cargo check --profile gate-dst --workspace \
+		--exclude reifydb-node --exclude server --exclude testcontainer \
+		--exclude examples --exclude reifydb-place-backend \
+		--exclude reifydb-uptime-backend \
+		--exclude reifydb-place-bridge --exclude reifydb-uptime-bridge $(CARGO_OFFLINE)
+
 # Build pkg/typescript packages
 build-pkg-typescript:
 	@echo "🏗️ Building pkg/typescript packages..."

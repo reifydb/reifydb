@@ -7,7 +7,7 @@
 
 # Benchmark targets
 .PHONY: bench bench-all bench-query bench-query-help bench-txn bench-txn-help
-.PHONY: bench-watermark bench-watermark-help bench-queue bench-queue-help
+.PHONY: bench-watermark bench-watermark-help bench-queue bench-queue-help bench-ring
 
 bench: bench-all
 
@@ -22,6 +22,7 @@ export ITERATIONS BUDGET_SECONDS WARMUP REPEATS WIRE_FORMAT
 export LAYOUTS MATRIX
 export PHASES PIPELINE_OPS BURST_OPS WAIT_OPS
 export MODES CLAIM WORKERS PARTITIONS BATCH DEPTH RATE SECONDS KEYS LEASE_SECONDS WAIT_MILLIS
+export CAPS WORKLOADS COMMITS TTL_DRAIN_SECONDS
 
 bench-query:
 	@echo "🏃‍♂️ Running query pipeline benchmarks..."
@@ -110,6 +111,10 @@ bench-watermark-help:
 	@echo "  make bench-watermark PHASES=pipeline THREADS=16"
 	@echo "  make bench-watermark PHASES=burst,burst_with_advancer BURST_OPS=1000"
 	@echo ""
+
+bench-ring:
+	@echo "Running ring buffer benchmarks..."
+	cargo bench -p reifydb-benches --bench ring $(CARGO_OFFLINE)
 
 bench-queue:
 	@echo "🏃‍♂️ Running queue benchmarks..."
