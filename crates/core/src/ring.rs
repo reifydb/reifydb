@@ -118,7 +118,6 @@ impl Ring {
 		last: u64,
 	) -> Result<()> {
 		let tracked = self.tracked(partition);
-		let free_len = tracked.free_len;
 		let missing: Vec<u64> = (first..=last).filter(|page| !tracked.free_pages.contains_key(page)).collect();
 		if missing.is_empty() {
 			return Ok(());
@@ -129,7 +128,7 @@ impl Ring {
 			reifydb_assertions! {
 				assert_eq!(
 					slots.len() as u64,
-					(free_len - page * FREE_PAGE_SLOTS).min(FREE_PAGE_SLOTS),
+					(tracked.free_len - page * FREE_PAGE_SLOTS).min(FREE_PAGE_SLOTS),
 					"a ring's free page must hold exactly the free slots its index range reaches"
 				);
 			}
