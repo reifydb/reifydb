@@ -694,3 +694,155 @@ mod hook_tests {
 		));
 	}
 }
+
+#[cfg(test)]
+mod free_stack_tests {
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::{NamespaceId, RingBufferId},
+			ringbuffer::{encode_ringbuffer_free_page, encode_ringbuffer_order},
+		},
+		key::ringbuffer::{RingBufferFreeKey, ring_order_key},
+		ring::FREE_PAGE_SLOTS,
+	};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
+
+	use super::*;
+	use crate::vm::executor::Executor;
+
+	const CAPACITY: u64 = 1_000_000;
+	const BASE: u64 = 1_000;
+
+	#[test]
+	fn emptying_a_million_slot_partition_removes_every_page_under_the_write_limit() {
+		// One free key per slot would fail this delete with too many writes, every time it is retried.
+		let partition = Some(Partition(1));
+		let ringbuffer = RingBuffer {
+			id: RingBufferId(1),
+			namespace: NamespaceId(1),
+			name: "r".to_string(),
+			columns: vec![],
+			capacity: CAPACITY,
+			primary_key: None,
+			partition_by: vec!["p".to_string()],
+			time: TimeSource::None,
+		};
+		let executor = Executor::testing();
+		let mut admin = create_test_admin_transaction();
+		let mut txn = Transaction::Admin(&mut admin);
+		let storage = ringbuffer.id;
+		let free = CAPACITY - 1;
+		let last_row = RowNumber(BASE + CAPACITY - 1);
+		let sequence = CAPACITY - 1;
+		executor.catalog
+			.save_partition_metadata(
+				&mut txn,
+				&ringbuffer,
+				partition,
+				&RingBufferMetadata {
+					base_rn: BASE,
+					next_sequence: CAPACITY,
+					count: 1,
+					filled: CAPACITY,
+					head: sequence,
+				},
+			)
+			.unwrap();
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
+		let mut row = shape.allocate_ringbuffer();
+		row.set_sequence(sequence);
+		txn.set(vec![(ringbuffer_key(&ringbuffer, partition, last_row), row.freeze_bytes())]).unwrap();
+		txn.set(vec![(
+			ring_order_key(storage, partition, sequence),
+			encode_ringbuffer_order(last_row).into_bytes(),
+		)])
+		.unwrap();
+		let full_page = vec![RowNumber(BASE); FREE_PAGE_SLOTS as usize];
+		let pages = free.div_ceil(FREE_PAGE_SLOTS);
+		for page in 0..pages {
+			let slots = (free - page * FREE_PAGE_SLOTS).min(FREE_PAGE_SLOTS) as usize;
+			txn.set(vec![(
+				RingBufferFreeKey::of(storage, partition, page).into(),
+				encode_ringbuffer_free_page(&full_page[..slots]).into_bytes(),
+			)])
+			.unwrap();
+		}
+
+		let mut ring = Ring::new(CAPACITY);
+		let removed =
+			release_ring_rows(&executor.catalog, &mut txn, &ringbuffer, &mut ring, partition, &[last_row])
+				.unwrap();
+		assert!(removed[0].is_some());
+		save_ring(&executor.catalog, &mut txn, &ringbuffer, &ring).unwrap();
+
+		let left = txn
+			.range(RingBufferFreeKey::full_scan_for_storage(storage), RangeScope::All, 1024)
+			.unwrap()
+			.count();
+		assert_eq!(left, 0, "every free page of the emptied partition must go");
+		assert_eq!(executor.catalog.find_partition_metadata(&mut txn, &ringbuffer, partition).unwrap(), None);
+		assert_eq!(pages, 1954);
+		assert!(
+			admin.cmd.as_ref().unwrap().pending_writes().len() < 2_000,
+			"the whole commit must stay far under the one million write limit"
+		);
+	}
+
+	#[test]
+	fn reuse_through_a_real_transaction_is_last_freed_first_across_sessions_and_a_page_boundary() {
+		// Row numbers are user visible, so a page read or written under the wrong key changes query results.
+		let capacity = FREE_PAGE_SLOTS + 3;
+		let ringbuffer = RingBuffer {
+			id: RingBufferId(1),
+			namespace: NamespaceId(1),
+			name: "r".to_string(),
+			columns: vec![],
+			capacity,
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::None,
+		};
+		let executor = Executor::testing();
+		let catalog = &executor.catalog;
+		let mut admin = create_test_admin_transaction();
+		let mut txn = Transaction::Admin(&mut admin);
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
+
+		let mut ring = Ring::new(capacity);
+		let placed =
+			place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, None, capacity as usize).unwrap();
+		for placement in &placed {
+			let mut row = shape.allocate_ringbuffer();
+			row.set_sequence(placement.sequence);
+			txn.set(vec![(ringbuffer_key(&ringbuffer, None, placement.row), row.freeze_bytes())]).unwrap();
+		}
+		save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();
+		let rows: Vec<RowNumber> = placed.iter().map(|placement| placement.row).collect();
+
+		let mut ring = Ring::new(capacity);
+		release_ring_rows(
+			catalog,
+			&mut txn,
+			&ringbuffer,
+			&mut ring,
+			None,
+			&rows[..FREE_PAGE_SLOTS as usize + 2],
+		)
+		.unwrap();
+		save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();
+
+		for expected in [
+			rows[FREE_PAGE_SLOTS as usize + 1],
+			rows[FREE_PAGE_SLOTS as usize],
+			rows[FREE_PAGE_SLOTS as usize - 1],
+		] {
+			let mut ring = Ring::new(capacity);
+			let reused = place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, None, 1).unwrap();
+			assert_eq!(reused[0].row, expected);
+			assert_eq!(reused[0].evicted, None);
+			save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();
+		}
+	}
+}

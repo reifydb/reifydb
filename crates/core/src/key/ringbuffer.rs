@@ -167,21 +167,23 @@ pub fn ring_order_sequence(key: &TaggedKey) -> Option<u64> {
 #[key(tag = RingBufferFree)]
 pub struct RingBufferFreeKey {
 	pub storage: StorageId,
+	pub page: Asc<u64>,
 	pub encoded_partition: Vec<u8>,
 }
 
 impl RingBufferFreeKey {
-	pub fn of(storage: impl Into<StorageId>, partition: Option<Partition>) -> Self {
+	pub fn of(storage: impl Into<StorageId>, partition: Option<Partition>, page: u64) -> Self {
 		Self {
 			storage: storage.into(),
+			page: Asc(page),
 			encoded_partition: partition
 				.map(|partition| partition.0.to_be_bytes().to_vec())
 				.unwrap_or_default(),
 		}
 	}
 
-	pub fn encoded_of(storage: impl Into<StorageId>, partition: Option<Partition>) -> EncodedKey {
-		Self::of(storage, partition).encode()
+	pub fn encoded_of(storage: impl Into<StorageId>, partition: Option<Partition>, page: u64) -> EncodedKey {
+		Self::of(storage, partition, page).encode()
 	}
 
 	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {

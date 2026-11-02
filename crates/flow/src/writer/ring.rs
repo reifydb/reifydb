@@ -9,7 +9,8 @@ use reifydb_core::{
 	delta::SetPre,
 	interface::catalog::{
 		ringbuffer::{
-			RingBufferMetadata, decode_ringbuffer_order, decode_ringbuffer_slots, encode_ringbuffer_slots,
+			RingBufferMetadata, decode_ringbuffer_free_page, decode_ringbuffer_order,
+			encode_ringbuffer_free_page, encode_ringbuffer_order,
 		},
 		storage::StorageId,
 	},
@@ -98,12 +99,16 @@ impl<T: StorageTxn + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T,
 		Ok(entries)
 	}
 
-	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
-		let key: TaggedKey = RingBufferFreeKey::of(self.storage, partition).into();
-		match self.txn.get_tagged(&[key])?.pop().flatten() {
-			None => Ok(Vec::new()),
-			Some(bytes) => decode_ringbuffer_slots(EncodedPodRow::view(&bytes)),
-		}
+	fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {
+		let keys: Vec<TaggedKey> =
+			pages.iter().map(|&page| RingBufferFreeKey::of(self.storage, partition, page).into()).collect();
+		self.txn.get_tagged(&keys)?
+			.into_iter()
+			.map(|page| match page {
+				None => Ok(Vec::new()),
+				Some(bytes) => decode_ringbuffer_free_page(EncodedPodRow::view(&bytes)),
+			})
+			.collect()
 	}
 }
 
@@ -193,19 +198,24 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 				MetadataWrite::Order(partition, sequence, Some(row)) => {
 					self.txn.set_with_pre(vec![(
 						ring_order_key(self.storage, partition, sequence),
-						encode_ringbuffer_slots(&[row]).into_bytes(),
+						encode_ringbuffer_order(row).into_bytes(),
 						SetPre::Unknown,
 					)])?
 				}
 				MetadataWrite::Order(partition, sequence, None) => {
 					self.txn.remove_tagged(vec![ring_order_key(self.storage, partition, sequence)])?
 				}
-				MetadataWrite::Free(partition, free) if free.is_empty() => self
-					.txn
-					.remove_tagged(vec![RingBufferFreeKey::of(self.storage, partition).into()])?,
-				MetadataWrite::Free(partition, free) => self.txn.set_with_pre(vec![(
-					RingBufferFreeKey::of(self.storage, partition).into(),
-					encode_ringbuffer_slots(&free).into_bytes(),
+				MetadataWrite::Free(partition, page, None) => {
+					self.txn.remove_tagged(vec![RingBufferFreeKey::of(
+						self.storage,
+						partition,
+						page,
+					)
+					.into()])?
+				}
+				MetadataWrite::Free(partition, page, Some(slots)) => self.txn.set_with_pre(vec![(
+					RingBufferFreeKey::of(self.storage, partition, page).into(),
+					encode_ringbuffer_free_page(&slots).into_bytes(),
 					SetPre::Unknown,
 				)])?,
 			}
@@ -290,7 +300,7 @@ mod tests {
 		common::CommitVersion,
 		interface::{catalog::id::RingBufferId, store::MultiVersionRow},
 		key::bound::TaggedKeyBoundRange,
-		ring::oldest_first,
+		ring::{FREE_PAGE_SLOTS, oldest_first},
 	};
 	use reifydb_value::value::value_type::ValueType;
 
@@ -496,7 +506,10 @@ mod tests {
 				counters: &self.counters,
 				storage: storage(),
 			};
-			store.free(partition).unwrap().len()
+			let metadata = store.counters.metadata.borrow().get(&partition).copied().unwrap();
+			let pages: Vec<u64> =
+				(0..(metadata.filled - metadata.count).div_ceil(FREE_PAGE_SLOTS)).collect();
+			store.free_pages(partition, &pages).unwrap().iter().map(Vec::len).sum()
 		}
 
 		fn assert_free_invariant(&mut self, partition: Option<Partition>) {
@@ -625,8 +638,8 @@ mod tests {
 		fixture.txn.seam.clear();
 		fixture.remove(None, &[first[0].row]);
 		let order = ring_order_key(storage(), None, first[0].sequence);
-		let free: TaggedKey = RingBufferFreeKey::of(storage(), None).into();
-		let free_row = encode_ringbuffer_slots(&[first[0].row]).into_bytes();
+		let free: TaggedKey = RingBufferFreeKey::of(storage(), None, 0).into();
+		let free_row = encode_ringbuffer_free_page(&[first[0].row]).into_bytes();
 		assert_eq!(
 			fixture.txn.seam,
 			vec![

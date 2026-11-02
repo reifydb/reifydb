@@ -381,15 +381,19 @@ fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64> {
 mod tests {
 	use std::sync::{Arc, mpsc};
 
-	use reifydb_core::commit::watermark::ReaderWatermark;
+	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::{actors::pending::PendingWrite, commit::watermark::ReaderWatermark};
 	use reifydb_flow_async::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::substrate::FlowSubstrate,
+		transaction::{FlowTransaction, substrate::FlowSubstrate},
 	};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::commit::{CommitBegin, CommitHandle};
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{duration::Duration, partition::Partition},
+	};
 
 	use super::*;
 	use crate::{
@@ -464,6 +468,64 @@ mod tests {
 			.expect("backfill reply timed out")
 			.expect("commit backfill");
 		(committed, materialization)
+	}
+
+	#[test]
+	fn a_backfill_reset_removes_every_free_page_of_the_view() {
+		// A page left behind would hand slots of the old contents to the rebuilt view.
+		let te = TestEngine::builder().with_commit_queue().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
+		let engine = te.inner().clone();
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flow = engine
+			.catalog()
+			.list_flow_dags_asc(&mut Transaction::Query(&mut query))
+			.expect("list flows")
+			.into_iter()
+			.next()
+			.expect("one flow");
+		let view = flow.sink_views().next().expect("one sink view");
+		let storage = engine
+			.catalog()
+			.get_view(&mut Transaction::Query(&mut query), view)
+			.expect("view")
+			.storage_id();
+		drop(query);
+		let pages = [
+			RingBufferFreeKey::of(storage, None, 0),
+			RingBufferFreeKey::of(storage, Some(Partition(1)), 3),
+		];
+		let mut seed = engine.begin_command(IdentityId::system()).expect("command");
+		for page in &pages {
+			seed.set(vec![(page.clone().into(), EncodedBytes(CowVec::new(vec![0; 8])))]).expect("seed");
+		}
+		seed.commit().expect("commit");
+
+		let (version, lease) = engine.acquire_current_snapshot_lease().expect("snapshot lease");
+		let mut txn = DeferredTransaction::new(DeferredParams {
+			version,
+			pending: Pending::new(),
+			query: Some(engine.multi().begin_query_at_version(&lease).expect("query")),
+			state_query: Some(engine.multi().begin_query_at_version(&lease).expect("query")),
+			catalog: engine.catalog(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			substrate: FlowSubstrate::with_dictionary(
+				engine.dictionary_allocators(),
+				engine.operator_state(),
+			),
+			lookup: None,
+		});
+		clear_views(&engine, &mut txn, &flow, &lease, query_batch_size(&engine).expect("batch size"))
+			.expect("clear");
+		for page in &pages {
+			assert!(
+				matches!(txn.pending().write_at(&page.encode()), Some(PendingWrite::Remove { .. })),
+				"{page:?} must be removed"
+			);
+		}
 	}
 
 	#[test]

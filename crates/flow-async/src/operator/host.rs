@@ -19,10 +19,7 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		flow::OperatorId,
 		id::ViewId,
-		ringbuffer::{
-			RingBufferMetadata, decode_ringbuffer_metadata, decode_ringbuffer_order,
-			decode_ringbuffer_slots,
-		},
+		ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, decode_ringbuffer_order},
 		storage::StorageId,
 	},
 	internal_err,
@@ -32,7 +29,7 @@ use reifydb_core::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
-		ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey, ring_order_key, ring_order_range},
+		ringbuffer::{RingBufferMetadataKey, ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey},
 	},
 	ring::{RingNewest, RingStore, newest},
@@ -202,12 +199,8 @@ impl RingStore for QueryRing<'_> {
 		Ok(entries)
 	}
 
-	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
-		let key = RingBufferFreeKey::of(self.storage, partition).into();
-		match self.query.get(&[key])?.pop().flatten() {
-			None => Ok(Vec::new()),
-			Some(row) => decode_ringbuffer_slots(EncodedPodRow::view(row.bytes())),
-		}
+	fn free_pages(&mut self, _partition: Option<Partition>, _pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {
+		panic!("a lookup read of ring {:?} must never read its free pages", self.storage)
 	}
 }
 

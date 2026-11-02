@@ -497,7 +497,9 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			PartitionedRingBufferOrderKey::new(StorageId::ringbuffer(RingBufferId(1)), Partition(1), 1)
 				.encode()
 		}
-		KeyTag::RingBufferFree => RingBufferFreeKey::encoded_of(StorageId::ringbuffer(RingBufferId(1)), None),
+		KeyTag::RingBufferFree => {
+			RingBufferFreeKey::encoded_of(StorageId::ringbuffer(RingBufferId(1)), None, 0)
+		}
 	}
 }
 

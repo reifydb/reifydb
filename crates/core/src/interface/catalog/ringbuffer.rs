@@ -115,7 +115,25 @@ pub fn decode_ringbuffer_metadata(row: &EncodedPodRow) -> Result<RingBufferMetad
 	})
 }
 
-pub fn encode_ringbuffer_slots(rows: &[RowNumber]) -> EncodedPodRow {
+pub fn encode_ringbuffer_order(row: RowNumber) -> EncodedPodRow {
+	EncodedPodRow::new(&row.0.to_be_bytes())
+}
+
+pub fn decode_ringbuffer_order(key: &TaggedKey, value: &EncodedPodRow) -> Result<(u64, RowNumber)> {
+	let Some(sequence) = ring_order_sequence(key) else {
+		return_internal_error!("Ring buffer order scan returned a key that is not an order key: {:?}", key)
+	};
+	match <[u8; 8]>::try_from(value.body()) {
+		Ok(bytes) => Ok((sequence, RowNumber(u64::from_be_bytes(bytes)))),
+		Err(_) => return_internal_error!(
+			"Ring buffer order entry for sequence {} is {} bytes wide, expected 8. This indicates a corrupt ring index.",
+			sequence,
+			value.body().len()
+		),
+	}
+}
+
+pub fn encode_ringbuffer_free_page(rows: &[RowNumber]) -> EncodedPodRow {
 	let mut bytes = Vec::with_capacity(rows.len() * 8);
 	for row in rows {
 		bytes.extend_from_slice(&row.0.to_be_bytes());
@@ -123,34 +141,24 @@ pub fn encode_ringbuffer_slots(rows: &[RowNumber]) -> EncodedPodRow {
 	EncodedPodRow::new(&bytes)
 }
 
-pub fn decode_ringbuffer_slots(row: &EncodedPodRow) -> Result<Vec<RowNumber>> {
+pub fn decode_ringbuffer_free_page(row: &EncodedPodRow) -> Result<Vec<RowNumber>> {
 	let bytes = row.body();
 	if bytes.len() % 8 != 0 {
 		return_internal_error!(
-			"Ring buffer slot list is {} bytes wide, not a multiple of 8. This indicates a corrupt index row.",
+			"Ring buffer free page is {} bytes wide, not a multiple of 8. This indicates a corrupt index row.",
 			bytes.len()
 		)
 	}
 	Ok(bytes.chunks_exact(8).map(|chunk| RowNumber(u64::from_be_bytes(chunk.try_into().unwrap()))).collect())
 }
 
-pub fn decode_ringbuffer_order(key: &TaggedKey, value: &EncodedPodRow) -> Result<(u64, RowNumber)> {
-	let Some(sequence) = ring_order_sequence(key) else {
-		return_internal_error!("Ring buffer order scan returned a key that is not an order key: {:?}", key)
-	};
-	match decode_ringbuffer_slots(value)?.as_slice() {
-		[row] => Ok((sequence, *row)),
-		rows => return_internal_error!(
-			"Ring buffer order entry for sequence {} holds {} slots, expected 1. This indicates a corrupt ring index.",
-			sequence,
-			rows.len()
-		),
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{
+		interface::catalog::{id::RingBufferId, storage::StorageId},
+		key::ringbuffer::ring_order_key,
+	};
 
 	#[test]
 	fn base_sequence_and_count_survive_a_round_trip_because_they_address_every_slot() {
@@ -186,5 +194,26 @@ mod tests {
 		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 32])).is_err());
 		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 39])).is_err());
 		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 41])).is_err());
+	}
+
+	#[test]
+	fn an_order_row_keeps_its_eight_big_endian_bytes_and_any_other_width_is_corrupt() {
+		// The order row format must not move with the free list, and a wider row must fail rather than
+		// truncate.
+		let key: TaggedKey = ring_order_key(StorageId::ringbuffer(RingBufferId(1)), None, 7);
+		let row = RowNumber(0x0102_0304_0506_0708);
+		let encoded = encode_ringbuffer_order(row);
+		assert_eq!(encoded.body(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+		assert_eq!(decode_ringbuffer_order(&key, &encoded).unwrap(), (7, row));
+		assert!(decode_ringbuffer_order(&key, &encode_ringbuffer_free_page(&[row, row])).is_err());
+		assert!(decode_ringbuffer_order(&key, &encode_ringbuffer_free_page(&[])).is_err());
+	}
+
+	#[test]
+	fn a_free_page_keeps_its_slots_in_stack_order_and_a_torn_page_is_corrupt() {
+		// Reordered slots would change which row number is reused next.
+		let rows = [RowNumber(3), RowNumber(1), RowNumber(2)];
+		assert_eq!(decode_ringbuffer_free_page(&encode_ringbuffer_free_page(&rows)).unwrap(), rows.to_vec());
+		assert!(decode_ringbuffer_free_page(&EncodedPodRow::new(&[0; 9])).is_err());
 	}
 }

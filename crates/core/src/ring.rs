@@ -14,6 +14,8 @@ use crate::{interface::catalog::ringbuffer::RingBufferMetadata, return_internal_
 
 const ORDER_PAGE: usize = 64;
 
+pub const FREE_PAGE_SLOTS: u64 = 512;
+
 pub trait RingStore {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>>;
 
@@ -28,7 +30,7 @@ pub trait RingStore {
 		limit: usize,
 	) -> Result<Vec<(u64, RowNumber)>>;
 
-	fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>>;
+	fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>>;
 }
 
 pub trait RingNewest: RingStore {
@@ -47,15 +49,21 @@ pub enum MetadataWrite {
 	Save(Option<Partition>, RingBufferMetadata),
 	Remove(Option<Partition>),
 	Order(Option<Partition>, u64, Option<RowNumber>),
-	Free(Option<Partition>, Vec<RowNumber>),
+	Free(Option<Partition>, u64, Option<Vec<RowNumber>>),
+}
+
+#[derive(Default)]
+struct FreePage {
+	stored: Vec<RowNumber>,
+	slots: Vec<RowNumber>,
 }
 
 struct Tracked {
 	loaded: Option<RingBufferMetadata>,
 	current: Option<RingBufferMetadata>,
 	order: BTreeMap<u64, Option<RowNumber>>,
-	free: Option<Vec<RowNumber>>,
-	free_changed: bool,
+	free_len: u64,
+	free_pages: BTreeMap<u64, FreePage>,
 }
 
 pub struct Ring {
@@ -87,8 +95,8 @@ impl Ring {
 				loaded,
 				current: loaded,
 				order: BTreeMap::new(),
-				free: None,
-				free_changed: false,
+				free_len: loaded.map_or(0, |metadata| metadata.filled - metadata.count),
+				free_pages: BTreeMap::new(),
 			},
 		);
 		Ok(loaded)
@@ -102,30 +110,66 @@ impl Ring {
 		self.tracked(partition).current = Some(metadata);
 	}
 
-	fn load_free(&mut self, store: &mut impl RingStore, partition: Option<Partition>) -> Result<usize> {
-		if self.tracked(partition).free.is_none() {
-			let free = match self.tracked(partition).current {
-				Some(metadata) if metadata.filled > metadata.count => store.free(partition)?,
-				_ => Vec::new(),
-			};
+	fn load_free_pages(
+		&mut self,
+		store: &mut impl RingStore,
+		partition: Option<Partition>,
+		first: u64,
+		last: u64,
+	) -> Result<()> {
+		let tracked = self.tracked(partition);
+		let free_len = tracked.free_len;
+		let missing: Vec<u64> = (first..=last).filter(|page| !tracked.free_pages.contains_key(page)).collect();
+		if missing.is_empty() {
+			return Ok(());
+		}
+		let loaded = store.free_pages(partition, &missing)?;
+		let tracked = self.tracked(partition);
+		for (page, slots) in missing.into_iter().zip(loaded) {
 			reifydb_assertions! {
-				let metadata = self.tracked(partition).current.unwrap_or_else(RingBufferMetadata::unpartitioned);
 				assert_eq!(
-					free.len() as u64,
-					metadata.filled - metadata.count,
-					"a ring's free list must hold exactly the filled slots no row occupies"
+					slots.len() as u64,
+					(free_len - page * FREE_PAGE_SLOTS).min(FREE_PAGE_SLOTS),
+					"a ring's free page must hold exactly the free slots its index range reaches"
 				);
 			}
-			self.tracked(partition).free = Some(free);
+			tracked.free_pages.insert(
+				page,
+				FreePage {
+					stored: slots.clone(),
+					slots,
+				},
+			);
 		}
-		Ok(self.tracked(partition).free.as_ref().map_or(0, Vec::len))
+		Ok(())
+	}
+
+	fn load_top_free_page(&mut self, store: &mut impl RingStore, partition: Option<Partition>) -> Result<()> {
+		let free_len = self.tracked(partition).free_len;
+		if !free_len.is_multiple_of(FREE_PAGE_SLOTS) {
+			let top = free_len / FREE_PAGE_SLOTS;
+			self.load_free_pages(store, partition, top, top)?;
+		}
+		Ok(())
 	}
 
 	fn release(&mut self, partition: Option<Partition>, sequence: u64, row: RowNumber) {
 		let tracked = self.tracked(partition);
 		tracked.order.insert(sequence, None);
-		tracked.free.as_mut().expect("the free list is loaded before a slot is released").push(row);
-		tracked.free_changed = true;
+		let page = tracked.free_len / FREE_PAGE_SLOTS;
+		tracked.free_pages.entry(page).or_default().slots.push(row);
+		tracked.free_len += 1;
+	}
+
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+	fn assert_free_len(&mut self, partition: Option<Partition>, metadata: RingBufferMetadata) {
+		reifydb_assertions! {
+			assert_eq!(
+				self.tracked(partition).free_len,
+				metadata.filled - metadata.count,
+				"a ring's free stack must hold exactly the filled slots no row occupies"
+			);
+		}
 	}
 
 	fn live(
@@ -190,8 +234,17 @@ impl Ring {
 			None if partition.is_none() => RingBufferMetadata::unpartitioned(),
 			None => RingBufferMetadata::reserved(store.reserve(self.capacity)?),
 		};
-		let free = self.load_free(store, partition)?;
-		let room = free as u64 + (self.capacity - metadata.filled);
+		let free = self.tracked(partition).free_len;
+		let pops = free.min(count as u64);
+		if pops > 0 {
+			self.load_free_pages(
+				store,
+				partition,
+				(free - pops) / FREE_PAGE_SLOTS,
+				(free - 1) / FREE_PAGE_SLOTS,
+			)?;
+		}
+		let room = free + (self.capacity - metadata.filled);
 		let evictions = (count as u64).saturating_sub(room) as usize;
 		let victims = self.live(store, partition, None, evictions)?;
 		if victims.len() != evictions {
@@ -212,21 +265,27 @@ impl Ring {
 		for _ in 0..count {
 			let sequence = metadata.next_sequence;
 			metadata.next_sequence += 1;
-			let (row, evicts) = match tracked.free.as_mut().and_then(Vec::pop) {
-				Some(row) => {
-					tracked.free_changed = true;
-					(row, false)
-				}
-				None if metadata.filled < capacity => {
-					let row = RowNumber(metadata.base_rn + metadata.filled);
-					metadata.filled += 1;
-					(row, false)
-				}
-				None => {
-					let (oldest, row) = victims.next().expect("victims cover every eviction");
-					tracked.order.insert(oldest, None);
-					(row, true)
-				}
+			let (row, evicts) = if tracked.free_len > 0 {
+				let page = (tracked.free_len - 1) / FREE_PAGE_SLOTS;
+				let popped = tracked.free_pages.get_mut(&page).and_then(|page| page.slots.pop());
+				let Some(row) = popped else {
+					return_internal_error!(
+						"Ring buffer partition {:?} free page {} is shorter than its free count {}. This indicates a corrupt ring index.",
+						partition,
+						page,
+						tracked.free_len
+					)
+				};
+				tracked.free_len -= 1;
+				(row, false)
+			} else if metadata.filled < capacity {
+				let row = RowNumber(metadata.base_rn + metadata.filled);
+				metadata.filled += 1;
+				(row, false)
+			} else {
+				let (oldest, row) = victims.next().expect("victims cover every eviction");
+				tracked.order.insert(oldest, None);
+				(row, true)
 			};
 			tracked.order.insert(sequence, Some(row));
 			if !evicts {
@@ -237,6 +296,7 @@ impl Ring {
 		let evicted_rows: Vec<RowNumber> =
 			placed.iter().filter(|(_, _, evicts)| *evicts).map(|(row, _, _)| *row).collect();
 		let mut evicted = store.slots(partition, &evicted_rows)?.into_iter();
+		self.assert_free_len(partition, metadata);
 		self.set(partition, metadata);
 		let mut placements = Vec::with_capacity(count);
 		for (row, sequence, evicts) in placed {
@@ -280,7 +340,7 @@ impl Ring {
 			})
 			.collect();
 		if removed.iter().any(Option::is_some) {
-			self.load_free(store, partition)?;
+			self.load_top_free_page(store, partition)?;
 		}
 		for (&row, bytes) in rows.iter().zip(&removed) {
 			if let Some(bytes) = bytes {
@@ -288,6 +348,7 @@ impl Ring {
 				metadata.count -= 1;
 			}
 		}
+		self.assert_free_len(partition, metadata);
 		self.set(partition, metadata);
 		Ok(removed)
 	}
@@ -327,7 +388,7 @@ impl Ring {
 			}
 		}
 		if !expired.is_empty() {
-			self.load_free(store, partition)?;
+			self.load_top_free_page(store, partition)?;
 		}
 		for &(sequence, row, _) in &expired {
 			self.release(partition, sequence, row);
@@ -336,6 +397,7 @@ impl Ring {
 			metadata.head = newest_expired + 1;
 		}
 		metadata.count -= expired.len() as u64;
+		self.assert_free_len(partition, metadata);
 		self.set(partition, metadata);
 		Ok(expired.into_iter().map(|(_, row, bytes)| (row, bytes)).collect())
 	}
@@ -355,12 +417,24 @@ impl Ring {
 			for (&sequence, &entry) in &tracked.order {
 				writes.push(MetadataWrite::Order(partition, sequence, entry));
 			}
-			match (dropped, &tracked.free) {
-				(true, _) => writes.push(MetadataWrite::Free(partition, Vec::new())),
-				(false, Some(free)) if tracked.free_changed => {
-					writes.push(MetadataWrite::Free(partition, free.clone()))
+			if dropped {
+				let stored = tracked.loaded.map_or(0, |metadata| metadata.filled - metadata.count);
+				for page in 0..stored.div_ceil(FREE_PAGE_SLOTS) {
+					writes.push(MetadataWrite::Free(partition, page, None));
 				}
-				(false, _) => {}
+				continue;
+			}
+			for (&page, free) in &tracked.free_pages {
+				if free.slots != free.stored {
+					reifydb_assertions! {
+						assert!(
+							free.slots.len() as u64 <= FREE_PAGE_SLOTS,
+							"a ring's free page must never hold more than its slot limit"
+						);
+					}
+					let slots = (!free.slots.is_empty()).then(|| free.slots.clone());
+					writes.push(MetadataWrite::Free(partition, page, slots));
+				}
 			}
 		}
 		writes
@@ -417,7 +491,10 @@ fn live_slot(
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::{
+		collections::HashMap,
+		panic::{AssertUnwindSafe, catch_unwind},
+	};
 
 	use reifydb_codec::row::shape::{RowFamily, RowShape};
 	use reifydb_value::value::value_type::ValueType;
@@ -429,10 +506,11 @@ mod tests {
 		metadata: HashMap<Option<Partition>, RingBufferMetadata>,
 		rows: HashMap<(Option<Partition>, RowNumber), EncodedBytes>,
 		order: BTreeMap<(Option<Partition>, u64), RowNumber>,
-		free: HashMap<Option<Partition>, Vec<RowNumber>>,
+		free: HashMap<(Option<Partition>, u64), Vec<RowNumber>>,
 		next_base: u64,
 		reads: Vec<(Option<Partition>, RowNumber)>,
 		free_reads: usize,
+		pages_read: Vec<(Option<Partition>, u64)>,
 	}
 
 	impl RingStore for MemoryStore {
@@ -467,9 +545,12 @@ mod tests {
 				.collect())
 		}
 
-		fn free(&mut self, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+		fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {
 			self.free_reads += 1;
-			Ok(self.free.get(&partition).cloned().unwrap_or_default())
+			self.pages_read.extend(pages.iter().map(|&page| (partition, page)));
+			Ok(pages.iter()
+				.map(|&page| self.free.get(&(partition, page)).cloned().unwrap_or_default())
+				.collect())
 		}
 	}
 
@@ -535,11 +616,11 @@ mod tests {
 				MetadataWrite::Order(partition, sequence, None) => {
 					store.order.remove(&(partition, sequence));
 				}
-				MetadataWrite::Free(partition, free) if free.is_empty() => {
-					store.free.remove(&partition);
+				MetadataWrite::Free(partition, page, None) => {
+					store.free.remove(&(partition, page));
 				}
-				MetadataWrite::Free(partition, free) => {
-					store.free.insert(partition, free);
+				MetadataWrite::Free(partition, page, Some(slots)) => {
+					store.free.insert((partition, page), slots);
 				}
 			}
 		}
@@ -753,11 +834,11 @@ mod tests {
 		let mut store = MemoryStore::default();
 		let placed = insert(&mut store, 2, Some(Partition(1)), &[1, 2]);
 		delete(&mut store, 2, Some(Partition(1)), &[placed[0].row]);
-		assert_eq!(store.free[&Some(Partition(1))], vec![placed[0].row]);
+		assert_eq!(store.free[&(Some(Partition(1)), 0)], vec![placed[0].row]);
 		delete(&mut store, 2, Some(Partition(1)), &[placed[1].row]);
 		assert!(!store.metadata.contains_key(&Some(Partition(1))));
 		assert_eq!(store.entries(Some(Partition(1))).count(), 0);
-		assert!(!store.free.contains_key(&Some(Partition(1))));
+		assert!(store.free.keys().all(|(owner, _)| *owner != Some(Partition(1))));
 	}
 
 	#[test]
@@ -824,5 +905,299 @@ mod tests {
 		assert_eq!(store.free_reads, reads_before_reuse + 1);
 		assert_eq!(reused[0].row, placed[1].row);
 		assert!(reused[0].evicted.is_none());
+	}
+
+	fn writes_of(ring: &Ring) -> Vec<(u64, Option<usize>)> {
+		ring.writes()
+			.into_iter()
+			.filter_map(|write| match write {
+				MetadataWrite::Free(_, page, slots) => Some((page, slots.map(|slots| slots.len()))),
+				_ => None,
+			})
+			.collect()
+	}
+
+	fn stack(store: &MemoryStore, partition: Option<Partition>) -> Vec<RowNumber> {
+		let mut pages: Vec<u64> =
+			store.free.keys().filter(|(owner, _)| *owner == partition).map(|(_, page)| *page).collect();
+		pages.sort_unstable();
+		pages.into_iter().flat_map(|page| store.free[&(partition, page)].iter().copied()).collect()
+	}
+
+	fn assert_free_matches_count(store: &MemoryStore, partition: Option<Partition>) {
+		// Every page below the top must be full and the top partial, or the page arithmetic points at nothing.
+		let metadata = store.metadata[&partition];
+		let free = metadata.filled - metadata.count;
+		assert_eq!(stack(store, partition).len() as u64, free);
+		for page in 0..free.div_ceil(FREE_PAGE_SLOTS) {
+			let expected = (free - page * FREE_PAGE_SLOTS).min(FREE_PAGE_SLOTS) as usize;
+			assert_eq!(store.free[&(partition, page)].len(), expected, "page {page} of {free} free");
+		}
+		let keys = store.free.keys().filter(|(owner, _)| *owner == partition).count() as u64;
+		assert_eq!(keys, free.div_ceil(FREE_PAGE_SLOTS));
+	}
+
+	fn full(capacity: u64, partition: Option<Partition>) -> (MemoryStore, Vec<Placement>) {
+		let mut store = MemoryStore::default();
+		let times: Vec<i64> = (0..capacity as i64).collect();
+		let placed = insert(&mut store, capacity, partition, &times);
+		(store, placed)
+	}
+
+	fn rows_of(placed: &[Placement]) -> Vec<RowNumber> {
+		placed.iter().map(|placement| placement.row).collect()
+	}
+
+	#[test]
+	fn reuse_is_last_freed_first_within_one_batch_and_across_commits() {
+		// Row numbers are user visible, so any other reuse order changes results.
+		let (mut store, placed) = full(6, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, 6, None, &[rows[1], rows[4]]);
+		delete(&mut store, 6, None, &[rows[2]]);
+		assert_eq!(stack(&store, None), vec![rows[1], rows[4], rows[2]]);
+
+		let batch = insert(&mut store, 6, None, &[10, 11]);
+		assert_eq!(rows_of(&batch), vec![rows[2], rows[4]], "within one batch, last freed first");
+		let next = insert(&mut store, 6, None, &[12]);
+		assert_eq!(rows_of(&next), vec![rows[1]], "across commits, last freed first");
+		assert!(store.free.is_empty());
+	}
+
+	#[test]
+	fn reuse_stays_last_freed_first_across_a_page_boundary() {
+		// A page popped in the wrong order would hand out older slots while newer ones sit free.
+		let capacity = FREE_PAGE_SLOTS + 3;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows);
+		let times: Vec<i64> = (0..6).collect();
+		let reused = insert(&mut store, capacity, None, &times);
+		let mut expected: Vec<RowNumber> = rows.clone();
+		expected.reverse();
+		assert_eq!(rows_of(&reused), expected[..6].to_vec());
+		assert_free_matches_count(&store, None);
+	}
+
+	#[test]
+	fn a_push_then_pop_in_one_session_writes_no_free_key_and_reads_none() {
+		// A leak here grows storage on a slot that is immediately busy again.
+		let (mut store, placed) = full(4, None);
+		let mut ring = Ring::new(4);
+		ring.remove(&mut store, None, &[placed[1].row]).unwrap();
+		let again = ring.place(&mut store, None, 1).unwrap();
+		assert_eq!(again[0].row, placed[1].row);
+		assert!(writes_of(&ring).is_empty(), "the stack is back where it started");
+		assert_eq!(store.free_reads, 0, "a top page starting at its first index needs no read");
+	}
+
+	#[test]
+	fn a_push_then_pop_on_a_stored_page_leaves_the_page_unwritten() {
+		// The page content is unchanged, so rewriting it would be a write with no effect.
+		let (mut store, placed) = full(4, None);
+		delete(&mut store, 4, None, &[placed[0].row]);
+		store.pages_read.clear();
+		let mut ring = Ring::new(4);
+		ring.remove(&mut store, None, &[placed[1].row]).unwrap();
+		ring.place(&mut store, None, 1).unwrap();
+		assert!(writes_of(&ring).is_empty());
+		assert_eq!(
+			store.pages_read,
+			vec![(None, 0)],
+			"the page is read once for the push, then cached for the pop"
+		);
+	}
+
+	#[test]
+	fn a_no_free_ring_never_reads_a_page_even_when_it_evicts() {
+		// The skip is what keeps an append-only ring free of a read on every commit.
+		let (mut store, _) = full(600, None);
+		let times: Vec<i64> = (0..3).collect();
+		insert(&mut store, 600, None, &times);
+		assert!(store.pages_read.is_empty());
+		assert!(store.free.is_empty());
+	}
+
+	#[test]
+	fn a_commit_touches_only_the_pages_its_pushes_and_pops_reach() {
+		// A rewrite of untouched pages would bring back the cost of rewriting the whole list.
+		let capacity = FREE_PAGE_SLOTS * 3;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows[..(FREE_PAGE_SLOTS as usize * 2 + 10)]);
+		store.pages_read.clear();
+
+		let mut ring = Ring::new(capacity);
+		ring.place(&mut store, None, 3).unwrap();
+		assert_eq!(store.pages_read, vec![(None, 2)], "only the top page is read");
+		assert_eq!(writes_of(&ring), vec![(2, Some(7))], "only the top page is written");
+
+		store.pages_read.clear();
+		let mut ring = Ring::new(capacity);
+		ring.remove(&mut store, None, &[rows[FREE_PAGE_SLOTS as usize * 2 + 20]]).unwrap();
+		assert_eq!(store.pages_read, vec![(None, 2)]);
+		assert_eq!(writes_of(&ring), vec![(2, Some(11))]);
+	}
+
+	#[test]
+	fn a_pop_batch_across_pages_reads_them_in_one_call_and_each_page_once() {
+		// A read per slot or per pop would make a batch insert pay one round trip per row.
+		let capacity = FREE_PAGE_SLOTS * 3;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows[..(FREE_PAGE_SLOTS as usize * 2 + 10)]);
+		store.free_reads = 0;
+		store.pages_read.clear();
+
+		let mut ring = Ring::new(capacity);
+		ring.place(&mut store, None, FREE_PAGE_SLOTS as usize + 20).unwrap();
+		assert_eq!(store.free_reads, 1);
+		assert_eq!(store.pages_read, vec![(None, 0), (None, 1), (None, 2)]);
+		assert_eq!(writes_of(&ring), vec![(0, Some(502)), (1, None), (2, None)]);
+	}
+
+	#[test]
+	fn many_changes_in_one_session_read_and_write_each_page_at_most_once() {
+		// Repeated reads would miss the session's own changes, and repeated writes would waste the commit.
+		let capacity = FREE_PAGE_SLOTS * 2;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows[..(FREE_PAGE_SLOTS as usize + 5)]);
+		store.pages_read.clear();
+
+		let mut ring = Ring::new(capacity);
+		for _ in 0..4 {
+			ring.place(&mut store, None, 2).unwrap();
+		}
+		ring.remove(&mut store, None, &[rows[FREE_PAGE_SLOTS as usize + 6]]).unwrap();
+		ring.place(&mut store, None, 2).unwrap();
+		let mut read = store.pages_read.clone();
+		read.sort();
+		read.dedup();
+		assert_eq!(read.len(), store.pages_read.len(), "no page is read twice: {:?}", store.pages_read);
+		let written: Vec<u64> = writes_of(&ring).iter().map(|(page, _)| *page).collect();
+		let mut unique = written.clone();
+		unique.dedup();
+		assert_eq!(written, unique, "no page is written twice");
+	}
+
+	#[test]
+	fn pushing_past_a_page_boundary_starts_a_new_page_with_no_read_and_never_overfills() {
+		// A slot past the page limit would break the index arithmetic every later session relies on.
+		let capacity = FREE_PAGE_SLOTS + 2;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows[..FREE_PAGE_SLOTS as usize]);
+		assert_eq!(store.free[&(None, 0)].len() as u64, FREE_PAGE_SLOTS);
+		store.pages_read.clear();
+
+		delete(&mut store, capacity, None, &[rows[FREE_PAGE_SLOTS as usize]]);
+		assert!(store.pages_read.is_empty(), "the new page starts at its first index, so nothing is read");
+		assert_eq!(store.free[&(None, 0)].len() as u64, FREE_PAGE_SLOTS);
+		assert_eq!(store.free[&(None, 1)], vec![rows[FREE_PAGE_SLOTS as usize]]);
+		assert!(store.free.values().all(|page| page.len() as u64 <= FREE_PAGE_SLOTS));
+		assert_free_matches_count(&store, None);
+	}
+
+	#[test]
+	fn popping_back_across_a_page_boundary_removes_the_empty_page_and_keeps_the_rest() {
+		// A kept empty page would disagree with the free count and leak a key.
+		let capacity = FREE_PAGE_SLOTS + 2;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, None, &rows[..(FREE_PAGE_SLOTS as usize + 1)]);
+		let popped = insert(&mut store, capacity, None, &[10, 11]);
+		assert_eq!(popped[0].row, rows[FREE_PAGE_SLOTS as usize]);
+		assert_eq!(popped[1].row, rows[FREE_PAGE_SLOTS as usize - 1]);
+		assert!(!store.free.contains_key(&(None, 1)), "the emptied page key is removed");
+		assert_eq!(store.free[&(None, 0)].len() as u64, FREE_PAGE_SLOTS - 1);
+		assert_free_matches_count(&store, None);
+	}
+
+	#[test]
+	fn the_free_pages_agree_with_the_free_count_through_every_step() {
+		// A drifted stack either overwrites a live row or leaks a slot forever.
+		let capacity = FREE_PAGE_SLOTS + 40;
+		let (mut store, placed) = full(capacity, None);
+		let rows = rows_of(&placed);
+		for chunk in rows[..(FREE_PAGE_SLOTS as usize + 30)].chunks(97) {
+			delete(&mut store, capacity, None, chunk);
+			assert_free_matches_count(&store, None);
+		}
+		for _ in 0..6 {
+			let times: Vec<i64> = (0..80).collect();
+			insert(&mut store, capacity, None, &times);
+			assert_free_matches_count(&store, None);
+		}
+	}
+
+	#[test]
+	fn an_emptied_partition_removes_every_free_page_and_a_new_range_starts_clean() {
+		// A page left behind would hand slots of the old range to the partition's next life.
+		let partition = Some(Partition(1));
+		let capacity = FREE_PAGE_SLOTS * 2 + 10;
+		let (mut store, placed) = full(capacity, partition);
+		let rows = rows_of(&placed);
+		delete(&mut store, capacity, partition, &rows[..rows.len() - 1]);
+		assert_eq!(store.free.len(), 3);
+		store.pages_read.clear();
+		delete(&mut store, capacity, partition, &[rows[rows.len() - 1]]);
+		assert!(store.free.is_empty(), "every page of the emptied partition goes");
+
+		let again = insert(&mut store, capacity, partition, &[1]);
+		assert!(!rows.contains(&again[0].row), "freed slots of the old range must not come back");
+	}
+
+	#[test]
+	fn emptying_a_million_slot_partition_writes_about_one_key_per_page() {
+		// One key per slot would hit the one million write limit and make the last delete fail for good.
+		let partition = Some(Partition(1));
+		let capacity = 1_000_000u64;
+		let mut store = MemoryStore::default();
+		store.metadata.insert(
+			partition,
+			RingBufferMetadata {
+				base_rn: 100,
+				next_sequence: capacity,
+				count: 1,
+				filled: capacity,
+				head: capacity - 1,
+			},
+		);
+		let row_number = RowNumber(100 + capacity - 1);
+		store.rows.insert((partition, row_number), row(capacity - 1, None));
+		store.order.insert((partition, capacity - 1), row_number);
+		store.free.insert(
+			(partition, (capacity - 2) / FREE_PAGE_SLOTS),
+			vec![RowNumber(100); ((capacity - 1) % FREE_PAGE_SLOTS) as usize],
+		);
+		let mut ring = Ring::new(capacity);
+		ring.remove(&mut store, partition, &[row_number]).unwrap();
+		let writes = ring.writes();
+		let pages = writes.iter().filter(|write| matches!(write, MetadataWrite::Free(_, _, None))).count();
+		assert_eq!(pages as u64, (capacity - 1).div_ceil(FREE_PAGE_SLOTS));
+		assert_eq!(pages, 1954);
+		assert!(writes.len() < 2_000, "got {} writes", writes.len());
+	}
+
+	#[test]
+	fn a_full_reuse_of_the_top_page_writes_a_removal_not_an_empty_page() {
+		// An empty page row would read back as a present page with no slots and hide a corrupt count.
+		let (mut store, placed) = full(4, None);
+		delete(&mut store, 4, None, &[placed[0].row]);
+		let mut ring = Ring::new(4);
+		ring.place(&mut store, None, 1).unwrap();
+		assert_eq!(writes_of(&ring), vec![(0, None)]);
+	}
+
+	#[test]
+	fn a_page_shorter_than_the_free_count_fails_instead_of_evicting_a_live_row() {
+		// Falling through to fresh slots or eviction would overwrite a row while the index is corrupt.
+		let (mut store, placed) = full(4, None);
+		delete(&mut store, 4, None, &[placed[0].row]);
+		store.free.remove(&(None, 0));
+		let mut ring = Ring::new(4);
+		let result = catch_unwind(AssertUnwindSafe(|| ring.place(&mut store, None, 1)));
+		assert!(!matches!(result, Ok(Ok(_))), "a corrupt free stack must not place a row");
 	}
 }

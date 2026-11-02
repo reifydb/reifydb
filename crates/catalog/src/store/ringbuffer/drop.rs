@@ -72,15 +72,18 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
-		key::ringbuffer::RingBufferMetadataKey,
+		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata, storage::StorageId},
+		key::ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey},
+		ring::FREE_PAGE_SLOTS,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		fragment::Fragment,
+		util::cowvec::CowVec,
 		value::{Value, constraint::TypeConstraint, partition::Partition, value_type::ValueType},
 	};
 
@@ -211,5 +214,35 @@ pub mod tests {
 		let remaining: Vec<_> =
 			Transaction::Admin(&mut txn).range(range, RangeScope::All, 4096).unwrap().collect();
 		assert!(remaining.is_empty(), "expected no orphaned RingBufferMetadataKey entries after drop");
+	}
+
+	#[test]
+	fn dropping_a_ring_removes_every_free_page_and_stays_under_the_write_limit() {
+		// A page left behind under a recycled storage would hand out slots of a dead ring.
+		let mut txn = create_test_admin_transaction();
+		let created = ensure_test_ringbuffer(&mut txn);
+		let storage: StorageId = created.id.into();
+		let page_bytes = EncodedBytes(CowVec::new(vec![0; 8]));
+		let million_slot_ring_pages = 1_000_000u64.div_ceil(FREE_PAGE_SLOTS);
+		for page in 0..million_slot_ring_pages {
+			for partition in [None, Some(Partition(1))] {
+				txn.set(vec![(
+					RingBufferFreeKey::of(storage, partition, page).into(),
+					page_bytes.clone(),
+				)])
+				.unwrap();
+			}
+		}
+		CatalogStore::drop_ringbuffer(&mut txn, created.id).unwrap();
+
+		let left = txn
+			.range(RingBufferFreeKey::full_scan_for_storage(storage), RangeScope::All, 1024)
+			.unwrap()
+			.count();
+		assert_eq!(left, 0, "every free page must go");
+		assert!(
+			(txn.cmd.as_ref().unwrap().pending_writes().len() as u64) < 1_000_000,
+			"a million slot ring must drop inside one transaction"
+		);
 	}
 }
