@@ -46,9 +46,25 @@ struct MemoEntry {
 	loaded: Loaded,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct CommitLoaderMetrics {
+	scope: &'static str,
 	inner: Arc<CommitLoaderMetricsInner>,
+}
+
+impl CommitLoaderMetrics {
+	pub fn new(scope: &'static str) -> Self {
+		Self {
+			scope,
+			inner: Arc::default(),
+		}
+	}
+}
+
+impl Default for CommitLoaderMetrics {
+	fn default() -> Self {
+		Self::new("commit_loader")
+	}
 }
 
 #[derive(Default)]
@@ -60,14 +76,10 @@ struct CommitLoaderMetricsInner {
 
 impl MetricsCollector for CommitLoaderMetrics {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::counter("commit_loader", "loads", self.inner.loads.load(Ordering::Relaxed)));
-		out.push(MetricsSample::counter(
-			"commit_loader",
-			"memo_hits",
-			self.inner.memo_hits.load(Ordering::Relaxed),
-		));
+		out.push(MetricsSample::counter(self.scope, "loads", self.inner.loads.load(Ordering::Relaxed)));
+		out.push(MetricsSample::counter(self.scope, "memo_hits", self.inner.memo_hits.load(Ordering::Relaxed)));
 		out.push(MetricsSample::cumulative(
-			"commit_loader",
+			self.scope,
 			"bytes_loaded",
 			Reading::Bytes(ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed))),
 		));

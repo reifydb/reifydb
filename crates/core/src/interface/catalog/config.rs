@@ -81,6 +81,7 @@ pub enum ConfigKey {
 	CommitQueueBytes,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
+	SubscriptionLoadBatchBytes,
 	SubscriptionWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
@@ -137,6 +138,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
+			Self::SubscriptionLoadBatchBytes,
 			Self::SubscriptionWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
@@ -219,6 +221,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
+			Self::SubscriptionLoadBatchBytes => Value::Uint8(default::subscription::LOAD_BATCH.as_bytes()),
 			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC),
@@ -301,6 +304,9 @@ impl ConfigKey {
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
+			Self::SubscriptionLoadBatchBytes => {
+				Value::Uint8(default::subscription::LOAD_BATCH_TESTING.as_bytes())
+			}
 			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT_TESTING),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE_TESTING),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC_TESTING),
@@ -490,6 +496,11 @@ impl ConfigKey {
 				"Byte budget of one catch-up loader read from the commit log on behalf of flows that are \
 				 behind the in-memory commit queue. Identical concurrent requests share a single read."
 			}
+			Self::SubscriptionLoadBatchBytes => {
+				"Byte budget of one catch-up loader read from the commit log on behalf of the subscription \
+				 reader when it is behind the in-memory commit queue. A read always returns at least one \
+				 commit, so a commit larger than this budget still loads."
+			}
 			Self::SubscriptionWaitTimeout => {
 				"Backstop timeout for the subscription reader's wait for a dispatch reply from the \
 				 subscription workers. A lost reply would otherwise wedge the reader forever; on timeout the \
@@ -603,6 +614,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
+			Self::SubscriptionLoadBatchBytes => true,
 			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
@@ -659,6 +671,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
+			Self::SubscriptionLoadBatchBytes => &[ValueType::Uint8],
 			Self::SubscriptionWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
@@ -715,6 +728,7 @@ impl ConfigKey {
 			Self::CommitQueueBytes => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
+			Self::SubscriptionLoadBatchBytes => false,
 			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
@@ -782,6 +796,10 @@ impl ConfigKey {
 			},
 			Self::FlowLoadBatchBytes => match value {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::SubscriptionLoadBatchBytes => match value {
+				Value::Uint8(0) => Err("SUBSCRIPTION_LOAD_BATCH_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::MultiPointBufferTotalBytes => match value {
@@ -1062,6 +1080,7 @@ impl fmt::Display for ConfigKey {
 			Self::CommitQueueBytes => write!(f, "COMMIT_QUEUE_BYTES"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
+			Self::SubscriptionLoadBatchBytes => write!(f, "SUBSCRIPTION_LOAD_BATCH_BYTES"),
 			Self::SubscriptionWaitTimeout => write!(f, "SUBSCRIPTION_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
@@ -1122,6 +1141,7 @@ impl FromStr for ConfigKey {
 			"COMMIT_QUEUE_BYTES" => Ok(Self::CommitQueueBytes),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
+			"SUBSCRIPTION_LOAD_BATCH_BYTES" => Ok(Self::SubscriptionLoadBatchBytes),
 			"SUBSCRIPTION_WAIT_TIMEOUT" => Ok(Self::SubscriptionWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
@@ -1315,7 +1335,8 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 52);
+		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));

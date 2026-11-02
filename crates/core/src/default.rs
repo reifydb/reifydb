@@ -45,7 +45,10 @@ pub mod retention {
 }
 
 pub mod subscription {
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+
+	pub const LOAD_BATCH: ByteSize = ByteSize::from_mib(8);
+	pub const LOAD_BATCH_TESTING: ByteSize = ByteSize::from_kib(16);
 
 	pub const WAIT_TIMEOUT: Duration = Duration::from_seconds_const(30);
 	pub const WAIT_TIMEOUT_TESTING: Duration = Duration::from_seconds_const(30);

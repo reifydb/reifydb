@@ -320,6 +320,24 @@ pub struct FlowQueueFloor(pub CommitQueueFloor);
 #[derive(Clone)]
 pub struct SubscriptionQueueFloor(pub CommitQueueFloor);
 
+pub fn lsn_through(
+	entries: &[Arc<CommitEntry>],
+	through: CommitVersion,
+	floor: Lsn,
+	frontier: (CommitVersion, Lsn),
+) -> Lsn {
+	let lsn = entries
+		.iter()
+		.filter(|entry| entry.version.commit <= through)
+		.map(|entry| entry.lsn)
+		.fold(floor, Lsn::max);
+	if through >= frontier.0 {
+		lsn.max(frontier.1)
+	} else {
+		lsn
+	}
+}
+
 #[inline]
 fn next_version(version: CommitVersion) -> CommitVersion {
 	CommitVersion(version.0.saturating_add(1))

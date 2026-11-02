@@ -18,6 +18,7 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	commit::{
+		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		queue::{CommitQueue, SubscriptionQueueFloor},
 		watermark::ReaderWatermark,
 	},
@@ -29,6 +30,7 @@ use reifydb_core::{
 		subscription::SubscriptionWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
@@ -47,8 +49,12 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_transaction::{
+	interceptor::builder::InterceptorBuilder,
+	wal::{CommitWal, WalCommitLog},
+};
 use reifydb_value::Result;
+use reifydb_wal::lsn::Lsn;
 
 use self::{
 	inspect::SubscriptionInspectorImpl,
@@ -64,11 +70,21 @@ use crate::{
 	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage, worker_name},
 };
 
+const SUBSCRIPTION_READER: &str = "subscription";
+
+fn oldest_lsn_floor(wal: &CommitWal) -> Lsn {
+	let cursors = wal.cursors().unwrap_or_else(|err| {
+		panic!("commit log cursors could not be read for the subscription reader: {err}")
+	});
+	cursors.start.map_or(Lsn::new(0), |start| Lsn::new(start.as_u64() - 1))
+}
+
 pub struct SubscriptionSubsystem {
 	reader: Mutex<Option<ActorHandle<SubscriptionReaderMessage>>>,
 	state: Arc<SubscriptionState>,
 	running: AtomicBool,
 	_worker_handles: Mutex<Vec<ActorHandle<SubscriptionWorkerMessage>>>,
+	_loader_handle: CommitLoaderHandle,
 }
 
 impl SubscriptionSubsystem {
@@ -82,6 +98,7 @@ impl SubscriptionSubsystem {
 		consumer_watermark: ReaderWatermark,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
+		loader_metrics: CommitLoaderMetrics,
 	) -> Result<Self> {
 		let catalog = engine.catalog();
 		let multi = engine.multi_owned();
@@ -116,6 +133,12 @@ impl SubscriptionSubsystem {
 
 		let SubscriptionQueueFloor(floor) = floor;
 		let start = engine.current_version()?;
+		let wal = engine.multi().wal().clone();
+		let start_lsn = oldest_lsn_floor(&wal);
+		let loader_handle = spawner.spawn_coordination(
+			"sub-subscription-loader",
+			CommitLoader::new(Arc::new(WalCommitLog::new(wal, SUBSCRIPTION_READER)), loader_metrics),
+		);
 		let reader_ref = Arc::new(OnceLock::<ActorRef<SubscriptionReaderMessage>>::new());
 		let wake_ref = reader_ref.clone();
 		floor.adopt(start, move || {
@@ -123,8 +146,16 @@ impl SubscriptionSubsystem {
 				let _ = reader_ref.send(SubscriptionReaderMessage::Wake);
 			}
 		});
-		let reader =
-			SubscriptionReader::new(engine, queue, floor.clone(), cdc_consumer, consumer_watermark, start);
+		let reader = SubscriptionReader::new(
+			engine,
+			queue,
+			floor.clone(),
+			cdc_consumer,
+			consumer_watermark,
+			start,
+			start_lsn,
+			loader_handle.actor_ref().clone(),
+		);
 		let handle = spawner.spawn_coordination("sub-subscription-reader", reader);
 		let _ = reader_ref.set(handle.actor_ref().clone());
 
@@ -133,6 +164,7 @@ impl SubscriptionSubsystem {
 			state,
 			running: AtomicBool::new(true),
 			_worker_handles: Mutex::new(worker_handles),
+			_loader_handle: loader_handle,
 		})
 	}
 
@@ -286,6 +318,9 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			move || compute_subscription_watermarks(&source_tracker, &position_tracker, &store)
 		}));
 
+		let loader_metrics = CommitLoaderMetrics::new("subscription_loader");
+		ioc.resolve::<MetricsRegistry>()?.register_collector(Arc::new(loader_metrics.clone()));
+
 		let subsystem = SubscriptionSubsystem::new(
 			engine,
 			queue,
@@ -295,6 +330,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			consumer_watermark,
 			source_tracker,
 			position_tracker,
+			loader_metrics,
 		)?;
 
 		let service = subsystem.service_handle();

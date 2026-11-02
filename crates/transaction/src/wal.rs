@@ -660,23 +660,24 @@ impl CommitLog for WalCommitLog {
 	fn read(&self, after: (CommitVersion, Lsn), up_to: CommitVersion, budget: ByteSize) -> Result<Loaded> {
 		let (cursor, lsn) = after;
 		let from = Lsn::new(lsn.as_u64() + 1);
-		let records = self.wal.replay(from).unwrap_or_else(|err| match err {
-			WalError::Purged {
+		let records = match self.wal.replay(from) {
+			Ok(records) => records,
+			Err(WalError::Purged {
+				requested,
 				oldest,
-				..
-			} => panic!(
-				"the {} reader is at lsn {} but the commit log starts at lsn {}: gc dropped commits the \
-				 reader never read",
-				self.reader,
-				lsn.as_u64(),
-				oldest.as_u64()
-			),
-			err => panic!(
+			}) => {
+				return Err(TransactionError::CommitLogPurged {
+					requested,
+					oldest,
+				}
+				.into());
+			}
+			Err(err) => panic!(
 				"commit log read for the {} reader after lsn {} failed to start: {err}",
 				self.reader,
 				lsn.as_u64()
 			),
-		});
+		};
 		let budget = budget.as_bytes().max(1);
 		let mut entries: Vec<Arc<CommitEntry>> = Vec::new();
 		let mut taken = 0u64;

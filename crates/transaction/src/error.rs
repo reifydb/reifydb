@@ -6,6 +6,7 @@ use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 };
+use reifydb_wal::lsn::Lsn;
 
 use crate::dictionary::error::DictionaryError;
 
@@ -67,14 +68,25 @@ pub enum TransactionError {
 		limit: u64,
 	},
 
+	#[error("Commit log no longer holds lsn {}; it starts at lsn {}", requested.as_u64(), oldest.as_u64())]
+	CommitLogPurged {
+		requested: Lsn,
+		oldest: Lsn,
+	},
+
 	#[error(transparent)]
 	Dictionary(#[from] DictionaryError),
 }
 
 impl TransactionError {
+	pub const COMMIT_LOG_PURGED: &'static str = "TXN_023";
 	pub const CONSUMER_OVERTAKEN: &'static str = "TXN_016";
 	pub const SHUTTING_DOWN: &'static str = "TXN_014";
 	pub const SNAPSHOT_EVICTED: &'static str = "TXN_012";
+
+	pub fn is_commit_log_purged(error: &Error) -> bool {
+		error.0.code == Self::COMMIT_LOG_PURGED
+	}
 
 	pub fn is_consumer_overtaken(error: &Error) -> bool {
 		error.0.code == Self::CONSUMER_OVERTAKEN
@@ -281,6 +293,26 @@ impl IntoDiagnostic for TransactionError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("Split the transaction into smaller batches".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::CommitLogPurged {
+				requested,
+				oldest,
+			} => Diagnostic {
+				code: TransactionError::COMMIT_LOG_PURGED.to_string(),
+				rql: None,
+				message: format!(
+					"Commit log no longer holds lsn {}; it starts at lsn {}",
+					requested.as_u64(),
+					oldest.as_u64()
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("The reader fell behind what the log keeps; its subscribers must resubscribe".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

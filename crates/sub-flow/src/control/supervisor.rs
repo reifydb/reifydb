@@ -15,7 +15,7 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
 		loader::CommitLoaderMessage,
-		queue::{CommitPull, CommitQueue, CommitQueueFloor},
+		queue::{CommitPull, CommitQueue, CommitQueueFloor, lsn_through},
 		watermark::ReaderWatermark,
 	},
 	common::{CommitVersion, SourceVersion},
@@ -59,10 +59,7 @@ use tracing::{debug, error};
 
 use crate::{
 	builder::CustomOperators,
-	commit::{
-		committer::{CommitterMessage, FlowSlice, SliceCommitReply},
-		slice::lsn_through,
-	},
+	commit::committer::{CommitterMessage, FlowSlice, SliceCommitReply},
 	control::{
 		actor::{FlowActor, FlowActorParams},
 		health::{FlowHealthRegistry, StallWatch},

@@ -7,6 +7,7 @@ use arrow_array::{Array, RecordBatch, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::queue::lsn_through,
 	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::View},
@@ -485,24 +486,6 @@ fn tag_dictionaries(view: &View, columns: &RecordBatch) -> Result<RecordBatch> {
 
 fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, config: &SliceConfig) -> bool {
 	advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag
-}
-
-pub(crate) fn lsn_through(
-	entries: &[Arc<CommitEntry>],
-	through: CommitVersion,
-	floor: Lsn,
-	frontier: (CommitVersion, Lsn),
-) -> Lsn {
-	let lsn = entries
-		.iter()
-		.filter(|entry| entry.version.commit <= through)
-		.map(|entry| entry.lsn)
-		.fold(floor, Lsn::max);
-	if through >= frontier.0 {
-		lsn.max(frontier.1)
-	} else {
-		lsn
-	}
 }
 
 pub(crate) fn cuts_per_source(has_readers: bool, source_objects: &BTreeSet<ObjectId>) -> bool {
