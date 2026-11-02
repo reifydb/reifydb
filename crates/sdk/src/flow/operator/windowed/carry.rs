@@ -111,28 +111,15 @@ where
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						if A::UPDATE_PRE_RETRACTS {
-							let before = extract_rows(
-								&self.aggregator,
-								ctx,
-								&pre,
-								&all_rows(&pre),
-							)?;
-							let after = extract_rows(
-								&self.aggregator,
-								ctx,
-								&post,
-								&all_rows(&post),
-							)?;
-							let straddled =
-								straddling::<A>(&before, &after, horizon, |coord| {
-									self.window_span(coord).start
-								});
-							self.push_extracted(before, &straddled, &mut buckets, false);
-							self.push_extracted(after, &straddled, &mut buckets, true);
-						} else {
-							self.push_all(ctx, &post, &mut buckets, true)?;
-						}
+						let before =
+							extract_rows(&self.aggregator, ctx, &pre, &all_rows(&pre))?;
+						let after =
+							extract_rows(&self.aggregator, ctx, &post, &all_rows(&post))?;
+						let straddled = straddling::<A>(&before, &after, horizon, |coord| {
+							self.window_span(coord).start
+						});
+						self.push_extracted(before, &straddled, &mut buckets, false);
+						self.push_extracted(after, &straddled, &mut buckets, true);
 					}
 				}
 				DiffType::Remove => {

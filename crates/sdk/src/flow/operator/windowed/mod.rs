@@ -253,19 +253,6 @@ where
 					continue;
 				};
 				let after = extract_all(aggregator, ctx, &post)?;
-				if !A::UPDATE_PRE_RETRACTS {
-					for (row, coord, group, contribution) in after {
-						push(
-							group,
-							PaneEvent::Insert(
-								bucket_of(coord, pane),
-								post.row_numbers()[row].0,
-								contribution,
-							),
-						);
-					}
-					continue;
-				}
 				let mut before: BTreeMap<usize, (A::Coord, A::GroupKey, Contribution<A>)> =
 					extract_all(aggregator, ctx, &pre)?
 						.into_iter()
