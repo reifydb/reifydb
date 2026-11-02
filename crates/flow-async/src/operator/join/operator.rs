@@ -27,7 +27,7 @@ use reifydb_core::{
 	row::JoinPick,
 	state::timer::TimerKind,
 	value::{
-		batch::empty_batch,
+		batch::{empty_batch, filter},
 		column::{factory::none, key::value_key_hashes},
 	},
 };
@@ -74,8 +74,9 @@ use crate::{
 		row_times,
 		state::{
 			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
-			seal::{ledger::FiredAt, rule::SealRule},
+			seal::{domain::SealDomain, ledger::FiredAt, rule::SealRule},
 		},
+		time_at_or_after,
 	},
 	timer::Timer,
 	transaction::join_expiry::{DueStart, JoinDueEntry, join_expiry_range},
@@ -401,6 +402,24 @@ impl JoinOperator {
 			cleared.push((group, row_numbers[row_idx]));
 		}
 		self.move_join_expiries(host, side, &cleared, &[])
+	}
+
+	fn drop_sealed_updates(
+		&self,
+		host: &mut dyn HostContext,
+		side: JoinSide,
+		pre: RecordBatch,
+		post: RecordBatch,
+	) -> Result<(RecordBatch, RecordBatch)> {
+		let (Some(retention), Some(frontier)) = (self.retention_of(side), host.flow_watermark()?) else {
+			return Ok((pre, post));
+		};
+		let horizon = <DateTime as SealDomain>::horizon(frontier, retention);
+		let kept = time_at_or_after(&post, horizon)?;
+		if kept.false_count() == 0 {
+			return Ok((pre, post));
+		}
+		Ok((filter(&pre, kept.values())?, filter(&post, kept.values())?))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -976,7 +995,17 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
-					self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?
+					let (pre, post) = self.drop_sealed_updates(host, side, pre, post)?;
+					if post.num_rows() > 0 {
+						self.apply_join_update(
+							host,
+							&pre,
+							&post,
+							side,
+							&mut state,
+							&mut result,
+						)?
+					}
 				}
 			}
 		}

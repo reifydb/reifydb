@@ -5,9 +5,8 @@ use std::{
 	slice::from_ref,
 };
 
-use arrow_array::{Array, BooleanArray, RecordBatch, Scalar, TimestampNanosecondArray};
-use arrow_ord::cmp::{eq, gt_eq};
-use arrow_schema::DataType;
+use arrow_array::RecordBatch;
+use arrow_ord::cmp::eq;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
@@ -21,13 +20,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::Hash128,
-	value::{
-		Value,
-		datetime::DateTime,
-		duration::Duration,
-		row_number::RowNumber,
-		system_columns::{SystemColumn, system_column},
-	},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 use tracing::{Span, instrument};
 
@@ -58,6 +51,7 @@ use crate::{
 			},
 		},
 		state_access::get_classified,
+		time_at_or_after,
 	},
 	timer::Timer,
 	window::{
@@ -106,17 +100,8 @@ fn drop_straddling(
 	post: &RecordBatch,
 	open_from: DateTime,
 ) -> Result<(RecordBatch, RecordBatch, usize)> {
-	let open = |batch: &RecordBatch| -> Result<BooleanArray> {
-		let times = system_column(batch, SystemColumn::Time).expect("a windowed batch carries its event time");
-		let zone = match times.data_type() {
-			DataType::Timestamp(_, zone) => zone.clone(),
-			_ => None,
-		};
-		let threshold =
-			Scalar::new(TimestampNanosecondArray::from(vec![open_from.to_nanos()]).with_timezone_opt(zone));
-		gt_eq(times, &threshold).map_err(|err| Error(Box::new(internal!(err.to_string()))))
-	};
-	let kept = eq(&open(pre)?, &open(post)?).map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
+	let kept = eq(&time_at_or_after(pre, open_from)?, &time_at_or_after(post, open_from)?)
+		.map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
 	let dropped = kept.false_count();
 	if dropped == 0 {
 		return Ok((pre.clone(), post.clone(), 0));

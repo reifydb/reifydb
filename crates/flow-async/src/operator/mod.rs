@@ -5,18 +5,21 @@ use std::sync::Arc;
 
 use arrow_arith::aggregate::max;
 #[cfg(feature = "runtime")]
-use arrow_array::Array;
+use arrow_arith::boolean::{is_null, or};
+#[cfg(feature = "runtime")]
+use arrow_array::{Array, BooleanArray, Scalar};
 use arrow_array::{ArrayRef, RecordBatch, TimestampNanosecondArray};
 #[cfg(feature = "runtime")]
-use arrow_schema::SchemaRef;
+use arrow_ord::cmp::gt_eq;
+#[cfg(feature = "runtime")]
+use arrow_schema::{DataType, SchemaRef};
 use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	internal,
 	metrics::heap::OperatorSample,
 };
-#[cfg(feature = "runtime")]
-use reifydb_value::value::{container::temporal_array::datetimes, duration::Duration};
 use reifydb_value::{
 	Result,
 	value::{
@@ -25,6 +28,11 @@ use reifydb_value::{
 		datetime::DateTime,
 		system_columns::{SystemColumn, column_view, system_column, with_system_column},
 	},
+};
+#[cfg(feature = "runtime")]
+use reifydb_value::{
+	error::Error,
+	value::{container::temporal_array::datetimes, duration::Duration},
 };
 
 #[cfg(feature = "runtime")]
@@ -185,6 +193,21 @@ pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> 
 			.collect()),
 		_ => internal_err!("system column #time holds {}", view.base_type()),
 	}
+}
+
+#[cfg(feature = "runtime")]
+pub(crate) fn time_at_or_after(batch: &RecordBatch, from: DateTime) -> Result<BooleanArray> {
+	let Some(times) = system_column(batch, SystemColumn::Time) else {
+		return Ok(BooleanArray::from(vec![true; batch.num_rows()]));
+	};
+	let zone = match times.data_type() {
+		DataType::Timestamp(_, zone) => zone.clone(),
+		_ => None,
+	};
+	let threshold = Scalar::new(TimestampNanosecondArray::from(vec![from.to_nanos()]).with_timezone_opt(zone));
+	let open = gt_eq(times, &threshold).map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
+	or(&open, &is_null(times).map_err(|err| Error(Box::new(internal!(err.to_string()))))?)
+		.map_err(|err| Error(Box::new(internal!(err.to_string()))))
 }
 
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
