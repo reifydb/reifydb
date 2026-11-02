@@ -616,12 +616,14 @@ fn a_flow_that_keeps_writing_while_its_state_is_staged_still_lands_its_checkpoin
 	let buffer = Resident::new();
 	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
 	let writer = buffer.clone();
-	buffer.set_stage_interlock(Box::new(move || writer.apply_batch(&[insert(OP_A, "k1", "v2")])));
+	buffer.set_stage_interlock(Box::new(move || {
+		writer.apply_batch_with_checkpoints(&[insert(OP_A, "k1", "v2")], &[], &[], None)
+	}));
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 	assert_eq!(
 		first.checkpoints.get(&FLOW_A).copied(),
-		Some(Some(CommitVersion(10))),
+		Some(Some(checkpoint_at(10))),
 		"every write at or below version 10 was staged, so the checkpoint must not wait for an idle flow"
 	);
 	assert_eq!(
