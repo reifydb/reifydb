@@ -29,6 +29,7 @@ use reifydb_core::{
 		progress::Progress,
 		task::LifecycleTask,
 	},
+	retry::is_conflict,
 	ring::Ring,
 	row::Ttl,
 	state::horizon::Cutoff,
@@ -43,6 +44,7 @@ use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	Result,
+	error::Error,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
 		row_number::RowNumber,
@@ -72,6 +74,26 @@ impl EvictorState {
 	fn forget(&mut self, storage: StorageId) {
 		self.cursors.retain(|key, _| key.0 != storage);
 		self.expiry_cursors.retain(|key, _| key.0 != storage);
+	}
+
+	fn record_failure(&mut self, storage: StorageId, error: &Error, budget: &mut u64, tally: &mut ClassTally) {
+		if is_conflict(error) {
+			debug!(?storage, "retention eviction conflicted; retrying next tick");
+			self.forget(storage);
+			*budget = budget.saturating_sub(1);
+			tally.backlog += 1;
+			return;
+		}
+		let failures = self.failures.entry(storage).or_default();
+		*failures += 1;
+		if *failures >= EVICT_CONSECUTIVE_FAILURE_LIMIT {
+			panic!(
+				"retention eviction failed {failures} consecutive times for storage {storage:?}: {error}"
+			);
+		}
+		warn!(?storage, failures = *failures, error = %error, "retention eviction failed; resetting cursors, retrying next tick");
+		self.forget(storage);
+		*budget = budget.saturating_sub(1);
 	}
 }
 
@@ -167,18 +189,7 @@ impl Evictor {
 				Ok(()) => {
 					state.failures.remove(&storage);
 				}
-				Err(e) => {
-					let failures = state.failures.entry(storage).or_default();
-					*failures += 1;
-					if *failures >= EVICT_CONSECUTIVE_FAILURE_LIMIT {
-						panic!(
-							"retention eviction failed {failures} consecutive times for storage {storage:?}: {e}"
-						);
-					}
-					warn!(?storage, failures = *failures, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
-					state.forget(storage);
-					budget = budget.saturating_sub(1);
-				}
+				Err(e) => state.record_failure(storage, &e, &mut budget, &mut tally),
 			}
 
 			tally.rows += stats.rows_expired - expired_before;
@@ -793,7 +804,7 @@ mod tests {
 	};
 	use reifydb_runtime::version_epoch::EpochSpan;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::multi::RangeScope;
+	use reifydb_transaction::{error::TransactionError, multi::RangeScope};
 	use reifydb_value::{
 		params,
 		value::{Value, duration::Duration as ValueDuration},
@@ -1406,6 +1417,73 @@ mod tests {
 
 		tick_now(&test, &mut state, RetentionClass::RowTtl);
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
+	}
+
+	fn conflict() -> Error {
+		TransactionError::Conflict.into()
+	}
+
+	fn unexpected() -> Error {
+		TransactionError::TooLarge.into()
+	}
+
+	fn storage() -> StorageId {
+		StorageId::RingBuffer(RingBufferId(1))
+	}
+
+	fn fail(state: &mut EvictorState, error: Error) -> (u64, ClassTally) {
+		let mut budget = 8;
+		let mut tally = ClassTally::default();
+		state.record_failure(storage(), &error, &mut budget, &mut tally);
+		(budget, tally)
+	}
+
+	#[test]
+	fn conflicts_never_reach_the_failure_limit() {
+		// A conflict is expected under write load, so a busy ring must not stop the process however long it
+		// lasts.
+		let mut state = EvictorState::default();
+		for _ in 0..EVICT_CONSECUTIVE_FAILURE_LIMIT * 2 {
+			fail(&mut state, conflict());
+		}
+		assert!(state.failures.is_empty(), "a conflict must not count toward the panic");
+	}
+
+	#[test]
+	#[should_panic(expected = "retention eviction failed 5 consecutive times")]
+	fn any_other_repeated_error_still_panics_at_the_limit() {
+		// Only the conflict is expected; absorbing any other error would keep eviction running on wrong data.
+		let mut state = EvictorState::default();
+		for _ in 0..EVICT_CONSECUTIVE_FAILURE_LIMIT {
+			fail(&mut state, unexpected());
+		}
+	}
+
+	#[test]
+	fn a_conflict_neither_raises_nor_clears_the_count_of_other_errors() {
+		// A conflict must leave the count alone: clearing hides a repeating real failure, raising lets load
+		// trip the panic.
+		let mut state = EvictorState::default();
+		for _ in 0..EVICT_CONSECUTIVE_FAILURE_LIMIT - 1 {
+			fail(&mut state, unexpected());
+		}
+		fail(&mut state, conflict());
+		assert_eq!(state.failures[&storage()], EVICT_CONSECUTIVE_FAILURE_LIMIT - 1);
+	}
+
+	#[test]
+	fn a_conflict_reports_backlog_spends_budget_and_forgets_cursors() {
+		// Without the backlog a starving ring reads as idle; a kept cursor would skip rows the rollback left
+		// behind.
+		let mut state = EvictorState::default();
+		let cursor_key = (storage(), EncodedKey::new([1u8]));
+		state.expiry_cursors.insert(cursor_key.clone(), (DateTime::default(), EncodedKey::new([1u8])));
+
+		let (budget, tally) = fail(&mut state, conflict());
+
+		assert_eq!(tally.backlog, 1);
+		assert_eq!(budget, 7);
+		assert!(!state.expiry_cursors.contains_key(&cursor_key));
 	}
 
 	#[test]
