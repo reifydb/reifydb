@@ -404,13 +404,13 @@ impl JoinOperator {
 		self.move_join_expiries(host, side, &cleared, &[])
 	}
 
-	fn drop_sealed_updates(
+	fn drop_sealed(
 		&self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
-		pre: RecordBatch,
+		pre: Option<RecordBatch>,
 		post: RecordBatch,
-	) -> Result<(RecordBatch, RecordBatch)> {
+	) -> Result<(Option<RecordBatch>, RecordBatch)> {
 		let (Some(retention), Some(frontier)) = (self.retention_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
@@ -419,7 +419,8 @@ impl JoinOperator {
 		if kept.false_count() == 0 {
 			return Ok((pre, post));
 		}
-		Ok((filter(&pre, kept.values())?, filter(&post, kept.values())?))
+		let pre = pre.map(|pre| filter(&pre, kept.values())).transpose()?;
+		Ok((pre, filter(&post, kept.values())?))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -980,7 +981,10 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let post = self.entry(host, side, post)?;
-					self.apply_join_insert(host, &post, side, &mut state, &mut result)?
+					let (_, post) = self.drop_sealed(host, side, None, post)?;
+					if post.num_rows() > 0 {
+						self.apply_join_insert(host, &post, side, &mut state, &mut result)?
+					}
 				}
 				Diff::Remove {
 					pre,
@@ -995,8 +999,10 @@ impl HostOperator for JoinOperator {
 					..
 				} => {
 					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
-					let (pre, post) = self.drop_sealed_updates(host, side, pre, post)?;
-					if post.num_rows() > 0 {
+					let (pre, post) = self.drop_sealed(host, side, Some(pre), post)?;
+					if let Some(pre) = pre
+						&& post.num_rows() > 0
+					{
 						self.apply_join_update(
 							host,
 							&pre,

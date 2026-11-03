@@ -325,6 +325,24 @@ fn an_emptied_rolling_window_withdraws_its_row() {
 }
 
 #[test]
+fn a_row_pushing_a_sealed_row_out_of_a_full_ring_reaches_its_live_pane() {
+	// the removed pane is already past the window, so the insert must still land, otherwise the live row is lost.
+	let mut h = harness!(SumAnyKind, rolling(5_000, Some(1), 500)).expect("harness");
+	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1_000, 5.0)).build()).expect("apply");
+	h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2_000, 10.0)).build()).expect("apply");
+
+	let out = h
+		.apply(TestChangeBuilder::new()
+			.remove(input_row(1, "BTC", 1_000, 5.0))
+			.insert(input_row(1, "BTC", 8_000, 7.0))
+			.build())
+		.expect("apply");
+
+	let last = render(&out).last().map(|(kind, sum, ..)| (*kind, *sum));
+	assert_eq!(last, Some((DiffType::Update, 7.0)), "emitted: {:?}", render(&out));
+}
+
+#[test]
 fn groups_roll_independently() {
 	// The row key is the group alone; a shared key would merge two groups into one row.
 	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 3_600_000)).expect("harness");
