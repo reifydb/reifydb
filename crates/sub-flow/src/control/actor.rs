@@ -2532,7 +2532,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn only_the_capacity_overwrite_of_the_three_changes_survives_the_lift() {
+	fn only_the_capacity_overwrite_of_the_three_changes_survives_the_lift_as_a_remove_then_an_insert() {
 		let h = capacity_ring_harness();
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
@@ -2636,18 +2636,35 @@ mod pull_protocol {
 			.flat_map(|change| change.diffs)
 			.collect();
 
-		assert_eq!(lifted.len(), 1, "the lift must carry exactly the overwrite and drop both ttl expiries");
-		let Diff::Update {
+		assert_eq!(
+			lifted.len(),
+			2,
+			"the lift must carry the overwrite as a remove then an insert and drop both ttl expiries"
+		);
+		let slot = tagged_row_target(&overwrites[0]).expect("row target").row;
+		let Diff::Remove {
 			pre,
 			..
 		} = &lifted[0]
 		else {
-			panic!("the overwrite must lift as an update, got {lifted:?}");
+			panic!("the overwrite must lift as a remove first, got {lifted:?}");
 		};
 		assert_eq!(
 			row_numbers(pre).expect("#rownum").to_vec(),
-			vec![tagged_row_target(&overwrites[0]).expect("row target").row],
-			"the lifted update names the overwritten slot"
+			vec![slot],
+			"the lifted remove names the overwritten slot"
+		);
+		let Diff::Insert {
+			post,
+			..
+		} = &lifted[1]
+		else {
+			panic!("the overwrite must lift as an insert second, got {lifted:?}");
+		};
+		assert_eq!(
+			row_numbers(post).expect("#rownum").to_vec(),
+			vec![slot],
+			"the lifted insert names the same slot"
 		);
 		drop(actor);
 	}
