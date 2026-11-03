@@ -511,12 +511,7 @@ impl FlowSupervisor {
 
 	fn advance_flow_floor(&self, state: &mut SupervisorState) {
 		let operators = self.engine.operator_state();
-		let (floor, waiting) = flow_lsn_floor(
-			&operators,
-			state.scan_lsn,
-			|flow_id| state.flows.contains_key(&flow_id),
-			take(&mut state.start_lsns),
-		);
+		let (floor, waiting) = flow_lsn_floor(&operators, state.scan_lsn, take(&mut state.start_lsns));
 		state.start_lsns = waiting;
 		if floor > Lsn::new(0) {
 			self.floor.advance(floor);
@@ -624,6 +619,7 @@ impl FlowSupervisor {
 			if retired {
 				changed = true;
 			}
+			state.start_lsns.remove(flow_id);
 			state.sources.remove(flow_id);
 			state.stall_watches.remove(flow_id);
 			self.health.clear(*flow_id);
@@ -1262,15 +1258,11 @@ impl Actor for FlowSupervisor {
 fn flow_lsn_floor(
 	operators: &OperatorStore,
 	scan_lsn: Lsn,
-	live: impl Fn(FlowId) -> bool,
 	start_lsns: BTreeMap<FlowId, Lsn>,
 ) -> (Lsn, BTreeMap<FlowId, Lsn>) {
 	let mut floor = scan_lsn;
 	let mut waiting = BTreeMap::new();
 	for (flow_id, lsn) in start_lsns {
-		if !live(flow_id) {
-			continue;
-		}
 		match operators.checkpoint_get(flow_id) {
 			Ok(Some(_)) => {}
 			Ok(None) => {
@@ -1383,6 +1375,20 @@ mod tests {
 	}
 
 	#[test]
+	fn a_flow_stopped_for_a_reform_keeps_its_start_lsn_in_the_floor_until_it_checkpoints() {
+		// Absent from the live map is not gone: its backfill checkpoint lands after the stop, below the scan
+		// lsn.
+		let store = OperatorStore::testing_memory();
+		let flow = FlowId(7);
+		let start_lsns = BTreeMap::from([(flow, Lsn::new(100))]);
+
+		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), start_lsns);
+
+		assert_eq!(floor, Lsn::new(100), "the floor must stay at the start lsn of a flow with no checkpoint");
+		assert_eq!(waiting.get(&flow), Some(&Lsn::new(100)), "the start lsn must be kept for the next round");
+	}
+
+	#[test]
 	fn a_first_checkpoint_landing_between_the_floor_reads_never_lets_the_floor_pass_it() {
 		// A checkpoint in neither floor term lets gc drop records its flow still needs, and a floor never moves
 		// back.
@@ -1403,7 +1409,7 @@ mod tests {
 		});
 		let start_lsns = BTreeMap::from([(flow, Lsn::new(100))]);
 
-		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), |_| true, start_lsns);
+		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), start_lsns);
 
 		assert!(
 			floor <= Lsn::new(150),

@@ -121,6 +121,17 @@ impl SliceComputer {
 		once(head).chain(self.members.iter().map(|(flow, _)| *flow)).collect()
 	}
 
+	fn unit_checkpoints(&self, head: FlowId, checkpoint: FlowCheckpoint) -> Result<Vec<(FlowId, FlowCheckpoint)>> {
+		let operators = self.engine.operator_state();
+		let mut checkpoints = vec![(head, checkpoint)];
+		for (member, _) in self.members.iter() {
+			let stored = operators.checkpoint_get(*member)?;
+			let kept = stored.filter(|stored| stored.version > checkpoint.version).unwrap_or(checkpoint);
+			checkpoints.push((*member, kept));
+		}
+		Ok(checkpoints)
+	}
+
 	fn unit_frontiers(&self, flow_engine: &FlowEngineInner, head: FlowId, version: CommitVersion) -> Vec<Frontier> {
 		self.unit_ids(head)
 			.into_iter()
@@ -236,11 +247,7 @@ impl SliceComputer {
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
 				combined,
-				checkpoints: self
-					.unit_ids(cursor.flow_id)
-					.into_iter()
-					.map(|flow| (flow, checkpoint))
-					.collect(),
+				checkpoints: self.unit_checkpoints(cursor.flow_id, checkpoint)?,
 				checkpoint_deletes: Vec::new(),
 				emitted,
 				source,
@@ -274,7 +281,7 @@ impl SliceComputer {
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = folded;
-		slice.checkpoints.extend(self.unit_ids(flow_id).into_iter().map(|flow| (flow, checkpoint)));
+		slice.checkpoints = self.unit_checkpoints(flow_id, checkpoint)?;
 		Ok(SliceStep::Commit {
 			slice,
 			advance_to,
