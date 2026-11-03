@@ -71,13 +71,15 @@ use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
+#[cfg(feature = "sub_flow")]
+use reifydb_transaction::wal::flow_wal;
 use reifydb_transaction::{
 	TransactionVersion,
 	commit::{CommitBegin, CommitHandle},
 	interceptor::builder::InterceptorBuilder,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CommitLogMetrics, flow_wal},
+	wal::CommitLogMetrics,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -423,7 +425,10 @@ impl DatabaseBuilder {
 		{
 			self.ioc = self.ioc.register(SubscriptionQueueFloor(commit_queue.floor("subscription")));
 		}
-		self.ioc = self.ioc.register(flow_wal(multi.wal()));
+		#[cfg(feature = "sub_flow")]
+		if self.flow_factory.is_some() {
+			self.ioc = self.ioc.register(flow_wal(multi.wal()));
+		}
 
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");

@@ -14,7 +14,7 @@ use std::{
 use reifydb_core::{
 	commit::queue::{CommitPull, CommitQueue, CommitQueueFloor},
 	common::CommitVersion,
-	interface::commit::{CommitEntry, FlowWal},
+	interface::commit::{CommitEntry, CommitLog},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -24,6 +24,7 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_test_harness::engine::AsEngine;
+use reifydb_transaction::wal::WalCommitLog;
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration as ValueDuration},
@@ -65,13 +66,8 @@ impl TestDb {
 				.expect("the builder registers the commit queue");
 		let released = queue.released_through();
 		let Some((_, start)) = self.held.as_ref() else {
-			let wal =
-				self.db.engine()
-					.ioc()
-					.resolve::<FlowWal>()
-					.expect("the builder registers the flow wal");
-			return wal
-				.log
+			let log = WalCommitLog::new(self.db.engine().multi().wal().clone(), "test-history");
+			return log
 				.read((CommitVersion(0), Lsn::new(0)), released, ByteSize::from_bytes(u64::MAX))
 				.expect("a database without hold_commits reads its history from the commit log")
 				.entries;
