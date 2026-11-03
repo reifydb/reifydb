@@ -163,7 +163,9 @@ impl RetentionClass {
 	pub fn floor_terms(&self) -> &'static [FloorTerm] {
 		match self {
 			Self::RowTtl => &[FloorTerm::RowExpiry],
-			Self::BufferHistoricalGc => &[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin],
+			Self::BufferHistoricalGc => {
+				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
+			}
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
