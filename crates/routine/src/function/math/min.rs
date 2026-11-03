@@ -22,7 +22,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
-		container::{decimal_array::decimal_at, wide_int_array::wides},
+		container::{decimal_array::decimal_at, temporal_array::durations, wide_int_array::wides},
 		decimal::Decimal,
 		value_type::{ValueType, input_types::InputTypes},
 	},
@@ -63,8 +63,9 @@ impl<'a> Routine<FunctionContext<'a>> for Min {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let columns = args.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, _>>()?;
+		let all_durations = columns.iter().all(|col| col.get_type() == ValueType::Duration);
 		for (i, col) in columns.iter().enumerate() {
-			if !col.get_type().is_number() {
+			if !all_durations && !col.get_type().is_number() {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: i,
@@ -287,6 +288,32 @@ impl Accumulator for MinAccumulator {
 							_ => v,
 						};
 						self.mins.insert(group, Value::Decimal(merged));
+					} else {
+						self.mins.or_insert(group, Value::none());
+					}
+				}
+				Ok(())
+			}
+			ViewData::Duration(container) => {
+				let values = durations(container);
+				for &(group, ref indices) in groups.iter() {
+					let best = indices
+						.iter()
+						.filter(|&&i| column.is_defined(i))
+						.map(|&i| values[i])
+						.reduce(|current, val| {
+							if val < current {
+								val
+							} else {
+								current
+							}
+						});
+					if let Some(v) = best {
+						let merged = match self.mins.remove(group) {
+							Some(Value::Duration(prev)) if prev < v => prev,
+							_ => v,
+						};
+						self.mins.insert(group, Value::Duration(merged));
 					} else {
 						self.mins.or_insert(group, Value::none());
 					}
