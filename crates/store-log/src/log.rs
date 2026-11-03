@@ -122,6 +122,9 @@ where
 
 	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>> {
 		self.with(partition, |found| {
+			if index < found.commit_index() {
+				return Ok(Vec::new());
+			}
 			found.commit(index)?;
 			found.compact_to(index)?;
 			found.drop_below(index)
