@@ -591,10 +591,14 @@ fn insert_entries_in_tx(
 	table_name: &str,
 	entries: &[(EncodedKey, Option<CowVec<u8>>)],
 ) -> SqliteResult<()> {
-	let mut stmt =
+	let mut upsert =
 		tx.prepare_cached(&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name))?;
+	let mut delete = tx.prepare_cached(&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name))?;
 	for (key, value) in entries {
-		stmt.execute(params![key.as_slice(), value.as_ref().map(|v| v.as_slice())])?;
+		match value {
+			Some(value) => upsert.execute(params![key.as_slice(), value.as_slice()])?,
+			None => delete.execute(params![key.as_slice()])?,
+		};
 	}
 	Ok(())
 }

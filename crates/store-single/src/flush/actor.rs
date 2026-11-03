@@ -5,7 +5,10 @@
 use std::mem;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, atomic::AtomicUsize};
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, AtomicUsize},
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -25,7 +28,10 @@ use reifydb_wal::lsn::Lsn;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::debug;
 
-use crate::{store::DirtyMap, tier::persistent::SinglePersistentTier};
+use crate::{
+	store::DirtyMap,
+	tier::{commit::buffer::SingleCommitBufferTier, persistent::SinglePersistentTier},
+};
 
 #[derive(Clone)]
 pub enum FlushMessage {
@@ -44,6 +50,8 @@ pub struct Flusher {
 	through: Arc<Mutex<Option<Lsn>>>,
 	in_flight: Arc<AtomicUsize>,
 	persistent: SinglePersistentTier,
+	buffer: Option<SingleCommitBufferTier>,
+	tombstone_evictions: Arc<AtomicU64>,
 	checkpoint: Arc<dyn WalFloorCheckpoint>,
 	draining: Mutex<()>,
 	last_saved: Mutex<Option<Lsn>>,
@@ -62,6 +70,8 @@ impl Flusher {
 		through: Arc<Mutex<Option<Lsn>>>,
 		in_flight: Arc<AtomicUsize>,
 		persistent: SinglePersistentTier,
+		buffer: Option<SingleCommitBufferTier>,
+		tombstone_evictions: Arc<AtomicU64>,
 		checkpoint: Arc<dyn WalFloorCheckpoint>,
 	) -> Self {
 		Self {
@@ -69,6 +79,8 @@ impl Flusher {
 			through,
 			in_flight,
 			persistent,
+			buffer,
+			tombstone_evictions,
 			checkpoint,
 			draining: Mutex::new(()),
 			last_saved: Mutex::new(None),
@@ -82,7 +94,25 @@ impl Flusher {
 			self.advance_idle();
 			return;
 		}
-		self.flush_to_persistent(drained, through);
+		self.flush_to_persistent(&drained, through);
+		self.evict_flushed_tombstones(&drained);
+	}
+
+	fn evict_flushed_tombstones(&self, drained: &DirtyMap) {
+		let Some(buffer) = &self.buffer else {
+			return;
+		};
+		let dirty = self.dirty.lock();
+		let flushed: Vec<&EncodedKey> = drained
+			.iter()
+			.filter(|(key, value)| value.is_none() && !dirty.contains_key(*key))
+			.map(|(key, _)| key)
+			.collect();
+		if flushed.is_empty() {
+			return;
+		}
+		self.tombstone_evictions.fetch_add(1, Ordering::SeqCst);
+		buffer.remove_tombstones(&flushed);
 	}
 
 	fn advance_idle(&self) {
@@ -101,7 +131,7 @@ impl Flusher {
 		if self.last_saved.lock().is_some_and(|last| head <= last) {
 			return;
 		}
-		self.flush_to_persistent(DirtyMap::default(), Some(head));
+		self.flush_to_persistent(&DirtyMap::default(), Some(head));
 	}
 
 	#[inline]
@@ -112,7 +142,7 @@ impl Flusher {
 	}
 
 	#[inline]
-	fn flush_to_persistent(&self, drained: DirtyMap, through: Option<Lsn>) {
+	fn flush_to_persistent(&self, drained: &DirtyMap, through: Option<Lsn>) {
 		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
 			drained.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
 		let count = entries.len();

@@ -33,6 +33,18 @@ impl SingleCommitBufferTier {
 		}
 	}
 
+	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+		match self {
+			Self::Memory(s) => s.set_without_tombstones(entries),
+		}
+	}
+
+	pub fn remove_tombstones(&self, keys: &[&EncodedKey]) {
+		match self {
+			Self::Memory(s) => s.remove_tombstones(keys),
+		}
+	}
+
 	pub fn metrics(&self) -> SingleCommitMetrics {
 		let (entries, bytes) = self.memory_usage();
 		SingleCommitMetrics {

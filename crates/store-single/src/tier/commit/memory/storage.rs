@@ -47,6 +47,30 @@ impl MemoryRowStorage {
 			.sum();
 		(map.len(), map.len() * ENTRY_OVERHEAD + payload)
 	}
+
+	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+		let mut map = self.inner.data.write();
+		for (key, value) in entries {
+			match value {
+				Some(value) => {
+					map.insert(key, Some(value));
+				}
+				None => {
+					map.remove(&key);
+				}
+			}
+		}
+		Ok(())
+	}
+
+	pub fn remove_tombstones(&self, keys: &[&EncodedKey]) {
+		let mut map = self.inner.data.write();
+		for key in keys {
+			if matches!(map.get(*key), Some(None)) {
+				map.remove(*key);
+			}
+		}
+	}
 }
 
 impl TierStorage for MemoryRowStorage {

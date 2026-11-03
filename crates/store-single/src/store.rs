@@ -36,13 +36,22 @@ use crate::{
 	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
 	tier::{
-		RangeCursor, TierStorage,
+		RangeBatch, RangeCursor, TierStorage,
 		commit::buffer::{SingleCommitBufferTier, SingleCommitMetrics},
 		persistent::{SinglePageCacheMetrics, SinglePersistentTier},
 	},
 };
 
 pub type DirtyMap = HashMap<EncodedKey, Option<CowVec<u8>>>;
+
+const MIN_SCAN_PAGE: u64 = 64;
+const MAX_SCAN_PAGE: u64 = 4096;
+
+#[derive(Clone, Copy)]
+enum Direction {
+	Forward,
+	Reverse,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SinglePersistentProbeMetrics {
@@ -73,6 +82,7 @@ pub struct StandardSingleStoreInner {
 	pub(crate) in_flight: Arc<AtomicUsize>,
 	pub(crate) persistent_probes: AtomicU64,
 	pub(crate) persistent_absent: AtomicU64,
+	pub(crate) tombstone_evictions: Arc<AtomicU64>,
 	_spawner: ActorSpawner,
 }
 
@@ -87,6 +97,7 @@ impl StandardSingleStore {
 		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
 		let through: Arc<Mutex<Option<Lsn>>> = Arc::new(Mutex::new(None));
 		let in_flight = Arc::new(AtomicUsize::new(0));
+		let tombstone_evictions = Arc::new(AtomicU64::new(0));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_actor, flusher) = {
@@ -99,6 +110,8 @@ impl StandardSingleStore {
 						Arc::clone(&through),
 						Arc::clone(&in_flight),
 						p.clone(),
+						commit.clone(),
+						Arc::clone(&tombstone_evictions),
 						Arc::clone(&cfg.checkpoint),
 					)),
 					cfg.flush_interval,
@@ -128,6 +141,7 @@ impl StandardSingleStore {
 			in_flight,
 			persistent_probes: AtomicU64::new(0),
 			persistent_absent: AtomicU64::new(0),
+			tombstone_evictions,
 			_spawner: spawner,
 		})))
 	}
@@ -302,15 +316,16 @@ impl StandardSingleStore {
 	#[inline]
 	fn apply_to_tiers(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, lsn: Option<Lsn>) -> Result<()> {
 		if let Some(buffer) = &self.commit {
-			let mut dirty = self.persistent.is_some().then(|| self.dirty.lock());
+			if self.persistent.is_none() {
+				return buffer.set_without_tombstones(entries);
+			}
+			let mut dirty = self.dirty.lock();
 			buffer.set(entries.clone())?;
-			if let Some(dirty) = dirty.as_mut() {
-				for (key, value) in entries {
-					dirty.insert(key, value);
-				}
-				if lsn.is_some() {
-					*self.through.lock() = lsn;
-				}
+			for (key, value) in entries {
+				dirty.insert(key, value);
+			}
+			if lsn.is_some() {
+				*self.through.lock() = lsn;
 			}
 		}
 
@@ -321,59 +336,76 @@ impl StandardSingleStore {
 impl SingleVersionRange for StandardSingleStore {
 	#[instrument(name = "store::single::range_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
-		let (start, end) = make_range_bounds(&range);
-
-		if let Some(buffer) = &self.commit {
-			Self::drain_buffer_range(buffer, &start, &end, &mut all_entries)?;
-		}
-		if let Some(persistent) = &self.persistent {
-			Self::drain_persistent_range(persistent, &start, &end, &mut all_entries)?;
-		}
-
-		Ok(Self::materialize_batch(all_entries, batch_size))
+		Ok(Self::materialize_batch(self.merge_tiers(&range, batch_size, Direction::Forward)?, batch_size))
 	}
 }
 
 impl StandardSingleStore {
-	#[inline]
-	fn drain_buffer_range(
-		buffer: &SingleCommitBufferTier,
-		start: &Bound<Vec<u8>>,
-		end: &Bound<Vec<u8>>,
-		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
-	) -> Result<()> {
-		let mut cursor = RangeCursor::new();
+	fn merge_tiers(
+		&self,
+		range: &EncodedKeyRange,
+		batch_size: u64,
+		direction: Direction,
+	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>> {
 		loop {
-			let batch = buffer.range_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
-			for entry in batch.entries {
-				all_entries.entry(entry.key).or_insert(entry.value);
-			}
-			if cursor.is_exhausted() {
-				break;
+			let evictions = self.tombstone_evictions.load(Ordering::SeqCst);
+			let entries = self.merge_tiers_once(range, batch_size, direction)?;
+			if self.tombstone_evictions.load(Ordering::SeqCst) == evictions {
+				return Ok(entries);
 			}
 		}
-		Ok(())
 	}
 
-	#[inline]
-	fn drain_persistent_range(
-		persistent: &SinglePersistentTier,
-		start: &Bound<Vec<u8>>,
-		end: &Bound<Vec<u8>>,
-		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
-	) -> Result<()> {
-		let mut cursor = RangeCursor::new();
+	fn merge_tiers_once(
+		&self,
+		range: &EncodedKeyRange,
+		batch_size: u64,
+		direction: Direction,
+	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>> {
+		let (start, end) = make_range_bounds(range);
+		let mut entries = BTreeMap::new();
+		let mut buffer_cursor = RangeCursor::new();
+		let mut persistent_cursor = RangeCursor::new();
+		let mut page = batch_size.clamp(MIN_SCAN_PAGE, MAX_SCAN_PAGE) as usize;
+
 		loop {
-			let batch = persistent.range_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
-			for entry in batch.entries {
-				all_entries.entry(entry.key).or_insert(entry.value);
+			match &self.commit {
+				Some(buffer) => {
+					let batch =
+						read_page(buffer, &mut buffer_cursor, &start, &end, page, direction)?;
+					for entry in batch.entries {
+						entries.insert(entry.key, entry.value);
+					}
+				}
+				None => buffer_cursor.finish(),
 			}
-			if cursor.is_exhausted() {
-				break;
+			match &self.persistent {
+				Some(persistent) => {
+					let batch = read_page(
+						persistent,
+						&mut persistent_cursor,
+						&start,
+						&end,
+						page,
+						direction,
+					)?;
+					for entry in batch.entries {
+						entries.entry(entry.key).or_insert(entry.value);
+					}
+				}
+				None => persistent_cursor.finish(),
 			}
+
+			if buffer_cursor.is_exhausted() && persistent_cursor.is_exhausted() {
+				return Ok(entries);
+			}
+			if settled_live(&entries, &buffer_cursor, &persistent_cursor, batch_size, direction)
+				>= batch_size
+			{
+				return Ok(entries);
+			}
+			page = (page * 2).min(MAX_SCAN_PAGE as usize);
 		}
-		Ok(())
 	}
 
 	#[inline]
@@ -413,62 +445,11 @@ impl StandardSingleStore {
 impl SingleVersionRangeRev for StandardSingleStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
 	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
-		let (start, end) = make_range_bounds(&range);
-
-		if let Some(buffer) = &self.commit {
-			Self::drain_buffer_range_rev(buffer, &start, &end, &mut all_entries)?;
-		}
-		if let Some(persistent) = &self.persistent {
-			Self::drain_persistent_range_rev(persistent, &start, &end, &mut all_entries)?;
-		}
-
-		Ok(Self::materialize_batch_rev(all_entries, batch_size))
+		Ok(Self::materialize_batch_rev(self.merge_tiers(&range, batch_size, Direction::Reverse)?, batch_size))
 	}
 }
 
 impl StandardSingleStore {
-	#[inline]
-	fn drain_buffer_range_rev(
-		buffer: &SingleCommitBufferTier,
-		start: &Bound<Vec<u8>>,
-		end: &Bound<Vec<u8>>,
-		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
-	) -> Result<()> {
-		let mut cursor = RangeCursor::new();
-		loop {
-			let batch = buffer.range_rev_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
-			for entry in batch.entries {
-				all_entries.entry(entry.key).or_insert(entry.value);
-			}
-			if cursor.is_exhausted() {
-				break;
-			}
-		}
-		Ok(())
-	}
-
-	#[inline]
-	fn drain_persistent_range_rev(
-		persistent: &SinglePersistentTier,
-		start: &Bound<Vec<u8>>,
-		end: &Bound<Vec<u8>>,
-		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
-	) -> Result<()> {
-		let mut cursor = RangeCursor::new();
-		loop {
-			let batch =
-				persistent.range_rev_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
-			for entry in batch.entries {
-				all_entries.entry(entry.key).or_insert(entry.value);
-			}
-			if cursor.is_exhausted() {
-				break;
-			}
-		}
-		Ok(())
-	}
-
 	#[inline]
 	fn materialize_batch_rev(
 		all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>>,
@@ -506,6 +487,57 @@ impl StandardSingleStore {
 
 impl SingleVersionStore for StandardSingleStore {}
 
+fn read_page<T: TierStorage>(
+	tier: &T,
+	cursor: &mut RangeCursor,
+	start: &Bound<Vec<u8>>,
+	end: &Bound<Vec<u8>>,
+	page: usize,
+	direction: Direction,
+) -> Result<RangeBatch> {
+	if cursor.is_exhausted() {
+		return Ok(RangeBatch::empty());
+	}
+	match direction {
+		Direction::Forward => tier.range_next(cursor, bound_as_ref(start), bound_as_ref(end), page),
+		Direction::Reverse => tier.range_rev_next(cursor, bound_as_ref(start), bound_as_ref(end), page),
+	}
+}
+
+fn settled_live(
+	entries: &BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+	buffer_cursor: &RangeCursor,
+	persistent_cursor: &RangeCursor,
+	batch_size: u64,
+	direction: Direction,
+) -> u64 {
+	let frontiers = [buffer_cursor, persistent_cursor]
+		.into_iter()
+		.filter(|cursor| !cursor.is_exhausted())
+		.filter_map(|cursor| cursor.last_key());
+	let wanted = batch_size as usize;
+	let live = match direction {
+		Direction::Forward => match frontiers.min() {
+			Some(frontier) => entries
+				.range::<EncodedKey, _>((Bound::Unbounded, Bound::Included(frontier)))
+				.filter(|(_, value)| value.is_some())
+				.take(wanted)
+				.count(),
+			None => entries.values().filter(|value| value.is_some()).take(wanted).count(),
+		},
+		Direction::Reverse => match frontiers.max() {
+			Some(frontier) => entries
+				.range::<EncodedKey, _>((Bound::Included(frontier), Bound::Unbounded))
+				.rev()
+				.filter(|(_, value)| value.is_some())
+				.take(wanted)
+				.count(),
+			None => entries.values().rev().filter(|value| value.is_some()).take(wanted).count(),
+		},
+	};
+	live as u64
+}
+
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {
 		Bound::Included(v) => Bound::Included(v.as_slice()),
@@ -532,10 +564,10 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use std::panic;
+	use std::{panic, thread};
 
 	use reifydb_core::{
-		delta::SetPre,
+		delta::{RemoveAnnounce, SetPre},
 		interface::{
 			catalog::id::QueueId,
 			store::{SingleVersionCommit, WalFloorCheckpoint},
@@ -869,5 +901,289 @@ mod tests {
 		let store = StandardSingleStore::testing_memory();
 		assert!(SingleVersionGet::get(&store, &[key("anything").encode()]).unwrap().pop().flatten().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
+	}
+
+	fn write_value(store: &mut StandardSingleStore, k: &TaggedKey, value: &[u8]) {
+		SingleVersionCommit::commit(
+			store,
+			CowVec::new(vec![Delta::Set {
+				key: k.clone(),
+				bytes: EncodedBytes(CowVec::new(value.to_vec())),
+				pre: SetPre::Unknown,
+			}]),
+		)
+		.unwrap();
+	}
+
+	fn remove_key(store: &mut StandardSingleStore, k: &TaggedKey) {
+		SingleVersionCommit::commit(
+			store,
+			CowVec::new(vec![Delta::Remove {
+				key: k.clone(),
+				announce: RemoveAnnounce::Silent,
+			}]),
+		)
+		.unwrap();
+	}
+
+	fn numbered(index: usize) -> TaggedKey {
+		key(&format!("{index:06}"))
+	}
+
+	fn assert_scans_match(store: &StandardSingleStore, model: &BTreeMap<EncodedKey, Vec<u8>>, stage: &str) {
+		for batch_size in [0u64, 1, 2, 10, 63, 64, 65, 500, 4096, 100_000] {
+			let wanted = batch_size as usize;
+			let forward =
+				SingleVersionRange::range_batch(store, EncodedKeyRange::all(), batch_size).unwrap();
+			let expected: Vec<(&EncodedKey, &Vec<u8>)> = model.iter().take(wanted).collect();
+			let actual: Vec<(&EncodedKey, Vec<u8>)> =
+				forward.items.iter().map(|row| (&row.key, row.bytes.as_ref().to_vec())).collect();
+			assert_eq!(actual.len(), expected.len(), "{stage}: forward size at batch {batch_size}");
+			for (actual, expected) in actual.iter().zip(&expected) {
+				assert_eq!(
+					(actual.0, &actual.1),
+					*expected,
+					"{stage}: forward row at batch {batch_size}"
+				);
+			}
+			assert_eq!(
+				forward.has_more,
+				expected.len() >= wanted,
+				"{stage}: forward has_more at {batch_size}"
+			);
+
+			let reverse = SingleVersionRangeRev::range_rev_batch(store, EncodedKeyRange::all(), batch_size)
+				.unwrap();
+			let expected: Vec<(&EncodedKey, &Vec<u8>)> = model.iter().rev().take(wanted).collect();
+			let actual: Vec<(&EncodedKey, Vec<u8>)> =
+				reverse.items.iter().map(|row| (&row.key, row.bytes.as_ref().to_vec())).collect();
+			assert_eq!(actual.len(), expected.len(), "{stage}: reverse size at batch {batch_size}");
+			for (actual, expected) in actual.iter().zip(&expected) {
+				assert_eq!(
+					(actual.0, &actual.1),
+					*expected,
+					"{stage}: reverse row at batch {batch_size}"
+				);
+			}
+			assert_eq!(
+				reverse.has_more,
+				expected.len() >= wanted,
+				"{stage}: reverse has_more at {batch_size}"
+			);
+		}
+	}
+
+	#[test]
+	fn a_stopped_scan_returns_what_a_full_merge_of_both_tiers_would() {
+		// The buffer must beat the persistent tier and tombstones must never count, or claims skip or resurrect
+		// items.
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		let mut model = BTreeMap::new();
+		for index in 0..600 {
+			let k = numbered(index);
+			write_value(&mut store, &k, b"old");
+			model.insert(k.encode(), b"old".to_vec());
+		}
+		assert!(store.flush_pending_blocking());
+		assert_scans_match(&store, &model, "all persisted");
+
+		for index in (0..600).step_by(3) {
+			let k = numbered(index);
+			remove_key(&mut store, &k);
+			model.remove(&k.encode());
+		}
+		for index in (0..600).step_by(5) {
+			let k = numbered(index);
+			write_value(&mut store, &k, b"new");
+			model.insert(k.encode(), b"new".to_vec());
+		}
+		for index in 600..650 {
+			let k = numbered(index);
+			write_value(&mut store, &k, b"fresh");
+			model.insert(k.encode(), b"fresh".to_vec());
+		}
+		assert_scans_match(&store, &model, "unflushed buffer over persisted rows");
+
+		assert!(store.flush_pending_blocking());
+		assert_scans_match(&store, &model, "flushed");
+	}
+
+	#[test]
+	fn a_small_scan_reads_a_bounded_part_of_a_deep_range() {
+		// Reading the whole range per call makes every claim cost the depth of its partition.
+		let mut memory = StandardSingleStore::testing_memory();
+		let (mut tiered, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		for index in 0..5_000 {
+			write_value(&mut memory, &numbered(index), b"v");
+			write_value(&mut tiered, &numbered(index), b"v");
+		}
+		assert!(tiered.flush_pending_blocking());
+		let all = EncodedKeyRange::all();
+		for direction in [Direction::Forward, Direction::Reverse] {
+			let read = memory.merge_tiers(&all, 10, direction).unwrap().len() as u64;
+			assert!(read <= MIN_SCAN_PAGE, "a memory scan for 10 read {read} keys");
+			let read = tiered.merge_tiers(&all, 10, direction).unwrap().len() as u64;
+			assert!(read <= MIN_SCAN_PAGE * 2, "a tiered scan for 10 read {read} keys");
+		}
+	}
+
+	#[test]
+	fn claimed_keys_do_not_slow_a_later_scan_once_flushed() {
+		// Tombstones sit where a claim starts reading, so a kept one makes every later claim walk all past
+		// removals.
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		for index in 0..5_000 {
+			write_value(&mut store, &numbered(index), b"v");
+		}
+		assert!(store.flush_pending_blocking());
+		let all = EncodedKeyRange::all();
+		let first = SingleVersionRangeRev::range_rev_batch(&store, all.clone(), 5_000).unwrap();
+		for row in &first.items[..4_000] {
+			SingleVersionCommit::commit(
+				&mut store,
+				CowVec::new(vec![Delta::Remove {
+					key: TaggedKey::decode(&row.key).unwrap(),
+					announce: RemoveAnnounce::Silent,
+				}]),
+			)
+			.unwrap();
+		}
+		assert!(store.flush_pending_blocking());
+
+		let read = store.merge_tiers(&all, 10, Direction::Reverse).unwrap().len() as u64;
+		assert!(read <= MIN_SCAN_PAGE * 2, "a scan after a flush walked {read} keys, so tombstones survived");
+		let (resident, _) = store.commit.as_ref().unwrap().memory_usage();
+		assert_eq!(resident, 1_000, "flushed tombstones must leave the commit buffer");
+	}
+
+	#[test]
+	fn a_flush_never_loses_a_delete_or_a_later_write() {
+		// Dropping a tombstone before its delete is durable resurrects the row; dropping a rewrite loses it.
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		let gone = key("gone");
+		let back = key("back");
+		write_value(&mut store, &gone, b"1");
+		write_value(&mut store, &back, b"1");
+		assert!(store.flush_pending_blocking());
+
+		remove_key(&mut store, &gone);
+		remove_key(&mut store, &back);
+		assert!(store.flush_pending_blocking());
+		write_value(&mut store, &back, b"2");
+
+		let read = |store: &StandardSingleStore, k: &TaggedKey| {
+			SingleVersionGet::get(store, &[k.encode()]).unwrap().pop().flatten()
+		};
+		assert!(read(&store, &gone).is_none(), "a flushed delete must stay deleted");
+		assert_eq!(read(&store, &back).unwrap().bytes.as_ref(), b"2", "a rewrite after the delete must win");
+		assert!(store.flush_pending_blocking());
+		assert!(read(&store, &gone).is_none(), "a second flush must not bring the row back");
+		assert_eq!(read(&store, &back).unwrap().bytes.as_ref(), b"2", "the rewrite must survive its own flush");
+		let persistent = store.persistent.as_ref().unwrap();
+		assert_eq!(
+			persistent.get_with_tombstone(&[gone.encode().as_ref()]).unwrap().remove(0),
+			None,
+			"a delete must remove the row, otherwise every scan keeps walking it"
+		);
+	}
+
+	#[test]
+	fn a_memory_store_keeps_no_tombstone() {
+		// With no tier underneath there is nothing to hide, so a kept tombstone only grows memory and slows
+		// scans.
+		let mut store = StandardSingleStore::testing_memory();
+		let k = key("once");
+		write_value(&mut store, &k, b"1");
+		remove_key(&mut store, &k);
+		assert_eq!(store.commit.as_ref().unwrap().memory_usage().0, 0);
+		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_none());
+	}
+
+	#[test]
+	fn a_scan_racing_flushes_never_returns_a_key_removed_before_it_began() {
+		// A tombstone evicted mid scan must not let an older persisted page bring its removed key back.
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		const KEYS: usize = 3_000;
+		for index in 0..KEYS {
+			write_value(&mut store, &numbered(index), b"v");
+		}
+		assert!(store.flush_pending_blocking());
+		let ordered =
+			SingleVersionRangeRev::range_rev_batch(&store, EncodedKeyRange::all(), KEYS as u64).unwrap();
+		let keys: Vec<EncodedKey> = ordered.items.iter().map(|row| row.key.clone()).collect();
+
+		let removed = AtomicUsize::new(0);
+		thread::scope(|threads| {
+			let mut writer = store.clone();
+			let (removed, keys) = (&removed, &keys);
+			threads.spawn(move || {
+				for (index, encoded) in keys.iter().enumerate() {
+					remove_key(&mut writer, &TaggedKey::decode(encoded).unwrap());
+					removed.store(index + 1, Ordering::SeqCst);
+					if index % 7 == 0 {
+						assert!(writer.flush_pending_blocking());
+					}
+				}
+			});
+			while removed.load(Ordering::SeqCst) < KEYS {
+				let floor = removed.load(Ordering::SeqCst);
+				let batch = SingleVersionRangeRev::range_rev_batch(&store, EncodedKeyRange::all(), 16)
+					.unwrap();
+				for row in &batch.items {
+					let position = keys.binary_search_by(|key| row.key.cmp(key)).unwrap();
+					assert!(
+						position >= floor,
+						"key {position} came back after {floor} were removed"
+					);
+				}
+			}
+		});
+	}
+
+	#[test]
+	fn a_stopped_scan_finds_rows_that_only_the_persistent_tier_holds() {
+		// After a restart the buffer lacks old rows, so stopping on one tier's position would skip keys in the
+		// other.
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
+		let mut model = BTreeMap::new();
+		let persisted: Vec<(EncodedKey, Option<CowVec<u8>>)> = (0..400)
+			.map(|index| {
+				model.insert(numbered(index).encode(), b"disk".to_vec());
+				(numbered(index).encode(), Some(CowVec::new(b"disk".to_vec())))
+			})
+			.collect();
+		store.persistent.as_ref().unwrap().persist(persisted, None).unwrap();
+		for index in 200..600 {
+			let k = numbered(index);
+			write_value(&mut store, &k, b"buffer");
+			model.insert(k.encode(), b"buffer".to_vec());
+		}
+		for index in (0..10).chain(590..600) {
+			let k = numbered(index);
+			remove_key(&mut store, &k);
+			model.remove(&k.encode());
+		}
+		assert_scans_match(&store, &model, "disk rows under a partial buffer");
+
+		assert!(store.flush_pending_blocking());
+		assert_scans_match(&store, &model, "disk rows after a flush");
+	}
+
+	#[test]
+	fn removing_tombstones_never_drops_a_live_value() {
+		// A key rewritten after its delete was flushed holds the only copy of its value in the buffer.
+		let buffer = SingleCommitBufferTier::memory();
+		let live = key("live").encode();
+		let removed = key("removed").encode();
+		let absent = key("absent").encode();
+		buffer.set(vec![(live.clone(), Some(CowVec::new(b"1".to_vec()))), (removed.clone(), None)]).unwrap();
+
+		buffer.remove_tombstones(&[&live, &removed, &absent]);
+
+		assert_eq!(
+			buffer.get_with_tombstone(&[live.as_ref()]).unwrap().remove(0).flatten().unwrap().as_ref(),
+			b"1"
+		);
+		assert_eq!(buffer.get_with_tombstone(&[removed.as_ref()]).unwrap().remove(0), None);
 	}
 }
