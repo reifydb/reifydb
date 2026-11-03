@@ -159,9 +159,9 @@ fn kind_rank(kind: DiffType) -> usize {
 
 fn kind_bit(kind: DiffType) -> u8 {
 	match kind {
-		DiffType::Insert => 1,
+		DiffType::Remove => 1,
 		DiffType::Update => 2,
-		DiffType::Remove => 4,
+		DiffType::Insert => 4,
 	}
 }
 
@@ -466,7 +466,7 @@ fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 
 	let mut result: Vec<Diff> = Vec::with_capacity(group_keys.len());
 	for &origin in &origin_order {
-		for kind in [DiffType::Insert, DiffType::Update, DiffType::Remove] {
+		for kind in [DiffType::Remove, DiffType::Update, DiffType::Insert] {
 			for (at, &(group_origin, bit, _, _)) in group_keys.iter().enumerate() {
 				if group_origin != origin || bit != kind_bit(kind) {
 					continue;
@@ -529,9 +529,6 @@ fn apply_insert(
 		Some(RowState::Updated {
 			pre,
 			..
-		})
-		| Some(RowState::Removed {
-			pre,
 		}) => RowState::Updated {
 			pre,
 			post,
@@ -541,8 +538,8 @@ fn apply_insert(
 		},
 	};
 	match index.get(&key) {
-		Some(&at) => slots[at] = Some(next),
-		None => {
+		Some(&at) if !matches!(slots[at], Some(RowState::Removed { .. })) => slots[at] = Some(next),
+		_ => {
 			index.insert(key, slots.len());
 			slots.push(Some(next));
 		}
@@ -697,22 +694,15 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_then_insert_fuses_to_update() {
-		// A remove followed by a re-insert of the same row is a replacement; downstream must see
-		// one update whose pre is the removed image and whose post is the re-inserted image.
+	fn remove_then_insert_stays_two_rows() {
+		// Two rows under one number are never one update, and the remove must come first or row-keyed state
+		// drops the new row.
 		let out = consolidate_diffs(vec![remove(&[(1, 10)]), insert(&[(1, 20)])]).unwrap();
-		assert_eq!(out.len(), 1);
-		match &out[0] {
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				assert_eq!(rows_of(pre), vec![(1, 10)]);
-				assert_eq!(rows_of(post), vec![(1, 20)]);
-			}
-			other => panic!("expected update, got {:?}", other.kind()),
-		}
+		assert_eq!(out.len(), 2, "a remove then an insert of one row number must stay two diffs");
+		assert_eq!(out[0].kind(), DiffType::Remove);
+		assert_eq!(rows_of(out[0].pre().unwrap()), vec![(1, 10)]);
+		assert_eq!(out[1].kind(), DiffType::Insert);
+		assert_eq!(rows_of(out[1].post().unwrap()), vec![(1, 20)]);
 	}
 
 	#[test]
@@ -824,6 +814,13 @@ mod tests {
 			.unwrap();
 		assert_eq!(out.len(), 2);
 		match &out[0] {
+			Diff::Remove {
+				pre,
+				..
+			} => assert_eq!(rows_of(pre), vec![(1, 10)]),
+			other => panic!("expected remove, got {:?}", other.kind()),
+		}
+		match &out[1] {
 			Diff::Update {
 				pre,
 				post,
@@ -833,13 +830,6 @@ mod tests {
 				assert_eq!(rows_of(post), vec![(2, 21)]);
 			}
 			other => panic!("expected update, got {:?}", other.kind()),
-		}
-		match &out[1] {
-			Diff::Remove {
-				pre,
-				..
-			} => assert_eq!(rows_of(pre), vec![(1, 10)]),
-			other => panic!("expected remove, got {:?}", other.kind()),
 		}
 	}
 

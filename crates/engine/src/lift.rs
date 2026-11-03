@@ -5,14 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
-	bytes::{EncodedBytes, read_fingerprint},
+	bytes::{EncodedBytes, read_fingerprint, read_sequence},
 	shape::{RowShape, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	common::ChangeVersion,
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{
-		catalog::object::ObjectId,
+		catalog::{object::ObjectId, view::View},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 		commit::{CommitEntry, CommitLift, CommitObjectLift},
 	},
@@ -26,6 +26,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
+#[derive(Clone, Copy)]
 pub struct RowTarget {
 	pub object: ObjectId,
 	pub row: RowNumber,
@@ -230,6 +231,7 @@ fn lift_rows(
 	txn: &mut Transaction<'_>,
 ) -> Result<Option<Change>> {
 	pair_moved_rows(&mut rows);
+	split_overwritten_rows(object, &mut rows, catalog);
 
 	let mut buckets: BTreeMap<BucketKey, Bucket> = BTreeMap::new();
 	for row in rows {
@@ -318,6 +320,32 @@ fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 		}
 	}
 	rows.retain(|row| row.pre.is_some() || row.post.is_some());
+}
+
+fn split_overwritten_rows(object: ObjectId, rows: &mut Vec<LiftedRow>, catalog: &Catalog) {
+	let ring = match object {
+		ObjectId::RingBuffer(_) => true,
+		ObjectId::View(id) => matches!(catalog.cache().find_view(id), Some(View::RingBuffer(_))),
+		_ => false,
+	};
+	if !ring {
+		return;
+	}
+	let mut inserts = Vec::new();
+	for row in rows.iter_mut() {
+		let (Some(pre), Some(post)) = (&row.pre, &row.post) else {
+			continue;
+		};
+		if read_sequence(pre) == read_sequence(post) {
+			continue;
+		}
+		inserts.push(LiftedRow {
+			target: row.target,
+			pre: None,
+			post: row.post.take(),
+		});
+	}
+	rows.extend(inserts);
 }
 
 fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, fingerprint: RowShapeFingerprint) -> Result<RowShape> {

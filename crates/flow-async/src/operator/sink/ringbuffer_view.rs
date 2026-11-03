@@ -426,14 +426,6 @@ fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 	})
 }
 
-fn split_by_sequence(pre: &RecordBatch, post: &RecordBatch) -> Result<(Vec<usize>, Vec<usize>)> {
-	let (pre_sequences, post_sequences) = (sequences(pre)?, sequences(post)?);
-	if pre_sequences.is_empty() || pre_sequences.len() != post_sequences.len() {
-		return Ok(((0..post.num_rows()).collect(), Vec::new()));
-	}
-	Ok((0..post.num_rows()).partition(|&row_idx| pre_sequences[row_idx] == post_sequences[row_idx]))
-}
-
 fn sequence_ordered_runs(batches: &[RecordBatch]) -> Result<Vec<RecordBatch>> {
 	let mut by_sequence: Vec<Vec<u64>> = Vec::with_capacity(batches.len());
 	for batch in batches {
@@ -531,13 +523,12 @@ impl DurableSink for SinkRingBufferViewOperator {
 					..
 				} => {
 					self.flush_inserts(txn, view, &mut ring, &mut inserts, &mut touched)?;
-					let (kept, mut replaced) = split_by_sequence(pre, post)?;
-					let moved = self.partition_moves(txn, view, pre, post)?;
-					let kept: Vec<usize> =
-						kept.into_iter().filter(|row_idx| !moved.contains(row_idx)).collect();
-					replaced.extend(moved);
+					let mut replaced = self.partition_moves(txn, view, pre, post)?;
 					replaced.sort_unstable();
 					replaced.dedup();
+					let kept: Vec<usize> = (0..post.num_rows())
+						.filter(|row_idx| !replaced.contains(row_idx))
+						.collect();
 					if replaced.is_empty() {
 						self.apply_ringbuffer_update(txn, view, pre, post, &mut touched)?;
 					} else {
@@ -817,11 +808,9 @@ impl SinkRingBufferViewOperator {
 		if !overwritten.is_empty() {
 			txn.emit(
 				view.id(),
-				Diff::update(
-					from_encoded_bytes(&self.shape, &overwritten_rows, &evicted_rows)?,
-					JoinedColumnsBuilder::retain_rows(&coerced, &overwritten)?,
-				),
+				Diff::remove(from_encoded_bytes(&self.shape, &overwritten_rows, &evicted_rows)?),
 			)?;
+			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &overwritten)?))?;
 		}
 		Ok(())
 	}
@@ -1902,20 +1891,27 @@ mod tests {
 	}
 
 	#[test]
-	fn a_capacity_push_out_announces_one_update_whose_pre_is_the_oldest_row() {
-		// Evicting the newest slot instead of the oldest would retract a row readers still expect to see.
+	fn a_capacity_push_out_announces_a_remove_of_the_oldest_row_and_an_insert() {
+		// Announced as one update, a sealed oldest row takes the new row down with it downstream; evicting the
+		// newest slot would retract a row readers still expect.
 		let mut txn = push_out(3, &[("", 1), ("", 2), ("", 3)]);
 		let emitted = txn.take_emits(ViewId(1));
-		assert_eq!(emitted.len(), 1, "one diff per push-out: {emitted:?}");
-		let Diff::Update {
+		assert_eq!(emitted.len(), 2, "a remove then an insert per push-out: {emitted:?}");
+		let Diff::Remove {
 			pre,
-			post,
 			..
 		} = &emitted[0]
 		else {
-			panic!("a push-out must announce an update, got {emitted:?}");
+			panic!("a push-out must announce the remove first, got {emitted:?}");
 		};
-		assert_eq!(cell(pre, "n"), Value::Int4(1), "the pre is the oldest row");
+		assert_eq!(cell(pre, "n"), Value::Int4(1), "the removed row is the oldest row");
+		let Diff::Insert {
+			post,
+			..
+		} = &emitted[1]
+		else {
+			panic!("a push-out must announce the insert second, got {emitted:?}");
+		};
 		assert_eq!(cell(post, "n"), Value::Int4(9));
 	}
 
