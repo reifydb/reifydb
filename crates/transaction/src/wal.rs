@@ -680,13 +680,25 @@ impl CommitLog for WalCommitLog {
 		let mut entries: Vec<Arc<CommitEntry>> = Vec::new();
 		let mut taken = 0u64;
 		for replayed in records {
-			let replayed = replayed.unwrap_or_else(|err| {
-				panic!(
+			let replayed = match replayed {
+				Ok(replayed) => replayed,
+				Err(WalError::Log(LogError::Purged {
+					requested,
+					oldest,
+					..
+				})) => {
+					return Err(TransactionError::CommitLogPurged {
+						requested: Lsn::from_version(requested).unwrap_or(from),
+						oldest: Lsn::from_version(oldest).unwrap_or(Lsn::FIRST),
+					}
+					.into());
+				}
+				Err(err) => panic!(
 					"commit log read for the {} reader failed after lsn {}: {err}",
 					self.reader,
 					lsn.as_u64()
-				)
-			});
+				),
+			};
 			let WalRecord::Multi(record) = replayed.body else {
 				continue;
 			};

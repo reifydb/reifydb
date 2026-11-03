@@ -66,7 +66,11 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		while out.len() < max {
 			let path = self.dir.join(log_name(self.bases[self.at]));
 			let from = self.torn.filter(|torn| torn.base == self.bases[self.at]).map(|torn| torn.from);
-			let scan = scan_upto(self.fs, &path, self.position, self.last, max - out.len(), from)?;
+			let scan = match scan_upto(self.fs, &path, self.position, self.last, max - out.len(), from) {
+				Ok(scan) => scan,
+				Err(LogError::NotFound(missing)) => return Err(self.reclaimed_or(missing)?),
+				Err(error) => return Err(error),
+			};
 			for record in &scan.records {
 				self.position = self.position.advance(record.encoded_len() as u64);
 				self.last = Some(record.version);
@@ -121,6 +125,19 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 
 	pub fn position(&self) -> Position {
 		self.position
+	}
+
+	fn reclaimed_or(&self, missing: PathBuf) -> Result<LogError> {
+		let bases = bases_in(self.fs, &self.dir)?;
+		let base = self.bases[self.at];
+		if bases.contains(&base) {
+			return Ok(LogError::NotFound(missing));
+		}
+		Ok(LogError::Purged {
+			dir: self.dir.clone(),
+			requested: self.last.unwrap_or(base),
+			oldest: bases.first().copied().unwrap_or(base),
+		})
 	}
 
 	fn followed(&mut self) -> Result<bool> {
