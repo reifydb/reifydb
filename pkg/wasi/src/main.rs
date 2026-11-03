@@ -60,7 +60,7 @@ use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{flow_wal, memory_wal, replay},
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{Result as ValueResult, byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
@@ -143,7 +143,6 @@ impl Bridge {
 		);
 		ioc = ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
 		ioc = ioc.register(commit_queue.clone());
-		ioc = ioc.register(flow_wal(multi.wal()));
 
 		let routines = {
 			let b = Routines::builder();

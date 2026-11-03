@@ -61,7 +61,7 @@ use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{flow_wal, memory_wal, replay},
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -273,7 +273,6 @@ impl WasmDB {
 		);
 		ioc = ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
 		ioc = ioc.register(commit_queue.clone());
-		ioc = ioc.register(flow_wal(multi.wal()));
 
 		let routines = {
 			let b = Routines::builder();

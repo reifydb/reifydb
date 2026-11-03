@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	iter::once,
@@ -509,26 +511,12 @@ impl FlowSupervisor {
 
 	fn advance_flow_floor(&self, state: &mut SupervisorState) {
 		let operators = self.engine.operator_state();
-		let mut floor = state.scan_lsn;
-		match operators.checkpoint_lsn_floor() {
-			Ok(Some(lsn)) => floor = floor.min(lsn),
-			Ok(None) => {}
-			Err(e) => panic!("flow supervisor cannot read the flow checkpoint lsn floor: {e}"),
-		}
-		let mut waiting = BTreeMap::new();
-		for (flow_id, lsn) in take(&mut state.start_lsns) {
-			if !state.flows.contains_key(&flow_id) {
-				continue;
-			}
-			match operators.checkpoint_get(flow_id) {
-				Ok(Some(_)) => {}
-				Ok(None) => {
-					floor = floor.min(lsn);
-					waiting.insert(flow_id, lsn);
-				}
-				Err(e) => panic!("flow {} checkpoint unreadable for the flow floor: {e}", flow_id.0),
-			}
-		}
+		let (floor, waiting) = flow_lsn_floor(
+			&operators,
+			state.scan_lsn,
+			|flow_id| state.flows.contains_key(&flow_id),
+			take(&mut state.start_lsns),
+		);
 		state.start_lsns = waiting;
 		if floor > Lsn::new(0) {
 			self.floor.advance(floor);
@@ -1271,6 +1259,51 @@ impl Actor for FlowSupervisor {
 	}
 }
 
+fn flow_lsn_floor(
+	operators: &OperatorStore,
+	scan_lsn: Lsn,
+	live: impl Fn(FlowId) -> bool,
+	start_lsns: BTreeMap<FlowId, Lsn>,
+) -> (Lsn, BTreeMap<FlowId, Lsn>) {
+	let mut floor = scan_lsn;
+	let mut waiting = BTreeMap::new();
+	for (flow_id, lsn) in start_lsns {
+		if !live(flow_id) {
+			continue;
+		}
+		match operators.checkpoint_get(flow_id) {
+			Ok(Some(_)) => {}
+			Ok(None) => {
+				floor = floor.min(lsn);
+				waiting.insert(flow_id, lsn);
+			}
+			Err(e) => panic!("flow {} checkpoint unreadable for the flow floor: {e}", flow_id.0),
+		}
+	}
+	floor_interlock();
+	match operators.checkpoint_lsn_floor() {
+		Ok(Some(lsn)) => floor = floor.min(lsn),
+		Ok(None) => {}
+		Err(e) => panic!("flow supervisor cannot read the flow checkpoint lsn floor: {e}"),
+	}
+	(floor, waiting)
+}
+
+#[cfg(test)]
+thread_local! {
+	static FLOOR_INTERLOCK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn floor_interlock() {
+	if let Some(interlock) = FLOOR_INTERLOCK.with(|slot| slot.borrow_mut().take()) {
+		interlock();
+	}
+}
+
+#[cfg(not(test))]
+fn floor_interlock() {}
+
 #[cfg(test)]
 mod tests {
 	use std::{
@@ -1308,7 +1341,10 @@ mod tests {
 	use reifydb_wal::lsn::Lsn;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
-	use super::{reap_orphan_checkpoints, retire_flow, stored_checkpoint, wake_sets, wake_targets};
+	use super::{
+		FLOOR_INTERLOCK, flow_lsn_floor, reap_orphan_checkpoints, retire_flow, stored_checkpoint, wake_sets,
+		wake_targets,
+	};
 	use crate::progress::tracker::FlowPositionTracker;
 
 	fn checkpoint_at(version: u64) -> FlowCheckpoint {
@@ -1344,6 +1380,40 @@ mod tests {
 		fn config(&self) -> ActorConfig {
 			ActorConfig::new()
 		}
+	}
+
+	#[test]
+	fn a_first_checkpoint_landing_between_the_floor_reads_never_lets_the_floor_pass_it() {
+		// A checkpoint in neither floor term lets gc drop records its flow still needs, and a floor never moves
+		// back.
+		let store = OperatorStore::testing_memory();
+		let flow = FlowId(7);
+		let landing = store.clone();
+		FLOOR_INTERLOCK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move || {
+				landing.checkpoint_set(
+					flow,
+					FlowCheckpoint {
+						version: CommitVersion(7),
+						lsn: Lsn::new(150),
+					},
+				)
+				.expect("the committer stores the first checkpoint");
+			}));
+		});
+		let start_lsns = BTreeMap::from([(flow, Lsn::new(100))]);
+
+		let (floor, waiting) = flow_lsn_floor(&store, Lsn::new(500), |_| true, start_lsns);
+
+		assert!(
+			floor <= Lsn::new(150),
+			"the floor passed the checkpoint lsn the flow resumes from: floor={} checkpoint=150",
+			floor.as_u64()
+		);
+		assert!(
+			!waiting.contains_key(&flow) || floor <= Lsn::new(100),
+			"a kept start lsn must bound the floor"
+		);
 	}
 
 	#[test]

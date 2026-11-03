@@ -35,7 +35,6 @@ use reifydb_core::{
 	interface::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
-		commit::FlowWal,
 		flow::{FlowTickSampler, FlowUnitRow, FlowUnitSampler, FlowWatermarkSampler},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -55,7 +54,10 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_transaction::commit::{CommitBegin, CommitHandle};
+use reifydb_transaction::{
+	commit::{CommitBegin, CommitHandle},
+	wal::flow_wal,
+};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -110,7 +112,7 @@ impl FlowSubsystem {
 		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
-		let flow_wal = ioc.resolve::<FlowWal>().expect("FlowWal must be registered");
+		let flow_wal = flow_wal(engine.multi().wal());
 
 		let flow_scope = spawner.scope();
 
