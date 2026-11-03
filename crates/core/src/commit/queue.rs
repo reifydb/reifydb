@@ -36,6 +36,7 @@ struct QueueInner {
 	entries: BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>,
 	bytes: u64,
 	cover_from: CommitVersion,
+	floor_from: CommitVersion,
 	released: CommitVersion,
 	released_lsn: Lsn,
 	floors: BTreeMap<u64, CommitVersion>,
@@ -77,6 +78,7 @@ impl CommitQueue {
 					entries: BTreeMap::new(),
 					bytes: 0,
 					cover_from: seed,
+					floor_from: seed,
 					released: seed,
 					released_lsn: Lsn::new(0),
 					floors: BTreeMap::new(),
@@ -137,6 +139,7 @@ impl CommitQueue {
 		let freed = replace(&mut inner.entries, retained);
 		inner.bytes -= freed.values().map(|(bytes, _)| bytes).sum::<u64>();
 		inner.cover_from = inner.cover_from.max(floor);
+		inner.floor_from = inner.floor_from.max(floor);
 		self.shared.evicted_floor.fetch_add(freed.len() as u64, Ordering::Relaxed);
 	}
 
@@ -278,11 +281,11 @@ impl CommitQueueFloor {
 		let shared = &handle.queue.shared;
 		{
 			let mut inner = shared.inner.write();
-			if start < inner.cover_from {
+			if start < inner.floor_from {
 				panic!(
-					"commit queue floor {} adopted at version {} but the queue only holds commits after {}, \
-					 so the commits between were freed before their reader took this floor",
-					handle.name, start.0, inner.cover_from.0
+					"commit queue floor {} adopted at version {} but the floors already let go of commits \
+					 through {}, so the commits between were freed before their reader took this floor",
+					handle.name, start.0, inner.floor_from.0
 				);
 			}
 			inner.floors.insert(handle.id, start);
