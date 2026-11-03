@@ -8,6 +8,7 @@ pub mod get_days;
 pub mod get_months;
 pub mod get_nanos;
 pub mod hours;
+pub mod humanize;
 pub mod millis;
 pub mod minutes;
 pub mod months;

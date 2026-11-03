@@ -175,6 +175,7 @@ pub fn default_in_process_functions(builder: RoutinesConfigurator) -> RoutinesCo
 		.register_builtin_function(Arc::new(duration::scale::DurationScale::new()))
 		.register_builtin_function(Arc::new(duration::trunc::DurationTrunc::new()))
 		.register_builtin_function(Arc::new(duration::format::DurationFormat::new()))
+		.register_builtin_function(Arc::new(duration::humanize::DurationHumanize::new()))
 		.register_builtin_function_alias("duration::year", "duration::years")
 		.register_builtin_function_alias("duration::month", "duration::months")
 		.register_builtin_function_alias("duration::week", "duration::weeks")
