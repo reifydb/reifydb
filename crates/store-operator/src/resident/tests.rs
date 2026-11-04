@@ -589,29 +589,6 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 }
 
 #[test]
-fn a_flow_the_budget_did_not_reach_keeps_its_checkpoint_for_the_next_slice() {
-	let buffer = Resident::with_budget(entry_bytes("k1", "v1"));
-	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
-	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
-
-	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
-	assert!(first.checkpoints.is_empty(), "a slice that leaves state dirty carries no checkpoint");
-	assert!(
-		!first.checkpoints.contains_key(&FLOW_B),
-		"the flow the budget stopped before still holds live state, so its checkpoint must wait"
-	);
-	buffer.settle_flush(first);
-
-	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
-	assert_eq!(
-		second.checkpoints.get(&FLOW_B).copied(),
-		Some(Some(checkpoint_at(20))),
-		"the held checkpoint must go out with the state that earns it, or the flow never advances"
-	);
-	assert_eq!(second.checkpoints.get(&FLOW_A).copied(), Some(Some(checkpoint_at(10))));
-}
-
-#[test]
 fn a_flow_that_keeps_writing_while_its_state_is_staged_still_lands_its_checkpoint() {
 	let buffer = Resident::new();
 	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
@@ -656,20 +633,6 @@ fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
 }
 
 #[test]
-fn the_flow_waiting_longest_drains_first() {
-	let buffer = Resident::with_budget(entry_bytes("k1", "v1"));
-	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
-	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
-
-	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
-	assert_eq!(
-		operators_of(&first),
-		vec![OP_B],
-		"the flow that has been pending longest must go first even though its id sorts last"
-	);
-}
-
-#[test]
 fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
 	let buffer = Resident::new();
 	set(&buffer, OP_A, key("orphan"), row("v"));
@@ -685,7 +648,7 @@ fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
 }
 
 #[test]
-fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
+fn a_buffer_far_past_the_budget_drains_in_one_swap_and_loses_nothing() {
 	let entry = entry_bytes("k0", "v0");
 	let buffer = Resident::with_budget(entry * 2);
 	for index in 0..5u64 {
@@ -695,44 +658,22 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 		write_in_flow(&buffer, FLOW_B, index + 1, &[insert(OP_B, &format!("k{index}"), &format!("v{index}"))]);
 	}
 
-	let mut seen: Vec<Vec<u8>> = Vec::new();
-	let mut slices = 0;
-	while let Some(batch) = buffer.take_for_flush() {
-		slices += 1;
-		assert!(slices <= 4, "the drain must make progress on every take or it never terminates");
-		assert_eq!(
-			operators_of(&batch).len(),
-			1,
-			"a slice that mixes operators from two flows has crossed a boundary the byte budget was \
-			 only ever allowed to stop at"
-		);
-		for (operator, taken, _) in &batch.writes {
-			assert_eq!(
-				dirty_entries_of(&buffer, *operator),
-				0,
-				"the operator kept unstaged state behind, so this slice split it; its flow \
-				 checkpoint would then promise state that never reached sqlite"
-			);
-			seen.push(taken.as_slice().to_vec());
-		}
-		buffer.settle_flush(batch);
-	}
+	let batch = buffer.take_for_flush().expect("the seeded buffer yields a batch");
+	assert_eq!(operators_of(&batch), vec![OP_A, OP_B], "one swap must carry every flow past any budget");
+	assert_eq!(
+		buffer.dirty_entries(),
+		0,
+		"a row left behind by the swap is committed state with no way to the device"
+	);
+	let mut seen: Vec<Vec<u8>> = batch.writes.iter().map(|(_, taken, _)| taken.as_slice().to_vec()).collect();
+	buffer.settle_flush(batch);
 
-	assert_eq!(slices, 2, "two flows drain as two whole slices, one each");
-	let mut unique = seen.clone();
-	unique.sort();
-	unique.dedup();
-	assert_eq!(
-		unique.len(),
-		seen.len(),
-		"a key handed out twice is a key written twice, which resurrects the value the later slice replaced"
-	);
-	assert_eq!(
-		seen.len(),
-		10,
-		"every buffered key must reach exactly one slice; a key left behind by the last take is committed \
-		 operator state that never becomes durable"
-	);
+	assert!(buffer.take_for_flush().is_none(), "the drain must terminate once everything has been handed out");
+	let total = seen.len();
+	seen.sort();
+	seen.dedup();
+	assert_eq!(seen.len(), total, "a key handed out twice is a key written twice");
+	assert_eq!(total, 10, "every buffered key must reach the batch exactly once");
 }
 
 #[test]
@@ -764,41 +705,6 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 	);
 	buffer.settle_flush(second);
 	assert!(buffer.take_for_flush().is_none(), "the drain must terminate once everything has been handed out");
-}
-
-#[test]
-fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
-	let entry = entry_bytes("k2", "post-drop");
-	let buffer = Resident::with_budget(entry);
-	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "pre-drop")]);
-	buffer.record_drop(DropMarker::OperatorState(OP_A));
-	write_in_flow(&buffer, FLOW_A, 2, &[insert(OP_A, "k2", "post-drop")]);
-	write_in_flow(&buffer, FLOW_B, 3, &[insert(OP_B, "k3", "other-flow")]);
-
-	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
-	assert_eq!(
-		first.drops,
-		vec![DropMarker::OperatorState(OP_A)],
-		"every marker must ride the first slice, otherwise the drop lands after writes it must precede"
-	);
-	assert!(
-		written(&first, OP_A, &key("k1")).is_none(),
-		"a write recorded before the drop must have been cleared, not carried into a slice"
-	);
-	assert!(written(&first, OP_A, &key("k2")).is_some(), "the post-drop write rides out with its own flow");
-	buffer.settle_flush(first);
-
-	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
-	assert!(
-		second.drops.is_empty(),
-		"a marker replayed in a later slice deletes the post-drop rows the first slice already made durable"
-	);
-	assert!(
-		written(&second, OP_B, &key("k3")).is_some(),
-		"the flow the budget stopped before must be the one left for the second slice"
-	);
-	buffer.settle_flush(second);
-	assert!(buffer.take_for_flush().is_none(), "both flows must have been handed out");
 }
 
 #[test]
@@ -891,30 +797,30 @@ fn a_tombstone_recorded_first_charges_its_key() {
 }
 
 #[test]
-fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
+fn a_swap_moves_exactly_the_dirty_bytes_into_the_batch() {
 	let buffer = Resident::with_budget(entry_bytes("k1", "aaa"));
 	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
 	write_in_flow(&buffer, FLOW_B, 2, &[insert(OP_B, "k2", "bbbbb")]);
 	let before = resident_bytes(&buffer);
 
-	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	let taken = buffer.take_for_flush().expect("the seeded buffer yields a batch");
 
 	assert_eq!(
 		taken.bytes,
-		entry_bytes("k1", "aaa"),
-		"the slice carries exactly the first flow's bytes; the budget may only stop at a flow boundary"
+		entry_bytes("k1", "aaa").saturating_add(entry_bytes("k2", "bbbbb")),
+		"the batch must carry exactly the bytes that were dirty, or the flush budget drifts"
 	);
 	assert_eq!(
 		resident_bytes(&buffer),
 		before,
-		"a staged entry stays resident, so the split moves the charge into the batch without releasing \
-		 it from memory"
+		"a frozen row stays resident for reads, so the swap must not release it from memory"
 	);
-	assert_eq!(dirty_entries_of(&buffer, OP_A), 0, "the taken flow has nothing left needing a write");
+	assert_eq!(dirty_entries_of(&buffer, OP_A), 0, "the first flow has nothing left needing a write");
+	assert_eq!(dirty_entries_of(&buffer, OP_B), 0, "the second flow has nothing left needing a write");
 	assert_eq!(
-		dirty_entries_of(&buffer, OP_B),
-		1,
-		"the flow past the boundary stays dirty for the next slice; losing it drops committed state"
+		buffer.shared().dirty_footprint(),
+		ByteSize::ZERO,
+		"a swap that keeps the charge never lets the budget recover"
 	);
 }
 
@@ -1134,17 +1040,14 @@ fn a_flush_under_a_zero_budget_still_carries_every_staged_row() {
 		OperatorRangeTier::Absent,
 		None,
 	);
-	assert_eq!(
-		buffer.slice(),
-		ByteSize::ZERO,
-		"the slice must clamp to the zero budget, otherwise this proves nothing"
-	);
-
 	set(&buffer, OP_A, key("a"), row("1"));
 	set(&buffer, OP_B, key("b"), row("2"));
 	buffer.flush_all();
 
-	assert!(!buffer.pending(), "a zero slice took nothing, so the flush returned with every row still unpersisted");
+	assert!(
+		!buffer.pending(),
+		"a zero budget took nothing, so the flush returned with every row still unpersisted"
+	);
 	assert_eq!(buffer.metrics().persisted, 2, "the flush must carry both staged rows down");
 }
 
@@ -1381,4 +1284,133 @@ fn checkpoint_at(version: u64) -> FlowCheckpoint {
 		version: CommitVersion(version),
 		lsn: Lsn::new(version + 1_000),
 	}
+}
+
+#[test]
+fn a_drop_waits_for_staging_so_a_slice_never_carries_it_with_the_rows_it_clears() {
+	let buffer = Resident::new();
+	set(&buffer, OP_A, key("before"), row("v"));
+
+	let staging = buffer.flush_guard();
+	let (sent, received) = mpsc::channel();
+	let dropper = buffer.clone();
+	let dropping = thread::spawn(move || {
+		dropper.record_drop(DropMarker::OperatorState(OP_A));
+		sent.send(()).expect("the test is still waiting");
+	});
+	let finished_during_staging = received.recv_timeout(std::time::Duration::from_millis(200)).is_ok();
+	let first = buffer.take_for_flush().expect("the write makes a slice");
+	drop(staging);
+	dropping.join().expect("the drop must finish once staging ends");
+
+	assert!(!finished_during_staging, "a drop ran while staging held the buffer, so it can split a slice");
+	assert!(first.drops.is_empty(), "the drop landed in the slice that still carries the rows it clears");
+	assert!(written(&first, OP_A, &key("before")).is_some(), "the row written before the drop must be staged");
+	buffer.settle_flush(first);
+
+	let second = buffer.take_for_flush().expect("the drop makes the next slice");
+	assert_eq!(second.drops.len(), 1, "the drop must reach the disk after the rows it clears");
+	assert!(
+		written(&second, OP_A, &key("before")).is_none(),
+		"a row cleared by the drop must not be written again"
+	);
+}
+
+#[test]
+fn a_swap_carries_each_checkpoint_with_the_rows_that_earn_it() {
+	let buffer = Resident::new();
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a batch");
+	assert_eq!(first.checkpoints.get(&FLOW_A).copied(), Some(Some(checkpoint_at(10))));
+	assert_eq!(first.checkpoints.get(&FLOW_B).copied(), Some(Some(checkpoint_at(20))));
+	assert!(written(&first, OP_A, &key("k1")).is_some());
+	assert!(written(&first, OP_B, &key("k2")).is_some());
+
+	write_in_flow(&buffer, FLOW_A, 30, &[insert(OP_A, "k3", "v3")]);
+	assert_eq!(
+		buffer.lookup_checkpoint(FLOW_A),
+		Some(Some(checkpoint_at(30))),
+		"a read must see the newest checkpoint while an older one is on its way to the device"
+	);
+	assert!(written(&first, OP_A, &key("k3")).is_none(), "a write after the swap must not join the frozen batch");
+	assert_eq!(
+		first.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(checkpoint_at(10))),
+		"a checkpoint recorded after the swap must not join the frozen batch"
+	);
+	buffer.settle_flush(first);
+
+	let second = buffer.take_for_flush().expect("the write after the swap makes the next batch");
+	assert_eq!(second.checkpoints.get(&FLOW_A).copied(), Some(Some(checkpoint_at(30))));
+	assert!(written(&second, OP_A, &key("k3")).is_some());
+	assert!(!second.checkpoints.contains_key(&FLOW_B), "a settled checkpoint must not be written again");
+}
+
+#[test]
+fn a_periodic_flush_swaps_once_and_leaves_later_writes_for_the_next_one() {
+	let buffer = Resident::new();
+	buffer.attach_sinks(
+		PersistentTier::Testing(TestingPersistent::new(Arc::new(NoFaults))),
+		OperatorRangeTier::Absent,
+		None,
+	);
+	set(&buffer, OP_A, key("before"), row("1"));
+	let writer = buffer.clone();
+	buffer.set_persist_interlock(Box::new(move || set(&writer, OP_A, key("during"), row("2"))));
+
+	buffer.flush_once();
+
+	assert_eq!(buffer.metrics().persisted, 1, "one periodic flush must write only what its swap froze");
+	assert_eq!(buffer.dirty_entries(), 1, "a write made during the flush must wait for the next swap");
+
+	buffer.flush_once();
+	assert_eq!(buffer.metrics().persisted, 2, "the next periodic flush must carry the later write");
+	assert!(!buffer.pending());
+}
+
+#[test]
+fn a_full_flush_keeps_swapping_until_nothing_is_left() {
+	let buffer = Resident::new();
+	buffer.attach_sinks(
+		PersistentTier::Testing(TestingPersistent::new(Arc::new(NoFaults))),
+		OperatorRangeTier::Absent,
+		None,
+	);
+	set(&buffer, OP_A, key("before"), row("1"));
+	let writer = buffer.clone();
+	buffer.set_persist_interlock(Box::new(move || set(&writer, OP_A, key("during"), row("2"))));
+
+	buffer.flush_all();
+
+	assert_eq!(buffer.metrics().persisted, 2, "a full flush must also carry the write made during its first swap");
+	assert!(!buffer.pending());
+}
+
+#[test]
+fn a_remove_during_the_swap_is_never_lost_to_the_filter_gap() {
+	let buffer = Resident::new();
+	buffer.attach_sinks(
+		PersistentTier::Testing(TestingPersistent::new(Arc::new(NoFaults))),
+		OperatorRangeTier::Absent,
+		None,
+	);
+	set(&buffer, OP_A, key("k"), row("v"));
+	let writer = buffer.clone();
+	buffer.set_stage_interlock(Box::new(move || remove(&writer, OP_A, key("k"))));
+
+	let first = buffer.take_for_flush().expect("the write makes a batch");
+	assert!(written(&first, OP_A, &key("k")).is_some(), "the frozen row may reach the device");
+	assert!(
+		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Tombstone),
+		"a read after the remove must not find the row it removed"
+	);
+	buffer.settle_flush(first);
+
+	let second = buffer.take_for_flush().expect("the remove makes the next batch");
+	assert!(
+		matches!(written(&second, OP_A, &key("k")), Some(StagedWrite::Remove)),
+		"the device holds the frozen row, so only a delete can clear it"
+	);
 }

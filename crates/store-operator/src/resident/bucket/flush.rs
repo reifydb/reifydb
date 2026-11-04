@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId},
-};
+use reifydb_core::key::operator::state::KeyspaceId;
 use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
-use crate::resident::bucket::{BucketMap, write::WriteEntry};
+use crate::resident::bucket::{BucketMap, FrozenRows};
 
 impl BucketMap {
 	pub fn dirty_count(&self) -> usize {
@@ -19,10 +16,6 @@ impl BucketMap {
 		self.buckets
 			.values()
 			.fold(ByteSize::ZERO, |total, bucket| total.saturating_add(bucket.dirty_footprint()))
-	}
-
-	pub fn revert_flushing(&mut self) -> usize {
-		self.buckets.values_mut().map(|bucket| bucket.revert_flushing()).sum()
 	}
 
 	pub fn settle_flushing(&mut self) {
@@ -46,24 +39,28 @@ impl BucketMap {
 		(evicted, freed)
 	}
 
-	#[instrument(name = "store::operator::bucket::stage_dirty", level = "debug", skip_all, fields(operator = operator.0))]
-	pub fn stage_dirty(
-		&mut self,
-		operator: OperatorId,
-		mut visit: impl FnMut(KeyspaceId, GroupId, &[u8], &WriteEntry),
-	) -> ByteSize {
-		let mut staged = ByteSize::ZERO;
-		let mut ids = self.keyspaces_of(operator);
-		ids.reverse();
-		for keyspace in ids {
-			let Some(bucket) = self.buckets.get_mut(&(operator, keyspace)) else {
-				continue;
-			};
-			staged =
-				staged.saturating_add(bucket.stage_dirty(&mut |group, suffix, entry| {
-					visit(keyspace, group, suffix, entry)
-				}));
+	#[instrument(name = "store::operator::bucket::freeze", level = "debug", skip_all)]
+	pub fn freeze(&mut self) -> Frozen {
+		let mut frozen = Frozen::default();
+		for ((_, keyspace), bucket) in self.buckets.iter_mut() {
+			if let Some((rows, count, bytes)) = bucket.freeze() {
+				frozen.rows.push((*keyspace, rows));
+				frozen.count += count;
+				frozen.bytes = frozen.bytes.saturating_add(bytes);
+			}
 		}
-		staged
+		frozen
 	}
+
+	#[cfg(test)]
+	pub fn flushing_count(&self) -> usize {
+		self.buckets.values().map(|bucket| bucket.flushing_len()).sum()
+	}
+}
+
+#[derive(Default)]
+pub struct Frozen {
+	pub rows: Vec<(KeyspaceId, Box<dyn FrozenRows>)>,
+	pub count: usize,
+	pub bytes: ByteSize,
 }

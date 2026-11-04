@@ -120,12 +120,12 @@ impl Actor for ResidentFlushActor {
 		}
 		match msg {
 			FlushMessage::Pressure => {
-				self.drain();
+				self.buffer.flush_once();
 				self.rearm(state, ctx);
 			}
 			FlushMessage::Tick => {
 				self.buffer.note_tick();
-				self.drain();
+				self.buffer.flush_once();
 				self.rearm(state, ctx);
 			}
 			FlushMessage::Shutdown => {

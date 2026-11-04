@@ -12,6 +12,7 @@ mod tests;
 
 use std::{any::Any, collections::HashMap, ops::Bound};
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
@@ -30,6 +31,10 @@ use crate::{
 
 pub type GroupIds = SmallVec<[GroupId; 4]>;
 
+pub trait FrozenRows: Send + Sync {
+	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &Option<EncodedPodRow>));
+}
+
 pub trait Bucket: Any + Send + Sync {
 	fn footprint(&self) -> ByteSize;
 
@@ -41,9 +46,10 @@ pub trait Bucket: Any + Send + Sync {
 
 	fn dirty_footprint(&self) -> ByteSize;
 
-	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize;
+	fn freeze(&mut self) -> Option<(Box<dyn FrozenRows>, usize, ByteSize)>;
 
-	fn revert_flushing(&mut self) -> usize;
+	#[cfg(test)]
+	fn flushing_len(&self) -> usize;
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize);
 

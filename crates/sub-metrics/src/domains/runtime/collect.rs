@@ -109,7 +109,6 @@ fn push_operator_resident(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.push(MetricsSample::bytes("operator_resident", "budget_bytes", resident.budget()));
 	out.push(MetricsSample::bytes("operator_resident", "released_bytes", metrics.released));
 	out.push(MetricsSample::count("operator_resident", "evicted", metrics.evicted));
-	out.push(MetricsSample::count("operator_resident", "budget_exhausted", metrics.budget_exhausted));
 	out.push(MetricsSample::count("operator_resident", "persisted", metrics.persisted));
 	out.push(MetricsSample::count("operator_resident", "reclaimed", metrics.reclaimed));
 	out.push(MetricsSample::count("operator_resident", "wakes", metrics.wakes));

@@ -4,10 +4,7 @@
 use std::ops::{Deref, DerefMut};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{
-	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::OperatorStateKey,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::OperatorStateKey};
 use reifydb_runtime::sync::mutex::Mutex;
 
 use crate::resident::bucket::{BucketMap, write::WriteEntry};
@@ -63,8 +60,6 @@ impl ResidentState {
 
 pub struct SlotInner {
 	pub resident: ResidentState,
-	pub flow: Option<FlowId>,
-	pub pending_seq: Option<u64>,
 	pub sweeps_since_swept: u32,
 }
 
@@ -91,8 +86,6 @@ impl Slot {
 		Self {
 			inner: Mutex::new(SlotInner {
 				resident: ResidentState::new(operator),
-				flow: None,
-				pending_seq: None,
 				sweeps_since_swept: 0,
 			}),
 		}

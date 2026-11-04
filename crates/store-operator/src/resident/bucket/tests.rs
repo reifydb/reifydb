@@ -153,10 +153,8 @@ fn a_staged_row_is_not_staged_again_by_the_next_flush() {
 	bucket.record(GroupId::hashed(Hash128(7)), suffix(1), Some(row("seven")));
 	bucket.record(GroupId::hashed(Hash128(9)), suffix(2), Some(row("nine")));
 
-	let mut first = 0usize;
-	bucket.stage_dirty(&mut |_, _, _| first += 1);
-	let mut second = 0usize;
-	bucket.stage_dirty(&mut |_, _, _| second += 1);
+	let first = stage_rows(&mut bucket).len();
+	let second = stage_rows(&mut bucket).len();
 
 	assert_eq!(first, 2, "every dirty row in every group must be staged, not just the first group's");
 	assert_eq!(second, 0, "a staged row must leave the dirty set or the next flush writes it twice");
@@ -431,9 +429,11 @@ type StagedRow = (GroupId, Vec<u8>, Option<Vec<u8>>);
 
 fn stage_rows(bucket: &mut StandardBucket<JoinLeft>) -> Vec<StagedRow> {
 	let mut rows = Vec::new();
-	bucket.stage_dirty(&mut |group, suffix, entry| {
-		rows.push((group, suffix.to_vec(), entry.post.as_ref().map(|post| post.body().to_vec())));
-	});
+	if let Some((frozen, _, _)) = bucket.freeze() {
+		frozen.for_each(&mut |group, suffix, post| {
+			rows.push((group, suffix.to_vec(), post.as_ref().map(|post| post.body().to_vec())));
+		});
+	}
 	rows
 }
 
@@ -473,37 +473,14 @@ fn a_row_rewritten_mid_flush_is_left_dirty_by_settle_and_staged_by_the_next_flus
 	bucket.record(seven, suffix(1), Some(row("rewritten")));
 	bucket.settle_flushing();
 
-	assert_eq!(bucket.get(seven, &suffix(1)).expect("recorded").staged, Staged::Dirty);
-	assert_eq!(bucket.get(seven, &suffix(2)).expect("recorded").staged, Staged::Clean);
+	assert_eq!(bucket.staged_of(bucket.get(seven, &suffix(1)).expect("recorded")), Staged::Dirty);
+	assert_eq!(bucket.staged_of(bucket.get(seven, &suffix(2)).expect("recorded")), Staged::Clean);
 	assert_eq!(bucket.dirty_len(), 1);
 	assert_eq!(
 		stage_rows(&mut bucket),
 		vec![staged_row(seven, 1, Some("rewritten"))],
 		"the rewrite must reach the next flush, and the row the first flush persisted must not be written twice"
 	);
-}
-
-#[test]
-fn a_reverted_flush_restages_every_row_in_the_same_order() {
-	let mut bucket = bucket();
-	for n in [3u64, 1, 2] {
-		let group = GroupId::hashed(Hash128(n as u128));
-		bucket.record(group, suffix(n), Some(row("live")));
-		bucket.record(group, suffix(n + 10), None);
-	}
-	let first = stage_rows(&mut bucket);
-	assert_eq!(first.len(), 6);
-
-	assert_eq!(bucket.revert_flushing(), 6, "every flushing row must be handed back");
-	assert_eq!(bucket.dirty_len(), 6);
-	for n in [1u64, 2, 3] {
-		let group = GroupId::hashed(Hash128(n as u128));
-		assert_eq!(bucket.get(group, &suffix(n)).expect("recorded").staged, Staged::Dirty);
-		assert_eq!(bucket.get(group, &suffix(n + 10)).expect("recorded").staged, Staged::Dirty);
-	}
-
-	assert_eq!(stage_rows(&mut bucket), first, "the retried flush must carry the same rows in the same order");
-	assert_eq!(bucket.revert_flushing(), 6, "a second revert must find every row the retry staged");
 }
 
 #[test]
@@ -526,7 +503,7 @@ fn erasing_the_last_new_row_of_a_group_leaves_nothing_for_the_next_flush_to_find
 }
 
 #[test]
-fn a_flush_stages_groups_in_ascending_order_with_live_rows_before_tombstones() {
+fn a_flush_stages_groups_and_keys_in_ascending_order() {
 	let groups: Vec<GroupId> = [9u128, 2, 5].into_iter().map(|n| GroupId::hashed(Hash128(n))).collect();
 	let mut bucket = bucket();
 	bucket.record(groups[0], suffix(3), None);
@@ -544,13 +521,101 @@ fn a_flush_stages_groups_in_ascending_order_with_live_rows_before_tombstones() {
 		match group {
 			g if g == groups[0] => expected.extend([
 				staged_row(g, 1, Some("a1")),
-				staged_row(g, 7, Some("a7")),
 				staged_row(g, 3, None),
+				staged_row(g, 7, Some("a7")),
 			]),
-			g if g == groups[1] => expected.extend([staged_row(g, 4, Some("b4")), staged_row(g, 1, None)]),
-			g => expected.extend([staged_row(g, 6, Some("c6")), staged_row(g, 2, None)]),
+			g if g == groups[1] => expected.extend([staged_row(g, 1, None), staged_row(g, 4, Some("b4"))]),
+			g => expected.extend([staged_row(g, 2, None), staged_row(g, 6, Some("c6"))]),
 		}
 	}
 
 	assert_eq!(stage_rows(&mut bucket), expected);
+}
+
+#[test]
+fn a_frozen_row_is_never_evicted_before_it_settles() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record(seven, suffix(1), Some(row("frozen")));
+	assert_eq!(stage_rows(&mut bucket).len(), 1);
+
+	for _ in 0..2 {
+		let (mut bytes, mut tombstones) = (ByteSize::from_bytes(u64::MAX), usize::MAX);
+		let (evicted, _) = bucket.evict_clean(&mut bytes, &mut tombstones);
+		assert_eq!(evicted, 0, "a row still on its way to the device was evicted");
+	}
+	assert_eq!(bucket.staged_of(bucket.get(seven, &suffix(1)).expect("recorded")), Staged::Flushing);
+
+	bucket.settle_flushing();
+	assert_eq!(bucket.staged_of(bucket.get(seven, &suffix(1)).expect("recorded")), Staged::Clean);
+	let mut evicted = 0;
+	for _ in 0..2 {
+		let (mut bytes, mut tombstones) = (ByteSize::from_bytes(u64::MAX), usize::MAX);
+		evicted += bucket.evict_clean(&mut bytes, &mut tombstones).0;
+	}
+	assert_eq!(evicted, 1, "a settled row must become evictable, otherwise the buffer never shrinks");
+}
+
+#[test]
+fn deleting_a_never_persisted_row_during_its_flush_leaves_a_tombstone() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record_fresh(seven, suffix(1), Some(row("fresh")));
+	assert_eq!(stage_rows(&mut bucket).len(), 1);
+
+	assert!(!bucket.erase(seven, &suffix(1)), "a frozen row must not be erased as if it never existed");
+	bucket.record(seven, suffix(1), None);
+	assert!(!bucket.erase(seven, &suffix(1)), "the tombstone over a frozen row must not be collapsible either");
+	bucket.settle_flushing();
+
+	assert_eq!(stage_rows(&mut bucket), vec![staged_row(seven, 1, None)]);
+}
+
+#[test]
+fn a_fresh_row_rewritten_before_its_first_flush_stays_collapsible() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record_fresh(seven, suffix(1), Some(row("first")));
+	bucket.record(seven, suffix(1), Some(row("second")));
+	assert_eq!(bucket.staged_of(bucket.get(seven, &suffix(1)).expect("recorded")), Staged::Never);
+
+	assert!(bucket.erase(seven, &suffix(1)));
+	assert_eq!(bucket.dirty_len(), 0, "an erased row must leave nothing for the next flush to write");
+	assert_eq!(bucket.dirty_footprint(), ByteSize::ZERO, "an erased row must stop charging the flush budget");
+	assert!(stage_rows(&mut bucket).is_empty());
+}
+
+#[test]
+fn only_tombstones_still_frozen_at_settle_count_as_clean() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record(seven, suffix(1), None);
+	bucket.record(seven, suffix(2), None);
+	bucket.record(seven, suffix(3), None);
+	assert_eq!(stage_rows(&mut bucket).len(), 3);
+	assert_eq!(bucket.tombstone_len(), 0, "a tombstone not yet on the device must not count as clean");
+
+	bucket.record(seven, suffix(1), Some(row("revived")));
+	bucket.record(seven, suffix(2), None);
+	bucket.settle_flushing();
+	assert_eq!(bucket.tombstone_len(), 1, "only the tombstone left untouched during the flush is clean");
+
+	assert_eq!(stage_rows(&mut bucket).len(), 2);
+	bucket.settle_flushing();
+	assert_eq!(bucket.tombstone_len(), 2, "the rewritten tombstone is clean once its own flush settles");
+}
+
+#[test]
+fn a_tombstone_replaced_before_the_flush_is_not_counted_at_settle() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	bucket.record(seven, suffix(1), None);
+	bucket.record(seven, suffix(1), Some(row("back")));
+	bucket.record(seven, suffix(2), Some(row("alive")));
+	bucket.record(seven, suffix(2), None);
+	bucket.record(seven, suffix(2), None);
+	assert_eq!(stage_rows(&mut bucket).len(), 2);
+	bucket.settle_flushing();
+
+	assert_eq!(bucket.tombstone_len(), 1);
 }

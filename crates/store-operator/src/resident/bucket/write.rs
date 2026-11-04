@@ -3,7 +3,7 @@
 
 use std::{
 	any::Any,
-	collections::{BTreeMap, BTreeSet, btree_map::Entry},
+	collections::{BTreeMap, btree_map::Entry},
 	iter::Peekable,
 	mem::{self, size_of},
 	ops::{Bound, RangeBounds},
@@ -23,10 +23,10 @@ use reifydb_core::{
 	},
 	state::typed::SuffixBytes,
 };
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 
 use crate::{
-	resident::bucket::{Bucket, GroupIds},
+	resident::bucket::{Bucket, FrozenRows, GroupIds},
 	types::Scan,
 };
 
@@ -46,11 +46,24 @@ impl Staged {
 	pub fn is_collapsible(self) -> bool {
 		matches!(self, Self::Never)
 	}
+}
 
-	fn dirtied(self) -> Self {
-		match self {
-			Self::Never => Self::Never,
-			Self::Flushing | Self::Dirty | Self::Clean => Self::Dirty,
+#[derive(Debug, Clone, Copy)]
+struct Generations {
+	settled: u32,
+	frozen: u32,
+}
+
+impl Generations {
+	fn staged(self, entry: &WriteEntry) -> Staged {
+		if entry.generation <= self.settled {
+			Staged::Clean
+		} else if entry.generation <= self.frozen {
+			Staged::Flushing
+		} else if entry.never {
+			Staged::Never
+		} else {
+			Staged::Dirty
 		}
 	}
 }
@@ -58,7 +71,8 @@ impl Staged {
 #[derive(Debug)]
 pub struct WriteEntry {
 	pub post: Option<EncodedPodRow>,
-	pub staged: Staged,
+	generation: u32,
+	never: bool,
 	referenced: AtomicBool,
 }
 
@@ -66,7 +80,8 @@ impl Clone for WriteEntry {
 	fn clone(&self) -> Self {
 		Self {
 			post: self.post.clone(),
-			staged: self.staged,
+			generation: self.generation,
+			never: self.never,
 			referenced: AtomicBool::new(self.referenced.load(Ordering::Relaxed)),
 		}
 	}
@@ -74,17 +89,18 @@ impl Clone for WriteEntry {
 
 impl PartialEq for WriteEntry {
 	fn eq(&self, other: &Self) -> bool {
-		self.post == other.post && self.staged == other.staged
+		self.post == other.post && self.generation == other.generation && self.never == other.never
 	}
 }
 
 impl Eq for WriteEntry {}
 
 impl WriteEntry {
-	fn new(post: Option<EncodedPodRow>, staged: Staged) -> Self {
+	fn new(post: Option<EncodedPodRow>, generation: u32, never: bool) -> Self {
 		Self {
 			post,
-			staged,
+			generation,
+			never,
 			referenced: AtomicBool::new(true),
 		}
 	}
@@ -109,7 +125,6 @@ impl WriteEntry {
 struct Partition<K: Keyspace> {
 	live: BTreeMap<K::Suffix, WriteEntry>,
 	deleted: BTreeMap<K::Suffix, WriteEntry>,
-	dirty: usize,
 }
 
 impl<K: Keyspace> Partition<K> {
@@ -117,7 +132,6 @@ impl<K: Keyspace> Partition<K> {
 		Self {
 			live: BTreeMap::new(),
 			deleted: BTreeMap::new(),
-			dirty: 0,
 		}
 	}
 
@@ -217,16 +231,35 @@ impl<'a, S: Ord + 'a, I: Iterator<Item = (&'a S, &'a WriteEntry)>> Iterator for 
 	}
 }
 
+type PendingRows<K> = BTreeMap<(GroupId, <K as Keyspace>::Suffix), Option<EncodedPodRow>>;
+
+struct FrozenBucket<K: Keyspace> {
+	rows: PendingRows<K>,
+	_groups: BTreeMap<GroupId, usize>,
+}
+
+impl<K: Keyspace> FrozenRows for FrozenBucket<K> {
+	fn for_each(&self, visit: &mut dyn FnMut(GroupId, &[u8], &Option<EncodedPodRow>)) {
+		for ((group, suffix), post) in &self.rows {
+			visit(*group, &suffix.to_suffix_bytes(), post);
+		}
+	}
+}
+
 pub struct StandardBucket<K: Keyspace> {
 	operator: OperatorId,
 	partitions: BTreeMap<GroupId, Partition<K>>,
 	bytes: ByteSize,
 	entries: usize,
 	tombstones: usize,
-	dirty: usize,
+	pending: PendingRows<K>,
+	pending_tombstones: usize,
+	frozen_tombstones: usize,
 	dirty_bytes: ByteSize,
-	dirty_groups: BTreeSet<GroupId>,
-	flushing_groups: BTreeSet<GroupId>,
+	dirty_groups: BTreeMap<GroupId, usize>,
+	active_generation: u32,
+	frozen_generation: u32,
+	settled_generation: u32,
 }
 
 impl<K: Keyspace> StandardBucket<K> {
@@ -237,11 +270,26 @@ impl<K: Keyspace> StandardBucket<K> {
 			bytes: ByteSize::ZERO,
 			entries: 0,
 			tombstones: 0,
-			dirty: 0,
+			pending: BTreeMap::new(),
+			pending_tombstones: 0,
+			frozen_tombstones: 0,
 			dirty_bytes: ByteSize::ZERO,
-			dirty_groups: BTreeSet::new(),
-			flushing_groups: BTreeSet::new(),
+			dirty_groups: BTreeMap::new(),
+			active_generation: 1,
+			frozen_generation: 0,
+			settled_generation: 0,
 		}
+	}
+
+	fn generations(&self) -> Generations {
+		Generations {
+			settled: self.settled_generation,
+			frozen: self.frozen_generation,
+		}
+	}
+
+	pub fn staged_of(&self, entry: &WriteEntry) -> Staged {
+		self.generations().staged(entry)
 	}
 
 	pub fn operator(&self) -> OperatorId {
@@ -273,78 +321,40 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn dirty_len(&self) -> usize {
-		self.dirty
+		self.pending.len()
 	}
 
 	pub fn dirty_footprint(&self) -> ByteSize {
 		self.dirty_bytes.saturating_add(Self::group_bytes() * self.dirty_groups.len() as u64)
 	}
 
-	pub fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
-		let mut staged = ByteSize::ZERO;
-		for group in mem::take(&mut self.dirty_groups) {
-			let partition = self
-				.partitions
-				.get_mut(&group)
-				.expect("a dirty group keeps its partition until it is staged");
-			let mut charged_group = false;
-			for (suffix, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
-				if !entry.staged.is_dirty() {
-					continue;
-				}
-				visit(group, &suffix.to_suffix_bytes(), entry);
-				entry.staged = Staged::Flushing;
-				self.dirty -= 1;
-				self.dirty_bytes = self
-					.dirty_bytes
-					.saturating_sub(entry.row_bytes())
-					.saturating_sub(Self::suffix_bytes());
-				staged = staged.saturating_add(entry.row_bytes()).saturating_add(Self::suffix_bytes());
-				if !charged_group {
-					staged = staged.saturating_add(Self::group_bytes());
-					charged_group = true;
-				}
-			}
-			match charged_group {
-				true => {
-					partition.dirty = 0;
-					self.flushing_groups.insert(group);
-				}
-				false => {
-					self.dirty_groups.insert(group);
-				}
-			}
+	pub fn freeze(&mut self) -> Option<(Box<dyn FrozenRows>, usize, ByteSize)> {
+		if self.pending.is_empty() {
+			return None;
 		}
-		staged
-	}
-
-	pub fn revert_flushing(&mut self) -> usize {
-		let mut reverted = 0usize;
-		let mut restored = ByteSize::ZERO;
-		for group in mem::take(&mut self.flushing_groups) {
-			let partition = self
-				.partitions
-				.get_mut(&group)
-				.expect("a flushing group keeps its partition until it settles");
-			let mut restored_here = 0usize;
-			for (_, entry) in partition.live.iter_mut().chain(partition.deleted.iter_mut()) {
-				if matches!(entry.staged, Staged::Flushing) {
-					entry.staged = Staged::Dirty;
-					restored_here += 1;
-					restored = restored
-						.saturating_add(entry.row_bytes())
-						.saturating_add(Self::suffix_bytes());
-				}
-			}
-			if restored_here > 0 && partition.dirty == 0 {
-				self.dirty_groups.insert(group);
-			}
-			partition.dirty += restored_here;
-			reverted += restored_here;
+		reifydb_assertions! {
+			assert_eq!(
+				self.frozen_generation, self.settled_generation,
+				"operator {} froze a second generation before the previous one settled, so the rows of generation {} would read as clean without reaching the device",
+				self.operator.0, self.frozen_generation
+			);
 		}
-		self.dirty += reverted;
-		self.dirty_bytes = self.dirty_bytes.saturating_add(restored);
-		reverted
+		let count = self.pending.len();
+		let bytes = self.dirty_footprint();
+		let rows = mem::take(&mut self.pending);
+		let groups = mem::take(&mut self.dirty_groups);
+		self.frozen_tombstones = mem::take(&mut self.pending_tombstones);
+		self.dirty_bytes = ByteSize::ZERO;
+		self.frozen_generation = self.active_generation;
+		self.active_generation += 1;
+		Some((
+			Box::new(FrozenBucket::<K> {
+				rows,
+				_groups: groups,
+			}),
+			count,
+			bytes,
+		))
 	}
 
 	pub fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
@@ -353,10 +363,11 @@ impl<K: Keyspace> StandardBucket<K> {
 		let mut freed = ByteSize::ZERO;
 		let suffix_cost = Self::suffix_bytes();
 		let group_cost = Self::group_bytes();
+		let generations = self.generations();
 		self.partitions.retain(|_, partition| {
 			{
 				let mut sweep = |entry: &mut WriteEntry, tombstone: bool| {
-					if !matches!(entry.staged, Staged::Clean) {
+					if !matches!(generations.staged(entry), Staged::Clean) {
 						return true;
 					}
 					if bytes.as_bytes() == 0 && (!tombstone || *tombstones == 0) {
@@ -392,23 +403,8 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn settle_flushing(&mut self) {
-		for group in mem::take(&mut self.flushing_groups) {
-			let partition = self
-				.partitions
-				.get_mut(&group)
-				.expect("a flushing group keeps its partition until it settles");
-			for (_, entry) in partition.live.iter_mut() {
-				if matches!(entry.staged, Staged::Flushing) {
-					entry.staged = Staged::Clean;
-				}
-			}
-			for (_, entry) in partition.deleted.iter_mut() {
-				if matches!(entry.staged, Staged::Flushing) {
-					entry.staged = Staged::Clean;
-					self.tombstones += 1;
-				}
-			}
-		}
+		self.settled_generation = self.frozen_generation;
+		self.tombstones += mem::take(&mut self.frozen_tombstones);
 	}
 
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
@@ -424,6 +420,8 @@ impl<K: Keyspace> StandardBucket<K> {
 			entry.insert(Partition::new());
 			self.bytes = self.bytes.saturating_add(Self::group_bytes());
 		}
+		let generations = self.generations();
+		let active = self.active_generation;
 		let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
 		let incoming = WriteEntry::bytes_of(&post);
 		let tombstone = post.is_none();
@@ -431,66 +429,72 @@ impl<K: Keyspace> StandardBucket<K> {
 			true => (&mut partition.live, &mut partition.deleted),
 			false => (&mut partition.deleted, &mut partition.live),
 		};
-		let mut dirtied = 0usize;
+		let mut dirtied = false;
 		let mut uncharge = ByteSize::ZERO;
 		let outgoing = match target.get_mut(&suffix) {
 			Some(entry) => {
 				let outgoing = entry.row_bytes();
-				match entry.staged.is_dirty() {
+				let staged = generations.staged(entry);
+				match staged.is_dirty() {
 					true => {
 						uncharge = outgoing.saturating_add(Self::suffix_bytes());
 					}
-					false => dirtied += 1,
+					false => dirtied = true,
 				}
-				if tombstone && matches!(entry.staged, Staged::Clean) {
-					self.tombstones -= 1;
+				if tombstone {
+					match staged {
+						Staged::Clean => self.tombstones -= 1,
+						Staged::Flushing => self.frozen_tombstones -= 1,
+						Staged::Never | Staged::Dirty => {}
+					}
 				}
-				entry.post = post;
-				entry.staged = entry.staged.dirtied();
+				entry.post = post.clone();
+				entry.generation = active;
+				entry.never = staged.is_collapsible();
 				entry.touch();
 				outgoing
 			}
 			None => match other.remove(&suffix) {
 				Some(moved) => {
-					match moved.staged.is_dirty() {
+					let staged = generations.staged(&moved);
+					match staged.is_dirty() {
 						true => {
 							uncharge =
 								moved.row_bytes().saturating_add(Self::suffix_bytes());
 						}
-						false => dirtied += 1,
+						false => dirtied = true,
 					}
-					if !tombstone && matches!(moved.staged, Staged::Clean) {
-						self.tombstones -= 1;
+					if !tombstone {
+						match staged {
+							Staged::Clean => self.tombstones -= 1,
+							Staged::Flushing => self.frozen_tombstones -= 1,
+							Staged::Never | Staged::Dirty => {}
+						}
 					}
-					target.insert(suffix, WriteEntry::new(post, moved.staged.dirtied()));
+					target.insert(
+						suffix.clone(),
+						WriteEntry::new(post.clone(), active, staged.is_collapsible()),
+					);
 					moved.row_bytes()
 				}
 				None => {
-					target.insert(
-						suffix,
-						WriteEntry::new(
-							post,
-							match fresh {
-								true => Staged::Never,
-								false => Staged::Dirty,
-							},
-						),
-					);
+					target.insert(suffix.clone(), WriteEntry::new(post.clone(), active, fresh));
 					self.bytes = self.bytes.saturating_add(Self::suffix_bytes());
 					self.entries += 1;
-					dirtied += 1;
+					dirtied = true;
 					ByteSize::ZERO
 				}
 			},
 		};
-		if dirtied > 0 {
-			let partition = self.partitions.get_mut(&group).expect("the partition was just inserted");
-			partition.dirty += dirtied;
-			if partition.dirty == dirtied {
-				self.dirty_groups.insert(group);
-			}
+		if dirtied {
+			*self.dirty_groups.entry(group).or_insert(0) += 1;
 		}
-		self.dirty += dirtied;
+		let replaced = self.pending.insert((group, suffix), post);
+		match (tombstone, matches!(replaced, Some(None))) {
+			(true, false) => self.pending_tombstones += 1,
+			(false, true) => self.pending_tombstones -= 1,
+			(true, true) | (false, false) => {}
+		}
 		self.dirty_bytes = self
 			.dirty_bytes
 			.saturating_sub(uncharge)
@@ -499,10 +503,11 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn erase(&mut self, group: GroupId, suffix: &K::Suffix) -> bool {
+		let generations = self.generations();
 		let Some(partition) = self.partitions.get_mut(&group) else {
 			return false;
 		};
-		if !partition.get(suffix).is_some_and(|entry| entry.staged.is_collapsible()) {
+		if !partition.get(suffix).is_some_and(|entry| generations.staged(entry).is_collapsible()) {
 			return false;
 		}
 		let entry = match partition.live.remove(suffix) {
@@ -510,9 +515,12 @@ impl<K: Keyspace> StandardBucket<K> {
 			None => partition.deleted.remove(suffix).expect("the entry was just observed"),
 		};
 		self.entries -= 1;
-		self.dirty -= 1;
-		partition.dirty -= 1;
-		if partition.dirty == 0 {
+		if matches!(self.pending.remove(&(group, suffix.clone())), Some(None)) {
+			self.pending_tombstones -= 1;
+		}
+		let remaining = self.dirty_groups.get_mut(&group).expect("a dirty row keeps its group counted");
+		*remaining -= 1;
+		if *remaining == 0 {
 			self.dirty_groups.remove(&group);
 		}
 		self.dirty_bytes =
@@ -578,12 +586,13 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 		StandardBucket::dirty_footprint(self)
 	}
 
-	fn stage_dirty(&mut self, visit: &mut dyn FnMut(GroupId, &[u8], &WriteEntry)) -> ByteSize {
-		StandardBucket::stage_dirty(self, visit)
+	fn freeze(&mut self) -> Option<(Box<dyn FrozenRows>, usize, ByteSize)> {
+		StandardBucket::freeze(self)
 	}
 
-	fn revert_flushing(&mut self) -> usize {
-		StandardBucket::revert_flushing(self)
+	#[cfg(test)]
+	fn flushing_len(&self) -> usize {
+		self.entries().filter(|(_, _, entry)| matches!(self.staged_of(entry), Staged::Flushing)).count()
 	}
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {

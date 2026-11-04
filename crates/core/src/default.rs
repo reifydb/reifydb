@@ -105,9 +105,6 @@ pub mod store {
 	pub const OPERATOR_FILTER_KEYS: u64 = 16_000_000;
 	pub const OPERATOR_FILTER_KEYS_TESTING: u64 = 4_096;
 
-	pub const OPERATOR_FLUSH_SLICE: ByteSize = ByteSize::from_mib(4);
-	pub const OPERATOR_FLUSH_SLICE_TESTING: ByteSize = ByteSize::from_kib(16);
-
 	pub const OPERATOR_WAL_AUTOCHECKPOINT_PAGES: u64 = 1_000_000;
 	pub const OPERATOR_WAL_AUTOCHECKPOINT_PAGES_TESTING: u64 = 64;
 }

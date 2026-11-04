@@ -46,7 +46,6 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::OperatorWalAutocheckpoint,
 	ConfigKey::OperatorResidentBytes,
 	ConfigKey::OperatorDirtyBytes,
-	ConfigKey::OperatorFlushSliceBytes,
 	ConfigKey::OperatorFlushInterval,
 	ConfigKey::MultiFlushSliceBytes,
 ];
@@ -159,7 +158,6 @@ pub(crate) fn resolve_startup_configs(
 		operator_resident: ResidentLimits {
 			budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBytes)),
 			dirty_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorDirtyBytes)),
-			slice: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushSliceBytes)),
 			..ResidentLimits::default()
 		},
 		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),

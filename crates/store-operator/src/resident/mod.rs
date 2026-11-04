@@ -13,7 +13,7 @@ mod state;
 mod tests;
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::BTreeMap,
 	fmt, mem,
 	sync::{
 		Arc, OnceLock,
@@ -95,19 +95,12 @@ pub const FILTER_KEYS: u64 = if default::TESTING {
 	default::store::OPERATOR_FILTER_KEYS
 };
 
-pub const SLICE_BYTES: ByteSize = if default::TESTING {
-	default::store::OPERATOR_FLUSH_SLICE_TESTING
-} else {
-	default::store::OPERATOR_FLUSH_SLICE
-};
-
 #[derive(Debug, Clone, Copy)]
 pub struct ResidentLimits {
 	pub budget: ByteSize,
 	pub entries: u64,
 	pub tombstones: u64,
 	pub dirty_budget: ByteSize,
-	pub slice: ByteSize,
 }
 
 impl Default for ResidentLimits {
@@ -117,7 +110,6 @@ impl Default for ResidentLimits {
 			entries: FLUSH_ENTRY_LIMIT,
 			tombstones: TOMBSTONE_LIMIT,
 			dirty_budget: DIRTY_BUDGET_BYTES,
-			slice: SLICE_BYTES,
 		}
 	}
 }
@@ -131,7 +123,6 @@ pub struct OperatorResidentStateMetrics {
 	pub persisted: u64,
 	pub reclaimed: u64,
 	pub evicted: u64,
-	pub budget_exhausted: u64,
 	pub released: ByteSize,
 	pub backlog: ByteSize,
 }
@@ -153,10 +144,12 @@ impl GlobalInner {
 	}
 }
 
-struct PendingGroup {
-	flow: Option<FlowId>,
-	seq: u64,
-	operators: Vec<OperatorId>,
+struct FrozenSet {
+	rows: Vec<(OperatorId, KeyspaceId, Box<dyn bucket::FrozenRows>)>,
+	checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
+	drops: Vec<DropMarker>,
+	bytes: ByteSize,
+	through: Option<Lsn>,
 }
 
 struct OperatorSinks {
@@ -184,7 +177,6 @@ pub struct Shared {
 	slots: DashMap<OperatorId, Arc<Slot>>,
 	global: Mutex<GlobalInner>,
 	drops_outstanding: AtomicBool,
-	write_seq: AtomicU64,
 	drain: Mutex<()>,
 	flusher: Mutex<()>,
 	accounting: RwLock<()>,
@@ -196,7 +188,6 @@ pub struct Shared {
 	dirty_bytes: AtomicU64,
 	entry_limit: u64,
 	tombstone_limit: u64,
-	slice: ByteSize,
 	dirty_budget: ByteSize,
 	waker: Mutex<Option<Waker<FlushMessage>>>,
 	evictor: Mutex<Option<Waker<EvictMessage>>>,
@@ -225,7 +216,6 @@ impl Shared {
 			slots: DashMap::new(),
 			global: Mutex::new(GlobalInner::default()),
 			drops_outstanding: AtomicBool::new(false),
-			write_seq: AtomicU64::new(0),
 			drain: Mutex::new(()),
 			flusher: Mutex::new(()),
 			accounting: RwLock::new(()),
@@ -237,7 +227,6 @@ impl Shared {
 			dirty_bytes: AtomicU64::new(0),
 			entry_limit: limits.entries,
 			tombstone_limit: limits.tombstones,
-			slice: limits.slice.min(limits.budget),
 			dirty_budget: limits.dirty_budget,
 			waker: Mutex::new(None),
 			evictor: Mutex::new(None),
@@ -485,10 +474,6 @@ impl Resident {
 		self.shared.budget.limit()
 	}
 
-	pub fn slice(&self) -> ByteSize {
-		self.shared.slice
-	}
-
 	pub fn metrics(&self) -> OperatorResidentStateMetrics {
 		let mut metrics = *self.shared.metrics.lock();
 		metrics.backlog = self.resident_bytes();
@@ -514,11 +499,7 @@ impl Resident {
 				continue;
 			};
 			let inner = slot.inner.lock();
-			inner.buckets.for_each_entry(operator, |_, _, _, entry| {
-				if matches!(entry.staged, bucket::write::Staged::Flushing) {
-					total += 1;
-				}
-			});
+			total += inner.buckets.flushing_count();
 		}
 		total
 	}
@@ -583,8 +564,7 @@ impl Resident {
 		if writes.is_empty() && checkpoints.is_empty() && checkpoint_deletes.is_empty() {
 			return;
 		}
-		let flow = checkpoints.first().map(|(flow, _)| *flow).or_else(|| checkpoint_deletes.first().copied());
-		self.record_writes(writes, flow);
+		self.record_writes(writes);
 		if !checkpoints.is_empty() || !checkpoint_deletes.is_empty() {
 			{
 				let mut global = self.shared.global.lock();
@@ -601,7 +581,7 @@ impl Resident {
 	}
 
 	#[instrument(name = "store::operator::resident::record_writes", level = "trace", skip(self, writes), fields(write_count = writes.len()))]
-	fn record_writes(&self, writes: &[OperatorWrite], flow: Option<FlowId>) {
+	fn record_writes(&self, writes: &[OperatorWrite]) {
 		let mut grouped: BTreeMap<OperatorId, Vec<&OperatorWrite>> = BTreeMap::new();
 		for write in writes {
 			grouped.entry(write_operator(write)).or_default().push(write);
@@ -631,24 +611,11 @@ impl Resident {
 			{
 				self.shared.operator_over_local_cap.store(true, Ordering::Release);
 			}
-			if flow.is_some() {
-				inner.flow = flow;
-			}
-			self.mark_pending(&mut inner);
-		}
-	}
-
-	fn mark_pending(&self, inner: &mut SlotInner) {
-		if inner.buckets.dirty_count() == 0 {
-			inner.pending_seq = None;
-			return;
-		}
-		if inner.pending_seq.is_none() {
-			inner.pending_seq = Some(self.shared.write_seq.fetch_add(1, Ordering::Relaxed));
 		}
 	}
 
 	pub fn record_drop(&self, marker: DropMarker) {
+		let _staging = self.flush_guard();
 		let operator = drop_operator(&marker);
 		{
 			let mut global = self.shared.global.lock();
@@ -676,7 +643,6 @@ impl Resident {
 		self.shared.release_tombstones(before_tombstones.saturating_sub(after_tombstones));
 		self.shared.release_dirty(before_dirty.saturating_sub(after_dirty));
 		self.shared.release_dirty_bytes(before_dirty_bytes.saturating_sub(after_dirty_bytes));
-		self.mark_pending(&mut inner);
 	}
 
 	#[instrument(name = "store::operator::resident::evict_to_capacity", level = "debug", skip_all, fields(evicted = Empty, freed = Empty))]
@@ -781,12 +747,13 @@ impl Resident {
 
 	#[cfg(any(test, feature = "testing"))]
 	pub fn take_for_flush(&self) -> Option<Arc<FlushBatch>> {
-		self.take_drain_slice(self.shared.slice)
+		let frozen = self.swap_pending()?;
+		Some(self.frozen_batch(frozen))
 	}
 
 	#[cfg(any(test, feature = "testing"))]
 	pub fn settle_flush(&self, batch: Arc<FlushBatch>) {
-		self.settle(batch);
+		self.settle(&batch);
 	}
 
 	#[instrument(name = "store::operator::resident::pending", level = "trace", skip(self))]
@@ -795,7 +762,7 @@ impl Resident {
 			let global = self.shared.global.lock();
 			!global.checkpoints.is_empty() || !global.drops.is_empty()
 		};
-		staged || !self.pending_groups().is_empty()
+		staged || self.shared.dirty.load(Ordering::Relaxed) > 0
 	}
 
 	#[instrument(name = "store::operator::resident::flush_all", level = "debug", skip_all)]
@@ -805,23 +772,40 @@ impl Resident {
 			return;
 		}
 		let mut flushed = false;
-		loop {
-			let taken = {
-				let _staging = self.flush_guard();
-				self.take_drain_slice(self.shared.slice)
-			};
-			let Some(batch) = taken else {
-				if !flushed {
-					self.advance_idle();
-				}
-				return;
-			};
+		while self.flush_pass() {
 			flushed = true;
-			self.persist(&batch)
-				.expect("operator state flush must persist; a dropped batch loses buffered rows");
-			let _staging = self.flush_guard();
-			self.settle(batch);
 		}
+		if !flushed {
+			self.advance_idle();
+		}
+	}
+
+	#[instrument(name = "store::operator::resident::flush_once", level = "debug", skip_all)]
+	pub fn flush_once(&self) {
+		let _flusher = self.shared.flusher.lock();
+		if self.device_absent() {
+			return;
+		}
+		if !self.flush_pass() {
+			self.advance_idle();
+		}
+	}
+
+	fn flush_pass(&self) -> bool {
+		let taken = {
+			let _staging = self.flush_guard();
+			self.swap_pending()
+		};
+		let Some(frozen) = taken else {
+			return false;
+		};
+		let batch = self.frozen_batch(frozen);
+		self.persist(&batch).expect("operator state flush must persist; a dropped batch loses buffered rows");
+		{
+			let _staging = self.flush_guard();
+			self.settle(&batch);
+		}
+		true
 	}
 
 	fn advance_idle(&self) {
@@ -850,54 +834,6 @@ impl Resident {
 		self.persist(&marker).expect("operator idle flush must persist its saved lsn marker");
 	}
 
-	#[cfg(feature = "testing")]
-	pub fn flush_slice(&self, slice: ByteSize) -> Applied {
-		let _flusher = self.shared.flusher.lock();
-		if self.device_absent() {
-			return Applied::default();
-		}
-		let batch = {
-			let _staging = self.flush_guard();
-			match self.take_drain_slice(slice) {
-				Some(batch) => batch,
-				None => return Applied::default(),
-			}
-		};
-		let applied = self
-			.persist(&batch)
-			.expect("operator state flush must persist; a dropped batch loses buffered rows");
-		let _staging = self.flush_guard();
-		self.settle(batch);
-		applied
-	}
-
-	#[instrument(name = "store::operator::resident::pending_groups", level = "trace", skip(self))]
-	fn pending_groups(&self) -> Vec<PendingGroup> {
-		let mut by_flow: BTreeMap<Option<FlowId>, PendingGroup> = BTreeMap::new();
-		for operator in self.shared.operators() {
-			let Some(slot) = self.shared.slot(operator) else {
-				continue;
-			};
-			let inner = slot.inner.lock();
-			if inner.buckets.dirty_count() == 0 {
-				continue;
-			}
-			let flow = inner.flow;
-			let seq = inner.pending_seq.unwrap_or(u64::MAX);
-			drop(inner);
-			let group = by_flow.entry(flow).or_insert(PendingGroup {
-				flow,
-				seq: u64::MAX,
-				operators: Vec::new(),
-			});
-			group.seq = group.seq.min(seq);
-			group.operators.push(operator);
-		}
-		let mut groups: Vec<PendingGroup> = by_flow.into_values().collect();
-		groups.sort_by_key(|group| (group.seq, group.flow.map_or(u64::MAX, |flow| flow.0)));
-		groups
-	}
-
 	/// Arming publishes an empty filter as the authoritative one, which is only sound over a device
 	/// that holds nothing: from there every persisted key passes through `add` and the filter sees
 	/// all of them. Over a device that already holds rows it is a filter that rejects keys the store
@@ -922,56 +858,25 @@ impl Resident {
 		self.shared.filter.commit_rebuild(handle);
 	}
 
-	#[instrument(name = "store::operator::resident::take_drain_slice", level = "debug", skip_all)]
-	fn take_drain_slice(&self, slice: ByteSize) -> Option<Arc<FlushBatch>> {
+	#[instrument(name = "store::operator::resident::swap_pending", level = "debug", skip_all)]
+	fn swap_pending(&self) -> Option<FrozenSet> {
 		self.arm_filter();
-		let mut global = self.shared.global.lock();
-		self.clear_in_flight(&mut global);
-
-		let mut batch = FlushBatch::default();
+		let mut rows: Vec<(OperatorId, KeyspaceId, Box<dyn bucket::FrozenRows>)> = Vec::new();
 		let mut touched: Vec<OperatorId> = Vec::new();
-		let mut consumed = ByteSize::ZERO;
 		let mut staged = 0usize;
-		let mut staged_bytes = ByteSize::ZERO;
-		let mut exhausted = false;
-		let mut hashes: Vec<u64> = Vec::new();
-		let mut drained: BTreeSet<FlowId> = BTreeSet::new();
-
-		let groups = self.pending_groups();
-		let had_dirty: BTreeSet<FlowId> = groups.iter().filter_map(|group| group.flow).collect();
-		for group in groups {
-			if staged > 0 && consumed >= slice {
-				exhausted = true;
-				break;
+		let mut bytes = ByteSize::ZERO;
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			let frozen = slot.inner.lock().buckets.freeze();
+			if frozen.rows.is_empty() {
+				continue;
 			}
-			for operator in group.operators {
-				let Some(slot) = self.shared.slot(operator) else {
-					continue;
-				};
-				let mut inner = slot.inner.lock();
-				if inner.buckets.dirty_count() == 0 {
-					continue;
-				}
-				let before_dirty_bytes = inner.buckets.dirty_footprint();
-				let carried = inner.buckets.stage_dirty(operator, |keyspace, group, suffix, entry| {
-					batch.writes.push((
-						operator,
-						GroupStateKey::new(group, keyspace, suffix),
-						staged_write(entry.post.clone()),
-					));
-					staged += 1;
-					hashes.push(state_hash(operator, keyspace, group, suffix));
-				});
-				consumed = consumed.saturating_add(carried);
-				staged_bytes = staged_bytes.saturating_add(
-					before_dirty_bytes.saturating_sub(inner.buckets.dirty_footprint()),
-				);
-				self.mark_pending(&mut inner);
-				touched.push(operator);
-			}
-			if let Some(flow) = group.flow {
-				drained.insert(flow);
-			}
+			staged += frozen.count;
+			bytes = bytes.saturating_add(frozen.bytes);
+			touched.push(operator);
+			rows.extend(frozen.rows.into_iter().map(|(keyspace, frozen)| (operator, keyspace, frozen)));
 		}
 		#[cfg(test)]
 		{
@@ -980,68 +885,62 @@ impl Resident {
 				interlock();
 			}
 		}
-		self.shared.filter.add_many(&hashes);
 		self.shared.release_dirty(staged);
-		self.shared.release_dirty_bytes(staged_bytes);
-		batch.bytes = consumed;
+		self.shared.release_dirty_bytes(bytes);
 
-		if !exhausted {
-			let mut ready: Vec<FlowId> = Vec::new();
-			for flow in global.checkpoints.keys() {
-				if !had_dirty.contains(flow) || drained.contains(flow) {
-					ready.push(*flow);
-				}
-			}
-			for flow in ready {
-				let entry =
-					global.checkpoints.remove(&flow).expect("the flow was listed from this map");
-				batch.checkpoints.insert(flow, entry);
-			}
-		}
-
-		if batch.writes.is_empty() && batch.checkpoints.is_empty() && global.drops.is_empty() {
+		let mut global = self.shared.global.lock();
+		if rows.is_empty() && global.checkpoints.is_empty() && global.drops.is_empty() {
 			return None;
 		}
-
-		if exhausted {
-			self.shared.metrics.lock().budget_exhausted += 1;
-		}
-
-		if !exhausted && self.checkpoint().is_some() {
-			batch.through = self.marker_through();
-		}
-		batch.drops = mem::take(&mut global.drops);
-		global.in_flight_checkpoints = batch.checkpoints.clone();
-		global.in_flight_drops = batch.drops.clone();
+		let through = match self.checkpoint().is_some() {
+			true => self.marker_through(),
+			false => None,
+		};
+		let checkpoints = mem::take(&mut global.checkpoints);
+		let drops = mem::take(&mut global.drops);
+		global.in_flight_checkpoints = checkpoints.clone();
+		global.in_flight_drops = drops.clone();
 		self.shared.publish_drops(&global);
 		global.in_flight_operators = touched;
 		global.flushing = true;
-		Some(Arc::new(batch))
+		Some(FrozenSet {
+			rows,
+			checkpoints,
+			drops,
+			bytes,
+			through,
+		})
 	}
 
-	fn clear_in_flight(&self, global: &mut GlobalInner) {
-		let mut rearmed = 0usize;
-		let mut rearmed_bytes = ByteSize::ZERO;
-		for operator in &global.in_flight_operators {
-			let Some(slot) = self.shared.slot(*operator) else {
-				continue;
-			};
-			let mut inner = slot.inner.lock();
-			let before_dirty_bytes = inner.buckets.dirty_footprint();
-			rearmed += inner.buckets.revert_flushing();
-			rearmed_bytes = rearmed_bytes
-				.saturating_add(inner.buckets.dirty_footprint().saturating_sub(before_dirty_bytes));
+	#[instrument(name = "store::operator::resident::frozen_batch", level = "debug", skip_all)]
+	fn frozen_batch(&self, frozen: FrozenSet) -> Arc<FlushBatch> {
+		let FrozenSet {
+			rows,
+			checkpoints,
+			drops,
+			bytes,
+			through,
+		} = frozen;
+		let mut writes = Vec::new();
+		let mut hashes: Vec<u64> = Vec::new();
+		for (operator, keyspace, frozen) in &rows {
+			frozen.for_each(&mut |group, suffix, post| {
+				writes.push((
+					*operator,
+					GroupStateKey::new(group, *keyspace, suffix),
+					staged_write(post.clone()),
+				));
+				hashes.push(state_hash(*operator, *keyspace, group, suffix));
+			});
 		}
-		self.shared.charge_dirty(rearmed);
-		self.shared.charge_dirty_bytes(rearmed_bytes);
-		global.in_flight_operators.clear();
-		for (flow, entry) in mem::take(&mut global.in_flight_checkpoints) {
-			global.checkpoints.entry(flow).or_insert(entry);
-		}
-		let mut drops = mem::take(&mut global.in_flight_drops);
-		drops.append(&mut global.drops);
-		global.drops = drops;
-		self.shared.publish_drops(global);
+		self.shared.filter.add_many(&hashes);
+		Arc::new(FlushBatch {
+			writes,
+			checkpoints,
+			drops,
+			bytes,
+			through,
+		})
 	}
 
 	fn device_absent(&self) -> bool {
@@ -1103,7 +1002,7 @@ impl Resident {
 	}
 
 	#[instrument(name = "store::operator::resident::settle", level = "debug", skip_all)]
-	fn settle(&self, batch: Arc<FlushBatch>) {
+	fn settle(&self, batch: &FlushBatch) {
 		{
 			let mut global = self.shared.global.lock();
 			for operator in global.in_flight_operators.clone() {
@@ -1237,7 +1136,9 @@ impl Resident {
 					self.assert_erasable(inner, key.as_encoded());
 					return;
 				}
-				if self.never_persisted(inner.operator, key.as_encoded()) {
+				if inner.lookup(key.as_encoded()).is_none()
+					&& self.never_persisted(inner.operator, key.as_encoded())
+				{
 					#[cfg(reifydb_assertions)]
 					self.assert_erasable(inner, key.as_encoded());
 					return;
