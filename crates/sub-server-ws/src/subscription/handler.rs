@@ -12,13 +12,16 @@ use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{Protocol, RequestMetadata},
 };
-use reifydb_value::{error::Error, value::identity::IdentityId};
+use reifydb_value::{
+	error::{Diagnostic, Error},
+	value::identity::IdentityId,
+};
 use tokio::spawn;
 
 use crate::{
 	handler::{ConnectionContext, build_error, execute_error},
 	protocol::{SubscribeDecodeError, SubscribeRequest, UnsubscribeRequest},
-	response::{Response, SubscriptionInfo},
+	response::{Response, ResponsePayload, SubscriptionInfo},
 	subscription::registry::{PushMessage, WsWireSink},
 };
 
@@ -65,11 +68,12 @@ pub(crate) async fn handle_subscribe(
 					.await
 				{
 					Ok(Ok(())) => {}
-					Ok(Err(_)) => {
+					Ok(Err(error)) => {
+						let diagnostic = hydration_close_reason(error);
 						for subscription_id in subscription_ids {
 							let _ = push_tx.send(PushMessage::SubscriptionClosed {
 								subscription_id,
-								reason: None,
+								reason: Some(diagnostic.clone()),
 							});
 						}
 					}
@@ -143,6 +147,17 @@ fn decode_error_to_response(request_id: &str, err: SubscribeDecodeError) -> Stri
 }
 
 fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteError>) -> String {
+	subscribe_error_response(request_id, err).to_json()
+}
+
+fn hydration_close_reason(err: SubscribeError<ExecuteError>) -> Diagnostic {
+	match subscribe_error_response("", err).payload {
+		ResponsePayload::Err(err) => err.diagnostic,
+		other => panic!("a subscribe error must build an error reply, got {other:?}"),
+	}
+}
+
+fn subscribe_error_response(request_id: &str, err: SubscribeError<ExecuteError>) -> Response {
 	let index = err.index();
 	let response = match err {
 		SubscribeError::Empty => Response::internal_error(
@@ -188,7 +203,6 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteErro
 		Some(index) => response.with_index(index),
 		None => response,
 	}
-	.to_json()
 }
 
 fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap: u64) -> Response {
@@ -197,12 +211,15 @@ fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap
 
 #[cfg(test)]
 mod tests {
+	use reifydb_engine::subscription::{HydrateError, HydrationBound};
 	use reifydb_sub_core::{errors::CreateSubscriptionError, handler::SubscribeError};
 	use reifydb_sub_server::execute::ExecuteError;
 	use reifydb_value::value::identity::IdentityId;
 	use serde_json::{Value as JsonValue, from_str};
 
-	use super::{decode_error_to_response, subscribe_error_to_response, subscribe_identity};
+	use super::{
+		decode_error_to_response, hydration_close_reason, subscribe_error_to_response, subscribe_identity,
+	};
 	use crate::protocol::{Request, RequestPayload};
 
 	fn payload(text: &str) -> JsonValue {
@@ -221,6 +238,25 @@ mod tests {
 		// Only the absent case may be rewritten; a real identity must never be substituted.
 		assert_eq!(subscribe_identity(Some(IdentityId::root())), IdentityId::root());
 		assert_eq!(subscribe_identity(Some(IdentityId::anonymous())), IdentityId::anonymous());
+	}
+
+	#[test]
+	fn a_row_cap_failure_gives_a_close_reason_with_its_fix() {
+		// The advice is the point of this reason: without it the client cannot know that a take fixes the
+		// query.
+		let reason = hydration_close_reason(SubscribeError::HydrationFailed {
+			index: 0,
+			error: HydrateError::RowCapExceeded {
+				cap: 200,
+				bound: HydrationBound::Absent,
+			},
+			rql: "from a::b".to_string(),
+			max_rows: 200,
+		});
+
+		assert_eq!(reason.code, "HYDRATION_TOO_LARGE");
+		assert!(reason.message.contains("TAKE"), "{}", reason.message);
+		assert!(reason.message.contains("from a::b"), "{}", reason.message);
 	}
 
 	#[test]
