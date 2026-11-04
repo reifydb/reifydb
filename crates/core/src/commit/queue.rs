@@ -31,6 +31,10 @@ pub enum CommitPull {
 	Behind,
 }
 
+const FREE_INLINE_ENTRIES: usize = 1024;
+
+struct FreedEntries(BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>);
+
 struct QueueInner {
 	parked: BTreeMap<CommitVersion, (Lsn, Option<Arc<CommitEntry>>)>,
 	entries: BTreeMap<CommitVersion, (u64, Arc<CommitEntry>)>,
@@ -133,14 +137,41 @@ impl CommitQueue {
 		}
 	}
 
-	fn free_below_floors(&self, inner: &mut QueueInner) {
+	fn free_below_floors(&self, inner: &mut QueueInner) -> FreedEntries {
 		let floor = inner.floors.values().min().copied().unwrap_or(inner.released).min(inner.released);
 		let retained = inner.entries.split_off(&next_version(floor));
 		let freed = replace(&mut inner.entries, retained);
-		inner.bytes -= freed.values().map(|(bytes, _)| bytes).sum::<u64>();
 		inner.cover_from = inner.cover_from.max(floor);
 		inner.floor_from = inner.floor_from.max(floor);
 		self.shared.evicted_floor.fetch_add(freed.len() as u64, Ordering::Relaxed);
+		if freed.len() < FREE_INLINE_ENTRIES {
+			inner.bytes -= freed.values().map(|(bytes, _)| bytes).sum::<u64>();
+		}
+		FreedEntries(freed)
+	}
+
+	fn release_freed(&self, freed: FreedEntries) {
+		let FreedEntries(entries) = freed;
+		if entries.len() < FREE_INLINE_ENTRIES {
+			return;
+		}
+		#[cfg(not(target_arch = "wasm32"))]
+		{
+			let shared = Arc::clone(&self.shared);
+			std::thread::Builder::new()
+				.name("commit-queue-free".to_string())
+				.spawn(move || {
+					let bytes = entries.values().map(|(bytes, _)| bytes).sum::<u64>();
+					shared.inner.write().bytes -= bytes;
+					drop(entries);
+				})
+				.expect("the commit queue could not start the thread that frees released entries");
+		}
+		#[cfg(target_arch = "wasm32")]
+		{
+			let bytes = entries.values().map(|(bytes, _)| bytes).sum::<u64>();
+			self.shared.inner.write().bytes -= bytes;
+		}
 	}
 
 	pub fn released(&self) -> (CommitVersion, Lsn) {
@@ -188,9 +219,10 @@ impl CommitQueue {
 		}
 		if released {
 			self.shared.released_through.store(inner.released.0, Ordering::Release);
-			self.free_below_floors(&mut inner);
+			let freed = self.free_below_floors(&mut inner);
 			self.enforce_cap(&mut inner);
 			drop(inner);
+			self.release_freed(freed);
 			self.notify();
 		}
 	}
@@ -266,7 +298,9 @@ impl Drop for FloorHandle {
 		self.queue.shared.wakers.write().remove(&self.id);
 		let mut inner = self.queue.shared.inner.write();
 		inner.floors.remove(&self.id);
-		self.queue.free_below_floors(&mut inner);
+		let freed = self.queue.free_below_floors(&mut inner);
+		drop(inner);
+		self.queue.release_freed(freed);
 	}
 }
 
@@ -289,7 +323,9 @@ impl CommitQueueFloor {
 				);
 			}
 			inner.floors.insert(handle.id, start);
-			handle.queue.free_below_floors(&mut inner);
+			let freed = handle.queue.free_below_floors(&mut inner);
+			drop(inner);
+			handle.queue.release_freed(freed);
 		}
 		if let Some(slot) = shared.wakers.write().get_mut(&handle.id) {
 			slot.wake = Some(Box::new(waker));
@@ -307,7 +343,9 @@ impl CommitQueueFloor {
 			return;
 		}
 		*held = target;
-		handle.queue.free_below_floors(&mut inner);
+		let freed = handle.queue.free_below_floors(&mut inner);
+		drop(inner);
+		handle.queue.release_freed(freed);
 	}
 
 	pub fn disarm(&self) {
