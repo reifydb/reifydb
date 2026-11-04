@@ -283,4 +283,20 @@ mod tests {
 			"pruning epoch samples inside the retention horizon would make long ttls unresolvable"
 		);
 	}
+
+	#[test]
+	fn the_query_watermark_is_read_before_the_leases_in_every_class_that_reads_both() {
+		// Leases read first miss a lease the later watermark read passes, so gc collects it.
+		for class in RetentionClass::all() {
+			let terms = class.floor_terms();
+			let query = terms.iter().position(|term| *term == FloorTerm::QueryDoneUntil);
+			let lease = terms.iter().position(|term| *term == FloorTerm::LeaseMin);
+			if let (Some(query), Some(lease)) = (query, lease) {
+				assert!(
+					query < lease,
+					"{class} reads the leases before the query watermark: {terms:?}"
+				);
+			}
+		}
+	}
 }

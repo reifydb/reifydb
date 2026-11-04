@@ -124,6 +124,8 @@ impl FloorSource for EngineFloors {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
@@ -187,6 +189,63 @@ mod tests {
 				),
 				None => panic!("{term} resolved no floor; the fixture must place every term"),
 			}
+		}
+	}
+
+	struct RacingFloors {
+		query: AtomicU64,
+		lease: AtomicU64,
+		raced: AtomicBool,
+	}
+
+	impl RacingFloors {
+		fn new() -> Self {
+			Self {
+				query: AtomicU64::new(10),
+				lease: AtomicU64::new(u64::MAX),
+				raced: AtomicBool::new(false),
+			}
+		}
+
+		fn race_once(&self) {
+			// The race must land after the first read, whichever term comes first.
+			if !self.raced.swap(true, Ordering::SeqCst) {
+				self.lease.store(10, Ordering::SeqCst);
+				self.query.store(20, Ordering::SeqCst);
+			}
+		}
+	}
+
+	impl FloorSource for RacingFloors {
+		fn query_done_until(&self) -> CommitVersion {
+			let read = CommitVersion(self.query.load(Ordering::SeqCst));
+			self.race_once();
+			read
+		}
+
+		fn lease_min(&self) -> CommitVersion {
+			let read = CommitVersion(self.lease.load(Ordering::SeqCst));
+			self.race_once();
+			read
+		}
+
+		fn consumer_position(&self) -> CommitVersion {
+			CommitVersion(u64::MAX)
+		}
+	}
+
+	#[test]
+	fn a_lease_taken_between_the_floor_reads_is_never_below_the_cutoff() {
+		// A cutoff above a lease taken mid-read lets gc collect the version that reader holds.
+		for class in [RetentionClass::BufferHistoricalGc, RetentionClass::PersistentFlush] {
+			let ledger = HorizonLedger::new(Arc::new(RacingFloors::new()), VersionEpoch::new());
+
+			let cutoff = ledger.cutoff(class, now(), None);
+
+			assert!(
+				matches!(cutoff, Some(Floor::Version(version)) if version <= CommitVersion(10)),
+				"{class} cut above the lease at 10 that a reader took between the floor reads: {cutoff:?}"
+			);
 		}
 	}
 }
