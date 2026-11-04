@@ -41,7 +41,7 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			reaper::{drain, drain_groups, enqueue},
+			reaper::{drain, drain_groups, enqueue, enqueue_retired},
 			seal::{
 				coord::Coord,
 				gate::{SealGate, rearm_seal, seal_move},
@@ -949,10 +949,16 @@ fn seal_due_windows(
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
 		let res = engine.expire_within(host, threshold.to_order(), budget)?;
-		for window in &res {
-			enqueue(host, &[window.group_id])?;
+		let retires = host.state_retires_groups() && !matches!(operator.kind, WindowKind::Session { .. });
+		if retires {
+			let groups: Vec<GroupId> = res.iter().map(|window| window.group_id).collect();
+			enqueue_retired(host, &groups)?;
+		} else {
+			for window in &res {
+				enqueue(host, &[window.group_id])?;
+			}
 		}
-		if !res.is_empty() {
+		if !res.is_empty() && !retires {
 			let due = fired.at().saturating_add(rule.admissible().duration());
 			host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
 		}
@@ -1251,12 +1257,16 @@ mod reap_tests {
 mod seal_arm_tests {
 	use std::sync::Arc;
 
+	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
 			any::TaggedKey,
-			operator::{keyspace::timer::TimerWheelKey, state::KeyspaceId},
+			operator::{
+				keyspace::{expiry::RETIRED_AT_FLUSH, timer::TimerWheelKey},
+				state::KeyspaceId,
+			},
 		},
 		state::typed::SuffixBytes,
 	};
@@ -1410,6 +1420,87 @@ mod seal_arm_tests {
 			kind: TimerKind::Seal,
 			key: tracker_key(hash),
 		}
+	}
+
+	fn queued_bodies(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<Vec<u8>> {
+		txn.state_range(
+			operator,
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::REAP_QUEUE), "test"),
+		)
+		.unwrap()
+		.items
+		.iter()
+		.map(|item| EncodedPodRow::from(item.bytes.clone()).body().to_vec())
+		.collect()
+	}
+
+	fn maintenance_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {
+		txn.state_range(
+			operator,
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+		)
+		.unwrap()
+		.items
+		.iter()
+		.filter(|item| {
+			let TaggedKey::OperatorState(decoded) = &item.key else {
+				panic!("a wheel row must decode");
+			};
+			TimerWheelKey::from_suffix_bytes(&decoded.suffix).expect("a wheel row must decode").kind.0
+				== TimerKind::Maintenance
+		})
+		.count()
+	}
+
+	#[test]
+	fn a_closed_tumbling_window_is_left_for_the_flush_and_arms_no_maintenance() {
+		// a maintenance timer would drain the group inline, putting the cost back on the flow's hot path
+		let engine = TestEngine::new();
+		let mut operator = window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		let mut host = TxnHostContext::new(&mut txn, id);
+		index_windows(&mut operator, &mut host, &[0, SIZE_MS]);
+
+		seal_engine_windows(
+			&mut operator,
+			&mut host,
+			FiredAt::of(&Timer {
+				due: at_millis(1_000_000),
+				kind: TimerKind::Seal,
+				key: EncodedKey::new(Vec::new()),
+			}),
+		)
+		.unwrap();
+		drop(host);
+
+		assert_eq!(
+			queued_bodies(&mut txn, id),
+			vec![RETIRED_AT_FLUSH.to_vec(), RETIRED_AT_FLUSH.to_vec()],
+			"every closed window must carry the marker, or the flush never deletes it"
+		);
+		assert_eq!(maintenance_timers(&mut txn, id), 0);
+	}
+
+	#[test]
+	fn a_closed_session_still_reaps_inline_because_the_flush_cannot_reach_its_root_rows() {
+		// a session member has a sibling in the root group; deleting by group alone would leak that row for
+		// good
+		let engine = TestEngine::new();
+		let mut operator = session_window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		let mut host = TxnHostContext::new(&mut txn, id);
+		index_windows(&mut operator, &mut host, &[0, 1]);
+
+		seal_session_engines(&mut operator, &mut host, &[tracker_timer(Hash128::from(1u128), 1_000_000)])
+			.unwrap();
+		drop(host);
+
+		let bodies = queued_bodies(&mut txn, id);
+		assert_eq!(bodies.len(), 2, "precondition: both sessions must have closed");
+		assert!(bodies.iter().all(|body| body.is_empty()), "a session must never carry the flush marker");
+		assert_eq!(maintenance_timers(&mut txn, id), 1, "the inline reap needs its timer");
 	}
 
 	#[test]

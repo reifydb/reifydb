@@ -9,7 +9,7 @@ use reifydb_core::{
 		catalog::flow::{FlowId, OperatorId},
 		operator::{FlowCheckpoint, OperatorSlice, OperatorStateWrite},
 	},
-	key::operator::state::{GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 };
 use reifydb_value::byte_size::ByteSize;
 use reifydb_wal::lsn::Lsn;
@@ -117,10 +117,19 @@ pub fn classify_slice(slice: &OperatorSlice, sizes: &[Option<ByteSize>]) -> Vec<
 		.collect()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetiredRows {
+	pub operator: OperatorId,
+	pub keyspace: KeyspaceId,
+	pub keys: u64,
+	pub value_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Applied {
 	pub rows: usize,
 	pub bytes: ByteSize,
+	pub retired: Vec<RetiredRows>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,12 +154,16 @@ pub struct FlushBatch {
 	pub writes: Vec<(OperatorId, GroupStateKey, StagedWrite)>,
 	pub checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
 	pub drops: Vec<DropMarker>,
+	pub retired: Vec<(OperatorId, GroupId)>,
 	pub bytes: ByteSize,
 	pub through: Option<Lsn>,
 }
 
 impl FlushBatch {
 	pub fn is_empty(&self) -> bool {
-		self.writes.is_empty() && self.checkpoints.is_empty() && self.drops.is_empty()
+		self.writes.is_empty()
+			&& self.checkpoints.is_empty()
+			&& self.drops.is_empty()
+			&& self.retired.is_empty()
 	}
 }

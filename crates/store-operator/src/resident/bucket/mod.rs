@@ -48,6 +48,8 @@ pub trait Bucket: Any + Send + Sync {
 
 	fn freeze(&mut self) -> Option<(Box<dyn FrozenRows>, usize, ByteSize)>;
 
+	fn retire_group(&mut self, group: GroupId) -> (usize, usize, ByteSize);
+
 	#[cfg(test)]
 	fn flushing_len(&self) -> usize;
 

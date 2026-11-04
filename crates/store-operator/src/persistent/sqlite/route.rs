@@ -22,7 +22,7 @@ use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
 	error::{OperatorError, Result},
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
-	types::OperatorStateCensus,
+	types::{OperatorStateCensus, RetiredRows},
 };
 
 fn encode<K: Keyspace>(key: &K::GroupedKey) -> EncodedKey {
@@ -509,6 +509,48 @@ impl KeyspaceVisitor for Clear<'_> {
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
 		typed::clear::<K>(self.txn, self.operator)
+	}
+}
+
+struct RetireGroup<'a> {
+	txn: &'a Transaction<'a>,
+	operator: OperatorId,
+	group: GroupId,
+}
+
+impl KeyspaceVisitor for RetireGroup<'_> {
+	type Output = (u64, u64);
+
+	fn visit<K: Keyspace>(self) -> Self::Output {
+		typed::retire_group::<K>(self.txn, self.operator, self.group)
+	}
+}
+
+pub(super) fn retire_group(
+	txn: &Transaction,
+	operator: OperatorId,
+	group: GroupId,
+	keyspaces: &[KeyspaceId],
+	retired: &mut Vec<RetiredRows>,
+) {
+	for keyspace in keyspaces {
+		let (keys, value_bytes) = dispatch(
+			*keyspace,
+			RetireGroup {
+				txn,
+				operator,
+				group,
+			},
+		)
+		.expect("every catalogue entry must dispatch to its own keyspace");
+		if keys > 0 {
+			retired.push(RetiredRows {
+				operator,
+				keyspace: *keyspace,
+				keys,
+				value_bytes,
+			});
+		}
 	}
 }
 

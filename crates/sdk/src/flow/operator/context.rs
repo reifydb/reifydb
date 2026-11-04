@@ -397,6 +397,10 @@ pub trait GuestEmitContext {
 }
 
 pub trait GuestContext<C = Windowed>: GuestEmitContext {
+	fn state_retires_groups(&self) -> bool {
+		false
+	}
+
 	fn state(&mut self) -> impl ClassState<C> + '_
 	where
 		C: CustomClass;

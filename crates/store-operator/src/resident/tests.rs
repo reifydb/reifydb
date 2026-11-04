@@ -5,6 +5,7 @@ use std::{
 	ops::{Bound, Range},
 	sync::{Arc, atomic::Ordering, mpsc},
 	thread,
+	time::Duration as StdDuration,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -18,12 +19,16 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				columns_width,
+				expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
 				join::{JoinLeft, JoinRight},
 			},
 			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, KeyspaceMask},
 			traits::Keyspace,
 		},
-		typed::{direction::Asc, layout::KeyLayout},
+		typed::{
+			direction::{Asc, Desc},
+			layout::KeyLayout,
+		},
 	},
 	state::typed::typed_key,
 };
@@ -39,7 +44,7 @@ use crate::{
 	actor::Waker,
 	error::OperatorError,
 	persistent::{
-		PersistentTier,
+		Fetch, PersistentTier,
 		testing::{ApplyOutcome, NoFaults, PersistentHooks, TestingPersistent},
 	},
 	range::{OperatorRangeTier, RangeSink, tiers::RangeKeyspaceMetrics},
@@ -1298,7 +1303,7 @@ fn a_drop_waits_for_staging_so_a_slice_never_carries_it_with_the_rows_it_clears(
 		dropper.record_drop(DropMarker::OperatorState(OP_A));
 		sent.send(()).expect("the test is still waiting");
 	});
-	let finished_during_staging = received.recv_timeout(std::time::Duration::from_millis(200)).is_ok();
+	let finished_during_staging = received.recv_timeout(StdDuration::from_millis(200)).is_ok();
 	let first = buffer.take_for_flush().expect("the write makes a slice");
 	drop(staging);
 	dropping.join().expect("the drop must finish once staging ends");
@@ -1413,4 +1418,133 @@ fn a_remove_during_the_swap_is_never_lost_to_the_filter_gap() {
 		matches!(written(&second, OP_A, &key("k")), Some(StagedWrite::Remove)),
 		"the device holds the frozen row, so only a delete can clear it"
 	);
+}
+
+fn queue_key_of(group: u128) -> EncodedKey {
+	typed_key::<ReapQueue>(
+		GroupId::ROOT,
+		&ReapQueueKey {
+			group: Desc(GroupId::hashed(Hash128(group))),
+		},
+	)
+	.into_encoded()
+}
+
+fn retire(buffer: &Resident, operator: OperatorId, group: u128) {
+	set(buffer, operator, queue_key_of(group), EncodedPodRow::new(RETIRED_AT_FLUSH));
+}
+
+fn flushing_buffer() -> Resident {
+	let buffer = Resident::new();
+	buffer.attach_sinks(
+		PersistentTier::Testing(TestingPersistent::new(Arc::new(NoFaults))),
+		OperatorRangeTier::Absent,
+		None,
+	);
+	buffer
+}
+
+#[test]
+fn a_retire_marker_names_its_group_in_the_batch_and_is_never_written_as_a_row() {
+	let buffer = Resident::new();
+	retire(&buffer, OP_A, 7);
+
+	let batch = buffer.take_for_flush().expect("the marker makes a batch");
+
+	assert_eq!(batch.retired, vec![(OP_A, GroupId::hashed(Hash128(7)))]);
+	assert!(written(&batch, OP_A, &queue_key_of(7)).is_none(), "a marker is an instruction, not stored state");
+}
+
+#[test]
+fn a_queue_row_without_the_marker_is_written_and_retires_nothing() {
+	let buffer = Resident::new();
+	set(&buffer, OP_A, queue_key_of(7), EncodedPodRow::new(&[]));
+
+	let batch = buffer.take_for_flush().expect("the queue row makes a batch");
+
+	assert!(batch.retired.is_empty(), "only the marker may retire a group");
+	assert!(written(&batch, OP_A, &queue_key_of(7)).is_some(), "an inline reap needs its queue row to survive");
+}
+
+#[test]
+fn a_retired_group_leaves_no_row_no_marker_and_no_byte_in_memory() {
+	let survivor_only = flushing_buffer();
+	set(&survivor_only, OP_A, key_in(9, "s"), row("keep"));
+	survivor_only.flush_once();
+
+	let buffer = flushing_buffer();
+	set(&buffer, OP_A, key_in(9, "s"), row("keep"));
+	set(&buffer, OP_A, key_in(7, "a"), row("gone"));
+	set(&buffer, OP_A, right_key_in(7, "b"), row("gone"));
+	buffer.flush_once();
+
+	retire(&buffer, OP_A, 7);
+	buffer.flush_once();
+
+	assert!(!matches!(buffer.lookup_state(OP_A, &key_in(7, "a")), BufferedState::Row(_)), "the left row must go");
+	assert!(
+		!matches!(buffer.lookup_state(OP_A, &right_key_in(7, "b")), BufferedState::Row(_)),
+		"every keyspace of the group must go, not just the first"
+	);
+	assert!(
+		!matches!(buffer.lookup_state(OP_A, &queue_key_of(7)), BufferedState::Row(_)),
+		"the marker has done its work once the flush lands and must not stay behind"
+	);
+	assert!(matches!(buffer.lookup_state(OP_A, &key_in(9, "s")), BufferedState::Row(_)), "a neighbour must stay");
+	assert_eq!(resident_bytes(&buffer), resident_bytes(&survivor_only), "every retired byte must be released");
+}
+
+#[test]
+fn a_retire_leaves_the_same_group_of_another_operator_alone() {
+	let buffer = flushing_buffer();
+	set(&buffer, OP_A, key_in(7, "a"), row("gone"));
+	set(&buffer, OP_B, key_in(7, "a"), row("keep"));
+	buffer.flush_once();
+
+	retire(&buffer, OP_A, 7);
+	buffer.flush_once();
+
+	assert!(!matches!(buffer.lookup_state(OP_A, &key_in(7, "a")), BufferedState::Row(_)));
+	assert!(matches!(buffer.lookup_state(OP_B, &key_in(7, "a")), BufferedState::Row(_)));
+}
+
+#[test]
+fn a_row_written_during_the_retiring_flush_stays_readable_and_reaches_the_next_flush() {
+	let buffer = flushing_buffer();
+	set(&buffer, OP_A, key_in(7, "a"), row("old"));
+	buffer.flush_once();
+
+	retire(&buffer, OP_A, 7);
+	let writer = buffer.clone();
+	buffer.set_persist_interlock(Box::new(move || set(&writer, OP_A, key_in(7, "late"), row("new"))));
+	buffer.flush_once();
+
+	assert!(
+		matches!(buffer.lookup_state(OP_A, &key_in(7, "late")), BufferedState::Row(_)),
+		"a dirty row must survive the retire"
+	);
+	assert_eq!(buffer.dirty_entries(), 1, "the dirty row still has to be written");
+}
+
+#[test]
+fn a_crash_before_the_flush_keeps_the_index_row_and_the_group_on_the_device() {
+	let device = TestingPersistent::new(Arc::new(NoFaults));
+	let buffer = Resident::new();
+	buffer.attach_sinks(PersistentTier::Testing(device.clone()), OperatorRangeTier::Absent, None);
+	let index = typed_key::<JoinLeft>(GroupId::ROOT, &Asc(row_number_of("idx"))).into_encoded();
+	set(&buffer, OP_A, index.clone(), row("due"));
+	set(&buffer, OP_A, key_in(7, "a"), row("data"));
+	buffer.flush_once();
+
+	remove(&buffer, OP_A, index.clone());
+	retire(&buffer, OP_A, 7);
+	drop(buffer);
+
+	let stored = |key: &EncodedKey| {
+		let key = GroupStateKey::from_framed(key.clone()).expect("test keys are framed operator state keys");
+		device.get(OP_A, &[key]).unwrap().pop().flatten().is_some()
+	};
+	assert!(stored(&index), "the index row must still be due after a restart");
+	assert!(stored(&key_in(7, "a")), "the group must still be there for the index row to close again");
+	assert!(!stored(&queue_key_of(7)), "no marker may be on the device");
 }

@@ -62,6 +62,10 @@ pub trait StateStore {
 
 	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 
+	fn state_retires_groups(&self) -> bool {
+		false
+	}
+
 	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
 
 	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()>;

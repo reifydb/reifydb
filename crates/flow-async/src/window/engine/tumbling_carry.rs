@@ -25,7 +25,7 @@ use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	operator::{
-		state::seal::rule::is_sealed,
+		state::{reaper::enqueue_retired, seal::rule::is_sealed},
 		state_access::{batch, set},
 	},
 	window::{
@@ -184,11 +184,15 @@ where
 			}
 			Ok(MetaFate::Survives(earliest))
 		})?;
-		if !doomed.is_empty() {
-			store.state_remove(&doomed)?;
-		}
-		if !groups.is_empty() {
-			store.remove_row_number_for_group(&groups)?;
+		if store.state_retires_groups() {
+			enqueue_retired(store, &groups)?;
+		} else {
+			if !doomed.is_empty() {
+				store.state_remove(&doomed)?;
+			}
+			if !groups.is_empty() {
+				store.remove_row_number_for_group(&groups)?;
+			}
 		}
 		Ok(dropped)
 	}
@@ -521,7 +525,10 @@ mod tests {
 
 	use reifydb_codec::row::{operator::state::decode, pod::EncodedPodRow};
 	use reifydb_core::{
-		key::operator::state::{GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
+		key::operator::{
+			keyspace::expiry::RETIRED_AT_FLUSH,
+			state::{GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
+		},
 		state::{
 			batch::StateBatch,
 			per_key,
@@ -549,6 +556,7 @@ mod tests {
 		data: HashMap<Vec<u8>, EncodedPodRow>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
+		retires: bool,
 	}
 
 	impl CountingStore {
@@ -623,6 +631,10 @@ mod tests {
 	}
 
 	impl StateStore for CountingStore {
+		fn state_retires_groups(&self) -> bool {
+			self.retires
+		}
+
 		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 			Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 		}
@@ -1055,6 +1067,69 @@ mod tests {
 		let window_9 =
 			results.iter().find(|r| r.span.start == window_at(9 * WINDOW)).expect("window 9 recomputed");
 		assert_eq!(window_9.value, 109.0 + 8.0, "window 9 must carry in window 8's close, not restart");
+	}
+
+	#[test]
+	fn a_retiring_store_gets_one_marker_per_closed_window_and_keeps_the_rows_for_the_flush() {
+		// deleting inline as well would put the cost back on the hot path that retiring exists to clear
+		let mut store = CountingStore {
+			retires: true,
+			..CountingStore::default()
+		};
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
+		}
+
+		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(store.keyspace_count(KeyspaceId::REAP_QUEUE), 5, "every closed window must be named");
+		assert!(
+			store.data.iter().all(|(key, row)| {
+				!OperatorStateKey::decode_inner(key)
+					.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::REAP_QUEUE)
+					|| row.body() == RETIRED_AT_FLUSH
+			}),
+			"a queue row without the marker would be drained inline instead"
+		);
+		assert_eq!(store.accumulator_count(), 10, "the rows belong to the flush now");
+		assert_eq!(store.row_mapping_count(), 10, "the mapping lives in the group and goes with it");
+		assert_eq!(store.meta_entry_count(), 1, "the group itself stays open");
+	}
+
+	#[test]
+	fn a_store_that_cannot_retire_deletes_inline_and_writes_no_marker() {
+		// a marker on a tier without a retiring flush is never acted on, so the window would leak for good
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
+		}
+
+		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(store.keyspace_count(KeyspaceId::REAP_QUEUE), 0);
+		assert_eq!(store.accumulator_count(), 5);
+	}
+
+	#[test]
+	fn a_late_event_after_a_retire_cannot_bring_the_closed_window_back() {
+		// a row written after the flush deleted its group would never be deleted again
+		let mut store = CountingStore {
+			retires: true,
+			..CountingStore::default()
+		};
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
+		}
+		engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
+		let before = (store.accumulator_count(), store.row_mapping_count());
+
+		let results = feed_carrying(&mut engine, &mut store, window_at(2 * WINDOW), 2 * WINDOW + 1, 100.0);
+
+		assert!(results.is_empty(), "a closed window must not publish again");
+		assert_eq!((store.accumulator_count(), store.row_mapping_count()), before);
 	}
 
 	#[test]

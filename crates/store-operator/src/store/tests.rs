@@ -21,9 +21,14 @@ use reifydb_core::{
 	},
 	key::{
 		bound::TaggedKeyBoundRange,
-		operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
+		operator::{
+			keyspace::expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
+			state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
+		},
+		typed::direction::Desc,
 	},
 	metrics::scan::PageRequests,
+	state::typed::typed_key,
 };
 use reifydb_filter::source::KeyFilterSource;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -37,7 +42,7 @@ use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
 	error::{OperatorError, Result},
 	persistent::{
-		PersistentTier,
+		Enumerate, PersistentTier,
 		filter::OperatorStateKeySource,
 		sqlite::SqlitePersistent,
 		testing::{PersistentHooks, ReadOutcome},
@@ -657,4 +662,57 @@ fn checkpoint_at(version: u64) -> FlowCheckpoint {
 		version: CommitVersion(version),
 		lsn: Lsn::new(version + 1_000),
 	}
+}
+
+fn retire_marker(group: GroupId) -> OperatorWrite {
+	OperatorWrite::Insert {
+		operator: OP,
+		key: typed_key::<ReapQueue>(
+			GroupId::ROOT,
+			&ReapQueueKey {
+				group: Desc(group),
+			},
+		),
+		post: EncodedPodRow::new(RETIRED_AT_FLUSH),
+	}
+}
+
+#[test]
+fn a_retired_group_leaves_the_census_as_if_it_was_never_written() {
+	let survivor = sweep_group(1);
+	let doomed = sweep_group(2);
+	let (expected, _guard) = store_fixture();
+	seed_groups(&expected, &[survivor]);
+	flush(&expected);
+
+	let (store, _store_guard) = store_fixture();
+	seed_groups(&store, &[survivor, doomed]);
+	flush(&store);
+	store.apply_batch_with_checkpoints(&[retire_marker(doomed)], &[], &[], Some(next_lsn())).unwrap();
+	flush(&store);
+
+	assert_eq!(store.census.snapshot(), expected.census.snapshot());
+	assert_eq!(store.persistent.census().unwrap(), expected.persistent.census().unwrap(), "disk must agree");
+}
+
+#[test]
+fn a_retire_marker_is_never_counted_as_a_row() {
+	let census = OperatorCensus::default();
+
+	census.record(&[retire_marker(sweep_group(2))]);
+
+	assert!(census.snapshot().is_empty());
+}
+
+#[test]
+fn a_census_seeded_after_a_retire_agrees_with_the_one_that_watched_it() {
+	let (store, _guard) = store_fixture();
+	seed_groups(&store, &[sweep_group(1), sweep_group(2)]);
+	flush(&store);
+	store.apply_batch_with_checkpoints(&[retire_marker(sweep_group(2))], &[], &[], Some(next_lsn())).unwrap();
+	flush(&store);
+
+	let seeded = OperatorCensus::seeded(&store.persistent).unwrap();
+
+	assert_eq!(seeded.snapshot(), store.census.snapshot());
 }

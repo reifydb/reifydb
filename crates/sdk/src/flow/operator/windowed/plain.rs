@@ -14,11 +14,12 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
+	state::timer::StateStore,
 };
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue},
+			reaper::{drain, drain_groups, enqueue, enqueue_retired},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
 		state_access::batch,
@@ -273,6 +274,7 @@ where
 		store: &mut GuestAsHost<'_, C>,
 		frontier: A::Coord,
 		seal_span: SealSpan<A>,
+		may_retire: bool,
 	) -> Result<()> {
 		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
 		if horizon <= <A::Coord as Coord>::from_order(0) {
@@ -281,6 +283,11 @@ where
 		let store_queue_empty = *reap_queue_empty;
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
+		if may_retire && StateStore::state_retires_groups(store) {
+			enqueue_retired(store, &expired)?;
+			*reap_queue_empty = true;
+			return Ok(());
+		}
 		enqueue(store, &expired)?;
 		if !expired.is_empty() {
 			*reap_queue_empty = false;
@@ -455,7 +462,7 @@ where
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			order.retain(|key| buckets.contains_key(key));
-			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
+			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span, true)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -1010,7 +1017,14 @@ where
 			observe_batch(&mut store, newest, seal_span)?;
 		}
 		let emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		Self::expire_through(mode.engine.tumbling_mut(), reap_queue_empty, &mut store, watermark, seal_span)?;
+		Self::expire_through(
+			mode.engine.tumbling_mut(),
+			reap_queue_empty,
+			&mut store,
+			watermark,
+			seal_span,
+			false,
+		)?;
 
 		let mut records = Vec::new();
 		let mut stale = Vec::new();
@@ -1287,12 +1301,20 @@ where
 		let (inserts, updates, removes) = match rolling {
 			Some(mode) => Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?,
 			None => {
+				let may_retire = session.is_none();
 				let tumbling = match (sliding, session) {
 					(Some(mode), _) => mode.engine.tumbling_mut(),
 					(None, Some(mode)) => mode.engine.tumbling_mut(),
 					(None, None) => engine,
 				};
-				Self::expire_through(tumbling, reap_queue_empty, &mut store, frontier, seal_span)?;
+				Self::expire_through(
+					tumbling,
+					reap_queue_empty,
+					&mut store,
+					frontier,
+					seal_span,
+					may_retire,
+				)?;
 				(Vec::new(), Vec::new(), Vec::new())
 			}
 		};

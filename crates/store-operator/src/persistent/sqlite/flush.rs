@@ -21,7 +21,7 @@ use crate::{
 		typed,
 	},
 	resident::bucket::{Bucket, BucketMap, write::StandardBucket},
-	types::{DropMarker, FlushBatch, StagedWrite},
+	types::{DropMarker, FlushBatch, RetiredRows, StagedWrite},
 };
 
 impl SqlitePersistent {
@@ -30,7 +30,7 @@ impl SqlitePersistent {
 		state_count = batch.writes.len(),
 		checkpoint_count = batch.checkpoints.len()
 	))]
-	pub fn flush_batch(&self, batch: &FlushBatch) {
+	pub fn flush_batch(&self, batch: &FlushBatch) -> Vec<RetiredRows> {
 		if !batch.writes.is_empty() {
 			self.mark_state_written();
 		}
@@ -47,6 +47,17 @@ impl SqlitePersistent {
 		}
 
 		let created = write_state(&state_of(batch), &transaction, &self.inner.tables);
+
+		let mut retired = Vec::new();
+		for (operator, group) in &batch.retired {
+			let mut mask = self.inner.tables.mask(*operator).held();
+			for (made, keyspace) in &created {
+				if made == operator && !mask.contains(keyspace) {
+					mask.push(*keyspace);
+				}
+			}
+			route::retire_group(&transaction, *operator, *group, &mask, &mut retired);
+		}
 
 		for (flow, entry) in &batch.checkpoints {
 			match entry {
@@ -79,6 +90,7 @@ impl SqlitePersistent {
 
 		transaction.commit().expect("operator state flush could not commit");
 		self.inner.tables.add(&created);
+		retired
 	}
 }
 
@@ -162,11 +174,17 @@ impl KeyspaceVisitor for Write<'_> {
 
 #[cfg(test)]
 mod tests {
+	use std::panic::{AssertUnwindSafe, catch_unwind};
+
 	use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
-			operator::{keyspace::join::JoinLeft, state::GroupId, traits::Keyspace},
+			operator::{
+				keyspace::join::{JoinLeft, JoinRight},
+				state::GroupId,
+				traits::Keyspace,
+			},
 			typed::direction::Asc,
 		},
 	};
@@ -176,7 +194,10 @@ mod tests {
 	};
 
 	use crate::{
-		persistent::sqlite::fixture::{encode, get, open, remove_one, scan, set_one},
+		persistent::sqlite::{
+			fixture::{encode, get, open, remove_one, scan, set_one, with_conn},
+			typed::table_of,
+		},
 		types::{DropMarker, FlushBatch, StagedWrite},
 	};
 
@@ -251,5 +272,87 @@ mod tests {
 		assert_eq!(get::<JoinLeft>(&store, neighbour, &key).as_deref(), Some(b"neighbour".as_slice()));
 		set_one::<JoinLeft>(&store, OP, &key, b"after");
 		assert_eq!(get::<JoinLeft>(&store, OP, &key).as_deref(), Some(b"after".as_slice()));
+	}
+
+	fn group(n: u128) -> GroupId {
+		GroupId::hashed(Hash128(n))
+	}
+
+	#[test]
+	fn a_retire_deletes_the_group_from_every_keyspace_and_nothing_else() {
+		// a retire that misses a keyspace leaks rows nothing can reach again; one that overreaches loses live
+		// state
+		let store = open();
+		let neighbour = OperatorId(2);
+		let left = JoinLeft::join(group(7), suffix(1));
+		let right = JoinRight::join(group(7), suffix(1));
+		let other_group = JoinLeft::join(group(9), suffix(1));
+		set_one::<JoinLeft>(&store, OP, &left, b"gone");
+		set_one::<JoinRight>(&store, OP, &right, b"gone");
+		set_one::<JoinLeft>(&store, OP, &other_group, b"keep");
+		set_one::<JoinLeft>(&store, neighbour, &left, b"keep");
+
+		let mut batch = FlushBatch::default();
+		batch.retired.push((OP, group(7)));
+		store.flush_batch(&batch);
+
+		assert!(get::<JoinLeft>(&store, OP, &left).is_none());
+		assert!(get::<JoinRight>(&store, OP, &right).is_none());
+		assert!(get::<JoinLeft>(&store, OP, &other_group).is_some(), "another group must stay");
+		assert!(get::<JoinLeft>(&store, neighbour, &left).is_some(), "another operator must stay");
+	}
+
+	#[test]
+	fn a_row_written_in_the_same_flush_as_its_retire_does_not_survive() {
+		// the write lands first, so the delete must run after it and must see a table this flush created
+		let store = open();
+		let key = JoinLeft::join(group(7), suffix(1));
+		let mut batch = FlushBatch::default();
+		batch.writes.push((OP, encode::<JoinLeft>(&key), StagedWrite::Set(row("late"))));
+		batch.retired.push((OP, group(7)));
+
+		store.flush_batch(&batch);
+
+		assert!(get::<JoinLeft>(&store, OP, &key).is_none());
+	}
+
+	#[test]
+	fn a_retire_of_a_group_with_no_table_is_harmless() {
+		// a window can close having written nothing to a keyspace, which must not fail the whole flush
+		let store = open();
+		let mut batch = FlushBatch::default();
+		batch.retired.push((OP, group(7)));
+
+		store.flush_batch(&batch);
+
+		assert!(scan::<JoinLeft>(&store, OP).is_empty());
+	}
+
+	#[test]
+	fn a_crash_inside_the_flush_rolls_back_the_writes_and_the_retire_together() {
+		// the index removal and the group delete must land as one; a half flush would strand the group forever
+		let store = open();
+		let doomed = JoinLeft::join(group(7), suffix(1));
+		let written_late = JoinLeft::join(group(9), suffix(1));
+		set_one::<JoinLeft>(&store, OP, &doomed, b"data");
+		with_conn(&store, |conn| {
+			conn.execute_batch(&format!(
+				r#"CREATE TRIGGER crash BEFORE DELETE ON "{}" BEGIN SELECT RAISE(ABORT, 'crash'); END;"#,
+				table_of(JoinLeft::NAME, OP)
+			))
+			.unwrap();
+		});
+		let mut batch = FlushBatch::default();
+		batch.writes.push((OP, encode::<JoinLeft>(&written_late), StagedWrite::Set(row("new"))));
+		batch.retired.push((OP, group(7)));
+
+		let crashed = catch_unwind(AssertUnwindSafe(|| store.flush_batch(&batch)));
+
+		assert!(crashed.is_err(), "precondition: the trigger must fail the flush, or this proves nothing");
+		assert!(get::<JoinLeft>(&store, OP, &doomed).is_some(), "the group must be back after the rollback");
+		assert!(
+			get::<JoinLeft>(&store, OP, &written_late).is_none(),
+			"the write must not land without the retire"
+		);
 	}
 }

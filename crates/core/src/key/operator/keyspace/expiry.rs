@@ -110,6 +110,8 @@ impl Keyspace for TumblingExpiry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ReapQueue;
 
+pub const RETIRED_AT_FLUSH: &[u8] = &[1];
+
 impl Keyspace for ReapQueue {
 	const ID: KeyspaceId = KeyspaceId::REAP_QUEUE;
 	const NAME: &'static str = "REAP_QUEUE";

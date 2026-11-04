@@ -412,6 +412,12 @@ impl GuestEmitContext for InProcessContext<'_> {
 }
 
 impl<C> GuestContext<C> for InProcessContext<'_> {
+	fn state_retires_groups(&self) -> bool {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from, and &self keeps that borrow
+		// live for this read.
+		unsafe { (*self.host).state_retires_groups() }
+	}
+
 	fn state(&mut self) -> impl ClassState<C> + '_
 	where
 		C: CustomClass,

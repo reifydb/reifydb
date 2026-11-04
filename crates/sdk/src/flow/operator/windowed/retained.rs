@@ -13,11 +13,12 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
+	state::timer::StateStore,
 };
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue},
+			reaper::{drain, drain_groups, enqueue, enqueue_retired},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
 		state_access::batch,
@@ -188,6 +189,12 @@ where
 		let store_queue_empty = *reap_queue_empty;
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
+		if StateStore::state_retires_groups(store) {
+			enqueue_retired(store, &expired)?;
+			engine.expire_meta(store, horizon.to_order())?;
+			*reap_queue_empty = true;
+			return Ok(());
+		}
 		enqueue(store, &expired)?;
 		if !expired.is_empty() {
 			*reap_queue_empty = false;

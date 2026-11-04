@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator::state::KeyspaceId;
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::{
+		operator::{
+			keyspace::expiry::{ReapQueue, ReapQueueKey},
+			state::{GroupId, KeyspaceId},
+			traits::Keyspace,
+		},
+		typed::direction::Desc,
+	},
+};
 use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
-use crate::resident::bucket::{BucketMap, FrozenRows};
+use crate::resident::bucket::{BucketMap, FrozenRows, StandardBucket};
 
 impl BucketMap {
 	pub fn dirty_count(&self) -> usize {
@@ -37,6 +47,36 @@ impl BucketMap {
 		}
 		self.buckets.retain(|_, bucket| !bucket.is_empty());
 		(evicted, freed)
+	}
+
+	pub fn retire_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> (usize, usize, ByteSize) {
+		let (mut entries, mut tombstones, mut freed) = (0usize, 0usize, ByteSize::ZERO);
+		for bucket in self.buckets.values_mut() {
+			for group in groups {
+				let (e, t, f) = bucket.retire_group(*group);
+				entries += e;
+				tombstones += t;
+				freed = freed.saturating_add(f);
+			}
+		}
+		if let Some(queue) = self.buckets.get_mut(&(operator, ReapQueue::ID)) {
+			let queue = queue
+				.as_any_mut()
+				.downcast_mut::<StandardBucket<ReapQueue>>()
+				.expect("a keyspace id must map to exactly one key type");
+			for group in groups {
+				let (e, f) = queue.forget_clean_row(
+					GroupId::ROOT,
+					&ReapQueueKey {
+						group: Desc(*group),
+					},
+				);
+				entries += e;
+				freed = freed.saturating_add(f);
+			}
+		}
+		self.buckets.retain(|_, bucket| !bucket.is_empty());
+		(entries, tombstones, freed)
 	}
 
 	#[instrument(name = "store::operator::bucket::freeze", level = "debug", skip_all)]

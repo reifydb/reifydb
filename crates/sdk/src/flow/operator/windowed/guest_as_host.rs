@@ -73,6 +73,10 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(keys.iter().map(|key| found.get(key).cloned()).collect())
 	}
 
+	fn state_retires_groups(&self) -> bool {
+		self.0.state_retires_groups()
+	}
+
 	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());

@@ -311,6 +311,10 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
+	fn state_retires_groups(&self) -> bool {
+		self.txn.operator_store().persistent().retires_groups()
+	}
+
 	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		self.txn.state_get(self.operator, keys)
 	}

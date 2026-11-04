@@ -7,7 +7,7 @@ use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	key::{
 		operator::{
-			keyspace::expiry::{ReapQueue, ReapQueueKey},
+			keyspace::expiry::{RETIRED_AT_FLUSH, ReapQueue, ReapQueueKey},
 			state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey},
 		},
 		typed::direction::Desc,
@@ -62,6 +62,18 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
 		.iter()
 		.filter(|group| !group.is_root())
 		.map(|group| (queue_key(*group), EncodedPodRow::new(&[])))
+		.collect();
+	if rows.is_empty() {
+		return Ok(());
+	}
+	store.state_set(rows)
+}
+
+pub fn enqueue_retired(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+	let rows: Vec<(GroupStateKey, EncodedPodRow)> = groups
+		.iter()
+		.filter(|group| !group.is_root())
+		.map(|group| (queue_key(*group), EncodedPodRow::new(RETIRED_AT_FLUSH)))
 		.collect();
 	if rows.is_empty() {
 		return Ok(());

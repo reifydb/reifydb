@@ -407,6 +407,56 @@ impl<K: Keyspace> StandardBucket<K> {
 		self.tombstones += mem::take(&mut self.frozen_tombstones);
 	}
 
+	pub fn forget_clean_row(&mut self, group: GroupId, suffix: &K::Suffix) -> (usize, ByteSize) {
+		let generations = self.generations();
+		let Some(partition) = self.partitions.get_mut(&group) else {
+			return (0, ByteSize::ZERO);
+		};
+		let Some(entry) = partition.live.get(suffix) else {
+			return (0, ByteSize::ZERO);
+		};
+		if !matches!(generations.staged(entry), Staged::Clean) {
+			return (0, ByteSize::ZERO);
+		}
+		let mut freed = entry.row_bytes().saturating_add(Self::suffix_bytes());
+		partition.live.remove(suffix);
+		if partition.is_empty() {
+			self.partitions.remove(&group);
+			freed = freed.saturating_add(Self::group_bytes());
+		}
+		self.entries -= 1;
+		self.bytes = self.bytes.saturating_sub(freed);
+		(1, freed)
+	}
+
+	pub fn retire_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
+		if self.dirty_groups.contains_key(&group) {
+			return (0, 0, ByteSize::ZERO);
+		}
+		let generations = self.generations();
+		let Some(partition) = self.partitions.remove(&group) else {
+			return (0, 0, ByteSize::ZERO);
+		};
+		let mut entries = 0usize;
+		let mut tombstones = 0usize;
+		let mut freed = Self::group_bytes();
+		for entry in partition.live.values() {
+			entries += 1;
+			freed = freed.saturating_add(entry.row_bytes()).saturating_add(Self::suffix_bytes());
+		}
+		for entry in partition.deleted.values() {
+			entries += 1;
+			if matches!(generations.staged(entry), Staged::Clean) {
+				tombstones += 1;
+			}
+			freed = freed.saturating_add(entry.row_bytes()).saturating_add(Self::suffix_bytes());
+		}
+		self.entries -= entries;
+		self.tombstones -= tombstones;
+		self.bytes = self.bytes.saturating_sub(freed);
+		(entries, tombstones, freed)
+	}
+
 	pub fn record(&mut self, group: GroupId, suffix: K::Suffix, post: Option<EncodedPodRow>) {
 		self.write(group, suffix, post, false);
 	}
@@ -588,6 +638,10 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 
 	fn freeze(&mut self) -> Option<(Box<dyn FrozenRows>, usize, ByteSize)> {
 		StandardBucket::freeze(self)
+	}
+
+	fn retire_group(&mut self, group: GroupId) -> (usize, usize, ByteSize) {
+		StandardBucket::retire_group(self, group)
 	}
 
 	#[cfg(test)]

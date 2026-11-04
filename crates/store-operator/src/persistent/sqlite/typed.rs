@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::TypeId, collections::HashMap, fmt::Write, ops::Bound, sync::LazyLock};
+use std::{any::TypeId, collections::HashMap, fmt::Write, ops::Bound, slice::from_ref, sync::LazyLock};
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -632,6 +632,25 @@ pub fn clear<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
 		.expect("operator state drop could not be prepared")
 		.execute([])
 		.expect("operator state drop failed");
+}
+
+pub fn retire_group<K: Keyspace>(txn: &Transaction, operator: OperatorId, group: GroupId) -> (u64, u64) {
+	let statement = format!(
+		r#"DELETE FROM "{}" WHERE "{}" = ?1 RETURNING LENGTH("bytes")"#,
+		table_of(K::NAME, operator),
+		group_column::<K>().name
+	);
+	let mut statement = txn.prepare_cached(&statement).expect("operator state group retire could not be prepared");
+	let mut rows = statement
+		.query(params_from_iter(bind_groups::<K>(from_ref(&group))))
+		.expect("operator state group retire failed");
+	let (mut keys, mut value_bytes) = (0u64, 0u64);
+	while let Some(row) = rows.next().expect("operator state group retire failed") {
+		let length: i64 = row.get(0).expect("operator state payload size could not be read");
+		keys += 1;
+		value_bytes += length as u64;
+	}
+	(keys, value_bytes)
 }
 
 pub fn occupied<K: Keyspace>(conn: &Connection, operator: OperatorId) -> bool {

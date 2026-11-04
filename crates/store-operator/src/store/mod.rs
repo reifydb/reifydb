@@ -169,6 +169,7 @@ impl StandardOperatorStore {
 			Arc::new(OperatorCensus::seeded(&persistent).expect(
 				"operator census must load; an empty seed under-reports every operator's state",
 			));
+		resident.attach_census(census.clone());
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if persisted_state {
 			let actor = FilterActor::spawn(&spawner);

@@ -319,17 +319,20 @@ impl Apply for TestingPersistent {
 					writes: batch.writes.iter().take(len).cloned().collect(),
 					checkpoints: Default::default(),
 					drops: Vec::new(),
+					retired: Vec::new(),
 					bytes: batch.bytes,
 					through: None,
 				};
 				self.0.durable.apply(&torn).map(|_| Applied {
 					rows: batch.writes.len(),
 					bytes: batch.bytes,
+					retired: Vec::new(),
 				})
 			}
 			ApplyOutcome::Lost => Ok(Applied {
 				rows: batch.writes.len(),
 				bytes: batch.bytes,
+				retired: Vec::new(),
 			}),
 			ApplyOutcome::Err(error) => Err(error),
 		};
