@@ -806,3 +806,11 @@ pub fn flow_transactional_reads_deferred_view(name: &str) -> Diagnostic {
 		 source table instead.",
 	)
 }
+
+pub fn flow_view_poisoned(namespace: &str, view: &str, reason: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_094",
+		format!("the flow for view {namespace}::{view} is poisoned: {reason}"),
+		"A poisoned flow never runs again. Drop the view and create it again.",
+	)
+}

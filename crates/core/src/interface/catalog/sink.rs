@@ -3,10 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	flow::FlowStatus,
-	id::{NamespaceId, SinkId},
-};
+use crate::interface::catalog::id::{NamespaceId, SinkId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sink {
@@ -17,5 +14,4 @@ pub struct Sink {
 	pub source_name: String,
 	pub connector: String,
 	pub config: Vec<(String, String)>,
-	pub status: FlowStatus,
 }

@@ -2,20 +2,25 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{
-	catalog::{
-		id::NamespaceId,
-		namespace::Namespace,
-		view::ViewKind,
-		vtable::{VTable, VTableId},
-	},
-	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
-		ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+use reifydb_core::{
+	error::diagnostic::flow::flow_view_poisoned,
+	interface::{
+		catalog::{
+			flow::FlowStatus,
+			id::NamespaceId,
+			namespace::Namespace,
+			view::ViewKind,
+			vtable::{VTable, VTableId},
+		},
+		resolved::{
+			ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
+			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedTableVirtual,
+			ResolvedTransactionalView,
+		},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::{Result, error::Error, fragment::Fragment};
 
 use crate::{
 	ast::identifier::UnresolvedObjectIdentifier,
@@ -147,6 +152,17 @@ fn probe_object_in_namespace(
 	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id(), name_str)? {
 		let object = match view.kind() {
 			ViewKind::Deferred => {
+				if let Some(flow) = catalog.find_flow_by_name(tx, ns_def.id(), name_str)?
+					&& let FlowStatus::Poisoned {
+						reason,
+					} = &flow.status
+				{
+					return Err(Error(Box::new(flow_view_poisoned(
+						ns_def.name(),
+						name_str,
+						reason,
+					))));
+				}
 				ResolvedObject::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
 			}
 			ViewKind::Transactional => ResolvedObject::TransactionalView(ResolvedTransactionalView::new(

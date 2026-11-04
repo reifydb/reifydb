@@ -286,7 +286,7 @@ mod tests {
 			operator::{FlowNode, LookupObject},
 		},
 		interface::catalog::{
-			flow::{FlowEdge, FlowStatus, OperatorId},
+			flow::{FlowEdge, OperatorId},
 			id::TableId,
 		},
 		row::{JoinRetention, OperatorRetention},
@@ -337,7 +337,6 @@ mod tests {
 			FlowToCreate {
 				name: Fragment::internal(name),
 				namespace: view.namespace(),
-				status: FlowStatus::Active,
 			},
 			builder.build(),
 		)

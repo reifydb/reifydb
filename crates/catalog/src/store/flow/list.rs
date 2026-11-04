@@ -19,7 +19,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let TaggedKey::Flow(flow_key) = &entry.key {
-				let mut flow = decode_flow(EncodedCatalogRow::view(&entry.bytes));
+				let mut flow = decode_flow(EncodedCatalogRow::view(&entry.bytes))?;
 				flow.id = flow_key.flow;
 
 				result.push(flow);
@@ -102,12 +102,12 @@ pub mod tests {
 			&mut txn,
 			flow_id,
 			FlowToCreate {
-				name: Fragment::internal("paused_flow"),
+				name: Fragment::internal("poisoned_flow"),
 				namespace: namespace.id(),
-				status: FlowStatus::Paused,
 			},
 		)
 		.unwrap();
+		CatalogStore::poison_flow(&mut txn, flow_id, "v 13 refused".to_string()).unwrap();
 
 		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 2);
@@ -115,7 +115,12 @@ pub mod tests {
 		for flow in &result {
 			match flow.name.as_str() {
 				"active_flow" => assert_eq!(flow.status, FlowStatus::Active),
-				"paused_flow" => assert_eq!(flow.status, FlowStatus::Paused),
+				"poisoned_flow" => assert_eq!(
+					flow.status,
+					FlowStatus::Poisoned {
+						reason: "v 13 refused".to_string()
+					}
+				),
 				_ => panic!("Unexpected flow name: {}", flow.name),
 			}
 		}

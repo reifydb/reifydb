@@ -4,7 +4,6 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
-		flow::FlowStatus,
 		id::{NamespaceId, SinkId},
 		sink::Sink,
 	},
@@ -37,8 +36,6 @@ impl CatalogStore {
 					name: name.clone(),
 					reason: e.to_string(),
 				})?;
-			let status_u8 = sink::get_status(bytes);
-			let status = FlowStatus::from_u8(status_u8);
 
 			result.push(Sink {
 				id,
@@ -48,7 +45,6 @@ impl CatalogStore {
 				source_name,
 				connector,
 				config,
-				status,
 			});
 		}
 

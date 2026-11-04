@@ -9,6 +9,7 @@ catalog_shape! {
 		namespace: u64,
 		name: utf8,
 		status: u8,
+		reason: utf8?,
 	}
 
 	pub(crate) flow_namespace {

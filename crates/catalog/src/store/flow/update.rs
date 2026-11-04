@@ -17,25 +17,35 @@ impl CatalogStore {
 		flow::set_id(&mut row, flow_id.0);
 		flow::set_namespace(&mut row, flow.namespace.0);
 		flow::set_name(&mut row, &new_name);
-		flow::set_status(&mut row, flow.status as u8);
+		flow::set_status(&mut row, flow.status.to_u8());
+		if let Some(reason) = flow.status.reason() {
+			flow::set_reason(&mut row, reason);
+		}
 
 		txn.set(vec![(FlowKey::new(flow_id).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
 
-	pub(crate) fn update_flow_status(
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		status: FlowStatus,
-	) -> Result<()> {
-		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
+	pub(crate) fn poison_flow(txn: &mut AdminTransaction, flow_id: FlowId, reason: String) -> Result<()> {
+		let Some(flow) = Self::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)? else {
+			return Ok(());
+		};
+		if flow.status != FlowStatus::Active {
+			return Ok(());
+		}
+		let status = FlowStatus::Poisoned {
+			reason,
+		};
 
 		let mut row = flow::allocate();
 		flow::set_id(&mut row, flow_id.0);
 		flow::set_namespace(&mut row, flow.namespace.0);
 		flow::set_name(&mut row, &flow.name);
-		flow::set_status(&mut row, status as u8);
+		flow::set_status(&mut row, status.to_u8());
+		if let Some(reason) = status.reason() {
+			flow::set_reason(&mut row, reason);
+		}
 
 		txn.set(vec![(FlowKey::new(flow_id).into(), row.freeze().into())])?;
 
@@ -66,22 +76,29 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_update_flow_status() {
+	fn test_poison_flow() {
 		let mut txn = create_test_admin_transaction();
 		let flow = ensure_test_flow(&mut txn);
 
+		// The reason must survive the row round trip, and a second poison must never replace the root cause.
 		assert_eq!(flow.status, FlowStatus::Active);
 
-		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Paused).unwrap();
+		CatalogStore::poison_flow(&mut txn, flow.id, "v 13 refused".to_string()).unwrap();
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(updated.status, FlowStatus::Paused);
+		assert_eq!(
+			updated.status,
+			FlowStatus::Poisoned {
+				reason: "v 13 refused".to_string()
+			}
+		);
 
-		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Failed).unwrap();
+		CatalogStore::poison_flow(&mut txn, flow.id, "upstream t::a is poisoned".to_string()).unwrap();
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(updated.status, FlowStatus::Failed);
-
-		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Active).unwrap();
-		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(updated.status, FlowStatus::Active);
+		assert_eq!(
+			updated.status,
+			FlowStatus::Poisoned {
+				reason: "v 13 refused".to_string()
+			}
+		);
 	}
 }

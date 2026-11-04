@@ -5,7 +5,6 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
-			flow::FlowStatus,
 			id::{NamespaceId, SinkId},
 			sink::Sink,
 		},
@@ -46,7 +45,6 @@ fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
 		name: name.clone(),
 		reason: e.to_string(),
 	})?;
-	let status = FlowStatus::from_u8(sink::get_status(&bytes));
 
 	Ok(Sink {
 		id,
@@ -56,7 +54,6 @@ fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
 		source_name,
 		connector,
 		config,
-		status,
 	})
 }
 
@@ -78,7 +75,6 @@ mod tests {
 		sink::set_config(&mut row, "not json");
 		sink::set_source_namespace(&mut row, 1);
 		sink::set_source_name(&mut row, "origin");
-		sink::set_status(&mut row, 0);
 
 		let multi = MultiVersionRow {
 			key: (),

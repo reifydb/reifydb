@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::FlowStatus,
 		id::{NamespaceId, SourceId},
 		source::Source,
 	},
@@ -63,7 +62,6 @@ impl CatalogStore {
 			config: to_create.config,
 			target_namespace: to_create.target_namespace,
 			target_name: to_create.target_name,
-			status: FlowStatus::Active,
 		})
 	}
 
@@ -86,7 +84,6 @@ impl CatalogStore {
 		source::set_config(&mut row, &config_json);
 		source::set_target_namespace(&mut row, u64::from(to_create.target_namespace));
 		source::set_target_name(&mut row, &to_create.target_name);
-		source::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::new(source);
 		txn.set(vec![(key.clone().into(), row.freeze().into())])?;

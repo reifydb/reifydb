@@ -12,7 +12,6 @@ catalog_shape! {
 		config: utf8,
 		target_namespace: u64,
 		target_name: utf8,
-		status: u8,
 	}
 
 	pub(crate) source_namespace {

@@ -22,7 +22,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_flow(EncodedCatalogRow::view(&multi.bytes))))
+		Ok(Some(decode_flow(EncodedCatalogRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn find_flow_by_name(

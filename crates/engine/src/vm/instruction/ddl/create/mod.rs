@@ -24,7 +24,6 @@ use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::{
 		column::ColumnIndex,
-		flow::FlowStatus,
 		view::{View, ViewKind, ViewSortKey},
 	},
 	operator_with::ApplyWith,
@@ -400,7 +399,6 @@ pub(crate) fn create_deferred_view_flow(
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
-			status: FlowStatus::Active,
 		},
 		dag,
 	)?;
@@ -519,7 +517,6 @@ pub(crate) fn create_transactional_view_flow(
 		FlowToCreate {
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
-			status: FlowStatus::Active,
 		},
 		dag,
 	)?;

@@ -149,16 +149,14 @@ impl ReaderWatermarks<'_> {
 	/// Waits for every deferred flow to have materialized output covering `version`, returning
 	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_subscription`].
 	pub fn wait_for_flow_caught_up(&self, version: CommitVersion, timeout: Duration) -> Result<bool> {
-		if self.flow_caught_up() >= version {
-			return Ok(true);
-		}
+		let watermark = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>();
 		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
+			if let Some(watermark) = &watermark {
+				watermark.ensure_healthy()?;
+			}
 			if self.flow_caught_up() >= version {
 				return Ok(true);
-			}
-			if let Some(watermark) = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>() {
-				watermark.ensure_healthy()?;
 			}
 			if self.clock.instant() >= deadline {
 				return Ok(self.flow_caught_up() >= version);

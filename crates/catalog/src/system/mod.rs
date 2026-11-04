@@ -166,8 +166,9 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const STATUS: ColumnId = ColumnId(4);
+			pub const REASON: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, STATUS];
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, STATUS, REASON];
 		}
 
 		pub mod operators {

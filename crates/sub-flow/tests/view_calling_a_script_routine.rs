@@ -118,7 +118,11 @@ fn unknown_function_fails_loud(view: &str) {
 		description.contains("FUNCTION_001") && description.contains("no_such_fn"),
 		"the poisoned flow must carry FUNCTION_001 naming no_such_fn: {description}"
 	);
-	assert_eq!(db.row_count("FROM app::v"), 0, "a poisoned flow must not write a row to the view");
+	let refused = db.try_query("FROM app::v").expect_err("a read of a poisoned view must fail");
+	assert_eq!(
+		refused.0.code, "FLOW_094",
+		"a poisoned view must refuse the read instead of serving its frozen rows: {refused:?}"
+	);
 }
 
 #[test]

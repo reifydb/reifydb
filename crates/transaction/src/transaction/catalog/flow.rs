@@ -11,7 +11,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete},
+		OperationType::{Create, Delete, Update},
 		TransactionalFlowChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -23,6 +23,16 @@ impl CatalogTrackFlowChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(entry),
 			op: Create,
+		};
+		self.changes.add_flow_change(change);
+		Ok(())
+	}
+
+	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<()> {
+		let change = Change {
+			pre: Some(pre),
+			post: Some(post),
+			op: Update,
 		};
 		self.changes.add_flow_change(change);
 		Ok(())

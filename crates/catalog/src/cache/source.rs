@@ -65,7 +65,6 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 
@@ -78,7 +77,6 @@ pub mod tests {
 			config: vec![],
 			target_namespace: namespace,
 			target_name: "target".to_string(),
-			status: FlowStatus::Active,
 		}
 	}
 

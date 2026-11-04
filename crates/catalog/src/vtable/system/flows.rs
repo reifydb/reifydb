@@ -53,6 +53,7 @@ impl BaseVTable for SystemFlows {
 		let mut namespaces = ColumnBuilder::with_capacity(ValueType::Uint8, flows.len());
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, flows.len());
 		let mut statuses = ColumnBuilder::with_capacity(ValueType::Utf8, flows.len());
+		let mut reasons = ColumnBuilder::with_capacity(ValueType::Utf8, flows.len());
 
 		for flow in flows {
 			ids.push(flow.id.0);
@@ -61,10 +62,15 @@ impl BaseVTable for SystemFlows {
 
 			let status_str = match flow.status {
 				FlowStatus::Active => "Active",
-				FlowStatus::Paused => "Paused",
-				FlowStatus::Failed => "Failed",
+				FlowStatus::Poisoned {
+					..
+				} => "Poisoned",
 			};
 			statuses.push(status_str);
+			match flow.status.reason() {
+				Some(reason) => reasons.push(reason),
+				None => reasons.push_none(),
+			}
 		}
 
 		let columns = vec![
@@ -72,6 +78,7 @@ impl BaseVTable for SystemFlows {
 			namespaces.finish("namespace_id"),
 			names.finish("name"),
 			statuses.finish("status"),
+			reasons.finish("reason"),
 		];
 
 		self.exhausted = true;

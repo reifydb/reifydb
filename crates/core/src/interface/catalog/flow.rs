@@ -223,28 +223,40 @@ impl<'de> Deserialize<'de> for FlowEdgeId {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FlowStatus {
 	Active,
-	Paused,
-	Failed,
+	Poisoned {
+		reason: String,
+	},
 }
 
 impl FlowStatus {
-	pub fn to_u8(self) -> u8 {
+	pub fn to_u8(&self) -> u8 {
 		match self {
 			FlowStatus::Active => 0,
-			FlowStatus::Paused => 1,
-			FlowStatus::Failed => 2,
+			FlowStatus::Poisoned {
+				..
+			} => 2,
 		}
 	}
 
-	pub fn from_u8(value: u8) -> Self {
-		match value {
-			0 => FlowStatus::Active,
-			1 => FlowStatus::Paused,
-			2 => FlowStatus::Failed,
-			_ => FlowStatus::Failed,
+	pub fn from_stored(byte: u8, reason: Option<&str>) -> Option<Self> {
+		match (byte, reason) {
+			(0, None) => Some(FlowStatus::Active),
+			(2, Some(reason)) => Some(FlowStatus::Poisoned {
+				reason: reason.to_string(),
+			}),
+			_ => None,
+		}
+	}
+
+	pub fn reason(&self) -> Option<&str> {
+		match self {
+			FlowStatus::Active => None,
+			FlowStatus::Poisoned {
+				reason,
+			} => Some(reason),
 		}
 	}
 }

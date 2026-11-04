@@ -73,7 +73,7 @@ use crate::{
 		quiescence::FlowMaterialization,
 	},
 	control::{
-		health::FlowHealthRegistry,
+		health::{FlowHealthRegistry, PoisonedFlowsCollector, stored_poisoned},
 		supervisor::{FlowSupervisor, FlowSupervisorHandle, FlowSupervisorMessage, FlowSupervisorParams},
 	},
 	marker::MarkerPlane,
@@ -96,6 +96,7 @@ pub struct FlowSubsystem {
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	view_lineage: ViewLineage,
 	health: FlowHealthRegistry,
+	engine: StandardEngine,
 	shutdown_state: FlowShutdownState,
 	running: AtomicBool,
 }
@@ -163,6 +164,7 @@ impl FlowSubsystem {
 		let loader_metrics = CommitLoaderMetrics::default();
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		metrics_registry.register_collector(Arc::new(health.clone()));
+		metrics_registry.register_collector(Arc::new(PoisonedFlowsCollector::new(engine.clone())));
 		let control = ControlFrontier::new();
 		let loader_handle =
 			flow_scope.spawn_flow("flow-loader", CommitLoader::new(flow_wal.log.clone(), loader_metrics));
@@ -205,11 +207,11 @@ impl FlowSubsystem {
 		Self::register_unit_sampler(ioc, &flow_tracker);
 		Self::register_tick_sampler(ioc, &flow_tracker);
 
-		let poisoned_health = health.clone();
+		let poisoned_engine = engine.clone();
 		let stalled_health = health.clone();
 		ioc.register_service::<FlowCaughtUpWatermark>(FlowCaughtUpWatermark::new(
 			move || materialization.caught_up(),
-			move || poisoned_health.poisoned(),
+			move || stored_poisoned(&poisoned_engine),
 			move || stalled_health.stalled(),
 		));
 
@@ -242,6 +244,7 @@ impl FlowSubsystem {
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			view_lineage,
 			health,
+			engine: engine.clone(),
 			shutdown_state: FlowShutdownState::new(engine, substrate),
 			running: AtomicBool::new(true),
 		})
@@ -376,7 +379,8 @@ impl Subsystem for FlowSubsystem {
 		if !self.is_running() {
 			return HealthStatus::Unknown;
 		}
-		let poisoned = self.health.poisoned();
+		let poisoned = stored_poisoned(&self.engine)
+			.unwrap_or_else(|e| panic!("flow subsystem health cannot list the poisoned flows: {e}"));
 		let stalled = self.health.stalled();
 		if poisoned.is_empty() && stalled.is_empty() {
 			return HealthStatus::Healthy;

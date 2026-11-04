@@ -21,7 +21,6 @@ use crate::{
 pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub status: FlowStatus,
 }
 
 impl CatalogStore {
@@ -37,7 +36,7 @@ impl CatalogStore {
 			id: flow_id,
 			namespace: namespace_id,
 			name: to_create.name.text().to_string(),
-			status: to_create.status,
+			status: FlowStatus::Active,
 		})
 	}
 
@@ -79,7 +78,7 @@ impl CatalogStore {
 		flow::set_id(&mut row, u64::from(flow));
 		flow::set_namespace(&mut row, u64::from(namespace));
 		flow::set_name(&mut row, to_create.name.text());
-		flow::set_status(&mut row, to_create.status.to_u8());
+		flow::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = FlowKey::new(flow);
 		txn.set(vec![(key.clone().into(), row.freeze().into())])?;
@@ -133,7 +132,6 @@ pub mod tests {
 		let to_create = FlowToCreate {
 			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id(),
-			status: FlowStatus::Active,
 		};
 
 		let flow_id = next_flow_id(&mut txn).unwrap();
@@ -156,7 +154,6 @@ pub mod tests {
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
-			status: FlowStatus::Active,
 		};
 		let flow_id = next_flow_id(&mut txn).unwrap();
 		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
@@ -164,7 +161,6 @@ pub mod tests {
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
-			status: FlowStatus::Paused,
 		};
 		let flow_id = next_flow_id(&mut txn).unwrap();
 		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
@@ -210,7 +206,6 @@ pub mod tests {
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
-			status: FlowStatus::Active,
 		};
 		let flow_id = next_flow_id(&mut txn).unwrap();
 		CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();
@@ -218,7 +213,6 @@ pub mod tests {
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
-			status: FlowStatus::Active,
 		};
 		let flow_id = next_flow_id(&mut txn).unwrap();
 		let result = CatalogStore::create_flow(&mut txn, flow_id, to_create).unwrap();

@@ -34,7 +34,7 @@ impl ReaderWatermark {
 #[derive(Clone)]
 pub struct FlowCaughtUpWatermark {
 	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
-	poisoned: Arc<dyn Fn() -> Vec<(FlowId, String)> + Send + Sync>,
+	poisoned: Arc<dyn Fn() -> Result<Vec<(FlowId, String)>> + Send + Sync>,
 	stalled: Arc<dyn Fn() -> Vec<FlowId> + Send + Sync>,
 }
 
@@ -42,7 +42,7 @@ impl FlowCaughtUpWatermark {
 	pub fn new<F, P, S>(sample: F, poisoned: P, stalled: S) -> Self
 	where
 		F: Fn() -> CommitVersion + Send + Sync + 'static,
-		P: Fn() -> Vec<(FlowId, String)> + Send + Sync + 'static,
+		P: Fn() -> Result<Vec<(FlowId, String)>> + Send + Sync + 'static,
 		S: Fn() -> Vec<FlowId> + Send + Sync + 'static,
 	{
 		Self {
@@ -56,7 +56,7 @@ impl FlowCaughtUpWatermark {
 		(self.sample)()
 	}
 
-	pub fn poisoned(&self) -> Vec<(FlowId, String)> {
+	pub fn poisoned(&self) -> Result<Vec<(FlowId, String)>> {
 		(self.poisoned)()
 	}
 
@@ -65,7 +65,7 @@ impl FlowCaughtUpWatermark {
 	}
 
 	pub fn ensure_healthy(&self) -> Result<()> {
-		let poisoned = self.poisoned();
+		let poisoned = self.poisoned()?;
 		if !poisoned.is_empty() {
 			let flows: Vec<String> =
 				poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();

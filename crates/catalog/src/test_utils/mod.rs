@@ -6,7 +6,7 @@ use reifydb_core::{
 	flow::operator::{FlowNode, OperatorDef},
 	interface::catalog::{
 		column::ColumnIndex,
-		flow::{Flow, FlowEdge, FlowId, FlowStatus, OperatorId},
+		flow::{Flow, FlowEdge, FlowId, OperatorId},
 		handler::Handler,
 		id::{RingBufferId, TableId, ViewId},
 		namespace::Namespace,
@@ -232,7 +232,6 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 		FlowToCreate {
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
-			status: FlowStatus::Active,
 		},
 	)
 	.unwrap()

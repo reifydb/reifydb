@@ -3,7 +3,7 @@
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::sink::SinkToCreate;
-use reifydb_core::{interface::catalog::flow::FlowStatus, value::batch::single_row};
+use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateSinkNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
@@ -36,7 +36,6 @@ pub(crate) fn create_sink(
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("sink", Value::Utf8(plan.name.text().to_string())),
 		("connector", Value::Utf8(result.connector)),
-		("status", Value::Utf8(format!("{:?}", FlowStatus::Active))),
 		("created", Value::Boolean(true)),
 	])
 }

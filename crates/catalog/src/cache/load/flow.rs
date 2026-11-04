@@ -20,7 +20,7 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	for entry in rx.range(range, RangeScope::All, 1024)? {
 		let multi = entry?;
 		let version = multi.version;
-		loaded.push((version, convert_flow(multi)));
+		loaded.push((version, convert_flow(multi)?));
 	}
 
 	for (version, flow) in loaded {
@@ -39,6 +39,6 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_flow<K>(multi: MultiVersionRow<K>) -> Flow {
+fn convert_flow<K>(multi: MultiVersionRow<K>) -> Result<Flow> {
 	decode_flow(EncodedCatalogRow::view(&multi.bytes))
 }

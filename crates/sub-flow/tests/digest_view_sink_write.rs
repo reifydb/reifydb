@@ -67,10 +67,11 @@ fn a_table_view_column_of_another_digest_or_a_scalar_type_fails_the_sink_write_n
 	assert_names_both_types(&description, "Digest(Int4, 0.01)", "Digest(Float8, 0.01)");
 	assert_names_both_types(&description, "Option(Float8)", "Digest(Float8, 0.01)");
 	for view in ["accuracy", "inner", "scalar"] {
+		let refused =
+			db.try_query(&format!("FROM app::{view}")).expect_err("a read of a poisoned view must fail");
 		assert_eq!(
-			db.row_count(&format!("FROM app::{view}")),
-			0,
-			"a refused sink write must not leave a row in {view}"
+			refused.0.code, "FLOW_094",
+			"a refused sink write must leave {view} unreadable: {refused:?}"
 		);
 	}
 }
@@ -91,10 +92,14 @@ fn ringbuffer_and_series_view_columns_of_another_digest_fail_the_sink_write_nami
 
 	assert_names_both_types(&description, "Digest(Float8, 0.02)", "Digest(Float8, 0.01)");
 	assert_names_both_types(&description, "Option(Digest(Uint8, 0.01))", "Digest(Float8, 0.01)");
+	let refused = db.try_query("FROM app::rb").expect_err("a read of a poisoned view must fail");
 	assert_eq!(
-		db.row_count("FROM app::rb"),
-		0,
-		"a refused sink write must not leave a row in the ring buffer view"
+		refused.0.code, "FLOW_094",
+		"a refused sink write must leave the ring buffer view unreadable: {refused:?}"
 	);
-	assert_eq!(db.row_count("FROM app::sv"), 0, "a refused sink write must not leave a row in the series view");
+	let refused = db.try_query("FROM app::sv").expect_err("a read of a poisoned view must fail");
+	assert_eq!(
+		refused.0.code, "FLOW_094",
+		"a refused sink write must leave the series view unreadable: {refused:?}"
+	);
 }

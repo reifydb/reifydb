@@ -25,7 +25,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			flow::{FlowId, OperatorId},
+			flow::{FlowId, FlowStatus, OperatorId},
 			id::ViewId,
 			object::ObjectId,
 			view::ViewKind,
@@ -33,6 +33,7 @@ use reifydb_core::{
 		commit::{CommitEntry, CommitFloor, Loaded},
 		operator::FlowCheckpoint,
 	},
+	retry::RetryStrategy,
 };
 use reifydb_engine::{engine::StandardEngine, lift::entry_changed_objects, vm::flow_lineage::ViewLineage};
 use reifydb_flow::analyzer::FlowGraphAnalyzer;
@@ -40,7 +41,7 @@ use reifydb_flow_async::{operator::metrics::OperatorSampleRegistry, transaction:
 use reifydb_runtime::{
 	actor::{
 		context::Context,
-		mailbox::ActorRef,
+		mailbox::{ActorRef, SendError},
 		system::{ActorConfig, ActorHandle, ActorSpawner},
 		traits::{Actor, Directive},
 	},
@@ -116,6 +117,11 @@ pub enum FlowSupervisorMessage {
 
 	Loaded {
 		outcome: ValueResult<Loaded>,
+	},
+
+	Poisoned {
+		flows: Vec<FlowId>,
+		reason: String,
 	},
 }
 
@@ -251,7 +257,11 @@ impl FlowSupervisor {
 
 		let known: BTreeSet<FlowId> =
 			match self.engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
-				Ok(listed) => listed.into_iter().map(|flow| flow.id).collect(),
+				Ok(listed) => listed
+					.into_iter()
+					.filter(|flow| flow.status == FlowStatus::Active)
+					.map(|flow| flow.id)
+					.collect(),
 				Err(e) => panic!("flow supervisor cannot list flows at bootstrap: {e}"),
 			};
 
@@ -359,7 +369,7 @@ impl FlowSupervisor {
 						.collect()
 				})
 				.unwrap_or_default();
-			self.spawn_flow(state, flow, members, source_objects, completeness_objects, start);
+			self.spawn_flow(state, flow, members, source_objects, completeness_objects, start, ctx);
 			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
@@ -511,6 +521,139 @@ impl FlowSupervisor {
 			Err(e) => panic!("flow supervisor cannot read the flow checkpoint floor: {e}"),
 		};
 		self.queue_floor.advance(floor);
+	}
+
+	fn handle_poisoned(
+		&self,
+		state: &mut SupervisorState,
+		flows: Vec<FlowId>,
+		reason: String,
+		ctx: &Context<FlowSupervisorMessage>,
+	) {
+		let catalog = self.engine.catalog();
+		let stored = RetryStrategy::default().retry(self.engine.rng(), "flow poison", || {
+			let mut txn = self.engine.begin_admin(IdentityId::system())?;
+			for flow_id in &flows {
+				catalog.poison_flow(&mut txn, *flow_id, reason.clone())?;
+			}
+			txn.commit()?;
+			Ok(())
+		});
+		if let Err(e) = stored {
+			panic!("flow supervisor cannot store the poison of flows {flows:?}: {e}");
+		}
+		let downstream = downstream_units(state, &flows);
+		self.retire_poisoned(state, &flows);
+		for (unit, view) in downstream {
+			let reason = format!("upstream {} is poisoned", self.view_name(view));
+			let sent = ctx.self_ref().send(FlowSupervisorMessage::Poisoned {
+				flows: unit,
+				reason,
+			});
+			if sent.is_err() && !ctx.is_cancelled() {
+				panic!("flow supervisor could not queue the downstream poison of view {}", view.0);
+			}
+		}
+	}
+
+	fn view_name(&self, view: ViewId) -> String {
+		let mut query = self.engine.begin_query(IdentityId::system()).unwrap_or_else(|e| {
+			panic!("flow supervisor cannot open a snapshot to name view {}: {e}", view.0)
+		});
+		let mut txn = Transaction::Query(&mut query);
+		let catalog = self.engine.catalog();
+		let found = catalog
+			.find_view(&mut txn, view)
+			.unwrap_or_else(|e| panic!("view {} unreadable while naming a poisoned upstream: {e}", view.0));
+		let Some(found) = found else {
+			return format!("view {}", view.0);
+		};
+		let namespace = catalog
+			.find_namespace(&mut txn, found.namespace())
+			.unwrap_or_else(|e| panic!("namespace of view {} unreadable: {e}", view.0));
+		match namespace {
+			Some(namespace) => format!("{}::{}", namespace.name(), found.name()),
+			None => found.name().to_string(),
+		}
+	}
+
+	fn retire_poisoned(&self, state: &mut SupervisorState, flows: &[FlowId]) {
+		let Some(&head) = flows.first() else {
+			return;
+		};
+		let operators = self.engine.operator_state();
+		let mut query = self.engine.begin_query(IdentityId::system()).unwrap_or_else(|e| {
+			panic!("flow supervisor cannot open a snapshot to retire flows {flows:?}: {e}")
+		});
+		let mut owned: Vec<OperatorId> = Vec::new();
+		for flow_id in flows {
+			match self.engine.catalog().find_flow_dag(&mut Transaction::Query(&mut query), *flow_id) {
+				Ok(Some(dag)) => owned.extend(dag.get_operator_ids()),
+				Ok(None) => {}
+				Err(e) => panic!("flow {} dag unreadable while retiring its poison: {e}", flow_id.0),
+			}
+		}
+		drop(query);
+
+		state.units.remove(&head);
+		let drop_state = {
+			let operators = operators.clone();
+			let flows = flows.to_vec();
+			move || {
+				for operator in owned {
+					if let Err(e) = operators.drop_operator(operator) {
+						panic!(
+							"operator {} state of poisoned flows {flows:?} could not be dropped: {e}",
+							operator.0
+						);
+					}
+				}
+			}
+		};
+		match state.flows.remove(&head) {
+			Some(handle) => {
+				let sent = handle.actor_ref().send(FlowActorMessage::Stop {
+					delete_checkpoint: true,
+					reply: Box::new(drop_state),
+				});
+				if let Err(SendError::Closed(unsent) | SendError::Full(unsent)) = sent {
+					for flow_id in flows {
+						if let Err(e) = operators.checkpoint_remove(*flow_id) {
+							panic!(
+								"flow {} checkpoint removal failed while retiring its poison: {e}",
+								flow_id.0
+							);
+						}
+					}
+					if let FlowActorMessage::Stop {
+						reply,
+						..
+					} = unsent
+					{
+						reply();
+					}
+				}
+			}
+			None => {
+				for flow_id in flows {
+					if let Err(e) = operators.checkpoint_remove(*flow_id) {
+						panic!(
+							"flow {} checkpoint removal failed while retiring its poison: {e}",
+							flow_id.0
+						);
+					}
+				}
+				drop_state();
+			}
+		}
+		for flow_id in flows {
+			state.start_lsns.remove(flow_id);
+			state.sources.remove(flow_id);
+			state.stall_watches.remove(flow_id);
+			self.health.clear(*flow_id);
+			state.analyzer.remove(*flow_id);
+		}
+		self.publish_lineage(state);
 	}
 
 	fn advance_flow_floor(&self, state: &mut SupervisorState) {
@@ -678,7 +821,7 @@ impl FlowSupervisor {
 		}
 		for (flow, start, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			self.spawn_flow(state, flow, Vec::new(), source_objects, completeness_objects, start);
+			self.spawn_flow(state, flow, Vec::new(), source_objects, completeness_objects, start, ctx);
 			debug!(flow_id = flow_id.0, "spawned new deferred flow actor");
 		}
 
@@ -705,7 +848,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_reform(&self, state: &mut SupervisorState, head: FlowId, dropped: Vec<FlowId>) {
+	fn handle_reform(
+		&self,
+		state: &mut SupervisorState,
+		head: FlowId,
+		dropped: Vec<FlowId>,
+		ctx: &Context<FlowSupervisorMessage>,
+	) {
 		let mut slice = FlowSlice::empty();
 		slice.checkpoint_deletes.extend(dropped);
 		let reply: SliceCommitReply = Box::new(|_| {});
@@ -717,7 +866,7 @@ impl FlowSupervisor {
 			state.units.remove(&head);
 			self.flow_tracker.clear_unit(head);
 		}
-		self.respawn(state, head);
+		self.respawn(state, head, ctx);
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		debug!(flow_id = head.0, "re-formed a fused unit after a member was dropped");
 	}
@@ -839,7 +988,13 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_join(&self, state: &mut SupervisorState, head: FlowId, joiners: Vec<(FlowId, ViewId)>) {
+	fn handle_join(
+		&self,
+		state: &mut SupervisorState,
+		head: FlowId,
+		joiners: Vec<(FlowId, ViewId)>,
+		ctx: &Context<FlowSupervisorMessage>,
+	) {
 		state.joining = false;
 		let operators = self.engine.operator_state();
 		let known = |flow_id: FlowId| state.analyzer.flows().iter().any(|flow| flow.id == flow_id);
@@ -864,17 +1019,17 @@ impl FlowSupervisor {
 				.members
 				.extend(joiners.iter().copied());
 		}
-		self.respawn(state, head);
+		self.respawn(state, head, ctx);
 		if !fused {
 			for (member, _) in &joiners {
-				self.respawn(state, *member);
+				self.respawn(state, *member, ctx);
 			}
 		}
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		debug!(flow_id = head.0, fused, "a join attempt finished");
 	}
 
-	fn respawn(&self, state: &mut SupervisorState, flow_id: FlowId) {
+	fn respawn(&self, state: &mut SupervisorState, flow_id: FlowId, ctx: &Context<FlowSupervisorMessage>) {
 		let Some(flow) = state.analyzer.flows().iter().find(|flow| flow.id == flow_id).cloned() else {
 			return;
 		};
@@ -912,7 +1067,7 @@ impl FlowSupervisor {
 		let source_objects = state.sources.get(&flow_id).cloned().unwrap_or_default();
 		let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 		self.publish_routing(state, flow_id);
-		self.spawn_flow(state, flow, members, source_objects, completeness_objects, start);
+		self.spawn_flow(state, flow, members, source_objects, completeness_objects, start, ctx);
 	}
 
 	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> (FlowDag, VersionLeaseGuard) {
@@ -1035,6 +1190,7 @@ impl FlowSupervisor {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 		start: FlowStart,
+		ctx: &Context<FlowSupervisorMessage>,
 	) {
 		let flow_id = flow.id;
 		let (cursor, cursor_lsn) = match &start {
@@ -1061,6 +1217,7 @@ impl FlowSupervisor {
 		};
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
+			supervisor: ctx.self_ref().clone(),
 			committer: self.committers[flow_id.0 as usize % self.committers.len()].clone(),
 			terminal_committer: self.terminal_committers
 				[flow_id.0 as usize % self.terminal_committers.len()]
@@ -1241,15 +1398,19 @@ impl Actor for FlowSupervisor {
 			FlowSupervisorMessage::Reform {
 				head,
 				dropped,
-			} => self.handle_reform(state, head, dropped),
+			} => self.handle_reform(state, head, dropped, ctx),
 			FlowSupervisorMessage::Join {
 				head,
 				joiners,
-			} => self.handle_join(state, head, joiners),
+			} => self.handle_join(state, head, joiners, ctx),
 			FlowSupervisorMessage::TryJoin => self.try_join(state, ctx),
 			FlowSupervisorMessage::Loaded {
 				outcome,
 			} => self.handle_loaded(state, ctx, outcome),
+			FlowSupervisorMessage::Poisoned {
+				flows,
+				reason,
+			} => self.handle_poisoned(state, flows, reason, ctx),
 		}
 		Directive::Continue
 	}
@@ -1257,6 +1418,34 @@ impl Actor for FlowSupervisor {
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new()
 	}
+}
+
+fn downstream_units(state: &SupervisorState, flows: &[FlowId]) -> Vec<(Vec<FlowId>, ViewId)> {
+	let graph = state.analyzer.get_dependency_graph();
+	let poisoned: BTreeSet<FlowId> = flows.iter().copied().collect();
+	let mut readers: BTreeMap<FlowId, ViewId> = BTreeMap::new();
+	for (view, producer) in &graph.sink_views {
+		if !poisoned.contains(producer) {
+			continue;
+		}
+		let sources = graph.source_views.get(view).into_iter().flatten();
+		let lookups = graph.lookup_views.get(view).into_iter().flatten();
+		for reader in sources.chain(lookups) {
+			if !poisoned.contains(reader) {
+				readers.entry(*reader).or_insert(*view);
+			}
+		}
+	}
+	let mut units: BTreeMap<FlowId, (Vec<FlowId>, ViewId)> = BTreeMap::new();
+	for (reader, view) in readers {
+		let unit = state
+			.units
+			.values()
+			.find(|unit| unit.head == reader || unit.members.iter().any(|(member, _)| *member == reader));
+		let ids = unit.map(|unit| unit.flow_ids()).unwrap_or_else(|| vec![reader]);
+		units.entry(ids[0]).or_insert((ids, view));
+	}
+	units.into_values().collect()
 }
 
 fn flow_lsn_floor(

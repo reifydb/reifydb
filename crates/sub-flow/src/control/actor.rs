@@ -69,7 +69,7 @@ use crate::{
 		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
 		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
-	control::health::FlowHealthRegistry,
+	control::{health::FlowHealthRegistry, supervisor::FlowSupervisorMessage},
 	marker::MarkerMap,
 	operator::provider::StandardOperatorProvider,
 	progress::{
@@ -80,6 +80,7 @@ use crate::{
 
 pub struct FlowActorParams {
 	pub engine: StandardEngine,
+	pub supervisor: ActorRef<FlowSupervisorMessage>,
 	pub committer: ActorRef<CommitterMessage>,
 	pub terminal_committer: ActorRef<CommitterMessage>,
 	pub queue: CommitQueue,
@@ -109,6 +110,7 @@ pub struct FlowActorParams {
 
 pub struct FlowActor {
 	engine: StandardEngine,
+	supervisor: ActorRef<FlowSupervisorMessage>,
 	committer: ActorRef<CommitterMessage>,
 	terminal_committer: ActorRef<CommitterMessage>,
 	queue: CommitQueue,
@@ -194,6 +196,7 @@ impl FlowActor {
 			pull_batch_bytes: params.pull_batch_bytes,
 			load_batch_bytes: params.load_batch_bytes,
 			engine: params.engine,
+			supervisor: params.supervisor,
 			committer: params.committer,
 			terminal_committer: params.terminal_committer,
 			queue: params.queue,
@@ -253,13 +256,21 @@ impl FlowActor {
 		self.engine.catalog().get_config_duration_opt(ConfigKey::FlowSampleInterval)
 	}
 
-	fn poison(&self, state: &mut FlowActorState, reason: String) {
+	fn poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {
 		error!(flow_id = self.flow_id.0, reason = %reason, "poisoning flow");
-		for flow_id in self.unit_ids() {
-			self.health.mark_poisoned(flow_id, reason.clone());
-		}
+		self.report_poisoned(ctx, reason);
 		state.poisoned = true;
 		*self.create_snapshot.lock() = None;
+	}
+
+	fn report_poisoned(&self, ctx: &Context<FlowActorMessage>, reason: String) {
+		let sent = self.supervisor.send(FlowSupervisorMessage::Poisoned {
+			flows: self.unit_ids(),
+			reason,
+		});
+		if sent.is_err() && !ctx.is_cancelled() {
+			panic!("flow {} could not report its poison: the flow supervisor is stopped", self.flow_id.0);
+		}
 	}
 
 	fn publish_position(&self, cursor: CommitVersion) {
@@ -325,13 +336,17 @@ impl FlowActor {
 
 	fn retry_or_poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {
 		if state.retry_count >= self.retry_limit {
-			self.poison(state, reason);
+			self.poison(state, ctx, reason);
 			return;
 		}
 		state.retry_count += 1;
 		let mut flow_engine = self.build_flow_engine();
 		if let Err(e) = self.register_flow(&mut flow_engine) {
-			self.poison(state, format!("flow engine rebuild failed after error: {e} (original: {reason})"));
+			self.poison(
+				state,
+				ctx,
+				format!("flow engine rebuild failed after error: {e} (original: {reason})"),
+			);
 			return;
 		}
 		state.flow_engine = flow_engine;
@@ -339,7 +354,7 @@ impl FlowActor {
 		let backoff = match self.retry_backoff.try_mul(1i64 << state.retry_count.min(16)) {
 			Ok(backoff) => backoff,
 			Err(e) => {
-				self.poison(state, format!("retry backoff overflowed: {e} (original: {reason})"));
+				self.poison(state, ctx, format!("retry backoff overflowed: {e} (original: {reason})"));
 				return;
 			}
 		};
@@ -813,7 +828,9 @@ impl FlowActor {
 			.is_err()
 		{
 			state.awaiting_load = false;
-			self.poison(state, "loader stopped".to_string());
+			if !ctx.is_cancelled() {
+				panic!("flow {} loader stopped outside shutdown", self.flow_id.0);
+			}
 		}
 	}
 
@@ -892,7 +909,9 @@ impl FlowActor {
 			.is_err()
 		{
 			state.committing = false;
-			self.poison(state, "committer stopped".to_string());
+			if !ctx.is_cancelled() {
+				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
+			}
 		}
 	}
 
@@ -1066,7 +1085,9 @@ impl FlowActor {
 			.is_err()
 		{
 			state.committing = false;
-			self.poison(state, "committer stopped".to_string());
+			if !ctx.is_cancelled() {
+				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
+			}
 		}
 	}
 
@@ -1122,9 +1143,7 @@ impl Actor for FlowActor {
 			Ok(()) => false,
 			Err(e) => {
 				error!(flow_id = self.flow_id.0, error = %e, "failed to register flow, poisoning");
-				for flow_id in self.unit_ids() {
-					self.health.mark_poisoned(flow_id, format!("registration failed: {e}"));
-				}
+				self.report_poisoned(ctx, format!("registration failed: {e}"));
 				true
 			}
 		};
@@ -1132,9 +1151,7 @@ impl Actor for FlowActor {
 			Ok(lease) => lease,
 			Err(e) => {
 				error!(flow_id = self.flow_id.0, error = %e, "failed to take the lookup lease, poisoning");
-				for flow_id in self.unit_ids() {
-					self.health.mark_poisoned(flow_id, format!("lookup lease failed: {e}"));
-				}
+				self.report_poisoned(ctx, format!("lookup lease failed: {e}"));
 				poisoned = true;
 				None
 			}
@@ -1340,7 +1357,10 @@ mod pull_protocol {
 	};
 	use reifydb_wal::sync::WalMode;
 
-	use super::*;
+	use super::{
+		tick_failures::{PoisonRecorder, idle},
+		*,
+	};
 	use crate::{
 		commit::{
 			committer::{Committer, CommitterActor, CommitterHandle},
@@ -1502,6 +1522,7 @@ mod pull_protocol {
 				"pull-protocol-flow",
 				FlowActor::new(FlowActorParams {
 					engine: self.engine.clone(),
+					supervisor: idle(&self.engine, "pull-protocol-supervisor"),
 					committer: self.committer_handle.actor_ref().clone(),
 					terminal_committer: self.committer_handle.actor_ref().clone(),
 					queue,
@@ -1552,6 +1573,7 @@ mod pull_protocol {
 
 			let actor = FlowActor::new(FlowActorParams {
 				engine: self.engine.clone(),
+				supervisor: idle(&self.engine, "pull-protocol-supervisor"),
 				committer: self.committer_handle.actor_ref().clone(),
 				terminal_committer: self.committer_handle.actor_ref().clone(),
 				queue: self.queue.clone(),
@@ -2698,10 +2720,22 @@ mod pull_protocol {
 			CommitterActor::new(committer2, CommitHandle::new(begin)),
 		);
 		let health2 = FlowHealthRegistry::new();
+		let (poisoned, reports) = mpsc::channel();
+		let supervisor2 =
+			h.engine.spawner()
+				.spawn_ephemeral(
+					"pull-protocol-restart-poison-recorder",
+					PoisonRecorder {
+						poisoned,
+					},
+				)
+				.actor_ref()
+				.clone();
 		let actor2 = h.engine.spawner().spawn_flow(
 			"pull-protocol-flow-restart",
 			FlowActor::new(FlowActorParams {
 				engine: h.engine.clone(),
+				supervisor: supervisor2,
 				committer: committer2_handle.actor_ref().clone(),
 				terminal_committer: committer2_handle.actor_ref().clone(),
 				queue: h.queue.clone(),
@@ -2741,11 +2775,8 @@ mod pull_protocol {
 			 (position is {:?})",
 			h.tracker.all().get(&h.flow_id).copied()
 		);
-		assert!(
-			health2.poisoned().is_empty(),
-			"an empty operator store at boot must not poison the flow: {:?}",
-			health2.poisoned()
-		);
+		let reported = reports.try_recv();
+		assert!(reported.is_err(), "an empty operator store at boot must not poison the flow: {reported:?}");
 		assert!(
 			operators2.total_bytes().unwrap() > ByteSize::ZERO,
 			"the restarted flow must rebuild its state in its own operator store"
@@ -3027,7 +3058,7 @@ mod tick_failures {
 		}
 	}
 
-	fn idle<M: Send + 'static>(engine: &StandardEngine, name: &str) -> ActorRef<M> {
+	pub(super) fn idle<M: Send + 'static>(engine: &StandardEngine, name: &str) -> ActorRef<M> {
 		engine.spawner()
 			.spawn_ephemeral(
 				name,
@@ -3037,6 +3068,32 @@ mod tick_failures {
 			)
 			.actor_ref()
 			.clone()
+	}
+
+	pub(super) struct PoisonRecorder {
+		pub(super) poisoned: mpsc::Sender<(Vec<FlowId>, String)>,
+	}
+
+	impl Actor for PoisonRecorder {
+		type State = ();
+		type Message = FlowSupervisorMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			if let FlowSupervisorMessage::Poisoned {
+				flows,
+				reason,
+			} = msg
+			{
+				self.poisoned.send((flows, reason)).expect("the test still listens for poison reports");
+			}
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
 	}
 
 	struct TickRecorder {
@@ -3173,6 +3230,28 @@ mod tick_failures {
 		CustomOperators::new(map)
 	}
 
+	fn failing_unit_operators() -> CustomOperators {
+		let mut map = HashMap::new();
+		map.insert(
+			"boom".to_string(),
+			test_entry(Arc::new(|id| {
+				Box::new(Boom {
+					id,
+				}) as BoxedHostOperator
+			})),
+		);
+		map.insert(
+			"seen".to_string(),
+			test_entry(Arc::new(|id| {
+				Box::new(Seen {
+					id,
+					rows: Arc::new(AtomicUsize::new(0)),
+				}) as BoxedHostOperator
+			})),
+		);
+		CustomOperators::new(map)
+	}
+
 	fn view_named(engine: &StandardEngine, name: &str) -> ViewId {
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let mut txn = Transaction::Query(&mut query);
@@ -3200,6 +3279,14 @@ mod tick_failures {
 	}
 
 	fn unit_actor(rows: Arc<AtomicUsize>) -> (TestEngine, FlowActor) {
+		unit_actor_with("ring", unit_operators(rows), |engine| idle(engine, "unit-tick-supervisor"))
+	}
+
+	fn unit_actor_with(
+		timed: &str,
+		operators: CustomOperators,
+		supervisor: impl FnOnce(&StandardEngine) -> ActorRef<FlowSupervisorMessage>,
+	) -> (TestEngine, FlowActor) {
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 
@@ -3220,7 +3307,7 @@ mod tick_failures {
 				view: v,
 			},
 		));
-		head.add_node(apply_node(TIMED, "ring"));
+		head.add_node(apply_node(TIMED, timed));
 		head.add_node(FlowNode::new(
 			SINK,
 			OperatorDef::SinkTableView {
@@ -3245,12 +3332,13 @@ mod tick_failures {
 		let committer = idle(&engine, "unit-tick-committer");
 		let actor = FlowActor::new(FlowActorParams {
 			engine: engine.clone(),
+			supervisor: supervisor(&engine),
 			committer: committer.clone(),
 			terminal_committer: committer,
 			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
 			loader: idle(&engine, "unit-tick-loader"),
 			control: ControlFrontier::new(),
-			custom_operators: unit_operators(rows),
+			custom_operators: operators,
 			substrate,
 			operator_samples: OperatorSampleRegistry::new(),
 			clock: engine.clock().clone(),
@@ -3372,6 +3460,7 @@ mod tick_failures {
 		let committer_ref = committer(&engine);
 		let actor = FlowActor::new(FlowActorParams {
 			engine: engine.clone(),
+			supervisor: idle(&engine, "tick-failures-supervisor"),
 			committer: committer_ref.clone(),
 			terminal_committer: committer_ref,
 			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
@@ -3421,7 +3510,7 @@ mod tick_failures {
 
 	#[test]
 	fn ticks_that_keep_failing_poison_the_flow_once_past_the_retry_limit() {
-		let (_te, health, actor) = ticking_actor();
+		let (_te, _health, actor) = ticking_actor();
 		let mut harness = TestHarness::new(actor);
 		assert!(!harness.state().poisoned, "precondition: registration must succeed");
 
@@ -3434,11 +3523,38 @@ mod tick_failures {
 		tick(&mut harness);
 
 		assert!(harness.state().poisoned);
-		assert_eq!(
-			health.poisoned().iter().map(|(id, _)| *id).collect::<Vec<_>>(),
-			vec![FLOW],
-			"a poisoned flow must reach the health registry, otherwise the subsystem still reports healthy"
-		);
+	}
+
+	#[test]
+	fn a_unit_past_the_retry_limit_reports_every_member_and_the_reason_to_the_supervisor() {
+		// A member missing from the report stays active in the catalog and respawns at restart on its dead
+		// head.
+		let (poisoned, reports) = mpsc::channel();
+		let (_te, actor) = unit_actor_with("boom", failing_unit_operators(), |engine| {
+			engine.spawner()
+				.spawn_ephemeral(
+					"unit-poison-recorder",
+					PoisonRecorder {
+						poisoned,
+					},
+				)
+				.actor_ref()
+				.clone()
+		});
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+
+		for _ in 0..=RETRY_LIMIT {
+			tick(&mut harness);
+		}
+		assert!(harness.state().poisoned, "precondition: the unit must poison past the retry limit");
+
+		let (flows, reason) = reports
+			.recv_timeout(Duration::from_seconds(10).unwrap().to_std())
+			.expect("a poisoned unit must report to the supervisor");
+		assert_eq!(flows, vec![FLOW, MEMBER], "the head and every member must be reported in one message");
+		assert!(!reason.is_empty(), "the report must carry the poison reason");
+		assert!(reports.try_recv().is_err(), "one poison must be reported once");
 	}
 
 	#[test]
@@ -3578,8 +3694,7 @@ mod tick_failures {
 	fn a_commit_conflict_from_a_concurrent_view_drop_neither_panics_nor_wedges_the_flow() {
 		// The slice loses to the drop, so a panic here kills the actor and a wedge stalls the supervisor's
 		// stop.
-		let (te, health, actor) = quiet_actor();
-		let flow_id = actor.flow_id;
+		let (te, _health, actor) = quiet_actor();
 		let mut harness = TestHarness::new(actor);
 		harness.state_mut().backfilling = false;
 		harness.state_mut().committing = true;
@@ -3607,10 +3722,6 @@ mod tick_failures {
 		});
 		assert_eq!(harness.process_one(), Some(Directive::Stop), "the supervisor's stop must still land");
 		assert!(replied.load(Ordering::SeqCst), "the supervisor waits on this reply");
-		assert!(
-			health.poisoned().iter().all(|(id, _)| *id != flow_id),
-			"the dropped flow must leave no health mark behind"
-		);
 	}
 
 	#[test]
@@ -3640,6 +3751,55 @@ mod tick_failures {
 		assert!(
 			replied.load(Ordering::SeqCst),
 			"the supervisor waits on this reply and never respawns without it"
+		);
+	}
+
+	fn closed_committer(engine: &StandardEngine) -> ActorRef<CommitterMessage> {
+		let scope = engine.spawner().scope();
+		let handle = scope.spawn_ephemeral(
+			"tick-closed-committer",
+			Idle::<CommitterMessage> {
+				_marker: PhantomData,
+			},
+		);
+		let committer = handle.actor_ref().clone();
+		scope.shutdown();
+		handle.join().expect("the closed committer must stop");
+		committer
+	}
+
+	#[test]
+	fn a_closed_committer_in_shutdown_stops_the_flow_without_poison() {
+		// A closed channel during shutdown says nothing about the view, so it must never poison it.
+		let (_te, _health, actor) = actor_with(true, "silent", closed_committer);
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+		harness.cancel();
+
+		tick(&mut harness);
+
+		assert!(!harness.state().poisoned, "a shutdown must leave the flow active for the next boot");
+		assert!(!harness.state().committing, "the dropped tick commit must not leave the flow waiting on it");
+	}
+
+	#[test]
+	fn a_closed_committer_outside_shutdown_panics_naming_the_worker() {
+		// A committer gone while the system runs is a crash, and poisoning the view instead would hide it.
+		let (_te, _health, actor) = actor_with(true, "silent", closed_committer);
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+
+		let outcome = catch_unwind(AssertUnwindSafe(|| tick(&mut harness)));
+
+		let payload = outcome.expect_err("a closed committer outside shutdown must panic");
+		let message = payload
+			.downcast_ref::<String>()
+			.cloned()
+			.or_else(|| payload.downcast_ref::<&str>().map(|text| text.to_string()))
+			.unwrap_or_default();
+		assert!(
+			message.contains("committer stopped outside shutdown"),
+			"the panic must name the worker: {message}"
 		);
 	}
 

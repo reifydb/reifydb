@@ -63,6 +63,8 @@ pub trait CatalogTrackNamespaceChangeOperations {
 pub trait CatalogTrackFlowChangeOperations {
 	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<()>;
 
+	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<()>;
+
 	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<()>;
 }
 

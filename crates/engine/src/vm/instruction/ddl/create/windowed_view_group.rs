@@ -10,8 +10,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	error::diagnostic::{catalog::view_already_exists, flow::flow_source_required},
 	interface::catalog::{
-		change::CatalogTrackViewChangeOperations, flow::FlowStatus, namespace::Namespace, storage::StorageId,
-		view::View,
+		change::CatalogTrackViewChangeOperations, namespace::Namespace, storage::StorageId, view::View,
 	},
 	row::RowSettings,
 	value::batch::single_row,
@@ -114,7 +113,6 @@ pub(crate) fn create_deferred_windowed_view_group(
 		FlowToCreate {
 			name: plan.group.clone(),
 			namespace: plan.namespace.id(),
-			status: FlowStatus::Active,
 		},
 		dag,
 	)?;

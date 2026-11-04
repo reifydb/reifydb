@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::BTreeSet,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -11,15 +11,19 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::FlowId,
+	interface::catalog::flow::{FlowId, FlowStatus},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
+};
 
 #[derive(Clone, Default)]
 pub struct FlowHealthRegistry {
-	poisoned: Arc<Mutex<BTreeMap<FlowId, String>>>,
 	stalled: Arc<Mutex<BTreeSet<FlowId>>>,
 	stalls: Arc<AtomicU64>,
 }
@@ -27,14 +31,9 @@ pub struct FlowHealthRegistry {
 impl FlowHealthRegistry {
 	pub fn new() -> Self {
 		Self {
-			poisoned: Arc::new(Mutex::new(BTreeMap::new())),
 			stalled: Arc::new(Mutex::new(BTreeSet::new())),
 			stalls: Arc::new(AtomicU64::new(0)),
 		}
-	}
-
-	pub fn mark_poisoned(&self, flow_id: FlowId, reason: String) {
-		self.poisoned.lock().insert(flow_id, reason);
 	}
 
 	pub fn mark_stalled(&self, flow_id: FlowId) {
@@ -48,12 +47,7 @@ impl FlowHealthRegistry {
 	}
 
 	pub fn clear(&self, flow_id: FlowId) {
-		self.poisoned.lock().remove(&flow_id);
 		self.stalled.lock().remove(&flow_id);
-	}
-
-	pub fn poisoned(&self) -> Vec<(FlowId, String)> {
-		self.poisoned.lock().iter().map(|(id, reason)| (*id, reason.clone())).collect()
 	}
 
 	pub fn stalled(&self) -> Vec<FlowId> {
@@ -101,7 +95,7 @@ impl StallWatch {
 		safe: CommitVersion,
 		now: DateTime,
 	) -> Option<Stall> {
-		if safe <= cursor || health.poisoned.lock().contains_key(&self.flow_id) {
+		if safe <= cursor {
 			self.clear(health);
 			return None;
 		}
@@ -132,49 +126,47 @@ impl StallWatch {
 
 impl MetricsCollector for FlowHealthRegistry {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::count("flow_health", "poisoned", self.poisoned.lock().len() as u64));
 		out.push(MetricsSample::count("flow_health", "stalled", self.stalled_count() as u64));
 		out.push(MetricsSample::counter("flow_health", "stalls", self.stalls()));
+	}
+}
+
+pub fn stored_poisoned(engine: &StandardEngine) -> Result<Vec<(FlowId, String)>> {
+	let mut query = engine.begin_query(IdentityId::system())?;
+	let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query))?;
+	Ok(flows.into_iter()
+		.filter_map(|flow| match flow.status {
+			FlowStatus::Active => None,
+			FlowStatus::Poisoned {
+				reason,
+			} => Some((flow.id, reason)),
+		})
+		.collect())
+}
+
+pub struct PoisonedFlowsCollector {
+	engine: StandardEngine,
+}
+
+impl PoisonedFlowsCollector {
+	pub fn new(engine: StandardEngine) -> Self {
+		Self {
+			engine,
+		}
+	}
+}
+
+impl MetricsCollector for PoisonedFlowsCollector {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let poisoned = stored_poisoned(&self.engine)
+			.unwrap_or_else(|e| panic!("flow health metrics cannot list the poisoned flows: {e}"));
+		out.push(MetricsSample::count("flow_health", "poisoned", poisoned.len() as u64));
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	#[test]
-	fn poison_records_and_clear_removes_ordered_by_flow_id() {
-		let health = FlowHealthRegistry::new();
-		assert!(health.poisoned().is_empty());
-
-		health.mark_poisoned(FlowId(7), "boom".to_string());
-		health.mark_poisoned(FlowId(2), "kaboom".to_string());
-
-		// Ordered by flow id, not insertion order.
-		assert_eq!(health.poisoned(), vec![(FlowId(2), "kaboom".to_string()), (FlowId(7), "boom".to_string())]);
-
-		health.clear(FlowId(2));
-		assert_eq!(health.poisoned(), vec![(FlowId(7), "boom".to_string())]);
-
-		health.clear(FlowId(7));
-		assert!(health.poisoned().is_empty());
-	}
-
-	#[test]
-	fn re_poison_overwrites_reason() {
-		let health = FlowHealthRegistry::new();
-		health.mark_poisoned(FlowId(1), "first".to_string());
-		health.mark_poisoned(FlowId(1), "second".to_string());
-		assert_eq!(health.poisoned(), vec![(FlowId(1), "second".to_string())]);
-	}
-
-	#[test]
-	fn clones_share_the_same_map() {
-		let a = FlowHealthRegistry::new();
-		let b = a.clone();
-		a.mark_poisoned(FlowId(3), "x".to_string());
-		assert_eq!(b.poisoned().len(), 1);
-	}
 
 	const STALL_MS: i64 = 1_000;
 
@@ -255,23 +247,6 @@ mod tests {
 
 		assert_eq!(health.stalled_count(), 0, "a flow that moves again must leave the registry");
 		assert_eq!(health.stalls(), 1, "clearing must not erase the record that it happened");
-	}
-
-	#[test]
-	fn a_poisoned_flow_is_never_reported_stalled() {
-		let health = FlowHealthRegistry::new();
-		let mut watch = watch();
-		let safe = CommitVersion(5);
-		health.mark_poisoned(FlowId(1), "boom".to_string());
-
-		watch.observe(&health, CommitVersion(0), safe, at(0));
-		watch.observe(&health, CommitVersion(0), safe, at(10 * STALL_MS));
-
-		assert_eq!(
-			health.stalled_count(),
-			0,
-			"a poisoned flow already fails the wait with its cause, and a stall report would bury that cause"
-		);
 	}
 
 	#[test]

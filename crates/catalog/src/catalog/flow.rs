@@ -30,7 +30,6 @@ use crate::{
 pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub status: FlowStatus,
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {
@@ -38,7 +37,6 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 		StoreFlowToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
-			status: to_create.status,
 		}
 	}
 }
@@ -431,14 +429,32 @@ impl Catalog {
 		CatalogStore::update_flow_name(txn, flow_id, new_name)
 	}
 
-	#[instrument(name = "catalog::flow::update_status", level = "debug", skip(self, txn))]
-	pub fn update_flow_status(
-		&self,
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		status: FlowStatus,
-	) -> Result<()> {
-		CatalogStore::update_flow_status(txn, flow_id, status)
+	#[instrument(name = "catalog::flow::poison", level = "debug", skip(self, txn))]
+	pub fn poison_flow(&self, txn: &mut AdminTransaction, flow_id: FlowId, reason: String) -> Result<()> {
+		let Some(pre) = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)? else {
+			return Ok(());
+		};
+		if pre.status != FlowStatus::Active {
+			return Ok(());
+		}
+		CatalogStore::poison_flow(txn, flow_id, reason.clone())?;
+		let dag = self.get_flow_dag(&mut Transaction::Admin(&mut *txn), flow_id)?;
+		let post = Flow {
+			status: FlowStatus::Poisoned {
+				reason,
+			},
+			..pre.clone()
+		};
+		txn.track_flow_updated(
+			FlowEntry {
+				flow: pre,
+				dag: dag.clone(),
+			},
+			FlowEntry {
+				flow: post,
+				dag,
+			},
+		)
 	}
 
 	#[instrument(name = "catalog::flow::next_id", level = "trace", skip(self, txn))]

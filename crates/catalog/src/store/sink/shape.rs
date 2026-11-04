@@ -12,7 +12,6 @@ catalog_shape! {
 		source_name: utf8,
 		connector: utf8,
 		config: utf8,
-		status: u8,
 	}
 
 	pub(crate) sink_namespace {

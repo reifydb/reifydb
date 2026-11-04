@@ -54,6 +54,8 @@ fn a_view_sorted_by_a_digest_column_fails_its_sink_write_instead_of_panicking() 
 		2,
 		"both sorted views must fail on the digest sort key: {description}"
 	);
-	assert_eq!(db.row_count("FROM app::sorted"), 0, "a refused sort key must not leave a row in the view");
-	assert_eq!(db.row_count("FROM app::partitioned"), 0, "a refused sort key must not leave a row in the view");
+	let refused = db.try_query("FROM app::sorted").expect_err("a read of a poisoned view must fail");
+	assert_eq!(refused.0.code, "FLOW_094", "a refused sort key must leave the view unreadable: {refused:?}");
+	let refused = db.try_query("FROM app::partitioned").expect_err("a read of a poisoned view must fail");
+	assert_eq!(refused.0.code, "FLOW_094", "a refused sort key must leave the view unreadable: {refused:?}");
 }

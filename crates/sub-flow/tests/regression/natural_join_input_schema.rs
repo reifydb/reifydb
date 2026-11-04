@@ -200,9 +200,9 @@ fn a_deferred_view_with_a_natural_join_whose_joined_side_shares_no_column_report
 	if !description.contains("JOIN_002") {
 		return Err(format!("the refused flow must carry JOIN_002: {description}"));
 	}
-	match db.row_count("FROM app::v") {
-		0 => Ok(()),
-		rows => Err(format!("a refused flow must not write a row to the view, got {rows} rows")),
+	match db.try_query("FROM app::v") {
+		Err(refused) if refused.0.code == "FLOW_094" => Ok(()),
+		other => Err(format!("a read of the refused view must fail with FLOW_094, got {other:?}")),
 	}
 }
 
