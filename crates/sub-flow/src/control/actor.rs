@@ -103,7 +103,6 @@ pub struct FlowActorParams {
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
 	pub wake_coalesce: Duration,
-	pub linger: Duration,
 	pub batch_size: usize,
 }
 
@@ -132,7 +131,6 @@ pub struct FlowActor {
 	retry_limit: u32,
 	retry_backoff: Duration,
 	wake_coalesce: Duration,
-	linger: Duration,
 	batch_size: usize,
 	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
@@ -172,8 +170,6 @@ pub struct FlowActorState {
 	snapshot: Option<Snapshot>,
 	lookup_lease: Option<VersionLeaseGuard>,
 	hold_cache: Option<HoldCache>,
-	lingering: bool,
-	linger_ready: bool,
 	backlog: bool,
 }
 
@@ -216,7 +212,6 @@ impl FlowActor {
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
 			wake_coalesce: params.wake_coalesce,
-			linger: params.linger,
 			batch_size: params.batch_size,
 			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
@@ -423,9 +418,6 @@ impl FlowActor {
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}
-		if self.lingers(state, ctx) {
-			return;
-		}
 		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		if !upstreams.is_empty() {
 			self.drain_merged(state, ctx, safe, &upstreams);
@@ -436,20 +428,6 @@ impl FlowActor {
 			return;
 		};
 		self.apply_items(state, ctx, &read.items, read.read_to, read.more)
-	}
-
-	fn lingers(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) -> bool {
-		if self.linger.is_zero() || state.backlog || take(&mut state.linger_ready) {
-			return false;
-		}
-		if cuts_per_source(self.unit_has_readers(), &state.source_objects) {
-			return false;
-		}
-		if !state.lingering {
-			state.lingering = true;
-			ctx.schedule_once(self.linger, || FlowActorMessage::LingerDue);
-		}
-		true
 	}
 
 	fn drain_backfill(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, safe: CommitVersion) {
@@ -1192,8 +1170,6 @@ impl Actor for FlowActor {
 			snapshot: None,
 			lookup_lease,
 			hold_cache: None,
-			lingering: false,
-			linger_ready: false,
 			backlog: false,
 		};
 
@@ -1240,12 +1216,6 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Tick => {
 				self.on_tick(state, ctx);
-				Directive::Continue
-			}
-			FlowActorMessage::LingerDue => {
-				state.lingering = false;
-				state.linger_ready = true;
-				self.on_drain(state, ctx);
 				Directive::Continue
 			}
 			FlowActorMessage::Sample => {
@@ -1387,7 +1357,6 @@ mod pull_protocol {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		substrate: FlowSubstrate,
 		health: FlowHealthRegistry,
-		linger: Duration,
 	}
 
 	fn harness() -> Harness {
@@ -1479,7 +1448,6 @@ mod pull_protocol {
 			source_objects,
 			substrate,
 			health: FlowHealthRegistry::new(),
-			linger: Duration::from_nanoseconds_const(0),
 		}
 	}
 
@@ -1550,7 +1518,6 @@ mod pull_protocol {
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 					wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-					linger: self.linger,
 					batch_size: 8,
 				}),
 			);
@@ -1601,7 +1568,6 @@ mod pull_protocol {
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-				linger: Duration::from_nanoseconds_const(0),
 				batch_size: 8,
 			});
 			let pending = actor.wake_pending();
@@ -1892,36 +1858,6 @@ mod pull_protocol {
 			"a flow with no readers folds pending source versions into one commit, so {total} inserts must \
 			 yield between one and {total} commits: more means a version was committed twice, got {commits}"
 		);
-		drop(actor);
-	}
-
-	#[test]
-	fn a_lingering_flow_takes_a_burst_as_one_step_and_loses_no_version() {
-		// Without the linger every insert of a burst is its own pull and commit; with it a dropped version
-		// would hide inside the fold.
-		let mut h = harness();
-		h.linger = seconds(1);
-		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(v0);
-
-		let total = 9;
-		for id in 0..total {
-			h.te.command(&format!("INSERT app::t [{{ id: {id} }}]"));
-			h.wake(&actor);
-		}
-		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
-		h.wake(&actor);
-		assert_eq!(h.view_rows(), 0, "a lingering flow must not pull before its linger ends");
-		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
-		h.wake(&actor);
-
-		let rows = h.await_view_rows(total, seconds(15));
-		assert_eq!(rows, total, "the linger must deliver every version of the burst");
-		h.await_safe_watermark(h.engine.current_version().expect("current version"));
-		let commits = h.view_bearing_records(v0);
-		assert!(commits <= 2, "a burst inside one linger must commit as one step, got {commits} commits");
 		drop(actor);
 	}
 
@@ -2782,7 +2718,6 @@ mod pull_protocol {
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-				linger: Duration::from_nanoseconds_const(0),
 				batch_size: 8,
 			}),
 		);
@@ -3326,7 +3261,6 @@ mod tick_failures {
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
 			wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-			linger: Duration::from_nanoseconds_const(0),
 			batch_size: 8,
 		});
 
@@ -3454,7 +3388,6 @@ mod tick_failures {
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
 			wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-			linger: Duration::from_nanoseconds_const(0),
 			batch_size: 8,
 		});
 

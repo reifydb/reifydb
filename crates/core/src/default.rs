@@ -123,8 +123,6 @@ pub mod flow {
 
 	pub const WAKE_COALESCE: Duration = Duration::from_milliseconds_const(20);
 	pub const WAKE_COALESCE_TESTING: Duration = Duration::from_milliseconds_const(20);
-	pub const LINGER: Duration = Duration::from_milliseconds_const(0);
-	pub const LINGER_TESTING: Duration = Duration::from_milliseconds_const(0);
 
 	pub const FULL_WAKE_INTERVAL: Duration = Duration::from_milliseconds_const(100);
 	pub const FULL_WAKE_INTERVAL_TESTING: Duration = Duration::from_milliseconds_const(1);

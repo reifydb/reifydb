@@ -76,7 +76,6 @@ pub enum ConfigKey {
 	FlowSampleInterval,
 	FlowWakeCoalesce,
 	FlowFullWakeInterval,
-	FlowLinger,
 	FlowActorBatchSize,
 	FlowCommitterShards,
 	CommitQueueBytes,
@@ -133,7 +132,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval,
 			Self::FlowWakeCoalesce,
 			Self::FlowFullWakeInterval,
-			Self::FlowLinger,
 			Self::FlowActorBatchSize,
 			Self::FlowCommitterShards,
 			Self::CommitQueueBytes,
@@ -216,7 +214,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL),
 			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE),
 			Self::FlowFullWakeInterval => Value::Duration(default::flow::FULL_WAKE_INTERVAL),
-			Self::FlowLinger => Value::Duration(default::flow::LINGER),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT.as_bytes()),
@@ -299,7 +296,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL_TESTING),
 			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE_TESTING),
 			Self::FlowFullWakeInterval => Value::Duration(default::flow::FULL_WAKE_INTERVAL_TESTING),
-			Self::FlowLinger => Value::Duration(default::flow::LINGER_TESTING),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT_TESTING.as_bytes()),
@@ -469,11 +465,6 @@ impl ConfigKey {
 				"How often the flow supervisor wakes every flow after a commit, so a flow with nothing to do moves \
 				 its position forward. Read once at boot; changing it requires a restart."
 			}
-			Self::FlowLinger => {
-				"How long a flow that folds its input waits, from the first change after it went idle, before it \
-				 pulls, so changes arriving inside the window are taken as one step and one commit. Zero pulls \
-				 at once. Read once at boot; changing it requires a restart."
-			}
 			Self::FlowActorBatchSize => {
 				"How many messages a flow actor handles per turn on its worker thread before yielding to the \
 				 other actors pinned to that thread. Smaller values let a woken flow run sooner. Must be >= 1. \
@@ -610,7 +601,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval => false,
 			Self::FlowWakeCoalesce => true,
 			Self::FlowFullWakeInterval => true,
-			Self::FlowLinger => true,
 			Self::FlowActorBatchSize => true,
 			Self::FlowCommitterShards => true,
 			Self::CommitQueueBytes => true,
@@ -667,7 +657,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval => &[ValueType::Duration],
 			Self::FlowWakeCoalesce => &[ValueType::Duration],
 			Self::FlowFullWakeInterval => &[ValueType::Duration],
-			Self::FlowLinger => &[ValueType::Duration],
 			Self::FlowActorBatchSize => &[ValueType::Uint2],
 			Self::FlowCommitterShards => &[ValueType::Uint2],
 			Self::CommitQueueBytes => &[ValueType::Uint8],
@@ -724,7 +713,6 @@ impl ConfigKey {
 			Self::FlowSampleInterval => true,
 			Self::FlowWakeCoalesce => false,
 			Self::FlowFullWakeInterval => false,
-			Self::FlowLinger => false,
 			Self::FlowActorBatchSize => false,
 			Self::FlowCommitterShards => false,
 			Self::CommitQueueBytes => false,
@@ -930,10 +918,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::FlowLinger => match value {
-				Value::Duration(d) if d.is_negative() => Err("FLOW_LINGER must not be negative".to_string()),
-				_ => Ok(()),
-			},
 			Self::FlowActorBatchSize => match value {
 				Value::Uint2(0) => Err("FLOW_ACTOR_BATCH_SIZE must be greater than zero".to_string()),
 				_ => Ok(()),
@@ -1077,7 +1061,6 @@ impl fmt::Display for ConfigKey {
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
 			Self::FlowWakeCoalesce => write!(f, "FLOW_WAKE_COALESCE"),
 			Self::FlowFullWakeInterval => write!(f, "FLOW_FULL_WAKE_INTERVAL"),
-			Self::FlowLinger => write!(f, "FLOW_LINGER"),
 			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
 			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
 			Self::CommitQueueBytes => write!(f, "COMMIT_QUEUE_BYTES"),
@@ -1138,7 +1121,6 @@ impl FromStr for ConfigKey {
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
 			"FLOW_WAKE_COALESCE" => Ok(Self::FlowWakeCoalesce),
 			"FLOW_FULL_WAKE_INTERVAL" => Ok(Self::FlowFullWakeInterval),
-			"FLOW_LINGER" => Ok(Self::FlowLinger),
 			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
 			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
 			"COMMIT_QUEUE_BYTES" => Ok(Self::CommitQueueBytes),
@@ -1337,7 +1319,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 52);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryBytes));
