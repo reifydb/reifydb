@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::Builder;
 use std::{
 	collections::BTreeMap,
 	mem::replace,
@@ -158,7 +160,7 @@ impl CommitQueue {
 		#[cfg(not(target_arch = "wasm32"))]
 		{
 			let shared = Arc::clone(&self.shared);
-			std::thread::Builder::new()
+			Builder::new()
 				.name("commit-queue-free".to_string())
 				.spawn(move || {
 					let bytes = entries.values().map(|(bytes, _)| bytes).sum::<u64>();
