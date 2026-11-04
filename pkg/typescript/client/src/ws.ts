@@ -536,8 +536,6 @@ export class WsClient {
 
         if (this.socket.readyState !== 1) {
             throw new ReifyError({
-                id: "connection-error",
-                type: "Err",
                 payload: {
                     diagnostic: {
                         code: "CONNECTION_LOST",

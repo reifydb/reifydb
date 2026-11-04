@@ -58,7 +58,7 @@ export class ReifyError extends Error {
     public readonly cause?: Diagnostic;
     public readonly index?: number;
 
-    constructor(response: ErrorResponse) {
+    constructor(response: Pick<ErrorResponse, "payload">) {
         const diagnostic = response.payload.diagnostic;
         const message = `[${diagnostic.code}] ${diagnostic.message}` +
             (diagnostic.label ? ` — ${diagnostic.label}` : "");

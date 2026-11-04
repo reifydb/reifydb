@@ -9,7 +9,7 @@ import { SESSION_NAMESPACE, SESSION_TTL_SECONDS, guestSession, openConnection, s
 const NOW = 1_800_000_000_000
 
 function refused(code: string): ReifyError {
-  return new ReifyError({ id: 'auth-1', type: 'Err', payload: { diagnostic: { code, message: 'InvalidToken', notes: [] } } })
+  return new ReifyError({ payload: { diagnostic: { code, message: 'InvalidToken', notes: [] } } })
 }
 
 beforeEach(() => {

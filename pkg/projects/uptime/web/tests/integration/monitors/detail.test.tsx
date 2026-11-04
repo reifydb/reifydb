@@ -144,8 +144,6 @@ describe('monitor detail writes', () => {
     await renderDetail(id)
     vi.mocked(client.command).mockRejectedValueOnce(
       new ReifyError({
-        id: 'req-1',
-        type: 'Err',
         payload: {
           diagnostic: {
             code: 'ASSERT',

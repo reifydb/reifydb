@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {createStore} from 'zustand/vanilla';
 import type {StoreApi} from 'zustand/vanilla';
+import {ReifyError} from '@reifydb/core';
 import type {FrameResults, ShapeNode} from '@reifydb/core';
 import type {
     SubscribeItem,
@@ -164,10 +165,13 @@ export class Store {
                     this.update(key, entry => withStatus(entry, 'error', toError(error)));
                 }
             },
-            onClosed: () => {
+            onClosed: reason => {
                 if (!sub.closed) {
                     sub.id = undefined;
-                    this.update(key, entry => withStatus(entry, 'error', new Error('the server closed this subscription')));
+                    const error = reason
+                        ? new ReifyError({payload: {diagnostic: reason}})
+                        : new Error('the server closed this subscription');
+                    this.update(key, entry => withStatus(entry, 'error', error));
                 }
             },
             onResubscribe: id => this.attach(key, sub, id, new Map()),

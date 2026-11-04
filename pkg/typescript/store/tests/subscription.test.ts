@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {Shape} from '@reifydb/core';
+import {ReifyError, Shape} from '@reifydb/core';
 import {Store, rql} from '../src';
 import {FakeClient, flush} from './fake-client';
 
@@ -60,6 +60,31 @@ describe('subscription lifecycle', () => {
         const entry = store.getEntry(items, null);
         expect(entry.status).toBe('error');
         expect(entry.error).toBe(error);
+    });
+
+    it('a close with a reason turns the entry to error carrying that reason', async () => {
+        // A fixed text here hides the fix the server sent, which is why a row cap failure could not be diagnosed.
+        const {client, store} = setup();
+        store.subscribe(items, null);
+        await flush();
+        client.subscribes[0].resolve(['sub-1']);
+        await flush();
+
+        client.subscribes[0].subscriptions[0].callbacks.onClosed?.({
+            code: 'HYDRATION_TOO_LARGE',
+            message: 'Hydration exceeds the cap; add `TAKE N`',
+            label: 'too many rows',
+            help: 'add a take',
+            notes: [],
+        });
+
+        const entry = store.getEntry(items, null);
+        expect(entry.status).toBe('error');
+        expect(entry.error).toBeInstanceOf(ReifyError);
+        const error = entry.error as ReifyError;
+        expect(error.code).toBe('HYDRATION_TOO_LARGE');
+        expect(error.help).toBe('add a take');
+        expect(error.message).toContain('Hydration exceeds the cap; add `TAKE N`');
     });
 
     it('an error reported after release does not resurrect the closed entry', async () => {

@@ -69,7 +69,7 @@ function renderLayout() {
 }
 
 function refusal(code: string, message: string): ReifyError {
-  return new ReifyError({ id: 'req-1', type: 'Err', payload: { diagnostic: { code, message, notes: [] } } })
+  return new ReifyError({ payload: { diagnostic: { code, message, notes: [] } } })
 }
 
 function scriptedStore(query: StoreClient['query']): Store {

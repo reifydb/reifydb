@@ -361,15 +361,11 @@ export class HttpClient {
                 const errBody = toCamelCaseKeys<any>(parsed, WIRE_PASSTHROUGH_KEYS);
                 if (errBody.diagnostic) {
                     throw new ReifyError({
-                        id: '',
-                        type: 'Err',
                         payload: {diagnostic: errBody.diagnostic}
                     });
                 }
                 if (typeof errBody.code === 'string') {
                     throw new ReifyError({
-                        id: '',
-                        type: 'Err',
                         payload: {
                             diagnostic: {
                                 code: errBody.code,
@@ -415,8 +411,6 @@ function extractMeta(headers: Headers | undefined): ResponseMeta | undefined {
 function throwIfMethodNotEnabled(body: any): void {
     if (body.status === "method_not_enabled") {
         throw new ReifyError({
-            id: '',
-            type: 'Err',
             payload: {
                 diagnostic: {
                     code: "AUTH_METHOD_NOT_ENABLED",

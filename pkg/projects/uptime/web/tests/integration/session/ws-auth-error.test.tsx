@@ -46,7 +46,7 @@ function RegionsProbe() {
 }
 
 function refusal(code: string, message: string): ReifyError {
-  return new ReifyError({ id: 'req-1', type: 'Err', payload: { diagnostic: { code, message, notes: [] } } })
+  return new ReifyError({ payload: { diagnostic: { code, message, notes: [] } } })
 }
 
 function socketAnswering(code: string, message: string) {
