@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
-use reifydb_catalog::{
-	catalog::table::{TableColumnToCreate, TableToCreate},
-	store::row_settings::create::create_row_settings,
-};
+use reifydb_catalog::{catalog::table::TableToCreate, store::row_settings::create::create_row_settings};
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackTableChangeOperations, storage::StorageId},
 	row::RowSettings,
@@ -13,15 +10,9 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{
-		Value,
-		constraint::{Constraint, TypeConstraint},
-		value_type::ValueType,
-	},
-};
+use reifydb_value::value::Value;
 
+use super::sumtype::expand_sumtype_columns;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_table(
@@ -76,60 +67,6 @@ pub(crate) fn create_table(
 		("table", Value::Utf8(plan.table.text().to_string())),
 		("created", Value::Boolean(true)),
 	])
-}
-
-fn expand_sumtype_columns(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	columns: Vec<TableColumnToCreate>,
-) -> Result<Vec<TableColumnToCreate>> {
-	let mut expanded = Vec::with_capacity(columns.len());
-
-	for col in columns {
-		match col.constraint.constraint() {
-			Some(Constraint::SumType(id)) => {
-				let def = services.catalog.get_sumtype(&mut Transaction::Admin(&mut *txn), *id)?;
-				let col_name = col.name.text();
-
-				expanded.push(TableColumnToCreate {
-					name: Fragment::internal(format!("{col_name}_tag")),
-					fragment: col.fragment.clone(),
-					constraint: TypeConstraint::with_constraint(
-						col.constraint.get_type(),
-						Constraint::SumType(*id),
-					),
-					properties: vec![],
-					auto_increment: false,
-					dictionary_id: None,
-				});
-
-				for variant in &def.variants {
-					for field in &variant.fields {
-						let field_type = match field.field_type.get_type() {
-							optional @ ValueType::Option(_) => optional,
-							other => ValueType::Option(Box::new(other)),
-						};
-						expanded.push(TableColumnToCreate {
-							name: Fragment::internal(format!(
-								"{col_name}_{}_{}",
-								variant.name, field.name
-							)),
-							fragment: col.fragment.clone(),
-							constraint: TypeConstraint::unconstrained(field_type),
-							properties: vec![],
-							auto_increment: false,
-							dictionary_id: None,
-						});
-					}
-				}
-			}
-			_ => {
-				expanded.push(col);
-			}
-		}
-	}
-
-	Ok(expanded)
 }
 
 #[cfg(test)]

@@ -80,6 +80,8 @@ mod enum_column_optional;
 mod enum_name_in_query;
 #[path = "enum_name_update_errors.rs"]
 mod enum_name_update_errors;
+#[path = "enum_ringbuffer.rs"]
+mod enum_ringbuffer;
 #[path = "events.rs"]
 mod events;
 #[path = "extend_duplicate_column_fragment.rs"]

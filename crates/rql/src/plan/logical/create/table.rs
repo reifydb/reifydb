@@ -197,7 +197,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn resolve_sumtype_constraint(
+	pub(super) fn resolve_sumtype_constraint(
 		&self,
 		tx: &mut Transaction<'_>,
 		namespace: &BumpFragment<'bump>,

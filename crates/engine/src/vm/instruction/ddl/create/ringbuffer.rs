@@ -12,6 +12,7 @@ use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
+use super::sumtype::expand_sumtype_columns;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_ringbuffer(
@@ -33,12 +34,14 @@ pub(crate) fn create_ringbuffer(
 		]);
 	}
 
+	let columns = expand_sumtype_columns(services, txn, plan.columns)?;
+
 	let result = services.catalog.create_ringbuffer(
 		txn,
 		RingBufferToCreate {
 			name: plan.ringbuffer.clone(),
 			namespace: plan.namespace.def().id(),
-			columns: plan.columns,
+			columns,
 			capacity: plan.capacity,
 			partition_by: plan.partition_by,
 			time: plan.time.clone(),

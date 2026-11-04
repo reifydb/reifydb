@@ -14,7 +14,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnProperty, AstCreateRingBuffer},
+	ast::ast::{AstColumnProperty, AstCreateRingBuffer, AstType},
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateRingBufferNode, LogicalPlan,
@@ -40,7 +40,20 @@ impl<'bump> Compiler<'bump> {
 		for col in ast.columns.into_iter() {
 			reject_reserved_column_name(&col.name.to_owned())?;
 			let column_name = col.name.text().to_string();
-			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
+			let mut constraint = match &col.ty {
+				AstType::Qualified {
+					namespace,
+					name,
+				} => self.resolve_sumtype_constraint(tx, namespace, name, false)?,
+				AstType::Optional(inner) => match inner.as_ref() {
+					AstType::Qualified {
+						namespace,
+						name,
+					} => self.resolve_sumtype_constraint(tx, namespace, name, true)?,
+					_ => convert_data_type_with_constraints(&col.ty)?,
+				},
+				_ => convert_data_type_with_constraints(&col.ty)?,
+			};
 			let column_type = constraint.get_type();
 
 			let name = col.name.to_owned();
