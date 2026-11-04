@@ -240,11 +240,8 @@ impl JoinedColumnsBuilder {
 			assert_eq!(row_numbers.len(), left_indices.len(), "row_numbers must match pair count");
 		}
 
-		let right_times = row_times(right)?;
-		let times =
-			right_indices.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
 		let right_columns = self.right_columns(&gather(right, right_indices)?);
-		self.assemble(row_numbers, left, left_indices, right_columns, times)
+		self.assemble(row_numbers, left, left_indices, right_columns, vec![None; left_indices.len()])
 	}
 
 	pub(crate) fn unmatched_left(
