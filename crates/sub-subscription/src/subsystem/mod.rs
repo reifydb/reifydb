@@ -72,11 +72,11 @@ use crate::{
 
 const SUBSCRIPTION_READER: &str = "subscription";
 
-fn oldest_lsn_floor(wal: &CommitWal) -> Lsn {
+fn frontier_lsn(wal: &CommitWal) -> Lsn {
 	let cursors = wal.cursors().unwrap_or_else(|err| {
 		panic!("commit log cursors could not be read for the subscription reader: {err}")
 	});
-	cursors.start.map_or(Lsn::new(0), |start| Lsn::new(start.as_u64() - 1))
+	cursors.appended.unwrap_or(Lsn::new(0))
 }
 
 pub struct SubscriptionSubsystem {
@@ -134,7 +134,7 @@ impl SubscriptionSubsystem {
 		let SubscriptionQueueFloor(floor) = floor;
 		let start = engine.current_version()?;
 		let wal = engine.multi().wal().clone();
-		let start_lsn = oldest_lsn_floor(&wal);
+		let start_lsn = frontier_lsn(&wal);
 		let loader_handle = spawner.spawn_coordination(
 			"sub-subscription-loader",
 			CommitLoader::new(Arc::new(WalCommitLog::new(wal, SUBSCRIPTION_READER)), loader_metrics),
@@ -343,5 +343,33 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		ioc.register_service::<SubscriptionInspectorRef>(inspector);
 
 		Ok(Box::new(subsystem))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_test_harness::engine::TestEngine;
+
+	use super::*;
+
+	#[test]
+	fn the_reader_starts_at_the_last_appended_lsn_not_below_the_commits_it_skips() {
+		// A start lsn below the boot frontier makes a first reload ask for records gc may drop, ending every
+		// subscription.
+		let t = TestEngine::new();
+		t.admin("CREATE NAMESPACE app");
+		t.admin("CREATE TABLE app::a { id: int4 }");
+		t.command("INSERT app::a [{ id: 1 }, { id: 2 }]");
+		let wal = t.inner().multi().wal().clone();
+		let appended = wal.cursors().expect("commit log cursors").appended;
+		assert!(appended.is_some_and(|lsn| lsn.as_u64() > 1), "precondition: the log holds several records");
+
+		let start = frontier_lsn(&wal);
+
+		assert_eq!(
+			Some(start),
+			appended,
+			"the reader starts at the frontier, so its lsn must be the last appended one"
+		);
 	}
 }
