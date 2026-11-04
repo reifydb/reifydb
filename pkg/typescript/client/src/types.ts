@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import type { Params, Frame, Column, ErrorResponse, ShapeNode, DurationValue, WireType } from "@reifydb/core";
+import type { Params, Frame, Column, Diagnostic, ErrorResponse, ShapeNode, DurationValue, WireType } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 import { encodeParams } from "./encoder";
 
@@ -154,6 +154,7 @@ export interface SubscriptionClosedMessage {
     type: "SubscriptionClosed";
     payload: {
         subscriptionId: string;
+        reason?: Diagnostic;
     };
 }
 
@@ -173,7 +174,7 @@ export interface SubscriptionCallbacks<T = any> {
     // A change that cannot be decoded is reported here; without it the rows would be dropped silently.
     onError?: (error: Error) => void;
     onResubscribe?: (subscriptionId: string) => void;
-    onClosed?: () => void;
+    onClosed?: (reason?: Diagnostic) => void;
 }
 
 export interface HydrationConfig {

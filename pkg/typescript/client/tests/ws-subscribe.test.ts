@@ -168,6 +168,34 @@ describe('pushes are routed per subscription', () => {
         expect(sockets[0].requests('Unsubscribe')).toHaveLength(0);
     });
 
+    it('passes the close reason to onClosed, and none when the server sent none', async () => {
+        // Without the reason a caller can only report a generic close and the fix in the diagnostic is lost.
+        await connect();
+        const a = item('a', {onClosed: vi.fn()});
+        const b = item('b', {onClosed: vi.fn()});
+        await subscribed([a, b], ['s1', 's2']);
+
+        sockets[0].onmessage?.({
+            data: JSON.stringify({
+                type: 'SubscriptionClosed',
+                payload: {
+                    subscription_id: 's1',
+                    reason: {code: 'SUBS_005', message: 'subscription s1 overran', label: 'too slow', help: 'resubscribe', notes: []}
+                }
+            })
+        });
+        sockets[0].closed('s2');
+
+        expect(a.callbacks.onClosed).toHaveBeenCalledTimes(1);
+        expect(a.callbacks.onClosed).toHaveBeenCalledWith(expect.objectContaining({
+            code: 'SUBS_005',
+            message: 'subscription s1 overran',
+            label: 'too slow',
+            help: 'resubscribe'
+        }));
+        expect(b.callbacks.onClosed).toHaveBeenCalledWith(undefined);
+    });
+
     it('contains a throwing onClosed so later messages still arrive', async () => {
         // A throw escaping the socket handler would stall every later message on the connection.
         await connect();

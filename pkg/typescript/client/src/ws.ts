@@ -989,7 +989,7 @@ export class WsClient {
         if (!state) return;
         this.forget(state.subscriptionId);
         try {
-            state.callbacks.onClosed?.();
+            state.callbacks.onClosed?.(msg.payload.reason);
         } catch (error) {
             reportSubscriptionError(state, error);
         }
