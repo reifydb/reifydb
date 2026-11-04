@@ -587,6 +587,7 @@ impl Resident {
 				}
 				for flow in checkpoint_deletes {
 					global.checkpoints.insert(*flow, None);
+					global.first_unflushed.remove(flow);
 				}
 			}
 		}

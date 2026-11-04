@@ -19,7 +19,9 @@ impl Resident {
 	}
 
 	pub fn record_checkpoint_delete(&self, flow: FlowId) {
-		self.shared().global.lock().checkpoints.insert(flow, None);
+		let mut global = self.shared().global.lock();
+		global.checkpoints.insert(flow, None);
+		global.first_unflushed.remove(&flow);
 	}
 
 	pub fn lookup_checkpoint(&self, flow: FlowId) -> Option<Option<FlowCheckpoint>> {
