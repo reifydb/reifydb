@@ -1041,7 +1041,7 @@ impl FlowSupervisor {
 			FlowStart::Resume(checkpoint) => (checkpoint.version, checkpoint.lsn),
 			FlowStart::Backfill(_, lsn, ..) => {
 				state.start_lsns.insert(flow_id, *lsn);
-				(CommitVersion(0), *lsn)
+				(CommitVersion::BEFORE_FIRST, *lsn)
 			}
 		};
 

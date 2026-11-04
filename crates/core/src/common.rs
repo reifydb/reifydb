@@ -17,6 +17,10 @@ use crate::{error::CoreError, operator_with::ApplyWith};
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct CommitVersion(pub u64);
 
+impl CommitVersion {
+	pub const BEFORE_FIRST: Self = Self(0);
+}
+
 impl FromStr for CommitVersion {
 	type Err = ParseIntError;
 

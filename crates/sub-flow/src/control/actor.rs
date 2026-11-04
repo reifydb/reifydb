@@ -282,7 +282,9 @@ impl FlowActor {
 		}
 		match self.engine.acquire_version_lease(self.initial_cursor) {
 			Ok(lease) => Ok(Some(lease)),
-			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED => {
+			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED
+				&& self.initial_cursor == CommitVersion::BEFORE_FIRST =>
+			{
 				let lease = self.engine.multi().acquire_cutoff_lease()?;
 				warn!(
 					flow_id = self.flow_id.0,
@@ -1144,7 +1146,7 @@ impl Actor for FlowActor {
 		if let Some(interval) = self.sample_interval() {
 			ctx.schedule_once(interval, || FlowActorMessage::Sample);
 		}
-		if self.initial_cursor > CommitVersion(0) {
+		if self.initial_cursor > CommitVersion::BEFORE_FIRST {
 			let _ = ctx.self_ref().send(FlowActorMessage::PublishRestoredFrontiers);
 		}
 
