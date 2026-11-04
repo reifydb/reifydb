@@ -142,8 +142,8 @@ pub async fn handle_connection<S>(
 				let msg = match push {
 					PushMessage::ChangeJson { entries } => Message::Text(ServerPush::change(entries).to_json().into()),
 					PushMessage::ChangeRbcf { envelope } => Message::Binary(envelope.into()),
-					PushMessage::SubscriptionClosed { subscription_id } => {
-						Message::Text(ServerPush::subscription_closed(subscription_id.to_string()).to_json().into())
+					PushMessage::SubscriptionClosed { subscription_id, reason } => {
+						Message::Text(ServerPush::subscription_closed(subscription_id.to_string(), reason).to_json().into())
 					}
 				};
 				if sender.send(msg).await.is_err() {

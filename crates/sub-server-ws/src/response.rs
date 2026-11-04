@@ -131,6 +131,8 @@ pub struct ChangeEntry {
 #[derive(Debug, Serialize)]
 pub struct SubscriptionClosedPayload {
 	pub subscription_id: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub reason: Option<Diagnostic>,
 }
 
 impl Response {
@@ -318,9 +320,10 @@ impl ServerPush {
 		})
 	}
 
-	pub fn subscription_closed(subscription_id: impl Into<String>) -> Self {
+	pub fn subscription_closed(subscription_id: impl Into<String>, reason: Option<Diagnostic>) -> Self {
 		Self::SubscriptionClosed(SubscriptionClosedPayload {
 			subscription_id: subscription_id.into(),
+			reason,
 		})
 	}
 
@@ -331,6 +334,7 @@ impl ServerPush {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 	use serde_json::{Value as JsonValue, from_str, json};
 
 	use super::{ChangeEntry, Response, ServerPush, SubscriptionInfo};
@@ -391,9 +395,35 @@ mod tests {
 	fn a_subscription_closed_push_names_only_its_subscription() {
 		// An extra field or a wrong tag makes a client close nothing, or close more than the one subscription.
 		assert_eq!(
-			parsed(&ServerPush::subscription_closed("7").to_json()),
+			parsed(&ServerPush::subscription_closed("7", None).to_json()),
 			json!({"type": "SubscriptionClosed", "payload": {"subscription_id": "7"}})
 		);
+	}
+
+	#[test]
+	fn a_subscription_closed_push_carries_its_reason() {
+		// Without the reason on the wire a client can only report a generic close, never the real failure.
+		let reason = Diagnostic {
+			code: "SUBS_005".to_string(),
+			rql: None,
+			message: "subscription 7 overran".to_string(),
+			column: None,
+			fragment: Fragment::None,
+			label: Some("too slow".to_string()),
+			help: Some("resubscribe".to_string()),
+			notes: Vec::new(),
+			cause: None,
+			operator_chain: None,
+		};
+
+		let sent = parsed(&ServerPush::subscription_closed("7", Some(reason)).to_json());
+
+		assert_eq!(sent["type"], json!("SubscriptionClosed"));
+		assert_eq!(sent["payload"]["subscription_id"], json!("7"));
+		assert_eq!(sent["payload"]["reason"]["code"], json!("SUBS_005"));
+		assert_eq!(sent["payload"]["reason"]["message"], json!("subscription 7 overran"));
+		assert_eq!(sent["payload"]["reason"]["label"], json!("too slow"));
+		assert_eq!(sent["payload"]["reason"]["help"], json!("resubscribe"));
 	}
 
 	#[test]

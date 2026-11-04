@@ -7,7 +7,7 @@ use reifydb_codec::{
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_core::wire_sink::{ChangeDelivery, SubscribedEntry, WireSink};
 use reifydb_subscription::delivery::DeliveryResult;
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_value::{error::Diagnostic, value::frame::frame::Frame};
 use tokio::sync::mpsc;
 use tonic::Status;
 use tracing::warn;
@@ -101,7 +101,11 @@ impl WireSink for GrpcWireSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		self.send(subscription_event::Event::SubscriptionClosed(SubscriptionClosedEvent {
 			subscription_id: subscription_id.to_string(),
 		}))

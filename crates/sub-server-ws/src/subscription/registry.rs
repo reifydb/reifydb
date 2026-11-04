@@ -16,7 +16,10 @@ use reifydb_sub_server::{
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_change_json},
 };
 use reifydb_subscription::delivery::DeliveryResult;
-use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::{
+	error::Diagnostic,
+	value::{frame::frame::Frame, uuid::Uuid7},
+};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{instrument, warn};
@@ -39,6 +42,7 @@ pub enum PushMessage {
 
 	SubscriptionClosed {
 		subscription_id: SubscriptionId,
+		reason: Option<Diagnostic>,
 	},
 }
 
@@ -82,10 +86,15 @@ impl WireSink for WsWireSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		subscription_id: SubscriptionId,
+		reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		if self.push_tx
 			.send(PushMessage::SubscriptionClosed {
 				subscription_id,
+				reason,
 			})
 			.is_ok()
 		{

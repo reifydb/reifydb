@@ -69,6 +69,7 @@ pub(crate) async fn handle_subscribe(
 						for subscription_id in subscription_ids {
 							let _ = push_tx.send(PushMessage::SubscriptionClosed {
 								subscription_id,
+								reason: None,
 							});
 						}
 					}

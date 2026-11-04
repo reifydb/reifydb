@@ -15,7 +15,10 @@ use reifydb_sub_core::{
 	wire_sink::{ChangeDelivery, SubscribedEntry, WireSink},
 };
 use reifydb_subscription::delivery::DeliveryResult;
-use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::{
+	error::Diagnostic,
+	value::{Value, diff_type::DiffType, frame::frame::Frame, uuid::Uuid7},
+};
 
 #[derive(Clone)]
 struct OpenSink;
@@ -37,7 +40,11 @@ impl WireSink for OpenSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, _subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		_subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 }

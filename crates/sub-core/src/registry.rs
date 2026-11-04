@@ -22,6 +22,12 @@ pub type ConnectionId = Uuid7;
 
 type ChangeGroup<S> = (ConnectionId, <S as WireSink>::Format, Vec<(SubscriptionId, Vec<Frame>)>);
 
+enum CloseCause {
+	Requested,
+	EncodingFailed,
+	Terminated(Diagnostic),
+}
+
 #[derive(Debug)]
 pub enum PromoteResult {
 	Promoted(usize),
@@ -293,22 +299,29 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	pub fn close(&self, subscription_id: SubscriptionId) -> bool {
-		self.end(subscription_id, true)
+		self.end(subscription_id, CloseCause::Requested)
 	}
 
 	#[inline]
-	fn end(&self, subscription_id: SubscriptionId, send_pending: bool) -> bool {
+	fn end(&self, subscription_id: SubscriptionId, cause: CloseCause) -> bool {
 		let Some((_, state)) = self.subscriptions.remove(&subscription_id) else {
 			return false;
 		};
 		let Some(sink) = self.detach(state.connection_id, subscription_id) else {
 			return true;
 		};
-		let frames = state.pending.frames;
-		if send_pending && !frames.is_empty() {
-			let _ = sink.send_change(state.format, vec![(subscription_id, frames)]);
-		}
-		let _ = sink.send_subscription_closed(subscription_id);
+		let reason = match cause {
+			CloseCause::Requested => {
+				let frames = state.pending.frames;
+				if !frames.is_empty() {
+					let _ = sink.send_change(state.format, vec![(subscription_id, frames)]);
+				}
+				None
+			}
+			CloseCause::EncodingFailed => None,
+			CloseCause::Terminated(diagnostic) => Some(diagnostic),
+		};
+		let _ = sink.send_subscription_closed(subscription_id, reason);
 		debug!("Closed subscription {}", subscription_id);
 		true
 	}
@@ -438,7 +451,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 					failed,
 				} => {
 					for subscription_id in failed {
-						self.end(subscription_id, false);
+						self.end(subscription_id, CloseCause::EncodingFailed);
 					}
 				}
 				ChangeDelivery::Disconnected => self.mark_dead(connection_id),
@@ -504,7 +517,7 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 		next_deadline.map(|ms| Duration::from_milliseconds(ms).unwrap())
 	}
 
-	fn terminate(&self, subscription_id: &SubscriptionId, _diagnostic: Diagnostic) {
-		self.end(*subscription_id, false);
+	fn terminate(&self, subscription_id: &SubscriptionId, diagnostic: Diagnostic) {
+		self.end(*subscription_id, CloseCause::Terminated(diagnostic));
 	}
 }

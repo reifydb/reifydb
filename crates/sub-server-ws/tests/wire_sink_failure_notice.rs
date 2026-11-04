@@ -87,6 +87,7 @@ fn a_change_that_fails_to_rbcf_encode_is_announced_to_the_subscriber() {
 	match push_rx.try_recv() {
 		Ok(PushMessage::SubscriptionClosed {
 			subscription_id,
+			..
 		}) => assert_eq!(subscription_id, SubscriptionId(1)),
 		other => panic!("the subscriber must be told its subscription closed, got {other:?}"),
 	}

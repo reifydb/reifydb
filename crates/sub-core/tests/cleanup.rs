@@ -17,7 +17,7 @@ use reifydb_sub_core::{
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
-	error::Error,
+	error::{Diagnostic, Error},
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
@@ -58,7 +58,11 @@ impl WireSink for TestSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, _subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		_subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		self.result()
 	}
 }

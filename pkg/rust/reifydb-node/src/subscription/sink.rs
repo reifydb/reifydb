@@ -15,7 +15,7 @@ use reifydb::{
 		wire_sink::{ChangeDelivery, SubscribedEntry, WireSink},
 	},
 	subscription::delivery::DeliveryResult,
-	value::value::frame::frame::Frame,
+	value::{error::Diagnostic, value::frame::frame::Frame},
 };
 use tracing::warn;
 
@@ -111,7 +111,11 @@ impl WireSink for NodeWireSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		self.push(NodePush::Closed {
 			subscription_id,
 		})

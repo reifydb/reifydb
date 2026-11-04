@@ -102,7 +102,11 @@ impl WireSink for RecordingSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		self.calls.lock().push(Call::Closed(subscription_id));
 		DeliveryResult::Delivered
 	}

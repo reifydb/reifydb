@@ -18,9 +18,12 @@ use reifydb::{
 	},
 	sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore},
 	subscription::delivery::{DeliveryResult, SubscriptionDelivery},
-	value::value::{
-		Value, column_view::ColumnView, diff_type::DiffType, duration::Duration, frame::frame::Frame,
-		uuid::Uuid7,
+	value::{
+		error::Diagnostic,
+		value::{
+			Value, column_view::ColumnView, diff_type::DiffType, duration::Duration, frame::frame::Frame,
+			uuid::Uuid7,
+		},
 	},
 };
 
@@ -62,7 +65,11 @@ impl WireSink for RecordingSink {
 		}
 	}
 
-	fn send_subscription_closed(&self, _subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(
+		&self,
+		_subscription_id: SubscriptionId,
+		_reason: Option<Diagnostic>,
+	) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 }

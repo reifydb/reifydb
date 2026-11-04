@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_codec::wire::WireFormat as ClientWireFormat;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_subscription::delivery::DeliveryResult;
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_value::{error::Diagnostic, value::frame::frame::Frame};
 
 #[derive(Debug, Clone)]
 pub struct SubscribedEntry {
@@ -31,5 +31,9 @@ pub trait WireSink: Clone + Send + Sync + 'static {
 
 	fn send_change(&self, format: Self::Format, entries: Vec<(SubscriptionId, Vec<Frame>)>) -> ChangeDelivery;
 
-	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult;
+	fn send_subscription_closed(
+		&self,
+		subscription_id: SubscriptionId,
+		reason: Option<Diagnostic>,
+	) -> DeliveryResult;
 }
