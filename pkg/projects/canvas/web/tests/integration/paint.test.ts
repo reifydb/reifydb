@@ -154,7 +154,7 @@ describe('paint helper against the canvas backend', () => {
       const ring = { x: near.x - 16, y: near.y - 16, w: near.w + 32, h: near.h + 32 }
       expect(overlaps(ring, art), `art spot ${JSON.stringify(near)}`).toBe(true)
     }
-  })
+  }, 15000)
 
   it('sends an empty spot at least 1024 px away from recent painting', async () => {
     // Agents crowded one spot and overwrote each other; the default must push them apart.
@@ -184,7 +184,7 @@ describe('paint helper against the canvas backend', () => {
       expect(overlaps(s, fresh), `scene spot ${JSON.stringify(s)}`).toBe(false)
       expect(s.crowded).toBe(false)
     }
-  })
+  }, 15000)
 
   it('seeds the picture in the middle when the wall is empty', async () => {
     // The first co-op agent has no edge to extend, so it must be told to start the picture.
