@@ -36,7 +36,7 @@ use crate::{Database, Frame, Result, SqliteConfig, embedded};
 pub struct TestDb {
 	db: Database,
 	_guard: Option<SqliteTempPathGuard>,
-	held: Option<(CommitQueueFloor, CommitVersion)>,
+	held: Option<(CommitQueueFloor, CommitVersion, Lsn)>,
 }
 
 impl TestDb {
@@ -54,8 +54,8 @@ impl TestDb {
 				.ioc()
 				.resolve::<CommitQueue>()
 				.expect("the builder registers the commit queue");
-		let start = queue.released_through();
-		self.held = Some((queue.floor("test-history"), start));
+		let (start, start_lsn) = queue.released();
+		self.held = Some((queue.floor("test-history"), start, start_lsn));
 	}
 
 	pub fn commit_history(&self) -> Vec<Arc<CommitEntry>> {
@@ -65,7 +65,7 @@ impl TestDb {
 				.resolve::<CommitQueue>()
 				.expect("the builder registers the commit queue");
 		let released = queue.released_through();
-		let Some((_, start)) = self.held.as_ref() else {
+		let Some((_, start, start_lsn)) = self.held.as_ref() else {
 			let log = WalCommitLog::new(self.db.engine().multi().wal().clone(), "test-history");
 			return log
 				.read((CommitVersion(0), Lsn::new(0)), released, ByteSize::from_bytes(u64::MAX))
@@ -77,7 +77,14 @@ impl TestDb {
 				entries,
 				..
 			} => entries,
-			CommitPull::Behind => panic!("the test-history floor holds every commit after {start:?}"),
+			CommitPull::Behind => {
+				WalCommitLog::new(self.db.engine().multi().wal().clone(), "test-history")
+					.read((*start, *start_lsn), released, ByteSize::from_bytes(u64::MAX))
+					.expect(
+						"a held commit history past the queue cap reads the rest from the commit log",
+					)
+					.entries
+			}
 		}
 	}
 

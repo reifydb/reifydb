@@ -24,7 +24,7 @@ use reifydb_core::{
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		catalog::{config::ConfigKey, id::NamespaceId},
-		commit::CommitEntry,
+		commit::{CommitEntry, CommitLog},
 	},
 	util::ioc::IocContainer,
 };
@@ -55,7 +55,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::{CheckpointedStore, WalConfigurator, flow_wal, memory_wal_with_mode, nop_wal, replay},
+	wal::{CheckpointedStore, WalCommitLog, WalConfigurator, flow_wal, memory_wal_with_mode, nop_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -63,12 +63,12 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
-use reifydb_wal::sync::WalMode;
+use reifydb_wal::{lsn::Lsn, sync::WalMode};
 
 pub struct TestEngine {
 	engine: StandardEngine,
 	mock_clock: MockClock,
-	queue_seed: CommitVersion,
+	queue_seed: (CommitVersion, Lsn),
 	_runtime: Runtime,
 	_operator_guard: SqliteTempPathGuard,
 }
@@ -190,13 +190,16 @@ impl TestEngine {
 	pub fn commit_entries(&self) -> Vec<Arc<CommitEntry>> {
 		let released = self.await_released();
 		let queue = self.engine.ioc().resolve::<CommitQueue>().expect("commit_entries needs with_commit_queue");
-		match queue.pull(self.queue_seed, released, ByteSize::from_bytes(u64::MAX)) {
+		match queue.pull(self.queue_seed.0, released, ByteSize::from_bytes(u64::MAX)) {
 			CommitPull::Hit {
 				entries,
 				..
 			} => entries,
 			CommitPull::Behind => {
-				panic!("the unadopted flow floor holds every commit since {:?}", self.queue_seed)
+				WalCommitLog::new(self.engine.multi().wal().clone(), "test-history")
+					.read(self.queue_seed, released, ByteSize::from_bytes(u64::MAX))
+					.expect("commit entries past the queue cap read the rest from the commit log")
+					.entries
 			}
 		}
 	}
@@ -373,14 +376,22 @@ impl TestEngineBuilder {
 			},
 		);
 
-		let queue_seed = engine.multi().current_version().unwrap();
+		let queue_seed = (
+			engine.multi().current_version().unwrap(),
+			engine.multi()
+				.wal()
+				.cursors()
+				.expect("commit log cursors at the queue seed")
+				.appended
+				.unwrap_or(Lsn::new(0)),
+		);
 		if self.commit_queue {
 			let commit_queue = CommitQueue::new(
 				ByteSize::from_bytes(
 					engine.multi().config().get_config_uint8(ConfigKey::CommitQueueBytes),
 				),
 				wal_enabled,
-				queue_seed,
+				queue_seed.0,
 			);
 			ioc_for_queue.register_service(FlowQueueFloor(commit_queue.floor("flow")));
 			ioc_for_queue.register_service(commit_queue.clone());
