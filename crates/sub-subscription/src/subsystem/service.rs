@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
-	sync::rwlock::RwLock,
+	sync::{mutex::MutexGuard, rwlock::RwLock},
 };
 use reifydb_transaction::{
 	error::TransactionError,
@@ -113,6 +113,7 @@ impl SubscriptionServiceImpl {
 		flow_dag: FlowDag,
 		hydration_enabled: bool,
 		ctx: SubscriptionContext,
+		held: MutexGuard<'_, ()>,
 	) -> Result<()> {
 		let current = self.state.multi.begin_query()?.version();
 		self.state.position_tracker.update(ctx.id, current);
@@ -138,6 +139,7 @@ impl SubscriptionServiceImpl {
 			self.state.expect_shutdown("register", flow_id, id, "could not be sent its message");
 			return Err(TransactionError::ShuttingDown.into());
 		}
+		drop(held);
 		let Some(result) = await_reply(&self.state.spawner, &rx) else {
 			self.state.expect_shutdown("register", flow_id, id, "dropped its reply");
 			return Err(TransactionError::ShuttingDown.into());
@@ -160,10 +162,11 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	) -> Result<()> {
 		let id = ctx.id;
 		let flow_id = flow_dag.id;
+		let held = self.state.store.hold_registrations();
 		self.state.store.register(id);
 		self.state.subscribed.register(id, source_objects(&flow_dag));
 
-		self.register_with_worker(flow_dag, hydration_enabled, ctx).inspect_err(|_| {
+		self.register_with_worker(flow_dag, hydration_enabled, ctx, held).inspect_err(|_| {
 			self.state.store.unregister(&id);
 			self.state.position_tracker.remove(&id);
 			self.state.subscribed.unregister(&id);
@@ -241,12 +244,13 @@ impl SubscriptionService for SubscriptionServiceImpl {
 #[cfg(test)]
 mod tests {
 	use std::{
-		collections::BTreeMap,
+		collections::{BTreeMap, BTreeSet},
 		fmt::Debug,
 		panic::{AssertUnwindSafe, catch_unwind},
 		thread,
 	};
 
+	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::{
 		actor::{
 			context::Context,
@@ -255,11 +259,17 @@ mod tests {
 			traits::{Actor, Directive},
 		},
 		context::clock::Clock,
+		sync::mutex::Mutex,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{params::Params, value::duration::Duration};
 
 	use super::*;
+	use crate::{
+		consumer::{SubscriptionCdcConsumer, TERMINATE_INTERLOCK},
+		delivery::DeliveryBuffer,
+		tracker::SubscriptionSourceTracker,
+	};
 
 	const SUBSCRIPTION: SubscriptionId = SubscriptionId(4242);
 	const WORKER: &str = "subscription-worker-0";
@@ -501,5 +511,128 @@ mod tests {
 			Err(HydrateError::Engine(error)) if TransactionError::is_shutting_down(&error) => {}
 			other => panic!("hydrate during shutdown must fail as shutting down, got {:?}", other),
 		}
+	}
+
+	struct RecordingWorker {
+		flows: Arc<Mutex<BTreeSet<FlowId>>>,
+	}
+
+	impl Actor for RecordingWorker {
+		type State = ();
+		type Message = SubscriptionWorkerMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+
+		fn handle(
+			&self,
+			_state: &mut Self::State,
+			msg: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
+			match msg {
+				SubscriptionWorkerMessage::Register {
+					flow_id,
+					reply,
+					..
+				} => {
+					self.flows.lock().insert(flow_id);
+					reply(Ok(()));
+				}
+				SubscriptionWorkerMessage::Terminate {
+					done,
+				} => {
+					self.flows.lock().clear();
+					done.complete(Ok(()));
+				}
+				other => drop(other),
+			}
+			Directive::Continue
+		}
+	}
+
+	#[test]
+	fn a_subscribe_racing_an_overtaken_terminate_ends_live_or_terminated_never_dead() {
+		// A store entry whose worker flow the terminate dropped gets no data and no notice, so both must go
+		// together.
+		let t = TestEngine::new();
+		let spawner = t.inner().spawner();
+		let flows: Arc<Mutex<BTreeSet<FlowId>>> = Arc::new(Mutex::new(BTreeSet::new()));
+		let worker = spawner.spawn_coordination(
+			"recording-worker",
+			RecordingWorker {
+				flows: flows.clone(),
+			},
+		);
+		let store = Arc::new(SubscriptionStore::new(16));
+		let position_tracker = SubscriptionPositionTracker::new();
+		let subscribed = SubscribedObjects::new();
+		let state = Arc::new(SubscriptionState {
+			store: store.clone(),
+			workers: vec![worker.actor_ref().clone()],
+			subscription_flows: RwLock::new(HashMap::new()),
+			multi: t.inner().multi_owned(),
+			position_tracker: position_tracker.clone(),
+			subscribed: subscribed.clone(),
+			spawner: spawner.clone(),
+		});
+		let consumer = SubscriptionCdcConsumer::new(
+			t.inner().clone(),
+			vec![worker.actor_ref().clone()],
+			SubscriptionSourceTracker::new(),
+			position_tracker,
+			store.clone(),
+			Arc::new(DeliveryBuffer::new(store.clone())),
+			subscribed,
+		);
+		let (registered_tx, registered_rx) = mpsc::channel();
+		let racer_state = state.clone();
+		let engine = t.inner().clone();
+		let racer: Arc<Mutex<Option<thread::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+		let racer_slot = racer.clone();
+		TERMINATE_INTERLOCK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move || {
+				let handle = thread::spawn(move || {
+					let service = SubscriptionServiceImpl {
+						state: racer_state,
+					};
+					let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
+					service.register_subscription(
+						FlowDag::builder(FlowId(SUBSCRIPTION.0)).build(),
+						false,
+						context(),
+						&mut Transaction::Query(&mut query),
+					)
+					.expect("the racing subscribe registers");
+					let _ = registered_tx.send(());
+				});
+				*racer_slot.lock() = Some(handle);
+				let _ = registered_rx.recv_timeout(Duration::from_milliseconds(500).unwrap().to_std());
+			}));
+		});
+		let (terminated_tx, terminated_rx) = mpsc::channel();
+
+		consumer.overtaken(
+			CommitVersion(1),
+			CommitVersion(2),
+			Box::new(move |result| {
+				let _ = terminated_tx.send(result);
+			}),
+		);
+
+		terminated_rx
+			.recv_timeout(Duration::from_seconds(5).unwrap().to_std())
+			.expect("the terminate barrier replies")
+			.expect("every worker terminates");
+		racer.lock()
+			.take()
+			.expect("the interlock ran the racing subscribe")
+			.join()
+			.expect("the racer finishes");
+		let in_store = store.contains(&SUBSCRIPTION);
+		let on_worker = flows.lock().contains(&FlowId(SUBSCRIPTION.0));
+		assert_eq!(
+			in_store, on_worker,
+			"a subscription in the store must have its flow on the worker and the reverse: in store={in_store}, on worker={on_worker}"
+		);
 	}
 }

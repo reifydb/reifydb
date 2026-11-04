@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::sync::{
 	Arc,
 	atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -163,7 +165,9 @@ impl Drop for WorkerDone {
 
 impl SubscriptionCdcConsumer {
 	pub fn overtaken(&self, cursor: CommitVersion, resume: CommitVersion, reply: Reply) {
+		let _held = self.store.hold_registrations();
 		let subscriptions = self.store.active_subscriptions();
+		terminate_interlock();
 		warn!(
 			cursor = cursor.0,
 			resume = resume.0,
@@ -274,6 +278,21 @@ impl SubscriptionCdcConsumer {
 			.join(", ")
 	}
 }
+
+#[cfg(test)]
+thread_local! {
+	pub(crate) static TERMINATE_INTERLOCK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn terminate_interlock() {
+	if let Some(interlock) = TERMINATE_INTERLOCK.with(|slot| slot.borrow_mut().take()) {
+		interlock();
+	}
+}
+
+#[cfg(not(test))]
+fn terminate_interlock() {}
 
 #[cfg(test)]
 mod tests {

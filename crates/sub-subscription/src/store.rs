@@ -12,7 +12,7 @@ use std::{
 use dashmap::{DashMap, DashSet};
 use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_runtime::sync::{
-	mutex::Mutex,
+	mutex::{Mutex, MutexGuard},
 	rwlock::{RwLock, RwLockReadGuard},
 };
 use reifydb_value::reifydb_assertions;
@@ -36,6 +36,7 @@ pub struct SubscriptionStore {
 
 	coord: RwLock<()>,
 	wakers: Mutex<Vec<Arc<Notify>>>,
+	registration: Mutex<()>,
 
 	hydrating: DashSet<SubscriptionId>,
 }
@@ -69,8 +70,13 @@ impl SubscriptionStore {
 			default_capacity,
 			coord: RwLock::new(()),
 			wakers: Mutex::new(Vec::new()),
+			registration: Mutex::new(()),
 			hydrating: DashSet::new(),
 		}
+	}
+
+	pub fn hold_registrations(&self) -> MutexGuard<'_, ()> {
+		self.registration.lock()
 	}
 
 	pub fn begin_hydration(&self, id: SubscriptionId) {
