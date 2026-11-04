@@ -3,16 +3,19 @@
 
 use std::collections::HashMap;
 
-use reifydb::{Database, Params, SqliteConfig, Value, embedded};
+use reifydb::{Database, Params, SqliteConfig, Value, WalMode, embedded};
 
 pub struct Catalog {
 	pub sources: HashMap<u64, (String, &'static str)>,
 	pub operators: HashMap<u64, (String, String)>,
 }
 
-pub fn with_open<T>(dir: &str, f: impl FnOnce(&Database) -> Result<T, String>) -> Result<T, String> {
-	let mut db =
-		embedded::sqlite(SqliteConfig::new(dir)).build().map_err(|e| format!("failed to open '{dir}': {e}"))?;
+pub fn with_open<T>(dir: &str, wal_off: bool, f: impl FnOnce(&Database) -> Result<T, String>) -> Result<T, String> {
+	let mut builder = embedded::sqlite(SqliteConfig::new(dir));
+	if wal_off {
+		builder = builder.with_wal(|wal| wal.mode(WalMode::Off));
+	}
+	let mut db = builder.build().map_err(|e| format!("failed to open '{dir}': {e}"))?;
 	let result = f(&db);
 	let stopped = db.stop().map_err(|e| format!("failed to stop '{dir}': {e}"));
 	let value = result?;
@@ -71,7 +74,7 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 	})
 }
 
-fn rows(db: &Database, rql: &str) -> Result<Vec<Vec<(String, Value)>>, String> {
+pub fn rows(db: &Database, rql: &str) -> Result<Vec<Vec<(String, Value)>>, String> {
 	let frames = db.query_as_root(rql, Params::None).map_err(|e| format!("query `{rql}` failed: {e}"))?;
 	Ok(frames.into_iter().flat_map(|f| f.to_rows()).collect())
 }
