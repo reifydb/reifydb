@@ -572,7 +572,7 @@ pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 /// corresponding count is zero.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_emit_diff(
-	written_at_nanos: i64,
+	batch_time_nanos: i64,
 	kind: EmitDiffKind,
 	pre_handles_ptr: *const *mut ColumnBufferHandle,
 	pre_name_ptrs: *const *const u8,
@@ -610,7 +610,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	}
 
 	let mut inner = registry.inner.lock();
-	let now = DateTime::from_nanos(written_at_nanos);
+	let now = DateTime::from_nanos(batch_time_nanos);
 
 	let pre_columns = match assemble_columns_opt(
 		&mut inner,

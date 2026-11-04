@@ -126,7 +126,7 @@ impl UnmanagedOperator for ParityWindow {
 			})
 			.collect();
 		let row_numbers: Vec<RowNumber> = emissions.iter().map(|(s, _)| RowNumber((*s as u64) + 1)).collect();
-		ctx.emit_insert(&rows, &row_numbers, &vec![ctx.written_at(); (&row_numbers).len()])
+		ctx.emit_insert(&rows, &row_numbers, &vec![ctx.batch_time(); (&row_numbers).len()])
 	}
 }
 
@@ -181,7 +181,7 @@ impl NostateOperator for RowNumberProbe {
 				is_new: i64::from(is_new),
 			}],
 			&[RowNumber(1)],
-			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1)]).len()],
 		)
 	}
 }

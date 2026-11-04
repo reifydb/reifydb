@@ -631,7 +631,7 @@ mod tests {
 					tick,
 					created: tick,
 					materializes: 0,
-					written_at: 0,
+					batch_time: 0,
 					covered: true,
 				}
 			});

@@ -154,7 +154,7 @@ impl StateStore for MemoryStateStore {
 		Ok(())
 	}
 
-	fn written_at(&self) -> DateTime {
+	fn batch_time(&self) -> DateTime {
 		DateTime::default()
 	}
 }

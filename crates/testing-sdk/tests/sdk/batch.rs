@@ -90,7 +90,7 @@ impl MountedOperator for EmitOpInsert {
 		ctx.emit_insert(
 			&rows,
 			&[RowNumber(1), RowNumber(2), RowNumber(3)],
-			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
 		)
 	}
 }
@@ -186,7 +186,7 @@ impl MountedOperator for EmitOpUpdate {
 				count: 6,
 			}],
 			&[RowNumber(1)],
-			&vec![ctx.written_at(); (&[RowNumber(1)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1)]).len()],
 		)
 	}
 }
@@ -250,7 +250,7 @@ impl MountedOperator for EmitOpRemove {
 		ctx.emit_remove(
 			&rows,
 			&[RowNumber(1), RowNumber(2)],
-			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1), RowNumber(2)]).len()],
 		)
 	}
 }
@@ -292,7 +292,7 @@ impl MountedOperator for EmitOpBig {
 			})
 			.collect();
 		let row_numbers: Vec<RowNumber> = (1..=100).map(RowNumber).collect();
-		ctx.emit_insert(&rows, &row_numbers, &vec![ctx.written_at(); (&row_numbers).len()])
+		ctx.emit_insert(&rows, &row_numbers, &vec![ctx.batch_time(); (&row_numbers).len()])
 	}
 }
 
@@ -351,7 +351,7 @@ impl MountedOperator for EmitOpOptU64 {
 		ctx.emit_insert(
 			&rows,
 			&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
-			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
 		)
 	}
 }
@@ -415,7 +415,7 @@ impl MountedOperator for EmitOpOptStr {
 		ctx.emit_insert(
 			&rows,
 			&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
-			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)]).len()],
 		)
 	}
 }
@@ -476,7 +476,7 @@ impl MountedOperator for EmitOpOptBlob {
 		ctx.emit_insert(
 			&rows,
 			&[RowNumber(1), RowNumber(2), RowNumber(3)],
-			&vec![ctx.written_at(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
+			&vec![ctx.batch_time(); (&[RowNumber(1), RowNumber(2), RowNumber(3)]).len()],
 		)
 	}
 }

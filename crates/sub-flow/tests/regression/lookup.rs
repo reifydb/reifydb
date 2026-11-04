@@ -138,7 +138,7 @@ impl UnmanagedOperator for GatedPassThrough {
 			match diff.kind() {
 				DiffType::Insert => {
 					let (rows, numbers) = key_values(&diff.post().expect("an insert has a post"))?;
-					ctx.emit_insert(&rows, &numbers, &vec![ctx.written_at(); (&numbers).len()])?;
+					ctx.emit_insert(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])?;
 				}
 				DiffType::Update => {
 					let (pre, numbers) = key_values(&diff.pre().expect("an update has a pre"))?;
@@ -147,12 +147,12 @@ impl UnmanagedOperator for GatedPassThrough {
 						&pre,
 						&post,
 						&numbers,
-						&vec![ctx.written_at(); (&numbers).len()],
+						&vec![ctx.batch_time(); (&numbers).len()],
 					)?;
 				}
 				DiffType::Remove => {
 					let (rows, numbers) = key_values(&diff.pre().expect("a remove has a pre"))?;
-					ctx.emit_remove(&rows, &numbers, &vec![ctx.written_at(); (&numbers).len()])?;
+					ctx.emit_remove(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])?;
 				}
 			}
 		}

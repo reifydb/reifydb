@@ -231,7 +231,7 @@ where
 		ctx: &mut C,
 		routing: Buckets<A, K, V>,
 	) -> Result<Emitted<A>> {
-		let now = ctx.written_at();
+		let now = ctx.batch_time();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {

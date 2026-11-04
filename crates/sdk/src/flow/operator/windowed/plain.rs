@@ -438,7 +438,7 @@ where
 		ctx: &mut C,
 		routing: Buckets<A>,
 	) -> Result<Emitted<A>> {
-		let now = ctx.written_at();
+		let now = ctx.batch_time();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
@@ -955,7 +955,7 @@ where
 		let Some(seal_span) = seal_span else {
 			panic!("{}: a session window reached apply without a seal span", A::NAME);
 		};
-		let now = ctx.written_at();
+		let now = ctx.batch_time();
 		let watermark = seal_frontier::<A::Coord>(&mut GuestAsHost(ctx))?;
 		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		let SessionBatch {

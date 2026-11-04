@@ -65,7 +65,7 @@ impl ExternCProcedure {
 			cached_ctx: UnsafeCell::new(ExternCContextRaw {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
-				written_at_nanos: 0,
+				batch_time_nanos: 0,
 				callbacks: procedure_host_callbacks(),
 			}),
 		}
@@ -159,7 +159,7 @@ impl ExternCProcedure {
 		// SAFETY: cached_ctx owns the ExternCContextRaw for the life of self; execute holds the Mutex.
 		unsafe {
 			(*extern_c_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
-			(*extern_c_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();
+			(*extern_c_ctx_ptr).batch_time_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 	}
 

@@ -1047,7 +1047,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
-		let mut rows = JoinRows::new(post, side, host.written_at());
+		let mut rows = JoinRows::new(post, side, host.batch_time());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1087,7 +1087,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
-		let mut rows = JoinRows::new(pre, side, host.written_at());
+		let mut rows = JoinRows::new(pre, side, host.batch_time());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1132,7 +1132,7 @@ impl JoinOperator {
 			Some(_) => row_times(post)?,
 			None => Vec::new(),
 		};
-		let mut rows = JoinRows::new(post, side, host.written_at());
+		let mut rows = JoinRows::new(post, side, host.batch_time());
 		let pre_numbers = require_row_numbers(pre)?;
 		let post_numbers = require_row_numbers(post)?;
 		let mut seen = HashSet::with_capacity(row_count * 2);

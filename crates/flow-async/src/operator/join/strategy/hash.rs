@@ -973,7 +973,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(70);
 		let store = Store::new(JoinSide::Right);
-		let now = txn.written_at();
+		let now = txn.batch_time();
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
@@ -1018,7 +1018,7 @@ mod tests {
 		let operator = OperatorId(71);
 		let store = Store::new(JoinSide::Right);
 		let key = h(0xC);
-		let now = txn.written_at();
+		let now = txn.batch_time();
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
 		add_to_state_entry_batch(

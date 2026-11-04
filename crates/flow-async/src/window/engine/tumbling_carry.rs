@@ -226,7 +226,7 @@ where
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
-		let now = store.written_at();
+		let now = store.batch_time();
 		let mut groups: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
 		groups.dedup();
 		let mut meta_keys: Vec<MetaKey> = Vec::with_capacity(groups.len());
@@ -739,7 +739,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn written_at(&self) -> DateTime {
+		fn batch_time(&self) -> DateTime {
 			DateTime::EPOCH
 		}
 	}

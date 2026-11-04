@@ -180,7 +180,7 @@ impl ExternCContext {
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
 		ColumnsBuilder::new(self.ctx as *mut c_void, unsafe { (*self.ctx).callbacks.builder }, unsafe {
-			(*self.ctx).written_at_nanos
+			(*self.ctx).batch_time_nanos
 		})
 	}
 }
@@ -342,10 +342,10 @@ impl GuestEmitContext for ExternCContext {
 	fn operator_id(&self) -> OperatorId {
 		ExternCContext::operator_id(self)
 	}
-	fn written_at(&self) -> DateTime {
+	fn batch_time(&self) -> DateTime {
 		// SAFETY: ExternCContext::new asserts self.ctx is non-null, and the host keeps the
 		// ExternCContextRaw alive and aligned for at least the lifetime of &self.
-		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
+		DateTime::from_nanos(unsafe { (*self.ctx).batch_time_nanos })
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		ExternCContext::arm_timer(self, due, kind, key)

@@ -558,7 +558,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn written_at(&self) -> DateTime {
+		fn batch_time(&self) -> DateTime {
 			DateTime::EPOCH
 		}
 	}

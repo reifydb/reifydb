@@ -45,10 +45,10 @@ pub fn new_extern_c_context(
 ) -> ExternCContextRaw {
 	// SAFETY: `host` holds the &'a mut dyn HostContext ExternCHostContext::new was built from; PhantomData keeps
 	// that borrow live for 'a and &mut self makes this deref unique.
-	let written_at_nanos = unsafe { (*host.host).written_at() }.to_nanos();
+	let batch_time_nanos = unsafe { (*host.host).batch_time() }.to_nanos();
 	ExternCContextRaw {
 		txn_ptr: host.as_ptr(),
-		written_at_nanos,
+		batch_time_nanos,
 		operator_id: operator_id.0,
 		callbacks,
 	}

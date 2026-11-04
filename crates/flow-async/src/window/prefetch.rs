@@ -168,7 +168,7 @@ impl StateStore for Prefetched<'_> {
 		self.store.remove_row_number_for_group(groups)
 	}
 
-	fn written_at(&self) -> DateTime {
-		self.store.written_at()
+	fn batch_time(&self) -> DateTime {
+		self.store.batch_time()
 	}
 }

@@ -66,7 +66,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 					row_number: 0,
 					key: key(group),
 					last_value: out,
-					first_time: store.written_at(),
+					first_time: store.batch_time(),
 				};
 				applied.emits.push(RollingEmit {
 					group: group.clone(),

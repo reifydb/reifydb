@@ -63,7 +63,7 @@ impl ExternCTransform {
 			cached_ctx: UnsafeCell::new(ExternCContextRaw {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
-				written_at_nanos: 0,
+				batch_time_nanos: 0,
 				callbacks: pure_host_callbacks(),
 			}),
 		}
@@ -101,7 +101,7 @@ impl Transform for ExternCTransform {
 		let extern_c_ctx_ptr = self.cached_ctx.get();
 		// SAFETY: cached_ctx owns the ExternCContextRaw for the life of self and apply is not re-entrant.
 		unsafe {
-			(*extern_c_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();
+			(*extern_c_ctx_ptr).batch_time_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 
 		let result_code = with_registry(&self.builder_registry, || {

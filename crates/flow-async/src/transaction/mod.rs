@@ -272,7 +272,7 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		Ok((page.items, page.has_more))
 	}
 
-	fn written_at(&self) -> DateTime {
+	fn batch_time(&self) -> DateTime {
 		match self.change_coordinate().and_then(|coordinate| coordinate.at) {
 			Some(at) => at,
 			None => self.clock().now(),

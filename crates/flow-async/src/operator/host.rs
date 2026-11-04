@@ -231,7 +231,7 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	}
 
 	pub fn with_retention(txn: &'a mut T, operator: OperatorId, retention: Option<Duration>) -> Self {
-		let now = txn.written_at();
+		let now = txn.batch_time();
 		Self {
 			txn,
 			operator,
@@ -275,8 +275,8 @@ fn managed_group(key: &GroupStateKey) -> Option<GroupId> {
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
-fn reclaim_due(written_at: DateTime, retention: Duration) -> DateTime {
-	let free = written_at.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
+fn reclaim_due(batch_time: DateTime, retention: Duration) -> DateTime {
+	let free = batch_time.saturating_add(retention).saturating_add(SEAL_GATE_STEP);
 	let nanos = free.to_nanos();
 	let ceil = nanos.div_euclid(NANOS_PER_SECOND) + i64::from(nanos.rem_euclid(NANOS_PER_SECOND) != 0);
 	DateTime::from_nanos(ceil.saturating_mul(NANOS_PER_SECOND))
@@ -412,7 +412,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.remove_row_number_for_group(self.operator, groups)
 	}
 
-	fn written_at(&self) -> DateTime {
+	fn batch_time(&self) -> DateTime {
 		self.now
 	}
 }

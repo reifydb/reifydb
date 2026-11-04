@@ -103,7 +103,7 @@ impl UnmanagedOperator for RownumProbe {
 						seen,
 					}],
 					&[row_number],
-					&vec![ctx.written_at(); (&[row_number]).len()],
+					&vec![ctx.batch_time(); (&[row_number]).len()],
 				)?;
 			}
 		}

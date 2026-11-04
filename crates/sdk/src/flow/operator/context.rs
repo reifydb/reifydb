@@ -304,7 +304,7 @@ pub trait GuestEmitContext {
 		Self: 'a;
 
 	fn operator_id(&self) -> OperatorId;
-	fn written_at(&self) -> DateTime;
+	fn batch_time(&self) -> DateTime;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;

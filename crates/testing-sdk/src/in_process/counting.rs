@@ -170,8 +170,8 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.remove_row_number_for_group(groups)
 	}
 
-	fn written_at(&self) -> DateTime {
-		self.inner.written_at()
+	fn batch_time(&self) -> DateTime {
+		self.inner.batch_time()
 	}
 }
 

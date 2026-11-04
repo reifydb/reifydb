@@ -70,7 +70,7 @@ pub struct InProcessContext<'a> {
 
 impl<'a> InProcessContext<'a> {
 	pub fn new(host: &'a mut (dyn HostContext + 'a), operator: OperatorId) -> Self {
-		let now = host.written_at();
+		let now = host.batch_time();
 		Self {
 			host: host as *mut (dyn HostContext + 'a),
 			operator,
@@ -310,7 +310,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 	fn operator_id(&self) -> OperatorId {
 		self.operator
 	}
-	fn written_at(&self) -> DateTime {
+	fn batch_time(&self) -> DateTime {
 		self.now
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {

@@ -120,7 +120,7 @@ where
 				}
 			}
 		}
-		let now = store.written_at();
+		let now = store.batch_time();
 		for (sk, (number, is_new)) in added.into_iter().zip(numbers) {
 			let new = ranking[sk].clone();
 			applied.emits.push(if is_new {

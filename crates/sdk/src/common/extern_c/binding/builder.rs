@@ -172,17 +172,17 @@ impl<'a> Drop for ColumnBuilder<'a> {
 pub struct ColumnsBuilder<'a> {
 	ctx: *mut c_void,
 	callbacks: BuilderCallbacks,
-	written_at_nanos: i64,
+	batch_time_nanos: i64,
 	_phantom: core::marker::PhantomData<&'a mut ()>,
 }
 
 impl<'a> ColumnsBuilder<'a> {
-	pub fn new(ctx: *mut c_void, callbacks: BuilderCallbacks, written_at_nanos: i64) -> Self {
+	pub fn new(ctx: *mut c_void, callbacks: BuilderCallbacks, batch_time_nanos: i64) -> Self {
 		assert!(!ctx.is_null(), "context pointer must not be null");
 		Self {
 			ctx,
 			callbacks,
-			written_at_nanos,
+			batch_time_nanos,
 			_phantom: core::marker::PhantomData,
 		}
 	}
@@ -225,7 +225,7 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
-		let times = vec![DateTime::from_nanos(self.written_at_nanos); row_numbers.len()];
+		let times = vec![DateTime::from_nanos(self.batch_time_nanos); row_numbers.len()];
 		self.insert_named(post, names.iter().copied(), row_numbers, &times)
 	}
 
@@ -265,7 +265,7 @@ impl<'a> ColumnsBuilder<'a> {
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
-		let times = vec![DateTime::from_nanos(self.written_at_nanos); pre_row_numbers.len()];
+		let times = vec![DateTime::from_nanos(self.batch_time_nanos); pre_row_numbers.len()];
 		self.update_named(
 			pre,
 			pre_names.iter().copied(),
@@ -324,7 +324,7 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
-		let times = vec![DateTime::from_nanos(self.written_at_nanos); row_numbers.len()];
+		let times = vec![DateTime::from_nanos(self.batch_time_nanos); row_numbers.len()];
 		self.remove_named(pre, names.iter().copied(), row_numbers, &times)
 	}
 
@@ -381,7 +381,7 @@ impl<'a> ColumnsBuilder<'a> {
 		// length, or null when the `Vec` is empty.
 		let code = unsafe {
 			(self.callbacks.emit_diff)(
-				self.written_at_nanos,
+				self.batch_time_nanos,
 				kind,
 				if pre_handles.is_empty() {
 					ptr::null()

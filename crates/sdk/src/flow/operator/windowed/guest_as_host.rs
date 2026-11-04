@@ -159,7 +159,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.remove_row_number_for_group(groups)?)
 	}
 
-	fn written_at(&self) -> DateTime {
-		self.0.written_at()
+	fn batch_time(&self) -> DateTime {
+		self.0.batch_time()
 	}
 }

@@ -26,7 +26,7 @@ impl ExternCTransformContext {
 			ColumnsBuilder::new(
 				self.ctx as *mut c_void,
 				(*self.ctx).callbacks.builder,
-				(*self.ctx).written_at_nanos,
+				(*self.ctx).batch_time_nanos,
 			)
 		}
 	}

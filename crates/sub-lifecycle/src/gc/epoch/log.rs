@@ -55,9 +55,9 @@ impl EpochLog {
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		txn.set(vec![(VersionEpochKey::new(period).into(), encode(at, version).into_bytes())])?;
-		let written_at = txn.commit_unchecked()?.version;
+		let batch_time = txn.commit_unchecked()?.version;
 
-		self.last = Some((period, written_at.0.max(version.0)));
+		self.last = Some((period, batch_time.0.max(version.0)));
 		Ok(true)
 	}
 

@@ -118,7 +118,7 @@ pub trait StateStore {
 
 	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
 
-	fn written_at(&self) -> DateTime;
+	fn batch_time(&self) -> DateTime;
 }
 
 pub trait TimerStore {
