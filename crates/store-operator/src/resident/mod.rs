@@ -749,6 +749,9 @@ impl Resident {
 			{
 				any_over_local_cap = true;
 			}
+			let evicted_rows = inner.buckets.take_evicted();
+			drop(inner);
+			drop(evicted_rows);
 		}
 		self.shared.operator_over_local_cap.store(any_over_local_cap, Ordering::Release);
 		(evicted, freed)

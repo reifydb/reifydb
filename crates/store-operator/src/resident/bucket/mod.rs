@@ -55,6 +55,10 @@ pub trait Bucket: Any + Send + Sync {
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize);
 
+	fn take_evicted(&mut self) -> Vec<WriteEntry> {
+		Vec::new()
+	}
+
 	fn settle_flushing(&mut self);
 
 	fn is_empty(&self) -> bool {
@@ -83,6 +87,7 @@ pub trait Bucket: Any + Send + Sync {
 #[derive(Default)]
 pub struct BucketMap {
 	buckets: HashMap<(OperatorId, KeyspaceId), Box<dyn Bucket>>,
+	evicted: Vec<WriteEntry>,
 }
 
 impl BucketMap {

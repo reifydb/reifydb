@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::mem;
+
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -15,7 +17,7 @@ use reifydb_core::{
 use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
-use crate::resident::bucket::{BucketMap, FrozenRows, StandardBucket};
+use crate::resident::bucket::{BucketMap, FrozenRows, StandardBucket, write::WriteEntry};
 
 impl BucketMap {
 	pub fn dirty_count(&self) -> usize {
@@ -42,11 +44,16 @@ impl BucketMap {
 				break;
 			}
 			let (count, released) = bucket.evict_clean(bytes, tombstones);
+			self.evicted.append(&mut bucket.take_evicted());
 			evicted += count;
 			freed = freed.saturating_add(released);
 		}
 		self.buckets.retain(|_, bucket| !bucket.is_empty());
 		(evicted, freed)
+	}
+
+	pub fn take_evicted(&mut self) -> Vec<WriteEntry> {
+		mem::take(&mut self.evicted)
 	}
 
 	pub fn retire_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> (usize, usize, ByteSize) {

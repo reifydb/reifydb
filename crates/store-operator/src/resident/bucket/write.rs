@@ -3,6 +3,7 @@
 
 use std::{
 	any::Any,
+	cell::Cell,
 	collections::{BTreeMap, btree_map::Entry},
 	iter::Peekable,
 	mem::{self, size_of},
@@ -260,6 +261,7 @@ pub struct StandardBucket<K: Keyspace> {
 	active_generation: u32,
 	frozen_generation: u32,
 	settled_generation: u32,
+	evicted: Vec<WriteEntry>,
 }
 
 impl<K: Keyspace> StandardBucket<K> {
@@ -278,6 +280,7 @@ impl<K: Keyspace> StandardBucket<K> {
 			active_generation: 1,
 			frozen_generation: 0,
 			settled_generation: 0,
+			evicted: Vec::new(),
 		}
 	}
 
@@ -358,48 +361,69 @@ impl<K: Keyspace> StandardBucket<K> {
 	}
 
 	pub fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
-		let mut evicted = 0usize;
-		let mut evicted_tombstones = 0usize;
-		let mut freed = ByteSize::ZERO;
+		let remaining_bytes = Cell::new(*bytes);
+		let remaining_tombstones = Cell::new(*tombstones);
+		let evicted = Cell::new(0usize);
+		let evicted_tombstones = Cell::new(0usize);
+		let freed = Cell::new(ByteSize::ZERO);
 		let suffix_cost = Self::suffix_bytes();
 		let group_cost = Self::group_bytes();
 		let generations = self.generations();
-		self.partitions.retain(|_, partition| {
-			{
-				let mut sweep = |entry: &mut WriteEntry, tombstone: bool| {
-					if !matches!(generations.staged(entry), Staged::Clean) {
-						return true;
-					}
-					if bytes.as_bytes() == 0 && (!tombstone || *tombstones == 0) {
-						return true;
-					}
-					if entry.take_reference() {
-						return true;
-					}
-					let cost = entry.row_bytes().saturating_add(suffix_cost);
-					freed = freed.saturating_add(cost);
-					*bytes = bytes.saturating_sub(cost);
-					if tombstone {
-						*tombstones = tombstones.saturating_sub(1);
-						evicted_tombstones += 1;
-					}
-					evicted += 1;
-					false
-				};
-				partition.live.retain(|_: &K::Suffix, entry: &mut WriteEntry| sweep(entry, false));
-				partition.deleted.retain(|_: &K::Suffix, entry: &mut WriteEntry| sweep(entry, true));
-			}
-			if partition.is_empty() {
-				freed = freed.saturating_add(group_cost);
-				*bytes = bytes.saturating_sub(group_cost);
+		let paid = |tombstone: bool| {
+			remaining_bytes.get().as_bytes() == 0 && (!tombstone || remaining_tombstones.get() == 0)
+		};
+		let evict = |entry: &mut WriteEntry, tombstone: bool| {
+			if !matches!(generations.staged(entry), Staged::Clean) || entry.take_reference() {
 				return false;
 			}
+			let cost = entry.row_bytes().saturating_add(suffix_cost);
+			freed.set(freed.get().saturating_add(cost));
+			remaining_bytes.set(remaining_bytes.get().saturating_sub(cost));
+			if tombstone {
+				remaining_tombstones.set(remaining_tombstones.get().saturating_sub(1));
+				evicted_tombstones.set(evicted_tombstones.get() + 1);
+			}
+			evicted.set(evicted.get() + 1);
 			true
-		});
-		self.entries -= evicted;
-		self.tombstones -= evicted_tombstones;
-		self.bytes = self.bytes.saturating_sub(freed);
-		(evicted, freed)
+		};
+		let mut emptied = Vec::new();
+		let mut removed = Vec::new();
+		for (group, partition) in self.partitions.iter_mut() {
+			if paid(true) {
+				break;
+			}
+			if !paid(false) {
+				for (_, entry) in partition.live.extract_if(.., |_, entry| evict(entry, false)) {
+					removed.push(entry);
+					if paid(false) {
+						break;
+					}
+				}
+			}
+			if !paid(true) {
+				for (_, entry) in partition.deleted.extract_if(.., |_, entry| evict(entry, true)) {
+					removed.push(entry);
+					if paid(true) {
+						break;
+					}
+				}
+			}
+			if partition.is_empty() {
+				freed.set(freed.get().saturating_add(group_cost));
+				remaining_bytes.set(remaining_bytes.get().saturating_sub(group_cost));
+				emptied.push(*group);
+			}
+		}
+		for group in emptied {
+			self.partitions.remove(&group);
+		}
+		self.evicted.append(&mut removed);
+		*bytes = remaining_bytes.get();
+		*tombstones = remaining_tombstones.get();
+		self.entries -= evicted.get();
+		self.tombstones -= evicted_tombstones.get();
+		self.bytes = self.bytes.saturating_sub(freed.get());
+		(evicted.get(), freed.get())
 	}
 
 	pub fn settle_flushing(&mut self) {
@@ -651,6 +675,10 @@ impl<K: Keyspace> Bucket for StandardBucket<K> {
 
 	fn evict_clean(&mut self, bytes: &mut ByteSize, tombstones: &mut usize) -> (usize, ByteSize) {
 		StandardBucket::evict_clean(self, bytes, tombstones)
+	}
+
+	fn take_evicted(&mut self) -> Vec<WriteEntry> {
+		mem::take(&mut self.evicted)
 	}
 
 	fn settle_flushing(&mut self) {

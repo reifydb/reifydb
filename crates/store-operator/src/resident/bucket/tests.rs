@@ -557,6 +557,59 @@ fn a_frozen_row_is_never_evicted_before_it_settles() {
 }
 
 #[test]
+fn a_sweep_stops_evicting_the_moment_its_deficit_is_paid() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	for n in 0..10 {
+		bucket.record(seven, suffix(n), Some(row("settled")));
+	}
+	assert_eq!(stage_rows(&mut bucket).len(), 10);
+	bucket.settle_flushing();
+
+	let (mut bytes, mut tombstones) = (ByteSize::from_bytes(u64::MAX), 0usize);
+	assert_eq!(bucket.evict_clean(&mut bytes, &mut tombstones).0, 0, "a fresh row earns one second chance");
+
+	let (mut bytes, mut tombstones) = (ByteSize::from_bytes(1), 0usize);
+	let (evicted, _) = bucket.evict_clean(&mut bytes, &mut tombstones);
+	assert_eq!(evicted, 1, "one row pays a one byte deficit, so a second eviction is a sweep that did not stop");
+	assert_eq!(bytes.as_bytes(), 0, "the deficit handed back must show it was paid");
+	assert_eq!(bucket.len(), 9, "the rows past the stop must stay resident");
+	assert!(bucket.get(seven, &suffix(0)).is_none(), "eviction walks in key order, so the first key goes first");
+	assert!(bucket.get(seven, &suffix(9)).is_some(), "the last key lies past the stop");
+}
+
+#[test]
+fn a_tombstone_deficit_evicts_tombstones_and_leaves_live_rows_alone() {
+	let seven = GroupId::hashed(Hash128(7));
+	let mut bucket = bucket();
+	for n in 0..4 {
+		bucket.record(seven, suffix(n), Some(row("live")));
+	}
+	assert_eq!(stage_rows(&mut bucket).len(), 4);
+	bucket.settle_flushing();
+	for n in 4..8 {
+		bucket.record(seven, suffix(n), Some(row("doomed")));
+	}
+	assert_eq!(stage_rows(&mut bucket).len(), 4);
+	bucket.settle_flushing();
+	for n in 4..8 {
+		bucket.record(seven, suffix(n), None);
+	}
+	assert_eq!(stage_rows(&mut bucket).len(), 4);
+	bucket.settle_flushing();
+
+	let mut evicted = 0;
+	for _ in 0..2 {
+		let (mut bytes, mut tombstones) = (ByteSize::ZERO, 2usize);
+		evicted += bucket.evict_clean(&mut bytes, &mut tombstones).0;
+	}
+	assert_eq!(evicted, 2, "the sweep must free exactly the two tombstones it was asked for");
+	for n in 0..4 {
+		assert!(bucket.get(seven, &suffix(n)).is_some(), "live row {n} is not part of a tombstone deficit");
+	}
+}
+
+#[test]
 fn deleting_a_never_persisted_row_during_its_flush_leaves_a_tombstone() {
 	let seven = GroupId::hashed(Hash128(7));
 	let mut bucket = bucket();
