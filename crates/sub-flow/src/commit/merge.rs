@@ -308,6 +308,7 @@ pub fn merge(
 		}
 	}
 	ordered.sort_by_key(|(table, version, entry)| (entry.version.source, *table, *version));
+	ordered.dedup_by_key(|(_, version, _)| *version);
 
 	Merged {
 		items: ordered.into_iter().map(|(_, _, entry)| entry).collect(),
@@ -574,6 +575,85 @@ mod tests {
 			source_objects,
 			per_source: true,
 		}
+	}
+
+	fn row_of_both_views(version: u64, source: u64) -> Arc<CommitEntry> {
+		let set = |storage: StorageId| Delta::Set {
+			key: RowKey {
+				storage,
+				row: RowNumber(version),
+			}
+			.into(),
+			bytes: EncodedBytes(CowVec::new(vec![0u8; 4])),
+			pre: SetPre::Absent,
+		};
+		Arc::new(CommitEntry::build(
+			ChangeVersion {
+				commit: cv(version),
+				source: SourceVersion(source),
+			},
+			Lsn::new(version),
+			DateTime::default(),
+			vec![set(StorageId::view(5)), set(StorageId::view(6))],
+		))
+	}
+
+	#[test]
+	fn a_commit_holding_both_producers_rows_merges_once_in_a_whole_step() {
+		// The committer groups slices of one source into one commit, so both streams hold it, and a reader must
+		// never run it twice.
+		let shared = row_of_both_views(7, 5);
+		let merged = merge(
+			cv(0),
+			&read(vec![], 20, false),
+			&two(
+				upstream(Some(7), read(vec![shared.clone()], 20, false)),
+				upstream_of(ViewId(6), Some(7), read(vec![shared], 20, false)),
+			),
+			&whole(&sources()),
+		);
+		assert_eq!(versions(&merged), vec![(7, 5)], "one commit must reach the reader exactly once");
+	}
+
+	#[test]
+	fn a_commit_holding_both_producers_rows_merges_once_in_a_per_source_step() {
+		// A per-source step collects from every stream before it sorts, so the same commit must not survive
+		// twice there either.
+		let objects = sources();
+		let shared = row_of_both_views(7, 5);
+		let merged = merge(
+			cv(0),
+			&read(vec![], 20, false),
+			&two(
+				upstream(Some(7), read(vec![shared.clone()], 20, false)),
+				upstream_of(ViewId(6), Some(7), read(vec![shared], 20, false)),
+			),
+			&per_source(&objects),
+		);
+		assert_eq!(versions(&merged), vec![(7, 5)], "one commit must reach the reader exactly once");
+	}
+
+	#[test]
+	fn a_shared_commit_keeps_the_commits_around_it_in_order() {
+		// Removing the repeat must drop only that commit, otherwise a neighbour at the same source is lost.
+		let shared = row_of_both_views(7, 5);
+		let merged = merge(
+			cv(0),
+			&read(vec![], 20, false),
+			&two(
+				upstream(
+					Some(8),
+					read(vec![view_row(6, 5), shared.clone(), view_row(8, 6)], 20, false),
+				),
+				upstream_of(ViewId(6), Some(8), read(vec![shared, other_view_row(9, 6)], 20, false)),
+			),
+			&whole(&sources()),
+		);
+		assert_eq!(
+			versions(&merged),
+			vec![(6, 5), (7, 5), (8, 6), (9, 6)],
+			"every other commit must stay, in order"
+		);
 	}
 
 	#[test]
