@@ -13,7 +13,7 @@ use reifydb_core::{
 		flow::{FlowEdge, FlowId, OperatorId},
 		id::{RingBufferId, TableId, ViewId},
 	},
-	operator_with::{AggregateWith, LookupWith},
+	operator_with::{AggregateWith, Emit, LookupWith},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -160,7 +160,10 @@ fn lookup_flow(left: TableId, right: LookupObject, key: &str) -> FlowDag {
 			right,
 			left: parse_expression(key).expect("the left key must parse"),
 			alias: Some("r".to_string()),
-			with: LookupWith::default(),
+			with: LookupWith {
+				retention: None,
+				emit: Emit::Off,
+			},
 		},
 	));
 	builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, LOOKUP)).expect("both edge ends must exist");
@@ -337,7 +340,10 @@ fn a_lookup_with_two_inputs_fails_registration_instead_of_reading_the_second_as_
 			right: LookupObject::Table(right),
 			left: parse_expression("k").expect("the left key must parse"),
 			alias: Some("r".to_string()),
-			with: LookupWith::default(),
+			with: LookupWith {
+				retention: None,
+				emit: Emit::Off,
+			},
 		},
 	));
 	builder.add_edge(FlowEdge::new(1, builder.id(), SOURCE, LOOKUP)).expect("both edge ends must exist");

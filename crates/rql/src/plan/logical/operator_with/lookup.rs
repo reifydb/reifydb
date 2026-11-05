@@ -18,10 +18,7 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith> {
-		let mut lookup = LookupWith {
-			retention: None,
-			emit: Emit::Off,
-		};
+		let mut lookup = LookupWith::default();
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => lookup.retention = Some(compile_lookup_retention(entry)?),

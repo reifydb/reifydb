@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	iter::once,
 	num::NonZeroU64,
 };
@@ -104,15 +104,27 @@ fn read_at(source: ObjectId, snapshot: &Snapshot, upstreams: &FlowUpstreams) -> 
 		.unwrap_or(snapshot.version)
 }
 
+fn lookup_right_inputs(flow: &FlowDag) -> HashSet<OperatorId> {
+	flow.get_operator_ids()
+		.filter_map(|id| flow.get_operator(&id))
+		.filter(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+		.filter_map(|node| node.inputs.get(1).copied())
+		.collect()
+}
+
 fn feed_order(flow: &FlowDag, flow_engine: &FlowEngineInner) -> Vec<ObjectId> {
 	let mut upstream: HashMap<OperatorId, BTreeSet<ObjectId>> = HashMap::new();
 	let mut after: BTreeMap<ObjectId, BTreeSet<ObjectId>> = BTreeMap::new();
 	let mut sources: BTreeSet<ObjectId> = BTreeSet::new();
+	let lookup_rights = lookup_right_inputs(flow);
 	for id in flow.topological_order() {
 		let Some(node) = flow.get_operator(id) else {
 			continue;
 		};
-		let mut reached: BTreeSet<ObjectId> = source_object(node).into_iter().collect();
+		let mut reached: BTreeSet<ObjectId> = match lookup_rights.contains(id) {
+			true => BTreeSet::new(),
+			false => source_object(node).into_iter().collect(),
+		};
 		sources.extend(reached.iter().copied());
 		for input in &node.inputs {
 			if let Some(inputs) = upstream.get(input) {
@@ -384,7 +396,14 @@ mod tests {
 	use std::sync::{Arc, mpsc};
 
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::{actors::pending::PendingWrite, commit::watermark::ReaderWatermark};
+	use reifydb_core::{
+		actors::pending::PendingWrite,
+		commit::watermark::ReaderWatermark,
+		common::{JoinType, TimeDomain},
+		flow::operator::LookupObject,
+		interface::catalog::{flow::FlowEdge, id::TableId},
+		operator_with::LookupWith,
+	};
 	use reifydb_flow_async::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{FlowTransaction, substrate::FlowSubstrate},
@@ -544,5 +563,37 @@ mod tests {
 
 		assert_eq!(materialization.output_frontier(), version);
 		assert_eq!(te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0), 3);
+	}
+
+	#[test]
+	fn a_lookup_right_input_is_not_fed_at_backfill_and_a_left_input_is() {
+		// feeding the right table would scan all of it to probe an index that is still empty.
+		const LEFT_SOURCE: OperatorId = OperatorId(1);
+		const RIGHT_SOURCE: OperatorId = OperatorId(2);
+		const LOOKUP: OperatorId = OperatorId(3);
+		let source = || OperatorDef::SourceTable {
+			table: TableId(1),
+			time_domain: TimeDomain::None,
+		};
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(LEFT_SOURCE, source()));
+		builder.add_node(FlowNode::new(RIGHT_SOURCE, source()));
+		builder.add_node(FlowNode::new(
+			LOOKUP,
+			OperatorDef::Lookup {
+				join_type: JoinType::Inner,
+				right: LookupObject::Table(TableId(1)),
+				left: Vec::new(),
+				alias: None,
+				with: LookupWith::default(),
+			},
+		));
+		builder.add_edge(FlowEdge::new(1, builder.id(), LEFT_SOURCE, LOOKUP)).unwrap();
+		builder.add_edge(FlowEdge::new(2, builder.id(), RIGHT_SOURCE, LOOKUP)).unwrap();
+
+		let rights = lookup_right_inputs(&builder.build());
+
+		assert!(rights.contains(&RIGHT_SOURCE));
+		assert!(!rights.contains(&LEFT_SOURCE));
 	}
 }

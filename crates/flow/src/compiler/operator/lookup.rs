@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::{flow::OperatorId, view::View},
 		identifier::ColumnObject,
 	},
-	operator_with::LookupWith,
+	operator_with::{Emit, LookupWith},
 };
 use reifydb_rql::{nodes::LookupNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
@@ -138,6 +138,10 @@ impl CompileOperator for LookupCompiler {
 		let left = order_left_keys(left_keys, &right_keys, &alias, &right)?;
 
 		let left_node = compiler.compile_plan(txn, *self.left)?;
+		let right_node = match self.with.emit {
+			Emit::On => Some(compiler.compile_plan(txn, *self.right)?),
+			Emit::Off => None,
+		};
 
 		let node_id = compiler.add_node(
 			txn,
@@ -157,6 +161,9 @@ impl CompileOperator for LookupCompiler {
 		)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
+		if let Some(right_node) = right_node {
+			compiler.add_edge(txn, &right_node, &node_id)?;
+		}
 
 		Ok(node_id)
 	}

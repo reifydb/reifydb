@@ -20,7 +20,7 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
 	row::row_shape_from_columns,
 };
 use reifydb_flow::{
@@ -322,15 +322,23 @@ impl FlowEngineInner {
 		with: LookupWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		if inputs.len() != 1 {
+		let expected = match with.emit {
+			Emit::On => 2,
+			Emit::Off => 1,
+		};
+		if inputs.len() != expected {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
 				operator: "Lookup",
-				expected: "exactly 1",
+				expected: match with.emit {
+					Emit::On => "exactly 2",
+					Emit::Off => "exactly 1",
+				},
 				found: inputs.len(),
 			}));
 		}
 
 		let left_node = inputs[0];
+		let right_node = inputs.get(1).copied();
 		let left_schema = self
 			.operators
 			.get(&(flow_id, left_node))
@@ -398,6 +406,7 @@ impl FlowEngineInner {
 		let operator = LookupOperator::new(LookupConfig {
 			operator: operator_id,
 			left_node,
+			right_node,
 			join_type,
 			right,
 			deferred,

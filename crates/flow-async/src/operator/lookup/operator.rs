@@ -38,6 +38,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
+	util::hash::Hash128,
 	value::{
 		datetime::DateTime,
 		dictionary::DictionaryId,
@@ -56,11 +57,14 @@ use super::{
 };
 use crate::{
 	operator::{
-		HostOperator,
+		HostOperator, InputOrder,
 		host::HostContext,
 		join::{
 			column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
 			kept::dictionary_columns,
+			state::JoinSide,
+			store::Store,
+			strategy::hash::{JoinRows, decode_runs},
 		},
 		row_times,
 		state::seal::ledger::FiredAt,
@@ -71,9 +75,25 @@ use crate::{
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
+const RE_EMIT_PAGE: usize = 1024;
+
+fn key_partition(
+	host: &mut dyn HostContext,
+	partitions: &PartitionLookup,
+	reads: &mut ChangeReads,
+	key: &RowKey,
+) -> Result<Option<Partition>> {
+	match key {
+		RowKey::Missing | RowKey::Unmatched => Ok(None),
+		RowKey::Found(partition) => Ok(Some(*partition)),
+		RowKey::Values(values) => partitions.partition(host, &mut reads.dictionary, values),
+	}
+}
+
 pub struct LookupConfig {
 	pub operator: OperatorId,
 	pub left_node: OperatorId,
+	pub right_node: Option<OperatorId>,
 	pub join_type: JoinType,
 	pub right: LookupObject,
 	pub deferred: bool,
@@ -99,6 +119,7 @@ pub struct LookupOperator {
 	columns: JoinedColumnsCache,
 	output_sumtypes: HashMap<String, SumTypeId>,
 	left_kept: Vec<(String, DictionaryId)>,
+	left_store: Store,
 }
 
 #[derive(Default)]
@@ -110,6 +131,7 @@ struct ChangeReads {
 
 struct Resolved {
 	right: Option<(RowNumber, EncodedBytes)>,
+	key: Option<Partition>,
 }
 
 #[derive(Clone, Copy)]
@@ -149,6 +171,7 @@ struct Output {
 	right_rows: Vec<EncodedBytes>,
 	cleared: Vec<RowNumber>,
 	armed: Vec<(RowNumber, DateTime)>,
+	held: Vec<(usize, Partition)>,
 }
 
 impl Output {
@@ -181,6 +204,15 @@ impl Output {
 
 	fn insert(&mut self, published: Published) {
 		self.inserted[published.kind()].push(published);
+	}
+
+	fn publish(&mut self, pre: Option<Published>, post: Option<Published>) {
+		match (pre, post) {
+			(Some(pre), Some(post)) => self.update(pre, post),
+			(Some(pre), None) => self.remove(pre),
+			(None, Some(post)) => self.insert(post),
+			(None, None) => {}
+		}
 	}
 
 	fn update(&mut self, pre: Published, post: Published) {
@@ -216,11 +248,40 @@ impl LookupOperator {
 			columns,
 			output_sumtypes,
 			left_kept,
+			left_store: Store::new(JoinSide::Left),
 		})
 	}
 
+	fn re_emits(&self) -> bool {
+		self.config.right_node.is_some()
+	}
+
+	fn is_right(&self, origin: &ChangeOrigin) -> bool {
+		matches!((origin, self.config.right_node), (ChangeOrigin::Flow(node), Some(right)) if *node == right)
+	}
+
+	fn visible(&self, published: Published) -> Option<Published> {
+		match (published, self.config.join_type) {
+			(
+				Published::Unmatched {
+					..
+				},
+				JoinType::Inner,
+			) => None,
+			_ => Some(published),
+		}
+	}
+
+	fn partitions(&self) -> PartitionLookup<'_> {
+		PartitionLookup::new(&self.config.columns, &self.config.partition_by, self.re_emits())
+	}
+
 	fn decode_left(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Change> {
+		let parent = change.origin.clone();
 		for diff in change.diffs.iter_mut() {
+			if self.is_right(diff.origin().unwrap_or(&parent)) {
+				continue;
+			}
 			match diff {
 				Diff::Insert {
 					post,
@@ -311,13 +372,8 @@ impl LookupOperator {
 		key: &RowKey,
 		version: CommitVersion,
 	) -> Result<Option<(RowNumber, EncodedBytes)>> {
-		let partition = match key {
-			RowKey::Missing | RowKey::Unmatched => return Ok(None),
-			RowKey::Found(partition) => *partition,
-			RowKey::Values(values) => match partitions.partition(host, &mut reads.dictionary, values)? {
-				Some(partition) => partition,
-				None => return Ok(None),
-			},
+		let Some(partition) = key_partition(host, partitions, reads, key)? else {
+			return Ok(None);
 		};
 		match reads.rows.entry((partition, version)) {
 			Entry::Occupied(read) => Ok(read.get().clone()),
@@ -383,11 +439,16 @@ impl LookupOperator {
 		}
 		let version = self.read_version(host, source, reads);
 		let right = self.read_right(host, partitions, reads, key, version)?;
-		if right.is_none() && self.config.join_type == JoinType::Inner {
+		if right.is_none() && self.config.join_type == JoinType::Inner && !self.re_emits() {
 			return Ok(None);
 		}
+		let key = match self.re_emits() {
+			true => key_partition(host, partitions, reads, key)?,
+			false => None,
+		};
 		Ok(Some(Resolved {
 			right,
+			key,
 		}))
 	}
 
@@ -402,7 +463,10 @@ impl LookupOperator {
 		resolved: Resolved,
 		output: &mut Output,
 	) -> Result<Published> {
-		ledger.store(row_number, StoredRead::new(output_id, resolved.right.as_ref()))?;
+		ledger.store(row_number, StoredRead::new(output_id, resolved.right.as_ref(), resolved.key))?;
+		if let Some(key) = resolved.key {
+			output.held.push((left_idx, key));
+		}
 		let published = output.published(left_idx, output_id, resolved.right);
 		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
@@ -412,6 +476,7 @@ impl LookupOperator {
 
 	fn undo(
 		&self,
+		host: &mut dyn HostContext,
 		ledger: &mut ReadLedger,
 		pre: &RecordBatch,
 		left_idx: usize,
@@ -422,6 +487,13 @@ impl LookupOperator {
 			return Ok(None);
 		};
 		output.cleared.push(row_number);
+		if let Some(key) = read.key {
+			self.left_store.remove_row_in(
+				host,
+				self.left_store.group_of(&Hash128(key.0)),
+				&[row_number],
+			)?;
+		}
 		Ok(Some((output.published(left_idx, read.output, read.right()), read.output)))
 	}
 
@@ -433,7 +505,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
+		let partitions = self.partitions();
 		let keys = self.key_values(host, &partitions, reads, post)?;
 		let wanted = keys
 			.iter()
@@ -466,9 +538,12 @@ impl LookupOperator {
 					read,
 					&mut output,
 				)?;
-				output.insert(published);
+				if let Some(published) = self.visible(published) {
+					output.insert(published);
+				}
 			}
 			ledger.commit(host)?;
+			self.hold_left(host, post, &mut output)?;
 		}
 		let builder = self.builder(post.schema_ref());
 		self.finish(host, output, None, Some((post, &builder)), result)
@@ -484,7 +559,9 @@ impl LookupOperator {
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
 		let mut output = Output::default();
 		for left_idx in 0..pre.num_rows() {
-			if let Some((published, _)) = self.undo(&mut ledger, pre, left_idx, &mut output)? {
+			if let Some((published, _)) = self.undo(host, &mut ledger, pre, left_idx, &mut output)?
+				&& let Some(published) = self.visible(published)
+			{
 				output.remove(published);
 			}
 		}
@@ -501,7 +578,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
+		let partitions = self.partitions();
 		let post_keys = self.key_values(host, &partitions, reads, post)?;
 		let pre_builder = self.builder(pre.schema_ref());
 		let post_builder = self.builder(post.schema_ref());
@@ -512,7 +589,7 @@ impl LookupOperator {
 		self.prefetch(host, reads, wanted)?;
 		let mut output = Output::default();
 		for left_idx in 0..post.num_rows() {
-			let undone = self.undo(&mut ledger, pre, left_idx, &mut output)?;
+			let undone = self.undo(host, &mut ledger, pre, left_idx, &mut output)?;
 			let published = match self.resolve(
 				host,
 				&partitions,
@@ -538,16 +615,146 @@ impl LookupOperator {
 				}
 				None => None,
 			};
-			match (undone.map(|(pre, _)| pre), published) {
-				(Some(pre), Some(post)) => output.update(pre, post),
-				(Some(pre), None) => output.remove(pre),
-				(None, Some(post)) => output.insert(post),
-				(None, None) => {}
-			}
+			let pre = undone.and_then(|(pre, _)| self.visible(pre));
+			let post = published.and_then(|post| self.visible(post));
+			output.publish(pre, post);
 		}
 		ledger.commit(host)?;
 		reserve.commit(host)?;
+		self.hold_left(host, post, &mut output)?;
 		self.finish(host, output, Some((pre, &pre_builder)), Some((post, &post_builder)), result)
+	}
+
+	fn hold_left(&self, host: &mut dyn HostContext, rows: &RecordBatch, output: &mut Output) -> Result<()> {
+		let held = mem::take(&mut output.held);
+		if held.is_empty() {
+			return Ok(());
+		}
+		let mut left = JoinRows::new(rows, JoinSide::Left, host.batch_time());
+		let encoded = left.encoded(host, &self.left_store)?;
+		for (left_idx, key) in held {
+			let group = self.left_store.group_of(&Hash128(key.0));
+			self.left_store.write_row(host, group, encoded.number(left_idx), encoded.row(left_idx))?;
+		}
+		Ok(())
+	}
+
+	fn changed_keys(
+		&self,
+		host: &mut dyn HostContext,
+		partitions: &PartitionLookup,
+		reads: &mut ChangeReads,
+		rows: &RecordBatch,
+		changed: &mut Vec<Partition>,
+	) -> Result<()> {
+		let mut columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(self.config.partition_by.len());
+		for name in &self.config.partition_by {
+			let Some(index) = resolve_column(rows, name) else {
+				return internal_err!("lookup right change carries no partition column {}", name);
+			};
+			columns.push((rows.schema_ref().fields()[index].clone(), rows.column(index).clone()));
+		}
+		for key in partitions.keys(host, &mut reads.dictionary, &columns, rows.num_rows())? {
+			if let Some(partition) = key_partition(host, partitions, reads, &key)?
+				&& !changed.contains(&partition)
+			{
+				changed.push(partition);
+			}
+		}
+		Ok(())
+	}
+
+	fn apply_right(
+		&mut self,
+		host: &mut dyn HostContext,
+		diff: &Diff,
+		source: SourceVersion,
+		reads: &mut ChangeReads,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let mut changed = Vec::new();
+		{
+			let partitions = self.partitions();
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => self.changed_keys(host, &partitions, reads, post, &mut changed)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					self.changed_keys(host, &partitions, reads, pre, &mut changed)?;
+					self.changed_keys(host, &partitions, reads, post, &mut changed)?;
+				}
+				Diff::Remove {
+					pre,
+					..
+				} => self.changed_keys(host, &partitions, reads, pre, &mut changed)?,
+			}
+		}
+		let version = self.read_version(host, source, reads);
+		self.prefetch(host, reads, changed.iter().map(|partition| (*partition, version)).collect())?;
+		for partition in changed {
+			let right = reads.rows.get(&(partition, version)).cloned().flatten();
+			self.re_emit(host, partition, right, result)?;
+		}
+		Ok(())
+	}
+
+	fn re_emit(
+		&mut self,
+		host: &mut dyn HostContext,
+		partition: Partition,
+		right: Option<(RowNumber, EncodedBytes)>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let group = self.left_store.group_of(&Hash128(partition.0));
+		let mut after = None;
+		loop {
+			let block = self.left_store.rows_for_group(host, group, after.as_ref(), RE_EMIT_PAGE)?;
+			let Some((last, _)) = block.last() else {
+				return Ok(());
+			};
+			let last = *last;
+			let more = block.len() == RE_EMIT_PAGE;
+			for run in decode_runs(host, &self.left_store, block)? {
+				self.re_emit_run(host, &run, right.as_ref(), result)?;
+			}
+			if !more {
+				return Ok(());
+			}
+			after = Some(last);
+		}
+	}
+
+	fn re_emit_run(
+		&mut self,
+		host: &mut dyn HostContext,
+		run: &RecordBatch,
+		right: Option<&(RowNumber, EncodedBytes)>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let numbers = require_row_numbers(run)?;
+		let mut ledger = ReadLedger::read(host, numbers.iter().copied())?;
+		let mut output = Output::default();
+		for (left_idx, row) in numbers.iter().enumerate() {
+			let Some(stored) = ledger.take(*row)? else {
+				return internal_err!("lookup holds left row {} with no read", row.value());
+			};
+			if stored.holds(right) {
+				ledger.store(*row, stored)?;
+				continue;
+			}
+			let pre = output.published(left_idx, stored.output, stored.right());
+			let post = output.published(left_idx, stored.output, right.cloned());
+			ledger.store(*row, StoredRead::new(stored.output, right, stored.key))?;
+			output.publish(self.visible(pre), self.visible(post));
+		}
+		ledger.commit(host)?;
+		let builder = self.builder(run.schema_ref());
+		self.finish(host, output, Some((run, &builder)), Some((run, &builder)), result)
 	}
 
 	fn finish(
@@ -681,6 +888,10 @@ impl HostOperator for LookupOperator {
 		let mut reads = ChangeReads::default();
 		for diff in change.diffs {
 			let origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
+			if self.is_right(&origin) {
+				self.apply_right(host, &diff, source, &mut reads, &mut result)?;
+				continue;
+			}
 			if !matches!(origin, ChangeOrigin::Flow(from_node) if from_node == self.config.left_node) {
 				return Err(Error::from(FlowGraphError::UnknownDiffOrigin {
 					operator: "Lookup",
@@ -713,6 +924,10 @@ impl HostOperator for LookupOperator {
 			self.expiry.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
+	}
+
+	fn input_order(&self) -> InputOrder {
+		InputOrder::Reversed
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
@@ -835,6 +1050,7 @@ mod tests {
 		LookupOperator::new(LookupConfig {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
+			right_node: None,
 			join_type,
 			right: LookupObject::Table(table.id),
 			deferred: true,
@@ -859,6 +1075,7 @@ mod tests {
 		LookupOperator::new(LookupConfig {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
+			right_node: None,
 			join_type: JoinType::Left,
 			right: LookupObject::RingBuffer(ringbuffer.id),
 			deferred: false,
@@ -994,7 +1211,7 @@ mod tests {
 
 		let mut txn = txn_at(&engine, version);
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		let partition = PartitionLookup::new(&table.columns, &table.partition_by)
+		let partition = PartitionLookup::new(&table.columns, &table.partition_by, false)
 			.partition(&mut host, &mut DictionaryMemo::default(), &[Value::Utf8("a".to_string())])
 			.unwrap();
 		assert_eq!(partition, Some(stored[0].0), "the table row must be found under the lookup's partition");
@@ -1077,7 +1294,7 @@ mod tests {
 		let later = engine.inner().current_version().unwrap();
 		let mut txn = txn_at(&engine, later);
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		let partition = PartitionLookup::new(&view_columns, &["k".to_string()])
+		let partition = PartitionLookup::new(&view_columns, &["k".to_string()], false)
 			.partition(&mut host, &mut DictionaryMemo::default(), &[Value::Utf8("a".to_string())])
 			.unwrap();
 		assert_eq!(partition, Some(stored[0].0), "the view row must be found under the lookup's partition");
@@ -1397,7 +1614,7 @@ mod tests {
 			.flatten()
 			.expect("the right row interned its key");
 		let left = id_rows(other.id, id, 6, at_millis(5));
-		let partitions = PartitionLookup::new(&table.columns, &table.partition_by);
+		let partitions = PartitionLookup::new(&table.columns, &table.partition_by, false);
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
 		let column = (left.schema_ref().fields()[0].clone(), left.column(0).clone());
 		let mut memo = DictionaryMemo::default();
@@ -1517,6 +1734,232 @@ mod tests {
 		assert!(stores_a_right_row(&mut txn, 8), "row 8 outlives the fire");
 		let out = run(&mut op, &mut txn, version, Diff::remove(rows(&[Some("a")], &[7], at_millis(5_000))));
 		assert!(out.is_empty(), "an expired row has nothing left to retract");
+	}
+
+	const RIGHT: u64 = 75;
+
+	fn re_emitting(table: &Table, join_type: JoinType, retention: Option<Duration>) -> LookupOperator {
+		let mut op = lookup(table, join_type, retention);
+		op.config.right_node = Some(OperatorId(RIGHT));
+		op
+	}
+
+	fn right_rows(key: &str) -> RecordBatch {
+		batch(vec![utf8("k", vec![key.to_string()])]).unwrap()
+	}
+
+	fn run_right(
+		op: &mut LookupOperator,
+		txn: &mut DeferredTransaction,
+		source: CommitVersion,
+		diff: Diff,
+	) -> Vec<Diff> {
+		let change = Change::from_flow(
+			OperatorId(RIGHT),
+			ChangeVersion::from(source),
+			vec![diff],
+			DateTime::default(),
+		);
+		let mut host = TxnHostContext::new(txn, OperatorId(OP));
+		op.apply(&mut host, change).unwrap().diffs.to_vec()
+	}
+
+	#[test]
+	fn a_late_right_row_publishes_the_waiting_left_row_once() {
+		// a dropped left row would stay missing for good, and an unchanged read must not emit again.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let empty = put_right(&engine, "other", 1);
+		let mut op = re_emitting(&table, JoinType::Inner, None);
+		let mut txn = txn_at(&engine, empty);
+		let out = run(&mut op, &mut txn, empty, Diff::insert(rows(&[Some("a")], &[7], at_millis(5))));
+		assert!(out.is_empty(), "an inner row with no right row publishes nothing yet");
+		commit(&engine, &mut txn);
+
+		let arrived = put_right(&engine, "a", 10);
+		let mut txn = txn_at(&engine, arrived);
+		let published = only_insert(&run_right(&mut op, &mut txn, arrived, Diff::insert(right_rows("a"))));
+		assert_eq!(cell(&published, "lk", 0), Value::Utf8("a".to_string()));
+		assert_eq!(cell(&published, "r_v", 0), Value::Int4(10));
+
+		let again = run_right(&mut op, &mut txn, arrived, Diff::insert(right_rows("a")));
+		assert!(again.is_empty(), "the read did not change, so nothing may be emitted");
+	}
+
+	#[test]
+	fn a_right_change_updates_the_held_row_and_a_later_retract_returns_the_new_value() {
+		// retracting the first value after a re-emit would leave a row the view no longer holds.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = re_emitting(&table, JoinType::Inner, None);
+		let mut txn = txn_at(&engine, first);
+		let published = only_insert(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		commit(&engine, &mut txn);
+
+		let second = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, second);
+		let out = run_right(&mut op, &mut txn, second, Diff::insert(right_rows("a")));
+		let [
+			Diff::Update {
+				pre,
+				post,
+				..
+			},
+		] = out.as_slice()
+		else {
+			panic!("a changed right row must update the held row, got {out:?}");
+		};
+		assert_eq!(cell(pre, "r_v", 0), Value::Int4(10));
+		assert_eq!(cell(post, "r_v", 0), Value::Int4(11));
+		assert_eq!(
+			row_numbers(post).unwrap(),
+			row_numbers(&published).unwrap(),
+			"the output row number must survive a re-emit"
+		);
+
+		let retracted = only_remove(&run(
+			&mut op,
+			&mut txn,
+			second,
+			Diff::remove(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		assert_eq!(cell(&retracted, "r_v", 0), Value::Int4(11));
+		commit(&engine, &mut txn);
+
+		let third = put_right(&engine, "a", 12);
+		let mut txn = txn_at(&engine, third);
+		let out = run_right(&mut op, &mut txn, third, Diff::insert(right_rows("a")));
+		assert!(out.is_empty(), "a removed left row must have left the index");
+	}
+
+	#[test]
+	fn a_right_row_going_away_retracts_an_inner_row_and_blanks_a_left_row() {
+		// the two forms differ exactly here: inner has no row without a match, left keeps one with none.
+		for (join_type, expect_insert) in [(JoinType::Inner, false), (JoinType::Left, true)] {
+			let engine = TestEngine::new();
+			let table = right_table(&engine, false);
+			let first = put_right(&engine, "a", 10);
+			let mut op = re_emitting(&table, join_type, None);
+			let mut txn = txn_at(&engine, first);
+			only_insert(&run(
+				&mut op,
+				&mut txn,
+				first,
+				Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+			));
+			commit(&engine, &mut txn);
+
+			engine.command("DELETE t::r FILTER k == 'a'");
+			let gone = engine.inner().current_version().expect("current version");
+			let mut txn = txn_at(&engine, gone);
+			let out = run_right(&mut op, &mut txn, gone, Diff::remove(right_rows("a")));
+
+			assert!(
+				matches!(out.first(), Some(Diff::Remove { .. })),
+				"the matched row must be retracted, got {out:?}"
+			);
+			assert_eq!(
+				out.iter().any(|diff| matches!(diff, Diff::Insert { .. })),
+				expect_insert,
+				"only a left lookup keeps the row, with none: {out:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn an_expired_left_row_leaves_the_index_and_is_never_re_emitted() {
+		// a row left in the index would publish past its retention, against a view row already gone.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = re_emitting(&table, JoinType::Inner, Some(Duration::from_seconds(10).unwrap()));
+		let mut txn = txn_at(&engine, first);
+		run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(5_000))));
+		run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[8], at_millis(30_000))));
+		let timer = Timer {
+			due: at_millis(20_000),
+			kind: TimerKind::Maintenance,
+			key: LookupExpiry::timer_key(),
+		};
+		txn.disarm_timer(OperatorId(OP), &timer).unwrap();
+		op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();
+		commit(&engine, &mut txn);
+
+		let second = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, second);
+		let out = run_right(&mut op, &mut txn, second, Diff::insert(right_rows("a")));
+
+		let [
+			Diff::Update {
+				post,
+				..
+			},
+		] = out.as_slice()
+		else {
+			panic!("only the live row may re-emit, got {out:?}");
+		};
+		assert_eq!(post.num_rows(), 1);
+		assert_eq!(cell(post, "r_v", 0), Value::Int4(11));
+	}
+
+	#[test]
+	fn a_right_change_that_leaves_a_left_row_unmatched_emits_nothing() {
+		// the published row did not change, so an update here would only churn the view.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let empty = put_right(&engine, "other", 1);
+		let mut op = re_emitting(&table, JoinType::Left, None);
+		let mut txn = txn_at(&engine, empty);
+		only_insert(&run(&mut op, &mut txn, empty, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		commit(&engine, &mut txn);
+
+		let mut txn = txn_at(&engine, empty);
+		let out = run_right(&mut op, &mut txn, empty, Diff::remove(right_rows("a")));
+
+		assert!(out.is_empty(), "no right row before and none after is no change: {out:?}");
+	}
+
+	#[test]
+	fn a_text_left_key_missing_from_the_right_dictionary_still_waits_for_its_row() {
+		// with no id the row could not be indexed, so a late right row would never find it.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, true);
+		let empty = put_right(&engine, "other", 1);
+		let mut op = re_emitting(&table, JoinType::Inner, None);
+		let mut txn = txn_at(&engine, empty);
+		let out = run(&mut op, &mut txn, empty, Diff::insert(rows(&[Some("a")], &[7], at_millis(5))));
+		assert!(out.is_empty());
+		commit(&engine, &mut txn);
+
+		let arrived = put_right(&engine, "a", 10);
+		let mut txn = txn_at(&engine, arrived);
+		let published = only_insert(&run_right(&mut op, &mut txn, arrived, Diff::insert(right_rows("a"))));
+
+		assert_eq!(cell(&published, "r_v", 0), Value::Int4(10));
+	}
+
+	#[test]
+	fn a_lookup_without_emit_refuses_a_right_change() {
+		// with no right node configured a right change has no meaning, so it must fail loud, not re-emit.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let version = put_right(&engine, "a", 10);
+		let mut op = lookup(&table, JoinType::Left, None);
+		let mut txn = txn_at(&engine, version);
+		let change = Change::from_flow(
+			OperatorId(RIGHT),
+			ChangeVersion::from(version),
+			vec![Diff::insert(right_rows("a"))],
+			DateTime::default(),
+		);
+		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
+		assert!(op.apply(&mut host, change).is_err());
 	}
 
 	#[test]

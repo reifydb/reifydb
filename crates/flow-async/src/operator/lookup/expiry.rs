@@ -5,14 +5,15 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{key::operator::state::GroupId, state::timer::TimerKind};
 use reifydb_value::{
 	Result,
+	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
-use super::store::ReadLedger;
+use super::store::{ReadLedger, StoredRead};
 use crate::{
 	operator::{
 		host::HostContext,
-		join::expiry::JoinExpiryIndex,
+		join::{expiry::JoinExpiryIndex, state::JoinSide, store::Store},
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
 	transaction::join_expiry::DueStart,
@@ -84,8 +85,15 @@ impl LookupExpiry {
 				break page.next;
 			}
 			let mut ledger = ReadLedger::read(host, page.due.iter().map(|entry| entry.row_number))?;
+			let left = Store::new(JoinSide::Left);
 			for entry in &page.due {
-				ledger.take(entry.row_number)?;
+				if let Some(StoredRead {
+					key: Some(key),
+					..
+				}) = ledger.take(entry.row_number)?
+				{
+					left.remove_row_in(host, left.group_of(&Hash128(key.0)), &[entry.row_number])?;
+				}
 			}
 			ledger.commit(host)?;
 			host.join_expiry_free(&page.due)?;

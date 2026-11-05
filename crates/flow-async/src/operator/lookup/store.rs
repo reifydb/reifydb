@@ -20,7 +20,11 @@ use reifydb_core::{
 	state::{batch::StateBatch, typed::typed_key},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	util::cowvec::CowVec,
+	value::{partition::Partition, row_number::RowNumber},
+};
 
 use crate::{error::FlowStateError, operator::host::HostContext};
 
@@ -29,13 +33,29 @@ use crate::{error::FlowStateError, operator::host::HostContext};
 pub(crate) struct StoredRead {
 	pub(crate) output: RowNumber,
 	pub(crate) right: Option<(RowNumber, Vec<u8>)>,
+	pub(crate) key: Option<Partition>,
 }
 
 impl StoredRead {
-	pub(crate) fn new(output: RowNumber, right: Option<&(RowNumber, EncodedBytes)>) -> Self {
+	pub(crate) fn new(
+		output: RowNumber,
+		right: Option<&(RowNumber, EncodedBytes)>,
+		key: Option<Partition>,
+	) -> Self {
 		Self {
 			output,
 			right: right.map(|(number, bytes)| (*number, bytes.as_ref().to_vec())),
+			key,
+		}
+	}
+
+	pub(crate) fn holds(&self, right: Option<&(RowNumber, EncodedBytes)>) -> bool {
+		match (&self.right, right) {
+			(Some((held, held_bytes)), Some((number, bytes))) => {
+				held == number && held_bytes.as_slice() == bytes.as_ref()
+			}
+			(None, None) => true,
+			_ => false,
 		}
 	}
 

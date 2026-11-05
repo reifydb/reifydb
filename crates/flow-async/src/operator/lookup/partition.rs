@@ -44,6 +44,7 @@ impl DictionaryMemo {
 		host: &mut dyn HostContext,
 		dictionary: DictionaryId,
 		values: &[Value],
+		intern: bool,
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		let mut seen = HashSet::new();
 		let missing: Vec<Value> = values
@@ -55,7 +56,18 @@ impl DictionaryMemo {
 			.cloned()
 			.collect();
 		if !missing.is_empty() {
-			let ids = host.dictionary_find(dictionary, &missing)?;
+			let ids = match intern {
+				true => {
+					let Some(entries) = host.dictionary(dictionary)? else {
+						return internal_err!(
+							"lookup dictionary {:?} is not in the catalog",
+							dictionary
+						);
+					};
+					host.dictionary_intern(&entries, &missing)?.into_iter().map(Some).collect()
+				}
+				false => host.dictionary_find(dictionary, &missing)?,
+			};
 			if ids.len() != missing.len() {
 				return internal_err!(
 					"dictionary find answered {} ids for {} values",
@@ -78,10 +90,11 @@ pub struct PartitionLookup<'a> {
 	columns: &'a [Column],
 	partition_by: &'a [String],
 	slots: Vec<Option<PartitionSlot>>,
+	intern: bool,
 }
 
 impl<'a> PartitionLookup<'a> {
-	pub fn new(columns: &'a [Column], partition_by: &'a [String]) -> Self {
+	pub fn new(columns: &'a [Column], partition_by: &'a [String], intern: bool) -> Self {
 		let slots = partition_by
 			.iter()
 			.map(|name| {
@@ -98,6 +111,7 @@ impl<'a> PartitionLookup<'a> {
 			columns,
 			partition_by,
 			slots,
+			intern,
 		}
 	}
 
@@ -127,7 +141,7 @@ impl<'a> PartitionLookup<'a> {
 			};
 			let value = cast_value(value.clone(), &slot.target)?;
 			match slot.dictionary {
-				Some(dictionary) => match memo.find(host, dictionary, &[value])?[0] {
+				Some(dictionary) => match memo.find(host, dictionary, &[value], self.intern)?[0] {
 					Some(id) => hashed.push(id.to_value()),
 					None => return Ok(None),
 				},
@@ -204,7 +218,7 @@ impl<'a> PartitionLookup<'a> {
 			let values: Vec<Value> = full.iter().map(|&row| cast.get_value(row)).collect();
 			match slot.dictionary {
 				Some(dictionary) => {
-					let ids = memo.find(host, dictionary, &values)?;
+					let ids = memo.find(host, dictionary, &values, self.intern)?;
 					for ((key, hit), id) in hashed.iter_mut().zip(matched.iter_mut()).zip(ids) {
 						match id {
 							Some(id) => key.push(id.to_value()),
