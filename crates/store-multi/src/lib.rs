@@ -116,6 +116,12 @@ impl MultiStore {
 		}
 	}
 
+	pub fn flush_below_blocking(&self, cutoff: CommitVersion) {
+		match self {
+			MultiStore::Standard(store) => store.flush_below_blocking(cutoff),
+		}
+	}
+
 	pub fn commit(&self) -> &CommitStore {
 		match self {
 			MultiStore::Standard(store) => store.commit(),

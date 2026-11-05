@@ -12,6 +12,7 @@ use std::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
+	common::CommitVersion,
 	event::EventBus,
 	interface::store::{EntryKind, WalCheckpoint, storage_key_of},
 	key::any::TaggedKey,
@@ -296,6 +297,14 @@ impl StandardMultiStore {
 		if let Some(engine) = self.flush_engine.as_ref() {
 			self.event_bus.wait_for_completion();
 			engine.flush_all();
+		}
+	}
+
+	pub fn flush_below_blocking(&self, cutoff: CommitVersion) {
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(engine) = self.flush_engine.as_ref() {
+			self.event_bus.wait_for_completion();
+			engine.flush_below(cutoff);
 		}
 	}
 }

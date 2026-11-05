@@ -34,6 +34,14 @@ impl VersionLeases {
 		self.try_acquire_with(|| Ok((version, watermark.done_until(), ()))).map(|(guard, ())| guard)
 	}
 
+	pub fn restore_at(self: &Arc<Self>, version: CommitVersion) -> VersionLeaseGuard {
+		*self.inner.lock().entry(version).or_insert(0) += 1;
+		VersionLeaseGuard(Arc::new(VersionLeaseInner {
+			leases: self.clone(),
+			version,
+		}))
+	}
+
 	pub fn try_acquire_at_cutoff(self: &Arc<Self>, watermark: &WaterMark) -> Result<VersionLeaseGuard> {
 		let mut leases = self.inner.lock();
 		let qdu = watermark.done_until();

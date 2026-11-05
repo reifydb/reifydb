@@ -291,11 +291,12 @@ impl FlowActor {
 		if !self.has_lookup {
 			return Ok(None);
 		}
+		if self.initial_cursor > CommitVersion::BEFORE_FIRST {
+			return Ok(Some(self.engine.multi().restore_lease(self.initial_cursor)));
+		}
 		match self.engine.acquire_version_lease(self.initial_cursor) {
 			Ok(lease) => Ok(Some(lease)),
-			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED
-				&& self.initial_cursor == CommitVersion::BEFORE_FIRST =>
-			{
+			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED => {
 				let lease = self.engine.multi().acquire_cutoff_lease()?;
 				warn!(
 					flow_id = self.flow_id.0,

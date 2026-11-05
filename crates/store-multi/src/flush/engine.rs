@@ -158,10 +158,14 @@ impl FlushEngine {
 	}
 
 	pub fn flush_all(&self) {
+		self.flush_below(CommitVersion(u64::MAX));
+	}
+
+	pub fn flush_below(&self, cutoff: CommitVersion) {
 		let mut guard = self.sweep_lock.lock();
 		guard.resume_keys.clear();
 		while self
-			.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_BYTE_BUDGET)
+			.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET)
 			.expect("flush sweep: persist failed on a live persistent tier")
 			.0
 			.is_yielded()

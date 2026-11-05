@@ -30,7 +30,7 @@ use reifydb_core::{
 			object::ObjectId,
 			view::ViewKind,
 		},
-		commit::{CommitEntry, CommitFloor, Loaded},
+		commit::{CommitEntry, CommitFloor, CommitLog, Loaded},
 		operator::FlowCheckpoint,
 	},
 	retry::RetryStrategy,
@@ -79,6 +79,7 @@ use crate::{
 	},
 };
 
+const LOOKUP_HISTORY_BATCH_BYTES: u64 = 64 * 1024 * 1024;
 const FLOW_RETRY_LIMIT: u32 = 3;
 
 const FLOW_RETRY_BACKOFF_MS: u64 = 50;
@@ -132,6 +133,7 @@ pub struct FlowSupervisorParams {
 	pub queue: CommitQueue,
 	pub queue_floor: CommitQueueFloor,
 	pub loader: ActorRef<CommitLoaderMessage>,
+	pub log: Arc<dyn CommitLog>,
 	pub floor: Arc<dyn CommitFloor>,
 	pub control: ControlFrontier,
 	pub poll_frontier: ReaderWatermark,
@@ -159,6 +161,7 @@ pub struct FlowSupervisor {
 	queue: CommitQueue,
 	queue_floor: CommitQueueFloor,
 	loader: ActorRef<CommitLoaderMessage>,
+	log: Arc<dyn CommitLog>,
 	floor: Arc<dyn CommitFloor>,
 	control: ControlFrontier,
 	poll_frontier: ReaderWatermark,
@@ -214,6 +217,7 @@ impl FlowSupervisor {
 			queue: params.queue,
 			queue_floor: params.queue_floor,
 			loader: params.loader,
+			log: params.log,
 			floor: params.floor,
 			control: params.control,
 			poll_frontier: params.poll_frontier,
@@ -310,6 +314,8 @@ impl FlowSupervisor {
 		self.control.store(scan_cursor);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
+		let resumed: Vec<(FlowId, FlowCheckpoint)> =
+			to_spawn.iter().filter_map(|(flow, checkpoint)| checkpoint.map(|at| (flow.id, at))).collect();
 		let units = self.form_units(state, &to_spawn);
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
@@ -351,6 +357,7 @@ impl FlowSupervisor {
 			}
 			self.publish_routing(state, unit.head);
 		}
+		self.restore_lookup_history(&resumed);
 		for (flow, start, source_objects, completeness_objects) in heads {
 			let flow_id = flow.id;
 			let checkpoint = match &start {
@@ -1068,6 +1075,53 @@ impl FlowSupervisor {
 		let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 		self.publish_routing(state, flow_id);
 		self.spawn_flow(state, flow, members, source_objects, completeness_objects, start, ctx);
+	}
+
+	fn restore_lookup_history(&self, resumed: &[(FlowId, FlowCheckpoint)]) {
+		let mut producers: BTreeMap<ViewId, FlowId> = BTreeMap::new();
+		let mut after: Option<FlowCheckpoint> = None;
+		for (flow_id, checkpoint) in resumed {
+			let looked_up = self.flow_tracker.lookup_producers_of(*flow_id);
+			if looked_up.is_empty() {
+				continue;
+			}
+			producers.extend(looked_up);
+			if after.is_none_or(|held| checkpoint.version < held.version) {
+				after = Some(*checkpoint);
+			}
+		}
+		let Some(after) = after else {
+			return;
+		};
+		for producer in producers.values() {
+			self.flow_tracker.restore_completion(*producer, after.version, SourceVersion(0));
+		}
+		let up_to = self.engine.done_until();
+		let mut position = (after.version, after.lsn);
+		while position.0 < up_to {
+			let loaded = self
+				.log
+				.read(position, up_to, ByteSize::from_bytes(LOOKUP_HISTORY_BATCH_BYTES))
+				.unwrap_or_else(|e| panic!("lookup history unreadable from {}: {e}", position.0.0));
+			for entry in &loaded.entries {
+				for object in entry_changed_objects(entry) {
+					if let ObjectId::View(view) = object
+						&& let Some(producer) = producers.get(view)
+					{
+						self.flow_tracker.restore_completion(
+							*producer,
+							entry.version.commit,
+							entry.version.source,
+						);
+					}
+				}
+				position.1 = entry.lsn.max(position.1);
+			}
+			position.0 = loaded.advance_to;
+			if !loaded.more {
+				break;
+			}
+		}
 	}
 
 	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> (FlowDag, VersionLeaseGuard) {

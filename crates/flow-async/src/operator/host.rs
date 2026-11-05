@@ -475,11 +475,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	}
 
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {
+		let Some(floor) = self.txn.lookup_floor() else {
+			return CommitVersion(source.0).min(self.version());
+		};
 		let commit = self.txn.lookup_view_version(view, source);
-		let floor = self.txn.lookup_floor();
-		if let Some(floor) = floor
-			&& floor.0 > source.0 && commit
-			.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
+		if floor.0 > source.0
+			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
 		{
 			panic!(
 				"lookup of view {view:?} for source {source:?} sits below the held lease floor {floor:?} and its \
@@ -492,7 +493,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 				 {source:?}: the tracker history no longer covers it"
 			);
 		};
-		floor.map_or(commit, |floor| commit.max(floor))
+		commit.max(floor)
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {

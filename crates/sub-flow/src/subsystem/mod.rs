@@ -182,6 +182,7 @@ impl FlowSubsystem {
 				queue: queue.clone(),
 				queue_floor,
 				loader: loader_handle.actor_ref().clone(),
+				log: flow_wal.log.clone(),
 				floor: flow_wal.floor.clone(),
 				control,
 				poll_frontier: poll_frontier.clone(),

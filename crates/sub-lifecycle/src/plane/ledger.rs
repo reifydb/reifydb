@@ -114,11 +114,18 @@ impl FloorSource for EngineFloors {
 	}
 
 	fn consumer_position(&self) -> CommitVersion {
-		self.engine
+		let running = self
+			.engine
 			.ioc()
 			.try_resolve::<Arc<dyn ConsumerPositions>>()
 			.and_then(|positions| positions.min_position())
-			.unwrap_or(CommitVersion(u64::MAX))
+			.unwrap_or(CommitVersion(u64::MAX));
+		let saved = self
+			.engine
+			.saved_lookup_floor()
+			.unwrap_or_else(|e| panic!("retention cannot read the saved lookup positions: {e}"))
+			.unwrap_or(CommitVersion(u64::MAX));
+		running.min(saved)
 	}
 }
 

@@ -254,7 +254,11 @@ impl Database {
 		errors.step("commits", self.engine.multi().freeze_commits().map(|_| ()));
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
-			multi_store.flush_all_blocking();
+			match self.engine.saved_lookup_floor() {
+				Ok(Some(floor)) => multi_store.flush_below_blocking(floor),
+				Ok(None) => multi_store.flush_all_blocking(),
+				Err(e) => errors.fail("saved lookup floor", &e.to_string()),
+			}
 		}
 
 		if let Some(single) = self.engine.ioc().try_resolve::<SingleStore>()

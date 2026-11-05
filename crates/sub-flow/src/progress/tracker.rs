@@ -344,6 +344,16 @@ impl FlowPositionTracker {
 		self.inner.read().commit_through_commit(flow_id, commit)
 	}
 
+	pub fn restore_completion(&self, flow_id: FlowId, commit: CommitVersion, source: SourceVersion) {
+		let mut progress = self.inner.write();
+		progress.advance_source(flow_id, source);
+		progress.record_completion(flow_id, commit, CommitVersion(source.0.saturating_sub(1)));
+	}
+
+	pub fn lookup_producers_of(&self, flow_id: FlowId) -> BTreeMap<ViewId, FlowId> {
+		self.inner.read().lookup_producers.get(&flow_id).cloned().unwrap_or_default()
+	}
+
 	pub fn set_lookup_producers(&self, flow_id: FlowId, producers: BTreeMap<ViewId, FlowId>) {
 		let mut progress = self.inner.write();
 		if producers.is_empty() {
