@@ -19,12 +19,34 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{boolean, entries, literal, unknown_key},
+		operator_with::{entries, literal, literal_boolean, unknown_key},
 	},
 	token::{keyword::Keyword, token::Token},
 };
 
 const JOIN_WITH_KEYS: &str = "retention, emit, latest, or earliest";
+
+fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
+	let token = literal(entry)?;
+	literal_boolean(token).ok_or_else(|| {
+		AstError::UnexpectedToken {
+			expected: "boolean literal 'true' or 'false'".to_string(),
+			fragment: token.fragment.to_owned(),
+		}
+		.into()
+	})
+}
+
+fn compile_join_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
+	let token = literal(entry)?;
+	literal_boolean(token).map(Emit::from).ok_or_else(|| {
+		AstError::UnexpectedToken {
+			expected: "'true' or 'false'; a duration is only supported on lookup".to_string(),
+			fragment: token.fragment.to_owned(),
+		}
+		.into()
+	})
+}
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_join_with(
@@ -37,7 +59,7 @@ impl<'bump> Compiler<'bump> {
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => join.retention = Some(compile_join_retention(entry)?),
-				Some("emit") => join.emit = Emit::from(boolean(entry)?),
+				Some("emit") => join.emit = compile_join_emit(entry)?,
 				Some(keyword @ ("latest" | "earliest")) => {
 					if picked {
 						return Err(unknown_key(entry, "one of 'latest' or 'earliest'"));
@@ -426,5 +448,12 @@ mod tests {
 			Some(vec![(TIME_COLUMN_NAME.to_string(), SortDirection::Desc)]),
 			"latest: true must stay legal beside a right retention"
 		);
+	}
+
+	#[test]
+	fn a_join_refuses_a_duration_for_emit_and_names_lookup() {
+		// a join has no delay, so accepting one would silently mean something else.
+		let message = parse_err(&join("emit: 1s"));
+		assert!(message.contains("lookup"), "{message}");
 	}
 }

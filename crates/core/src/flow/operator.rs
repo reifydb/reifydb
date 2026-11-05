@@ -12,7 +12,7 @@ use crate::{
 		object::ObjectId,
 		series::SeriesKey,
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
 	sort::SortKey,
 };
 
@@ -150,7 +150,13 @@ impl OperatorDef {
 	pub fn ticks(&self) -> bool {
 		matches!(
 			self,
-			OperatorDef::Append { .. }
+			OperatorDef::Lookup {
+				with: LookupWith {
+					emit: Emit::After(_),
+					..
+				},
+				..
+			} | OperatorDef::Append { .. }
 				| OperatorDef::Distinct { .. }
 				| OperatorDef::Window { .. } | OperatorDef::Apply { .. }
 				| OperatorDef::Join { .. } | OperatorDef::Lookup { .. }

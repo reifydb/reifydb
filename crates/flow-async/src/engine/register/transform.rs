@@ -323,14 +323,14 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let expected = match with.emit {
-			Emit::On => 2,
+			Emit::On | Emit::After(_) => 2,
 			Emit::Off => 1,
 		};
 		if inputs.len() != expected {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
 				operator: "Lookup",
 				expected: match with.emit {
-					Emit::On => "exactly 2",
+					Emit::On | Emit::After(_) => "exactly 2",
 					Emit::Off => "exactly 1",
 				},
 				found: inputs.len(),
@@ -407,6 +407,10 @@ impl FlowEngineInner {
 			operator: operator_id,
 			left_node,
 			right_node,
+			emit_after: match with.emit {
+				Emit::After(delay) => Some(delay),
+				Emit::On | Emit::Off => None,
+			},
 			join_type,
 			right,
 			deferred,

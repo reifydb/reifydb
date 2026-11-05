@@ -11,7 +11,7 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
-	common::{CommitVersion, JoinType, SourceVersion},
+	common::{ChangeVersion, CommitVersion, JoinType, SourceVersion},
 	expression::Expression,
 	flow::operator::LookupObject,
 	interface::{
@@ -94,6 +94,7 @@ pub struct LookupConfig {
 	pub operator: OperatorId,
 	pub left_node: OperatorId,
 	pub right_node: Option<OperatorId>,
+	pub emit_after: Option<Duration>,
 	pub join_type: JoinType,
 	pub right: LookupObject,
 	pub deferred: bool,
@@ -120,6 +121,7 @@ pub struct LookupOperator {
 	output_sumtypes: HashMap<String, SumTypeId>,
 	left_kept: Vec<(String, DictionaryId)>,
 	left_store: Store,
+	waiting: HashMap<Partition, DateTime>,
 }
 
 #[derive(Default)]
@@ -249,6 +251,7 @@ impl LookupOperator {
 			output_sumtypes,
 			left_kept,
 			left_store: Store::new(JoinSide::Left),
+			waiting: HashMap::new(),
 		})
 	}
 
@@ -694,10 +697,35 @@ impl LookupOperator {
 				} => self.changed_keys(host, &partitions, reads, pre, &mut changed)?,
 			}
 		}
+		if let Some(delay) = self.config.emit_after {
+			let due = host.wall_now().add_duration(&delay).map_err(|error| Error::from(*error))?;
+			for partition in changed {
+				self.waiting.entry(partition).or_insert(due);
+			}
+			return Ok(());
+		}
 		let version = self.read_version(host, source, reads);
 		self.prefetch(host, reads, changed.iter().map(|partition| (*partition, version)).collect())?;
 		for partition in changed {
 			let right = reads.rows.get(&(partition, version)).cloned().flatten();
+			self.re_emit(host, partition, right, result)?;
+		}
+		Ok(())
+	}
+
+	fn flush_due(&mut self, host: &mut dyn HostContext, result: &mut Vec<Diff>) -> Result<()> {
+		if self.waiting.is_empty() {
+			return Ok(());
+		}
+		let now = host.wall_now();
+		let due: Vec<Partition> =
+			self.waiting.iter().filter(|(_, at)| **at <= now).map(|(partition, _)| *partition).collect();
+		if due.is_empty() {
+			return Ok(());
+		}
+		let rows = host.lookup_read(self.config.storage, self.config.ring, host.version(), &due)?;
+		for (partition, right) in due.into_iter().zip(rows) {
+			self.waiting.remove(&partition);
 			self.re_emit(host, partition, right, result)?;
 		}
 		Ok(())
@@ -915,6 +943,7 @@ impl HostOperator for LookupOperator {
 			}
 		}
 
+		self.flush_due(host, &mut result)?;
 		mark_diffs(&mut result, &self.output_sumtypes)?;
 		Ok(Change::from_flow(self.config.operator, version, result, change.changed_at))
 	}
@@ -924,6 +953,21 @@ impl HostOperator for LookupOperator {
 			self.expiry.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
+	}
+
+	fn on_tick(&mut self, host: &mut dyn HostContext) -> Result<Option<Change>> {
+		let mut result = Vec::new();
+		self.flush_due(host, &mut result)?;
+		if result.is_empty() {
+			return Ok(None);
+		}
+		mark_diffs(&mut result, &self.output_sumtypes)?;
+		Ok(Some(Change::from_flow(
+			self.config.operator,
+			ChangeVersion::from(host.version()),
+			result,
+			host.wall_now(),
+		)))
 	}
 
 	fn input_order(&self) -> InputOrder {
@@ -1051,6 +1095,7 @@ mod tests {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
 			right_node: None,
+			emit_after: None,
 			join_type,
 			right: LookupObject::Table(table.id),
 			deferred: true,
@@ -1076,6 +1121,7 @@ mod tests {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
 			right_node: None,
+			emit_after: None,
 			join_type: JoinType::Left,
 			right: LookupObject::RingBuffer(ringbuffer.id),
 			deferred: false,
@@ -1923,6 +1969,104 @@ mod tests {
 		let out = run_right(&mut op, &mut txn, empty, Diff::remove(right_rows("a")));
 
 		assert!(out.is_empty(), "no right row before and none after is no change: {out:?}");
+	}
+
+	fn delayed(table: &Table, delay: Duration) -> LookupOperator {
+		let mut op = re_emitting(table, JoinType::Inner, None);
+		op.config.emit_after = Some(delay);
+		op
+	}
+
+	fn tick(op: &mut LookupOperator, txn: &mut DeferredTransaction) -> Vec<Diff> {
+		let mut host = TxnHostContext::new(txn, OperatorId(OP));
+		op.on_tick(&mut host).unwrap().map_or_else(Vec::new, |change| change.diffs.to_vec())
+	}
+
+	#[test]
+	fn a_delayed_right_change_sends_nothing_until_its_time_and_then_the_newest_value_once() {
+		// the point of a delay: many right changes cost one read and one update per held row.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = delayed(&table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(&engine, first);
+		only_insert(&run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		commit(&engine, &mut txn);
+
+		put_right(&engine, "a", 11);
+		let newest = put_right(&engine, "a", 12);
+		let mut txn = txn_at(&engine, newest);
+		assert!(run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a"))).is_empty());
+		assert!(run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a"))).is_empty());
+		assert_eq!(op.waiting.len(), 1, "one key waits however many changes arrive");
+		assert!(tick(&mut op, &mut txn).is_empty(), "nothing is due for an hour");
+
+		let due = op.waiting.keys().copied().next().expect("the key waits");
+		op.waiting.insert(due, at_millis(1));
+		let out = tick(&mut op, &mut txn);
+
+		let [
+			Diff::Update {
+				pre,
+				post,
+				..
+			},
+		] = out.as_slice()
+		else {
+			panic!("one update for the held row, got {out:?}");
+		};
+		assert_eq!(cell(pre, "r_v", 0), Value::Int4(10));
+		assert_eq!(cell(post, "r_v", 0), Value::Int4(12), "the newest value, not the first change");
+		assert!(op.waiting.is_empty());
+		assert!(tick(&mut op, &mut txn).is_empty(), "a due key emits exactly once");
+	}
+
+	#[test]
+	fn a_later_change_never_pushes_a_waiting_key_back() {
+		// a key that keeps changing would otherwise never emit, and its rows would stay stale for good.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = delayed(&table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(&engine, first);
+		only_insert(&run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		commit(&engine, &mut txn);
+
+		let newest = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, newest);
+		run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a")));
+		let due = op.waiting.keys().copied().next().expect("the key waits");
+		let first_deadline = op.waiting[&due].add_duration(&Duration::from_hours(1).unwrap()).unwrap();
+		op.waiting.insert(due, first_deadline);
+
+		run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a")));
+
+		assert_eq!(op.waiting[&due], first_deadline, "the first change sets the deadline");
+	}
+
+	#[test]
+	fn a_due_key_is_also_sent_while_changes_are_arriving() {
+		// a busy flow gets a chance on every change, so it must not wait for the next tick.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = delayed(&table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(&engine, first);
+		only_insert(&run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(5)))));
+		commit(&engine, &mut txn);
+
+		let newest = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, newest);
+		run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a")));
+		let due = op.waiting.keys().copied().next().expect("the key waits");
+		op.waiting.insert(due, at_millis(1));
+
+		let out = run(&mut op, &mut txn, newest, Diff::insert(rows(&[Some("b")], &[8], at_millis(6))));
+
+		assert!(
+			out.iter().any(|diff| matches!(diff, Diff::Update { .. })),
+			"an unrelated change must flush what is due: {out:?}"
+		);
 	}
 
 	#[test]

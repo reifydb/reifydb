@@ -199,6 +199,10 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.version()
 	}
 
+	fn wall_now(&self) -> DateTime {
+		self.inner.wall_now()
+	}
+
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.record("disarm_timer_by_key", 1);
 		self.inner.disarm_timer_by_key(kind, key)

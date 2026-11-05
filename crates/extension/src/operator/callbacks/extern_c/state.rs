@@ -1094,6 +1094,10 @@ mod join_row_expiry_guard_tests {
 			CommitVersion(0)
 		}
 
+		fn wall_now(&self) -> DateTime {
+			DateTime::default()
+		}
+
 		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}

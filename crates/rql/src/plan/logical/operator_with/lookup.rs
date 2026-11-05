@@ -12,7 +12,7 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{boolean, entries, literal, unknown_key},
+		operator_with::{entries, literal, literal_boolean, unknown_key},
 	},
 };
 
@@ -22,11 +22,19 @@ impl<'bump> Compiler<'bump> {
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => lookup.retention = Some(compile_lookup_retention(entry)?),
-				Some("emit") => lookup.emit = Emit::from(boolean(entry)?),
+				Some("emit") => lookup.emit = compile_lookup_emit(entry)?,
 				_ => return Err(unknown_key(entry, "retention or emit")),
 			}
 		}
 		Ok(lookup)
+	}
+}
+
+fn compile_lookup_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
+	let token = literal(entry)?;
+	match literal_boolean(token) {
+		Some(on) => Ok(Emit::from(on)),
+		None => Ok(Emit::After(compile_duration(token, DurationBound::Positive, "the 'emit' option")?)),
 	}
 }
 
@@ -54,7 +62,7 @@ fn compile_lookup_retention(entry: &AstOperatorWithEntry<'_>) -> Result<Operator
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::operator_with::LookupWith;
+	use reifydb_core::operator_with::{Emit, LookupWith};
 	use reifydb_value::value::duration::Duration;
 
 	use crate::{
@@ -145,5 +153,23 @@ mod tests {
 	fn non_positive_retention_is_rejected() {
 		// A zero retention would free every left row at once and leave no read version to undo against.
 		assert!(lookup_with(&lookup(" with { retention: { left: 0s } }")).is_err());
+	}
+
+	#[test]
+	fn emit_takes_a_boolean_or_a_positive_duration() {
+		// a plain lookup re-emits, so turning it off or delaying it must both be spelled and kept.
+		assert_eq!(lookup_with(&lookup(" with { emit: true }")).unwrap().emit, Emit::On);
+		assert_eq!(lookup_with(&lookup(" with { emit: false }")).unwrap().emit, Emit::Off);
+		assert_eq!(
+			lookup_with(&lookup(" with { emit: 1s }")).unwrap().emit,
+			Emit::After(Duration::from_seconds(1).unwrap())
+		);
+		assert_eq!(lookup_with(&lookup("")).unwrap().emit, Emit::On, "re-emit is the default");
+	}
+
+	#[test]
+	fn emit_refuses_a_zero_duration() {
+		// a zero delay is emit: true through extra machinery, so it must be written as what it is.
+		assert!(lookup_with(&lookup(" with { emit: 0s }")).is_err());
 	}
 }

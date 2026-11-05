@@ -36,6 +36,7 @@ pub enum Emit {
 	#[default]
 	On,
 	Off,
+	After(Duration),
 }
 
 impl From<bool> for Emit {

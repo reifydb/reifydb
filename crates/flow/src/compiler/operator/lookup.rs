@@ -139,7 +139,7 @@ impl CompileOperator for LookupCompiler {
 
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = match self.with.emit {
-			Emit::On => Some(compiler.compile_plan(txn, *self.right)?),
+			Emit::On | Emit::After(_) => Some(compiler.compile_plan(txn, *self.right)?),
 			Emit::Off => None,
 		};
 

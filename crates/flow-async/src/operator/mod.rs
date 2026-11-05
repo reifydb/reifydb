@@ -114,6 +114,10 @@ pub trait HostOperator: Send {
 		Ok(None)
 	}
 
+	fn on_tick(&mut self, _host: &mut dyn HostContext) -> Result<Option<Change>> {
+		Ok(None)
+	}
+
 	fn batches_timers(&self) -> bool {
 		false
 	}
