@@ -20,9 +20,9 @@ use crate::{
 	bump::{BumpBox, BumpFragment},
 	error::RqlError,
 	plan::logical::{
-		AggregateNode, AppendNode, ApplyNode, AssertNode, DistinctNode, EnvironmentNode, ExtendNode,
-		FilterNode, GateNode, GeneratorNode, InlineDataNode, LogicalPlan, MapNode, ObjectScanNode, OrderNode,
-		PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, query::window::WindowNode,
+		AggregateNode, AppendNode, ApplyNode, AssertNode, ChangesNode, DistinctNode, EnvironmentNode,
+		ExtendNode, FilterNode, GateNode, GeneratorNode, InlineDataNode, LogicalPlan, MapNode, ObjectScanNode,
+		OrderNode, PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, query::window::WindowNode,
 	},
 };
 
@@ -66,6 +66,10 @@ pub enum QueryTree<'bump> {
 	},
 	Distinct {
 		node: DistinctNode<'bump>,
+		input: Input<'bump>,
+	},
+	Changes {
+		node: ChangesNode,
 		input: Input<'bump>,
 	},
 	Take {
@@ -234,6 +238,10 @@ fn build<'bump>(
 		LogicalPlan::Distinct(node) => QueryTree::Distinct {
 			node,
 			input: optional().ok_or_else(|| missing_input("distinct"))?,
+		},
+		LogicalPlan::Changes(node) => QueryTree::Changes {
+			node,
+			input: optional().ok_or_else(|| missing_input("changes"))?,
 		},
 		LogicalPlan::Take(node) => QueryTree::Take {
 			node,

@@ -89,7 +89,7 @@ fn extract_source_name(plan: &QueryPlan) -> Option<String> {
 	}
 }
 
-fn output_column_names(plan: &QueryPlan) -> Option<Vec<String>> {
+pub(crate) fn output_column_names(plan: &QueryPlan) -> Option<Vec<String>> {
 	match plan {
 		QueryPlan::TableScan(node) => {
 			Some(node.source.def().columns.iter().map(|col| col.name.clone()).collect())
@@ -108,6 +108,7 @@ fn output_column_names(plan: &QueryPlan) -> Option<Vec<String>> {
 		}
 		QueryPlan::Filter(node) => output_column_names(&node.input),
 		QueryPlan::Gate(node) => output_column_names(&node.input),
+		QueryPlan::Changes(node) => output_column_names(&node.input),
 		QueryPlan::Take(node) => output_column_names(&node.input),
 		QueryPlan::Sort(node) => output_column_names(&node.input),
 		QueryPlan::Distinct(node) => output_column_names(&node.input),

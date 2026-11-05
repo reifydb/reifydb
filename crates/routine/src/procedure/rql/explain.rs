@@ -220,6 +220,7 @@ impl PhysicalWalker {
 				input,
 				..
 			}) => self.walk(input, depth, parent),
+			PhysicalPlan::Changes(node) => self.walk(&node.input, depth, parent),
 			PhysicalPlan::Window(node) => {
 				if let Some(input) = &node.input {
 					self.walk(input, depth, parent);
@@ -490,6 +491,7 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			};
 			("Distinct", detail)
 		}
+		PhysicalPlan::Changes(node) => ("Changes", format!("{:?}", node.with)),
 		PhysicalPlan::CreatePrimaryKey(_) => ("CreatePrimaryKey", String::new()),
 		PhysicalPlan::CreateColumnProperty(_) => ("CreateColumnProperty", String::new()),
 		PhysicalPlan::CreateProcedure(_) => ("CreateProcedure", String::new()),

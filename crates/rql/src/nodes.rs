@@ -31,7 +31,7 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, ChangesWith, DistinctWith, JoinWith, LookupWith, WindowWith},
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
@@ -478,6 +478,13 @@ pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
 	pub with: AggregateWith,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChangesNode {
+	pub input: Box<QueryPlan>,
+	pub with: ChangesWith,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone)]

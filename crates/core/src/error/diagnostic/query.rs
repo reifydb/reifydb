@@ -174,6 +174,24 @@ pub fn not_a_query_input(fragment: Fragment, kind: &str) -> Diagnostic {
 	}
 }
 
+pub fn changes_requires_deferred_view(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_017".to_string(),
+		rql: None,
+		message: "changes runs only in deferred views, not in a batch query".to_string(),
+		fragment,
+		label: Some("a batch query has no changes to read".to_string()),
+		help: Some(
+			"define it in CREATE DEFERRED VIEW ns::name AS { ... } and read the view with FROM ns::name"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn window_requires_deferred_view(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_007".to_string(),

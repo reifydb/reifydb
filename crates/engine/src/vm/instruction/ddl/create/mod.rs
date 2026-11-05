@@ -136,6 +136,7 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		QueryPlan::PartitionParameterScan(node) => (Vec::new(), vec![&mut node.scan]),
 		QueryPlan::SeriesParameterScan(node) => (Vec::new(), vec![&mut node.scan]),
 		QueryPlan::Gate(node) => (node.conditions.iter_mut().collect(), vec![&mut node.input]),
+		QueryPlan::Changes(node) => (Vec::new(), vec![&mut node.input]),
 		QueryPlan::Map(node) => {
 			(node.map.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
 		}
@@ -461,6 +462,9 @@ fn transactional_unsupported(ty: &OperatorDef) -> Option<&'static str> {
 		OperatorDef::Gate {
 			..
 		} => Some("gate"),
+		OperatorDef::Changes {
+			..
+		} => Some("changes"),
 		OperatorDef::Join {
 			..
 		} => Some("join"),

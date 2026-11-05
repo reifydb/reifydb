@@ -4,7 +4,7 @@
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::interface::catalog::{
-	id::{ColumnId, QueueId, RingBufferId, SequenceId, TableId},
+	id::{ColumnId, QueueId, RingBufferId, SequenceId, SeriesId, TableId},
 	object::ObjectId,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -51,6 +51,16 @@ impl Catalog {
 		count: u64,
 	) -> Result<RowNumber> {
 		RowSequence::reserve_ringbuffer_row_numbers(txn, ringbuffer, count)
+	}
+
+	#[instrument(name = "catalog::sequence::reserve_series_row_numbers", level = "trace", skip(self, txn))]
+	pub fn reserve_series_row_numbers(
+		&self,
+		txn: &mut impl SequenceTransaction,
+		series: SeriesId,
+		count: u64,
+	) -> Result<RowNumber> {
+		RowSequence::reserve_series_row_numbers(txn, series, count)
 	}
 
 	#[instrument(name = "catalog::sequence::next_row_number_batch_for_queue", level = "trace", skip(self, txn))]

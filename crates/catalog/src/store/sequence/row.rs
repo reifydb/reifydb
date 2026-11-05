@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		id::{QueueId, RingBufferId, TableId},
+		id::{QueueId, RingBufferId, SeriesId, TableId},
 		storage::StorageId,
 	},
 	key::row::RowSequenceKey,
@@ -35,6 +35,16 @@ impl RowSequence {
 			None,
 			count,
 		)?;
+		Ok(RowNumber(last + 1 - count))
+	}
+
+	pub(crate) fn reserve_series_row_numbers(
+		txn: &mut impl SequenceTransaction,
+		series: SeriesId,
+		count: u64,
+	) -> Result<RowNumber> {
+		let last =
+			GeneratorU64::next_batched(txn, &RowSequenceKey::new(StorageId::series(series)), None, count)?;
 		Ok(RowNumber(last + 1 - count))
 	}
 

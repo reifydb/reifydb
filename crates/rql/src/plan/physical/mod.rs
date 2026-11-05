@@ -36,7 +36,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, ChangesWith, DistinctWith, JoinWith, LookupWith, WindowWith},
 	row::Ttl,
 	sort::SortKey,
 };
@@ -164,6 +164,7 @@ pub enum PhysicalPlan<'bump> {
 	Assert(AssertNode<'bump>),
 	AssertBlock(AssertBlockNode),
 	Distinct(DistinctNode<'bump>),
+	Changes(ChangesNode<'bump>),
 	Filter(FilterNode<'bump>),
 	Gate(GateNode<'bump>),
 	IndexScan(IndexScanNode),
@@ -505,6 +506,13 @@ pub struct AggregateNode<'bump> {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
 	pub with: AggregateWith,
+}
+
+#[derive(Debug)]
+pub struct ChangesNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub with: ChangesWith,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug)]
@@ -1528,6 +1536,18 @@ impl<'bump> Compiler<'bump> {
 
 				return Ok(PhysicalPlan::Sort(SortNode {
 					by: order.by,
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::Changes {
+				node: changes,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				return Ok(PhysicalPlan::Changes(ChangesNode {
+					with: changes.with,
+					fragment: changes.fragment,
 					input: self.bump_box(input),
 				}));
 			}

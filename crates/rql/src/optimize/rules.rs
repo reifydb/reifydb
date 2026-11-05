@@ -170,6 +170,13 @@ impl<'a, 'bump> Rules<'a, 'bump> {
 				node,
 				input: self.opt(input),
 			},
+			QueryTree::Changes {
+				node,
+				input,
+			} => QueryTree::Changes {
+				node,
+				input: self.opt(input),
+			},
 			QueryTree::Take {
 				node,
 				input,

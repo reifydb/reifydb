@@ -47,7 +47,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, JoinWith, LookupWith},
+	operator_with::{AggregateWith, ApplyWith, ChangesWith, DistinctWith, JoinWith, LookupWith},
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
@@ -239,6 +239,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Take(node) => self.compile_take(node),
 			Ast::Sort(node) => self.compile_sort(node),
 			Ast::Distinct(node) => self.compile_distinct(node),
+			Ast::Changes(node) => self.compile_changes(node),
 			Ast::Map(node) => self.compile_map(node),
 			Ast::Extend(node) => self.compile_extend(node),
 			Ast::Patch(node) => self.compile_patch(node),
@@ -444,6 +445,7 @@ pub enum LogicalPlan<'bump> {
 
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode<'bump>),
+	Changes(ChangesNode),
 	Assert(AssertNode),
 	AssertBlock(AssertBlockNode),
 	Filter(FilterNode),
@@ -811,6 +813,12 @@ pub struct AggregateNode {
 	pub map: Vec<Expression>,
 	pub with: AggregateWith,
 	pub rql: String,
+}
+
+#[derive(Debug)]
+pub struct ChangesNode {
+	pub with: ChangesWith,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug)]

@@ -68,6 +68,7 @@ mod tag {
 	pub const TAKE: u8 = 0x33;
 	pub const SKIP: u8 = 0xBF;
 	pub const DISTINCT: u8 = 0x34;
+	pub const CHANGES: u8 = 0x45;
 	pub const FROM_SOURCE: u8 = 0x35;
 	pub const FROM_VARIABLE: u8 = 0x36;
 	pub const FROM_ENVIRONMENT: u8 = 0x37;
@@ -255,6 +256,10 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_str(t.value());
 				}
 			}
+		}
+		Ast::Changes(node) => {
+			buf.write_u8(tag::CHANGES);
+			write_operator_with(buf, &node.with);
 		}
 		Ast::Distinct(node) => {
 			buf.write_u8(tag::DISTINCT);

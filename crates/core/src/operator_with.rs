@@ -48,6 +48,43 @@ impl From<bool> for Emit {
 	}
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InsertTo {
+	#[default]
+	Insert,
+	Drop,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateTo {
+	#[default]
+	Update,
+	Insert,
+	Drop,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeleteTo {
+	#[default]
+	Delete,
+	Insert,
+	Drop,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChangesWith {
+	pub insert: InsertTo,
+	pub update: UpdateTo,
+	pub update_on: Vec<String>,
+	pub delete: DeleteTo,
+}
+
+impl ChangesWith {
+	pub fn renumbers_inserts(&self) -> bool {
+		self.update == UpdateTo::Insert || (self.update == UpdateTo::Drop && self.delete == DeleteTo::Insert)
+	}
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct JoinWith {
 	pub retention: Option<JoinRetention>,

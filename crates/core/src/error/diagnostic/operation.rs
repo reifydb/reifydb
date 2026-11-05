@@ -285,6 +285,21 @@ pub fn natural_join_no_shared_column(fragment: Fragment, left: &str, right: &str
 	}
 }
 
+pub fn changes_on_column_not_found(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "CHANGES_001".to_string(),
+		rql: None,
+		message: format!("changes compares column {}, which its input does not carry", fragment.text()),
+		column: None,
+		fragment,
+		label: Some("column is not on the input".to_string()),
+		help: Some("Name a column of the input in on: { ... }".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn join_pick_column_not_found(fragment: Fragment, right: &str) -> Diagnostic {
 	Diagnostic {
 		code: "JOIN_003".to_string(),

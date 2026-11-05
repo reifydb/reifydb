@@ -10,9 +10,9 @@ use reifydb_core::{
 		operator::{
 			OperatorDef,
 			OperatorDef::{
-				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkQueueView,
-				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
-				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				Aggregate, Append, Apply, Changes, Distinct, Extend, Filter, Gate, Join, Map,
+				SinkQueueView, SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView,
+				Sort, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
 				Window,
 			},
 		},
@@ -134,6 +134,9 @@ pub fn build<T: Lookup>(
 				..
 			}
 			| Gate {
+				..
+			}
+			| Changes {
 				..
 			}
 			| Join {

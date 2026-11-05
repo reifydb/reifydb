@@ -104,6 +104,7 @@ pub mod aggregate;
 pub mod append;
 pub mod apply_transform;
 pub mod assert;
+pub mod changes;
 pub mod compile;
 pub mod distinct;
 pub mod environment;

@@ -5,6 +5,7 @@ pub mod aggregate;
 pub mod aggregate_validation;
 pub mod append;
 pub mod apply;
+pub mod changes;
 pub mod distinct;
 pub mod extend;
 pub mod filter;

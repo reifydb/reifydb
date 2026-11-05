@@ -168,6 +168,7 @@ impl<'bump> Parser<'bump> {
 				Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
 				Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
 				Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
+				Keyword::Changes => Ok(Ast::Changes(self.parse_changes()?)),
 				Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
 				Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
 				Keyword::If => Ok(Ast::If(self.parse_if()?)),

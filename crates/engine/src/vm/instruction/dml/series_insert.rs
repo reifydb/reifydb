@@ -361,7 +361,17 @@ fn finalize_series_insert(
 	let now = services.runtime_context.clock.now();
 	for (partition, metadata) in metadata_by_partition {
 		let keys = inserted_keys.remove(&partition).unwrap_or_default();
-		write_inserted_series_metadata(&services.catalog, txn, series, partition, metadata, keys, now, true)?;
+		let numbered_by_partition = series.partition_by.is_empty();
+		write_inserted_series_metadata(
+			&services.catalog,
+			txn,
+			series,
+			partition,
+			metadata,
+			keys,
+			now,
+			numbered_by_partition,
+		)?;
 	}
 
 	if let Some(returning_exprs) = returning {
@@ -482,6 +492,10 @@ pub(crate) fn assign_series_keys(
 ) -> Result<AssignedKeys> {
 	let storage_id = StorageId::series(series.id);
 	let partitioned = !partitions.is_empty();
+	let first_number = match partitioned {
+		true => Some(catalog.reserve_series_row_numbers(txn, series.id, keys.len() as u64)?.0),
+		false => None,
+	};
 	let mut assigned = AssignedKeys {
 		keys: Vec::with_capacity(keys.len()),
 		storage: Vec::with_capacity(keys.len()),
@@ -502,7 +516,10 @@ pub(crate) fn assign_series_keys(
 			None => generate(partition_metadata)?,
 		};
 		partition_metadata.sequence_counter += 1;
-		let sequence = partition_metadata.sequence_counter;
+		let sequence = match first_number {
+			Some(first) => first + row as u64,
+			None => partition_metadata.sequence_counter,
+		};
 		update_series_metadata_for_insert(partition_metadata, key_value);
 		let storage_key = SeriesRowAddress {
 			storage: storage_id,

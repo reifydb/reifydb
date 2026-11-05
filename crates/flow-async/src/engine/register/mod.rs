@@ -17,7 +17,7 @@ use reifydb_core::{
 		operator::{
 			FlowNode,
 			OperatorDef::{
-				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Lookup, Map,
+				Aggregate, Append, Apply, Changes, Distinct, Extend, Filter, Gate, Join, Lookup, Map,
 				SinkQueueView, SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView,
 				Sort, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
 				Window,
@@ -274,6 +274,9 @@ impl FlowEngineInner {
 			Gate {
 				conditions,
 			} => self.add_gate(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
+			Changes {
+				with,
+			} => self.add_changes(flow_id, operator_id, &inputs, with)?,
 			Map {
 				expressions,
 			} => self.add_map(txn, flow_id, operator_id, &inputs, expressions, ctx)?,

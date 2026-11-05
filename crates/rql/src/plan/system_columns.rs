@@ -186,6 +186,7 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 		PhysicalPlan::Gate(node) => visit(&node.input, scope.with(references(&node.conditions))),
 		PhysicalPlan::Sort(node) => visit(&node.input, scope.with(sort_references(&node.by))),
 		PhysicalPlan::Take(node) => visit(&node.input, scope),
+		PhysicalPlan::Changes(node) => visit(&node.input, scope),
 		PhysicalPlan::Distinct(node) => {
 			let distinct = node
 				.columns

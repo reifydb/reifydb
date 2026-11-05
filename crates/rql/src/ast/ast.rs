@@ -86,6 +86,7 @@ pub enum Ast<'bump> {
 	Drop(AstDrop<'bump>),
 	Describe(AstDescribe<'bump>),
 	Distinct(AstDistinct<'bump>),
+	Changes(AstChanges<'bump>),
 	Filter(AstFilter<'bump>),
 	Gate(AstGate<'bump>),
 	For(AstFor<'bump>),
@@ -162,6 +163,7 @@ impl<'bump> Ast<'bump> {
 				} => token,
 			},
 			Ast::Distinct(node) => &node.token,
+			Ast::Changes(node) => &node.token,
 			Ast::Filter(node) => &node.token,
 			Ast::Gate(node) => &node.token,
 			Ast::For(node) => &node.token,
@@ -1497,6 +1499,12 @@ impl<'bump> AstLiteralNone<'bump> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.text()
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstChanges<'bump> {
+	pub token: Token<'bump>,
+	pub with: Option<AstOperatorWith<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

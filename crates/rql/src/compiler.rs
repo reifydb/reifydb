@@ -500,6 +500,11 @@ fn materialize_query_plan_with(
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			conditions: node.conditions,
 		}),
+		PhysicalPlan::Changes(node) => QueryPlan::Changes(nodes::ChangesNode {
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
+			with: node.with,
+			fragment: node.fragment,
+		}),
 		PhysicalPlan::Gate(node) => QueryPlan::Gate(nodes::GateNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			conditions: node.conditions,
@@ -1756,6 +1761,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))?));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::Changes(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Changes(node))?));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::JoinInner(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))?));
 				self.emit(Instruction::Emit);
@@ -2145,6 +2154,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Gate(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))?));
+			}
+			PhysicalPlan::Changes(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Changes(node))?));
 			}
 			PhysicalPlan::JoinInner(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))?));

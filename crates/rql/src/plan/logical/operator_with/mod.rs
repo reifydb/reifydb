@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod apply;
+pub mod changes;
 pub mod join;
 pub mod lookup;
 pub mod window;

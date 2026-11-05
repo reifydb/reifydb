@@ -42,6 +42,7 @@ use crate::vm::volcano::{
 	aggregate::AggregateNode,
 	append::UnsupportedAppendNode,
 	assert::{AssertNode, AssertWithoutInputNode},
+	changes::UnsupportedChangesNode,
 	distinct::DistinctNode,
 	environment::EnvironmentNode,
 	filter::FilterNode,
@@ -430,6 +431,7 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::SharedInput => unimplemented!("shared input only exists in flow compilation"),
 
 		RqlQueryPlan::Window(node) => Box::new(UnsupportedWindowNode::new(node.fragment)),
+		RqlQueryPlan::Changes(node) => Box::new(UnsupportedChangesNode::new(node.fragment)),
 		RqlQueryPlan::Append(node) => Box::new(UnsupportedAppendNode::new(node.fragment)),
 	}
 }

@@ -788,9 +788,9 @@ fn execute_series_insert<V: ValidationMode>(
 			metadata,
 			keys,
 			now,
-			V::VALIDATED,
+			V::VALIDATED && series.partition_by.is_empty(),
 		)?;
-		if !V::VALIDATED {
+		if !V::VALIDATED && series.partition_by.is_empty() {
 			txn.rewrite_on(
 				&SeriesPartitionMetadataKey::new(series.id, partition).into(),
 				renumber_series_rows(StorageId::series(series.id), partition),

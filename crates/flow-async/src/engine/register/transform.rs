@@ -20,7 +20,7 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, ChangesWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
 	row::row_shape_from_columns,
 };
 use reifydb_flow::{
@@ -51,6 +51,7 @@ use crate::{
 	operator::{
 		aggregation::operator::AggregateOperator,
 		apply::{ApplyOperator, output_schema_of},
+		changes::ChangesOperator,
 		distinct::operator::DistinctOperator,
 		gate::GateOperator,
 		join::{
@@ -109,6 +110,22 @@ impl FlowEngineInner {
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 			)?),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	pub(super) fn add_changes(
+		&mut self,
+		flow_id: FlowId,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		with: ChangesWith,
+	) -> Result<()> {
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		self.operators.insert(
+			(flow_id, operator_id),
+			Box::new(ChangesOperator::new(operator_id, parent_schema, with)),
 		);
 		Ok(())
 	}

@@ -319,6 +319,7 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::Describe(_) => "Describe",
 		Ast::Filter(_) => "Filter",
 		Ast::Gate(_) => "Gate",
+		Ast::Changes(_) => "Changes",
 		Ast::For(_) => "For",
 		Ast::From(_) => "From",
 		Ast::Identifier(_) => "Identifier",

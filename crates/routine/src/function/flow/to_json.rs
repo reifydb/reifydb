@@ -8,6 +8,7 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	flow::operator::{LookupObject, OperatorDef},
 	internal,
+	operator_with::ChangesWith,
 	sort::SortKey,
 	value::column::factory::utf8,
 };
@@ -51,6 +52,9 @@ pub enum JsonOperatorDef {
 	},
 	Gate {
 		conditions: Vec<JsonExpression>,
+	},
+	Changes {
+		with: ChangesWith,
 	},
 	Map {
 		expressions: Vec<JsonExpression>,
@@ -140,6 +144,11 @@ impl From<&OperatorDef> for JsonOperatorDef {
 				conditions,
 			} => JsonOperatorDef::Gate {
 				conditions: conditions.iter().map(|e| e.into()).collect(),
+			},
+			OperatorDef::Changes {
+				with,
+			} => JsonOperatorDef::Changes {
+				with: with.clone(),
 			},
 			OperatorDef::Map {
 				expressions,

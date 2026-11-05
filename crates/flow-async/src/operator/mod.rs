@@ -45,6 +45,8 @@ pub mod append;
 #[cfg(feature = "runtime")]
 pub mod apply;
 #[cfg(feature = "runtime")]
+pub mod changes;
+#[cfg(feature = "runtime")]
 pub mod distinct;
 #[cfg(feature = "runtime")]
 pub mod drops;

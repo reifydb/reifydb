@@ -12,7 +12,7 @@ use crate::{
 		object::ObjectId,
 		series::SeriesKey,
 	},
-	operator_with::{AggregateWith, ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
+	operator_with::{AggregateWith, ApplyWith, ChangesWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
 	sort::SortKey,
 };
 
@@ -39,6 +39,9 @@ pub enum OperatorDef {
 	},
 	Gate {
 		conditions: Vec<Expression>,
+	},
+	Changes {
+		with: ChangesWith,
 	},
 	Map {
 		expressions: Vec<Expression>,
@@ -188,6 +191,9 @@ impl OperatorDef {
 			OperatorDef::Gate {
 				..
 			} => "Gate".into(),
+			OperatorDef::Changes {
+				..
+			} => "Changes".into(),
 			OperatorDef::Map {
 				..
 			} => "Map".into(),
@@ -311,6 +317,9 @@ impl OperatorDef {
 			OperatorDef::SinkQueueView {
 				..
 			} => 23,
+			OperatorDef::Changes {
+				..
+			} => 24,
 		}
 	}
 
@@ -338,6 +347,9 @@ impl OperatorDef {
 				..
 			}
 			| OperatorDef::Gate {
+				..
+			}
+			| OperatorDef::Changes {
 				..
 			}
 			| OperatorDef::Map {

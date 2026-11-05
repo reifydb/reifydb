@@ -65,6 +65,7 @@ From       => "FROM",
 Aggregate  => "AGGREGATE",
 Sort      => "SORT",
 Distinct   => "DISTINCT",
+Changes    => "CHANGES",
 Take      => "TAKE",
 
 Left       => "LEFT",
@@ -197,6 +198,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("AGGREGATE", Keyword::Aggregate);
 	map.insert("SORT", Keyword::Sort);
 	map.insert("DISTINCT", Keyword::Distinct);
+	map.insert("CHANGES", Keyword::Changes);
 	map.insert("TAKE", Keyword::Take);
 	map.insert("LEFT", Keyword::Left);
 	map.insert("INNER", Keyword::Inner);

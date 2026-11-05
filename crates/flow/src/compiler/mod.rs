@@ -35,9 +35,9 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::compiler::{
 	operator::{
-		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, distinct::DistinctCompiler,
-		extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler, join::JoinCompiler,
-		lookup::LookupCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
+		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, changes::ChangesCompiler,
+		distinct::DistinctCompiler, extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler,
+		join::JoinCompiler, lookup::LookupCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
 		window::WindowCompiler,
 	},
 	source::{
@@ -296,6 +296,7 @@ impl FlowCompiler {
 			QueryPlan::InlineData(inline_data) => InlineDataCompiler::from(inline_data).compile(self, txn),
 			QueryPlan::Filter(filter) => FilterCompiler::from(filter).compile(self, txn),
 			QueryPlan::Gate(gate) => GateCompiler::from(gate).compile(self, txn),
+			QueryPlan::Changes(changes) => ChangesCompiler::from(changes).compile(self, txn),
 			QueryPlan::Map(map) => MapCompiler::from(map).compile(self, txn),
 			QueryPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self, txn),
 			QueryPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self, txn),
@@ -414,6 +415,7 @@ pub fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		QueryPlan::PartitionParameterScan(n) => vec![&n.scan],
 		QueryPlan::SeriesParameterScan(n) => vec![&n.scan],
 		QueryPlan::Gate(n) => vec![&n.input],
+		QueryPlan::Changes(n) => vec![&n.input],
 		QueryPlan::Aggregate(n) => vec![&n.input],
 		QueryPlan::Distinct(n) => vec![&n.input],
 		QueryPlan::Sort(n) => vec![&n.input],

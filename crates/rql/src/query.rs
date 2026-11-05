@@ -8,12 +8,12 @@ use reifydb_core::{
 use reifydb_value::value::constraint::Constraint;
 
 use crate::nodes::{
-	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
-	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PartitionParameterScanNode, PatchNode, QueueScanNode,
-	RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowParameterLookupNode, RowPointLookupNode,
-	RowRangeScanNode, RunTestsNode, SeriesParameterScanNode, SeriesScanNode, SortNode, TableScanNode,
-	TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
+	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, ChangesNode, DictionaryScanNode,
+	DistinctNode, EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode,
+	JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PartitionParameterScanNode, PatchNode,
+	QueueScanNode, RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowParameterLookupNode,
+	RowPointLookupNode, RowRangeScanNode, RunTestsNode, SeriesParameterScanNode, SeriesScanNode, SortNode,
+	TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -43,6 +43,7 @@ pub enum QueryPlan {
 	Aggregate(AggregateNode),
 	Assert(AssertNode),
 	Distinct(DistinctNode),
+	Changes(ChangesNode),
 	Filter(FilterNode),
 	Gate(GateNode),
 	JoinInner(JoinInnerNode),
@@ -91,6 +92,7 @@ impl QueryPlan {
 			QueryPlan::Aggregate(_) => "aggregate",
 			QueryPlan::Assert(_) => "assert",
 			QueryPlan::Distinct(_) => "distinct",
+			QueryPlan::Changes(_) => "changes",
 			QueryPlan::Filter(_) => "filter",
 			QueryPlan::Gate(_) => "gate",
 			QueryPlan::JoinInner(_) => "join",

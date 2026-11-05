@@ -475,6 +475,7 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 			name,
 		}) => ("VariableSource", name.text().to_string()),
 		LogicalPlan::Environment(_) => ("Environment", String::new()),
+		LogicalPlan::Changes(node) => ("Changes", format!("{:?}", node.with)),
 		LogicalPlan::Distinct(DistinctNode {
 			columns,
 			..

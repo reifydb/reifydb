@@ -4,6 +4,7 @@
 pub mod aggregate;
 pub mod apply;
 pub mod assert;
+pub mod changes;
 pub mod distinct;
 pub mod extend;
 pub mod filter;

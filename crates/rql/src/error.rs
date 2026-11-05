@@ -59,6 +59,12 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
+	#[error("changes cannot run with this WITH block: {reason}")]
+	ChangesWithRefused {
+		reason: String,
+		fragment: Fragment,
+	},
+
 	#[error("Slide must be smaller than window duration")]
 	WindowSlideTooLarge {
 		fragment: Fragment,
@@ -388,6 +394,22 @@ impl IntoDiagnostic for RqlError {
 					operator_chain: None,
 				}
 			}
+
+			RqlError::ChangesWithRefused { reason, fragment } => Diagnostic {
+				code: "OP_004".to_string(),
+				rql: None,
+				message: format!("changes cannot run with this WITH block: {}", reason),
+				column: None,
+				fragment,
+				label: Some("refused WITH block".to_string()),
+				help: Some(
+					"Each of insert, update and delete says what that change becomes: insert: insert|drop, update: update|insert|drop, delete: delete|insert|drop"
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			RqlError::OperatorWithDuplicateKey { key, fragment } => Diagnostic {
 				code: "OP_003".to_string(),
