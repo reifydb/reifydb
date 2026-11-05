@@ -98,8 +98,8 @@ pub mod store {
 	pub const OPERATOR_DIRTY_BUDGET: ByteSize = ByteSize::from_mib(128);
 	pub const OPERATOR_DIRTY_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
 
-	pub const OPERATOR_FLUSH_INTERVAL: Duration = Duration::from_seconds_const(300);
-	pub const OPERATOR_FLUSH_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
+	pub const OPERATOR_RESIDENT_FLUSH_EVERY: Duration = Duration::from_seconds_const(300);
+	pub const OPERATOR_RESIDENT_FLUSH_EVERY_TESTING: Duration = Duration::from_seconds_const(60);
 	pub const COMMIT_LOG_CHECKPOINT_INTERVAL: Duration = Duration::from_seconds_const(1);
 
 	pub const OPERATOR_FILTER_KEYS: u64 = 16_000_000;

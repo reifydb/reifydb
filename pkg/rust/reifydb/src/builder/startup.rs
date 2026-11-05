@@ -46,7 +46,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::OperatorWalAutocheckpoint,
 	ConfigKey::OperatorResidentBytes,
 	ConfigKey::OperatorDirtyBytes,
-	ConfigKey::OperatorFlushInterval,
+	ConfigKey::OperatorResidentFlushEvery,
 	ConfigKey::MultiFlushSliceBytes,
 ];
 
@@ -160,7 +160,7 @@ pub(crate) fn resolve_startup_configs(
 			dirty_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorDirtyBytes)),
 			..ResidentLimits::default()
 		},
-		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
+		operator_flush_interval: duration(ConfigKey::OperatorResidentFlushEvery),
 	})
 }
 
@@ -180,9 +180,9 @@ mod tests {
 		let buffer = CommitStore::new();
 
 		let resolved = resolve_startup_configs(&buffer, None, &[]).unwrap();
-		assert_eq!(resolved.operator_flush_interval, default::store::OPERATOR_FLUSH_INTERVAL_TESTING);
+		assert_eq!(resolved.operator_flush_interval, default::store::OPERATOR_RESIDENT_FLUSH_EVERY_TESTING);
 
-		let shortened = [(ConfigKey::OperatorFlushInterval, Value::duration_seconds(5))];
+		let shortened = [(ConfigKey::OperatorResidentFlushEvery, Value::duration_seconds(5))];
 		let resolved = resolve_startup_configs(&buffer, None, &shortened).unwrap();
 		assert_eq!(resolved.operator_flush_interval, Duration::from_seconds_const(5));
 	}

@@ -69,7 +69,7 @@ pub enum ConfigKey {
 	MultiWalAutocheckpoint,
 	OperatorResidentBytes,
 	OperatorDirtyBytes,
-	OperatorFlushInterval,
+	OperatorResidentFlushEvery,
 	OperatorWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
@@ -125,7 +125,7 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint,
 			Self::OperatorResidentBytes,
 			Self::OperatorDirtyBytes,
-			Self::OperatorFlushInterval,
+			Self::OperatorResidentFlushEvery,
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
@@ -205,7 +205,9 @@ impl ConfigKey {
 				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET.as_bytes())
 			}
 			Self::OperatorDirtyBytes => Value::Uint8(default::store::OPERATOR_DIRTY_BUDGET.as_bytes()),
-			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL),
+			Self::OperatorResidentFlushEvery => {
+				Value::Duration(default::store::OPERATOR_RESIDENT_FLUSH_EVERY)
+			}
 			Self::OperatorWalAutocheckpoint => {
 				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES)
 			}
@@ -285,7 +287,9 @@ impl ConfigKey {
 			Self::OperatorDirtyBytes => {
 				Value::Uint8(default::store::OPERATOR_DIRTY_BUDGET_TESTING.as_bytes())
 			}
-			Self::OperatorFlushInterval => Value::Duration(default::store::OPERATOR_FLUSH_INTERVAL_TESTING),
+			Self::OperatorResidentFlushEvery => {
+				Value::Duration(default::store::OPERATOR_RESIDENT_FLUSH_EVERY_TESTING)
+			}
 			Self::OperatorWalAutocheckpoint => {
 				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES_TESTING)
 			}
@@ -426,7 +430,7 @@ impl ConfigKey {
 				 normal trigger and this stays a backstop for a workload that dirties state faster than \
 				 the interval anticipates. Read once at boot; changing it requires a restart."
 			}
-			Self::OperatorFlushInterval => {
+			Self::OperatorResidentFlushEvery => {
 				"How often the operator-state flush actor drains dirty resident state into the operator \
 				 store's SQLite tier. Operator state stays resident after a flush and is freed \
 				 separately by eviction, so memory pressure alone can leave state unflushed \
@@ -589,7 +593,7 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => true,
 			Self::OperatorResidentBytes => true,
 			Self::OperatorDirtyBytes => true,
-			Self::OperatorFlushInterval => true,
+			Self::OperatorResidentFlushEvery => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
@@ -645,7 +649,7 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::OperatorResidentBytes => &[ValueType::Uint8],
 			Self::OperatorDirtyBytes => &[ValueType::Uint8],
-			Self::OperatorFlushInterval => &[ValueType::Duration],
+			Self::OperatorResidentFlushEvery => &[ValueType::Duration],
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
@@ -701,7 +705,7 @@ impl ConfigKey {
 			Self::MultiWalAutocheckpoint => false,
 			Self::OperatorResidentBytes => false,
 			Self::OperatorDirtyBytes => false,
-			Self::OperatorFlushInterval => false,
+			Self::OperatorResidentFlushEvery => false,
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
@@ -848,9 +852,9 @@ impl ConfigKey {
 				Value::Uint8(_) => Err("OPERATOR_DIRTY_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::OperatorFlushInterval => match value {
+			Self::OperatorResidentFlushEvery => match value {
 				Value::Duration(d) if d.is_positive() => Ok(()),
-				Value::Duration(_) => Err("OPERATOR_FLUSH_INTERVAL must be greater than zero".to_string()),
+				Value::Duration(_) => Err("OPERATOR_RESIDENT_FLUSH_EVERY must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::OperatorWalAutocheckpoint => match value {
@@ -1054,7 +1058,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::OperatorResidentBytes => write!(f, "OPERATOR_RESIDENT_BYTES"),
 			Self::OperatorDirtyBytes => write!(f, "OPERATOR_DIRTY_BYTES"),
-			Self::OperatorFlushInterval => write!(f, "OPERATOR_FLUSH_INTERVAL"),
+			Self::OperatorResidentFlushEvery => write!(f, "OPERATOR_RESIDENT_FLUSH_EVERY"),
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
@@ -1114,7 +1118,7 @@ impl FromStr for ConfigKey {
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"OPERATOR_RESIDENT_BYTES" => Ok(Self::OperatorResidentBytes),
 			"OPERATOR_DIRTY_BYTES" => Ok(Self::OperatorDirtyBytes),
-			"OPERATOR_FLUSH_INTERVAL" => Ok(Self::OperatorFlushInterval),
+			"OPERATOR_RESIDENT_FLUSH_EVERY" => Ok(Self::OperatorResidentFlushEvery),
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
@@ -1331,7 +1335,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::OperatorResidentBytes));
 		assert!(all.contains(&ConfigKey::OperatorDirtyBytes));
-		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
+		assert!(all.contains(&ConfigKey::OperatorResidentFlushEvery));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::SubscriptionWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));

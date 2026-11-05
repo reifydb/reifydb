@@ -89,9 +89,9 @@ pub const DIRTY_BUDGET_BYTES: ByteSize = if default::TESTING {
 };
 
 pub const FLUSH_INTERVAL: Duration = if default::TESTING {
-	default::store::OPERATOR_FLUSH_INTERVAL_TESTING
+	default::store::OPERATOR_RESIDENT_FLUSH_EVERY_TESTING
 } else {
-	default::store::OPERATOR_FLUSH_INTERVAL
+	default::store::OPERATOR_RESIDENT_FLUSH_EVERY
 };
 
 pub const FILTER_KEYS: u64 = if default::TESTING {
