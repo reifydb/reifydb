@@ -60,7 +60,8 @@ impl ResidentState {
 
 pub struct SlotInner {
 	pub resident: ResidentState,
-	pub sweeps_since_swept: u32,
+	pub flushes_since_swept: u32,
+	pub parked: bool,
 }
 
 impl Deref for SlotInner {
@@ -86,7 +87,8 @@ impl Slot {
 		Self {
 			inner: Mutex::new(SlotInner {
 				resident: ResidentState::new(operator),
-				sweeps_since_swept: 0,
+				flushes_since_swept: 0,
+				parked: false,
 			}),
 		}
 	}

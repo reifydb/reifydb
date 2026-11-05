@@ -40,6 +40,7 @@ use reifydb_value::{
 };
 use reifydb_wal::lsn::Lsn;
 
+use super::{LOCAL_LOW_WATER_PERCENT, STARVATION_FLUSHES};
 use crate::{
 	actor::Waker,
 	error::OperatorError,
@@ -1547,4 +1548,190 @@ fn a_crash_before_the_flush_keeps_the_index_row_and_the_group_on_the_device() {
 	assert!(stored(&index), "the index row must still be due after a restart");
 	assert!(stored(&key_in(7, "a")), "the group must still be there for the index row to close again");
 	assert!(!stored(&queue_key_of(7)), "no marker may be on the device");
+}
+
+fn measured_row_bytes() -> u64 {
+	let buffer = Resident::new();
+	fill(&buffer, 1000..1100);
+	footprint_of(&buffer, OP_A) / 100
+}
+
+fn local_cap_fixture() -> Resident {
+	let buffer = Resident::with_limits(ResidentLimits {
+		budget: ByteSize::from_bytes(measured_row_bytes() * 256),
+		..ResidentLimits::default()
+	});
+	buffer.attach_evictor(Waker::Silent);
+	set(&buffer, OP_B, key("quiet"), row("row"));
+	buffer
+}
+
+fn footprint_of(buffer: &Resident, operator: OperatorId) -> u64 {
+	buffer.shared().slot(operator).map_or(0, |slot| slot.inner.lock().buckets.footprint().as_bytes())
+}
+
+fn entries_of(buffer: &Resident, operator: OperatorId) -> usize {
+	buffer.shared().slot(operator).map_or(0, |slot| slot.inner.lock().buckets.entry_count())
+}
+
+fn local_cap(buffer: &Resident) -> u64 {
+	buffer.shared().local_caps(buffer.shared().slots.len() as u64).0.as_bytes()
+}
+
+fn flush_rounds(buffer: &Resident, rounds: u32) {
+	for round in 0..rounds {
+		set(buffer, OP_A, key(&format!("round{round}")), row("row"));
+		drain(buffer);
+	}
+}
+
+#[test]
+fn a_sweep_over_a_local_cap_frees_down_to_the_low_water_mark() {
+	let buffer = local_cap_fixture();
+	fill(&buffer, 0..150);
+	drain(&buffer);
+	assert!(footprint_of(&buffer, OP_A) > local_cap(&buffer), "the fixture must put the operator over its cap");
+
+	buffer.evict_to_capacity();
+
+	let low_water = local_cap(&buffer) / 100 * LOCAL_LOW_WATER_PERCENT;
+	assert!(footprint_of(&buffer, OP_A) <= low_water, "the sweep stopped above the low water mark");
+	assert!(entries_of(&buffer, OP_A) > 0, "the low water mark must not empty the operator");
+}
+
+#[test]
+fn a_write_just_after_a_low_water_sweep_does_not_wake_the_evictor() {
+	let buffer = local_cap_fixture();
+	fill(&buffer, 0..150);
+	drain(&buffer);
+	buffer.evict_to_capacity();
+	let wakes = buffer.metrics().evict_wakes;
+
+	fill(&buffer, 1000..1002);
+
+	assert_eq!(buffer.metrics().evict_wakes, wakes, "the room below the cap must absorb the next writes");
+}
+
+#[test]
+fn a_sweep_for_one_operator_leaves_the_others_alone() {
+	let buffer = local_cap_fixture();
+	drain(&buffer);
+	fill(&buffer, 0..150);
+	drain(&buffer);
+	let quiet = entries_of(&buffer, OP_B);
+	let quiet_flushes = buffer.shared().slot(OP_B).expect("slot").inner.lock().flushes_since_swept;
+
+	for _ in 0..50 {
+		buffer.evict_to_capacity();
+	}
+
+	assert_eq!(entries_of(&buffer, OP_B), quiet, "a quiet operator under its cap lost rows");
+	assert_eq!(
+		buffer.shared().slot(OP_B).expect("slot").inner.lock().flushes_since_swept,
+		quiet_flushes,
+		"sweeps must not advance another operator's schedule, or sweep rate would drive emptying"
+	);
+}
+
+#[test]
+fn a_system_with_no_pressure_is_never_swept_however_many_flushes_pass() {
+	let buffer = local_cap_fixture();
+	drain(&buffer);
+	flush_rounds(&buffer, STARVATION_FLUSHES * 3);
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert_eq!(evicted, 0, "nothing is over any limit, so nothing may leave memory");
+	assert_eq!(entries_of(&buffer, OP_B), 1, "a quiet operator lost its row with no pressure anywhere");
+}
+
+#[test]
+fn a_quiet_operator_is_emptied_by_a_pressure_sweep_once_enough_flushes_have_passed() {
+	let buffer = local_cap_fixture();
+	drain(&buffer);
+	flush_rounds(&buffer, STARVATION_FLUSHES - 3);
+	fill(&buffer, 0..150);
+	drain(&buffer);
+	buffer.evict_to_capacity();
+	assert_eq!(entries_of(&buffer, OP_B), 1, "swept before its flush count was reached");
+	assert!(
+		buffer.shared().slot(OP_B).expect("slot").inner.lock().flushes_since_swept > 0,
+		"a sweep for another operator must not restart this one's schedule"
+	);
+
+	flush_rounds(&buffer, STARVATION_FLUSHES);
+	fill(&buffer, 200..350);
+	drain(&buffer);
+	buffer.evict_to_capacity();
+	assert_eq!(entries_of(&buffer, OP_B), 1, "the first starved pass only spends the row's second chance");
+	assert_eq!(
+		buffer.shared().slot(OP_B).expect("slot").inner.lock().flushes_since_swept,
+		0,
+		"a starved pass must restart the schedule"
+	);
+
+	flush_rounds(&buffer, STARVATION_FLUSHES);
+	fill(&buffer, 400..550);
+	drain(&buffer);
+	buffer.evict_to_capacity();
+	assert_eq!(entries_of(&buffer, OP_B), 0, "a row untouched for two starved passes must leave memory");
+}
+
+#[test]
+fn a_small_tombstone_sweep_does_not_restart_the_starvation_schedule() {
+	let buffer = Resident::with_limits(ResidentLimits {
+		tombstones: 8,
+		..ResidentLimits::default()
+	});
+	buffer.attach_evictor(Waker::Silent);
+	fill(&buffer, 0..24);
+	drain(&buffer);
+	for index in 0..24 {
+		remove(&buffer, OP_A, key(&format!("k{index}")));
+	}
+	drain(&buffer);
+	flush_rounds(&buffer, 3);
+	let flushes = buffer.shared().slot(OP_A).expect("slot").inner.lock().flushes_since_swept;
+	assert!(flushes > 0, "the fixture must have flushes on the schedule");
+
+	buffer.evict_to_capacity();
+	buffer.evict_to_capacity();
+
+	assert_eq!(
+		buffer.shared().slot(OP_A).expect("slot").inner.lock().flushes_since_swept,
+		flushes,
+		"a sweep that only paid a tombstone overage reset the schedule"
+	);
+}
+
+#[test]
+fn an_operator_that_cannot_get_under_its_cap_stays_quiet_until_the_next_flush() {
+	let buffer = local_cap_fixture();
+	drain(&buffer);
+	fill(&buffer, 0..150);
+	let (evicted, _) = buffer.evict_to_capacity();
+	assert_eq!(evicted, 0, "dirty rows must never be evicted");
+	let wakes = buffer.metrics().evict_wakes;
+
+	fill(&buffer, 150..170);
+	assert_eq!(buffer.metrics().evict_wakes, wakes, "a parked operator woke the evictor before a flush");
+
+	drain(&buffer);
+	assert_eq!(buffer.metrics().evict_wakes, wakes + 1, "the settle must wake the evictor exactly once");
+	buffer.evict_to_capacity();
+	assert!(
+		footprint_of(&buffer, OP_A) <= local_cap(&buffer),
+		"the woken sweep must bring the operator under its cap"
+	);
+}
+
+#[test]
+fn a_sweep_hands_over_every_row_it_evicted() {
+	let buffer = local_cap_fixture();
+	fill(&buffer, 0..150);
+	drain(&buffer);
+
+	let (evicted, _) = buffer.evict_to_capacity();
+
+	assert!(evicted > 0, "the fixture must evict something, or this test proves nothing");
+	let slot = buffer.shared().slot(OP_A).expect("slot");
+	assert!(slot.inner.lock().buckets.take_evicted().is_empty(), "evicted rows stayed behind after the sweep");
 }
