@@ -31,7 +31,7 @@ use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
-	operator::source::{decode_change, decode_dictionary_columns, mark_diffs, schema_sumtypes},
+	operator::source::{decode_dictionary_columns, decode_dictionary_columns_except, mark_diffs, schema_sumtypes},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -40,6 +40,7 @@ use reifydb_value::{
 	error::Error,
 	value::{
 		datetime::DateTime,
+		dictionary::DictionaryId,
 		duration::Duration,
 		partition::Partition,
 		row_number::RowNumber,
@@ -57,7 +58,10 @@ use crate::{
 	operator::{
 		HostOperator,
 		host::HostContext,
-		join::column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
+		join::{
+			column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
+			kept::dictionary_columns,
+		},
 		row_times,
 		state::seal::ledger::FiredAt,
 		state_access::{RowNumberReserve, mint_row_numbers},
@@ -94,6 +98,7 @@ pub struct LookupOperator {
 	expiry: LookupExpiry,
 	columns: JoinedColumnsCache,
 	output_sumtypes: HashMap<String, SumTypeId>,
+	left_kept: Vec<(String, DictionaryId)>,
 }
 
 #[derive(Default)]
@@ -203,13 +208,39 @@ impl LookupOperator {
 			&columns.builder(&config.left_schema, &config.right_schema)
 				.schema(&config.left_schema, &config.right_schema),
 		)?;
+		let left_kept = dictionary_columns(&config.left_schema)?.into_iter().collect();
 		Ok(Self {
 			config,
 			lowered_left,
 			expiry,
 			columns,
 			output_sumtypes,
+			left_kept,
 		})
+	}
+
+	fn decode_left(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Change> {
+		for diff in change.diffs.iter_mut() {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => decode_dictionary_columns_except(post, host, &self.left_kept)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					decode_dictionary_columns_except(pre, host, &self.left_kept)?;
+					decode_dictionary_columns_except(post, host, &self.left_kept)?;
+				}
+				Diff::Remove {
+					pre,
+					..
+				} => decode_dictionary_columns_except(pre, host, &self.left_kept)?,
+			}
+		}
+		Ok(change)
 	}
 
 	fn builder(&self, left: &SchemaRef) -> Arc<JoinedColumnsBuilder> {
@@ -631,7 +662,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		let change = decode_change(host, change)?;
+		let change = self.decode_left(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.config.operator
 		{
@@ -711,11 +742,15 @@ mod tests {
 			view::{TableView, View, ViewKind},
 		},
 		key::{any::TaggedKey, row::StoragePartitionedRowKey},
+		partition::partition_of,
 		row::row_shape_from_columns,
 		state::timer::StateStore,
 		value::{
 			batch::batch,
-			column::factory::{int4, utf8, utf8_with_bitvec},
+			column::{
+				builder::ColumnBuilder,
+				factory::{int4, utf8, utf8_with_bitvec},
+			},
 		},
 	};
 	use reifydb_flow::operator::{sink::table::TableSink, source::catalog_schema};
@@ -729,6 +764,7 @@ mod tests {
 			column_view::ColumnView,
 			constraint::{Constraint, TypeConstraint},
 			container::temporal_array::datetime_array,
+			dictionary::DictionaryEntryId,
 			identity::IdentityId,
 			partition::Partition,
 			system_columns::{SystemColumn, with_system_column},
@@ -1292,6 +1328,86 @@ mod tests {
 				.flatten(),
 			None,
 			"the miss must not have interned the value"
+		);
+	}
+
+	fn id_rows(dictionary: DictionaryId, id: DictionaryEntryId, number: u64, at: DateTime) -> RecordBatch {
+		let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, 1);
+		builder.set_dictionary_id(dictionary);
+		builder.push(id);
+		let columns = batch(vec![builder.finish("lk")]).unwrap();
+		let columns = with_system_column(
+			columns,
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from(vec![number])),
+		)
+		.unwrap();
+		with_system_column(columns, SystemColumn::Time, Arc::new(datetime_array(vec![at]))).unwrap()
+	}
+
+	#[test]
+	fn a_left_key_in_the_right_dictionary_stays_an_id_and_still_finds_its_row() {
+		// decoding it would hand text to a downstream operator that reads ids, which aborts the process.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, true);
+		let version = put_right(&engine, "a", 10);
+		let dictionary = dictionary_of(&engine);
+		let mut txn = txn_at(&engine, version);
+		let id = TxnHostContext::new(&mut txn, OperatorId(OP))
+			.dictionary_find(dictionary.id, &[Value::Utf8("a".to_string())])
+			.unwrap()
+			.pop()
+			.flatten()
+			.expect("the right row interned its key");
+		let left = id_rows(dictionary.id, id, 6, at_millis(5));
+		let mut op = lookup(&table, JoinType::Inner, None);
+		op.left_kept = vec![("lk".to_string(), dictionary.id)];
+		op.config.left_schema = left.schema();
+
+		let out = only_insert(&run(&mut op, &mut txn, version, Diff::insert(left)));
+
+		assert_eq!(cell(&out, "lk", 0), id.to_value(), "the left key must reach the output as its id");
+		assert_eq!(
+			cell(&out, "r_v", 0),
+			Value::Int4(10),
+			"the id must hash to the partition the row was stored in"
+		);
+	}
+
+	#[test]
+	fn a_left_key_in_another_dictionary_is_decoded_and_hashed_by_its_text() {
+		// an entry id means a different value in each dictionary, so hashing it directly reads the wrong row.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, true);
+		let version = put_right(&engine, "a", 10);
+		let dictionary = dictionary_of(&engine);
+		engine.admin("CREATE DICTIONARY t::other FOR UTF8 AS UINT4");
+		let namespace = engine.inner().catalog().cache().find_namespace_by_name("t").expect("namespace t");
+		let other = engine
+			.inner()
+			.catalog()
+			.cache()
+			.find_dictionary_by_name(namespace.id(), "other")
+			.expect("dictionary t::other");
+		let mut txn = txn_at(&engine, version);
+		let id = TxnHostContext::new(&mut txn, OperatorId(OP))
+			.dictionary_find(dictionary.id, &[Value::Utf8("a".to_string())])
+			.unwrap()
+			.pop()
+			.flatten()
+			.expect("the right row interned its key");
+		let left = id_rows(other.id, id, 6, at_millis(5));
+		let partitions = PartitionLookup::new(&table.columns, &table.partition_by);
+		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
+		let column = (left.schema_ref().fields()[0].clone(), left.column(0).clone());
+		let mut memo = DictionaryMemo::default();
+
+		let keys = partitions.keys(&mut host, &mut memo, &[column], 1).unwrap();
+
+		let hashed_as_stored = partition_of(&table.columns, &table.partition_by, &[id.to_value()]);
+		assert!(
+			!matches!(keys[0], RowKey::Found(partition) if partition == hashed_as_stored),
+			"an id from another dictionary must not hash as if it were this dictionary's id"
 		);
 	}
 

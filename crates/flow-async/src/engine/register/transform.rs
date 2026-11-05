@@ -341,7 +341,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
-		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
+		let left_decoded = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let (storage, family, deferred, columns, partition_by, ring) = match right {
 			LookupObject::Table(table) => {
@@ -381,12 +381,16 @@ impl FlowEngineInner {
 			},
 		};
 
-		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
+		ensure_lookup_key_types(&left, &left_decoded, &columns, &partition_by)?;
 
 		let shape = row_shape_from_columns(family, &columns);
 		let right_tags = sumtype_tags(&columns);
+		let right_stored = catalog_schema(&columns);
+		let right_keys: Vec<Expression> = partition_by.iter().map(|name| natural_key_expr(name)).collect();
+		let (left_kept, _) = kept_dictionary_columns(&left_schema, &right_stored, &left, &right_keys, None)?;
+		let left_schema = entry_schema(&left_schema, &left_decoded, &left_kept);
 		let right_schema = mark_schema(
-			&decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?,
+			&decoded_schema(&right_stored, |id| self.catalog.find_dictionary(txn, id))?,
 			&right_tags,
 		)?;
 		let left_retention = with.retention.as_ref().map(|retention| retention.duration);

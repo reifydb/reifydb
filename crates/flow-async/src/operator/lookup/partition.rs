@@ -16,7 +16,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		dictionary::{DictionaryEntryId, DictionaryId},
 		partition::Partition,
 		value_type::ValueType,
@@ -182,6 +182,16 @@ impl<'a> PartitionLookup<'a> {
 			let Some(slot) = slot else {
 				return Ok(None);
 			};
+			if let ViewData::DictionaryId {
+				dictionary_id: Some(id),
+				..
+			} = view.data && slot.dictionary == Some(id)
+			{
+				for (key, &row) in hashed.iter_mut().zip(full) {
+					key.push(view.get_value(row));
+				}
+				continue;
+			}
 			let convert = TargetConvert {
 				target: None,
 			};
