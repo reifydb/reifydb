@@ -1015,11 +1015,8 @@ impl FlowActor {
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let mut retrying = false;
 		if self.ticks_enabled && !state.poisoned && !state.committing && !state.backfilling {
-			let ticked = self.lookup_computer(state).tick(
-				&mut state.flow_engine,
-				self.flow_id,
-				state.durable_cursor,
-			);
+			let ticked =
+				self.lookup_computer(state).tick(&mut state.flow_engine, self.flow_id, state.cursor);
 			match ticked {
 				Ok((pending, emitted)) => {
 					state.retry_count = 0;
@@ -2871,7 +2868,7 @@ mod tick_failures {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		actors::pending::Pending,
-		common::{ChangeVersion, OperatorClass, WindowRequirements, WindowSizeDomain},
+		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
 		flow::operator::{FlowNode, OperatorDef},
 		interface::{
 			catalog::{
@@ -2888,7 +2885,7 @@ mod tick_failures {
 	};
 	use reifydb_engine::engine::StandardEngine;
 	use reifydb_flow_async::{
-		operator::{BoxedHostOperator, HostOperator, host::HostContext},
+		operator::{BoxedHostOperator, HostOperator, TimedOutput, host::HostContext},
 		timer::{Timer, wheel::TimerWheel},
 		transaction::{
 			DeferredParams, FlowTransaction, deferred::DeferredTransaction, watermark::SourceWatermarks,
@@ -2950,7 +2947,7 @@ mod tick_failures {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
 			Err(Error(Box::new(Diagnostic {
 				code: "TEST_TIMER_HANDLER_FAILED".to_string(),
 				message: "the timer handler failed".to_string(),
@@ -2976,7 +2973,7 @@ mod tick_failures {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
 			Ok(None)
 		}
 	}
@@ -2998,7 +2995,7 @@ mod tick_failures {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> ValueResult<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> ValueResult<Option<TimedOutput>> {
 			let user = batch(vec![int4("id", [1])]).unwrap();
 			let system: [(SystemColumn, ArrayRef); 4] = [
 				(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))),
@@ -3011,7 +3008,7 @@ mod tick_failures {
 			});
 			let mut diffs = Diffs::new();
 			diffs.push(Diff::insert(row));
-			Ok(Some(Change::from_flow(self.id, ChangeVersion::from(CommitVersion(1)), diffs, timer.due)))
+			Ok(Some(TimedOutput::new(diffs, timer.due)))
 		}
 	}
 
@@ -3034,7 +3031,7 @@ mod tick_failures {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
 			Ok(None)
 		}
 	}

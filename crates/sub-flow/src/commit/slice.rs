@@ -380,7 +380,7 @@ impl SliceComputer {
 		&self,
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
-		checkpoint: CommitVersion,
+		cursor: CommitVersion,
 	) -> Result<(Pending, bool)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -401,12 +401,12 @@ impl SliceComputer {
 		if !self.members.is_empty() {
 			txn.capture_emits();
 		}
-		flow_engine.process_tick(&mut txn, flow_id, checkpoint)?;
-		let version = ChangeVersion::from(checkpoint);
+		flow_engine.process_tick(&mut txn, flow_id, cursor)?;
+		let version = ChangeVersion::from(cursor);
 		let changed_at = self.engine.clock().now();
 		for (member, parent_view) in self.members.iter() {
 			feed_member(flow_engine, &mut txn, *member, *parent_view, version, changed_at)?;
-			flow_engine.process_tick(&mut txn, *member, checkpoint)?;
+			flow_engine.process_tick(&mut txn, *member, cursor)?;
 		}
 
 		let emitted = txn.emitted;

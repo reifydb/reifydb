@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::txn::Intern;
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::instrument;
 
 use crate::{engine::FlowEngineInner, operator::host::TxnHostContext, transaction::FlowTransaction};
@@ -20,13 +20,13 @@ use crate::{engine::FlowEngineInner, operator::host::TxnHostContext, transaction
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
 		flow_id = ?flow_id,
-		checkpoint = checkpoint.0
+		cursor = cursor.0
 	))]
 	pub fn process_tick<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,
-		checkpoint: CommitVersion,
+		cursor: CommitVersion,
 	) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
@@ -35,8 +35,19 @@ impl FlowEngineInner {
 
 		let topo = flow.topological_order();
 
-		self.dispatch_operator_ticks(txn, &flow, ChangeVersion::from(checkpoint), topo)?;
-		self.dispatch_due_timers(txn, &flow, ChangeVersion::from(checkpoint), topo)?;
+		reifydb_assertions! {
+			if let Some(floor) = txn.lookup_floor() {
+				assert!(
+					cursor >= floor,
+					"flow {} ticked at {} below its lookup lease floor {}: a lookup downstream reads history that may be gone",
+					flow_id.0,
+					cursor.0,
+					floor.0
+				);
+			}
+		}
+		self.dispatch_operator_ticks(txn, &flow, ChangeVersion::from(cursor), topo)?;
+		self.dispatch_due_timers(txn, &flow, ChangeVersion::from(cursor), topo)?;
 		Ok(())
 	}
 
@@ -59,7 +70,7 @@ impl FlowEngineInner {
 			if result.diffs.is_empty() {
 				continue;
 			}
-			let combined = Change::from_flow(*operator_id, version, result.diffs, result.changed_at);
+			let combined = result.into_change(*operator_id, version);
 			let Some(node) = flow.get_operator(operator_id) else {
 				continue;
 			};

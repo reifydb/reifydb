@@ -22,7 +22,6 @@ use reifydb_codec::{
 #[cfg(test)]
 use reifydb_core::key::row::{PartitionedRowKey, RowKey};
 use reifydb_core::{
-	common::ChangeVersion,
 	interface::{
 		catalog::{
 			flow::OperatorId,
@@ -33,7 +32,7 @@ use reifydb_core::{
 			storage::StorageId,
 			view::View,
 		},
-		change::{Change, Diff},
+		change::{Change, Diff, Diffs},
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
@@ -94,7 +93,7 @@ use reifydb_value::{
 use super::DurableSink;
 use crate::{
 	error::FlowStateError,
-	operator::join::column::JoinedColumnsBuilder,
+	operator::{TimedOutput, join::column::JoinedColumnsBuilder},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
@@ -570,7 +569,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 
-	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<TimedOutput>> {
 		if timer.kind != TimerKind::RowTtl || self.ttl.is_none() {
 			return Ok(None);
 		}
@@ -580,8 +579,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		self.sync_row_ttl_timer(txn, partition)?;
 
 		if evicted_any {
-			let version = ChangeVersion::from(txn.version());
-			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.due)));
+			return Ok(Some(TimedOutput::new(Diffs::new(), timer.due)));
 		}
 		Ok(None)
 	}
@@ -1019,7 +1017,7 @@ mod tests {
 	use reifydb_codec::key::encode_u128_asc;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		common::CommitVersion,
+		common::{ChangeVersion, CommitVersion},
 		delta::RemoveVisibility,
 		interface::{
 			catalog::{
@@ -1219,7 +1217,7 @@ mod tests {
 		op: &mut SinkRingBufferViewOperator,
 		partition_values: &[Value],
 		at: i64,
-	) -> Option<Change> {
+	) -> Option<TimedOutput> {
 		// Stands in for the dispatcher. Eviction is decided by the timer's own instant, so
 		// neither the operator nor the test needs a clock.
 		let mut txn = deferred_txn(engine);

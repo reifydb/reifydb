@@ -13,7 +13,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	delta::RemoveVisibility,
 	interface::change::Change,
 	key::{any::TaggedKey, operator::state::OperatorStateKey},
@@ -288,6 +288,7 @@ impl<O: HostOperator> Harness<O> {
 			let mut host = TxnHostContext::new(&mut txn, operator);
 			self.operator.on_timer(&mut host, timer)?
 		};
+		let out = out.map(|output| output.into_change(operator, ChangeVersion::from(txn.version())));
 		self.end(txn);
 		Ok(out)
 	}
@@ -317,7 +318,12 @@ impl<O: HostOperator> Harness<O> {
 						at: run.iter().map(|timer| timer.due).max(),
 					});
 					let mut host = TxnHostContext::new(&mut txn, operator);
-					emitted.extend(self.operator.on_timers(&mut host, run)?.into_iter().flatten());
+					let outputs = self.operator.on_timers(&mut host, run)?;
+					let version = ChangeVersion::from(txn.version());
+					emitted.extend(outputs
+						.into_iter()
+						.flatten()
+						.map(|output| output.into_change(operator, version)));
 					continue;
 				}
 				for timer in run {
@@ -325,8 +331,10 @@ impl<O: HostOperator> Harness<O> {
 						at: Some(timer.due),
 					});
 					let mut host = TxnHostContext::new(&mut txn, operator);
-					if let Some(change) = self.operator.on_timer(&mut host, timer)? {
-						emitted.push(change);
+					let output = self.operator.on_timer(&mut host, timer)?;
+					if let Some(output) = output {
+						emitted.push(output
+							.into_change(operator, ChangeVersion::from(txn.version())));
 					}
 				}
 			}

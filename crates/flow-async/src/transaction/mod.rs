@@ -52,7 +52,7 @@ pub mod substrate;
 pub mod watermark;
 
 use crate::{
-	operator::sink::DurableSink,
+	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{read::flow_merge_pending_iterator, substrate::FlowSubstrate},
 };
@@ -146,7 +146,7 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change>;
 
-	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<Change>>;
+	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<TimedOutput>>;
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 

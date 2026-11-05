@@ -13,7 +13,11 @@ use arrow_array::{ArrayRef, RecordBatch, TimestampNanosecondArray};
 use arrow_ord::cmp::gt_eq;
 #[cfg(feature = "runtime")]
 use arrow_schema::{DataType, SchemaRef};
-use reifydb_core::{interface::change::Change, internal_err};
+use reifydb_core::{
+	common::ChangeVersion,
+	interface::change::{Change, Diffs},
+	internal_err,
+};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
@@ -101,6 +105,26 @@ impl InputOrder {
 }
 
 #[cfg(feature = "runtime")]
+pub struct TimedOutput {
+	pub diffs: Diffs,
+	pub changed_at: DateTime,
+}
+
+#[cfg(feature = "runtime")]
+impl TimedOutput {
+	pub fn new(diffs: impl Into<Diffs>, changed_at: DateTime) -> Self {
+		Self {
+			diffs: diffs.into(),
+			changed_at,
+		}
+	}
+
+	pub fn into_change(self, operator: OperatorId, version: ChangeVersion) -> Change {
+		Change::from_flow(operator, version, self.diffs, self.changed_at)
+	}
+}
+
+#[cfg(feature = "runtime")]
 pub trait HostOperator: Send {
 	fn id(&self) -> OperatorId;
 
@@ -112,11 +136,11 @@ pub trait HostOperator: Send {
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
 
-	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
 		Ok(None)
 	}
 
-	fn on_tick(&mut self, _host: &mut dyn HostContext) -> Result<Option<Change>> {
+	fn on_tick(&mut self, _host: &mut dyn HostContext) -> Result<Option<TimedOutput>> {
 		Ok(None)
 	}
 
@@ -124,7 +148,7 @@ pub trait HostOperator: Send {
 		false
 	}
 
-	fn on_timers(&mut self, _host: &mut dyn HostContext, _timers: Vec<Timer>) -> Result<Vec<Option<Change>>> {
+	fn on_timers(&mut self, _host: &mut dyn HostContext, _timers: Vec<Timer>) -> Result<Vec<Option<TimedOutput>>> {
 		internal_err!("operator {} does not batch timers", self.id().0)
 	}
 
@@ -157,8 +181,8 @@ pub fn max_input_time(change: &Change) -> Result<Option<DateTime>> {
 }
 
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
-pub(crate) fn stamp_output_created(change: &mut Change, at: DateTime) -> Result<()> {
-	for diff in change.diffs.iter_mut() {
+pub(crate) fn stamp_output_created(diffs: &mut Diffs, at: DateTime) -> Result<()> {
+	for diff in diffs.iter_mut() {
 		for columns in diff.batches_mut() {
 			let rows = columns.num_rows();
 			for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt] {

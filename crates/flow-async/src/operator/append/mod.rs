@@ -10,7 +10,7 @@ use reifydb_flow::operator::append::AppendOperator;
 use reifydb_value::Result;
 
 use crate::{
-	operator::{HostOperator, host::HostContext},
+	operator::{HostOperator, TimedOutput, host::HostContext},
 	timer::Timer,
 };
 
@@ -33,7 +33,7 @@ impl HostOperator for AppendOperator {
 		self.apply(change)
 	}
 
-	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
 		Ok(None)
 	}
 

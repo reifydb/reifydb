@@ -10,7 +10,7 @@ use std::{
 
 use arrow_schema::SchemaRef;
 use reifydb_core::{
-	common::{ChangeVersion, OperatorClass},
+	common::OperatorClass,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
@@ -30,7 +30,7 @@ use reifydb_extension::{
 	},
 };
 use reifydb_flow_async::{
-	operator::{HostOperator, apply::declared_schema, host::HostContext},
+	operator::{HostOperator, TimedOutput, apply::declared_schema, host::HostContext},
 	timer::Timer,
 };
 use reifydb_sdk::{
@@ -50,7 +50,7 @@ use reifydb_sdk::{
 		},
 	},
 };
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count};
 use tracing::{Span, error, field, instrument};
 
 thread_local! {
@@ -198,8 +198,12 @@ impl HostOperator for ExternCOperatorHandle {
 			.into());
 		}
 
-		let mut output_change =
-			drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
+		let mut output_change = Change::from_flow(
+			self.operator_id,
+			version,
+			drain_emitted_diffs(&self.builder_registry),
+			changed_at,
+		);
 		for columns in output_change.diffs.iter_mut().flat_map(Diff::batches_mut) {
 			for source in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
 				*columns = reattach_dictionary_ids(columns.clone(), source)?;
@@ -215,8 +219,7 @@ impl HostOperator for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
-		let version = ChangeVersion::from(host.version());
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		let key = timer.key.as_ref();
 
 		let mut host_ctx = ExternCHostContext::new(host, self.class);
@@ -253,12 +256,12 @@ impl HostOperator for ExternCOperatorHandle {
 			.into());
 		}
 
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timer.due);
-		Span::current().record("output_diff_count", output_change.diffs.len());
-		if output_change.diffs.is_empty() {
+		let diffs = drain_emitted_diffs(&self.builder_registry);
+		Span::current().record("output_diff_count", diffs.len());
+		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(output_change))
+		Ok(Some(TimedOutput::new(diffs, timer.due)))
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -322,14 +325,8 @@ impl ExternCOperatorHandle {
 	}
 }
 
-fn drain_emitted_diffs(
-	registry: &BuilderRegistry,
-	operator_id: OperatorId,
-	version: ChangeVersion,
-	changed_at: DateTime,
-) -> Change {
-	let emitted = registry.drain();
-	let diffs: Diffs = emitted
+fn drain_emitted_diffs(registry: &BuilderRegistry) -> Diffs {
+	registry.drain()
 		.into_iter()
 		.map(|d| match d.kind {
 			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(empty_batch)),
@@ -338,8 +335,7 @@ fn drain_emitted_diffs(
 			}
 			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(empty_batch)),
 		})
-		.collect();
-	Change::from_flow(operator_id, version, diffs, changed_at)
+		.collect()
 }
 
 #[cfg(test)]

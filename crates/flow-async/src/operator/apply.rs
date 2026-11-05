@@ -28,7 +28,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::{
-		BoxedHostOperator, HostOperator,
+		BoxedHostOperator, HostOperator, TimedOutput,
 		host::HostContext,
 		join::kept::dictionary_columns,
 		stamp_output_created,
@@ -90,19 +90,19 @@ impl HostOperator for ApplyOperator {
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let changed_at = change.changed_at;
 		let mut out = self.inner.apply(host, change)?;
-		stamp_output_created(&mut out, changed_at)?;
+		stamp_output_created(&mut out.diffs, changed_at)?;
 		Ok(out)
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		if timer.kind == TimerKind::Reclaim {
 			reclaim(host, timer.due)?;
 			return Ok(None);
 		}
 		let due = timer.due;
 		let mut out = self.inner.on_timer(host, timer)?;
-		if let Some(change) = out.as_mut() {
-			stamp_output_created(change, due)?;
+		if let Some(output) = out.as_mut() {
+			stamp_output_created(&mut output.diffs, due)?;
 		}
 		Ok(out)
 	}
@@ -409,7 +409,7 @@ mod reclaim_tests {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
 			self.timers.fetch_add(1, Ordering::SeqCst);
 			Ok(None)
 		}
@@ -491,7 +491,7 @@ mod reclaim_tests {
 		txn: &mut DeferredTransaction,
 		kind: TimerKind,
 		millis: i64,
-	) -> Option<Change> {
+	) -> Option<TimedOutput> {
 		let mut host = TxnHostContext::with_retention(txn, OP, operator.retention());
 		operator.on_timer(
 			&mut host,

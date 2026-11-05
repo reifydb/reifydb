@@ -11,7 +11,7 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
-	common::{ChangeVersion, CommitVersion, JoinType, SourceVersion},
+	common::{CommitVersion, JoinType, SourceVersion},
 	expression::Expression,
 	flow::operator::LookupObject,
 	interface::{
@@ -57,7 +57,7 @@ use super::{
 };
 use crate::{
 	operator::{
-		HostOperator, InputOrder,
+		HostOperator, InputOrder, TimedOutput,
 		host::HostContext,
 		join::{
 			column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
@@ -949,26 +949,21 @@ impl HostOperator for LookupOperator {
 		Ok(Change::from_flow(self.config.operator, version, result, change.changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		if timer.kind == TimerKind::Maintenance {
 			self.expiry.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
 	}
 
-	fn on_tick(&mut self, host: &mut dyn HostContext) -> Result<Option<Change>> {
+	fn on_tick(&mut self, host: &mut dyn HostContext) -> Result<Option<TimedOutput>> {
 		let mut result = Vec::new();
 		self.flush_due(host, &mut result)?;
 		if result.is_empty() {
 			return Ok(None);
 		}
 		mark_diffs(&mut result, &self.output_sumtypes)?;
-		Ok(Some(Change::from_flow(
-			self.config.operator,
-			ChangeVersion::from(host.version()),
-			result,
-			host.wall_now(),
-		)))
+		Ok(Some(TimedOutput::new(result, host.wall_now())))
 	}
 
 	fn input_order(&self) -> InputOrder {

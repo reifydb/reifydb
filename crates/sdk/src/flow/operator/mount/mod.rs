@@ -12,12 +12,11 @@ use std::{
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use reifydb_core::{
-	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
 use reifydb_flow_async::{
-	operator::{BoxedHostOperator, HostOperator, apply::declared_schema, host::HostContext},
+	operator::{BoxedHostOperator, HostOperator, TimedOutput, apply::declared_schema, host::HostContext},
 	timer::Timer,
 };
 use reifydb_runtime::fatal::{
@@ -167,9 +166,8 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Change::from_flow(self.operator, version, diffs, changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		let due = timer.due;
-		let version = ChangeVersion::from(host.version());
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{
 			let logic = &mut self.logic;
@@ -188,7 +186,7 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(Change::from_flow(self.operator, version, diffs, due)))
+		Ok(Some(TimedOutput::new(diffs, due)))
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

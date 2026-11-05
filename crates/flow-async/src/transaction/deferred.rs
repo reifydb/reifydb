@@ -95,7 +95,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	operator::sink::DurableSink,
+	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
@@ -376,7 +376,7 @@ impl FlowTransaction for DeferredTransaction {
 		sink.apply(self, change)
 	}
 
-	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<Change>> {
+	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<TimedOutput>> {
 		sink.on_timer(self, timer)
 	}
 

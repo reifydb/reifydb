@@ -6,7 +6,7 @@ use std::{slice, sync::Arc};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use reifydb_core::{
-	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
+	common::{WindowKind, WindowSize},
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	internal_err,
@@ -35,7 +35,7 @@ use super::{
 };
 use crate::{
 	operator::{
-		HostOperator,
+		HostOperator, TimedOutput,
 		aggregation::core::Aggregation,
 		drops::SealedDrops,
 		host::HostContext,
@@ -205,7 +205,7 @@ impl HostOperator for WindowOperator {
 		Ok(out)
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		let fired = FiredAt::of(&timer);
 		if timer.kind == TimerKind::Maintenance {
 			reap_sealed_groups(self, host, fired)?;
@@ -231,12 +231,7 @@ impl HostOperator for WindowOperator {
 		if diffs.is_empty() {
 			Ok(None)
 		} else {
-			Ok(Some(Change::from_flow(
-				self.core.operator,
-				ChangeVersion::from(CommitVersion(0)),
-				diffs,
-				timer.due,
-			)))
+			Ok(Some(TimedOutput::new(diffs, timer.due)))
 		}
 	}
 
@@ -244,22 +239,17 @@ impl HostOperator for WindowOperator {
 		matches!(self.kind, WindowKind::Session { .. })
 	}
 
-	fn on_timers(&mut self, host: &mut dyn HostContext, timers: Vec<Timer>) -> Result<Vec<Option<Change>>> {
+	fn on_timers(&mut self, host: &mut dyn HostContext, timers: Vec<Timer>) -> Result<Vec<Option<TimedOutput>>> {
 		if !self.batches_timers() || timers.iter().any(|timer| timer.kind != TimerKind::Seal) {
 			return internal_err!("operator {} batches only session seal timers", self.core.operator.0);
 		}
 		let diffs = seal_session_engines(self, host, &timers)?;
-		let mut outputs: Vec<Option<Change>> = timers.iter().map(|_| None).collect();
+		let mut outputs: Vec<Option<TimedOutput>> = timers.iter().map(|_| None).collect();
 		if !diffs.is_empty()
 			&& let (Some(slot), Some(latest)) =
 				(outputs.last_mut(), timers.iter().map(|timer| timer.due).max())
 		{
-			*slot = Some(Change::from_flow(
-				self.core.operator,
-				ChangeVersion::from(CommitVersion(0)),
-				diffs,
-				latest,
-			));
+			*slot = Some(TimedOutput::new(diffs, latest));
 		}
 		Ok(outputs)
 	}

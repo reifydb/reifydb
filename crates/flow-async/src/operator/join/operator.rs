@@ -69,7 +69,7 @@ use super::{
 use crate::{
 	error::FlowStateError,
 	operator::{
-		HostOperator, InputOrder,
+		HostOperator, InputOrder, TimedOutput,
 		host::HostContext,
 		join::{Emitted, Identity, expiry::JoinExpiryIndex},
 		row_times,
@@ -1026,7 +1026,7 @@ impl HostOperator for JoinOperator {
 		Ok(Change::from_flow(self.operator, version, result, change.changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		if timer.kind == TimerKind::Maintenance {
 			self.free_due_join_rows(host, FiredAt::of(&timer))?;
 		}
@@ -1498,7 +1498,7 @@ mod seal_tests {
 			.remove(0)
 	}
 
-	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime) -> Option<Change> {
+	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime) -> Option<TimedOutput> {
 		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
@@ -1640,7 +1640,7 @@ mod seal_tests {
 			&mut self,
 			sink: &mut dyn DurableSink,
 			timer: Timer,
-		) -> Result<Option<Change>> {
+		) -> Result<Option<TimedOutput>> {
 			self.inner.run_durable_sink_timer(sink, timer)
 		}
 

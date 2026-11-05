@@ -27,7 +27,7 @@ use reifydb_flow::{
 	txn::{Batch, Find, Get, Intern, Resolve},
 };
 use reifydb_flow_async::{
-	operator::sink::DurableSink,
+	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
@@ -320,7 +320,11 @@ impl FlowTransaction for EphemeralTransaction {
 		}))
 	}
 
-	fn run_durable_sink_timer(&mut self, _sink: &mut dyn DurableSink, _timer: Timer) -> Result<Option<Change>> {
+	fn run_durable_sink_timer(
+		&mut self,
+		_sink: &mut dyn DurableSink,
+		_timer: Timer,
+	) -> Result<Option<TimedOutput>> {
 		Err(Error::from(FlowGraphError::UnsupportedNode {
 			kind: "DurableSink",
 		}))

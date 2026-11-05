@@ -163,6 +163,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			Some(calls) => self.operator.on_timer(&mut CountingHost::new(host, calls), timer)?,
 			None => self.operator.on_timer(&mut { host }, timer)?,
 		};
+		let output =
+			output.map(|output| output.into_change(self.operator_id, ChangeVersion::from(self.version())));
 		if let Some(change) = &output {
 			check_output::<C>(change)?;
 			self.history.push(change.clone());

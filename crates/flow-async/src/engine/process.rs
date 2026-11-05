@@ -68,6 +68,17 @@ impl FlowEngineInner {
 
 		let mut by_source: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
 		for change in changes {
+			reifydb_assertions! {
+				if let Some(floor) = txn.lookup_floor() {
+					assert!(
+						change.version.source.0 >= floor.0,
+						"flow {} got a change at source {} below its lookup lease floor {}: a lookup downstream reads history that may be gone",
+						flow_id.0,
+						change.version.source.0,
+						floor.0
+					);
+				}
+			}
 			by_source.entry(change.version.source).or_default().push(change);
 		}
 		Span::current().record("version_count", by_source.len());

@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
 use reifydb_flow_async::{
-	operator::sink::DurableSink,
+	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, FlowTransaction, dictionary::DictionaryExtension, pending_get,
@@ -141,7 +141,11 @@ impl FlowTransaction for TestFlowTransaction {
 		panic!("not supported by the test transaction: run_durable_sink")
 	}
 
-	fn run_durable_sink_timer(&mut self, _sink: &mut dyn DurableSink, _timer: Timer) -> Result<Option<Change>> {
+	fn run_durable_sink_timer(
+		&mut self,
+		_sink: &mut dyn DurableSink,
+		_timer: Timer,
+	) -> Result<Option<TimedOutput>> {
 		panic!("not supported by the test transaction: run_durable_sink_timer")
 	}
 

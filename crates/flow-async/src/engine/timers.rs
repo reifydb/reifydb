@@ -228,12 +228,7 @@ impl FlowEngineInner {
 						if result.diffs.is_empty() {
 							continue;
 						}
-						let combined = Change::from_flow(
-							operator_id,
-							version,
-							result.diffs,
-							result.changed_at,
-						);
+						let combined = result.into_change(operator_id, version);
 						for child_id in &graph_node.outputs {
 							pending.entry(*child_id).or_default().push(combined.clone());
 						}
@@ -252,6 +247,8 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_codec::key::encoded::EncodedKey;
+	#[cfg(reifydb_assertions)]
+	use reifydb_core::common::SourceVersion;
 	#[cfg(reifydb_assertions)]
 	use reifydb_core::interface::change::Diff;
 	use reifydb_core::{
@@ -278,10 +275,12 @@ mod tests {
 		factory::time::at_millis,
 	};
 
+	#[cfg(reifydb_assertions)]
+	use crate::transaction::{LookupContext, LookupVersions, deferred::DeferredTransaction};
 	use crate::{
 		engine::{FlowEngineInner, timers::MAX_TIMERS_PER_DISPATCH},
 		operator::{
-			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
+			HostOperator, TimedOutput, host::HostContext, metrics::OperatorSampleRegistry,
 			provider::EmptyOperatorProvider,
 		},
 		timer::{Timer, TimerDue, wheel::TimerWheel},
@@ -316,7 +315,7 @@ mod tests {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
 			if self.fails {
 				return Err(Error(Box::new(Diagnostic {
 					code: "TEST_TIMER_HANDLER_FAILED".to_string(),
@@ -345,11 +344,10 @@ mod tests {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
 			let batch = RecordBatch::try_from_iter([("c", column)]).unwrap();
-			let version = ChangeVersion::from(CommitVersion(1));
-			Ok(Some(Change::from_flow(OPERATOR, version, vec![(self.0)(batch)], timer.due)))
+			Ok(Some(TimedOutput::new(vec![(self.0)(batch)], timer.due)))
 		}
 	}
 
@@ -479,7 +477,7 @@ mod tests {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 			self.fired.lock().unwrap().push((
 				self.id,
 				timer.due.to_millis(),
@@ -566,7 +564,7 @@ mod tests {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 			self.runs.lock().unwrap().push((false, vec![(self.id, timer.due.to_millis(), timer.kind)]));
 			Ok(None)
 		}
@@ -579,7 +577,7 @@ mod tests {
 			&mut self,
 			_host: &mut dyn HostContext,
 			timers: Vec<Timer>,
-		) -> Result<Vec<Option<Change>>> {
+		) -> Result<Vec<Option<TimedOutput>>> {
 			let run = timers.iter().map(|timer| (self.id, timer.due.to_millis(), timer.kind)).collect();
 			self.runs.lock().unwrap().push((true, run));
 			Ok(timers.iter().map(|_| None).collect())
@@ -855,5 +853,66 @@ mod tests {
 		);
 		assert_eq!(theirs.len(), 1, "the owning flow never learned of its arm");
 		assert_eq!(theirs[0].operator_id, OTHER);
+	}
+
+	#[cfg(reifydb_assertions)]
+	struct NoVersions;
+
+	#[cfg(reifydb_assertions)]
+	impl LookupVersions for NoVersions {
+		fn view_version(&self, _view: ViewId, _source: SourceVersion) -> Option<CommitVersion> {
+			None
+		}
+
+		fn view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
+			None
+		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn floored(engine: &TestEngine, floor: u64) -> (FlowEngineInner, DeferredTransaction) {
+		let mut inner = engine_inner(engine);
+		inner.register_flow_dag(FlowDag::builder(FLOW).build());
+		let mut txn = engine.flow_txn().deferred();
+		txn.lookup = Some(LookupContext {
+			versions: Arc::new(NoVersions),
+			floor: CommitVersion(floor),
+		});
+		(inner, txn)
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "below its lookup lease floor")]
+	fn a_tick_below_the_lookup_floor_fails_at_the_engine() {
+		// Without this a stale tick stamp only surfaces once a lookup is downstream and its history is pruned.
+		let engine = TestEngine::new();
+		let (mut inner, mut txn) = floored(&engine, 9);
+		inner.process_tick(&mut txn, FLOW, CommitVersion(8)).unwrap();
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	fn a_tick_exactly_at_the_lookup_floor_passes() {
+		// A quiet flow ticks with its cursor equal to its floor, so an equal stamp must never trip the check.
+		let engine = TestEngine::new();
+		let (mut inner, mut txn) = floored(&engine, 9);
+		inner.process_tick(&mut txn, FLOW, CommitVersion(9)).unwrap();
+	}
+
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "below its lookup lease floor")]
+	fn a_change_below_the_lookup_floor_fails_at_the_engine() {
+		// Without this a change stamped below the floor only surfaces when a lookup finds its history gone.
+		let engine = TestEngine::new();
+		let (mut inner, mut txn) = floored(&engine, 9);
+		let change = Change::from_flow(
+			OPERATOR,
+			ChangeVersion::from(CommitVersion(8)),
+			Vec::<Diff>::new(),
+			at_millis(DUE_MS),
+		);
+		inner.process(&mut txn, vec![change], FLOW).unwrap();
 	}
 }
