@@ -4,7 +4,10 @@
 mod catalog;
 mod report;
 
-use std::{io::read_to_string, process::exit};
+use std::{
+	io::{read_to_string, stdin},
+	process::exit,
+};
 
 use clap::{Parser, Subcommand};
 use reifydb::allocator;
@@ -67,17 +70,23 @@ fn catalog_dump(args: CatalogArgs) -> Result<()> {
 }
 
 fn query(args: QueryArgs) -> Result<()> {
-	let input = read_to_string(std::io::stdin()).map_err(|e| format!("failed to read stdin: {e}"))?;
+	let input = read_to_string(stdin()).map_err(|e| format!("failed to read stdin: {e}"))?;
 	eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
 	catalog::with_open(&args.dir, args.wal_off, |db| {
 		for rql in input.lines().map(str::trim).filter(|line| !line.is_empty()) {
 			println!("## {rql}");
 			let rows = catalog::rows(db, rql)?;
 			if let Some(first) = rows.first() {
-				println!("{}", first.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join("\t"));
+				println!(
+					"{}",
+					first.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join("\t")
+				);
 			}
 			for row in &rows {
-				println!("{}", row.iter().map(|(_, value)| value.to_string()).collect::<Vec<_>>().join("\t"));
+				println!(
+					"{}",
+					row.iter().map(|(_, value)| value.to_string()).collect::<Vec<_>>().join("\t")
+				);
 			}
 		}
 		Ok(())
