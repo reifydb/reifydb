@@ -22,7 +22,7 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
-		snapshot::{SnapshotJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
+		published::{PublishedJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
 };
@@ -75,16 +75,16 @@ impl LatestInnerHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				if ctx.operator.snapshot {
-					let ledger = ctx.operator.snapshot_ledger();
-					let snapshot_ctx = SnapshotJoinContext {
+				if ctx.operator.ignores_right_changes() {
+					let ledger = ctx.operator.published_ledger();
+					let published_ctx = PublishedJoinContext {
 						ledger: &ledger,
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
 					};
 					let published = publish_slot(
 						host,
-						&snapshot_ctx,
+						&published_ctx,
 						key_hash,
 						post,
 						indices,
@@ -116,14 +116,14 @@ impl LatestInnerHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &snapshot_ctx, key_hash)?;
+			retire_slot(host, &published_ctx, key_hash)?;
 			write_right_rows(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
@@ -165,9 +165,9 @@ impl LatestInnerHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				if ctx.operator.snapshot {
-					let ledger = ctx.operator.snapshot_ledger();
-					let snapshot_ctx = SnapshotJoinContext {
+				if ctx.operator.ignores_right_changes() {
+					let ledger = ctx.operator.published_ledger();
+					let published_ctx = PublishedJoinContext {
 						ledger: &ledger,
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
@@ -176,7 +176,7 @@ impl LatestInnerHashJoin {
 					let group = ctx.state.right.group_of(key_hash);
 					for &idx in indices {
 						if let Some((columns, _)) =
-							withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
+							withdraw_slot(host, &published_ctx, group, pre, idx)?
 						{
 							withdrawn.push(Diff::remove(columns));
 						}
@@ -216,14 +216,14 @@ impl LatestInnerHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_numbers = require_row_numbers(pre)?;
 		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(host, &snapshot_ctx, key_hash)?;
+			retire_slot(host, &published_ctx, key_hash)?;
 			remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
 			return Ok(Vec::new());
 		}
@@ -281,9 +281,9 @@ impl LatestInnerHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				if ctx.operator.snapshot {
-					let ledger = ctx.operator.snapshot_ledger();
-					let snapshot_ctx = SnapshotJoinContext {
+				if ctx.operator.ignores_right_changes() {
+					let ledger = ctx.operator.published_ledger();
+					let published_ctx = PublishedJoinContext {
 						ledger: &ledger,
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
@@ -293,7 +293,7 @@ impl LatestInnerHashJoin {
 					for &idx in indices {
 						if let Some((slot, id)) = republished_slot(
 							host,
-							&snapshot_ctx,
+							&published_ctx,
 							withdraw_group,
 							pre,
 							post,
@@ -316,10 +316,10 @@ impl LatestInnerHashJoin {
 							continue;
 						}
 						let withdrawn =
-							withdraw_slot(host, &snapshot_ctx, withdraw_group, pre, idx)?;
+							withdraw_slot(host, &published_ctx, withdraw_group, pre, idx)?;
 						let published = publish_slot(
 							host,
-							&snapshot_ctx,
+							&published_ctx,
 							keys.post,
 							post,
 							&[idx],
@@ -370,7 +370,7 @@ impl LatestInnerHashJoin {
 
 pub(crate) fn republished_slot(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	group: GroupId,
 	pre: &RecordBatch,
 	post: &RecordBatch,

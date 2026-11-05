@@ -311,6 +311,7 @@ mod join {
 			catalog::flow::OperatorId,
 			change::{Change, ChangeOrigin, Diff},
 		},
+		operator_with::Emit,
 		row::JoinPick,
 		value::{
 			batch::batch,
@@ -428,7 +429,10 @@ mod join {
 			None,
 			engine.executor().routines.clone(),
 			engine.executor().runtime_context.clone(),
-			snapshot,
+			match snapshot {
+				true => Emit::Off,
+				false => Emit::On,
+			},
 			false,
 			latest.then(JoinPick::latest),
 			None,

@@ -32,7 +32,7 @@ fn a_right_retention_on_a_snapshot_join_is_accepted() {
 	// A sealed right row retires its bytes into the pin first, so the pairs it published survive without it.
 	let engine = engine_with_sources("event(at)");
 
-	engine.admin(&join_view("retention: { right: 1h }, snapshot: true"));
+	engine.admin(&join_view("retention: { right: 1h }, emit: false"));
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn a_left_retention_on_a_snapshot_join_is_accepted() {
 	// Without this the check could reject every flagged join and the right-side tests would still pass.
 	let engine = engine_with_sources("event(at)");
 
-	engine.admin(&join_view("retention: { left: 1h }, snapshot: true"));
+	engine.admin(&join_view("retention: { left: 1h }, emit: false"));
 }
 
 #[test]
@@ -75,5 +75,5 @@ fn a_join_without_a_retention_over_a_processing_time_source_is_accepted() {
 	// The rule must key off the retention, never off joins as a whole.
 	let engine = engine_with_sources("processing");
 
-	engine.admin(&join_view("snapshot: true"));
+	engine.admin(&join_view("emit: false"));
 }

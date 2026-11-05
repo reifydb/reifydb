@@ -20,7 +20,7 @@ use crate::operator::{
 	host::HostContext,
 	join::{
 		Identity,
-		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
+		published::{PublishedJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
 };
@@ -118,14 +118,14 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		add_to_state_entry_batch(host, &ctx.state.left, key_hash, ctx.rows, indices)?;
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			return publish_joined(host, &snapshot_ctx, key_hash, post, indices, true);
+			return publish_joined(host, &published_ctx, key_hash, post, indices, true);
 		}
 
 		let emit_ctx = JoinEmitContext {
@@ -154,7 +154,7 @@ impl LeftHashJoin {
 		let mut result = Vec::new();
 		add_to_state_entry_batch(host, &ctx.state.right, key_hash, ctx.rows, indices)?;
 
-		if ctx.operator.snapshot {
+		if ctx.operator.ignores_right_changes() {
 			return Ok(result);
 		}
 
@@ -209,16 +209,16 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let result = if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		let result = if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
 			let mut withdrawn = Vec::new();
 			for &idx in indices {
-				withdrawn.extend(withdraw_joined(host, &snapshot_ctx, key_hash, pre, idx)?);
+				withdrawn.extend(withdraw_joined(host, &published_ctx, key_hash, pre, idx)?);
 			}
 			withdrawn
 		} else {
@@ -262,7 +262,7 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 
-		if !ctx.operator.snapshot {
+		if !ctx.operator.ignores_right_changes() {
 			let emit_ctx = JoinEmitContext {
 				opposite_store: &ctx.state.left,
 				key_hash,
@@ -278,15 +278,15 @@ impl LeftHashJoin {
 			)?);
 		}
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
 			for &idx in indices {
-				retire_right(host, &snapshot_ctx, key_hash, require_row_numbers(pre)?[idx])?;
+				retire_right(host, &published_ctx, key_hash, require_row_numbers(pre)?[idx])?;
 			}
 		}
 
@@ -295,7 +295,9 @@ impl LeftHashJoin {
 		let right_group = ctx.state.right.group_of(key_hash);
 		let any_removed = ctx.state.right.remove_rows(host, right_group, &numbers)?.contains(&true);
 
-		if !ctx.operator.snapshot && any_removed && !ctx.state.right.contains_key(host, key_hash)? {
+		if !ctx.operator.ignores_right_changes()
+			&& any_removed && !ctx.state.right.contains_key(host, key_hash)?
+		{
 			let operator = ctx.operator;
 			for_each_left_block(host, &ctx.state.left, key_hash, |host, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.num_rows()).collect();
@@ -354,7 +356,7 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
-		if ctx.operator.snapshot {
+		if ctx.operator.ignores_right_changes() {
 			if !update_single_row_in_entry(
 				host,
 				&ctx.state.left,
@@ -365,13 +367,13 @@ impl LeftHashJoin {
 			)? {
 				return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 			}
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			return resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true);
+			return resync_joined(host, &published_ctx, keys, pre, post, row_idx, true);
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, ctx.rows, row_idx)? {
@@ -411,21 +413,21 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
+			retire_right(host, &published_ctx, keys.pre, pre_row_number)?;
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, ctx.rows, row_idx)? {
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
-		if ctx.operator.snapshot {
+		if ctx.operator.ignores_right_changes() {
 			return Ok(Vec::new());
 		}
 

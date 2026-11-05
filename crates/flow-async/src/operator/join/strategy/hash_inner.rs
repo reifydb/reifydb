@@ -19,7 +19,7 @@ use super::{
 use crate::operator::{
 	host::HostContext,
 	join::{
-		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
+		published::{PublishedJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
 };
@@ -81,18 +81,18 @@ impl InnerHashJoin {
 			}
 		}
 
-		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
+		if ctx.operator.ignores_right_changes() && matches!(ctx.side, JoinSide::Right) {
 			return Ok(result);
 		}
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			result.extend(publish_joined(host, &snapshot_ctx, key_hash, post, indices, false)?);
+			result.extend(publish_joined(host, &published_ctx, key_hash, post, indices, false)?);
 			return Ok(result);
 		}
 
@@ -124,9 +124,9 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
+			let published_ctx = PublishedJoinContext {
 				ledger: &ledger,
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
@@ -136,7 +136,7 @@ impl InnerHashJoin {
 					for &idx in indices {
 						result.extend(withdraw_joined(
 							host,
-							&snapshot_ctx,
+							&published_ctx,
 							key_hash,
 							pre,
 							idx,
@@ -147,7 +147,7 @@ impl InnerHashJoin {
 					for &idx in indices {
 						retire_right(
 							host,
-							&snapshot_ctx,
+							&published_ctx,
 							key_hash,
 							require_row_numbers(pre)?[idx],
 						)?;
@@ -156,9 +156,9 @@ impl InnerHashJoin {
 			}
 		}
 
-		let snapshot_right = ctx.operator.snapshot;
+		let right_ignored = ctx.operator.ignores_right_changes();
 
-		if !snapshot_right {
+		if !right_ignored {
 			let emit_ctx = JoinEmitContext {
 				opposite_store: match ctx.side {
 					JoinSide::Left => &ctx.state.right,
@@ -230,8 +230,8 @@ impl InnerHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
-		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
+		if ctx.operator.ignores_right_changes() {
+			let ledger = ctx.operator.published_ledger();
 			return match ctx.side {
 				JoinSide::Left => {
 					if !update_single_row_in_entry(
@@ -244,20 +244,20 @@ impl InnerHashJoin {
 					)? {
 						return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 					}
-					let snapshot_ctx = SnapshotJoinContext {
+					let published_ctx = PublishedJoinContext {
 						ledger: &ledger,
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
 					};
-					resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, false)
+					resync_joined(host, &published_ctx, keys, pre, post, row_idx, false)
 				}
 				JoinSide::Right => {
-					let snapshot_ctx = SnapshotJoinContext {
+					let published_ctx = PublishedJoinContext {
 						ledger: &ledger,
 						operator: ctx.operator,
 						right_store: &ctx.state.right,
 					};
-					retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
+					retire_right(host, &published_ctx, keys.pre, pre_row_number)?;
 					if !update_single_row_in_entry(
 						host,
 						&ctx.state.right,

@@ -18,7 +18,7 @@ fn make_db() -> TestDb {
 	db.admin("CREATE TABLE app::price { k: utf8, p: int8 }");
 	db.admin("CREATE DEFERRED VIEW app::total { total: int8 } AS { \
 		 FROM app::bar \
-		 INNER JOIN { FROM app::price } AS pr USING (k, pr.k) WITH { snapshot: true, latest: true } \
+		 INNER JOIN { FROM app::price } AS pr USING (k, pr.k) WITH { emit: false, latest: true } \
 		 AGGREGATE { total: math::sum(pr_p) } BY {} }");
 	db
 }

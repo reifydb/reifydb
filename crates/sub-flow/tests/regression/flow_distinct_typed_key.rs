@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	operator_with::Emit,
 	value::{
 		batch::batch,
 		column::{builder::ColumnBuilder, factory},
@@ -121,7 +122,7 @@ fn join(engine: &TestEngine, schema: SchemaRef) -> JoinOperator {
 		None,
 		engine.executor().routines.clone(),
 		engine.executor().runtime_context.clone(),
-		false,
+		Emit::On,
 		false,
 		None,
 		None,

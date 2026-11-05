@@ -31,16 +31,33 @@ pub struct WindowWith {
 	pub immutable: Option<Duration>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Emit {
+	#[default]
+	On,
+	Off,
+}
+
+impl From<bool> for Emit {
+	fn from(on: bool) -> Self {
+		match on {
+			true => Emit::On,
+			false => Emit::Off,
+		}
+	}
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct JoinWith {
 	pub retention: Option<JoinRetention>,
-	pub snapshot: bool,
+	pub emit: Emit,
 	pub pick: Option<JoinPick>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookupWith {
 	pub retention: Option<OperatorRetention>,
+	pub emit: Emit,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -13,6 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
+	operator_with::Emit,
 	value::{
 		batch::batch,
 		column::{builder::ColumnBuilder, factory},
@@ -101,7 +102,7 @@ fn join(engine: &TestEngine, left_key: Vec<Expression>, right_key: Vec<Expressio
 		None,
 		engine.executor().routines.clone(),
 		engine.executor().runtime_context.clone(),
-		false,
+		Emit::On,
 		false,
 		None,
 		None,

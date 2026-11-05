@@ -82,14 +82,14 @@ fn create_second_hop(db: &TestDb) {
 fn create_cost(db: &TestDb, curve: &str) {
 	db.admin(&format!("CREATE DEFERRED VIEW app::cost {{ pool: utf8, usd: int8 }} AS {{ \
 		 FROM app::snap \
-		 INNER JOIN {{ FROM app::{curve} }} AS c USING (pool, c.pool) WITH {{ snapshot: true, latest: true }} \
+		 INNER JOIN {{ FROM app::{curve} }} AS c USING (pool, c.pool) WITH {{ emit: false, latest: true }} \
 		 MAP {{ pool, usd: c_usd }} }}"));
 }
 
 fn create_left_cost(db: &TestDb) {
 	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: Option(int8) } AS { \
 		 FROM app::snap \
-		 LEFT JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { snapshot: true, latest: true } \
+		 LEFT JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { emit: false, latest: true } \
 		 MAP { pool, usd: c_usd } }");
 }
 
@@ -102,7 +102,7 @@ fn create_depth(db: &TestDb) {
 fn create_diamond_cost(db: &TestDb) {
 	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
 		 FROM app::depth \
-		 INNER JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { snapshot: true, latest: true } \
+		 INNER JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { emit: false, latest: true } \
 		 MAP { pool, usd: c_usd } }");
 }
 
@@ -194,7 +194,7 @@ fn create_curve_and_cost(db: &TestDb) {
 		"CREATE DEFERRED VIEW app::curve { pool: utf8, usd: int8 } AS { FROM app::level MAP { pool, usd: px * 2 } }; \
 		 CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
 		 FROM app::snap \
-		 INNER JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { snapshot: true, latest: true } \
+		 INNER JOIN { FROM app::curve } AS c USING (pool, c.pool) WITH { emit: false, latest: true } \
 		 MAP { pool, usd: c_usd } }",
 	);
 }
@@ -576,7 +576,7 @@ fn two_tables_in_one_commit_pair_through_a_snapshot_join() {
 	create_tables(&db);
 	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
 		 FROM app::snap \
-		 INNER JOIN { FROM app::level } AS l USING (pool, l.pool) WITH { snapshot: true, latest: true } \
+		 INNER JOIN { FROM app::level } AS l USING (pool, l.pool) WITH { emit: false, latest: true } \
 		 MAP { pool, usd: l_px } }");
 
 	db.command("INSERT app::level [{ pool: 'a', px: 10 }]; INSERT app::snap [{ pool: 'a' }]");

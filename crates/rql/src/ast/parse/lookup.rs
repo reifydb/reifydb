@@ -113,7 +113,7 @@ pub mod tests {
 	fn test_left_lookup_with_retention() {
 		// The left form must keep JoinType::Left so a miss keeps the left row with none columns.
 		let bump = Bump::new();
-		let source = "left lookup { from polaris::price::usd } as base using (info_base_mint, base.mint) with { retention: { left: 10s } }";
+		let source = "left lookup { from polaris::price::usd } as base using (info_base_mint, base.mint) with { emit: false, retention: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -131,7 +131,7 @@ pub mod tests {
 	fn test_lookup_after_from_in_pipeline() {
 		// A lookup must chain after a from like a join does, as the second node of the statement.
 		let bump = Bump::new();
-		let source = "from test::orders inner lookup { from test::users } as u using (user_id, u.id) with { retention: { left: 1m } }";
+		let source = "from test::orders inner lookup { from test::users } as u using (user_id, u.id) with { emit: false, retention: { left: 1m } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -158,7 +158,7 @@ pub mod tests {
 	fn test_lookup_without_alias_fails() {
 		// The alias is required, as for a join; without it the right columns cannot be named.
 		let bump = Bump::new();
-		let source = "inner lookup { from test::users } using (user_id, u.id)";
+		let source = "inner lookup { from test::users } using (user_id, u.id) with { emit: false }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		assert!(parser.parse().is_err());
@@ -168,7 +168,7 @@ pub mod tests {
 	fn test_lookup_without_using_fails() {
 		// A lookup matches only on using columns; a missing using clause must not parse.
 		let bump = Bump::new();
-		let source = "inner lookup { from test::users } as u";
+		let source = "inner lookup { from test::users } as u with { emit: false }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		assert!(parser.parse().is_err());

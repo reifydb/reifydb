@@ -18,7 +18,7 @@ fn lookup(block: &str, using: &str, with: &str) -> String {
 
 const BLOCK: &str = "{ FROM lk::price }";
 const USING: &str = "(mint, p.mint)";
-const WITH: &str = " WITH { retention: { left: 10s } }";
+const WITH: &str = " WITH { emit: false, retention: { left: 10s } }";
 
 fn assert_code(err: &str, code: &str) {
 	assert!(err.contains(code), "expected {code}, got: {err}");

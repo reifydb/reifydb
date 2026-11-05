@@ -42,7 +42,7 @@ fn snapshot_left_join(db: &TestDb, tail: &str) {
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: Option(int4) }} AS {{
 			FROM app::lhs
 				| left join {{ from app::rhs }} as r using (k, r.k)
-					with {{ retention: {{ left: 1s }}, snapshot: true }}
+					with {{ retention: {{ left: 1s }}, emit: false }}
 				| map {{ k: k, lv: lv, rv: r_rv }}
 				{tail}
 		}}"#));

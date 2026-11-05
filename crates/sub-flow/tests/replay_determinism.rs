@@ -29,6 +29,7 @@ use reifydb_core::{
 		consolidate::consolidate_diffs,
 	},
 	key::operator::state::KeyspaceId,
+	operator_with::Emit,
 	value::{
 		batch,
 		column::{builder::ColumnBuilder, factory},
@@ -493,7 +494,7 @@ mod join {
 				None,
 				engine.executor().routines.clone(),
 				engine.executor().runtime_context.clone(),
-				false,
+				Emit::On,
 				false,
 				None,
 				None,

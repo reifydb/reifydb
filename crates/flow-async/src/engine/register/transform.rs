@@ -296,7 +296,7 @@ impl FlowEngineInner {
 				alias,
 				self.routines.clone(),
 				self.runtime_context.clone(),
-				with.snapshot,
+				with.emit,
 				natural,
 				with.pick,
 				left_retention,

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{operator_with::LookupWith, row::OperatorRetention};
+use reifydb_core::{
+	operator_with::{Emit, LookupWith},
+	row::OperatorRetention,
+};
 
 use crate::{
 	Result,
@@ -9,17 +12,21 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{entries, literal, unknown_key},
+		operator_with::{boolean, entries, literal, unknown_key},
 	},
 };
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith> {
-		let mut lookup = LookupWith::default();
+		let mut lookup = LookupWith {
+			retention: None,
+			emit: Emit::Off,
+		};
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => lookup.retention = Some(compile_lookup_retention(entry)?),
-				_ => return Err(unknown_key(entry, "retention")),
+				Some("emit") => lookup.emit = Emit::from(boolean(entry)?),
+				_ => return Err(unknown_key(entry, "retention or emit")),
 			}
 		}
 		Ok(lookup)
@@ -80,7 +87,7 @@ mod tests {
 	#[test]
 	fn retention_left_is_kept() {
 		// The left retention bounds the stored read versions and the lease, so it must survive as written.
-		let with = lookup_with(&lookup(" with { retention: { left: 10s } }")).unwrap();
+		let with = lookup_with(&lookup(" with { emit: false, retention: { left: 10s } }")).unwrap();
 		let retention = with.retention.expect("retention must be set");
 		assert_eq!(retention.duration, Duration::from_seconds(10).unwrap());
 	}
@@ -89,7 +96,7 @@ mod tests {
 	fn left_lookup_takes_the_same_retention() {
 		// Both forms store read versions, so the left form takes the same left retention as the inner one.
 		let with = lookup_with(
-			"left lookup { from orders } as o using (id, o.user_id) with { retention: { left: 1h } }",
+			"left lookup { from orders } as o using (id, o.user_id) with { emit: false, retention: { left: 1h } }",
 		)
 		.unwrap();
 		assert_eq!(with.retention.unwrap().duration, Duration::from_hours(1).unwrap());

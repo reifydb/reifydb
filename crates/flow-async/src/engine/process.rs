@@ -372,7 +372,7 @@ mod tests {
 			},
 			change::Diff,
 		},
-		operator_with::LookupWith,
+		operator_with::{Emit, LookupWith},
 		value::batch::from_rows,
 	};
 	use reifydb_runtime::context::{
@@ -734,6 +734,7 @@ mod tests {
 				alias: Some("price".to_string()),
 				with: LookupWith {
 					retention: None,
+					emit: Emit::Off,
 				},
 			},
 		));

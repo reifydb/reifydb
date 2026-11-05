@@ -197,14 +197,14 @@ fn create_price_view(db: &TestDb, body: &str) {
 fn create_cost(db: &TestDb, form: &str) {
 	db.admin(&format!("CREATE DEFERRED VIEW app::cost {{ id: int4, usd: Option(int8) }} AS {{ \
 		 FROM app::level \
-		 {form} LOOKUP {{ FROM app::price }} AS p USING (k, p.k) WITH {{ retention: {{ left: 10s }} }} \
+		 {form} LOOKUP {{ FROM app::price }} AS p USING (k, p.k) WITH {{ emit: false, retention: {{ left: 10s }} }} \
 		 MAP {{ id, usd: p_v }} }}"));
 }
 
 fn create_total(db: &TestDb) {
 	db.admin("CREATE DEFERRED VIEW app::total { total: int8 } AS { \
 		 FROM app::level \
-		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { retention: { left: 10s } } \
+		 INNER LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false, retention: { left: 10s } } \
 		 AGGREGATE { total: math::sum(p_v) } BY {} }");
 }
 
@@ -346,7 +346,7 @@ fn a_dictionary_partitioned_table_matches_on_both_keys_and_a_miss_does_not_grow_
 	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
 		 FROM app::level \
 		 INNER LOOKUP { FROM app::pool } AS info USING (pair, info.pair) and (pool, info.pool) \
-		 WITH { retention: { left: 10s } } \
+		 WITH { emit: false, retention: { left: 10s } } \
 		 MAP { id, usd: info_fee } }");
 	db.command("INSERT app::pool [{ pool: 'p1', pair: 'x', fee: 5 }, { pool: 'p1', pair: 'y', fee: 7 }]");
 	let entries = db.row_count("FROM app::tokens");
@@ -384,7 +384,7 @@ fn a_lookup_keyed_on_an_extend_computed_over_dictionary_columns_registers_and_ma
 	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
 		 FROM app::level \
 		 EXTEND { k: if is::none(b) { a } else { b } } \
-		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) \
+		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false } \
 		 MAP { id, usd: p_v } }");
 	db.command("INSERT app::price [{ k: 'x', v: 5 }, { k: 'y', v: 7 }]");
 

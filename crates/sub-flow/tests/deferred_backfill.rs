@@ -1031,7 +1031,7 @@ const SNAPSHOT_PAIRS: [&str; 4] =
 
 fn snapshot_join(kind: &str, left: &str) -> String {
 	format!(
-		"FROM {left} {kind} JOIN {{ FROM bf::src2 }} AS r USING (id, r.id) WITH {{ snapshot: true, latest: true }} | map {{ id, g, v, rv: r_v }}"
+		"FROM {left} {kind} JOIN {{ FROM bf::src2 }} AS r USING (id, r.id) WITH {{ emit: false, latest: true }} | map {{ id, g, v, rv: r_v }}"
 	)
 }
 
@@ -1130,7 +1130,7 @@ fn a_late_ungrouped_aggregate_over_a_snapshot_join_equals_an_early_one() {
 	late_equals_early(
 		&db,
 		"n: int8, total: Option(int4)",
-		"FROM bf::src INNER JOIN { FROM bf::src2 } AS r USING (id, r.id) WITH { snapshot: true, latest: true } | aggregate { n: math::count(id), total: math::sum(r_v) } by {}",
+		"FROM bf::src INNER JOIN { FROM bf::src2 } AS r USING (id, r.id) WITH { emit: false, latest: true } | aggregate { n: math::count(id), total: math::sum(r_v) } by {}",
 		Cols::User,
 		&snapshot_join_history(),
 		&["n=4,total=1501"],
@@ -1382,7 +1382,7 @@ fn a_late_snapshot_join_over_a_late_view_whose_backfill_retried_keeps_v_and_equa
 	};
 	let cost = |name: &str, over: &str| {
 		format!(
-			"CREATE DEFERRED VIEW bf::{name} {{ pool: utf8, usd: int8 }} AS {{ FROM bf::snap INNER JOIN {{ FROM bf::{over} }} AS c USING (pool, c.pool) WITH {{ snapshot: true, latest: true }} MAP {{ pool, usd: c_usd }} }}"
+			"CREATE DEFERRED VIEW bf::{name} {{ pool: utf8, usd: int8 }} AS {{ FROM bf::snap INNER JOIN {{ FROM bf::{over} }} AS c USING (pool, c.pool) WITH {{ emit: false, latest: true }} MAP {{ pool, usd: c_usd }} }}"
 		)
 	};
 	let paired = sorted(&["pool=a,usd=20"]);

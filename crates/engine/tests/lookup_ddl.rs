@@ -24,7 +24,7 @@ fn view(name: &str, block: &str, using: &str, with: &str) -> String {
 		 MAP {{ id: id, usd: p_usd }} }}")
 }
 
-const RETENTION: &str = "retention: { left: 10s }";
+const RETENTION: &str = "emit: false, retention: { left: 10s }";
 
 fn assert_code(err: &str, code: &str) {
 	assert!(err.contains(code), "expected {code}, got: {err}");

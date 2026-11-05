@@ -161,6 +161,7 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 			OperatorDef::Lookup {
 				with: LookupWith {
 					retention: Some(_),
+					..
 				},
 				..
 			} => retained.push(side_input(operator, 0)?),
@@ -289,6 +290,7 @@ mod tests {
 			flow::{FlowEdge, OperatorId},
 			id::TableId,
 		},
+		operator_with::Emit,
 		row::{JoinRetention, OperatorRetention},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -582,6 +584,7 @@ mod tests {
 					retention: retention.map(|duration| OperatorRetention {
 						duration,
 					}),
+					emit: Emit::Off,
 				},
 			},
 		)

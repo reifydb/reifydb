@@ -141,3 +141,14 @@ pub(crate) fn reject_immutable_not_smaller_than_lateness<T: PartialOrd>(
 	}
 	.into())
 }
+
+pub(crate) fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
+	let token = literal(entry)?;
+	literal_boolean(token).ok_or_else(|| {
+		AstError::UnexpectedToken {
+			expected: "boolean literal 'true' or 'false'".to_string(),
+			fragment: token.fragment.to_owned(),
+		}
+		.into()
+	})
+}

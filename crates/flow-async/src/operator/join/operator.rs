@@ -24,6 +24,7 @@ use reifydb_core::{
 		typed::direction::{Asc, Desc},
 	},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
+	operator_with::Emit,
 	row::JoinPick,
 	state::timer::TimerKind,
 	value::{
@@ -61,7 +62,7 @@ use tracing::instrument;
 use super::{
 	column::{JoinedColumnsBuilder, JoinedColumnsCache, SequenceColumn},
 	kept::dictionary_columns,
-	snapshot::SnapshotLedger,
+	published::PublishedLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
 };
@@ -181,7 +182,7 @@ pub struct JoinOperator {
 	right_kept: Vec<(String, DictionaryId)>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
-	pub(crate) snapshot: bool,
+	pub(crate) emit: Emit,
 	natural: bool,
 	pub(crate) pick: Option<JoinPick>,
 	left_retention: Option<Duration>,
@@ -193,6 +194,10 @@ pub struct JoinOperator {
 }
 
 impl JoinOperator {
+	pub(crate) fn ignores_right_changes(&self) -> bool {
+		self.emit == Emit::Off
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		left: JoinSideConfig,
@@ -202,7 +207,7 @@ impl JoinOperator {
 		alias: Option<String>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		snapshot: bool,
+		emit: Emit,
 		natural: bool,
 		pick: Option<JoinPick>,
 		left_retention: Option<Duration>,
@@ -244,7 +249,7 @@ impl JoinOperator {
 			right_kept,
 			routines,
 			runtime_context,
-			snapshot,
+			emit,
 			natural,
 			pick,
 			left_retention: left_retention.filter(|span| !span.is_zero()),
@@ -455,8 +460,8 @@ impl JoinOperator {
 	) -> Result<()> {
 		let group = entry.group;
 		let row_number = entry.row_number;
-		if self.snapshot {
-			let ledger = self.snapshot_ledger();
+		if self.ignores_right_changes() {
+			let ledger = self.published_ledger();
 			ledger.release_all(host, group, row_number)?;
 			ledger.flush(host)?;
 		}
@@ -473,10 +478,10 @@ impl JoinOperator {
 	) -> Result<()> {
 		let group = entry.group;
 		let row_number = entry.row_number;
-		if self.snapshot
+		if self.ignores_right_changes()
 			&& let Some(content) = state.right.get_row_in(host, group, row_number)?
 		{
-			let ledger = self.snapshot_ledger();
+			let ledger = self.published_ledger();
 			ledger.retire(host, group, row_number, &content)?;
 			ledger.flush(host)?;
 		}
@@ -581,8 +586,8 @@ impl JoinOperator {
 		self.resync_timer(host, stalled.then_some(retry))
 	}
 
-	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
-		SnapshotLedger::new()
+	pub(crate) fn published_ledger(&self) -> PublishedLedger {
+		PublishedLedger::new()
 	}
 
 	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.num_rows()))]
@@ -1140,7 +1145,7 @@ impl JoinOperator {
 			seen.insert(pre_numbers[idx])
 				&& (post_numbers[idx] == pre_numbers[idx] || seen.insert(post_numbers[idx]))
 		});
-		if distinct && self.strategy.rewrites_in_place(side, self.snapshot) {
+		if distinct && self.strategy.rewrites_in_place(side, self.ignores_right_changes()) {
 			let store = match side {
 				JoinSide::Left => &state.left,
 				JoinSide::Right => &state.right,
@@ -1286,12 +1291,12 @@ mod seal_tests {
 	};
 
 	fn join(operator: u64, left_retention: Option<Duration>, right_retention: Option<Duration>) -> JoinOperator {
-		join_with(operator, false, None, left_retention, right_retention)
+		join_with(operator, Emit::On, None, left_retention, right_retention)
 	}
 
 	fn join_with(
 		operator: u64,
-		snapshot: bool,
+		emit: Emit,
 		pick: Option<JoinPick>,
 		left_retention: Option<Duration>,
 		right_retention: Option<Duration>,
@@ -1312,7 +1317,7 @@ mod seal_tests {
 			None,
 			Routines::empty(),
 			RuntimeContext::testing(0, 1),
-			snapshot,
+			emit,
 			false,
 			pick,
 			left_retention,
@@ -1993,7 +1998,7 @@ mod seal_tests {
 	fn a_latest_join_expires_both_sides_on_their_own_retentions() {
 		// A latest join holds one right row per key, and that row must still arm its own retention.
 		let engine = TestEngine::new();
-		let mut op = join_with(12, false, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
+		let mut op = join_with(12, Emit::On, Some(JoinPick::latest()), Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -2018,7 +2023,7 @@ mod seal_tests {
 	fn a_latest_join_keeps_only_the_winning_right_row_per_key() {
 		// Keeping every right row per key is what grew the right side to one row per source row.
 		let engine = TestEngine::new();
-		let mut op = join_with(15, false, Some(JoinPick::latest()), None, None);
+		let mut op = join_with(15, Emit::On, Some(JoinPick::latest()), None, None);
 		let mut txn = txn_at(&engine, 100);
 
 		let older = rows(&[7], &[99], at_millis(9_000));
@@ -2043,7 +2048,7 @@ mod seal_tests {
 	fn a_latest_join_slot_takes_a_rewrite_of_the_row_it_already_holds() {
 		// A row updated in place cannot outrank itself on the pick, so the tie must go to the rewrite.
 		let engine = TestEngine::new();
-		let mut op = join_with(17, false, Some(JoinPick::latest()), None, None);
+		let mut op = join_with(17, Emit::On, Some(JoinPick::latest()), None, None);
 		let mut txn = txn_at(&engine, 100);
 
 		let first = rows(&[7], &[99], at_millis(9_000));
@@ -2066,7 +2071,7 @@ mod seal_tests {
 	fn a_latest_join_clears_its_slot_only_for_the_row_it_holds() {
 		// Clearing the slot for a row it never held would silently unmatch every left row under that key.
 		let engine = TestEngine::new();
-		let mut op = join_with(16, false, Some(JoinPick::latest()), None, None);
+		let mut op = join_with(16, Emit::On, Some(JoinPick::latest()), None, None);
 		let mut txn = txn_at(&engine, 100);
 
 		let held = rows(&[7], &[99], at_millis(9_000));
@@ -2093,7 +2098,7 @@ mod seal_tests {
 	fn a_snapshot_join_expires_both_sides_on_their_own_retentions() {
 		// A sealed right row retires its bytes into the pin, so pinning it no longer means it may never expire.
 		let engine = TestEngine::new();
-		let mut op = join_with(13, true, None, Some(seconds(10)), Some(seconds(10)));
+		let mut op = join_with(13, Emit::Off, None, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -2115,10 +2120,10 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_expired_left_row_releases_the_snapshot_ledger_it_held() {
+	fn an_expired_left_row_releases_the_published_ledger_it_held() {
 		// A pin is refcounted, so a left row that expires without releasing holds its retired copy forever.
 		let engine = TestEngine::new();
-		let mut op = join_with(14, true, None, Some(seconds(10)), None);
+		let mut op = join_with(14, Emit::Off, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
@@ -2150,7 +2155,7 @@ mod seal_tests {
 	fn an_update_to_an_expired_snapshot_latest_left_row_never_lands_on_its_frozen_id() {
 		// Expiry is silent, so the frozen row keeps its id and a post published there overwrites history.
 		let engine = TestEngine::new();
-		let mut op = join_with(18, true, Some(JoinPick::latest()), Some(seconds(10)), None);
+		let mut op = join_with(18, Emit::Off, Some(JoinPick::latest()), Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		insert(&mut op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let published = insert(&mut op, &mut txn, JoinSide::Left, &rows(&[7], &[42], at_millis(5_000)));
@@ -2183,7 +2188,7 @@ mod seal_tests {
 	fn a_siblings_pin_on_the_same_right_row_survives_its_neighbours_expiry() {
 		// Release must be scoped to the expiring left row, or a live sibling loses the version it published.
 		let engine = TestEngine::new();
-		let mut op = join_with(15, true, None, Some(seconds(10)), None);
+		let mut op = join_with(15, Emit::Off, None, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let early = rows(&[7], &[1], at_millis(5_000));
 		let late = rows(&[7], &[2], at_millis(50_000));

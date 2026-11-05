@@ -160,10 +160,10 @@ fn create_service_fingerprint_is_stable() {
 fn inner_and_left_lookup_differ() {
 	assert_ne!(
 		fp(
-			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false, retention: { left: 10s } }"
 		),
 		fp(
-			"FROM orders LEFT LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+			"FROM orders LEFT LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false, retention: { left: 10s } }"
 		),
 	);
 }
@@ -179,8 +179,8 @@ fn lookup_and_join_differ() {
 #[test]
 fn lookup_right_object_is_part_of_the_fingerprint() {
 	assert_ne!(
-		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id)"),
-		fp("FROM orders INNER LOOKUP { FROM accounts } AS u USING (user_id, u.id)"),
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false }"),
+		fp("FROM orders INNER LOOKUP { FROM accounts } AS u USING (user_id, u.id) WITH { emit: false }"),
 	);
 }
 
@@ -188,10 +188,10 @@ fn lookup_right_object_is_part_of_the_fingerprint() {
 fn lookup_retention_value_is_not_part_of_the_pattern() {
 	assert_eq!(
 		fp(
-			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 10s } }"
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false, retention: { left: 10s } }"
 		),
 		fp(
-			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { retention: { left: 1h } }"
+			"FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false, retention: { left: 1h } }"
 		),
 	);
 }
@@ -199,7 +199,7 @@ fn lookup_retention_value_is_not_part_of_the_pattern() {
 #[test]
 fn lookup_using_columns_are_part_of_the_fingerprint() {
 	assert_ne!(
-		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id)"),
-		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (buyer_id, u.id)"),
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (user_id, u.id) WITH { emit: false }"),
+		fp("FROM orders INNER LOOKUP { FROM users } AS u USING (buyer_id, u.id) WITH { emit: false }"),
 	);
 }

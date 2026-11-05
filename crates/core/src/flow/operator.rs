@@ -414,7 +414,7 @@ mod tests {
 	use crate::{
 		common::JoinType,
 		interface::catalog::id::{TableId, ViewId},
-		operator_with::{ApplyWith, DistinctWith, JoinWith, LookupWith},
+		operator_with::{ApplyWith, DistinctWith, Emit, JoinWith, LookupWith},
 		row::OperatorRetention,
 	};
 
@@ -491,6 +491,7 @@ mod tests {
 				retention: Some(OperatorRetention {
 					duration: Duration::from_seconds(10).unwrap(),
 				}),
+				emit: Emit::Off,
 			},
 		}
 	}

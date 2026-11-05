@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	operator_with::JoinWith,
+	operator_with::{Emit, JoinWith},
 	row::{JoinPick, JoinRetention, OperatorRetention},
 	sort::{SortDirection, SortKey},
 };
@@ -19,12 +19,12 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{entries, literal, literal_boolean, unknown_key},
+		operator_with::{boolean, entries, literal, unknown_key},
 	},
 	token::{keyword::Keyword, token::Token},
 };
 
-const JOIN_WITH_KEYS: &str = "retention, snapshot, latest, or earliest";
+const JOIN_WITH_KEYS: &str = "retention, emit, latest, or earliest";
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_join_with(
@@ -37,7 +37,7 @@ impl<'bump> Compiler<'bump> {
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => join.retention = Some(compile_join_retention(entry)?),
-				Some("snapshot") => join.snapshot = boolean(entry)?,
+				Some("emit") => join.emit = Emit::from(boolean(entry)?),
 				Some(keyword @ ("latest" | "earliest")) => {
 					if picked {
 						return Err(unknown_key(entry, "one of 'latest' or 'earliest'"));
@@ -72,17 +72,6 @@ impl<'bump> Compiler<'bump> {
 		}
 		Ok(join)
 	}
-}
-
-fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
-	let token = literal(entry)?;
-	literal_boolean(token).ok_or_else(|| {
-		AstError::UnexpectedToken {
-			expected: "boolean literal 'true' or 'false'".to_string(),
-			fragment: token.fragment.to_owned(),
-		}
-		.into()
-	})
 }
 
 fn compile_join_retention(entry: &AstOperatorWithEntry<'_>) -> Result<JoinRetention> {
@@ -188,7 +177,10 @@ fn direction(token: &Token<'_>) -> Result<SortDirection> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{operator_with::JoinWith, sort::SortDirection};
+	use reifydb_core::{
+		operator_with::{Emit, JoinWith},
+		sort::SortDirection,
+	};
 	use reifydb_value::value::{datetime::TIME_COLUMN_NAME, duration::Duration};
 
 	use crate::{
@@ -229,14 +221,14 @@ mod tests {
 		format!("inner join {{ from orders }} as o using (id, o.user_id) with {{ {clause} }}")
 	}
 
-	fn parse_inner(source: &str) -> (bool, Option<Vec<(String, SortDirection)>>) {
+	fn parse_inner(source: &str) -> (Emit, Option<Vec<(String, SortDirection)>>) {
 		// Reduces the pick to (column name, direction) pairs so every assertion reads as the ordering the RQL
 		// asked for.
 		let with = join_with(source).unwrap();
 		let pick = with.pick.map(|pick| {
 			pick.keys.into_iter().map(|key| (key.column.text().to_string(), key.direction)).collect()
 		});
-		(with.snapshot, pick)
+		(with.emit, pick)
 	}
 
 	fn parse_err(source: &str) -> String {
@@ -296,9 +288,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_join_with_ttl_and_snapshot() {
-		let with = join_with(&join("retention: { left: 5m }, snapshot: true")).unwrap();
-		assert!(with.snapshot, "snapshot flag should still parse alongside per-side retention");
+	fn test_join_with_ttl_and_emit() {
+		let with = join_with(&join("retention: { left: 5m }, emit: false")).unwrap();
+		assert_eq!(with.emit, Emit::Off, "emit should still parse alongside per-side retention");
 		let retention = with.retention.expect("expected retention");
 		assert!(retention.left.is_some());
 		assert!(retention.right.is_none());
@@ -307,8 +299,8 @@ mod tests {
 	#[test]
 	fn test_join_with_latest_flag() {
 		// `latest: true` must keep meaning a pick by #time.
-		let (snapshot, pick) = parse_inner(&join("snapshot: true, latest: true, retention: { left: 10s }"));
-		assert!(snapshot, "snapshot must parse alongside latest");
+		let (emit, pick) = parse_inner(&join("emit: false, latest: true, retention: { left: 10s }"));
+		assert_eq!(emit, Emit::Off, "emit must parse alongside latest");
 		assert_eq!(
 			pick,
 			Some(vec![(TIME_COLUMN_NAME.to_string(), SortDirection::Desc)]),

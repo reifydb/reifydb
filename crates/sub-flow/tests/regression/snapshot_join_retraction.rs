@@ -18,6 +18,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
+	operator_with::Emit,
 	row::JoinPick,
 	value::{
 		batch::batch,
@@ -103,7 +104,7 @@ fn join(engine: &TestEngine) -> JoinOperator {
 		None,
 		engine.executor().routines.clone(),
 		engine.executor().runtime_context.clone(),
-		true,
+		Emit::Off,
 		false,
 		Some(JoinPick::latest()),
 		None,

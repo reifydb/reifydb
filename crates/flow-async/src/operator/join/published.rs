@@ -93,7 +93,7 @@ struct PublishedSet {
 type Cache<T> = RefCell<HashMap<GroupStateKey, (Option<T>, bool)>>;
 
 #[derive(Default)]
-pub(crate) struct SnapshotLedger {
+pub(crate) struct PublishedLedger {
 	sets: Cache<PublishedSet>,
 	pins: Cache<Pin>,
 	written: RefCell<Vec<GroupStateKey>>,
@@ -113,7 +113,7 @@ fn cached<T: Clone>(
 	Ok(value)
 }
 
-impl SnapshotLedger {
+impl PublishedLedger {
 	pub(crate) fn new() -> Self {
 		Self::default()
 	}
@@ -462,15 +462,15 @@ fn decode_pin(row: &EncodedPodRow) -> Result<Pin> {
 	})
 }
 
-pub(crate) struct SnapshotJoinContext<'a> {
-	pub(crate) ledger: &'a SnapshotLedger,
+pub(crate) struct PublishedJoinContext<'a> {
+	pub(crate) ledger: &'a PublishedLedger,
 	pub(crate) operator: &'a JoinOperator,
 	pub(crate) right_store: &'a Store,
 }
 
 pub(crate) fn publish_joined(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
 	left: &RecordBatch,
 	left_indices: &[usize],
@@ -540,7 +540,7 @@ pub(crate) fn publish_joined(
 
 pub(crate) fn withdraw_joined(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
 	left: &RecordBatch,
 	left_idx: usize,
@@ -613,7 +613,7 @@ pub(crate) fn withdraw_joined(
 
 pub(crate) fn resync_joined(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	keys: UpdateKeys,
 	pre: &RecordBatch,
 	post: &RecordBatch,
@@ -627,7 +627,7 @@ pub(crate) fn resync_joined(
 
 pub(crate) fn publish_slot(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
 	left: &RecordBatch,
 	left_indices: &[usize],
@@ -663,7 +663,7 @@ pub(crate) fn publish_slot(
 
 pub(crate) fn withdraw_slot(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	group: GroupId,
 	left: &RecordBatch,
 	left_idx: usize,
@@ -707,7 +707,7 @@ pub(crate) fn withdraw_slot(
 
 pub(crate) fn retain_published_slot(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<(RecordBatch, RowNumber)>> {
@@ -728,7 +728,7 @@ pub(crate) fn retain_published_slot(
 	Ok(Some((slot, entry.row_number)))
 }
 
-pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
+pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &PublishedJoinContext, key_hash: &Hash128) -> Result<()> {
 	let group = ctx.right_store.group_of(key_hash);
 	match winning_right_row(host, ctx.right_store, group)? {
 		Some((number, content, _)) => {
@@ -741,7 +741,7 @@ pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext,
 
 pub(crate) fn retire_right(
 	host: &mut dyn HostContext,
-	ctx: &SnapshotJoinContext,
+	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
 	row_number: RowNumber,
 ) -> Result<()> {
@@ -770,8 +770,8 @@ mod tests {
 		GroupId::hashed(Hash128(3))
 	}
 
-	fn ledger() -> SnapshotLedger {
-		SnapshotLedger::new()
+	fn ledger() -> PublishedLedger {
+		PublishedLedger::new()
 	}
 
 	fn b(txn: &mut DeferredTransaction) -> TxnHostContext<'_, DeferredTransaction> {

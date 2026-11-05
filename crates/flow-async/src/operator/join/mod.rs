@@ -5,7 +5,7 @@ pub mod column;
 pub(crate) mod expiry;
 pub(crate) mod kept;
 pub mod operator;
-pub(crate) mod snapshot;
+pub(crate) mod published;
 pub mod state;
 pub mod store;
 pub mod strategy;

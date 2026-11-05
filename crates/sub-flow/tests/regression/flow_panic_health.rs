@@ -10,7 +10,7 @@ use reifydb_value::value::duration::Duration;
 
 const SETTLE: Duration = Duration::from_seconds_const(5);
 
-const PICK_ON_A_MISSING_COLUMN: &str = "CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_e: int4 } AS { FROM app::t INNER JOIN { FROM app::w } AS s USING (a, s.a) WITH { snapshot: true, latest: { no_such } } }";
+const PICK_ON_A_MISSING_COLUMN: &str = "CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_e: int4 } AS { FROM app::t INNER JOIN { FROM app::w } AS s USING (a, s.a) WITH { emit: false, latest: { no_such } } }";
 
 fn make_db() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
@@ -30,7 +30,7 @@ fn a_join_pick_on_a_column_an_aggregate_right_side_lacks_poisons_the_flow_naming
 	// An aggregate right side has no column list at create, so the step must fail with an error, never panic.
 	let db = make_db();
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_n: int8 } AS { FROM app::t INNER JOIN { FROM app::w | aggregate { n: math::count(e) } by { a } } AS s USING (a, s.a) WITH { snapshot: true, latest: { no_such } } }",
+		"CREATE DEFERRED VIEW app::v { a: int4, b: int4, s_n: int8 } AS { FROM app::t INNER JOIN { FROM app::w | aggregate { n: math::count(e) } by { a } } AS s USING (a, s.a) WITH { emit: false, latest: { no_such } } }",
 	);
 	insert_matching_rows(&db);
 

@@ -7,7 +7,7 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_core::{common::JoinType, row::JoinPick};
+use reifydb_core::{common::JoinType, operator_with::Emit, row::JoinPick};
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::{
 	HostOperator,
@@ -137,7 +137,10 @@ pub fn build(
 		None,
 		engine.executor().routines.clone(),
 		engine.executor().runtime_context.clone(),
-		variant.snapshot,
+		match variant.snapshot {
+			true => Emit::Off,
+			false => Emit::On,
+		},
 		false,
 		variant.latest.then(JoinPick::latest),
 		left_ttl,
