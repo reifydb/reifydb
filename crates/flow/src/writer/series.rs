@@ -346,7 +346,8 @@ mod tests {
 
 	#[test]
 	fn a_tagged_append_and_update_hand_rows_over_with_an_unknown_pre_in_one_call() {
-		// Series DML has never told the store a pre on a set; absent or present would change the CDC diff.
+		// Series DML has never told the store a pre on a set; absent or present would change the commit log
+		// diff.
 		let mut txn = Recording::default();
 		let mut writer = SeriesWriter::new(&mut txn);
 		let appended = writer

@@ -407,7 +407,7 @@ pub mod tests {
 
 	#[test]
 	fn test_serde_postcard_roundtrip_negative_years() {
-		// Postcard is the CDC wire format; pre-epoch dates are negative and must survive it.
+		// Postcard is the commit log wire format; pre-epoch dates are negative and must survive it.
 		for (y, m, d) in [(-100, 12, 31), (0, 1, 1), (1970, 1, 1), (2024, 3, 15), (9999, 12, 31)] {
 			let date = Date::new(y, m, d).unwrap();
 			let bytes = to_allocvec(&date).unwrap();

@@ -646,7 +646,7 @@ mod lookup_tests {
 
 	#[test]
 	fn a_looked_up_view_gates_on_its_producer_with_no_view_to_read() {
-		// MD32: the producer must count for the gate, but an empty set keeps its CDC out of the merge.
+		// MD32: the producer must count for the gate, but an empty set keeps its commit log out of the merge.
 		let g = graph(BTreeMap::from([(PRICES, vec![READER])]), BTreeMap::new());
 		let upstreams = flow_upstreams(&g, READER, &deferred);
 

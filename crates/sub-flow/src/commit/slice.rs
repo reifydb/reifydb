@@ -671,7 +671,7 @@ mod tests {
 	}
 
 	#[test]
-	fn changes_gathered_across_multiple_cdc_entries_in_order() {
+	fn changes_gathered_across_multiple_commit_log_entries_in_order() {
 		// collect_flow_changes concatenates per-record output, so the filter must preserve order.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let lifted = vec![
@@ -1005,7 +1005,7 @@ mod integration {
 	#[test]
 	fn skip_or_checkpoint_persists_only_beyond_checkpoint_lag() {
 		// The threshold is load-bearing twice over: at or below the lag an idle flow must not
-		// commit on every batch, and beyond it its durable checkpoint must move, because CDC
+		// commit on every batch, and beyond it its durable checkpoint must move, because commit log
 		// compaction is gated on the minimum durable checkpoint across flows.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
@@ -1064,7 +1064,7 @@ mod integration {
 					"a checkpoint-only slice must carry no data writes"
 				);
 			}
-			_ => panic!("an advance beyond checkpoint_lag must persist a durable checkpoint - CDC \
+			_ => panic!("an advance beyond checkpoint_lag must persist a durable checkpoint - commit log \
 				 compaction is gated on the minimum durable checkpoint across flows"),
 		}
 	}
@@ -1111,7 +1111,7 @@ mod integration {
 		let mut durable = CommitVersion(0);
 		let mut committed_any = false;
 
-		// CDC production is async, so the drain has to spin until the producer catches up.
+		// commit log production is async, so the drain has to spin until the producer catches up.
 		for _ in 0..400 {
 			match pull_step(
 				&engine,
@@ -1422,7 +1422,8 @@ mod integration {
 	}
 	#[test]
 	fn a_step_whose_operators_emit_nothing_skips_the_commit_until_the_checkpoint_is_due() {
-		// A no-output step must skip its commit, yet past the checkpoint lag it must persist one or CDC stalls.
+		// A no-output step must skip its commit, yet past the checkpoint lag it must persist one or commit log
+		// stalls.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -1580,7 +1581,7 @@ mod integration {
 			}
 			sleep(Duration::from_milliseconds_const(5).to_std());
 		}
-		panic!("the cdc producer never caught up to {inserted:?}");
+		panic!("the commit log producer never caught up to {inserted:?}");
 	}
 
 	#[test]
@@ -1771,7 +1772,7 @@ mod integration {
 			}
 			sleep(Duration::from_milliseconds_const(5).to_std());
 		}
-		assert!(caught_up, "the cdc producer never caught up to {written:?}");
+		assert!(caught_up, "the commit log producer never caught up to {written:?}");
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(te);
 		let computer = SliceComputer::new(engine.clone());
 		pull_step(

@@ -58,7 +58,7 @@ fn a_pin_above_every_checkpoint_never_raises_the_floor() {
 
 #[test]
 fn a_pin_sets_the_floor_when_no_flow_has_a_checkpoint_yet() {
-	// A new flow's first backfill has no checkpoint anywhere, so without its pin nothing holds the cdc at V.
+	// A new flow's first backfill has no checkpoint anywhere, so without its pin nothing holds the commit log at V.
 	let (standard, _guard) = store_fixture();
 	let store = OperatorStore::Standard(standard);
 	assert_eq!(floor(&store), None, "precondition: a store with no checkpoint has no floor");
@@ -111,7 +111,8 @@ fn two_pins_at_one_version_hold_the_floor_until_both_are_dropped() {
 
 #[test]
 fn a_pin_taken_through_one_handle_holds_the_floor_read_through_another() {
-	// The flow actor pins on its own clone of the store; a pin kept per clone never reaches the cdc floor reader.
+	// The flow actor pins on its own clone of the store; a pin kept per clone never reaches the commit log floor
+	// reader.
 	let (standard, _guard) = store_fixture();
 	let reader = OperatorStore::Standard(standard.clone());
 	let actor = OperatorStore::Standard(standard.clone());
@@ -142,7 +143,7 @@ fn a_pin_released_mid_merge_right_after_its_checkpoint_is_buffered_still_holds_t
 		floor(&store),
 		Some(CommitVersion(50)),
 		"the checkpoint at 50 lands in the buffer and the pin goes between the two tier reads; the merge must \
-		 still see one of them, or retention passes 50 and the flow loses its cdc from 51"
+		 still see one of them, or retention passes 50 and the flow loses its commit log from 51"
 	);
 	assert_eq!(
 		floor(&store),

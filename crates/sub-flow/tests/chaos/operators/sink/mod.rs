@@ -4,7 +4,7 @@
 //! The three view sinks, partitioned and not, over inserts, updates and removes.
 //!
 //! A sink's output is compared off the view rows it writes rather than off `apply`, because the
-//! stored rows are what CDC carries to every consumer. A step's writes are folded against the rows
+//! stored rows are what commit log carries to every consumer. A step's writes are folded against the rows
 //! already stored into the insert, update or remove a reader of the view would observe.
 //!
 //! Table and series sinks look close to an identity, which is why the layouts are driven separately:

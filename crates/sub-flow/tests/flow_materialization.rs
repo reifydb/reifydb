@@ -14,7 +14,7 @@ use reifydb_value::value::duration::Duration;
 const BARRIER_TIMEOUT: Duration = Duration::from_seconds_const(10);
 const ROUNDS: usize = 40;
 
-// The false zero this pins is a narrow window between a flow's commit and its CDC becoming
+// The false zero this pins is a narrow window between a flow's commit and its commit log becoming
 // consumable, so one insert rarely lands in it; the round count is what makes the guard reliable.
 const OUTSTANDING_ROUNDS: usize = 300;
 

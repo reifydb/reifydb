@@ -12,35 +12,33 @@ pub enum ProfilerCategory {
 	Txn = 1,
 	Storage = 2,
 	Plan = 3,
-	Cdc = 4,
-	Flow = 5,
-	Subscription = 6,
-	Server = 7,
-	Wire = 8,
-	Auth = 9,
-	Catalog = 10,
-	Engine = 11,
-	Mutate = 12,
-	Transport = 13,
-	Task = 14,
-	Policy = 15,
-	ExternC = 16,
-	Cache = 17,
-	RowShape = 18,
-	Api = 19,
-	Actor = 20,
-	Lifecycle = 21,
-	Queue = 22,
+	Flow = 4,
+	Subscription = 5,
+	Server = 6,
+	Wire = 7,
+	Auth = 8,
+	Catalog = 9,
+	Engine = 10,
+	Mutate = 11,
+	Transport = 12,
+	Task = 13,
+	Policy = 14,
+	ExternC = 15,
+	Cache = 16,
+	RowShape = 17,
+	Api = 18,
+	Actor = 19,
+	Lifecycle = 20,
+	Queue = 21,
 }
 
-pub const CATEGORY_COUNT: usize = 23;
+pub const CATEGORY_COUNT: usize = 22;
 
 pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Query,
 	ProfilerCategory::Txn,
 	ProfilerCategory::Storage,
 	ProfilerCategory::Plan,
-	ProfilerCategory::Cdc,
 	ProfilerCategory::Flow,
 	ProfilerCategory::Subscription,
 	ProfilerCategory::Server,
@@ -72,25 +70,24 @@ impl ProfilerCategory {
 			1 => Some(ProfilerCategory::Txn),
 			2 => Some(ProfilerCategory::Storage),
 			3 => Some(ProfilerCategory::Plan),
-			4 => Some(ProfilerCategory::Cdc),
-			5 => Some(ProfilerCategory::Flow),
-			6 => Some(ProfilerCategory::Subscription),
-			7 => Some(ProfilerCategory::Server),
-			8 => Some(ProfilerCategory::Wire),
-			9 => Some(ProfilerCategory::Auth),
-			10 => Some(ProfilerCategory::Catalog),
-			11 => Some(ProfilerCategory::Engine),
-			12 => Some(ProfilerCategory::Mutate),
-			13 => Some(ProfilerCategory::Transport),
-			14 => Some(ProfilerCategory::Task),
-			15 => Some(ProfilerCategory::Policy),
-			16 => Some(ProfilerCategory::ExternC),
-			17 => Some(ProfilerCategory::Cache),
-			18 => Some(ProfilerCategory::RowShape),
-			19 => Some(ProfilerCategory::Api),
-			20 => Some(ProfilerCategory::Actor),
-			21 => Some(ProfilerCategory::Lifecycle),
-			22 => Some(ProfilerCategory::Queue),
+			4 => Some(ProfilerCategory::Flow),
+			5 => Some(ProfilerCategory::Subscription),
+			6 => Some(ProfilerCategory::Server),
+			7 => Some(ProfilerCategory::Wire),
+			8 => Some(ProfilerCategory::Auth),
+			9 => Some(ProfilerCategory::Catalog),
+			10 => Some(ProfilerCategory::Engine),
+			11 => Some(ProfilerCategory::Mutate),
+			12 => Some(ProfilerCategory::Transport),
+			13 => Some(ProfilerCategory::Task),
+			14 => Some(ProfilerCategory::Policy),
+			15 => Some(ProfilerCategory::ExternC),
+			16 => Some(ProfilerCategory::Cache),
+			17 => Some(ProfilerCategory::RowShape),
+			18 => Some(ProfilerCategory::Api),
+			19 => Some(ProfilerCategory::Actor),
+			20 => Some(ProfilerCategory::Lifecycle),
+			21 => Some(ProfilerCategory::Queue),
 			_ => None,
 		}
 	}
@@ -104,7 +101,6 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Txn)
 		} else if name.starts_with("store::single::")
 			|| name.starts_with("store::multi::")
-			|| name.starts_with("store::cdc::")
 			|| name.starts_with("store::operator::")
 			|| name.starts_with("drop::")
 		{
@@ -125,8 +121,6 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Actor)
 		} else if name.starts_with("queue::") {
 			Some(ProfilerCategory::Queue)
-		} else if name.starts_with("cdc::") {
-			Some(ProfilerCategory::Cdc)
 		} else if name.starts_with("subscription::") {
 			Some(ProfilerCategory::Subscription)
 		} else if name.starts_with("server::") {
@@ -166,7 +160,6 @@ impl ProfilerCategory {
 			ProfilerCategory::Txn => "txn",
 			ProfilerCategory::Storage => "storage",
 			ProfilerCategory::Plan => "plan",
-			ProfilerCategory::Cdc => "cdc",
 			ProfilerCategory::Flow => "flow",
 			ProfilerCategory::Subscription => "subscription",
 			ProfilerCategory::Server => "server",
@@ -291,10 +284,6 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("store::multi::write"), Some(ProfilerCategory::Storage));
 		assert_eq!(ProfilerCategory::from_span_name("store::single::scan"), Some(ProfilerCategory::Storage));
 		assert_eq!(
-			ProfilerCategory::from_span_name("store::cdc::sqlite::write"),
-			Some(ProfilerCategory::Storage)
-		);
-		assert_eq!(
 			ProfilerCategory::from_span_name("store::operator::range_batch"),
 			Some(ProfilerCategory::Storage)
 		);
@@ -302,7 +291,6 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("volcano::project"), Some(ProfilerCategory::Query));
 		assert_eq!(ProfilerCategory::from_span_name("vm::executor"), Some(ProfilerCategory::Query));
 		assert_eq!(ProfilerCategory::from_span_name("rql::parse"), Some(ProfilerCategory::Plan));
-		assert_eq!(ProfilerCategory::from_span_name("cdc::write"), Some(ProfilerCategory::Cdc));
 		assert_eq!(
 			ProfilerCategory::from_span_name("subscription::consume"),
 			Some(ProfilerCategory::Subscription)
@@ -463,7 +451,7 @@ mod tests {
 			.with_level(ProfilerCategory::Plan, ProfilerLevel::Debug);
 		assert_eq!(s.level_for(ProfilerCategory::Flow), Some(ProfilerLevel::Trace));
 		assert_eq!(s.level_for(ProfilerCategory::Plan), Some(ProfilerLevel::Debug));
-		assert_eq!(s.level_for(ProfilerCategory::Cdc), None);
+		assert_eq!(s.level_for(ProfilerCategory::Query), None);
 	}
 
 	#[test]

@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Test with monotonically increasing versions (CDC scenario)
-# Simulates processing CDC events with increasing versions
+# Test with monotonically increasing versions (commit log scenario)
+# Simulates processing commit log events with increasing versions
 
 import a=1 b=2
 ---
@@ -27,7 +27,7 @@ t3: commit
 ---
 ok
 
-# Simulate CDC processing with monotonic version increases
+# Simulate commit log processing with monotonic version increases
 t4: begin
 
 # Process event at version 2
@@ -38,7 +38,7 @@ t4: "a" => None
 t4: "b" => None
 t4: "c" => None
 
-# Process next CDC event at version 3
+# Process next commit log event at version 3
 t4: set_as_of_exclusive 3
 t4: get a b c
 ---
@@ -46,7 +46,7 @@ t4: "a" => "1"
 t4: "b" => "2"
 t4: "c" => None
 
-# Process next CDC event at version 4
+# Process next commit log event at version 4
 t4: set_as_of_exclusive 4
 t4: get a b c
 ---
@@ -54,7 +54,7 @@ t4: "a" => "10"
 t4: "b" => "2"
 t4: "c" => None
 
-# Process final CDC event at version 5
+# Process final commit log event at version 5
 t4: set_as_of_exclusive 5
 t4: get a b c
 ---

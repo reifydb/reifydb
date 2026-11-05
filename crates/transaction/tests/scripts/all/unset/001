@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Tests unset operation - preserves values for CDC (unlike remove which doesn't).
-# Unset is semantically equivalent to "delete with values" for CDC tracking.
+# Tests unset operation - preserves values for commit log (unlike remove which doesn't).
+# Unset is semantically equivalent to "delete with values" for commit log tracking.
 
 import a=value1 b=value2
 ---

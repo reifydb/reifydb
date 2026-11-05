@@ -376,7 +376,7 @@ fn remove_rows<T: TableDml>(
 		.collect();
 	let committed: Vec<Option<EncodedBytes>> =
 		txn.get_committed(&keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
-	let pre_for_cdc_bytes_vec: Vec<EncodedBytes> = committed
+	let pre_for_commit_log_bytes_vec: Vec<EncodedBytes> = committed
 		.iter()
 		.zip(displayed)
 		.map(|(committed, displayed)| committed.clone().unwrap_or_else(|| displayed.clone()))
@@ -386,7 +386,7 @@ fn remove_rows<T: TableDml>(
 
 	let replaced = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
 		.delete(TableDeleteRows::WithPre {
-			rows: keys.into_iter().zip(pre_for_cdc_bytes_vec).collect(),
+			rows: keys.into_iter().zip(pre_for_commit_log_bytes_vec).collect(),
 		})?
 		.replaced;
 

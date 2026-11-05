@@ -170,7 +170,7 @@ mod tests {
 		assert_eq!(page_size, 4096, "page_size must be raw bytes");
 		assert_eq!(mmap_size, 67_108_864, "mmap_size must be raw bytes (64 MiB)");
 		// FAST (2) skips the extra I/O of zeroing wholly-freed overflow pages on DELETE, which was
-		// the dominant cost of CDC eviction and persist_sweep; 1 (ON) would reintroduce that tax.
+		// the dominant cost of commit log eviction and persist_sweep; 1 (ON) would reintroduce that tax.
 		assert_eq!(secure_delete, 2, "secure_delete must be FAST (2), not ON (1)");
 
 		drop(conn);

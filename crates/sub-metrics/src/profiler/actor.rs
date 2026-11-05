@@ -164,7 +164,6 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		Txn => "txn",
 		Storage => "storage",
 		Plan => "plan",
-		Cdc => "cdc",
 		Flow => "flow",
 		Subscription => "subscription",
 		Server => "server",

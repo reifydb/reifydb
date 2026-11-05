@@ -253,8 +253,8 @@ mod tests {
 
 	#[test]
 	fn commit_staged_past_capacity_marks_the_subscription_lagged() {
-		// Separate commits so each push evaluates capacity against the committed tail, as the CDC consumer
-		// drives it.
+		// Separate commits so each push evaluates capacity against the committed tail, as the commit log
+		// consumer drives it.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
 		store.register(id);

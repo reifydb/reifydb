@@ -726,7 +726,7 @@ mod commit_integration {
 	}
 
 	fn synthetic_key(index: u64) -> EncodedKey {
-		// IndexEntry is neither CDC-excluded nor consumer-relevant: the producer records
+		// IndexEntry is neither commit-log-excluded nor consumer-relevant: the producer records
 		// the write while every consumer ignores it.
 		IndexEntryKey::new(
 			ObjectId::Table(TableId(1)),

@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_sub_subscription::{
-	consumer::SubscriptionCdcConsumer,
+	consumer::SubscriptionCommitLogConsumer,
 	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
 	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
@@ -103,7 +103,7 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 	assert!(!entries.is_empty(), "the insert must be in the queue before it can be dispatched");
 
 	let store = Arc::new(SubscriptionStore::new(1024));
-	let consumer = SubscriptionCdcConsumer::new(
+	let consumer = SubscriptionCommitLogConsumer::new(
 		db.engine().clone(),
 		vec![closed_worker()],
 		SubscriptionSourceTracker::new(),

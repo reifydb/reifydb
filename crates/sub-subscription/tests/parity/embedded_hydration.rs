@@ -60,7 +60,7 @@ fn wait_caught_up(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
 		db.watermarks().reader().wait_for_subscription(target, Duration::from_seconds(10).unwrap()),
-		"CDC consumer did not catch up to {:?}",
+		"commit log consumer did not catch up to {:?}",
 		target
 	);
 }

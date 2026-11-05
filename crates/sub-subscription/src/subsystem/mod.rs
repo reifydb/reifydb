@@ -61,7 +61,7 @@ use self::{
 	service::{SubscriptionServiceImpl, SubscriptionState},
 };
 use crate::{
-	consumer::SubscriptionCdcConsumer,
+	consumer::SubscriptionCommitLogConsumer,
 	delivery::DeliveryBuffer,
 	reader::{SubscriptionReader, SubscriptionReaderMessage},
 	store::SubscriptionStore,
@@ -121,7 +121,7 @@ impl SubscriptionSubsystem {
 			spawner: spawner.clone(),
 		});
 
-		let cdc_consumer = SubscriptionCdcConsumer::new(
+		let commit_log_consumer = SubscriptionCommitLogConsumer::new(
 			engine.clone(),
 			workers,
 			source_tracker,
@@ -150,7 +150,7 @@ impl SubscriptionSubsystem {
 			engine,
 			queue,
 			floor.clone(),
-			cdc_consumer,
+			commit_log_consumer,
 			consumer_watermark,
 			start,
 			start_lsn,

@@ -974,7 +974,7 @@ pub mod tests {
 
 	#[test]
 	fn test_lookup_view_is_listed_once_per_reader_and_never_as_a_source() {
-		// A lookup view in source_views would route its CDC into the reader, which MD32 forbids.
+		// A lookup view in source_views would route its commit log into the reader, which MD32 forbids.
 		let analyzer = lookup_reader_and_producer();
 		let graph = analyzer.get_dependency_graph();
 

@@ -50,7 +50,7 @@ fn run_in_txn(db: &TestDb, statements: &[&str], commit: bool) {
 
 #[test]
 fn a_deferred_view_over_a_transactional_view_follows_insert_update_delete() {
-	// The deferred hop sees t only through CDC; a lost, stale or reordered view diff shows here.
+	// The deferred hop sees t only through commit log; a lost, stale or reordered view diff shows here.
 	let db = setup();
 	for (rql, want) in [
 		("INSERT ns::src [{ id: 1, v: 5 }, { id: 2, v: 50 }, { id: 3, v: 95 }]", vec![(2, 50)]),
@@ -64,7 +64,7 @@ fn a_deferred_view_over_a_transactional_view_follows_insert_update_delete() {
 
 #[test]
 fn a_rolled_back_write_never_reaches_the_deferred_reader() {
-	// A rollback drops t's rows with the source rows, so no CDC may carry them to d.
+	// A rollback drops t's rows with the source rows, so no commit log may carry them to d.
 	let db = setup();
 	run_in_txn(&db, &["INSERT ns::src [{ id: 2, v: 50 }]"], false);
 	db.command("INSERT ns::src [{ id: 4, v: 40 }]");
@@ -98,7 +98,7 @@ fn a_deferred_view_reads_the_end_of_a_two_hop_transactional_chain() {
 
 #[test]
 fn a_deferred_reader_resolves_a_transactional_dictionary_view() {
-	// CDC carries t's stored dictionary ids, so d must resolve them back to text, never show the ids.
+	// commit log carries t's stored dictionary ids, so d must resolve them back to text, never show the ids.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
 	db.admin("CREATE NAMESPACE ns");
 	db.admin("CREATE DICTIONARY ns::syms FOR utf8 AS uint4");

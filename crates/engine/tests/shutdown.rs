@@ -34,7 +34,7 @@ fn shutdown_rejects_external_admin_with_txn_014() {
 #[test]
 fn shutdown_allows_internal_system_writes() {
 	// The shutdown drain commits deferred-view updates as IdentityId::system(); those internal
-	// writes must NOT be rejected, otherwise the CDC consumer could never catch up during shutdown.
+	// writes must NOT be rejected, otherwise the commit log consumer could never catch up during shutdown.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::items { id: int8, name: utf8 }");

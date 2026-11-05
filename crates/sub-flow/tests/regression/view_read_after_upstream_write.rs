@@ -132,7 +132,7 @@ fn freshly_created_deferred_view_is_guarded_in_next_request() {
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
 	);
 
-	// The lineage snapshot is published by the CDC-driven supervisor, which lags the CREATE, so
+	// The lineage snapshot is published by the commit-log-driven supervisor, which lags the CREATE, so
 	// this exercises the catalog fallback until the snapshot catches up.
 	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue").unwrap_err();
 	assert_eq!(err.0.code, "TXN_015", "lineage must cover a deferred view immediately after CREATE; got: {err:?}");

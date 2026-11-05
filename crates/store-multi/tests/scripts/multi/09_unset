@@ -2,7 +2,7 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Tests Delta::Unset for single-version store.
-# Unset preserves deleted values (for CDC), unlike remove which doesn't.
+# Unset preserves deleted values (for commit log), unlike remove which doesn't.
 
 set a=1
 ---

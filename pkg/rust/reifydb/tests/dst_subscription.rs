@@ -6,7 +6,7 @@
 //! The unit tests in `settle.rs` all build without a flow subsystem, so they only ever exercise a
 //! subscription reading straight from a table. That is the short path: one hop, and it settles in
 //! the confirming pass. Everything uptime actually subscribes to is a deferred view, where a write
-//! has to reach the cdc producer, be polled by the flow actors, be materialized, be polled again by
+//! has to reach the commit log producer, be polled by the flow actors, be materialized, be polled again by
 //! the subscription consumer and only then be staged. These tests cover that path.
 
 #![cfg(reifydb_dst)]
@@ -108,7 +108,7 @@ fn hydration_delivers_view_rows_that_predate_the_subscription() {
 #[test]
 fn hydration_delivers_nothing_when_disabled() {
 	// The counterpart to the test above: with hydration off the same subscription must start
-	// empty, which is what proves the rows above came from hydration and not from forward cdc.
+	// empty, which is what proves the rows above came from hydration and not from forward commit log.
 	let db = with_view();
 	for id in 1..=3 {
 		insert(&db, id, id * 10);

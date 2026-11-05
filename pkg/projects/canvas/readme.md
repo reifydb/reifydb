@@ -24,7 +24,7 @@ browser runs as the anonymous identity.
 | `--ws-bind` | `CANVAS_WS_BIND` | `0.0.0.0:8091` | ReifyDB WebSocket subsystem |
 
 Storage is in memory only. A restart reseeds a white canvas (well under a second).
-The binary trims the change log after 60 s (`CdcTtlDuration`), scanning every 10 s
+The binary trims the commit log after 60 s, scanning every 10 s
 and starting 10 s after boot; clients reload a tile when they resubscribe, so they
 never need older changes.
 

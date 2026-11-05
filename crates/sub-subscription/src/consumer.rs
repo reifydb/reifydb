@@ -34,7 +34,7 @@ use crate::{
 
 pub type Reply = Box<dyn FnOnce(Result<()>) + Send>;
 
-pub struct SubscriptionCdcConsumer {
+pub struct SubscriptionCommitLogConsumer {
 	engine: StandardEngine,
 	workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
 	source_tracker: SubscriptionSourceTracker,
@@ -45,7 +45,7 @@ pub struct SubscriptionCdcConsumer {
 	in_flight: Mutex<Vec<(usize, Arc<AtomicBool>)>>,
 }
 
-impl SubscriptionCdcConsumer {
+impl SubscriptionCommitLogConsumer {
 	pub fn new(
 		engine: StandardEngine,
 		workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
@@ -163,7 +163,7 @@ impl Drop for WorkerDone {
 	}
 }
 
-impl SubscriptionCdcConsumer {
+impl SubscriptionCommitLogConsumer {
 	pub fn overtaken(&self, cursor: CommitVersion, resume: CommitVersion, reply: Reply) {
 		let _held = self.store.hold_registrations();
 		let subscriptions = self.store.active_subscriptions();
@@ -308,7 +308,7 @@ mod tests {
 		(reply, slot)
 	}
 
-	// A fully successful batch must ack Ok so the CDC poll actor advances its checkpoint past the
+	// A fully successful batch must ack Ok so the commit log poll actor advances its checkpoint past the
 	// batch, and the ack must wait for the last worker before firing.
 	#[test]
 	fn barrier_acks_ok_only_after_all_workers_succeed() {

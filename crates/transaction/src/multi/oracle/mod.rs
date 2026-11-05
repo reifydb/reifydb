@@ -625,7 +625,7 @@ where
 			assert!(
 				self.command.done_until() < commit_version,
 				"the commit frontier already passed version {} before it was registered; a \
-				 snapshot opened at or above it would tear, and CDC consumers checkpointed \
+				 snapshot opened at or above it would tear, and commit log consumers checkpointed \
 				 past it would permanently skip its changes",
 				commit_version.0
 			);

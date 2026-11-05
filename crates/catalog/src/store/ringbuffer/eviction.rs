@@ -179,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn a_silent_ttl_writes_no_record() {
-		// A record for the default would add a key and a cdc change to every existing create.
+		// A record for the default would add a key and a commit log change to every existing create.
 		let mut txn = create_test_admin_transaction();
 		let storage = StorageId::Table(TableId(42));
 		CatalogStore::store_ttl_eviction(&mut txn, storage, EvictionVisibility::Silent).unwrap();

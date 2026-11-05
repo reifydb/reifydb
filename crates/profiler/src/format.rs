@@ -374,7 +374,6 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Txn => "Txn",
 		ProfilerCategory::Storage => "Storage",
 		ProfilerCategory::Plan => "Plan",
-		ProfilerCategory::Cdc => "Cdc",
 		ProfilerCategory::Flow => "Flow",
 		ProfilerCategory::Subscription => "Subscription",
 		ProfilerCategory::Server => "Server",

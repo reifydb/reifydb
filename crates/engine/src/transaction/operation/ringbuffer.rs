@@ -661,7 +661,8 @@ mod hook_tests {
 
 	#[test]
 	fn an_update_keeps_the_callers_pre_for_its_hook_and_tells_the_store_none() {
-		// Ring update DML gives the store no pre today; passing one would change the CDC pre-image source.
+		// Ring update DML gives the store no pre today; passing one would change the commit log pre-image
+		// source.
 		let mut txn = create_test_admin_transaction();
 		let log = hooked(&mut txn);
 		let stored = txn.update_ringbuffer(&ringbuffer(), &[], &[RowNumber(1)], &[row(7)], &[row(4)]).unwrap();
@@ -679,7 +680,8 @@ mod hook_tests {
 
 	#[test]
 	fn a_remove_hands_the_displayed_pre_to_the_store_and_the_post_delete_hook() {
-		// With nothing committed the displayed row is the pre-image; dropping it would lose the CDC remove.
+		// With nothing committed the displayed row is the pre-image; dropping it would lose the commit log
+		// remove.
 		let mut txn = create_test_admin_transaction();
 		let log = hooked(&mut txn);
 		txn.remove_from_ringbuffer(&ringbuffer(), &[], &[RowNumber(1)], &[row(4)]).unwrap();

@@ -1631,13 +1631,13 @@ mod tests {
 			stored_checkpoint(&store, FlowId(2)),
 			None,
 			"a flow that never checkpointed must get none so it wipes its view and backfills; any version \
-			 here makes it replay cdc into a view that was never built"
+			 here makes it replay commit log into a view that was never built"
 		);
 	}
 
 	#[test]
 	fn a_checkpoint_stored_at_zero_counts_as_none_so_the_flow_backfills() {
-		// older stores seeded new flows at 0; resuming there replays cdc from 0 into an empty view
+		// older stores seeded new flows at 0; resuming there replays commit log from 0 into an empty view
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), checkpoint_at(0)).unwrap();
 
@@ -1660,7 +1660,7 @@ mod tests {
 
 	#[test]
 	fn an_unreadable_checkpoint_list_fails_the_reap_instead_of_reaping_nothing() {
-		// a list read as empty reaps nothing, so every orphan keeps pinning cdc retention forever
+		// a list read as empty reaps nothing, so every orphan keeps pinning commit log retention forever
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 		store.shutdown().unwrap();
@@ -1673,7 +1673,7 @@ mod tests {
 
 	#[test]
 	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
-		// the retention floor is the minimum over these rows, so one orphan pins cdc truncation forever
+		// the retention floor is the minimum over these rows, so one orphan pins commit log truncation forever
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
@@ -1688,7 +1688,7 @@ mod tests {
 		);
 		assert!(
 			store.checkpoint_get(FlowId(2)).unwrap().is_none(),
-			"the orphan must be deleted, otherwise its version stays the floor and no cdc entry in the \
+			"the orphan must be deleted, otherwise its version stays the floor and no commit log entry in the \
 			 database is ever reaped again"
 		);
 	}
@@ -1742,7 +1742,7 @@ mod tests {
 		assert!(
 			store.checkpoint_get(FlowId(1)).unwrap().is_none(),
 			"the delete must not be conditional on the handle; leaving the row behind turns every such \
-			 drop into a permanent pin on cdc retention"
+			 drop into a permanent pin on commit log retention"
 		);
 	}
 

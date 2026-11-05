@@ -94,7 +94,7 @@ mod tests {
 
 	#[test]
 	fn a_set_with_pre_reaches_the_transaction_with_its_pre_image() {
-		// CDC builds its update diff from this pre, so the adapter must never fall back to a plain set.
+		// commit log builds its update diff from this pre, so the adapter must never fall back to a plain set.
 		let mut txn = create_test_admin_transaction();
 		DmlTransaction::over(Transaction::Admin(&mut txn))
 			.set_with_pre(vec![(key(1), bytes(2), SetPre::Present(bytes(1)))])
@@ -107,7 +107,7 @@ mod tests {
 
 	#[test]
 	fn a_remove_with_pre_announces_the_callers_pre_image_instead_of_reading_its_own() {
-		// No row exists here, so a dropped pre would turn the remove silent and lose the CDC remove.
+		// No row exists here, so a dropped pre would turn the remove silent and lose the commit log remove.
 		let mut txn = create_test_admin_transaction();
 		DmlTransaction::over(Transaction::Admin(&mut txn)).remove_with_pre(vec![(key(1), bytes(1))]).unwrap();
 		assert!(matches!(
@@ -127,7 +127,7 @@ mod tests {
 
 	#[test]
 	fn a_plain_remove_announces_the_row_it_reads_and_stays_silent_for_a_missing_key() {
-		// With no caller pre the transaction must find it itself, otherwise CDC loses the removed row.
+		// With no caller pre the transaction must find it itself, otherwise commit log loses the removed row.
 		let mut txn = create_test_admin_transaction();
 		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
 		dml.set(vec![key(1).encode()], vec![bytes(1)]).unwrap();

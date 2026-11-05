@@ -88,7 +88,7 @@ mod tests {
 
 	#[test]
 	fn every_row_goes_under_its_own_plain_row_key_with_an_absent_pre_in_one_call() {
-		// An unknown pre makes CDC treat a new row as possibly replacing one; a wrong key loses the row.
+		// An unknown pre makes commit log treat a new row as possibly replacing one; a wrong key loses the row.
 		let mut txn = Recording::default();
 		QueueWriter::new(&mut txn, storage())
 			.insert([(RowNumber(1), bytes(1)), (RowNumber(2), bytes(2))])

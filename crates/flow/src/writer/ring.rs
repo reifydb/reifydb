@@ -520,7 +520,7 @@ mod tests {
 
 	#[test]
 	fn a_full_ring_hands_back_the_oldest_rows_it_evicted_with_their_bytes() {
-		// Lost evicted rows would drop the delete hooks and the CDC pre-image of every push out.
+		// Lost evicted rows would drop the delete hooks and the commit log pre-image of every push out.
 		let mut fixture = Fixture::new(3);
 		let first = fixture.insert(None, 3);
 		assert!(first.iter().all(|placement| placement.evicted.is_none()));
@@ -632,7 +632,7 @@ mod tests {
 
 	#[test]
 	fn save_writes_order_and_free_through_the_tagged_seam_with_an_unknown_pre() {
-		// DML has always told the store no pre on these rows; any other pre would change what CDC sees.
+		// DML has always told the store no pre on these rows; any other pre would change what commit log sees.
 		let mut fixture = Fixture::new(2);
 		let first = fixture.insert(None, 2);
 		fixture.txn.seam.clear();

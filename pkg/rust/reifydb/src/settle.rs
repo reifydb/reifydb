@@ -3,7 +3,7 @@
 
 //! Deterministic driver for the subscription pipeline under dst.
 //!
-//! On a host build the cdc poll consumer, the flow actors and the subscription workers all run on
+//! On a host build the commit log poll consumer, the flow actors and the subscription workers all run on
 //! their own threads, so a caller only has to wait. Under dst there are no other threads: the
 //! caller is the executor, and nothing moves until it steps the actor system and advances the mock
 //! clock. [`Database::settle_subscriptions`] is that driver.
@@ -171,7 +171,7 @@ impl Drop for SettleGuard {
 impl Database {
 	/// Advances the subscription pipeline until it stops producing work, then returns.
 	///
-	/// A single pass cannot be assumed to be enough. A write has to reach the cdc producer, be
+	/// A single pass cannot be assumed to be enough. A write has to reach the commit log producer, be
 	/// polled by the flow actors, be materialized, be polled again by the subscription consumer
 	/// and only then be staged on a subscriber's queue; some of those hops are woken eagerly and
 	/// some only when a timer fires, so how many passes a write costs depends on the pipeline.
@@ -291,7 +291,7 @@ impl Database {
 		})
 	}
 
-	/// Under dst the calling thread runs the actors, the cdc consumer and the flow tick.
+	/// Under dst the calling thread runs the actors, the commit log consumer and the flow tick.
 	#[cfg(reifydb_dst)]
 	fn reach(&self, target: CommitVersion) -> Result<u32> {
 		let _guard = SettleGuard::enter()?;
@@ -326,7 +326,7 @@ impl Database {
 		}
 	}
 
-	/// The cdc consumer and the flow actors have their own threads, so only the watermarks matter.
+	/// The commit log consumer and the flow actors have their own threads, so only the watermarks matter.
 	#[cfg(not(reifydb_dst))]
 	fn reach(&self, target: CommitVersion) -> Result<u32> {
 		let watermarks = self.watermarks();
@@ -511,7 +511,7 @@ mod tests {
 	#[test]
 	fn quiescence_needs_all_four_signals() {
 		// The four signals answer different questions and none of them subsumes another. A
-		// caught-up cdc consumer says nothing about whether a deferred flow materialized its
+		// caught-up commit log consumer says nothing about whether a deferred flow materialized its
 		// output, and an idle ready queue says nothing about work still parked on a timer. Drop
 		// any one clause and this fails.
 		let previous = Some(quiescent_state().pending_batches);
@@ -527,7 +527,7 @@ mod tests {
 
 		let mut consumer = quiescent_state();
 		consumer.subscription = CommitVersion(9);
-		assert!(!consumer.is_quiescent(previous), "a cdc consumer behind its producer still has work");
+		assert!(!consumer.is_quiescent(previous), "a commit log consumer behind its producer still has work");
 
 		let mut staged = quiescent_state();
 		staged.pending_batches += 1;
@@ -566,7 +566,7 @@ mod tests {
 
 	#[test]
 	fn stopping_settles_before_it_flushes() {
-		// stop() drains the cdc consumers and then flushes the stores. Under dst that drain is
+		// stop() drains the commit log consumers and then flushes the stores. Under dst that drain is
 		// the only thing between a write and shutdown that can step an actor, so if it does not
 		// settle, the write is simply lost at exit. No explicit settle here on purpose.
 		let mut db = with_table();

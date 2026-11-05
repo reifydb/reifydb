@@ -132,7 +132,7 @@ pub mod tests {
 		// The oracle registers a reserved version on both watermarks before publishing it;
 		// if reserve bumped the public counter, a concurrent begin could snapshot at a
 		// version no watermark knows about, and the commit frontier could pass it before
-		// registration - the torn-snapshot / lost-CDC window this API exists to close.
+		// registration - the torn-snapshot / lost commit log window this API exists to close.
 		let provider = StandardVersionProvider::new(CommitVersion(0));
 
 		let reserved = provider.reserve().unwrap();

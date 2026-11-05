@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // Hydration-parity harness. Subscribing with hydration enabled replays existing source rows in bulk at a pinned
-// version, which must produce the same sink output as replaying the same rows incrementally over CDC. The
+// version, which must produce the same sink output as replaying the same rows incrementally over commit log. The
 // comparison is on sink output only; failure messages carry the seed and rows for repro.
 
 #![allow(dead_code)]
@@ -93,7 +93,7 @@ pub fn wait_for_consumer_caught_up(db: &TestDb) {
 	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().reader().wait_for_subscription(target, timeout) {
 		panic!(
-			"CDC consumer did not reach {:?} within {:?} (current consumer = {:?})",
+			"commit log consumer did not reach {:?} within {:?} (current consumer = {:?})",
 			target,
 			timeout,
 			db.watermarks().reader().subscription()
@@ -258,7 +258,7 @@ fn announced_ids(batches: &[StagedBatch], want_op: DiffType) -> Vec<i32> {
 }
 
 pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
-	// Path B: subscribe on an empty table, insert one row at a time, let CDC catch up.
+	// Path B: subscribe on an empty table, insert one row at a time, let commit log catch up.
 	let db = make_db();
 
 	let outcome = db

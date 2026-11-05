@@ -425,7 +425,7 @@ pub mod tests {
 
 	#[test]
 	fn test_serde_postcard_roundtrip_preserves_all_fields() {
-		// Postcard is the CDC wire format; sub-second nanos must survive the integer encoding.
+		// Postcard is the commit log wire format; sub-second nanos must survive the integer encoding.
 		for (h, m, s, n) in [(0u32, 0u32, 0u32, 0u32), (14, 30, 45, 123456789), (23, 59, 59, 999999999)] {
 			let time = Time::new(h, m, s, n).unwrap();
 			let bytes = to_allocvec(&time).unwrap();

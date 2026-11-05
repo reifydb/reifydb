@@ -418,7 +418,10 @@ mod tests {
 	}
 
 	fn versions(merged: &Merged) -> Vec<(u64, u64)> {
-		merged.items.iter().map(|cdc| (cdc.version.commit.0, cdc.version.source.0)).collect()
+		merged.items
+			.iter()
+			.map(|commit_log| (commit_log.version.commit.0, commit_log.version.source.0))
+			.collect()
 	}
 
 	#[test]
@@ -733,7 +736,7 @@ mod tests {
 	}
 
 	fn commits(read: &StreamRead) -> Vec<u64> {
-		read.items.iter().map(|cdc| cdc.version.commit.0).collect()
+		read.items.iter().map(|commit_log| commit_log.version.commit.0).collect()
 	}
 
 	#[test]

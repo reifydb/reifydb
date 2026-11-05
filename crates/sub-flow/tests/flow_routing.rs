@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The supervisor pushes each decoded CDC batch to every live flow; a flow the batch does not touch
+// The supervisor pushes each decoded commit log batch to every live flow; a flow the batch does not touch
 // consumes it as a pure cursor advance. An idle flow that is never advanced pins the caught-up
-// watermark and, through its durable checkpoint, the floor that gates CDC log compaction.
+// watermark and, through its durable checkpoint, the floor that gates commit log compaction.
 
 use std::thread;
 
@@ -62,7 +62,7 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 			Clock::Real.instant() < deadline,
 			"an unrelated write must advance the idle view over table b via the pushed batch: \
 			 flow_consumer={} never reached the committed target={} under a 1h tick, so vb was \
-			 skipped by the supervisor and is pinning the caught-up watermark and CDC compaction",
+			 skipped by the supervisor and is pinning the caught-up watermark and commit log compaction",
 			caught_up.0,
 			target.0
 		);
@@ -94,7 +94,7 @@ fn sequential_writes_materialize_exactly_via_push() {
 
 #[test]
 fn every_later_unrelated_write_advances_the_idle_flow_again() {
-	// The full wake must fire after every round, or an idle flow advances once and pins cdc compaction.
+	// The full wake must fire after every round, or an idle flow advances once and pins commit log compaction.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::a { id: int4 }");
@@ -125,7 +125,7 @@ fn every_later_unrelated_write_advances_the_idle_flow_again() {
 			assert!(
 				Clock::Real.instant() < deadline,
 				"unrelated write {id} must advance the idle view over table b again: flow_consumer={} never \
-				 reached target={}, so vb stopped advancing after an earlier write and pins cdc compaction",
+				 reached target={}, so vb stopped advancing after an earlier write and pins commit log compaction",
 				caught_up.0,
 				target.0
 			);

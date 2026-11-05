@@ -208,7 +208,7 @@ fn fused_two_view_chain(path: &TempDbPath) -> TestDb {
 	window_behind_a_two_view_chain(&db);
 	let head = db.engine().current_version().expect("the current version after the last create");
 	poll_until(|| (db.engine().commit_released() >= head).then_some(()), TIMEOUT)
-		.expect("the cdc of the last create was never written before the stop");
+		.expect("the commit log of the last create was never written before the stop");
 	db.stop();
 	open(path, true)
 }

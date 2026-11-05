@@ -1472,7 +1472,8 @@ mod tests {
 
 	#[test]
 	fn keys_still_decode_as_operator_state_of_their_node() {
-		// every key of this kind must still decode to its own operator, or state is misrouted into the CDC log
+		// every key of this kind must still decode to its own operator, or state is misrouted into the commit
+		// log
 		let key = OperatorStateKey::new(
 			OperatorId(9),
 			GroupId::hashed(Hash128(4)),

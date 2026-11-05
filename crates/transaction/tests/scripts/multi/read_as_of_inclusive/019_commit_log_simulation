@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Simulate CDC event processing with set_as_of_inclusive
+# Simulate commit log event processing with set_as_of_inclusive
 # This tests the actual use case for FlowConsumer
 
 # Initial state
@@ -30,11 +30,11 @@ t3: commit
 ---
 ok
 
-# Simulate CDC consumer processing events
+# Simulate commit log consumer processing events
 # Each event sees the state at its commit version
 t4: begin
 
-# Process CDC event from version 2
+# Process commit log event from version 2
 t4: set_as_of_inclusive 2
 t4: get users products
 ---
@@ -44,7 +44,7 @@ t4: "products" => "5"
 # Calculate derived value at version 2
 t4: set ratio_v1=2
 
-# Process CDC event from version 3
+# Process commit log event from version 3
 t4: set_as_of_inclusive 3
 t4: get users products
 ---
@@ -54,7 +54,7 @@ t4: "products" => "5"
 # Calculate derived value at version 3
 t4: set ratio_v2=2.2
 
-# Process CDC event from version 4
+# Process commit log event from version 4
 t4: set_as_of_inclusive 4
 t4: get users products
 ---
@@ -64,7 +64,7 @@ t4: "products" => "6"
 # Calculate derived value at version 4
 t4: set ratio_v3=1.83
 
-# Process CDC event from version 5
+# Process commit log event from version 5
 t4: set_as_of_inclusive 5
 t4: get users products
 ---

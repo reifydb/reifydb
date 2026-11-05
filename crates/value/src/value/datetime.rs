@@ -680,7 +680,7 @@ pub mod tests {
 
 	#[test]
 	fn test_serde_postcard_roundtrip_preserves_all_components() {
-		// Postcard is the CDC wire format; sub-second nanos must survive it or consumers
+		// Postcard is the commit log wire format; sub-second nanos must survive it or consumers
 		// reconstruct the wrong instant.
 		for (y, mo, d, h, mi, s, n) in [
 			(1970u32 as i32, 1u32, 1u32, 0u32, 0u32, 0u32, 0u32),

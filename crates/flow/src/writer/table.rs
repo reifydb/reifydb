@@ -304,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn an_update_with_pre_hands_the_exact_pre_image_of_every_row_to_the_transaction() {
-		// CDC reads the update pre-image from this seam; a dropped or swapped pre emits a wrong diff.
+		// commit log reads the update pre-image from this seam; a dropped or swapped pre emits a wrong diff.
 		let mut txn = Recording::default();
 		let rows = vec![
 			(tagged(1), bytes(11), SetPre::Present(bytes(1))),

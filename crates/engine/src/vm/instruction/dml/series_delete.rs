@@ -293,7 +293,7 @@ fn drive_series_delete_input(
 		for ((row_idx, key, encoded_bytes, partition, key_value, row_number), committed) in
 			found.into_iter().zip(committed_rows)
 		{
-			let pre_for_cdc = committed.map_or_else(|| encoded_bytes.clone(), |v| v.bytes);
+			let pre_for_commit_log = committed.map_or_else(|| encoded_bytes.clone(), |v| v.bytes);
 
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
@@ -302,10 +302,10 @@ fn drive_series_delete_input(
 			removed.row_numbers.push(row_number);
 			if wants_diff {
 				removed.key_values.push(key_value);
-				removed.pres.push(pre_for_cdc.clone());
+				removed.pres.push(pre_for_commit_log.clone());
 				removed.row_indices.push(row_idx);
 			}
-			removals.push((key, pre_for_cdc));
+			removals.push((key, pre_for_commit_log));
 		}
 		remove_series_rows(txn, series, &removed.row_numbers, removals)?;
 		if removed.row_numbers.is_empty() {

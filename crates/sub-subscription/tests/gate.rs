@@ -78,7 +78,7 @@ fn wait_for_consumer_caught_up(db: &TestDb) {
 	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().reader().wait_for_subscription(target, timeout) {
 		panic!(
-			"CDC consumer did not reach {:?} within {:?} (current consumer = {:?})",
+			"commit log consumer did not reach {:?} within {:?} (current consumer = {:?})",
 			target,
 			timeout,
 			db.watermarks().reader().subscription()

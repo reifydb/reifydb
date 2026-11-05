@@ -1404,7 +1404,7 @@ mod tests {
 				VersionedGetResult::Value { .. }
 			),
 			"a Multi entry committed below the watermark must reach the persistent tier; \
-			 dictionary entries and CDC checkpoints live in this keyspace and are lost on restart if it does not"
+			 dictionary entries and commit log checkpoints live in this keyspace and are lost on restart if it does not"
 		);
 	}
 

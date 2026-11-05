@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! A frontier published inside the sweep interval reaches disk because graceful shutdown sweeps once
-//! in the quiet window between the CDC drain and the single-store flush. The registry itself has no
+//! in the quiet window between the commit log drain and the single-store flush. The registry itself has no
 //! running-flow observable - a hydrated entry resolves as withheld until its producer republishes - so
 //! this suite reads the persisted keys directly rather than through the query surface.
 

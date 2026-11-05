@@ -343,7 +343,7 @@ pub mod tests {
 				assert_eq!(
 					pre.0.as_slice(),
 					b"value1",
-					"coalescing must carry the pre-image through, or CDC announces a delete with no before-image"
+					"coalescing must carry the pre-image through, or commit log announces a delete with no before-image"
 				);
 			}
 			other => panic!("Expected an announced Delta::Remove, got {other:?}"),
@@ -352,7 +352,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_silent_remove_keeps_tombstone_and_stays_silent() {
-		// Silence controls only whether CDC hears about the removal, never whether the bytes is
+		// Silence controls only whether commit log hears about the removal, never whether the bytes is
 		// gone; collapsing it away would leave the prior version readable.
 		let deltas = vec![
 			Delta::Set {

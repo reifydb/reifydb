@@ -1375,7 +1375,7 @@ mod tests {
 
 	#[test]
 	fn plain_ringbuffer_drop_mode_evicts_and_maintains_metadata() {
-		// Silence applies to CDC, not to bookkeeping: the count must still move in the same commit.
+		// Silence applies to commit log, not to bookkeeping: the count must still move in the same commit.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(

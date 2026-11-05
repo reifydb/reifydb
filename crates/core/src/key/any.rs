@@ -1670,9 +1670,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_metric_cdc_sorts_before_metric_storage() {
-		// Both families share one kind byte and are told apart by a sub-key written descending, so
-		// 0x02 (cdc) has to sort ahead of 0x01 (storage).
+	fn test_metric_storage_keys_sort_in_ascending_key_order() {
+		// Metric keys are read back by range scan, so a wrong order would misread the rows.
 		assert_ascending(&[
 			probe(MetricStorageKey::new(Tier::Persistent, MetricsId::System)),
 			probe(MetricStorageKey::new(Tier::Buffer, MetricsId::System)),

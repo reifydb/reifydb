@@ -55,7 +55,8 @@ fn a_transactional_view_over_a_transactional_view_follows_the_source() {
 
 #[test]
 fn a_deferred_view_over_a_transactional_view_follows_the_source() {
-	// The deferred hop sees the transactional view only through its CDC; a missed or reordered diff shows here.
+	// The deferred hop sees the transactional view only through its commit log; a missed or reordered diff shows
+	// here.
 	follows_the_source("TRANSACTIONAL", "DEFERRED");
 }
 

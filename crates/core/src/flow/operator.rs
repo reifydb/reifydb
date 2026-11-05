@@ -522,7 +522,8 @@ mod tests {
 
 	#[test]
 	fn lookup_is_not_a_source_and_has_no_source_object() {
-		// A source flag would route the right side's CDC into the flow, which the lookup must never read.
+		// A source flag would route the right side's commit log into the flow, which the lookup must never
+		// read.
 		let node = lookup(LookupObject::View(ViewId(7)));
 		assert!(!node.is_source());
 		assert!(node.source_object_id().is_none());

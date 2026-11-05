@@ -361,7 +361,7 @@ impl Database {
 	/// Under dst the calling thread is the only thread that can run an actor, so the wall-clock
 	/// plateau loop above would spin without ever letting a consumer make progress. Settling the
 	/// subscription pipeline is the equivalent that actually advances work, and unlike the host
-	/// body it is not gated on the flow subsystem: the subscription subsystem consumes cdc on its
+	/// body it is not gated on the flow subsystem: the subscription subsystem consumes the commit log on its
 	/// own, and settling is already a no-op when neither is present.
 	#[cfg(all(feature = "sub_flow", reifydb_dst))]
 	fn drain_subscriptions(&self, _timeout: Duration) {
@@ -468,7 +468,7 @@ impl Database {
 	}
 
 	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`. With hydration
-	/// enabled the snapshot at subscribe time is delivered before forward CDC changes, so a
+	/// enabled the snapshot at subscribe time is delivered before forward commit log changes, so a
 	/// subscription created over a non-empty source still observes the existing rows.
 	#[cfg(feature = "sub_flow")]
 	pub fn subscribe_as(

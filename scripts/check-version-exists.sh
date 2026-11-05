@@ -51,7 +51,6 @@ RUST_CRATES=(
     "reifydb-auth"
     "reifydb-build"
     "reifydb-catalog"
-    "reifydb-cdc"
     "reifydb-client"
     "reifydb-client-derive"
     "reifydb-core"

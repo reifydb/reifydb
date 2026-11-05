@@ -107,14 +107,6 @@ impl ColumnId {
 	pub const STORAGE_SNAPSHOTS_SUPERSEDED_BYTES: ColumnId = ColumnId(1121);
 	pub const STORAGE_SNAPSHOTS_SUPERSEDED_COUNT: ColumnId = ColumnId(1122);
 	pub const STORAGE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1123);
-	pub const RETIRED_CDC_SNAPSHOTS_TS: ColumnId = ColumnId(1124);
-	pub const RETIRED_CDC_SNAPSHOTS_OBJECT_KIND: ColumnId = ColumnId(1125);
-	pub const RETIRED_CDC_SNAPSHOTS_ID: ColumnId = ColumnId(1126);
-	pub const RETIRED_CDC_SNAPSHOTS_NAMESPACE_ID: ColumnId = ColumnId(1127);
-	pub const RETIRED_CDC_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1128);
-	pub const RETIRED_CDC_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1129);
-	pub const RETIRED_CDC_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1130);
-	pub const RETIRED_CDC_SNAPSHOTS_COUNT: ColumnId = ColumnId(1131);
 	pub const SOURCE_COMPLETENESS_OBJECT_ID: ColumnId = ColumnId(1132);
 	pub const SOURCE_COMPLETENESS_COMPLETE_THROUGH: ColumnId = ColumnId(1133);
 	pub const FLOW_STATE_SNAPSHOTS_TS: ColumnId = ColumnId(1134);
@@ -236,17 +228,6 @@ impl ColumnId {
 		Self::STORAGE_SNAPSHOTS_SUPERSEDED_BYTES,
 		Self::STORAGE_SNAPSHOTS_SUPERSEDED_COUNT,
 		Self::STORAGE_SNAPSHOTS_TOTAL_BYTES,
-	];
-
-	pub const RETIRED_CDC_SNAPSHOTS_COLUMNS: [ColumnId; 8] = [
-		Self::RETIRED_CDC_SNAPSHOTS_TS,
-		Self::RETIRED_CDC_SNAPSHOTS_OBJECT_KIND,
-		Self::RETIRED_CDC_SNAPSHOTS_ID,
-		Self::RETIRED_CDC_SNAPSHOTS_NAMESPACE_ID,
-		Self::RETIRED_CDC_SNAPSHOTS_KEY_BYTES,
-		Self::RETIRED_CDC_SNAPSHOTS_VALUE_BYTES,
-		Self::RETIRED_CDC_SNAPSHOTS_TOTAL_BYTES,
-		Self::RETIRED_CDC_SNAPSHOTS_COUNT,
 	];
 
 	pub const SOURCE_COMPLETENESS_COLUMNS: [ColumnId; 2] =
@@ -1408,7 +1389,6 @@ impl SeriesId {
 	pub const EPOCH_SNAPSHOTS: SeriesId = SeriesId(1030);
 	pub const LIFECYCLE_SNAPSHOTS: SeriesId = SeriesId(1031);
 	pub const STORAGE_SNAPSHOTS: SeriesId = SeriesId(1032);
-	pub const RETIRED_CDC_SNAPSHOTS: SeriesId = SeriesId(1033);
 	pub const FLOW_STATE_SNAPSHOTS: SeriesId = SeriesId(1035);
 	pub const FLOW_LATENCY_SNAPSHOTS: SeriesId = SeriesId(1036);
 
@@ -2026,14 +2006,13 @@ impl<'de> Deserialize<'de> for WindowedViewGroupId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 56] = [
+const RESERVED_NAMESPACE_IDS: [u64; 51] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
 	NamespaceId::SYSTEM_CONFIG.0,
 	NamespaceId::SYSTEM_METRICS.0,
 	NamespaceId::SYSTEM_METRICS_STORAGE.0,
-	NamespaceId::RETIRED_SYSTEM_METRICS_CDC.0,
 	NamespaceId::SYSTEM_PROCEDURES.0,
 	NamespaceId::SYSTEM_BINDINGS.0,
 	NamespaceId::SYSTEM_QUEUE.0,
@@ -2075,17 +2054,13 @@ const RESERVED_NAMESPACE_IDS: [u64; 56] = [
 	NamespaceId::SYSTEM_METRICS_FLOW.0,
 	NamespaceId::SYSTEM_METRICS_FLOW_STATE.0,
 	NamespaceId::SYSTEM_METRICS_FLOW_LATENCY.0,
-	NamespaceId::RETIRED_SYSTEM_METRICS_STORE_CDC.0,
-	NamespaceId::RETIRED_SYSTEM_METRICS_STORE_CDC_COMMIT.0,
-	NamespaceId::RETIRED_SYSTEM_METRICS_STORE_CDC_READ.0,
-	NamespaceId::RETIRED_SYSTEM_METRICS_STORE_CDC_PERSISTENT.0,
 	NamespaceId::SYSTEM_FLOW.0,
 	NamespaceId::SYSTEM_FLOW_OPERATOR.0,
 	NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY.0,
 	NamespaceId::SYSTEM_AUTHENTICATION.0,
 ];
 
-const RESERVED_SOURCE_IDS: [u64; 14] = [
+const RESERVED_SOURCE_IDS: [u64; 13] = [
 	RingBufferId::REQUEST_HISTORY.0,
 	RingBufferId::STATEMENT_STATS.0,
 	SeriesId::RUNTIME_MEMORY_SNAPSHOTS.0,
@@ -2096,7 +2071,6 @@ const RESERVED_SOURCE_IDS: [u64; 14] = [
 	SeriesId::EPOCH_SNAPSHOTS.0,
 	SeriesId::LIFECYCLE_SNAPSHOTS.0,
 	SeriesId::STORAGE_SNAPSHOTS.0,
-	SeriesId::RETIRED_CDC_SNAPSHOTS.0,
 	SeriesId::FLOW_STATE_SNAPSHOTS.0,
 	SeriesId::FLOW_LATENCY_SNAPSHOTS.0,
 	TableId::SOURCE_COMPLETENESS.0,
@@ -2123,7 +2097,7 @@ const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
 	ColumnId::STATEMENT_STATS_ERRORS,
 ];
 
-const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 12] = [
+const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 11] = [
 	&RESERVED_RINGBUFFER_COLUMNS,
 	&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
@@ -2133,7 +2107,6 @@ const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 12] = [
 	&ColumnId::EPOCH_SNAPSHOTS_COLUMNS,
 	&ColumnId::LIFECYCLE_SNAPSHOTS_COLUMNS,
 	&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
-	&ColumnId::RETIRED_CDC_SNAPSHOTS_COLUMNS,
 	&ColumnId::SOURCE_COMPLETENESS_COLUMNS,
 	&ColumnId::FLOW_LATENCY_SNAPSHOTS_COLUMNS,
 ];
@@ -2231,7 +2204,7 @@ mod reserved_id_tests {
 
 	const USER_ID_START: u64 = 16385;
 
-	fn reserved_series_ids() -> [SeriesId; 9] {
+	fn reserved_series_ids() -> [SeriesId; 8] {
 		[
 			SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
 			SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
@@ -2241,11 +2214,10 @@ mod reserved_id_tests {
 			SeriesId::EPOCH_SNAPSHOTS,
 			SeriesId::LIFECYCLE_SNAPSHOTS,
 			SeriesId::STORAGE_SNAPSHOTS,
-			SeriesId::RETIRED_CDC_SNAPSHOTS,
 		]
 	}
 
-	fn reserved_column_arrays() -> [&'static [ColumnId]; 9] {
+	fn reserved_column_arrays() -> [&'static [ColumnId]; 8] {
 		[
 			&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
@@ -2255,7 +2227,6 @@ mod reserved_id_tests {
 			&ColumnId::EPOCH_SNAPSHOTS_COLUMNS,
 			&ColumnId::LIFECYCLE_SNAPSHOTS_COLUMNS,
 			&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
-			&ColumnId::RETIRED_CDC_SNAPSHOTS_COLUMNS,
 		]
 	}
 
@@ -2295,7 +2266,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 17 + 7 + 10 + 14 + 8, "expected exactly 80 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 17 + 7 + 10 + 14, "expected exactly 72 reserved system column ids");
 	}
 
 	#[test]
@@ -2310,7 +2281,6 @@ mod reserved_id_tests {
 		assert_eq!(arrays[5].len(), 7, "epoch snapshot series must declare 7 column ids");
 		assert_eq!(arrays[6].len(), 10, "lifecycle snapshot series must declare 10 column ids");
 		assert_eq!(arrays[7].len(), 14, "storage snapshot series must declare 14 column ids");
-		assert_eq!(arrays[8].len(), 8, "cdc snapshot series must declare 8 column ids");
 	}
 }
 

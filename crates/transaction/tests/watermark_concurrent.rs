@@ -9,7 +9,7 @@ use reifydb_value::value::duration::Duration;
 
 #[test]
 fn done_until_reaches_max_under_concurrent_burst() {
-	// CDC, subscriptions and GC all block on done_until, so one lost mark_finished freezes the
+	// commit log, subscriptions and GC all block on done_until, so one lost mark_finished freezes the
 	// frontier at v-1 and wedges every downstream consumer permanently.
 	// The threads cover disjoint contiguous slices whose union is 1..=40000, so the live window
 	// runs far wider than the watermark ring's initial capacity: the ring has to grow rather than

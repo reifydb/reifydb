@@ -80,7 +80,7 @@ describe('subscriptions over the native bridge', () => {
   })
 
   it('delivers a write that had to cross the flow subsystem', async () => {
-    // A deferred view is what uptime subscribes to. The write has to reach the cdc producer, be
+    // A deferred view is what uptime subscribes to. The write has to reach the commit log producer, be
     // materialized by the flow actors and only then be staged, so this is the hop count that
     // actually matters; a table subscription would settle in one pass and prove much less.
     const seen = collector()

@@ -43,7 +43,7 @@ pub mod tests {
 
 	#[test]
 	fn operator_retention_shape_carries_no_announce_axis() {
-		// Operator state is structurally excluded from CDC, so an operator TTL has no announce
+		// Operator state is structurally excluded from commit log, so an operator TTL has no announce
 		// axis; a mode column reappearing in the shape would mean it leaked back in.
 		let names: Vec<&str> = operator_retention::SHAPE.fields().iter().map(|f| f.name.as_str()).collect();
 		assert_eq!(names, vec!["duration"]);

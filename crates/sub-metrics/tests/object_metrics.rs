@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The merged `system::metrics::storage::current` and `system::metrics::cdc::current` surfaces, driven end to
+//! The `system::metrics::storage::current` surface, driven end to
 //! end: the flush actor scans the metrics KV store, resolves object ids through the catalog, and pushes wide
 //! rows to the sampler, which publishes them. A break anywhere in that chain leaves the surface empty.
 

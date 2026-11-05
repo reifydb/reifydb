@@ -179,14 +179,6 @@ mod tests {
 	}
 
 	#[test]
-	fn the_retired_cdc_metric_subkey_never_decodes_as_a_storage_key() {
-		// Sub-key 0x02 held cdc metrics; old rows keep it, so reusing it would read them as another counter.
-		let retired = EncodedKey::new(vec![KeyTag::Metric as u8, 0x02, 0x00]);
-		assert!(MetricStorageKey::decode(&retired).is_none());
-		assert!(!retired.as_slice().starts_with(MetricStorageKey::prefix().as_slice()));
-	}
-
-	#[test]
 	fn test_byte_order_matches_descending_object_order() {
 		// Keys are read back by range scan, so byte order has to follow the house descending order.
 		let low = MetricStorageKey::encoded(Tier::Buffer, MetricsId::Object(ObjectId::Table(TableId(1))));

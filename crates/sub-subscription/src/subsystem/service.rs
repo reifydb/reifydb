@@ -266,7 +266,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		consumer::{SubscriptionCdcConsumer, TERMINATE_INTERLOCK},
+		consumer::{SubscriptionCommitLogConsumer, TERMINATE_INTERLOCK},
 		delivery::DeliveryBuffer,
 		tracker::SubscriptionSourceTracker,
 	};
@@ -575,7 +575,7 @@ mod tests {
 			subscribed: subscribed.clone(),
 			spawner: spawner.clone(),
 		});
-		let consumer = SubscriptionCdcConsumer::new(
+		let consumer = SubscriptionCommitLogConsumer::new(
 			t.inner().clone(),
 			vec![worker.actor_ref().clone()],
 			SubscriptionSourceTracker::new(),

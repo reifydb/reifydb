@@ -9,7 +9,7 @@ use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_value::value::frame::frame::Frame;
 
 /// A handle obtained before `Database::stop()` is stale afterwards; re-attach to the same id with
-/// `Database::subscription`. Hydration-snapshot batches drain ahead of any forward CDC the store
+/// `Database::subscription`. Hydration-snapshot batches drain ahead of any forward commit log the store
 /// buffers, so a subscriber observes the current state before subsequent changes.
 pub struct Subscription {
 	id: SubscriptionId,
@@ -33,7 +33,7 @@ impl Subscription {
 
 	/// Each frame carries its op on `Frame::op` (Insert=1, Update=2, Remove=3). Batches come back
 	/// in delivery order and are removed from the buffer, hydration-snapshot ones ahead of
-	/// forward-CDC ones.
+	/// forward commit log ones.
 	pub fn drain(&self, max: usize) -> Vec<Frame> {
 		let mut out: Vec<Frame> = Vec::new();
 		{

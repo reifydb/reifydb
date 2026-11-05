@@ -160,7 +160,7 @@ impl WaterMark {
 					version.0 < live,
 					"advancing the frontier to {} by fiat would leap over the live in-flight \
 					 version {}; consumers would treat that commit as applied before its writes \
-					 exist, tearing snapshots and permanently skipping its CDC events",
+					 exist, tearing snapshots and permanently skipping its commit log events",
 					version.0, live
 				);
 			}
@@ -640,7 +640,7 @@ pub mod tests {
 		// advance_to is a bare fetch_max on done_until that bypasses the ring entirely
 		// (bootstrap uses it); if it ever leaps over a version that is
 		// registered but not yet finished, consumers treat that commit as applied before
-		// its writes exist - torn snapshots and permanently skipped CDC events. The
+		// its writes exist - torn snapshots and permanently skipped commit log events. The
 		// tripwire must turn that silent downstream corruption into a loud local panic.
 		let watermark = WaterMark::new("advance-tripwire".into());
 		watermark.register_in_flight(CommitVersion(5));

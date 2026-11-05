@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Compares unset (CDC-generating) vs remove (no CDC).
-# Both delete data, but unset preserves values for CDC tracking.
+# Compares unset (commit-log-generating) vs remove (no commit log).
+# Both delete data, but unset preserves values for commit log tracking.
 # This test verifies both operations result in the same visible state.
 
 set a=1 version=1
@@ -19,7 +19,7 @@ get b version=1
 ---
 "b" => "2"
 
-# Unset preserves values (for CDC) - key a
+# Unset preserves values (for commit log) - key a
 remove_with_pre a=1 version=2
 ---
 ok

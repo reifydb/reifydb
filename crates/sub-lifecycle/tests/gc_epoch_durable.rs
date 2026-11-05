@@ -79,7 +79,7 @@ fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	samples
 }
 
-/// The CDC harness registers a listener that warms the shared epoch, which can satisfy an assertion the code
+/// The commit log harness registers a listener that warms the shared epoch, which can satisfy an assertion the code
 /// under test never satisfied.
 fn engine_without_epoch_listener() -> TestEngine {
 	TestEngine::builder().build()

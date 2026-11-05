@@ -57,9 +57,6 @@ static STORAGE_BOUNDS: &[f64] = &[
 static PLAN_BOUNDS: &[f64] =
 	&[10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 10_000.0, 25_000.0, 50_000.0, 100_000.0];
 
-static CDC_BOUNDS: &[f64] =
-	&[10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 10_000.0, 25_000.0, 50_000.0, 100_000.0];
-
 static FLOW_BOUNDS: &[f64] = &[
 	10.0,
 	25.0,
@@ -84,7 +81,6 @@ pub struct ProfilerInstruments {
 	txn: Arc<Histogram>,
 	storage: Arc<Histogram>,
 	plan: Arc<Histogram>,
-	cdc: Arc<Histogram>,
 	flow: Arc<Histogram>,
 	subscription: Arc<Histogram>,
 	server: Arc<Histogram>,
@@ -134,11 +130,6 @@ impl ProfilerInstruments {
 				"profiler.plan.duration_us",
 				"Profiler category Plan duration (us)",
 				PLAN_BOUNDS,
-			),
-			cdc: duration_histogram(
-				"profiler.cdc.duration_us",
-				"Profiler category Cdc duration (us)",
-				CDC_BOUNDS,
 			),
 			flow: duration_histogram(
 				"profiler.flow.duration_us",
@@ -253,7 +244,6 @@ impl ProfilerInstruments {
 			ProfilerCategory::Txn => &self.txn,
 			ProfilerCategory::Storage => &self.storage,
 			ProfilerCategory::Plan => &self.plan,
-			ProfilerCategory::Cdc => &self.cdc,
 			ProfilerCategory::Flow => &self.flow,
 			ProfilerCategory::Subscription => &self.subscription,
 			ProfilerCategory::Server => &self.server,

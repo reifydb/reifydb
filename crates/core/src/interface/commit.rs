@@ -260,7 +260,7 @@ mod exclusion_tests {
 	}
 
 	#[test]
-	fn test_sorted_view_rows_reach_the_cdc_log() {
+	fn test_sorted_view_rows_reach_the_commit_log() {
 		// A sorted view's rows carry their own kind, and a subscriber that never sees them reads a
 		// view that silently stops changing.
 		assert!(!is_commit_excluded(KeyTag::SortedViewRow));

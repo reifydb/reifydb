@@ -137,7 +137,7 @@ mod tests {
 					Delta::Set { pre: SetPre::Absent, bytes, .. }
 						if *bytes == EncodedBytes(CowVec::new(vec![value]))
 				),
-				"a queue insert must tell CDC no row existed, got {delta:?}"
+				"a queue insert must tell commit log no row existed, got {delta:?}"
 			);
 		}
 	}

@@ -40,7 +40,7 @@ use reifydb_transaction::error::TransactionError;
 use reifydb_value::{Result, byte_size::ByteSize, error::Error, value::duration::Duration};
 use reifydb_wal::lsn::Lsn;
 
-use crate::consumer::SubscriptionCdcConsumer;
+use crate::consumer::SubscriptionCommitLogConsumer;
 
 const TICK_INTERVAL_MS: i64 = 10;
 
@@ -84,7 +84,7 @@ pub struct SubscriptionReader {
 	engine: StandardEngine,
 	queue: CommitQueue,
 	floor: CommitQueueFloor,
-	consumer: SubscriptionCdcConsumer,
+	consumer: SubscriptionCommitLogConsumer,
 	watermark: ReaderWatermark,
 	clock: Clock,
 	start: CommitVersion,
@@ -98,7 +98,7 @@ impl SubscriptionReader {
 		engine: StandardEngine,
 		queue: CommitQueue,
 		floor: CommitQueueFloor,
-		consumer: SubscriptionCdcConsumer,
+		consumer: SubscriptionCommitLogConsumer,
 		watermark: ReaderWatermark,
 		start: CommitVersion,
 		start_lsn: Lsn,
