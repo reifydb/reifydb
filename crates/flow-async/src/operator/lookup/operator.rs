@@ -31,7 +31,7 @@ use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
-	operator::source::{decode_dictionary_columns, decode_dictionary_columns_except, mark_diffs, schema_sumtypes},
+	operator::source::{decode_dictionary_columns_except, mark_diffs, schema_sumtypes},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -94,6 +94,7 @@ pub struct LookupConfig {
 	pub operator: OperatorId,
 	pub left_node: OperatorId,
 	pub right_node: Option<OperatorId>,
+	pub right_kept: Vec<(String, DictionaryId)>,
 	pub emit_after: Option<Duration>,
 	pub join_type: JoinType,
 	pub right: LookupObject,
@@ -804,7 +805,7 @@ impl LookupOperator {
 					&output.right_numbers,
 					&output.right_rows,
 				)?;
-				decode_dictionary_columns(&mut right, host)?;
+				decode_dictionary_columns_except(&mut right, host, &self.config.right_kept)?;
 				Some(right)
 			}
 		};
@@ -1095,6 +1096,7 @@ mod tests {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
 			right_node: None,
+			right_kept: Vec::new(),
 			emit_after: None,
 			join_type,
 			right: LookupObject::Table(table.id),
@@ -1121,6 +1123,7 @@ mod tests {
 			operator: OperatorId(OP),
 			left_node: OperatorId(LEFT),
 			right_node: None,
+			right_kept: Vec::new(),
 			emit_after: None,
 			join_type: JoinType::Left,
 			right: LookupObject::RingBuffer(ringbuffer.id),

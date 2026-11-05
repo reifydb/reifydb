@@ -395,18 +395,19 @@ impl FlowEngineInner {
 		let right_tags = sumtype_tags(&columns);
 		let right_stored = catalog_schema(&columns);
 		let right_keys: Vec<Expression> = partition_by.iter().map(|name| natural_key_expr(name)).collect();
-		let (left_kept, _) = kept_dictionary_columns(&left_schema, &right_stored, &left, &right_keys, None)?;
+		let (left_kept, right_kept) =
+			kept_dictionary_columns(&left_schema, &right_stored, &left, &right_keys, None)?;
 		let left_schema = entry_schema(&left_schema, &left_decoded, &left_kept);
-		let right_schema = mark_schema(
-			&decoded_schema(&right_stored, |id| self.catalog.find_dictionary(txn, id))?,
-			&right_tags,
-		)?;
+		let right_decoded = decoded_schema(&right_stored, |id| self.catalog.find_dictionary(txn, id))?;
+		let right_schema = mark_schema(&entry_schema(&right_stored, &right_decoded, &right_kept), &right_tags)?;
+		let right_kept = right_kept.into_iter().collect();
 		let left_retention = with.retention.as_ref().map(|retention| retention.duration);
 
 		let operator = LookupOperator::new(LookupConfig {
 			operator: operator_id,
 			left_node,
 			right_node,
+			right_kept,
 			emit_after: match with.emit {
 				Emit::After(delay) => Some(delay),
 				Emit::On | Emit::Off => None,
