@@ -26,7 +26,7 @@ use reifydb_core::{
 		operator::state::{GroupId, GroupStateKey, KeyspaceMask},
 	},
 };
-use reifydb_flow::txn::{Batch, Get};
+use reifydb_flow::txn::{FlowBatch, FlowGet};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -115,7 +115,7 @@ impl DeferredParams {
 	}
 }
 
-pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
+pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 	fn version(&self) -> CommitVersion;
 
 	fn clock(&self) -> &Clock;

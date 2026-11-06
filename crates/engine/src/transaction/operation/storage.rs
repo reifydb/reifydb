@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	delta::SetPre,
 	interface::store::MultiVersionRow,
@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_flow::txn::{Batch, Get, Range};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{Result, flow_sync::tagged};
+use crate::Result;
 
 pub(crate) struct DmlTransaction<'a> {
 	pub(crate) tx: Transaction<'a>,
@@ -25,25 +25,12 @@ impl<'a> DmlTransaction<'a> {
 }
 
 impl Get for DmlTransaction<'_> {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
-		self.get_tagged(&keys)
-	}
-
 	fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		Ok(self.tx.get(keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
 }
 
 impl Batch for DmlTransaction<'_> {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		self.tx.set(keys.iter().map(tagged).zip(rows).collect())
-	}
-
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		self.tx.remove(keys.iter().map(|key| (tagged(key), None)).collect())
-	}
-
 	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 		self.tx.set_with_pre(entries)
 	}
@@ -94,7 +81,7 @@ mod tests {
 
 	#[test]
 	fn a_set_with_pre_reaches_the_transaction_with_its_pre_image() {
-		// commit log builds its update diff from this pre, so the adapter must never fall back to a plain set.
+		// commit log builds its update diff from this pre, so the adapter must never fall back to a flow set.
 		let mut txn = create_test_admin_transaction();
 		DmlTransaction::over(Transaction::Admin(&mut txn))
 			.set_with_pre(vec![(key(1), bytes(2), SetPre::Present(bytes(1)))])
@@ -117,41 +104,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_get_sees_a_plain_set_made_in_the_same_transaction_and_none_for_a_missing_key() {
+	fn a_get_sees_a_set_made_in_the_same_transaction_and_none_for_a_missing_key() {
 		// A get that skipped the transaction's own writes would hand a caller a stale row.
 		let mut txn = create_test_admin_transaction();
 		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
-		dml.set(vec![key(1).encode()], vec![bytes(1)]).unwrap();
-		assert_eq!(dml.get(&[key(1).encode(), key(2).encode()]).unwrap(), vec![Some(bytes(1)), None]);
-	}
-
-	#[test]
-	fn a_plain_remove_announces_the_row_it_reads_and_stays_silent_for_a_missing_key() {
-		// With no caller pre the transaction must find it itself, otherwise commit log loses the removed row.
-		let mut txn = create_test_admin_transaction();
-		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
-		dml.set(vec![key(1).encode()], vec![bytes(1)]).unwrap();
-		dml.remove(vec![key(1).encode(), key(2).encode()]).unwrap();
-		assert_eq!(dml.get(&[key(1).encode()]).unwrap(), vec![None], "the row must be gone");
-		assert!(matches!(
-			pending(&txn, &key(1)),
-			Delta::Remove { announce: RemoveAnnounce::Announced { pre }, .. } if pre == bytes(1)
-		));
-		assert!(matches!(
-			pending(&txn, &key(2)),
-			Delta::Remove {
-				announce: RemoveAnnounce::Silent,
-				..
-			}
-		));
-	}
-
-	#[test]
-	fn a_tagged_get_sees_the_same_row_as_an_encoded_get() {
-		// The ring reads slots through the tagged path, so a divergence would hand back the wrong row.
-		let mut txn = create_test_admin_transaction();
-		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
-		dml.set(vec![key(1).encode()], vec![bytes(1)]).unwrap();
+		dml.set_with_pre(vec![(key(1), bytes(1), SetPre::Absent)]).unwrap();
 		assert_eq!(dml.get_tagged(&[key(1), key(2)]).unwrap(), vec![Some(bytes(1)), None]);
 	}
 
@@ -160,7 +117,7 @@ mod tests {
 		// Order and free rows pass no pre, so the transaction must still find what it removed.
 		let mut txn = create_test_admin_transaction();
 		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
-		dml.set(vec![key(1).encode()], vec![bytes(1)]).unwrap();
+		dml.set_with_pre(vec![(key(1), bytes(1), SetPre::Absent)]).unwrap();
 		dml.remove_tagged(vec![key(1), key(2)]).unwrap();
 		assert!(matches!(
 			pending(&txn, &key(1)),
@@ -180,7 +137,7 @@ mod tests {
 		// The ring reads its order index here, so a range skipping own writes would miss rows just placed.
 		let mut txn = create_test_admin_transaction();
 		let mut dml = DmlTransaction::over(Transaction::Admin(&mut txn));
-		dml.set(vec![key(2).encode(), key(1).encode()], vec![bytes(2), bytes(1)]).unwrap();
+		dml.set_with_pre(vec![(key(2), bytes(2), SetPre::Absent), (key(1), bytes(1), SetPre::Absent)]).unwrap();
 		let rows: Vec<EncodedBytes> = dml
 			.range(RowKeyRange::storage_scan(TableId(1).into()), 16)
 			.unwrap()

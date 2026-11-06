@@ -20,7 +20,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::sink::view::{partitioned_key, sorted_view_key},
-	txn::StorageTxn,
+	txn::{FlowStorageTransaction, StorageTransaction},
 	writer::Written,
 };
 
@@ -47,126 +47,87 @@ impl TableRowAddress {
 	}
 }
 
-pub enum TableInsertRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	},
-	WithPre {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-		index: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub enum TableUpdateRows {
-	Plain {
-		rows: Vec<(EncodedKey, EncodedKey, EncodedBytes)>,
-	},
-	WithPre {
-		rows: Vec<(TaggedKey, EncodedBytes, SetPre)>,
-	},
-}
-
-pub enum TableDeleteRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-	},
-	WithPre {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub struct TableWriter<'a, T: StorageTxn> {
+pub struct TableWriter<'a, T: StorageTransaction> {
 	txn: &'a mut T,
 }
 
-impl<'a, T: StorageTxn> TableWriter<'a, T> {
+impl<'a, T: StorageTransaction> TableWriter<'a, T> {
 	pub fn new(txn: &'a mut T) -> Self {
 		Self {
 			txn,
 		}
 	}
 
-	pub fn insert(&mut self, rows: TableInsertRows) -> Result<Written> {
-		match rows {
-			TableInsertRows::Plain {
-				keys,
-				rows,
-			} => {
-				self.txn.set(keys, rows)?;
-				Ok(Written::default())
-			}
-			TableInsertRows::WithPre {
-				rows,
-				index,
-			} => {
-				let mut written = Vec::with_capacity(rows.len());
-				let mut entries = Vec::with_capacity(rows.len() + index.len());
-				for (key, row) in rows {
-					written.push(row.clone());
-					entries.push((key, row, SetPre::Absent));
-				}
-				entries.extend(index.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)));
-				self.txn.set_with_pre(entries)?;
-				Ok(Written {
-					written,
-					replaced: Vec::new(),
-				})
-			}
+	pub fn insert(
+		&mut self,
+		rows: Vec<(TaggedKey, EncodedBytes)>,
+		index: Vec<(TaggedKey, EncodedBytes)>,
+	) -> Result<Written> {
+		let mut written = Vec::with_capacity(rows.len());
+		let mut entries = Vec::with_capacity(rows.len() + index.len());
+		for (key, row) in rows {
+			written.push(row.clone());
+			entries.push((key, row, SetPre::Absent));
+		}
+		entries.extend(index.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)));
+		self.txn.set_with_pre(entries)?;
+		Ok(Written {
+			written,
+			replaced: Vec::new(),
+		})
+	}
+
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written> {
+		let written = rows.iter().map(|(_, row, _)| row.clone()).collect();
+		self.txn.set_with_pre(rows)?;
+		Ok(Written {
+			written,
+			replaced: Vec::new(),
+		})
+	}
+
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
+		self.txn.remove_with_pre(rows)?;
+		Ok(Written {
+			written: Vec::new(),
+			replaced,
+		})
+	}
+}
+
+pub struct FlowTableWriter<'a, T: FlowStorageTransaction> {
+	txn: &'a mut T,
+}
+
+impl<'a, T: FlowStorageTransaction> FlowTableWriter<'a, T> {
+	pub fn new(txn: &'a mut T) -> Self {
+		Self {
+			txn,
 		}
 	}
 
-	pub fn update(&mut self, rows: TableUpdateRows) -> Result<Written> {
-		match rows {
-			TableUpdateRows::Plain {
-				rows,
-			} => {
-				let mut writes = KeyWrites::with_capacity(rows.len());
-				for (pre_key, post_key, row) in rows {
-					if pre_key.as_slice() != post_key.as_slice() {
-						writes.put(pre_key, None);
-					}
-					writes.put(post_key, Some(row));
-				}
-				let (removes, set_keys, set_rows) = writes.split();
-				if !removes.is_empty() {
-					self.txn.remove(removes)?;
-				}
-				self.txn.set(set_keys, set_rows)?;
-				Ok(Written::default())
-			}
-			TableUpdateRows::WithPre {
-				rows,
-			} => {
-				let written = rows.iter().map(|(_, row, _)| row.clone()).collect();
-				self.txn.set_with_pre(rows)?;
-				Ok(Written {
-					written,
-					replaced: Vec::new(),
-				})
-			}
-		}
+	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		self.txn.set(keys, rows)
 	}
 
-	pub fn delete(&mut self, rows: TableDeleteRows) -> Result<Written> {
-		match rows {
-			TableDeleteRows::Plain {
-				keys,
-			} => {
-				self.txn.remove(keys)?;
-				Ok(Written::default())
+	pub fn update(&mut self, rows: Vec<(EncodedKey, EncodedKey, EncodedBytes)>) -> Result<()> {
+		let mut writes = KeyWrites::with_capacity(rows.len());
+		for (pre_key, post_key, row) in rows {
+			if pre_key.as_slice() != post_key.as_slice() {
+				writes.put(pre_key, None);
 			}
-			TableDeleteRows::WithPre {
-				rows,
-			} => {
-				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
-				self.txn.remove_with_pre(rows)?;
-				Ok(Written {
-					written: Vec::new(),
-					replaced,
-				})
-			}
+			writes.put(post_key, Some(row));
 		}
+		let (removes, set_keys, set_rows) = writes.split();
+		if !removes.is_empty() {
+			self.txn.remove(removes)?;
+		}
+		self.txn.set(set_keys, set_rows)
+	}
+
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		self.txn.remove(keys)
 	}
 }
 
@@ -216,7 +177,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::txn::{Batch, Get};
+	use crate::txn::{Batch, FlowBatch, FlowGet, Get};
 
 	#[derive(Debug, PartialEq, Eq)]
 	enum Call {
@@ -224,6 +185,7 @@ mod tests {
 		Remove(Vec<EncodedKey>),
 		SetWithPre(Vec<(TaggedKey, EncodedBytes, SetPre)>),
 		RemoveWithPre(Vec<(TaggedKey, EncodedBytes)>),
+		RemoveTagged(Vec<TaggedKey>),
 	}
 
 	#[derive(Default)]
@@ -233,23 +195,13 @@ mod tests {
 	}
 
 	impl Get for Recording {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-			self.calls.push(Call::Set(keys, rows));
-			Ok(())
-		}
-
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-			self.calls.push(Call::Remove(keys));
-			Ok(())
-		}
-
 		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 			self.calls.push(Call::SetWithPre(entries));
 			Ok(())
@@ -259,12 +211,42 @@ mod tests {
 			self.calls.push(Call::RemoveWithPre(entries));
 			Ok(())
 		}
+
+		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+			self.calls.push(Call::RemoveTagged(keys));
+			Ok(())
+		}
+	}
+
+	#[derive(Default)]
+	struct FlowRecording {
+		calls: Vec<Call>,
+		reads: usize,
+	}
+
+	impl FlowGet for FlowRecording {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.reads += 1;
+			Ok(vec![None; keys.len()])
+		}
+	}
+
+	impl FlowBatch for FlowRecording {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+			self.calls.push(Call::Set(keys, rows));
+			Ok(())
+		}
+
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+			self.calls.push(Call::Remove(keys));
+			Ok(())
+		}
 	}
 
 	#[derive(Default)]
 	struct Defaulted(Vec<Call>);
 
-	impl Batch for Defaulted {
+	impl FlowBatch for Defaulted {
 		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 			self.0.push(Call::Set(keys, rows));
 			Ok(())
@@ -305,11 +287,7 @@ mod tests {
 			(tagged(1), bytes(11), SetPre::Present(bytes(1))),
 			(tagged(2), bytes(12), SetPre::Unknown),
 		];
-		let written = TableWriter::new(&mut txn)
-			.update(TableUpdateRows::WithPre {
-				rows: rows.clone(),
-			})
-			.unwrap();
+		let written = TableWriter::new(&mut txn).update(rows.clone()).unwrap();
 		assert_eq!(txn.calls, vec![Call::SetWithPre(rows)]);
 		assert_eq!(written.written, vec![bytes(11), bytes(12)]);
 		assert!(written.replaced.is_empty(), "no update caller reads it, so it must not cost a clone per row");
@@ -321,11 +299,7 @@ mod tests {
 		// Without the pre the transaction reads its own view of the row, which can differ from committed.
 		let mut txn = Recording::default();
 		let rows = vec![(tagged(1), bytes(1)), (tagged(2), bytes(2))];
-		let written = TableWriter::new(&mut txn)
-			.delete(TableDeleteRows::WithPre {
-				rows: rows.clone(),
-			})
-			.unwrap();
+		let written = TableWriter::new(&mut txn).delete(rows.clone()).unwrap();
 		assert_eq!(txn.calls, vec![Call::RemoveWithPre(rows)]);
 		assert_eq!(written.replaced, vec![bytes(1), bytes(2)]);
 		assert!(written.written.is_empty());
@@ -337,10 +311,7 @@ mod tests {
 		// Rows must be marked absent and index entries unknown, in the one set call DML has always made.
 		let mut txn = Recording::default();
 		let written = TableWriter::new(&mut txn)
-			.insert(TableInsertRows::WithPre {
-				rows: vec![(tagged(1), bytes(1))],
-				index: vec![(tagged(7), bytes(7))],
-			})
+			.insert(vec![(tagged(1), bytes(1))], vec![(tagged(7), bytes(7))])
 			.unwrap();
 		assert_eq!(
 			txn.calls,
@@ -354,33 +325,13 @@ mod tests {
 	}
 
 	#[test]
-	fn the_plain_paths_never_read_and_never_touch_the_pre_image_seam() {
+	fn the_flow_paths_never_read_and_never_touch_the_pre_image_seam() {
 		// A read here would add store load to every view write that has none today.
-		let mut txn = Recording::default();
-		let mut writer = TableWriter::new(&mut txn);
-		let inserted = writer
-			.insert(TableInsertRows::Plain {
-				keys: vec![encoded(1)],
-				rows: vec![bytes(1)],
-			})
-			.unwrap();
-		let updated = writer
-			.update(TableUpdateRows::Plain {
-				rows: vec![(encoded(1), encoded(1), bytes(2))],
-			})
-			.unwrap();
-		let deleted = writer
-			.delete(TableDeleteRows::Plain {
-				keys: vec![encoded(1)],
-			})
-			.unwrap();
-		for returned in [inserted, updated, deleted] {
-			assert_eq!(
-				returned,
-				Written::default(),
-				"the sink ignores the return, so it must not cost a clone"
-			);
-		}
+		let mut txn = FlowRecording::default();
+		let mut writer = FlowTableWriter::new(&mut txn);
+		writer.insert(vec![encoded(1)], vec![bytes(1)]).unwrap();
+		writer.update(vec![(encoded(1), encoded(1), bytes(2))]).unwrap();
+		writer.delete(vec![encoded(1)]).unwrap();
 		assert_eq!(txn.reads, 0);
 		assert_eq!(
 			txn.calls,
@@ -393,13 +344,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plain_update_removes_a_moved_key_first_and_lets_a_later_post_key_win_over_an_earlier_remove() {
+	fn a_flow_update_removes_a_moved_key_first_and_lets_a_later_post_key_win_over_an_earlier_remove() {
 		// Row 2 moves onto row 1's old key, so removing that key after the set would lose row 2.
-		let mut txn = Recording::default();
-		TableWriter::new(&mut txn)
-			.update(TableUpdateRows::Plain {
-				rows: vec![(encoded(1), encoded(2), bytes(21)), (encoded(3), encoded(1), bytes(13))],
-			})
+		let mut txn = FlowRecording::default();
+		FlowTableWriter::new(&mut txn)
+			.update(vec![(encoded(1), encoded(2), bytes(21)), (encoded(3), encoded(1), bytes(13))])
 			.unwrap();
 		assert_eq!(
 			txn.calls,
@@ -411,7 +360,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_transaction_without_pre_images_routes_with_pre_writes_to_its_plain_batch() {
+	fn a_transaction_without_pre_images_routes_with_pre_writes_to_its_flow_batch() {
 		// A view transaction has no pre-image store, so it must still land the write under the same key.
 		let mut txn = Defaulted::default();
 		txn.set_with_pre(vec![(tagged(1), bytes(1), SetPre::Present(bytes(9)))]).unwrap();

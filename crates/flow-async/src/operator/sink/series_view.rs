@@ -36,7 +36,7 @@ use reifydb_flow::{
 		source::decode_change_keeping,
 	},
 	txn::Emit,
-	writer::series::{SeriesAppendRows, SeriesDeleteRows, SeriesRowAddress, SeriesUpdateRows, SeriesWriter},
+	writer::series::{FlowSeriesWriter, SeriesRowAddress},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -246,10 +246,7 @@ impl SinkSeriesViewOperator {
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
-		SeriesWriter::new(txn).append(SeriesAppendRows::Plain {
-			keys,
-			rows: encoded_bytes_list,
-		})?;
+		FlowSeriesWriter::new(txn).append(keys, encoded_bytes_list)?;
 		txn.emit(view.id(), Diff::insert(coerced))?;
 		Ok(())
 	}
@@ -326,11 +323,7 @@ impl SinkSeriesViewOperator {
 		let encoded = SourceRowEncoder::new(source_post, shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
-		SeriesWriter::new(txn).update(SeriesUpdateRows::Plain {
-			pre_keys,
-			post_keys,
-			rows: encoded,
-		})?;
+		FlowSeriesWriter::new(txn).update(pre_keys, post_keys, encoded)?;
 		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
 	}
@@ -365,9 +358,7 @@ impl SinkSeriesViewOperator {
 				.encoded();
 			keys.push(key);
 		}
-		SeriesWriter::new(txn).delete(SeriesDeleteRows::Plain {
-			keys,
-		})?;
+		FlowSeriesWriter::new(txn).delete(keys)?;
 		txn.emit(view.id(), Diff::remove(coerced))?;
 		Ok(())
 	}
@@ -391,7 +382,7 @@ mod tests {
 		},
 		value::{batch::batch, column::factory::int4_optional},
 	};
-	use reifydb_flow::txn::Get;
+	use reifydb_flow::txn::FlowGet;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{

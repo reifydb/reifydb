@@ -60,8 +60,8 @@ use crate::{
 		shape_field_columns, stored_created_at,
 		view::sort_runs,
 	},
-	txn::{Batch, Emit, Get, Intern, StorageTxn},
-	writer::table::{TableDeleteRows, TableInsertRows, TableRowAddress, TableUpdateRows, TableWriter},
+	txn::{Emit, FlowBatch, FlowGet, FlowStorageTransaction, Intern},
+	writer::table::{FlowTableWriter, TableRowAddress},
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
@@ -105,7 +105,7 @@ impl TableSink {
 		self.operator
 	}
 
-	pub fn apply<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
+	pub fn apply<T: FlowStorageTransaction + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
@@ -140,7 +140,7 @@ impl TableSink {
 		}
 	}
 
-	fn resolved_partitions<T: Get + Batch>(
+	fn resolved_partitions<T: FlowGet + FlowBatch>(
 		&mut self,
 		txn: &mut T,
 		source: &RecordBatch,
@@ -160,7 +160,11 @@ impl TableSink {
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_insert<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, post: &RecordBatch) -> Result<()> {
+	fn apply_insert<T: FlowStorageTransaction + Emit + Intern>(
+		&mut self,
+		txn: &mut T,
+		post: &RecordBatch,
+	) -> Result<()> {
 		if post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -186,17 +190,14 @@ impl TableSink {
 			encoded_bytes_list.push(encoded);
 		}
 
-		TableWriter::new(txn).insert(TableInsertRows::Plain {
-			keys,
-			rows: encoded_bytes_list,
-		})?;
+		FlowTableWriter::new(txn).insert(keys, encoded_bytes_list)?;
 
 		txn.emit(self.view.id(), Diff::insert(coerced))
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_update<T: StorageTxn + Emit + Intern>(
+	fn apply_update<T: FlowStorageTransaction + Emit + Intern>(
 		&mut self,
 		txn: &mut T,
 		pre: &RecordBatch,
@@ -290,9 +291,11 @@ impl TableSink {
 		let encoded = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?
 			.with_created_at(&created)
 			.encode_all()?;
-		TableWriter::new(txn).update(TableUpdateRows::Plain {
-			rows: keys.into_iter().zip(encoded).map(|((pre, post), row)| (pre, post, row)).collect(),
-		})?;
+		FlowTableWriter::new(txn).update(keys
+			.into_iter()
+			.zip(encoded)
+			.map(|((pre, post), row)| (pre, post, row))
+			.collect())?;
 
 		let emitted_pre = with_stored_created_at(coerced_pre, &created)?;
 		let emitted_post = with_stored_created_at(coerced_post, &created)?;
@@ -301,7 +304,11 @@ impl TableSink {
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
-	fn apply_remove<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, pre: &RecordBatch) -> Result<()> {
+	fn apply_remove<T: FlowStorageTransaction + Emit + Intern>(
+		&mut self,
+		txn: &mut T,
+		pre: &RecordBatch,
+	) -> Result<()> {
 		if pre.num_rows() == 0 {
 			return Ok(());
 		}
@@ -349,9 +356,7 @@ impl TableSink {
 			created.push(stamp);
 		}
 
-		TableWriter::new(txn).delete(TableDeleteRows::Plain {
-			keys,
-		})?;
+		FlowTableWriter::new(txn).delete(keys)?;
 
 		txn.emit(self.view.id(), Diff::remove(with_stored_created_at(coerced, &created)?))
 	}

@@ -19,20 +19,36 @@ use reifydb_value::{
 	},
 };
 
-pub trait Get {
+pub trait FlowGet {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>>;
+}
 
+pub trait Get {
+	fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>>;
+}
+
+impl<T: FlowGet> Get for T {
 	fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		let keys: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
 		self.get(&keys)
 	}
 }
 
-pub trait Batch {
+pub trait FlowBatch {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()>;
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()>;
+}
 
+pub trait Batch {
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
+
+	fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
+
+	fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()>;
+}
+
+impl<T: FlowBatch> Batch for T {
 	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 		let (keys, rows) = entries.into_iter().map(|(key, row, _)| (key.encode(), row)).unzip();
 		self.set(keys, rows)
@@ -55,9 +71,13 @@ pub trait Range {
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>>;
 }
 
-pub trait StorageTxn: Get + Batch {}
+pub trait StorageTransaction: Get + Batch {}
 
-impl<T: Get + Batch> StorageTxn for T {}
+impl<T: Get + Batch> StorageTransaction for T {}
+
+pub trait FlowStorageTransaction: FlowGet + FlowBatch {}
+
+impl<T: FlowGet + FlowBatch> FlowStorageTransaction for T {}
 
 pub trait Emit {
 	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()>;

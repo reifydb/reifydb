@@ -38,7 +38,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_flow::writer::series::{SeriesRowAddress, SeriesUpdateRows, SeriesWriter};
+use reifydb_flow::writer::series::{SeriesRowAddress, SeriesWriter};
 use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
 use reifydb_transaction::{
@@ -270,9 +270,7 @@ pub(crate) fn update_series(
 		} else {
 			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
 			SeriesWriter::new(&mut DmlTransaction::over(txn.reborrow()))
-				.update(SeriesUpdateRows::Tagged {
-					rows: written_keys.into_iter().zip(posts).collect(),
-				})?
+				.update(written_keys.into_iter().zip(posts).collect())?
 				.written
 		};
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {

@@ -18,7 +18,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		ringbuffer::{RingBufferFreeKey, ring_order_key, ring_order_range},
 	},
-	ring::{MetadataWrite, Placement, Ring, RingStore},
+	ring::{MetadataWrite, Placement, Ring, RingRead, RingStore},
 };
 use reifydb_value::{
 	Result,
@@ -26,7 +26,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	txn::{Range, StorageTxn},
+	txn::{FlowStorageTransaction, Range, StorageTransaction},
 	writer::{Written, table::TableRowAddress},
 };
 
@@ -65,13 +65,9 @@ pub struct RingAdapter<'a, T, C> {
 	pub storage: StorageId,
 }
 
-impl<T: StorageTxn + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T, C> {
+impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter<'_, T, C> {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
 		self.counters.metadata(self.txn, partition)
-	}
-
-	fn reserve(&mut self, capacity: u64) -> Result<u64> {
-		self.counters.reserve(self.txn, capacity)
 	}
 
 	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
@@ -98,6 +94,12 @@ impl<T: StorageTxn + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T,
 		}
 		Ok(entries)
 	}
+}
+
+impl<T: StorageTransaction + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T, C> {
+	fn reserve(&mut self, capacity: u64) -> Result<u64> {
+		self.counters.reserve(self.txn, capacity)
+	}
 
 	fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {
 		let keys: Vec<TaggedKey> =
@@ -112,41 +114,12 @@ impl<T: StorageTxn + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T,
 	}
 }
 
-pub enum RingInsertRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	},
-	Tagged {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub enum RingUpdateRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	},
-	Tagged {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub enum RingDeleteRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-	},
-	WithPre {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub struct RingWriter<'a, T: StorageTxn + Range> {
+pub struct RingMetadata<'a, T: StorageTransaction + Range> {
 	txn: &'a mut T,
 	storage: StorageId,
 }
 
-impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
+impl<'a, T: StorageTransaction + Range> RingMetadata<'a, T> {
 	pub fn new(txn: &'a mut T, storage: StorageId) -> Self {
 		Self {
 			txn,
@@ -216,56 +189,34 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 		}
 		Ok(())
 	}
+}
 
-	pub fn insert(&mut self, rows: RingInsertRows) -> Result<Written> {
-		match rows {
-			RingInsertRows::Plain {
-				keys,
-				rows,
-			} => {
-				self.txn.set(keys, rows)?;
-				Ok(Written::default())
-			}
-			RingInsertRows::Tagged {
-				rows,
-			} => self.set_tagged(rows),
+pub struct RingWriter<'a, T: StorageTransaction> {
+	txn: &'a mut T,
+}
+
+impl<'a, T: StorageTransaction> RingWriter<'a, T> {
+	pub fn new(txn: &'a mut T) -> Self {
+		Self {
+			txn,
 		}
 	}
 
-	pub fn update(&mut self, rows: RingUpdateRows) -> Result<Written> {
-		match rows {
-			RingUpdateRows::Plain {
-				keys,
-				rows,
-			} => {
-				self.txn.set(keys, rows)?;
-				Ok(Written::default())
-			}
-			RingUpdateRows::Tagged {
-				rows,
-			} => self.set_tagged(rows),
-		}
+	pub fn insert(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		self.set_tagged(rows)
 	}
 
-	pub fn delete(&mut self, rows: RingDeleteRows) -> Result<Written> {
-		match rows {
-			RingDeleteRows::Plain {
-				keys,
-			} => {
-				self.txn.remove(keys)?;
-				Ok(Written::default())
-			}
-			RingDeleteRows::WithPre {
-				rows,
-			} => {
-				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
-				self.txn.remove_with_pre(rows)?;
-				Ok(Written {
-					written: Vec::new(),
-					replaced,
-				})
-			}
-		}
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		self.set_tagged(rows)
+	}
+
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
+		self.txn.remove_with_pre(rows)?;
+		Ok(Written {
+			written: Vec::new(),
+			replaced,
+		})
 	}
 
 	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
@@ -275,6 +226,30 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 			written,
 			replaced: Vec::new(),
 		})
+	}
+}
+
+pub struct FlowRingWriter<'a, T: FlowStorageTransaction> {
+	txn: &'a mut T,
+}
+
+impl<'a, T: FlowStorageTransaction> FlowRingWriter<'a, T> {
+	pub fn new(txn: &'a mut T) -> Self {
+		Self {
+			txn,
+		}
+	}
+
+	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		self.txn.set(keys, rows)
+	}
+
+	pub fn update(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		self.txn.set(keys, rows)
+	}
+
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		self.txn.remove(keys)
 	}
 }
 
@@ -299,7 +274,7 @@ mod tests {
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::txn::{Batch, Get};
+	use crate::txn::{Batch, FlowBatch, FlowGet, Get};
 
 	#[derive(Debug, PartialEq, Eq)]
 	enum Seam {
@@ -319,27 +294,13 @@ mod tests {
 	}
 
 	impl Get for Memory {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			self.reads += 1;
-			Ok(keys.iter().map(|key| self.rows.get(key).cloned()).collect())
+			Ok(keys.iter().map(|key| self.rows.get(&key.encode()).cloned()).collect())
 		}
 	}
 
 	impl Batch for Memory {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-			self.seam.push(Seam::Set(keys.len()));
-			self.rows.extend(keys.into_iter().zip(rows));
-			Ok(())
-		}
-
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-			self.seam.push(Seam::Remove(keys.len()));
-			for key in keys {
-				self.rows.remove(&key);
-			}
-			Ok(())
-		}
-
 		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 			for (key, row, _) in &entries {
 				self.rows.insert(key.encode(), row.clone());
@@ -385,6 +346,31 @@ mod tests {
 				})
 				.collect();
 			Ok(Box::new(rows.into_iter()))
+		}
+	}
+
+	#[derive(Default)]
+	struct FlowMemory {
+		seam: Vec<Seam>,
+		reads: usize,
+	}
+
+	impl FlowGet for FlowMemory {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.reads += 1;
+			Ok(vec![None; keys.len()])
+		}
+	}
+
+	impl FlowBatch for FlowMemory {
+		fn set(&mut self, keys: Vec<EncodedKey>, _rows: Vec<EncodedBytes>) -> Result<()> {
+			self.seam.push(Seam::Set(keys.len()));
+			Ok(())
+		}
+
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+			self.seam.push(Seam::Remove(keys.len()));
+			Ok(())
 		}
 	}
 
@@ -455,29 +441,32 @@ mod tests {
 
 		fn insert(&mut self, partition: Option<Partition>, count: usize) -> Vec<Placement> {
 			let mut ring = Ring::new(self.capacity);
-			let mut writer = RingWriter::new(&mut self.txn, storage());
-			let placements = writer.place(&self.counters, &mut ring, partition, count).unwrap();
-			let keys = placements.iter().map(|p| ring_row_encoded(storage(), partition, p.row)).collect();
-			let rows = placements.iter().map(|p| row(p.sequence)).collect();
-			writer.insert(RingInsertRows::Plain {
-				keys,
-				rows,
-			})
-			.unwrap();
-			writer.save(&self.counters, &ring).unwrap();
+			let placements = RingMetadata::new(&mut self.txn, storage())
+				.place(&self.counters, &mut ring, partition, count)
+				.unwrap();
+			let rows = placements
+				.iter()
+				.map(|p| (ring_row_tagged(storage(), partition, p.row), row(p.sequence)))
+				.collect();
+			RingWriter::new(&mut self.txn).insert(rows).unwrap();
+			RingMetadata::new(&mut self.txn, storage()).save(&self.counters, &ring).unwrap();
 			placements
 		}
 
 		fn remove(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Vec<Option<EncodedBytes>> {
 			let mut ring = Ring::new(self.capacity);
-			let mut writer = RingWriter::new(&mut self.txn, storage());
-			let removed = writer.release(&self.counters, &mut ring, partition, rows).unwrap();
-			let keys = rows.iter().map(|&row| ring_row_encoded(storage(), partition, row)).collect();
-			writer.delete(RingDeleteRows::Plain {
-				keys,
-			})
-			.unwrap();
-			writer.save(&self.counters, &ring).unwrap();
+			let removed = RingMetadata::new(&mut self.txn, storage())
+				.release(&self.counters, &mut ring, partition, rows)
+				.unwrap();
+			let held = rows
+				.iter()
+				.zip(&removed)
+				.filter_map(|(&row, bytes)| {
+					Some((ring_row_tagged(storage(), partition, row), bytes.clone()?))
+				})
+				.collect();
+			RingWriter::new(&mut self.txn).delete(held).unwrap();
+			RingMetadata::new(&mut self.txn, storage()).save(&self.counters, &ring).unwrap();
 			removed
 		}
 
@@ -634,10 +623,11 @@ mod tests {
 		let order = ring_order_key(storage(), None, first[0].sequence);
 		let free: TaggedKey = RingBufferFreeKey::of(storage(), None, 0).into();
 		let free_row = encode_ringbuffer_free_page(&[first[0].row]).into_bytes();
+		let held = (ring_row_tagged(storage(), None, first[0].row), row(first[0].sequence));
 		assert_eq!(
 			fixture.txn.seam,
 			vec![
-				Seam::Remove(1),
+				Seam::RemoveWithPre(vec![held]),
 				Seam::RemoveTagged(vec![order]),
 				Seam::SetWithPre(vec![(free, free_row, SetPre::Unknown)]),
 			]
@@ -648,23 +638,11 @@ mod tests {
 	fn tagged_rows_carry_an_unknown_pre_and_a_delete_carries_the_callers_pre() {
 		// A dropped delete pre makes the transaction read its own view, which can differ from committed.
 		let mut txn = Memory::default();
-		let mut writer = RingWriter::new(&mut txn, storage());
+		let mut writer = RingWriter::new(&mut txn);
 		let key = |row: u64| ring_row_tagged(storage(), None, RowNumber(row));
-		let inserted = writer
-			.insert(RingInsertRows::Tagged {
-				rows: vec![(key(1), row(1))],
-			})
-			.unwrap();
-		let updated = writer
-			.update(RingUpdateRows::Tagged {
-				rows: vec![(key(1), row(2))],
-			})
-			.unwrap();
-		let deleted = writer
-			.delete(RingDeleteRows::WithPre {
-				rows: vec![(key(1), row(2))],
-			})
-			.unwrap();
+		let inserted = writer.insert(vec![(key(1), row(1))]).unwrap();
+		let updated = writer.update(vec![(key(1), row(2))]).unwrap();
+		let deleted = writer.delete(vec![(key(1), row(2))]).unwrap();
 		assert_eq!((inserted.written, inserted.replaced), (vec![row(1)], vec![]));
 		assert_eq!((updated.written, updated.replaced), (vec![row(2)], vec![]));
 		assert_eq!((deleted.written, deleted.replaced), (vec![], vec![row(2)]));
@@ -680,33 +658,16 @@ mod tests {
 	}
 
 	#[test]
-	fn the_plain_row_paths_never_read_and_return_nothing() {
-		// A read here adds store load to view writes; a non-empty return would cost a clone the sink ignores.
-		let mut txn = Memory::default();
-		let mut writer = RingWriter::new(&mut txn, storage());
+	fn the_flow_row_paths_never_read() {
+		// A read here adds store load to every view write that has none today.
+		let mut txn = FlowMemory::default();
+		let mut writer = FlowRingWriter::new(&mut txn);
 		let key = ring_row_encoded(storage(), None, RowNumber(1));
-		let inserted = writer
-			.insert(RingInsertRows::Plain {
-				keys: vec![key.clone()],
-				rows: vec![row(1)],
-			})
-			.unwrap();
-		let updated = writer
-			.update(RingUpdateRows::Plain {
-				keys: vec![key.clone()],
-				rows: vec![row(2)],
-			})
-			.unwrap();
-		let deleted = writer
-			.delete(RingDeleteRows::Plain {
-				keys: vec![key],
-			})
-			.unwrap();
-		for returned in [inserted, updated, deleted] {
-			assert_eq!(returned, Written::default());
-		}
+		writer.insert(vec![key.clone()], vec![row(1)]).unwrap();
+		writer.update(vec![key.clone()], vec![row(2)]).unwrap();
+		writer.delete(vec![key]).unwrap();
 		assert_eq!(txn.seam, vec![Seam::Set(1), Seam::Set(1), Seam::Remove(1)]);
-		assert_eq!((txn.reads, txn.ranges), (0, 0));
+		assert_eq!(txn.reads, 0);
 	}
 
 	#[test]

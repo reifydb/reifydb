@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	value::index::encoded::EncodedIndexKey,
 };
-use reifydb_flow::txn::Get;
+use reifydb_flow::txn::FlowGet;
 use reifydb_flow_async::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;

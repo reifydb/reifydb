@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{queue::QueueDeduplicationKey, row::RowKey},
 };
-use reifydb_flow::txn::Get;
+use reifydb_flow::txn::FlowGet;
 use reifydb_flow_async::transaction::{
 	ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
 };

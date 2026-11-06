@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
-use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Range, Resolve};
+use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Range, Resolve};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -447,13 +447,13 @@ impl FlowTransaction for DeferredTransaction {
 	}
 }
 
-impl Get for DeferredTransaction {
+impl FlowGet for DeferredTransaction {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get(self, keys)
 	}
 }
 
-impl Batch for DeferredTransaction {
+impl FlowBatch for DeferredTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())
@@ -743,7 +743,7 @@ mod tests {
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let storage = StorageId::from(ViewId(1));
 		let row = |row: u64| EncodedBytes(CowVec::new(vec![row as u8]));
-		Batch::set(
+		FlowBatch::set(
 			&mut txn,
 			vec![RowKey::encoded(storage, RowNumber(2)), RowKey::encoded(storage, RowNumber(1))],
 			vec![row(2), row(1)],

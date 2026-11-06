@@ -14,7 +14,7 @@ use reifydb_value::{
 	value::{Value, column_view::ColumnView, partition::Partition},
 };
 
-use crate::txn::{Batch, Get};
+use crate::txn::{FlowBatch, FlowGet};
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
@@ -41,7 +41,7 @@ pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) ->
 	Ok(partitions_of_batch(&keys))
 }
 
-pub fn resolve_partitions_flow<T: Get + Batch + ?Sized>(
+pub fn resolve_partitions_flow<T: FlowGet + FlowBatch + ?Sized>(
 	txn: &mut T,
 	object: ObjectId,
 	distinct: &[(Partition, Vec<Value>)],

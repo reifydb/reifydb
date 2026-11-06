@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
-use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
+use reifydb_flow::txn::{Find, FlowBatch, FlowGet, Intern, Resolve};
 use reifydb_flow_async::{
 	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
@@ -171,13 +171,13 @@ impl FlowTransaction for TestFlowTransaction {
 	}
 }
 
-impl Get for TestFlowTransaction {
+impl FlowGet for TestFlowTransaction {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get(self, keys)
 	}
 }
 
-impl Batch for TestFlowTransaction {
+impl FlowBatch for TestFlowTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())

@@ -24,7 +24,7 @@ use reifydb_core::{
 	internal_err,
 	key::any::TaggedKey,
 };
-use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
+use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Resolve};
 #[cfg(feature = "testing")]
 use reifydb_flow_sync::testing::{InstalledHooks, TestingTxn};
 use reifydb_flow_sync::{
@@ -155,14 +155,14 @@ impl Changes for FlowTransaction<'_> {
 	}
 }
 
-impl Get for FlowTransaction<'_> {
+impl FlowGet for FlowTransaction<'_> {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
 		Ok(self.tx.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
 }
 
-impl Batch for FlowTransaction<'_> {
+impl FlowBatch for FlowTransaction<'_> {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		self.tx.set(keys.iter().map(tagged).zip(rows).collect())
 	}

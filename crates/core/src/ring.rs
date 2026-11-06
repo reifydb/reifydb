@@ -16,10 +16,8 @@ const ORDER_PAGE: usize = 64;
 
 pub const FREE_PAGE_SLOTS: u64 = 512;
 
-pub trait RingStore {
+pub trait RingRead {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>>;
-
-	fn reserve(&mut self, capacity: u64) -> Result<u64>;
 
 	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>>;
 
@@ -29,11 +27,15 @@ pub trait RingStore {
 		after: Option<u64>,
 		limit: usize,
 	) -> Result<Vec<(u64, RowNumber)>>;
+}
+
+pub trait RingStore: RingRead {
+	fn reserve(&mut self, capacity: u64) -> Result<u64>;
 
 	fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>>;
 }
 
-pub trait RingNewest: RingStore {
+pub trait RingNewest: RingRead {
 	fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>>;
 }
 
@@ -447,7 +449,7 @@ pub fn newest(store: &mut impl RingNewest, partition: Option<Partition>) -> Resu
 	}
 }
 
-pub fn oldest(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
+pub fn oldest(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
 	let after = head_cursor(store, partition)?;
 	match store.order(partition, after, 1)?.pop() {
 		None => Ok(None),
@@ -455,7 +457,7 @@ pub fn oldest(store: &mut impl RingStore, partition: Option<Partition>) -> Resul
 	}
 }
 
-pub fn oldest_first(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+pub fn oldest_first(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
 	let mut rows = Vec::new();
 	let mut after = head_cursor(store, partition)?;
 	loop {
@@ -469,12 +471,12 @@ pub fn oldest_first(store: &mut impl RingStore, partition: Option<Partition>) ->
 	}
 }
 
-fn head_cursor(store: &mut impl RingStore, partition: Option<Partition>) -> Result<Option<u64>> {
+fn head_cursor(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Option<u64>> {
 	Ok(store.metadata(partition)?.and_then(|metadata| metadata.head.checked_sub(1)))
 }
 
 fn live_slot(
-	store: &mut impl RingStore,
+	store: &mut impl RingRead,
 	partition: Option<Partition>,
 	row: RowNumber,
 ) -> Result<(RowNumber, EncodedBytes)> {
@@ -512,15 +514,9 @@ mod tests {
 		pages_read: Vec<(Option<Partition>, u64)>,
 	}
 
-	impl RingStore for MemoryStore {
+	impl RingRead for MemoryStore {
 		fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
 			Ok(self.metadata.get(&partition).copied())
-		}
-
-		fn reserve(&mut self, capacity: u64) -> Result<u64> {
-			let base = self.next_base.max(100);
-			self.next_base = base + capacity;
-			Ok(base)
 		}
 
 		fn slots(
@@ -542,6 +538,14 @@ mod tests {
 				.filter(|&(sequence, _)| after.is_none_or(|after| sequence > after))
 				.take(limit)
 				.collect())
+		}
+	}
+
+	impl RingStore for MemoryStore {
+		fn reserve(&mut self, capacity: u64) -> Result<u64> {
+			let base = self.next_base.max(100);
+			self.next_base = base + capacity;
+			Ok(base)
 		}
 
 		fn free_pages(&mut self, partition: Option<Partition>, pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {

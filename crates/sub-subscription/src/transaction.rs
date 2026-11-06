@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	error::FlowGraphError,
-	txn::{Batch, Find, Get, Intern, Resolve},
+	txn::{Find, FlowBatch, FlowGet, Intern, Resolve},
 };
 use reifydb_flow_async::{
 	operator::{TimedOutput, sink::DurableSink},
@@ -215,13 +215,13 @@ fn ephemeral_group_page(
 	(page, false)
 }
 
-impl Get for EphemeralTransaction {
+impl FlowGet for EphemeralTransaction {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get(self, keys)
 	}
 }
 
-impl Batch for EphemeralTransaction {
+impl FlowBatch for EphemeralTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())

@@ -1256,7 +1256,7 @@ mod seal_tests {
 		},
 		value::{batch::batch, column::factory::int4},
 	};
-	use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
+	use reifydb_flow::txn::{Find, FlowBatch, FlowGet, Intern, Resolve};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1527,13 +1527,13 @@ mod seal_tests {
 		}
 	}
 
-	impl Get for CountingTxn {
+	impl FlowGet for CountingTxn {
 		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			pending_get(self, keys)
 		}
 	}
 
-	impl Batch for CountingTxn {
+	impl FlowBatch for CountingTxn {
 		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 			self.pending_mut().insert(keys, rows);
 			Ok(())

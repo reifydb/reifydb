@@ -22,9 +22,7 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::batch::from_encoded_bytes,
 };
-use reifydb_flow::writer::ring::{
-	RingAdapter, RingCounters, RingDeleteRows, RingInsertRows, RingUpdateRows, RingWriter, ring_row_tagged,
-};
+use reifydb_flow::writer::ring::{RingAdapter, RingCounters, RingMetadata, RingWriter, ring_row_tagged};
 use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -95,7 +93,7 @@ pub fn place_ring_rows(
 		catalog,
 		ringbuffer,
 	};
-	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
+	RingMetadata::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
 		.place(&counters, ring, partition, count)
 }
 
@@ -111,7 +109,7 @@ pub fn release_ring_rows(
 		catalog,
 		ringbuffer,
 	};
-	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
+	RingMetadata::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
 		.release(&counters, ring, partition, rows)
 }
 
@@ -140,7 +138,7 @@ pub fn save_ring(catalog: &Catalog, txn: &mut Transaction<'_>, ringbuffer: &Ring
 		catalog,
 		ringbuffer,
 	};
-	RingWriter::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into()).save(&counters, ring)
+	RingMetadata::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into()).save(&counters, ring)
 }
 
 fn ringbuffer_change(ringbuffer: &RingBuffer, diffs: SmallVec<[Diff; 4]>) -> Change {
@@ -282,10 +280,8 @@ fn write_rows<T: TableDml>(
 		written
 	};
 
-	let written = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
-		.insert(RingInsertRows::Tagged {
-			rows: keys.into_iter().zip(written).collect(),
-		})?
+	let written = RingWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.insert(keys.into_iter().zip(written).collect())?
 		.written;
 
 	if !txn.ringbuffer_row_post_insert_interceptors().is_empty() {
@@ -335,10 +331,8 @@ fn update_rows<T: TableDml>(
 		posts
 	};
 
-	let posts = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
-		.update(RingUpdateRows::Tagged {
-			rows: keys.into_iter().zip(posts).collect(),
-		})?
+	let posts = RingWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.update(keys.into_iter().zip(posts).collect())?
 		.written;
 
 	if !txn.ringbuffer_row_post_update_interceptors().is_empty() {
@@ -383,10 +377,8 @@ fn remove_rows<T: TableDml>(
 		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, ids)?;
 	}
 
-	let removed = RingWriter::new(&mut DmlTransaction::over(txn.transaction()), ringbuffer.id.into())
-		.delete(RingDeleteRows::WithPre {
-			rows: keys.into_iter().zip(removed).collect(),
-		})?
+	let removed = RingWriter::new(&mut DmlTransaction::over(txn.transaction()))
+		.delete(keys.into_iter().zip(removed).collect())?
 		.replaced;
 
 	if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {

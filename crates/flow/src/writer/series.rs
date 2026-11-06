@@ -13,7 +13,10 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, value::partition::Partition};
 
-use crate::{txn::StorageTxn, writer::Written};
+use crate::{
+	txn::{FlowStorageTransaction, StorageTransaction},
+	writer::Written,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeriesRowAddress {
@@ -65,110 +68,32 @@ impl SeriesRowAddress {
 	}
 }
 
-pub enum SeriesAppendRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	},
-	Tagged {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub enum SeriesUpdateRows {
-	Plain {
-		pre_keys: Vec<EncodedKey>,
-		post_keys: Vec<EncodedKey>,
-		rows: Vec<EncodedBytes>,
-	},
-	Tagged {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub enum SeriesDeleteRows {
-	Plain {
-		keys: Vec<EncodedKey>,
-	},
-	WithPre {
-		rows: Vec<(TaggedKey, EncodedBytes)>,
-	},
-}
-
-pub struct SeriesWriter<'a, T: StorageTxn> {
+pub struct SeriesWriter<'a, T: StorageTransaction> {
 	txn: &'a mut T,
 }
 
-impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
+impl<'a, T: StorageTransaction> SeriesWriter<'a, T> {
 	pub fn new(txn: &'a mut T) -> Self {
 		Self {
 			txn,
 		}
 	}
 
-	pub fn append(&mut self, rows: SeriesAppendRows) -> Result<Written> {
-		match rows {
-			SeriesAppendRows::Plain {
-				keys,
-				rows,
-			} => {
-				self.txn.set(keys, rows)?;
-				Ok(Written::default())
-			}
-			SeriesAppendRows::Tagged {
-				rows,
-			} => self.set_tagged(rows),
-		}
+	pub fn append(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		self.set_tagged(rows)
 	}
 
-	pub fn update(&mut self, rows: SeriesUpdateRows) -> Result<Written> {
-		match rows {
-			SeriesUpdateRows::Plain {
-				pre_keys,
-				post_keys,
-				rows,
-			} => {
-				if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
-					return internal_err!(
-						"series update got {} pre keys, {} post keys and {} rows",
-						pre_keys.len(),
-						post_keys.len(),
-						rows.len()
-					);
-				}
-				for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
-					if pre_key != post_key {
-						self.txn.remove(vec![pre_key])?;
-					}
-					self.txn.set(vec![post_key], vec![row])?;
-				}
-				Ok(Written::default())
-			}
-			SeriesUpdateRows::Tagged {
-				rows,
-			} => self.set_tagged(rows),
-		}
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		self.set_tagged(rows)
 	}
 
-	pub fn delete(&mut self, rows: SeriesDeleteRows) -> Result<Written> {
-		match rows {
-			SeriesDeleteRows::Plain {
-				keys,
-			} => {
-				self.txn.remove(keys)?;
-				Ok(Written::default())
-			}
-			SeriesDeleteRows::WithPre {
-				rows,
-			} => {
-				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
-				self.txn.remove_with_pre(rows)?;
-				Ok(Written {
-					written: Vec::new(),
-					replaced,
-				})
-			}
-		}
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
+		self.txn.remove_with_pre(rows)?;
+		Ok(Written {
+			written: Vec::new(),
+			replaced,
+		})
 	}
 
 	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
@@ -178,6 +103,49 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 			written,
 			replaced: Vec::new(),
 		})
+	}
+}
+
+pub struct FlowSeriesWriter<'a, T: FlowStorageTransaction> {
+	txn: &'a mut T,
+}
+
+impl<'a, T: FlowStorageTransaction> FlowSeriesWriter<'a, T> {
+	pub fn new(txn: &'a mut T) -> Self {
+		Self {
+			txn,
+		}
+	}
+
+	pub fn append(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		self.txn.set(keys, rows)
+	}
+
+	pub fn update(
+		&mut self,
+		pre_keys: Vec<EncodedKey>,
+		post_keys: Vec<EncodedKey>,
+		rows: Vec<EncodedBytes>,
+	) -> Result<()> {
+		if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
+			return internal_err!(
+				"series update got {} pre keys, {} post keys and {} rows",
+				pre_keys.len(),
+				post_keys.len(),
+				rows.len()
+			);
+		}
+		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
+			if pre_key != post_key {
+				self.txn.remove(vec![pre_key])?;
+			}
+			self.txn.set(vec![post_key], vec![row])?;
+		}
+		Ok(())
+	}
+
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		self.txn.remove(keys)
 	}
 }
 
@@ -244,7 +212,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::txn::{Batch, Get};
+	use crate::txn::{Batch, FlowBatch, FlowGet, Get};
 
 	#[derive(Debug, PartialEq, Eq)]
 	enum Call {
@@ -252,6 +220,7 @@ mod tests {
 		Remove(Vec<EncodedKey>),
 		SetWithPre(Vec<(TaggedKey, EncodedBytes, SetPre)>),
 		RemoveWithPre(Vec<(TaggedKey, EncodedBytes)>),
+		RemoveTagged(Vec<TaggedKey>),
 	}
 
 	#[derive(Default)]
@@ -261,23 +230,13 @@ mod tests {
 	}
 
 	impl Get for Recording {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-			self.calls.push(Call::Set(keys, rows));
-			Ok(())
-		}
-
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-			self.calls.push(Call::Remove(keys));
-			Ok(())
-		}
-
 		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 			self.calls.push(Call::SetWithPre(entries));
 			Ok(())
@@ -285,6 +244,36 @@ mod tests {
 
 		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 			self.calls.push(Call::RemoveWithPre(entries));
+			Ok(())
+		}
+
+		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+			self.calls.push(Call::RemoveTagged(keys));
+			Ok(())
+		}
+	}
+
+	#[derive(Default)]
+	struct FlowRecording {
+		calls: Vec<Call>,
+		reads: usize,
+	}
+
+	impl FlowGet for FlowRecording {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.reads += 1;
+			Ok(vec![None; keys.len()])
+		}
+	}
+
+	impl FlowBatch for FlowRecording {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+			self.calls.push(Call::Set(keys, rows));
+			Ok(())
+		}
+
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+			self.calls.push(Call::Remove(keys));
 			Ok(())
 		}
 	}
@@ -328,11 +317,7 @@ mod tests {
 		// Without the pre the transaction reads its own view of the row, which can differ from committed.
 		let mut txn = Recording::default();
 		let rows = vec![(tagged(1), bytes(1)), (tagged(2), bytes(2))];
-		let written = SeriesWriter::new(&mut txn)
-			.delete(SeriesDeleteRows::WithPre {
-				rows: rows.clone(),
-			})
-			.unwrap();
+		let written = SeriesWriter::new(&mut txn).delete(rows.clone()).unwrap();
 		assert_eq!(txn.calls, vec![Call::RemoveWithPre(rows)]);
 		assert_eq!(written.replaced, vec![bytes(1), bytes(2)], "post delete hooks read these pre-images");
 		assert_eq!(txn.reads, 0, "the caller owns the committed read, the writer must not read");
@@ -344,16 +329,8 @@ mod tests {
 		// diff.
 		let mut txn = Recording::default();
 		let mut writer = SeriesWriter::new(&mut txn);
-		let appended = writer
-			.append(SeriesAppendRows::Tagged {
-				rows: vec![(tagged(1), bytes(1)), (tagged(2), bytes(2))],
-			})
-			.unwrap();
-		let updated = writer
-			.update(SeriesUpdateRows::Tagged {
-				rows: vec![(tagged(1), bytes(3))],
-			})
-			.unwrap();
+		let appended = writer.append(vec![(tagged(1), bytes(1)), (tagged(2), bytes(2))]).unwrap();
+		let updated = writer.update(vec![(tagged(1), bytes(3))]).unwrap();
 		assert_eq!(appended.written, vec![bytes(1), bytes(2)], "hooks and the flow diff read the written rows");
 		assert_eq!(updated.written, vec![bytes(3)]);
 		assert!(appended.replaced.is_empty() && updated.replaced.is_empty());
@@ -371,31 +348,13 @@ mod tests {
 	}
 
 	#[test]
-	fn the_plain_paths_never_read_never_touch_the_pre_image_seam_and_return_nothing() {
-		// A read here adds store load to view writes; a non-empty return would cost a clone the sink ignores.
-		let mut txn = Recording::default();
-		let mut writer = SeriesWriter::new(&mut txn);
-		let appended = writer
-			.append(SeriesAppendRows::Plain {
-				keys: vec![encoded(1)],
-				rows: vec![bytes(1)],
-			})
-			.unwrap();
-		let updated = writer
-			.update(SeriesUpdateRows::Plain {
-				pre_keys: vec![encoded(1)],
-				post_keys: vec![encoded(1)],
-				rows: vec![bytes(2)],
-			})
-			.unwrap();
-		let deleted = writer
-			.delete(SeriesDeleteRows::Plain {
-				keys: vec![encoded(1)],
-			})
-			.unwrap();
-		for returned in [appended, updated, deleted] {
-			assert_eq!(returned, Written::default());
-		}
+	fn the_flow_paths_never_read_and_never_touch_the_pre_image_seam() {
+		// A read here adds store load to every view write that has none today.
+		let mut txn = FlowRecording::default();
+		let mut writer = FlowSeriesWriter::new(&mut txn);
+		writer.append(vec![encoded(1)], vec![bytes(1)]).unwrap();
+		writer.update(vec![encoded(1)], vec![encoded(1)], vec![bytes(2)]).unwrap();
+		writer.delete(vec![encoded(1)]).unwrap();
 		assert_eq!(txn.reads, 0);
 		assert_eq!(
 			txn.calls,
@@ -408,15 +367,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plain_update_applies_each_row_in_order_so_a_later_remove_beats_an_earlier_set() {
+	fn a_flow_update_applies_each_row_in_order_so_a_later_remove_beats_an_earlier_set() {
 		// Series views apply row by row, unlike table views; collapsing the writes would keep a row they drop.
-		let mut txn = Recording::default();
-		SeriesWriter::new(&mut txn)
-			.update(SeriesUpdateRows::Plain {
-				pre_keys: vec![encoded(1), encoded(2)],
-				post_keys: vec![encoded(2), encoded(3)],
-				rows: vec![bytes(12), bytes(23)],
-			})
+		let mut txn = FlowRecording::default();
+		FlowSeriesWriter::new(&mut txn)
+			.update(vec![encoded(1), encoded(2)], vec![encoded(2), encoded(3)], vec![bytes(12), bytes(23)])
 			.unwrap();
 		assert_eq!(
 			txn.calls,
@@ -430,21 +385,15 @@ mod tests {
 	}
 
 	#[test]
-	fn a_plain_update_with_mismatched_lengths_fails_and_writes_nothing() {
+	fn a_flow_update_with_mismatched_lengths_fails_and_writes_nothing() {
 		// Zipping uneven inputs would silently drop rows from the view.
 		for (pre_keys, post_keys, rows) in [
 			(vec![encoded(1)], vec![], vec![]),
 			(vec![], vec![encoded(1)], vec![]),
 			(vec![encoded(1)], vec![encoded(1)], vec![]),
 		] {
-			let mut txn = Recording::default();
-			let error = SeriesWriter::new(&mut txn)
-				.update(SeriesUpdateRows::Plain {
-					pre_keys,
-					post_keys,
-					rows,
-				})
-				.unwrap_err();
+			let mut txn = FlowRecording::default();
+			let error = FlowSeriesWriter::new(&mut txn).update(pre_keys, post_keys, rows).unwrap_err();
 			assert_eq!(error.0.code, "INTERNAL_ERROR");
 			assert!(txn.calls.is_empty());
 		}

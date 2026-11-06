@@ -16,7 +16,7 @@ use reifydb_core::{
 	key::any::TaggedKey,
 	partition::{PartitionError, partitions_of_rows},
 };
-use reifydb_flow::writer::series::{SeriesAppendRows, SeriesDeleteRows, SeriesWriter};
+use reifydb_flow::writer::series::SeriesWriter;
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
 	transaction::Transaction,
@@ -77,9 +77,7 @@ pub(crate) fn write_series_rows(
 
 	let written: Vec<EncodedBytes> = rows.into_iter().map(|row| row.freeze_bytes()).collect();
 	let written = SeriesWriter::new(&mut DmlTransaction::over(txn.reborrow()))
-		.append(SeriesAppendRows::Tagged {
-			rows: keys.into_iter().zip(written).collect(),
-		})?
+		.append(keys.into_iter().zip(written).collect())?
 		.written;
 	if !txn.series_row_post_insert_interceptors().is_empty() {
 		SeriesRowInterceptor::post_insert(txn, series, &written)?;
@@ -142,11 +140,7 @@ pub(crate) fn remove_series_rows(
 	if !txn.series_row_pre_delete_interceptors().is_empty() {
 		SeriesRowInterceptor::pre_delete(txn, series, ids)?;
 	}
-	let replaced = SeriesWriter::new(&mut DmlTransaction::over(txn.reborrow()))
-		.delete(SeriesDeleteRows::WithPre {
-			rows: removals,
-		})?
-		.replaced;
+	let replaced = SeriesWriter::new(&mut DmlTransaction::over(txn.reborrow())).delete(removals)?.replaced;
 	if !txn.series_row_post_delete_interceptors().is_empty() {
 		SeriesRowInterceptor::post_delete(txn, series, &replaced)?;
 	}

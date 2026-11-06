@@ -22,7 +22,7 @@ use reifydb_core::{
 	row::row_shape_from_columns,
 	value::batch::{append_rows_fitted, from_encoded_bytes},
 };
-use reifydb_flow::writer::table::{TableDeleteRows, TableInsertRows, TableUpdateRows, TableWriter};
+use reifydb_flow::writer::table::TableWriter;
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::{WithInterceptors, table_row::TableRowInterceptor},
@@ -199,12 +199,7 @@ fn insert_rows<T: TableDml>(txn: &mut T, table: &Table, shape: &RowShape, insert
 			(row_key_from_partition(table.id, partitions.get(row_index).copied(), row_number), row)
 		})
 		.collect();
-	let frozen = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
-		.insert(TableInsertRows::WithPre {
-			rows,
-			index,
-		})?
-		.written;
+	let frozen = TableWriter::new(&mut DmlTransaction::over(txn.transaction())).insert(rows, index)?.written;
 
 	TableRowInterceptor::post_insert(txn, table, ids, &frozen)?;
 
@@ -332,14 +327,7 @@ fn update_rows<T: TableDml>(
 		.map(|committed| committed.map_or(SetPre::Unknown, |row| SetPre::Present(row.bytes)))
 		.collect();
 	let posts = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
-		.update(TableUpdateRows::WithPre {
-			rows: keys
-				.into_iter()
-				.zip(posts)
-				.zip(known)
-				.map(|((key, post), pre)| (key, post, pre))
-				.collect(),
-		})?
+		.update(keys.into_iter().zip(posts).zip(known).map(|((key, post), pre)| (key, post, pre)).collect())?
 		.written;
 
 	TableRowInterceptor::post_update(txn, table, ids, &posts, pres)?;
@@ -385,9 +373,7 @@ fn remove_rows<T: TableDml>(
 	TableRowInterceptor::pre_delete(txn, table, ids)?;
 
 	let replaced = TableWriter::new(&mut DmlTransaction::over(txn.transaction()))
-		.delete(TableDeleteRows::WithPre {
-			rows: keys.into_iter().zip(pre_for_commit_log_bytes_vec).collect(),
-		})?
+		.delete(keys.into_iter().zip(pre_for_commit_log_bytes_vec).collect())?
 		.replaced;
 
 	TableRowInterceptor::post_delete(txn, table, ids, &replaced)?;

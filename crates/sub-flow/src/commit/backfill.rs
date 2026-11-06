@@ -36,7 +36,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{backfill::run, engine::StandardEngine, lift::entry_changed_objects};
-use reifydb_flow::txn::Batch;
+use reifydb_flow::txn::FlowBatch;
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::InputOrder,

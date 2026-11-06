@@ -32,7 +32,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferMetadataKey, ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey},
 	},
-	ring::{RingNewest, RingStore, newest},
+	ring::{RingNewest, RingRead, newest},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
@@ -159,7 +159,7 @@ struct QueryRing<'a> {
 	storage: StorageId,
 }
 
-impl RingStore for QueryRing<'_> {
+impl RingRead for QueryRing<'_> {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
 		let key = RingBufferMetadataKey::of(self.storage, partition).into();
 		self.query
@@ -168,10 +168,6 @@ impl RingStore for QueryRing<'_> {
 			.flatten()
 			.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes())))
 			.transpose()
-	}
-
-	fn reserve(&mut self, _capacity: u64) -> Result<u64> {
-		panic!("a lookup read of ring {:?} must never reserve row numbers", self.storage)
 	}
 
 	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
@@ -199,10 +195,6 @@ impl RingStore for QueryRing<'_> {
 			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
 		}
 		Ok(entries)
-	}
-
-	fn free_pages(&mut self, _partition: Option<Partition>, _pages: &[u64]) -> Result<Vec<Vec<RowNumber>>> {
-		panic!("a lookup read of ring {:?} must never read its free pages", self.storage)
 	}
 }
 

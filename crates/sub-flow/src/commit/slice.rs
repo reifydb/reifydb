@@ -796,7 +796,7 @@ mod integration {
 		},
 		key::tag::KeyTag,
 	};
-	use reifydb_flow::txn::Get;
+	use reifydb_flow::txn::FlowGet;
 	use reifydb_flow_async::{
 		engine::frontier::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},

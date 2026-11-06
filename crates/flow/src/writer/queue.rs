@@ -5,14 +5,14 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{delta::SetPre, interface::catalog::storage::StorageId, key::row::RowKey};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::txn::StorageTxn;
+use crate::txn::StorageTransaction;
 
-pub struct QueueWriter<'a, T: StorageTxn> {
+pub struct QueueWriter<'a, T: StorageTransaction> {
 	txn: &'a mut T,
 	storage: StorageId,
 }
 
-impl<'a, T: StorageTxn> QueueWriter<'a, T> {
+impl<'a, T: StorageTransaction> QueueWriter<'a, T> {
 	pub fn new(txn: &'a mut T, storage: StorageId) -> Self {
 		Self {
 			txn,
@@ -32,7 +32,6 @@ impl<'a, T: StorageTxn> QueueWriter<'a, T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{interface::catalog::id::QueueId, key::any::TaggedKey};
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -42,31 +41,28 @@ mod tests {
 	#[derive(Default)]
 	struct Recording {
 		with_pre: Vec<Vec<(TaggedKey, EncodedBytes, SetPre)>>,
-		plain: usize,
 		reads: usize,
 	}
 
 	impl Get for Recording {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set(&mut self, _keys: Vec<EncodedKey>, _rows: Vec<EncodedBytes>) -> Result<()> {
-			self.plain += 1;
-			Ok(())
-		}
-
-		fn remove(&mut self, _keys: Vec<EncodedKey>) -> Result<()> {
-			self.plain += 1;
-			Ok(())
-		}
-
 		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 			self.with_pre.push(entries);
 			Ok(())
+		}
+
+		fn remove_with_pre(&mut self, _entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+			panic!("a queue insert never removes a row")
+		}
+
+		fn remove_tagged(&mut self, _keys: Vec<TaggedKey>) -> Result<()> {
+			panic!("a queue insert never removes a row")
 		}
 	}
 
@@ -97,7 +93,6 @@ mod tests {
 			txn.with_pre,
 			vec![vec![(key(1), bytes(1), SetPre::Absent), (key(2), bytes(2), SetPre::Absent)]]
 		);
-		assert_eq!(txn.plain, 0, "the plain batch carries no pre-image");
 		assert_eq!(txn.reads, 0, "a queue insert never reads the row it writes");
 	}
 

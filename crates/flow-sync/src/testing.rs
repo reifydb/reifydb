@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 #[cfg(any(test, feature = "testing"))]
-use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
+use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Resolve};
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
@@ -146,13 +146,13 @@ impl<T: Changes> Changes for TestingTxn<T> {
 	}
 }
 
-impl<T: Get> Get for TestingTxn<T> {
+impl<T: FlowGet> FlowGet for TestingTxn<T> {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		self.txn.get(keys)
 	}
 }
 
-impl<T: Batch> Batch for TestingTxn<T> {
+impl<T: FlowBatch> FlowBatch for TestingTxn<T> {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		for (key, row) in keys.into_iter().zip(rows) {
 			self.call();
@@ -322,14 +322,14 @@ impl Changes for TestingTx {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl Get for TestingTx {
+impl FlowGet for TestingTx {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		Ok(keys.iter().map(|key| self.rows.get(key).cloned()).collect())
 	}
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl Batch for TestingTx {
+impl FlowBatch for TestingTx {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		for (key, row) in keys.into_iter().zip(rows) {
 			self.rows.insert(key, row);
@@ -469,7 +469,7 @@ mod tests {
 			column::factory::int8,
 		},
 	};
-	use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
+	use reifydb_flow::txn::{Emit, FlowBatch, FlowGet, Intern, Resolve};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		error::{Diagnostic, Error},

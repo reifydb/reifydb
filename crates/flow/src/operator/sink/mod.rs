@@ -46,7 +46,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{error::FlowSinkError, operator::with_system_columns_of, txn::Get};
+use crate::{error::FlowSinkError, operator::with_system_columns_of, txn::FlowGet};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -151,7 +151,7 @@ pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize
 		.collect()
 }
 
-pub fn stored_created_at<T: Get + ?Sized>(
+pub fn stored_created_at<T: FlowGet + ?Sized>(
 	txn: &mut T,
 	rows: &[(EncodedKey, Option<EncodedKey>)],
 ) -> Result<Vec<Option<DateTime>>> {

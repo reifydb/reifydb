@@ -70,10 +70,8 @@ use reifydb_flow::{
 		},
 		source::decode_change_keeping,
 	},
-	txn::{Emit, Get},
-	writer::ring::{
-		RingAdapter, RingCounters, RingDeleteRows, RingInsertRows, RingUpdateRows, RingWriter, ring_row_encoded,
-	},
+	txn::{Emit, FlowGet},
+	writer::ring::{FlowRingWriter, RingAdapter, RingCounters, RingMetadata, ring_row_encoded},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -260,7 +258,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn save_ring(&self, txn: &mut DeferredTransaction, ring: &Ring) -> Result<()> {
-		RingWriter::new(txn, self.storage).save(self, ring)
+		RingMetadata::new(txn, self.storage).save(self, ring)
 	}
 
 	fn next_row_key(&self) -> GroupStateKey {
@@ -747,8 +745,12 @@ impl SinkRingBufferViewOperator {
 		for (partition, rows) in self.partition_groups(txn, view, source)? {
 			touched.insert(partition);
 			let kept = &rows[rows.len().saturating_sub(self.capacity as usize)..];
-			let placements =
-				RingWriter::new(&mut *txn, self.storage).place(&*self, ring, partition, kept.len())?;
+			let placements = RingMetadata::new(&mut *txn, self.storage).place(
+				&*self,
+				ring,
+				partition,
+				kept.len(),
+			)?;
 			for (&row_idx, placement) in kept.iter().zip(placements) {
 				sequences.push(placement.sequence);
 				placed.push(Placed {
@@ -795,10 +797,7 @@ impl SinkRingBufferViewOperator {
 			}
 		}
 		self.state_set(txn, sets)?;
-		RingWriter::new(&mut *txn, self.storage).insert(RingInsertRows::Plain {
-			keys: row_keys,
-			rows: values,
-		})?;
+		FlowRingWriter::new(&mut *txn).insert(row_keys, values)?;
 
 		if !fresh.is_empty() {
 			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &fresh)?))?;
@@ -889,10 +888,7 @@ impl SinkRingBufferViewOperator {
 			.map(|(&row_idx, sequence)| with_sequence(encoded[row_idx].clone(), sequence))
 			.collect();
 		if !keys.is_empty() {
-			RingWriter::new(&mut *txn, self.storage).update(RingUpdateRows::Plain {
-				keys,
-				rows,
-			})?;
+			FlowRingWriter::new(&mut *txn).update(keys, rows)?;
 		}
 		if !applied.is_empty() {
 			txn.emit(
@@ -983,8 +979,12 @@ impl SinkRingBufferViewOperator {
 		let mut applied: Vec<usize> = Vec::with_capacity(row_numbers.len());
 		for (partition, rows) in grouped {
 			let storage_rns: Vec<RowNumber> = rows.iter().map(|(_, rn)| *rn).collect();
-			let mut writer = RingWriter::new(&mut *txn, self.storage);
-			let removed = writer.release(self, ring, partition, &storage_rns)?;
+			let removed = RingMetadata::new(&mut *txn, self.storage).release(
+				self,
+				ring,
+				partition,
+				&storage_rns,
+			)?;
 			let mut keys: Vec<EncodedKey> = Vec::with_capacity(rows.len());
 			for ((row_idx, storage_rn), removed) in rows.into_iter().zip(removed) {
 				if removed.is_none() {
@@ -994,9 +994,7 @@ impl SinkRingBufferViewOperator {
 				applied.push(row_idx);
 			}
 			if !keys.is_empty() {
-				writer.delete(RingDeleteRows::Plain {
-					keys,
-				})?;
+				FlowRingWriter::new(&mut *txn).delete(keys)?;
 			}
 		}
 		applied.sort_unstable();

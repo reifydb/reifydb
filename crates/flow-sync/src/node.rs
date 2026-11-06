@@ -13,7 +13,7 @@ use reifydb_flow::{
 		sort::SortOperator,
 		source::{SourceOperator, decode_change},
 	},
-	txn::{Emit, Intern, StorageTxn},
+	txn::{Emit, FlowStorageTransaction, Intern},
 };
 use reifydb_value::Result;
 
@@ -52,7 +52,11 @@ impl Node {
 		}
 	}
 
-	pub fn apply<T: StorageTxn + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: FlowStorageTransaction + Emit + Intern>(
+		&mut self,
+		txn: &mut T,
+		change: Change,
+	) -> Result<Change> {
 		match self {
 			Node::Source(source) => source.apply(change),
 			Node::Filter(filter) => filter.apply(txn, change),

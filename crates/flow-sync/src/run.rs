@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	internal_err,
 };
-use reifydb_flow::txn::{Emit, Intern, StorageTxn};
+use reifydb_flow::txn::{Emit, FlowStorageTransaction, Intern};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -27,7 +27,7 @@ use crate::{
 	txn::{Changes, ClockNow, Lookup},
 };
 
-pub fn run<T: Changes + StorageTxn + Emit + Lookup + Intern + ClockNow>(
+pub fn run<T: Changes + FlowStorageTransaction + Emit + Lookup + Intern + ClockNow>(
 	txn: &mut T,
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
@@ -58,7 +58,7 @@ pub fn flow_sources(flow: &FlowDag) -> BTreeSet<ObjectId> {
 		.collect()
 }
 
-pub fn run_flow<T: StorageTxn + Emit + Intern>(
+pub fn run_flow<T: FlowStorageTransaction + Emit + Intern>(
 	txn: &mut T,
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
@@ -169,7 +169,7 @@ fn seed_entry_nodes(
 	Ok(pending)
 }
 
-fn run_topology<T: StorageTxn + Emit + Intern>(
+fn run_topology<T: FlowStorageTransaction + Emit + Intern>(
 	txn: &mut T,
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
@@ -197,7 +197,7 @@ fn run_topology<T: StorageTxn + Emit + Intern>(
 	Ok(())
 }
 
-fn dispatch_node<T: StorageTxn + Emit + Intern>(
+fn dispatch_node<T: FlowStorageTransaction + Emit + Intern>(
 	txn: &mut T,
 	operator_id: OperatorId,
 	node: &mut Node,
