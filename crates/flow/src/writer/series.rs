@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, value::partition::Partition};
 
-use crate::txn::StorageTxn;
+use crate::{txn::StorageTxn, writer::Written};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeriesRowAddress {
@@ -95,12 +95,6 @@ pub enum SeriesDeleteRows {
 	},
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct SeriesWritten {
-	pub written: Vec<EncodedBytes>,
-	pub replaced: Vec<EncodedBytes>,
-}
-
 pub struct SeriesWriter<'a, T: StorageTxn> {
 	txn: &'a mut T,
 }
@@ -112,14 +106,14 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 		}
 	}
 
-	pub fn append(&mut self, rows: SeriesAppendRows) -> Result<SeriesWritten> {
+	pub fn append(&mut self, rows: SeriesAppendRows) -> Result<Written> {
 		match rows {
 			SeriesAppendRows::Plain {
 				keys,
 				rows,
 			} => {
 				self.txn.set(keys, rows)?;
-				Ok(SeriesWritten::default())
+				Ok(Written::default())
 			}
 			SeriesAppendRows::Tagged {
 				rows,
@@ -127,7 +121,7 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 		}
 	}
 
-	pub fn update(&mut self, rows: SeriesUpdateRows) -> Result<SeriesWritten> {
+	pub fn update(&mut self, rows: SeriesUpdateRows) -> Result<Written> {
 		match rows {
 			SeriesUpdateRows::Plain {
 				pre_keys,
@@ -148,7 +142,7 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 					}
 					self.txn.set(vec![post_key], vec![row])?;
 				}
-				Ok(SeriesWritten::default())
+				Ok(Written::default())
 			}
 			SeriesUpdateRows::Tagged {
 				rows,
@@ -156,20 +150,20 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 		}
 	}
 
-	pub fn delete(&mut self, rows: SeriesDeleteRows) -> Result<SeriesWritten> {
+	pub fn delete(&mut self, rows: SeriesDeleteRows) -> Result<Written> {
 		match rows {
 			SeriesDeleteRows::Plain {
 				keys,
 			} => {
 				self.txn.remove(keys)?;
-				Ok(SeriesWritten::default())
+				Ok(Written::default())
 			}
 			SeriesDeleteRows::WithPre {
 				rows,
 			} => {
 				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 				self.txn.remove_with_pre(rows)?;
-				Ok(SeriesWritten {
+				Ok(Written {
 					written: Vec::new(),
 					replaced,
 				})
@@ -177,10 +171,10 @@ impl<'a, T: StorageTxn> SeriesWriter<'a, T> {
 		}
 	}
 
-	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<SeriesWritten> {
+	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
 		let written = rows.iter().map(|(_, row)| row.clone()).collect();
 		self.txn.set_with_pre(rows.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)).collect())?;
-		Ok(SeriesWritten {
+		Ok(Written {
 			written,
 			replaced: Vec::new(),
 		})
@@ -400,7 +394,7 @@ mod tests {
 			})
 			.unwrap();
 		for returned in [appended, updated, deleted] {
-			assert_eq!(returned, SeriesWritten::default());
+			assert_eq!(returned, Written::default());
 		}
 		assert_eq!(txn.reads, 0);
 		assert_eq!(

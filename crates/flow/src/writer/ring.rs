@@ -27,7 +27,7 @@ use reifydb_value::{
 
 use crate::{
 	txn::{Range, StorageTxn},
-	writer::table::TableRowAddress,
+	writer::{Written, table::TableRowAddress},
 };
 
 pub fn ring_row_encoded(storage: StorageId, partition: Option<Partition>, row: RowNumber) -> EncodedKey {
@@ -141,12 +141,6 @@ pub enum RingDeleteRows {
 	},
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct RingWritten {
-	pub written: Vec<EncodedBytes>,
-	pub replaced: Vec<EncodedBytes>,
-}
-
 pub struct RingWriter<'a, T: StorageTxn + Range> {
 	txn: &'a mut T,
 	storage: StorageId,
@@ -223,14 +217,14 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 		Ok(())
 	}
 
-	pub fn insert(&mut self, rows: RingInsertRows) -> Result<RingWritten> {
+	pub fn insert(&mut self, rows: RingInsertRows) -> Result<Written> {
 		match rows {
 			RingInsertRows::Plain {
 				keys,
 				rows,
 			} => {
 				self.txn.set(keys, rows)?;
-				Ok(RingWritten::default())
+				Ok(Written::default())
 			}
 			RingInsertRows::Tagged {
 				rows,
@@ -238,14 +232,14 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 		}
 	}
 
-	pub fn update(&mut self, rows: RingUpdateRows) -> Result<RingWritten> {
+	pub fn update(&mut self, rows: RingUpdateRows) -> Result<Written> {
 		match rows {
 			RingUpdateRows::Plain {
 				keys,
 				rows,
 			} => {
 				self.txn.set(keys, rows)?;
-				Ok(RingWritten::default())
+				Ok(Written::default())
 			}
 			RingUpdateRows::Tagged {
 				rows,
@@ -253,20 +247,20 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 		}
 	}
 
-	pub fn delete(&mut self, rows: RingDeleteRows) -> Result<RingWritten> {
+	pub fn delete(&mut self, rows: RingDeleteRows) -> Result<Written> {
 		match rows {
 			RingDeleteRows::Plain {
 				keys,
 			} => {
 				self.txn.remove(keys)?;
-				Ok(RingWritten::default())
+				Ok(Written::default())
 			}
 			RingDeleteRows::WithPre {
 				rows,
 			} => {
 				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 				self.txn.remove_with_pre(rows)?;
-				Ok(RingWritten {
+				Ok(Written {
 					written: Vec::new(),
 					replaced,
 				})
@@ -274,10 +268,10 @@ impl<'a, T: StorageTxn + Range> RingWriter<'a, T> {
 		}
 	}
 
-	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<RingWritten> {
+	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
 		let written = rows.iter().map(|(_, row)| row.clone()).collect();
 		self.txn.set_with_pre(rows.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)).collect())?;
-		Ok(RingWritten {
+		Ok(Written {
 			written,
 			replaced: Vec::new(),
 		})
@@ -709,7 +703,7 @@ mod tests {
 			})
 			.unwrap();
 		for returned in [inserted, updated, deleted] {
-			assert_eq!(returned, RingWritten::default());
+			assert_eq!(returned, Written::default());
 		}
 		assert_eq!(txn.seam, vec![Seam::Set(1), Seam::Set(1), Seam::Remove(1)]);
 		assert_eq!((txn.reads, txn.ranges), (0, 0));

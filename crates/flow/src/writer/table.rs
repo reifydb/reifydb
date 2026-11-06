@@ -21,6 +21,7 @@ use reifydb_value::{
 use crate::{
 	operator::sink::view::{partitioned_key, sorted_view_key},
 	txn::StorageTxn,
+	writer::Written,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,12 +76,6 @@ pub enum TableDeleteRows {
 	},
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct TableWritten {
-	pub written: Vec<EncodedBytes>,
-	pub replaced: Vec<EncodedBytes>,
-}
-
 pub struct TableWriter<'a, T: StorageTxn> {
 	txn: &'a mut T,
 }
@@ -92,14 +87,14 @@ impl<'a, T: StorageTxn> TableWriter<'a, T> {
 		}
 	}
 
-	pub fn insert(&mut self, rows: TableInsertRows) -> Result<TableWritten> {
+	pub fn insert(&mut self, rows: TableInsertRows) -> Result<Written> {
 		match rows {
 			TableInsertRows::Plain {
 				keys,
 				rows,
 			} => {
 				self.txn.set(keys, rows)?;
-				Ok(TableWritten::default())
+				Ok(Written::default())
 			}
 			TableInsertRows::WithPre {
 				rows,
@@ -113,7 +108,7 @@ impl<'a, T: StorageTxn> TableWriter<'a, T> {
 				}
 				entries.extend(index.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)));
 				self.txn.set_with_pre(entries)?;
-				Ok(TableWritten {
+				Ok(Written {
 					written,
 					replaced: Vec::new(),
 				})
@@ -121,7 +116,7 @@ impl<'a, T: StorageTxn> TableWriter<'a, T> {
 		}
 	}
 
-	pub fn update(&mut self, rows: TableUpdateRows) -> Result<TableWritten> {
+	pub fn update(&mut self, rows: TableUpdateRows) -> Result<Written> {
 		match rows {
 			TableUpdateRows::Plain {
 				rows,
@@ -138,14 +133,14 @@ impl<'a, T: StorageTxn> TableWriter<'a, T> {
 					self.txn.remove(removes)?;
 				}
 				self.txn.set(set_keys, set_rows)?;
-				Ok(TableWritten::default())
+				Ok(Written::default())
 			}
 			TableUpdateRows::WithPre {
 				rows,
 			} => {
 				let written = rows.iter().map(|(_, row, _)| row.clone()).collect();
 				self.txn.set_with_pre(rows)?;
-				Ok(TableWritten {
+				Ok(Written {
 					written,
 					replaced: Vec::new(),
 				})
@@ -153,20 +148,20 @@ impl<'a, T: StorageTxn> TableWriter<'a, T> {
 		}
 	}
 
-	pub fn delete(&mut self, rows: TableDeleteRows) -> Result<TableWritten> {
+	pub fn delete(&mut self, rows: TableDeleteRows) -> Result<Written> {
 		match rows {
 			TableDeleteRows::Plain {
 				keys,
 			} => {
 				self.txn.remove(keys)?;
-				Ok(TableWritten::default())
+				Ok(Written::default())
 			}
 			TableDeleteRows::WithPre {
 				rows,
 			} => {
 				let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 				self.txn.remove_with_pre(rows)?;
-				Ok(TableWritten {
+				Ok(Written {
 					written: Vec::new(),
 					replaced,
 				})
@@ -382,7 +377,7 @@ mod tests {
 		for returned in [inserted, updated, deleted] {
 			assert_eq!(
 				returned,
-				TableWritten::default(),
+				Written::default(),
 				"the sink ignores the return, so it must not cost a clone"
 			);
 		}
