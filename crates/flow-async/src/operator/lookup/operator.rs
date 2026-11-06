@@ -423,7 +423,9 @@ impl LookupOperator {
 		key: &RowKey,
 	) -> CommitVersion {
 		match key {
-			RowKey::Found(partition) if self.waiting.contains_key(partition) => host.version(),
+			RowKey::Found(partition) if self.waiting.contains_key(partition) => {
+				host.version().max(self.read_version(host, source, reads))
+			}
 			_ => self.read_version(host, source, reads),
 		}
 	}
