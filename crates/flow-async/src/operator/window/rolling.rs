@@ -279,12 +279,13 @@ fn rearm_rolling_seal(
 	gate.rearm(host, &EncodedKey::new(Vec::new()), before, after)
 }
 
-fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Value>) -> EmitRow {
+fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Value>, time: DateTime) -> EmitRow {
 	EmitRow {
 		group_values,
 		slot_values: last_value,
 		row_number: *published,
 		span: None,
+		time: Some(time),
 	}
 }
 
@@ -294,16 +295,22 @@ fn rolling_diffs(operator: &mut WindowOperator, emits: Vec<NativeEmit>, changed_
 	let mut removes = Vec::new();
 	for emit in emits {
 		match (emit.prior, emit.post) {
-			(None, Some(post)) => {
-				inserts.push(emit_row(&RowNumber(post.row_number), post.key, post.last_value))
-			}
-			(Some(prior), Some(post)) => updates.push((
-				emit_row(&RowNumber(prior.row_number), prior.key, prior.last_value),
-				emit_row(&RowNumber(post.row_number), post.key, post.last_value),
+			(None, Some(post)) => inserts.push(emit_row(
+				&RowNumber(post.row_number),
+				post.key,
+				post.last_value,
+				post.first_time,
 			)),
-			(Some(prior), None) => {
-				removes.push(emit_row(&RowNumber(prior.row_number), prior.key, prior.last_value))
-			}
+			(Some(prior), Some(post)) => updates.push((
+				emit_row(&RowNumber(prior.row_number), prior.key, prior.last_value, prior.first_time),
+				emit_row(&RowNumber(post.row_number), post.key, post.last_value, post.first_time),
+			)),
+			(Some(prior), None) => removes.push(emit_row(
+				&RowNumber(prior.row_number),
+				prior.key,
+				prior.last_value,
+				prior.first_time,
+			)),
 			(None, None) => {}
 		}
 	}

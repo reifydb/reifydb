@@ -11,6 +11,7 @@ use reifydb_value::{
 use crate::window::{
 	engine::pane::{PaneApplied, PanePublisher, RollingEmit},
 	meta::RollingPublished,
+	span::WindowAnchor,
 };
 
 #[operator_state]
@@ -40,7 +41,7 @@ pub struct RowPublisher<'f, G, K, O, A, C> {
 	pub finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
 }
 
-impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
+impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
 	type Published = RollingPublished<K, O>;
 	type Emit = RollingEmit<G, K, O>;
 
@@ -66,7 +67,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C> PanePublisher<G, C, A> for RowPublisher
 					row_number: 0,
 					key: key(group),
 					last_value: out,
-					first_time: store.batch_time(),
+					first_time: newest.as_time().unwrap_or_else(|| store.batch_time()),
 				};
 				applied.emits.push(RollingEmit {
 					group: group.clone(),

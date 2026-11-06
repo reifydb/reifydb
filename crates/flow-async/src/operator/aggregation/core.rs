@@ -426,6 +426,7 @@ pub struct EmitRow {
 	pub slot_values: Vec<Value>,
 	pub row_number: RowNumber,
 	pub span: Option<WindowSpan<DateTimeCoord>>,
+	pub time: Option<DateTime>,
 }
 
 fn row_types(row: &EmitRow) -> Vec<Option<ValueType>> {
@@ -834,7 +835,11 @@ impl Aggregation {
 		columns.push(system(SystemColumn::UpdatedAt, stamps));
 		columns.push(system(
 			SystemColumn::Time,
-			Arc::new(datetime_array(rows.iter().map(|row| row.span.map_or(ts, |span| span.start.0)))),
+			Arc::new(datetime_array(
+				rows.iter().map(|row| {
+					row.time.unwrap_or_else(|| row.span.map_or(ts, |span| span.start.0))
+				}),
+			)),
 		));
 		let out = match &self.emit_schema {
 			Some(schema) => batch_with(schema, columns, count)?,

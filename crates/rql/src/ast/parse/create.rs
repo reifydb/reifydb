@@ -1306,6 +1306,7 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 		let mut view = None;
 		let mut duration = None;
+		let mut pane = None;
 		let mut immutable = None;
 		let mut settings = None;
 		loop {
@@ -1328,9 +1329,15 @@ impl<'bump> Parser<'bump> {
 					.is_some()
 				}
 				"duration" => duration.replace(self.parse_member_with_entry(key.clone())?).is_some(),
+				"pane" => pane.replace(self.parse_member_with_entry(key.clone())?).is_some(),
 				"immutable" => immutable.replace(self.parse_member_with_entry(key.clone())?).is_some(),
 				"row" => settings.replace(self.parse_row_config()?).is_some(),
-				_ => return Err(unexpected_option(&key, "'view', 'duration', 'immutable', or 'row'")),
+				_ => {
+					return Err(unexpected_option(
+						&key,
+						"'view', 'duration', 'pane', 'immutable', or 'row'",
+					));
+				}
 			};
 			if duplicate {
 				return Err(RqlError::OperatorWithDuplicateKey {
@@ -1353,6 +1360,7 @@ impl<'bump> Parser<'bump> {
 			token,
 			view,
 			duration,
+			pane,
 			immutable,
 			settings,
 		})

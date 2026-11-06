@@ -729,6 +729,7 @@ pub struct AstWindowedViewGroupMember<'bump> {
 	pub token: Token<'bump>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub duration: AstOperatorWithEntry<'bump>,
+	pub pane: Option<AstOperatorWithEntry<'bump>>,
 	pub immutable: Option<AstOperatorWithEntry<'bump>>,
 	pub settings: Option<AstRowSettings<'bump>>,
 }

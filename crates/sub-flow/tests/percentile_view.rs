@@ -179,6 +179,7 @@ fn outputs(core: &mut Aggregation, slot_values: Vec<Value>) -> Vec<Value> {
 		slot_values,
 		row_number: RowNumber(1),
 		span: None,
+		time: None,
 	};
 	let diffs = core.emit_diffs(vec![row], Vec::new(), Vec::new(), DateTime::default()).unwrap();
 	assert_eq!(diffs.len(), 1, "one emitted row must publish exactly one insert");

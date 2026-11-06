@@ -145,6 +145,11 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
+	#[error("Windowed view group window must not set pane")]
+	WindowedViewGroupWindowHasPane {
+		fragment: Fragment,
+	},
+
 	#[error("Windowed view group window must be on the main chain")]
 	WindowedViewGroupWindowNotOnMainChain {
 		fragment: Fragment,
@@ -652,6 +657,21 @@ impl IntoDiagnostic for RqlError {
 				help: Some("Remove immutable from the window and set it on each member that needs it".to_string()),
 				notes: vec![
 					"A member without immutable keeps every row for the life of its window".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowedViewGroupWindowHasPane { fragment } => Diagnostic {
+				code: "WINDOW_020".to_string(),
+				rql: None,
+				message: "Windowed view group window must not set pane; set it on each rolling member".to_string(),
+				column: None,
+				fragment,
+				label: Some("pane on the window".to_string()),
+				help: Some("Remove pane from the window and set it on each member".to_string()),
+				notes: vec![
+					"Example: members: [ { view: ns::v1h, duration: 1h, pane: 1m } ]".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

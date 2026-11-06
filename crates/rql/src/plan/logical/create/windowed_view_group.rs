@@ -120,14 +120,14 @@ fn inject_member<'bump>(as_clause: &mut AstStatement<'bump>, member: &AstWindowe
 	let with = match &mut as_clause.nodes[index] {
 		Ast::Apply(apply) => {
 			let with = apply.with.as_mut().expect("a windowed apply carries a with block");
-			if !window_entry_is_tumbling(with) {
-				unimplemented!("windowed view groups support tumbling windows only");
+			if !window_entry_is_tumbling_or_rolling(with) {
+				unimplemented!("windowed view groups support tumbling and rolling windows only");
 			}
 			with
 		}
 		Ast::Window(window) => {
-			if window.kind != AstWindowKind::Tumbling {
-				unimplemented!("windowed view groups support tumbling windows only");
+			if !matches!(window.kind, AstWindowKind::Tumbling | AstWindowKind::Rolling) {
+				unimplemented!("windowed view groups support tumbling and rolling windows only");
 			}
 			window.with.get_or_insert_with(|| AstOperatorWith {
 				token: member.token.clone(),
@@ -151,12 +151,21 @@ fn inject_member<'bump>(as_clause: &mut AstStatement<'bump>, member: &AstWindowe
 				}
 				.into());
 			}
+			Some("pane") => {
+				return Err(RqlError::WindowedViewGroupWindowHasPane {
+					fragment: entry.key.fragment(),
+				}
+				.into());
+			}
 			Some("slots") => unimplemented!("windowed view groups support time-sized windows only"),
 			_ => {}
 		}
 	}
 
 	with.entries.push(member.duration.clone());
+	if let Some(pane) = &member.pane {
+		with.entries.push(pane.clone());
+	}
 	if let Some(immutable) = &member.immutable {
 		with.entries.push(immutable.clone());
 	}
@@ -174,10 +183,13 @@ fn is_windowed(node: &Ast<'_>) -> bool {
 	}
 }
 
-fn window_entry_is_tumbling(with: &AstOperatorWith<'_>) -> bool {
+fn window_entry_is_tumbling_or_rolling(with: &AstOperatorWith<'_>) -> bool {
 	with.entries.iter().any(|entry| {
 		key_text(entry) == Some("window")
-			&& matches!(&entry.value, Some(AstOperatorWithValue::Word(token)) if token.fragment.text().eq_ignore_ascii_case("tumbling"))
+			&& matches!(&entry.value, Some(AstOperatorWithValue::Word(token)) if {
+				let kind = token.fragment.text();
+				kind.eq_ignore_ascii_case("tumbling") || kind.eq_ignore_ascii_case("rolling")
+			})
 	})
 }
 

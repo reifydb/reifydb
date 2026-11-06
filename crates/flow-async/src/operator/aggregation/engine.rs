@@ -414,6 +414,7 @@ pub(crate) fn finish_tumbling_engine(
 			slot_values,
 			row_number: r.row_number,
 			span: Some(span),
+			time: None,
 		};
 		let pre_values = r.prior.clone().unwrap_or_else(|| r.value.clone());
 		match r.kind {
