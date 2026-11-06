@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem::size_of,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
@@ -158,7 +161,11 @@ pub fn lift_entry_changes(
 			Some(lifted) => lifted,
 			None => {
 				let lifted = lift_entry_object(entry, *id, &object.rows, catalog, txn)?;
-				object.change.get_or_init(|| lifted)
+				let bytes = change_bytes(&lifted);
+				if object.change.set(lifted).is_ok() {
+					entry.charge(bytes);
+				}
+				object.change.get().expect("the lifted change was stored by this or a racing lift")
 			}
 		};
 		if let Some(change) = lifted {
@@ -166,6 +173,32 @@ pub fn lift_entry_changes(
 		}
 	}
 	Ok(changes)
+}
+
+fn change_bytes(change: &Option<Change>) -> u64 {
+	let Some(change) = change else {
+		return 0;
+	};
+	let batches: usize = change
+		.diffs
+		.iter()
+		.map(|diff| match diff {
+			Diff::Insert {
+				post,
+				..
+			} => post.get_array_memory_size(),
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => pre.get_array_memory_size() + post.get_array_memory_size(),
+			Diff::Remove {
+				pre,
+				..
+			} => pre.get_array_memory_size(),
+		})
+		.sum();
+	(size_of::<Change>() + batches) as u64
 }
 
 fn lift_entry_object(

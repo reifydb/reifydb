@@ -4,7 +4,7 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	mem::size_of,
-	sync::{Arc, OnceLock},
+	sync::{Arc, OnceLock, Weak},
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -16,6 +16,7 @@ use reifydb_value::{
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
+	commit::queue::{CommitQueue, QueueShared},
 	common::{ChangeVersion, CommitVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{catalog::object::ObjectId, change::Change},
@@ -60,6 +61,7 @@ pub struct CommitEntry {
 	pub deltas: Vec<Delta>,
 	changed_objects: OnceLock<BTreeSet<ObjectId>>,
 	lift: OnceLock<CommitLift>,
+	queue: OnceLock<Weak<QueueShared>>,
 }
 
 #[derive(Debug, Default)]
@@ -82,7 +84,19 @@ impl CommitEntry {
 			deltas: deltas.into_iter().filter(flow_relevant).collect(),
 			changed_objects: OnceLock::new(),
 			lift: OnceLock::new(),
+			queue: OnceLock::new(),
 		}
+	}
+
+	pub(crate) fn attach(&self, queue: Weak<QueueShared>) {
+		let _ = self.queue.set(queue);
+	}
+
+	pub fn charge(&self, bytes: u64) {
+		let Some(shared) = self.queue.get().and_then(Weak::upgrade) else {
+			return;
+		};
+		CommitQueue::from_shared(shared).charge(self.version.commit, self as *const Self, bytes);
 	}
 
 	pub fn changed_objects_with(&self, compute: impl FnOnce(&Self) -> BTreeSet<ObjectId>) -> &BTreeSet<ObjectId> {

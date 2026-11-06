@@ -6,6 +6,7 @@ use std::thread::Builder;
 use std::{
 	collections::BTreeMap,
 	mem::replace,
+	ptr,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -55,7 +56,7 @@ struct FloorWaker {
 	wake: Option<Waker>,
 }
 
-struct QueueShared {
+pub(crate) struct QueueShared {
 	inner: RwLock<QueueInner>,
 	wakers: RwLock<BTreeMap<u64, FloorWaker>>,
 	next_floor: AtomicU64,
@@ -102,6 +103,25 @@ impl CommitQueue {
 				over_soft_cap: AtomicU64::new(0),
 			}),
 		}
+	}
+
+	pub(crate) fn from_shared(shared: Arc<QueueShared>) -> Self {
+		Self {
+			shared,
+		}
+	}
+
+	pub(crate) fn charge(&self, version: CommitVersion, entry: *const CommitEntry, bytes: u64) {
+		let mut guard = self.shared.inner.write();
+		let inner = &mut *guard;
+		let Some((held, arc)) = inner.entries.get_mut(&version) else {
+			return;
+		};
+		if !ptr::eq(Arc::as_ptr(arc), entry) {
+			return;
+		}
+		*held += bytes;
+		inner.bytes += bytes;
 	}
 
 	pub fn floor(&self, name: &str) -> CommitQueueFloor {
@@ -193,7 +213,11 @@ impl CommitQueue {
 			*event.at(),
 			event.deltas().iter().cloned().collect(),
 		);
-		let entry = (!entry.deltas.is_empty()).then(|| Arc::new(entry));
+		let entry = (!entry.deltas.is_empty()).then(|| {
+			let entry = Arc::new(entry);
+			entry.attach(Arc::downgrade(&self.shared));
+			entry
+		});
 		let mut inner = self.shared.inner.write();
 		if version <= inner.released || inner.parked.contains_key(&version) {
 			panic!(
