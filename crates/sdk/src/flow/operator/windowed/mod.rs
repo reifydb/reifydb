@@ -282,13 +282,13 @@ where
 						Some((pre_coord, pre_group, pre_contribution)) => {
 							push(
 								pre_group,
-								PaneEvent::Remove(
+								PaneEvent::Leave(
 									bucket_of(pre_coord, pane),
 									pre.row_numbers()[row].0,
 									pre_contribution,
 								),
 							);
-							push(group, PaneEvent::Insert(post_pane, number, contribution));
+							push(group, PaneEvent::Join(post_pane, number, contribution));
 						}
 						None => push(group, PaneEvent::Insert(post_pane, number, contribution)),
 					}

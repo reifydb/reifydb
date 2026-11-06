@@ -61,12 +61,19 @@ pub enum PaneEvent<C, X> {
 		pre: (C, X),
 		post: (C, X),
 	},
+	Leave(C, u64, X),
+	Join(C, u64, X),
+	Held(C, u64),
 }
 
 impl<C: Copy, X> PaneEvent<C, X> {
 	pub fn panes(&self) -> Vec<C> {
 		match self {
-			Self::Insert(pane, _, _) | Self::Remove(pane, _, _) => vec![*pane],
+			Self::Insert(pane, _, _)
+			| Self::Remove(pane, _, _)
+			| Self::Leave(pane, _, _)
+			| Self::Join(pane, _, _)
+			| Self::Held(pane, _) => vec![*pane],
 			Self::Update {
 				pre,
 				post,
@@ -530,6 +537,7 @@ where
 	{
 		let cutoff = cutoff.map(Coord::to_order);
 		let mut applied = PaneApplied::default();
+		let groups = self.resolve_moves::<P>(store, groups, cutoff)?;
 		for (group, (group_id, events)) in groups {
 			self.apply_group(
 				store,
@@ -608,6 +616,95 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	fn move_admission<P>(
+		&self,
+		store: &mut dyn StateStore,
+		groups: &PaneGroups<G, C, A::Contribution>,
+		cutoff: Option<u64>,
+	) -> Result<BTreeMap<u64, bool>>
+	where
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+	{
+		let mut sides: BTreeMap<u64, (Option<(GroupId, u64)>, Option<(GroupId, u64)>)> = BTreeMap::new();
+		for (group_id, events) in groups.values() {
+			for event in events {
+				match event {
+					PaneEvent::Leave(pane, row, _) => {
+						sides.entry(*row).or_default().0 = Some((*group_id, pane.to_order()))
+					}
+					PaneEvent::Join(pane, row, _) => {
+						sides.entry(*row).or_default().1 = Some((*group_id, pane.to_order()))
+					}
+					_ => {}
+				}
+			}
+		}
+		if sides.is_empty() {
+			return Ok(BTreeMap::new());
+		}
+		let ids: BTreeSet<GroupId> = sides
+			.values()
+			.flat_map(|(leave, join)| leave.iter().chain(join.iter()).map(|(group_id, _)| *group_id))
+			.collect();
+		let keys: Vec<RollingMetaKey> = ids.iter().map(|group_id| RollingMetaKey(*group_id)).collect();
+		let rows = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(store, &keys)?;
+		let lines: BTreeMap<GroupId, (Option<PaneLines>, Option<u64>)> = ids
+			.into_iter()
+			.zip(rows)
+			.map(|(group_id, row)| {
+				let lines = row.as_ref().map(|row| self.lines(C::from_order(row.newest)));
+				let admission = match &row {
+					Some(row) => self.group_cutoff(row.newest, cutoff),
+					None => cutoff,
+				};
+				(group_id, (lines, admission))
+			})
+			.collect();
+		let admits = |side: Option<(GroupId, u64)>, retraction: bool| {
+			side.is_none_or(|(group_id, pane)| {
+				let (lines, admission) = &lines[&group_id];
+				PaneLines::admits(lines.as_ref(), *admission, pane, retraction)
+			})
+		};
+		Ok(sides.into_iter()
+			.map(|(row, (leave, join))| (row, admits(leave, true) && admits(join, false)))
+			.collect())
+	}
+
+	fn resolve_moves<P>(
+		&self,
+		store: &mut dyn StateStore,
+		mut groups: PaneGroups<G, C, A::Contribution>,
+		cutoff: Option<u64>,
+	) -> Result<PaneGroups<G, C, A::Contribution>>
+	where
+		P: PanePublisher<G, C, A>,
+		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+	{
+		let admitted = self.move_admission::<P>(store, &groups, cutoff)?;
+		if admitted.is_empty() {
+			return Ok(groups);
+		}
+		for (_, events) in groups.values_mut() {
+			*events = take(events)
+				.into_iter()
+				.filter_map(|event| match event {
+					PaneEvent::Leave(pane, row, contribution) => {
+						admitted[&row].then_some(PaneEvent::Remove(pane, row, contribution))
+					}
+					PaneEvent::Join(pane, row, contribution) => Some(match admitted[&row] {
+						true => PaneEvent::Insert(pane, row, contribution),
+						false => PaneEvent::Held(pane, row),
+					}),
+					other => Some(other),
+				})
+				.collect();
+		}
+		groups.retain(|_, (_, events)| !events.is_empty());
+		Ok(groups)
+	}
+
 	fn apply_group<P>(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -657,6 +754,24 @@ where
 							held_changed = true;
 						}
 					}
+				}
+				PaneEvent::Held(pane, row_number) => {
+					let pane = pane.to_order();
+					applied.sealed_drops += 1;
+					if PaneLines::admits(lines.as_ref(), admission, pane, true) {
+						held.entry(row_number)
+							.or_insert(RollingHeld {
+								held: None,
+								seen: pane,
+							})
+							.seen = pane;
+						held_changed = true;
+					}
+				}
+				PaneEvent::Leave(..) | PaneEvent::Join(..) => {
+					return internal_err!(
+						"a rolling move reached group {group_id:?} before it was resolved"
+					);
 				}
 				PaneEvent::Remove(pane, row_number, contribution) => {
 					let pane = pane.to_order();

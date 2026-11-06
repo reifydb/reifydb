@@ -205,12 +205,12 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 						routing.push(
 							before.group,
 							before.group_values,
-							PaneEvent::Remove(before.pane, before.row, before.contribution),
+							PaneEvent::Leave(before.pane, before.row, before.contribution),
 						);
 						routing.push(
 							after.group,
 							after.group_values,
-							PaneEvent::Insert(after.pane, after.row, after.contribution),
+							PaneEvent::Join(after.pane, after.row, after.contribution),
 						);
 					}
 				}
