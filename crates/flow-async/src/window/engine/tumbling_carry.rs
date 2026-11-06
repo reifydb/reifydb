@@ -102,6 +102,7 @@ struct PendingCarry<S, Output> {
 	group_id: GroupId,
 	span: WindowSpan<S>,
 	value: Output,
+	prior: Option<Output>,
 	withdraw: bool,
 	first_time: DateTime,
 }
@@ -318,7 +319,7 @@ where
 						let new_carry = carry_forward(value, prev_carry.as_ref());
 						let w = meta.windows.get_mut(&window).expect("window entry present");
 						w.carry_out = new_carry.clone();
-						w.last_output = Some(out.clone());
+						let prior = w.last_output.replace(out.clone());
 						let first_time = w.first_time;
 						if new_carry.is_some() {
 							prev_carry = new_carry;
@@ -329,6 +330,7 @@ where
 								group_id: slot_group,
 								span,
 								value: out,
+								prior,
 								withdraw: false,
 								first_time,
 							},
@@ -345,6 +347,7 @@ where
 									group_id: slot_group,
 									span,
 									value: prev,
+									prior: None,
 									withdraw: true,
 									first_time,
 								},
@@ -417,7 +420,7 @@ where
 					group,
 					span: emit.span,
 					value: emit.value,
-					prior: None,
+					prior: emit.prior,
 					kind,
 					first_time: Some(emit.first_time),
 				});

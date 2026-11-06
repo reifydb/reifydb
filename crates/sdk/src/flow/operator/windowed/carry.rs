@@ -170,17 +170,17 @@ where
 		&self,
 		ctx: &mut impl GuestContext,
 		inserts: &[(RowNumber, DateTime, A::Output)],
-		updates: &[(RowNumber, DateTime, A::Output)],
+		updates: &[(RowNumber, DateTime, Option<A::Output>, A::Output)],
 		removes: &[(RowNumber, DateTime, A::Output)],
 	) -> Result<()> {
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let times: Vec<DateTime> = updates.iter().map(|(_, time, _)| *time).collect();
+		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
 		ctx.emit_update(
-			updates.iter().map(|(.., data)| data),
-			updates.iter().map(|(.., data)| data),
+			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
+			updates.iter().map(|(.., post)| post),
 			&row_numbers,
 			&times,
 		)?;
@@ -368,13 +368,13 @@ where
 		let results = self.accumulate(ctx, buckets, &order)?;
 
 		let mut inserts: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
-		let mut updates: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
+		let mut updates: Vec<(RowNumber, DateTime, Option<A::Output>, A::Output)> = Vec::new();
 		let mut removes: Vec<(RowNumber, DateTime, A::Output)> = Vec::new();
 		for r in results {
 			let time = r.first_time.expect("a carry result carries its first time");
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, time, r.value)),
-				EmitKind::Update => updates.push((r.row_number, time, r.value)),
+				EmitKind::Update => updates.push((r.row_number, time, r.prior, r.value)),
 				EmitKind::Remove => removes.push((r.row_number, time, r.value)),
 			}
 		}
