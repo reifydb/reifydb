@@ -415,6 +415,13 @@ impl FlowActor {
 	fn checkpoint_cursor(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let advance_to = state.cursor;
 		let mut slice = FlowSlice::empty();
+		match self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, advance_to) {
+			Ok((_, pending)) => slice.combined = pending,
+			Err(e) => {
+				self.retry_or_poison(state, ctx, format!("flow checkpoint failed: {e}"));
+				return;
+			}
+		}
 		slice.checkpoints.push((
 			self.flow_id,
 			FlowCheckpoint {
@@ -774,6 +781,7 @@ impl FlowActor {
 				holds,
 			}) => {
 				state.retry_count = 0;
+				state.flow_engine.accept_watermarks(false);
 				if let Some(reads) = reads {
 					self.advance_view_cursors(state, reads, advance_to);
 				}
@@ -945,6 +953,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
+				state.flow_engine.accept_watermarks(true);
 				state.backfilling = false;
 				*self.create_snapshot.lock() = None;
 				for (producer, cursor) in take(&mut state.pending_view_cursors) {
@@ -977,6 +986,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
+				state.flow_engine.accept_watermarks(true);
 				self.move_lookup_lease(state);
 				self.flow_tracker.record_tick(self.flow_id);
 				self.resume_after_commit(state, ctx, false);
@@ -991,7 +1001,9 @@ impl FlowActor {
 		if state.poisoned {
 			return;
 		}
-		match self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor) {
+		let resolved = self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor);
+		state.flow_engine.discard_staged_watermarks();
+		match resolved {
 			Ok((holds, _)) => {
 				for hold in holds {
 					self.substrate.frontiers.publish(
@@ -1027,6 +1039,7 @@ impl FlowActor {
 					if produced_output(&pending, emitted) {
 						self.dispatch_tick_commit(state, ctx, pending);
 					} else {
+						state.flow_engine.accept_watermarks(false);
 						self.flow_tracker.record_tick(self.flow_id);
 					}
 				}

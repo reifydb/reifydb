@@ -291,7 +291,7 @@ impl SliceComputer {
 		let advance_to = checkpoint.version;
 		let lsn = checkpoint.lsn;
 		let (holds, folded) = self.resolved_holds(flow_engine, flow_id, advance_to)?;
-		if folded.is_empty() && !checkpoint_due(advance_to, durable_cursor, config) {
+		if !checkpoint_due(advance_to, durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
 				lsn,
@@ -333,10 +333,12 @@ impl SliceComputer {
 			lookup: None,
 		});
 
+		flow_engine.begin_watermarks(&mut txn)?;
 		for flow in self.unit_ids(flow_id) {
 			flow_engine.fold_published_arrivals(&mut txn, flow, state_version)?;
 		}
 		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
+		flow_engine.stage_watermarks(&txn);
 		Ok((holds, txn.take_pending()))
 	}
 
@@ -377,8 +379,10 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
+		flow_engine.begin_watermarks(&mut txn)?;
 		process_unit(flow_engine, &mut txn, flow_id, &self.members, changes)?;
 		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
+		flow_engine.stage_watermarks(&txn);
 
 		let emitted = txn.emitted;
 		let pending = txn.take_pending();
@@ -414,6 +418,7 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
+		flow_engine.begin_watermarks(&mut txn)?;
 		if !self.members.is_empty() {
 			txn.capture_emits();
 		}
@@ -425,6 +430,7 @@ impl SliceComputer {
 			flow_engine.process_tick(&mut txn, *member, cursor)?;
 		}
 
+		flow_engine.stage_watermarks(&txn);
 		let emitted = txn.emitted;
 		Ok((txn.take_pending(), emitted))
 	}
@@ -2039,7 +2045,8 @@ mod integration {
 
 	#[test]
 	fn a_frontier_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
-		// A cache keyed on publishes alone would freeze a quiet flow's watermark until some unrelated publish.
+		// A watermark that only moves in memory must still reach storage with the next checkpoint, never on its
+		// own commit.
 		let te = TestEngine::builder().with_commit_queue().build();
 		let engine = te.inner().clone();
 		let (flow, mut flow_engine) = producer_fed_flow(&engine);
@@ -2071,19 +2078,33 @@ mod integration {
 			&config,
 			&mut hold_cache,
 		);
-		match second {
+		assert!(
+			matches!(second, SliceStep::Skip { .. }),
+			"a watermark-only advance must not cost a commit of its own"
+		);
+		flow_engine.accept_watermarks(false);
+
+		let third = empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(7),
+			CommitVersion(4 + 10_001),
+			&config,
+			&mut hold_cache,
+		);
+		match third {
 			SliceStep::Commit {
 				slice,
 				..
 			} => assert!(
 				slice.combined.iter_sorted().next().is_some(),
-				"the now visible producer frontier must advance the source watermark"
+				"the watermark the producer frontier advanced must ride with the next checkpoint"
 			),
 			SliceStep::Skip {
 				..
-			} => panic!("the cached hold check hid a frontier that became visible at this version"),
+			} => panic!("a due checkpoint must commit"),
 		}
-		assert!(hold_cache.is_none(), "a pull that commits must not leave a hold check cached");
 	}
 
 	#[test]

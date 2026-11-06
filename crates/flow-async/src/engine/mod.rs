@@ -8,9 +8,10 @@ mod process;
 pub mod register;
 mod tick;
 mod timers;
+mod watermarks;
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	sync::Arc,
 };
 
@@ -56,6 +57,9 @@ pub struct FlowEngineInner {
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) timers: TimerRegistry,
+	pub(crate) watermarks: HashMap<OperatorId, i64>,
+	pub(crate) dirty_watermarks: BTreeSet<OperatorId>,
+	pub(crate) staged_watermarks: HashMap<OperatorId, i64>,
 }
 
 impl FlowEngineInner {
@@ -90,6 +94,9 @@ impl FlowEngineInner {
 			substrate,
 			operator_samples,
 			timers: TimerRegistry::default(),
+			watermarks: HashMap::new(),
+			dirty_watermarks: BTreeSet::new(),
+			staged_watermarks: HashMap::new(),
 		}
 	}
 

@@ -41,6 +41,10 @@ impl SourceWatermarks {
 				 every open window at once"
 			);
 		}
+		Self::persist(source, txn, coordinate)
+	}
+
+	pub fn persist(source: OperatorId, txn: &mut impl FlowTransaction, coordinate: i64) -> Result<()> {
 		txn.state_set(source, vec![(source_watermark_key(), encode_payload(&coordinate)?)])?;
 		txn.source_watermark_cache().insert(source, coordinate);
 		Ok(())
