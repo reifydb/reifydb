@@ -430,9 +430,9 @@ mod tests {
 
 	use super::{LookupObject, OperatorDef};
 	use crate::{
-		common::JoinType,
+		common::{JoinType, OnEmpty, WindowKind, WindowSize},
 		interface::catalog::id::{TableId, ViewId},
-		operator_with::{ApplyWith, DistinctWith, Emit, JoinWith, LookupWith},
+		operator_with::{ApplyWith, DistinctWith, Emit, JoinWith, LookupWith, WindowWith},
 		row::OperatorRetention,
 	};
 
@@ -558,6 +558,30 @@ mod tests {
 			assert_eq!(decoded_right, right);
 			assert_eq!(alias.as_deref(), Some("price"));
 			assert_eq!(with.retention.map(|r| r.duration), Some(Duration::from_seconds(10).unwrap()));
+		}
+	}
+
+	#[test]
+	fn a_rolling_window_keeps_its_on_empty_action_through_the_persisted_encoding() {
+		// a lost action would bring a zero-row view back as a remove-row view after restart.
+		for on_empty in [OnEmpty::Remove, OnEmpty::Zero] {
+			let node = OperatorDef::Window {
+				group_by: vec![],
+				aggregations: vec![],
+				with: WindowWith {
+					kind: WindowKind::Rolling {
+						size: WindowSize::Duration(Duration::from_minutes(1).unwrap()),
+						lag: None,
+						pane: Some(Duration::from_seconds(1).unwrap()),
+						on_empty,
+					},
+					lateness: Some(Duration::from_seconds(20).unwrap()),
+					immutable: None,
+				},
+			};
+			let bytes = to_stdvec(&node).expect("a window node must encode");
+			let decoded: OperatorDef = from_bytes(&bytes).expect("a window node must decode");
+			assert_eq!(decoded, node, "the window node must decode to itself with {on_empty:?}");
 		}
 	}
 }

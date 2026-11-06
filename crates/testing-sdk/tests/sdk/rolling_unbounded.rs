@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -202,6 +202,7 @@ fn rolling_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,

@@ -10,7 +10,7 @@ use reifydb::{
 	testing::db::{TestDb, await_value},
 };
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
 };
 use reifydb_flow::context::FlowContext;
@@ -60,6 +60,7 @@ fn rolling_window(
 				size: WindowSize::Duration(Duration::from_milliseconds(SIZE_MS).unwrap()),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 			group_by: parse_expression("g").expect("group_by parses"),
 			aggregations: aggregations

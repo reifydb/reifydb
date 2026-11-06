@@ -143,7 +143,10 @@ impl SealDomain for DateTimeCoord {
 mod tests {
 	use std::slice::from_ref;
 
-	use reifydb_core::{common::WindowSize, operator_with::WithSpan};
+	use reifydb_core::{
+		common::{OnEmpty, WindowSize},
+		operator_with::WithSpan,
+	};
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
@@ -244,6 +247,7 @@ mod tests {
 				size: WindowSize::Duration(Duration::from_seconds(3600).unwrap()),
 				lag: None,
 				pane: Some(Duration::from_seconds(1).unwrap()),
+				on_empty: OnEmpty::Remove,
 			}),
 			lateness: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
 			immutable: Some(WithSpan::Duration(Duration::from_seconds(15).unwrap())),

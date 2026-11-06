@@ -814,3 +814,22 @@ pub fn flow_view_poisoned(namespace: &str, view: &str, reason: &str) -> Diagnost
 		"A poisoned flow never runs again. Drop the view and create it again.",
 	)
 }
+
+pub fn flow_rolling_zero_column_not_option(output: &str, kind: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_095",
+		format!(
+			"rolling window output {output} uses {kind}, which has no zero, but its view column is not Option(..)"
+		),
+		"`on: { empty: zero }` writes none for avg, min, max, first, last and digest when the window empties. \
+		 Declare the column as Option(..), or drop `on: { empty: zero }`.",
+	)
+}
+
+pub fn flow_operator_rolling_carry_unsupported(operator: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_096",
+		format!("{operator} cannot carry an emptied rolling window: it has no carried row"),
+		"Drop `on: { empty: carry }` from the apply, or use an operator that carries its last row.",
+	)
+}

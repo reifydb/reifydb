@@ -56,6 +56,11 @@ pub enum CoreError {
 		operator: &'static str,
 	},
 
+	#[error("{operator} cannot carry an emptied rolling window: it has no carried row")]
+	OperatorRollingCarryUnsupported {
+		operator: &'static str,
+	},
+
 	#[error("window '{kind}' is not supported by this operator, use '{supported}'")]
 	OperatorWithWindowKindUnsupported {
 		kind: &'static str,

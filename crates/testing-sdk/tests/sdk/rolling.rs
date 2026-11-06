@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
+	common::{OnEmpty, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -36,7 +36,7 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, diff_type::DiffType, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, system_columns::row_numbers, value_type::ValueType},
 };
 
 use crate::read;
@@ -210,6 +210,7 @@ fn window_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
@@ -223,6 +224,7 @@ fn sealed_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
@@ -487,4 +489,110 @@ fn a_plain_operator_with_all_kinds_publishes_tumbling_sliding_session_and_rollin
 			needs_pane: true,
 		}
 	);
+}
+
+struct CarriedRollingSum;
+
+impl OperatorMetadata for CarriedRollingSum {
+	const NAME: &'static str = "carried_rolling_sum";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test fixture";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for CarriedRollingSum {
+	type Coord = DateTimeCoord;
+	type GroupKey = String;
+	type Accumulator = WindowSum;
+	type Output = TestOut;
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		Ok(Self)
+	}
+
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+		TestRollingSum.coord(cols, rows)
+	}
+
+	fn extract(
+		&self,
+		ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, f64)>>> {
+		TestRollingSum.extract(ctx, cols, rows)
+	}
+
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> WindowSum {
+		WindowSum::default()
+	}
+}
+
+impl Emit for CarriedRollingSum {
+	type Kinds = AllKinds;
+
+	const CARRIES_EMPTY: bool = true;
+
+	fn carry_empty(&self, prior: &TestOut) -> Option<TestOut> {
+		(prior.windows != 0).then(|| TestOut {
+			windows: 0,
+			..prior.clone()
+		})
+	}
+
+	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &(f64, u32)) -> Option<TestOut> {
+		TestRollingSum.build_output(group, span, value)
+	}
+}
+
+fn carried_with() -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Rolling {
+			size: WindowSize::Duration(millis(3)),
+			lag: None,
+			pane: Some(millis(1)),
+			on_empty: OnEmpty::Carry,
+		}),
+		lateness: Some(WithSpan::Duration(millis(3_600_000))),
+		immutable: None,
+		retention: None,
+	}
+}
+
+#[test]
+fn an_emptied_carried_window_updates_to_the_carried_row_and_the_next_event_updates_it() {
+	// a remove here would drop a quiet pool from the view and the next event would insert it under a new number.
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<CarriedRollingSum>>::new()
+		.with(carried_with())
+		.build()
+		.expect("harness");
+	let first = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	let number = row_numbers(first.diffs[0].post().expect("post")).unwrap()[0];
+
+	let emptied = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert_eq!(emptied.diffs.len(), 1);
+	assert_eq!(emptied.diffs[0].kind(), DiffType::Update, "an emptied carried window must update, never remove");
+	let carried = emptied.diffs[0].post().expect("post");
+	assert_eq!(row_numbers(carried).unwrap()[0], number, "the carried row must keep its row number");
+	assert_eq!(read::<u32>((carried, 0), "windows"), Some(0));
+	assert_eq!(read::<f64>((carried, 0), "rolling_sum"), Some(10.0), "the carried row keeps the last level");
+
+	let next = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 1, 4.0)).build()).expect("apply");
+	assert_eq!(next.diffs.len(), 1);
+	assert_eq!(next.diffs[0].kind(), DiffType::Update, "the next event must update the carried row, never insert");
+	assert_eq!(row_numbers(next.diffs[0].post().expect("post")).unwrap()[0], number);
+	assert_eq!(read::<f64>((next.diffs[0].post().expect("post"), 0), "rolling_sum"), Some(4.0));
+}
+
+#[test]
+fn a_carry_on_an_operator_without_a_carried_row_is_refused_with_flow_096() {
+	// an operator that cannot carry would fall back to removing rows the view author asked to keep.
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new().with(carried_with()).build()
+	else {
+		panic!("create must refuse a carry the operator cannot honour");
+	};
+	assert!(err.to_string().contains("FLOW_096"), "expected FLOW_096, got: {err}");
 }

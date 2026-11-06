@@ -6,7 +6,7 @@ use std::{slice, sync::Arc};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	internal_err,
@@ -145,6 +145,16 @@ impl WindowOperator {
 				..
 			} if !pane.is_zero() => Some(*pane),
 			_ => None,
+		}
+	}
+
+	pub fn rolling_on_empty(&self) -> OnEmpty {
+		match &self.kind {
+			WindowKind::Rolling {
+				on_empty,
+				..
+			} => *on_empty,
+			_ => OnEmpty::Remove,
 		}
 	}
 

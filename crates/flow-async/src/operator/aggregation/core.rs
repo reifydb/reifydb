@@ -738,6 +738,10 @@ impl Aggregation {
 		Some(out)
 	}
 
+	pub fn slot_types(&self) -> &[Option<ValueType>] {
+		&self.slot_types
+	}
+
 	pub fn emit_diffs(
 		&mut self,
 		inserts: Vec<EmitRow>,

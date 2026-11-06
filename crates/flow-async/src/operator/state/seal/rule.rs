@@ -159,6 +159,7 @@ impl EvictionRule {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::common::OnEmpty;
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
@@ -278,6 +279,7 @@ mod tests {
 			size: WindowSize::Duration(ms(2_000)),
 			lag: Some(ms(300)),
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		};
 		assert_eq!(
 			SealRule::for_window(&rolling, lateness),
@@ -310,6 +312,7 @@ mod tests {
 				size: WindowSize::Count(10),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 		];
 		for kind in kinds {

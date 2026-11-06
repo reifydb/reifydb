@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::WindowSize,
+	common::{OnEmpty, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
@@ -23,7 +23,9 @@ use crate::{
 	token::token::Token,
 };
 
-const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, or immutable";
+const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, immutable, or on";
+
+const APPLY_ON_EMPTY: &[(&str, OnEmpty)] = &[("carry", OnEmpty::Carry), ("remove", OnEmpty::Remove)];
 
 enum Immutable {
 	Zero(Declared<()>),
@@ -119,6 +121,10 @@ impl<'bump> Compiler<'bump> {
 						DurationBound::Positive,
 					)?);
 					size_keys_seen.push(("pane", entry.key.fragment()));
+				}
+				Some("on") => {
+					parsed.on_empty = Some(Self::parse_on(entry, APPLY_ON_EMPTY)?);
+					size_keys_seen.push(("on", entry.key.fragment()));
 				}
 				Some("lateness") => lateness = Some(declared_span(literal(entry)?, "'lateness'")?),
 				Some("retention") => {
@@ -266,7 +272,7 @@ fn window_reads(kind: AstWindowKind, key: &str) -> bool {
 	match kind {
 		AstWindowKind::Tumbling => matches!(key, "duration" | "slots"),
 		AstWindowKind::Sliding => matches!(key, "duration" | "slots" | "slide"),
-		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "pane"),
+		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "pane" | "on"),
 		AstWindowKind::Session => matches!(key, "gap"),
 	}
 }
@@ -362,7 +368,7 @@ fn retag<T>(declared: &Declared<WithSpan>, value: T) -> Declared<T> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::{WindowKind, WindowSize},
+		common::{OnEmpty, WindowKind, WindowSize},
 		operator_with::{ApplyWith, WithSpan},
 	};
 	use reifydb_value::value::duration::Duration;
@@ -583,6 +589,7 @@ mod tests {
 				size: WindowSize::Duration(Duration::from_hours(1).unwrap()),
 				lag: None,
 				pane: Some(Duration::from_seconds(1).unwrap()),
+				on_empty: OnEmpty::Remove,
 			})
 		);
 	}
@@ -641,6 +648,41 @@ mod tests {
 		] {
 			let err = apply_with(source).expect_err(&format!("must be rejected: {source}"));
 			assert_eq!(err.diagnostic().code, code, "wrong diagnostic for: {source}");
+		}
+	}
+
+	#[test]
+	fn an_apply_rolling_window_carries_on_empty_only_when_asked() {
+		// a carry dropped between the parser and the guest would remove the rows the view asked to keep.
+		let on_empty = |source: &str| match apply_with(source).unwrap().window {
+			Some(WindowKind::Rolling {
+				on_empty,
+				..
+			}) => on_empty,
+			other => panic!("not a rolling kind: {other:?}"),
+		};
+		let base = "apply op { } with { window: rolling, duration: 1m, pane: 1s";
+		assert_eq!(on_empty(&format!("{base}, on: {{ empty: carry }} }}")), OnEmpty::Carry);
+		assert_eq!(on_empty(&format!("{base}, on: {{ empty: remove }} }}")), OnEmpty::Remove);
+		assert_eq!(on_empty(&format!("{base} }}")), OnEmpty::Remove);
+	}
+
+	#[test]
+	fn an_apply_refuses_zero_and_an_on_outside_a_rolling_window() {
+		// a guest has no generic zero row, and a tumbling window never empties into a kept row.
+		for (source, expected) in [
+			(
+				"apply op { } with { window: rolling, duration: 1m, pane: 1s, on: { empty: zero } }",
+				"the empty action carry or remove",
+			),
+			(
+				"apply op { } with { window: tumbling, duration: 1m, on: { empty: carry } }",
+				"a key the tumbling window reads",
+			),
+			("apply op { } with { on: { empty: carry } }", "window before"),
+		] {
+			let err = apply_with(source).expect_err(&format!("{source} must be refused"));
+			assert!(err.message.contains(expected), "{source}: {}", err.message);
 		}
 	}
 }

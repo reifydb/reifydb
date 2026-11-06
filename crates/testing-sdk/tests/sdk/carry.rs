@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
+	common::{OnEmpty, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -260,6 +260,7 @@ fn the_carry_driver_refuses_a_window_that_is_not_tumbling() {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: None,
 		immutable: None,

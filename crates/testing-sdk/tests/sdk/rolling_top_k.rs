@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeMap};
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
+	common::{OnEmpty, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::{KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
@@ -191,6 +191,7 @@ fn window_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
@@ -204,6 +205,7 @@ fn sealed_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
@@ -217,6 +219,7 @@ fn dead_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: Some(millis(1)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(10))),
 		immutable: None,

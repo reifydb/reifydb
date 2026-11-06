@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	operator_with::WindowWith,
 };
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstWindowKind},
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
 	diagnostic::AstError,
 	duration::DurationBound,
 	error::RqlError,
@@ -24,7 +24,9 @@ use crate::{
 
 const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, pane, lateness, or immutable";
 
-const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, lateness, or immutable";
+const NATIVE_ON_EMPTY: &[(&str, OnEmpty)] = &[("zero", OnEmpty::Zero), ("remove", OnEmpty::Remove)];
+
+const NATIVE_WINDOW_CONFIG_KEYS: &str = "duration, slide, gap, lag, pane, lateness, immutable, or on";
 
 #[derive(Debug, Default)]
 pub(super) struct ParsedConfig {
@@ -37,6 +39,7 @@ pub(super) struct ParsedConfig {
 	pub pane: Option<Declared<Duration>>,
 	pub lateness: Option<Declared<Duration>>,
 	pub immutable: Option<Declared<Duration>>,
+	pub on_empty: Option<Declared<OnEmpty>>,
 	pub window: Fragment,
 }
 
@@ -63,10 +66,11 @@ impl<'bump> Compiler<'bump> {
 			..Default::default()
 		};
 		for entry in entries(with) {
-			if entry.key.word() == Some("count") {
-				return Err(unknown_key(entry, NATIVE_WINDOW_CONFIG_KEYS));
+			match entry.key.word() {
+				Some("count") => return Err(unknown_key(entry, NATIVE_WINDOW_CONFIG_KEYS)),
+				Some("on") => parsed.on_empty = Some(Self::parse_on(entry, NATIVE_ON_EMPTY)?),
+				_ => Self::parse_config_item(entry, &mut parsed)?,
 			}
-			Self::parse_config_item(entry, &mut parsed)?;
 		}
 		if let Some(slide) = parsed.slide_count.as_ref() {
 			return Err(AstError::UnexpectedToken {
@@ -76,6 +80,67 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 		Ok(parsed)
+	}
+
+	pub(super) fn parse_on(
+		entry: &AstOperatorWithEntry<'bump>,
+		actions: &[(&str, OnEmpty)],
+	) -> Result<Declared<OnEmpty>> {
+		let names: Vec<&str> = actions.iter().map(|(name, _)| *name).collect();
+		let expected_action = format!("the empty action {}", names.join(" or "));
+		let example = names.first().copied().unwrap_or("remove");
+		let Some(AstOperatorWithValue::Block(conditions)) = &entry.value else {
+			return Err(AstError::UnexpectedToken {
+				expected: format!("a block of conditions such as {{ empty: {example} }}"),
+				fragment: entry.key.fragment(),
+			}
+			.into());
+		};
+		let mut on_empty = None;
+		for condition in conditions {
+			if condition.key.word() != Some("empty") {
+				return Err(unknown_key(condition, "the condition empty"));
+			}
+			let action = match &condition.value {
+				Some(AstOperatorWithValue::Word(token)) => {
+					match actions.iter().find(|(name, _)| *name == token.fragment.text()) {
+						Some((_, action)) => *action,
+						None => {
+							return Err(AstError::UnexpectedToken {
+								expected: expected_action,
+								fragment: token.fragment.to_owned(),
+							}
+							.into());
+						}
+					}
+				}
+				Some(AstOperatorWithValue::Literal(token)) => {
+					return Err(AstError::UnexpectedToken {
+						expected: expected_action,
+						fragment: token.fragment.to_owned(),
+					}
+					.into());
+				}
+				Some(AstOperatorWithValue::Block(_)) | None => {
+					return Err(AstError::UnexpectedToken {
+						expected: expected_action,
+						fragment: condition.key.fragment(),
+					}
+					.into());
+				}
+			};
+			on_empty = Some(Declared {
+				value: action,
+				fragment: condition.key.fragment(),
+			});
+		}
+		on_empty.ok_or_else(|| {
+			AstError::UnexpectedToken {
+				expected: format!("at least one condition such as {{ empty: {example} }}"),
+				fragment: entry.key.fragment(),
+			}
+			.into()
+		})
 	}
 
 	pub(super) fn parse_config_item(entry: &AstOperatorWithEntry<'bump>, config: &mut ParsedConfig) -> Result<()> {
@@ -348,6 +413,16 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
+		if let Some(on_empty) = parsed.on_empty.as_ref()
+			&& !matches!(kind, AstWindowKind::Rolling)
+		{
+			return Err(AstError::UnexpectedToken {
+				expected: "on is only supported for rolling windows".to_string(),
+				fragment: on_empty.fragment.clone(),
+			}
+			.into());
+		}
+
 		if let Some(gap) = parsed.gap.as_ref()
 			&& !matches!(kind, AstWindowKind::Session)
 		{
@@ -413,6 +488,7 @@ impl<'bump> Compiler<'bump> {
 					size,
 					lag: Declared::value_of(&parsed.lag),
 					pane: Declared::value_of(&parsed.pane),
+					on_empty: Declared::value_of(&parsed.on_empty).unwrap_or_default(),
 				})
 			}
 			AstWindowKind::Session => {
@@ -844,5 +920,70 @@ mod tests {
 			parse_window_config(r#"window rolling { count(*) } with { duration: 1h, pane: 0s }"#).is_err(),
 			"a zero pane must be refused at parse"
 		);
+	}
+
+	fn on_empty_of(source: &str) -> OnEmpty {
+		let WindowKind::Rolling {
+			on_empty,
+			..
+		} = build_rolling(source).unwrap_or_else(|err| panic!("{source} must be accepted: {err}"))
+		else {
+			panic!("not a rolling kind: {source}")
+		};
+		on_empty
+	}
+
+	#[test]
+	fn an_on_empty_action_reaches_the_rolling_kind_and_its_absence_means_remove() {
+		// a dropped action would silently keep today's remove and the zero rows would never appear.
+		let base = "window rolling { count(*) } with { duration: 1m, pane: 1s";
+		assert_eq!(on_empty_of(&format!("{base}, on: {{ empty: zero }} }}")), OnEmpty::Zero);
+		assert_eq!(on_empty_of(&format!("{base}, on: {{ empty: remove }} }}")), OnEmpty::Remove);
+		assert_eq!(on_empty_of(&format!("{base} }}")), OnEmpty::Remove);
+	}
+
+	#[test]
+	fn an_on_action_outside_a_rolling_window_is_rejected() {
+		// only the rolling engine can keep a zero row, so any other kind would ignore the action.
+		for (source, kind) in [
+			(
+				r#"window tumbling { count(*) } with { duration: 1m, on: { empty: zero } }"#,
+				AstWindowKind::Tumbling,
+			),
+			(
+				r#"window sliding { count(*) } with { duration: 1m, slide: 10s, on: { empty: zero } }"#,
+				AstWindowKind::Sliding,
+			),
+			(
+				r#"window session { count(*) } with { gap: 1m, on: { empty: zero } }"#,
+				AstWindowKind::Session,
+			),
+		] {
+			let parsed =
+				parse_window_config(source).unwrap_or_else(|err| panic!("{source} must parse: {err}"));
+			let err = Compiler::<'static>::build_window_kind(kind, &parsed)
+				.expect_err(&format!("on outside a rolling window must be refused: {source}"));
+			assert!(
+				err.message.contains("on is only supported for rolling windows"),
+				"the refusal must name the rolling restriction: {source}"
+			);
+		}
+	}
+
+	#[test]
+	fn an_unknown_on_condition_or_action_is_rejected() {
+		// an unknown word accepted here would run the window with an action the author never asked for.
+		let base = "window rolling { count(*) } with { duration: 1m, pane: 1s, on: ";
+		for (on, expected, fragment) in [
+			("{ full: zero }", "the condition empty", "full"),
+			("{ empty: drop }", "the empty action zero or remove", "drop"),
+			("{ empty: 0 }", "the empty action zero or remove", "0"),
+			("zero", "a block of conditions such as { empty: zero }", "on"),
+		] {
+			let source = format!("{base}{on} }}");
+			let err = build_rolling(&source).expect_err(&format!("{source} must be refused"));
+			assert!(err.message.contains(expected), "{source}: {}", err.message);
+			assert_eq!(err.fragment.text(), fragment, "{source} must point at the bad word");
+		}
 	}
 }

@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	interface::change::{Change, Diff},
 };
 use reifydb_flow_async::operator::HostOperator;
@@ -2086,6 +2086,7 @@ fn a_rolling_retraction_inside_immutable_rebuilds_the_percentile_and_the_min_and
 			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		},
 		group_by: "g",
 		aggregations: percentile::MEDIAN_NEXT_TO_MIN,
@@ -2114,6 +2115,7 @@ fn rolling_immutable_spec(aggregations: &'static str) -> WindowSpec {
 			size: WindowSize::Duration(Duration::from_seconds(30).unwrap()),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		},
 		group_by: "g",
 		aggregations,

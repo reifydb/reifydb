@@ -12,7 +12,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	error::CoreError,
 	internal_error,
 	row::{JoinPick, JoinRetention, OperatorRetention},
@@ -339,7 +339,19 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 				size,
 				lag,
 				pane,
+				on_empty,
 			} => {
+				match on_empty {
+					OnEmpty::Remove => {}
+					OnEmpty::Carry => {
+						values.insert("on_empty".to_string(), Value::Utf8("carry".to_string()));
+					}
+					OnEmpty::Zero => {
+						return Err(internal_error!(
+							"apply with cannot carry the rolling on empty zero"
+						));
+					}
+				}
 				insert_window_size(&mut values, size);
 				if let Some(lag) = lag {
 					values.insert("lag".to_string(), Value::Duration(*lag));
@@ -382,6 +394,7 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 	let mut gap: Option<Duration> = None;
 	let mut lag: Option<Duration> = None;
 	let mut pane: Option<Duration> = None;
+	let mut on_empty = OnEmpty::Remove;
 	for (key, value) in values.iter() {
 		match (key.as_str(), value) {
 			("window", Value::Utf8(name)) => window_name = Some(name.clone()),
@@ -392,16 +405,18 @@ pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
 			("gap", Value::Duration(d)) => gap = Some(*d),
 			("lag", Value::Duration(d)) => lag = Some(*d),
 			("pane", Value::Duration(d)) => pane = Some(*d),
+			("on_empty", Value::Utf8(action)) if action == "carry" => on_empty = OnEmpty::Carry,
 			("lateness", value) => with.lateness = Some(value_span(key, value)?),
 			("immutable", value) => with.immutable = Some(value_span(key, value)?),
 			("retention", Value::Duration(retention)) => with.retention = Some(*retention),
 			_ => return Err(internal_error!("unexpected apply with entry {}: {:?}", key, value)),
 		}
 	}
-	with.window = decode_window_kind(window_name, duration, slots, slide, gap, lag, pane)?;
+	with.window = decode_window_kind(window_name, duration, slots, slide, gap, lag, pane, on_empty)?;
 	Ok(with)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_window_kind(
 	window_name: Option<String>,
 	duration: Option<Duration>,
@@ -410,6 +425,7 @@ fn decode_window_kind(
 	gap: Option<Duration>,
 	lag: Option<Duration>,
 	pane: Option<Duration>,
+	on_empty: OnEmpty,
 ) -> Result<Option<WindowKind>> {
 	let Some(window_name) = window_name else {
 		if duration.is_some()
@@ -419,8 +435,14 @@ fn decode_window_kind(
 		{
 			return Err(internal_error!("apply with has a window size key without 'window'"));
 		}
+		if on_empty != OnEmpty::Remove {
+			return Err(internal_error!("apply with has 'on_empty' without 'window'"));
+		}
 		return Ok(None);
 	};
+	if on_empty != OnEmpty::Remove && window_name != "rolling" {
+		return Err(internal_error!("apply with has 'on_empty' on a {} window", window_name));
+	}
 	match window_name.as_str() {
 		"tumbling" => {
 			if slide.is_some() || gap.is_some() || lag.is_some() || pane.is_some() {
@@ -452,6 +474,7 @@ fn decode_window_kind(
 				size,
 				lag,
 				pane,
+				on_empty,
 			}))
 		}
 		"session" => {
@@ -533,7 +556,10 @@ mod tests {
 		value::{Value, duration::Duration},
 	};
 
-	use super::{ApplyWith, WindowKind, WindowSealing, WindowSize, WithSpan, decode_apply_with, encode_apply_with};
+	use super::{
+		ApplyWith, OnEmpty, WindowKind, WindowSealing, WindowSize, WithSpan, decode_apply_with,
+		encode_apply_with,
+	};
 
 	fn secs(n: i64) -> Duration {
 		Duration::from_seconds(n).unwrap()
@@ -732,11 +758,13 @@ mod tests {
 				size: WindowSize::Duration(secs(60)),
 				lag: Some(secs(5)),
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 			WindowKind::Rolling {
 				size: WindowSize::Duration(secs(60)),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 			WindowKind::Session {
 				gap: secs(30),
@@ -864,6 +892,7 @@ mod tests {
 				size: WindowSize::Duration(secs(30)),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 		];
 
@@ -971,6 +1000,7 @@ mod tests {
 				size: WindowSize::Duration(secs(60)),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			}),
 			lateness: None,
 			immutable: None,
@@ -1013,12 +1043,37 @@ mod tests {
 				size: WindowSize::Duration(secs(3600)),
 				lag: Some(secs(5)),
 				pane: Some(secs(1)),
+				on_empty: OnEmpty::Remove,
 			}),
 			lateness: None,
 			immutable: None,
 			retention: None,
 		};
 		assert_eq!(decode_apply_with(&encode_apply_with(&with).unwrap()).unwrap(), with);
+	}
+
+	#[test]
+	fn a_rolling_carry_round_trips_through_the_create_buffer_and_zero_never_encodes() {
+		// a carry lost on the way to the guest removes rows, and an encoded zero would reach a guest that has
+		// none.
+		let with = |on_empty| ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(secs(60)),
+				lag: None,
+				pane: Some(secs(1)),
+				on_empty,
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		for on_empty in [OnEmpty::Remove, OnEmpty::Carry] {
+			assert_eq!(
+				decode_apply_with(&encode_apply_with(&with(on_empty)).unwrap()).unwrap(),
+				with(on_empty)
+			);
+		}
+		assert!(encode_apply_with(&with(OnEmpty::Zero)).is_err(), "a zero must never reach a guest");
 	}
 
 	#[test]

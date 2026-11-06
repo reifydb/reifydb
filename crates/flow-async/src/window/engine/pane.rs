@@ -900,6 +900,9 @@ where
 					if let Some(old) = prior_oldest {
 						expiry_drop(store, &rolling_expiry_key(old, hash))?;
 					}
+					if row.published.is_some() {
+						return set(store, vec![(RollingMetaKey(group_id), row)]);
+					}
 					if existed {
 						remove(store, from_ref(&RollingMetaKey(group_id)))?;
 					}
@@ -939,11 +942,14 @@ mod tests {
 	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
+		Result as ValueResult,
 		util::hash::Hash128,
 		value::{datetime::DateTime, duration::Duration},
 	};
 
-	use super::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingPane, pane_of, pane_range};
+	use super::{
+		EmitKind, PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit, RollingPane, pane_of, pane_range,
+	};
 	use crate::{
 		operator::state::mock::MockStore,
 		window::{
@@ -1169,6 +1175,7 @@ mod tests {
 					&RowPublisher {
 						key: Some(&|_: &u32| NoKey),
 						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
+						zero: None,
 					},
 				)
 				.unwrap();
@@ -1195,6 +1202,7 @@ mod tests {
 							finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| {
 								bag.finalize()
 							},
+							zero: None,
 						},
 					)
 					.unwrap();
@@ -1287,6 +1295,7 @@ mod tests {
 					&RowPublisher {
 						key: Some(&|_: &u32| NoKey),
 						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
+						zero: None,
 					},
 				)
 				.unwrap();
@@ -1385,6 +1394,7 @@ mod tests {
 				&RowPublisher {
 					key: Some(&|_: &u32| NoKey),
 					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					zero: None,
 				},
 			)
 			.unwrap();
@@ -1407,5 +1417,147 @@ mod tests {
 		}
 		assert!(partials > 1_000, "the queue must convert panes often, saw {partials} partial rows");
 		assert!(raw_queued > 0, "every queued pane was rewritten compacted before its partial write");
+	}
+
+	type Emits = Vec<RollingEmit<u32, NoKey, i64>>;
+
+	fn tally_engine() -> PaneEngine<u32, DateTimeCoord, Tally> {
+		let spans = PaneSpans {
+			size: span(60),
+			lag: span(0),
+			lateness: span(0),
+			retract: span(0),
+		};
+		PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of())
+	}
+
+	fn tally_insert(
+		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
+		store: &mut MockStore,
+		pane: u64,
+		value: i64,
+		cutoff: Option<u64>,
+		zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>>,
+	) -> Emits {
+		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Insert(ms(pane), pane, (pane, value))]));
+		engine.apply(
+			store,
+			groups,
+			cutoff.map(ms),
+			&Tally::default,
+			&RowPublisher {
+				key: Some(&|_: &u32| NoKey),
+				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+				zero,
+			},
+		)
+		.unwrap()
+		.emits
+	}
+
+	fn tally_expire(
+		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
+		store: &mut MockStore,
+		cutoff: u64,
+		zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>>,
+	) -> Emits {
+		engine.expire(
+			store,
+			ms(cutoff),
+			&RowPublisher {
+				key: None,
+				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+				zero,
+			},
+		)
+		.unwrap()
+	}
+
+	fn only_update(emits: &Emits) -> (u64, i64, u64, i64) {
+		let [emit] = emits.as_slice() else {
+			panic!("exactly one emit expected, got {}", emits.len());
+		};
+		let (Some(prior), Some(post)) = (&emit.prior, &emit.post) else {
+			panic!("an update expected, got {:?}", emit.kind());
+		};
+		(prior.row_number, prior.last_value, post.row_number, post.last_value)
+	}
+
+	#[test]
+	fn an_emptied_window_updates_to_its_zero_row_keeps_the_row_number_and_leaves_the_expiry_index() {
+		// a remove here would free the row number, and a still-indexed zero row would re-expire forever.
+		let zero = |prior: &i64| -> ValueResult<Option<i64>> { Ok((*prior != 0).then_some(0)) };
+		let zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>> = Some(&zero);
+		let mut engine = tally_engine();
+		let mut store = MockStore::default();
+		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
+		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
+
+		let emptied = tally_expire(&mut engine, &mut store, 1_100, zero);
+		assert_eq!(only_update(&emptied), (row, 5, row, 0), "the emptied window must update to zero in place");
+		assert_eq!(engine.earliest_expiry(&mut store).unwrap(), None, "a zero row must leave the expiry index");
+		assert!(
+			tally_expire(&mut engine, &mut store, 1_200, zero).is_empty(),
+			"a later expiry must not emit the zero row again"
+		);
+
+		let traded = tally_insert(&mut engine, &mut store, 1_300, 7, Some(1_240), zero);
+		assert_eq!(only_update(&traded), (row, 0, row, 7), "the next trade must update from the zero row");
+		assert!(engine.earliest_expiry(&mut store).unwrap().is_some(), "a traded row must be indexed again");
+
+		let again = tally_expire(&mut engine, &mut store, 1_400, zero);
+		assert_eq!(only_update(&again), (row, 7, row, 0), "a re-traded row must empty to zero again");
+	}
+
+	#[test]
+	fn a_retraction_that_empties_the_window_zeroes_once_and_the_later_expiry_stays_silent() {
+		// the emptied group stays indexed, so without the already-zero check its expiry re-emits zero over
+		// zero.
+		let zero = |prior: &i64| -> ValueResult<Option<i64>> { Ok((*prior != 0).then_some(0)) };
+		let zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>> = Some(&zero);
+		let mut engine = tally_engine();
+		let mut store = MockStore::default();
+		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
+		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
+		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Remove(ms(1_000), 1_000, (1_000, 5))]));
+		let retracted = engine
+			.apply(
+				&mut store,
+				groups,
+				None,
+				&Tally::default,
+				&RowPublisher {
+					key: Some(&|_: &u32| NoKey),
+					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					zero,
+				},
+			)
+			.unwrap()
+			.emits;
+		assert_eq!(only_update(&retracted), (row, 5, row, 0), "the retraction must zero the row in place");
+		assert!(
+			tally_expire(&mut engine, &mut store, 1_100, zero).is_empty(),
+			"the expiry of an already-zero row must emit nothing"
+		);
+		assert_eq!(
+			engine.earliest_expiry(&mut store).unwrap(),
+			None,
+			"the expired zero row must leave the index"
+		);
+	}
+
+	#[test]
+	fn without_a_zero_action_an_emptied_window_still_removes_its_row() {
+		// the default must stay a remove, or every existing rolling view keeps rows for idle groups.
+		let mut engine = tally_engine();
+		let mut store = MockStore::default();
+		tally_insert(&mut engine, &mut store, 1_000, 5, None, None);
+		let [emptied] = tally_expire(&mut engine, &mut store, 1_100, None).try_into().ok().unwrap();
+		assert_eq!(emptied.kind(), Some(EmitKind::Remove), "the default action must remove the row");
+		let [reborn] =
+			tally_insert(&mut engine, &mut store, 1_300, 7, Some(1_240), None).try_into().ok().unwrap();
+		assert_eq!(reborn.kind(), Some(EmitKind::Insert), "a removed group must come back as an insert");
 	}
 }

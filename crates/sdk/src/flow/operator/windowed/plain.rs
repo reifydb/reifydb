@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::operator::state::StateCodec,
 };
 use reifydb_core::{
-	common::{WindowRequirements, WindowSizeDomain},
+	common::{OnEmpty, WindowKind, WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator::state::GroupId,
@@ -42,6 +42,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_value::{
+	Result as ValueResult,
 	config::ExtensionParams,
 	error::Error,
 	reifydb_assertions,
@@ -77,6 +78,7 @@ type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOpera
 struct RollingMode<A: Emit> {
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	pane: <A::Coord as Coord>::Span,
+	carries: bool,
 }
 
 type RollingEmits<A> = Vec<RollingEmit<<A as WindowedOperator>::GroupKey, NoKey, <A as WindowedOperator>::Output>>;
@@ -349,6 +351,9 @@ where
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
+		let carry = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
+		let zero: Option<&dyn Fn(&A::Output) -> ValueResult<Option<A::Output>>> =
+			mode.carries.then_some(&carry);
 		let before = mode.engine.earliest_expiry(store)?;
 		let emits = match rolling_cutoff::<A>(settings, pane, clock) {
 			Some(cutoff) => mode.engine.expire(
@@ -357,6 +362,7 @@ where
 				&RowPublisher {
 					key: None,
 					finalize: &finalize,
+					zero,
 				},
 			)?,
 			None => Vec::new(),
@@ -388,6 +394,9 @@ where
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
+		let carry = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
+		let zero: Option<&dyn Fn(&A::Output) -> ValueResult<Option<A::Output>>> =
+			mode.carries.then_some(&carry);
 		let cutoff = rolling_cutoff::<A>(settings, pane, clock);
 		let before = mode.engine.earliest_expiry(&mut store)?;
 		let mut emits = match cutoff {
@@ -397,6 +406,7 @@ where
 				&RowPublisher {
 					key: None,
 					finalize: &finalize,
+					zero,
 				},
 			)?,
 			None => Vec::new(),
@@ -411,6 +421,7 @@ where
 			&RowPublisher {
 				key: Some(&|_: &A::GroupKey| NoKey),
 				finalize: &finalize,
+				zero,
 			},
 		)?;
 		prefetched.write()?;
@@ -1241,9 +1252,23 @@ where
 				lateness: settings.lateness,
 				retract: settings.immutable.unwrap_or(settings.lateness),
 			};
+			let carries = matches!(
+				settings.kind,
+				WindowKind::Rolling {
+					on_empty: OnEmpty::Carry,
+					..
+				}
+			);
+			if carries && !A::CARRIES_EMPTY {
+				return Err(Error::from(CoreError::OperatorRollingCarryUnsupported {
+					operator: A::NAME,
+				})
+				.into());
+			}
 			Some(RollingMode {
 				engine: PaneEngine::queue(window_engine_config(params), spans, merge),
 				pane,
+				carries,
 			})
 		} else {
 			None
@@ -1394,7 +1419,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		common::{WindowKind, WindowSize, WindowSizeDomain},
+		common::{OnEmpty, WindowKind, WindowSize, WindowSizeDomain},
 		operator_with::WithSpan,
 	};
 	use reifydb_flow_async::window::{
@@ -1637,6 +1662,7 @@ mod tests {
 				size: WindowSize::Duration(secs(60)),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			}),
 			lateness: None,
 			immutable: None,

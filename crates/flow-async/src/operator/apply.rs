@@ -204,7 +204,7 @@ fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::{WindowKind, WindowSize};
+	use reifydb_core::common::{OnEmpty, WindowKind, WindowSize};
 
 	use super::*;
 
@@ -291,6 +291,7 @@ mod tests {
 				size: WindowSize::Duration(seconds(120)),
 				lag: Some(seconds(10)),
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			}),
 			lateness: Some(WithSpan::Duration(seconds(5))),
 			immutable: None,

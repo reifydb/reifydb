@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::shape::RowShapeField,
 };
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	key::operator::state::GroupId,
 	metrics::heap::HeapSize,
@@ -255,6 +255,7 @@ fn rolling(size: u64, pane: Option<u64>, lateness: u64) -> ApplyWith {
 			size: WindowSize::Duration(millis(size)),
 			lag: None,
 			pane: pane.map(millis),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(lateness))),
 		immutable: None,

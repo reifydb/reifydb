@@ -364,6 +364,14 @@ impl TimeSource {
 	}
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OnEmpty {
+	#[default]
+	Remove,
+	Zero,
+	Carry,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowKind {
 	Tumbling {
@@ -381,6 +389,8 @@ pub enum WindowKind {
 		lag: Option<Duration>,
 		#[serde(default)]
 		pane: Option<Duration>,
+		#[serde(default)]
+		on_empty: OnEmpty,
 	},
 
 	Session {

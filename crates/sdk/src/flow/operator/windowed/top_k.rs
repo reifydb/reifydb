@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::operator::state::StateCodec,
 };
 use reifydb_core::{
-	common::WindowRequirements,
+	common::{OnEmpty, WindowKind, WindowRequirements},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	internal_err,
@@ -318,6 +318,18 @@ where
 		with.require_window("rolling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
+		if matches!(
+			settings.kind,
+			WindowKind::Rolling {
+				on_empty: OnEmpty::Carry,
+				..
+			}
+		) {
+			return Err(Error::from(CoreError::OperatorRollingCarryUnsupported {
+				operator: A::NAME,
+			})
+			.into());
+		}
 		let aggregator = A::create(operator_id, params, with)?;
 		let Some(pane) = settings.pane else {
 			return Err(Error::from(CoreError::OperatorWithPaneMissing).into());

@@ -39,6 +39,7 @@ impl CompileOperator for WindowCompiler {
 			&self.aggregations,
 			AggregateContext::Windowed,
 			Some(&self.with.kind),
+			compiler.sink.as_ref(),
 		)?;
 
 		let input_node = if let Some(input) = self.input {

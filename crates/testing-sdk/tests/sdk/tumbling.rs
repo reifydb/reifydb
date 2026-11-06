@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{OperatorClass, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
+	common::{OnEmpty, OperatorClass, WindowKind, WindowRequirements, WindowSize, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
 		flow::{OperatorCapability, from_bitmask},
@@ -768,6 +768,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: None,
 		immutable: None,

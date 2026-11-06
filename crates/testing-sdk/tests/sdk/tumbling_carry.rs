@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
@@ -502,6 +502,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 			size: WindowSize::Duration(millis(3)),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: None,
 		immutable: None,

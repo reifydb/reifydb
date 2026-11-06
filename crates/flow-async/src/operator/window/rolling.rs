@@ -5,12 +5,16 @@ use std::collections::{BTreeMap, HashMap};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::change::{Change, Diff};
+use reifydb_core::{
+	common::OnEmpty,
+	interface::change::{Change, Diff},
+	internal_err,
+};
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::{Span, instrument};
 
@@ -220,6 +224,41 @@ fn finalize_rolling(_group: &Hash128, _newest: DateTimeCoord, accumulator: &RowA
 	accumulator.finalize()
 }
 
+fn zero_rolling(kinds: &[SlotKind], types: &[Option<ValueType>], prior: &[Value]) -> Result<Option<Vec<Value>>> {
+	if kinds.len() != prior.len() {
+		return internal_err!("a rolling row holds {} slots but the window has {}", prior.len(), kinds.len());
+	}
+	let mut zero = Vec::with_capacity(prior.len());
+	for (slot, (kind, value)) in kinds.iter().zip(prior).enumerate() {
+		zero.push(match kind {
+			SlotKind::Count {
+				..
+			} => Value::Int8(0),
+			SlotKind::Sum => {
+				let declared = types.get(slot).cloned().flatten().unwrap_or_else(|| value.get_type());
+				match Value::zero_of(declared.inner_type()) {
+					Some(zero) => zero,
+					None => {
+						return internal_err!(
+							"a rolling sum slot of type {declared:?} has no zero"
+						);
+					}
+				}
+			}
+			SlotKind::WindowLast => value.clone(),
+			_ => Value::none(),
+		});
+	}
+	Ok((zero != prior).then_some(zero))
+}
+
+fn zero_of_window<'z>(
+	operator: &WindowOperator,
+	zero: &'z dyn Fn(&Vec<Value>) -> Result<Option<Vec<Value>>>,
+) -> Option<&'z dyn Fn(&Vec<Value>) -> Result<Option<Vec<Value>>>> {
+	(operator.rolling_on_empty() == OnEmpty::Zero).then_some(zero)
+}
+
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
 pub fn apply_rolling_engine(
 	operator: &mut WindowOperator,
@@ -242,6 +281,9 @@ pub fn apply_rolling_engine(
 		pane_groups.insert(hash, (group_of(&groups, hash, 0), events));
 	}
 
+	let types = operator.core.slot_types().to_vec();
+	let zero = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
+	let zero = zero_of_window(operator, &zero);
 	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
 	let keys = pane_engine(operator, &kinds).state_keys(&pane_groups);
 	let mut state = Prefetched::read(host, keys)?;
@@ -254,6 +296,7 @@ pub fn apply_rolling_engine(
 		&RowPublisher {
 			key: Some(&|hash: &Hash128| group_values.get(hash).cloned().unwrap_or_default()),
 			finalize: &finalize_rolling,
+			zero,
 		},
 	)?;
 	state.write()?;
@@ -333,6 +376,9 @@ pub fn seal_rolling_engine(
 	let ts = fired.at();
 	operator.advance_seal_ledger(host, fired)?;
 	let cutoff = expiry_cutoff(operator, ts);
+	let types = operator.core.slot_types().to_vec();
+	let zero = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
+	let zero = zero_of_window(operator, &zero);
 	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
 	let emits = match cutoff {
 		Some(cutoff) => pane_engine(operator, &kinds).expire(
@@ -341,6 +387,7 @@ pub fn seal_rolling_engine(
 			&RowPublisher {
 				key: None,
 				finalize: &finalize_rolling,
+				zero,
 			},
 		)?,
 		None => Vec::new(),
@@ -782,6 +829,7 @@ mod tests {
 					&RowPublisher {
 						key: Some(&|_: &Hash128| Vec::<Value>::new()),
 						finalize: &finalize_rolling,
+						zero: None,
 					},
 				)
 				.unwrap();
@@ -818,6 +866,7 @@ mod tests {
 						&RowPublisher::<_, Vec<Value>, _, _, _> {
 							key: None,
 							finalize: &finalize_rolling,
+							zero: None,
 						},
 					)
 					.unwrap();
@@ -855,6 +904,7 @@ mod tests {
 				&RowPublisher::<_, Vec<Value>, _, _, _> {
 					key: None,
 					finalize: &finalize_rolling,
+					zero: None,
 				},
 			)
 			.unwrap();
@@ -908,5 +958,53 @@ mod tests {
 		for immutable in [None, Some(15)] {
 			drive_time_frame(&kinds, immutable, 0xD16E_5744_0002);
 		}
+	}
+
+	#[test]
+	fn a_zero_row_is_count_zero_typed_sum_zero_kept_last_time_and_none_for_the_rest() {
+		// a wrong zero would publish a quiet pool with stale min or a sum of the wrong type.
+		let at = DateTime::from_millis(42_000);
+		let kinds = [
+			SlotKind::Count {
+				count_star: true,
+			},
+			SlotKind::Sum,
+			SlotKind::Sum,
+			SlotKind::WindowLast,
+			SlotKind::Min,
+			SlotKind::Avg,
+			SlotKind::Last,
+		];
+		let types = [None, Some(ValueType::Float8), None, None, None, None, None];
+		let prior = vec![
+			Value::Int8(3),
+			Value::float8(2.5),
+			Value::Int4(9),
+			Value::DateTime(at),
+			Value::Int4(1),
+			Value::float8(4.0),
+			Value::Int4(7),
+		];
+		let zero = zero_rolling(&kinds, &types, &prior).unwrap().expect("a non-zero row must change");
+		assert_eq!(
+			zero,
+			vec![
+				Value::Int8(0),
+				Value::float8(0.0),
+				Value::Int4(0),
+				Value::DateTime(at),
+				Value::none(),
+				Value::none(),
+				Value::none(),
+			]
+		);
+		assert_eq!(zero_rolling(&kinds, &types, &zero).unwrap(), None, "a zero row must not zero again");
+	}
+
+	#[test]
+	fn a_sum_with_no_type_to_zero_fails_loud() {
+		// writing none for a sum would turn a quiet pool into a missing value instead of zero.
+		let err = zero_rolling(&[SlotKind::Sum], &[None], &[Value::none()]).unwrap_err();
+		assert!(err.to_string().contains("has no zero"), "{err}");
 	}
 }

@@ -23,7 +23,7 @@ impl<C: Coord> WindowSettings<C> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::{WindowKind, WindowSize};
+	use reifydb_core::common::{OnEmpty, WindowKind, WindowSize};
 	use reifydb_value::value::duration::Duration;
 
 	use super::WindowSettings;
@@ -36,6 +36,7 @@ mod tests {
 				size: WindowSize::Duration(hour),
 				lag: None,
 				pane,
+				on_empty: OnEmpty::Remove,
 			},
 			size: Some(hour),
 			pane,

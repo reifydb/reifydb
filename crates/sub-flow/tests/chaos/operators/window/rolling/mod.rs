@@ -3,7 +3,7 @@
 
 pub mod oracle;
 
-use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_core::common::{OnEmpty, WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
@@ -73,6 +73,7 @@ fn drive_with<W: Workload<Row = WindowRow>>(
 			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
 			lag: None,
 			pane: None,
+			on_empty: OnEmpty::Remove,
 		},
 		group_by: "g",
 		aggregations: fold.rql(),

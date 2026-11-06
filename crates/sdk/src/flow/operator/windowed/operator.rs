@@ -102,6 +102,12 @@ pub(crate) fn batch_len<T: WindowedOperator, V>(values: Vec<V>, rows: usize, met
 pub trait Emit: WindowedOperator {
 	type Kinds: KindSet<Self>;
 
+	const CARRIES_EMPTY: bool = false;
+
+	fn carry_empty(&self, _prior: &Self::Output) -> Option<Self::Output> {
+		None
+	}
+
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,

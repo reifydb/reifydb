@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{
-	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
+	common::{ChangeVersion, CommitVersion, OnEmpty, WindowKind, WindowSize},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
@@ -139,6 +139,7 @@ fn window_kinds() -> Vec<(&'static str, WindowKind)> {
 				size: WindowSize::Duration(minute),
 				lag: None,
 				pane: None,
+				on_empty: OnEmpty::Remove,
 			},
 		),
 		(

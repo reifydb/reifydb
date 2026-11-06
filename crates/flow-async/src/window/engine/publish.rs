@@ -39,6 +39,7 @@ impl<O> Default for PublishState<O> {
 pub struct RowPublisher<'f, G, K, O, A, C> {
 	pub key: Option<&'f dyn Fn(&G) -> K>,
 	pub finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
+	pub zero: Option<&'f dyn Fn(&O) -> Result<Option<O>>>,
 }
 
 impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
@@ -93,16 +94,36 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 				});
 				Ok(Some(post))
 			}
-			(Some(prior), None) => {
-				applied.withdrawn.push(group_id);
-				applied.emits.push(RollingEmit {
-					group: group.clone(),
-					group_id,
-					prior: Some(prior),
-					post: None,
-				});
-				Ok(None)
-			}
+			(Some(prior), None) => match self.zero {
+				Some(zero) => {
+					let Some(last_value) = zero(&prior.last_value)? else {
+						return Ok(Some(prior));
+					};
+					let post = RollingPublished {
+						row_number: prior.row_number,
+						key: prior.key.clone(),
+						last_value,
+						first_time: prior.first_time,
+					};
+					applied.emits.push(RollingEmit {
+						group: group.clone(),
+						group_id,
+						prior: Some(prior),
+						post: Some(post.clone()),
+					});
+					Ok(Some(post))
+				}
+				None => {
+					applied.withdrawn.push(group_id);
+					applied.emits.push(RollingEmit {
+						group: group.clone(),
+						group_id,
+						prior: Some(prior),
+						post: None,
+					});
+					Ok(None)
+				}
+			},
 			(None, None) => Ok(None),
 		}
 	}

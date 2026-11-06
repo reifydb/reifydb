@@ -6,7 +6,7 @@
 //! the per-secondary-key emission and the high-water-driven Remove path.
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
+	common::{OnEmpty, WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_sdk::flow::operator::windowed::top_k::TopKDriver;
@@ -32,6 +32,7 @@ fn window_with() -> ApplyWith {
 			size: WindowSize::Duration(millis(common::ROLLING_CAPACITY as u64 * common::ROLLING_BUCKET)),
 			lag: None,
 			pane: Some(millis(common::ROLLING_BUCKET)),
+			on_empty: OnEmpty::Remove,
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
