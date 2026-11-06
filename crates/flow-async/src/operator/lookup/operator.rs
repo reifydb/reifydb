@@ -415,6 +415,19 @@ impl LookupOperator {
 		Ok(())
 	}
 
+	fn left_version(
+		&self,
+		host: &dyn HostContext,
+		source: SourceVersion,
+		reads: &mut ChangeReads,
+		key: &RowKey,
+	) -> CommitVersion {
+		match key {
+			RowKey::Found(partition) if self.waiting.contains_key(partition) => host.version(),
+			_ => self.read_version(host, source, reads),
+		}
+	}
+
 	fn wanted(
 		&self,
 		host: &dyn HostContext,
@@ -424,7 +437,9 @@ impl LookupOperator {
 	) -> Vec<(Partition, CommitVersion)> {
 		keys.iter()
 			.filter_map(|key| match key {
-				RowKey::Found(partition) => Some((*partition, self.read_version(host, source, reads))),
+				RowKey::Found(partition) => {
+					Some((*partition, self.left_version(host, source, reads, key)))
+				}
 				_ => None,
 			})
 			.collect()
@@ -441,7 +456,7 @@ impl LookupOperator {
 		if matches!(key, RowKey::Missing) && self.config.join_type == JoinType::Inner {
 			return Ok(None);
 		}
-		let version = self.read_version(host, source, reads);
+		let version = self.left_version(host, source, reads, key);
 		let right = self.read_right(host, partitions, reads, key, version)?;
 		if right.is_none() && self.config.join_type == JoinType::Inner && !self.re_emits() {
 			return Ok(None);
@@ -511,13 +526,7 @@ impl LookupOperator {
 	) -> Result<()> {
 		let partitions = self.partitions();
 		let keys = self.key_values(host, &partitions, reads, post)?;
-		let wanted = keys
-			.iter()
-			.filter_map(|key| match key {
-				RowKey::Found(partition) => Some((*partition, self.read_version(host, source, reads))),
-				_ => None,
-			})
-			.collect();
+		let wanted = self.wanted(host, reads, &keys, source);
 		self.prefetch(host, reads, wanted)?;
 		let mut resolved = Vec::with_capacity(keys.len());
 		for (left_idx, key) in keys.iter().enumerate() {
@@ -2064,6 +2073,211 @@ mod tests {
 		assert!(
 			out.iter().any(|diff| matches!(diff, Diff::Update { .. })),
 			"an unrelated change must flush what is due: {out:?}"
+		);
+	}
+
+	fn waiting_after_a_right_change(
+		engine: &TestEngine,
+		table: &Table,
+		left_rows: &[u64],
+	) -> (LookupOperator, CommitVersion, CommitVersion) {
+		let first = put_right(engine, "a", 10);
+		let mut op = delayed(table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(engine, first);
+		for row in left_rows {
+			only_insert(&run(
+				&mut op,
+				&mut txn,
+				first,
+				Diff::insert(rows(&[Some("a")], &[*row], at_millis(5))),
+			));
+		}
+		commit(engine, &mut txn);
+		let newest = put_right(engine, "a", 11);
+		let mut txn = txn_at(engine, newest);
+		assert!(run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a"))).is_empty());
+		commit(engine, &mut txn);
+		assert_eq!(op.waiting.len(), 1, "the right change must leave its key waiting");
+		(op, first, newest)
+	}
+
+	fn make_due(op: &mut LookupOperator) {
+		let due = op.waiting.keys().copied().next().expect("the key waits");
+		op.waiting.insert(due, at_millis(1));
+	}
+
+	fn only_update(diffs: &[Diff]) -> (RecordBatch, RecordBatch) {
+		let [
+			Diff::Update {
+				pre,
+				post,
+				..
+			},
+		] = diffs
+		else {
+			panic!("exactly one update expected, got {diffs:?}");
+		};
+		(pre.clone(), post.clone())
+	}
+
+	#[test]
+	fn a_left_update_on_a_waiting_key_sends_the_newest_right_once() {
+		// pairing with the source version here would send the row twice, once stale and once on the flush.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let (mut op, first, newest) = waiting_after_a_right_change(&engine, &table, &[7]);
+		let mut txn = txn_at(&engine, newest);
+
+		let out = run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::update(rows(&[Some("a")], &[7], at_millis(5)), rows(&[Some("a")], &[7], at_millis(6))),
+		);
+
+		let (_, post) = only_update(&out);
+		assert_eq!(
+			cell(&post, "r_v", 0),
+			Value::Int4(11),
+			"a waiting key must read the newest right, not its source"
+		);
+	}
+
+	#[test]
+	fn a_flush_after_a_merged_left_update_sends_nothing_for_that_row() {
+		// a row already carrying the newest right must never be re-emitted, or every trade costs two outputs.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let (mut op, first, newest) = waiting_after_a_right_change(&engine, &table, &[7]);
+		let mut txn = txn_at(&engine, newest);
+		only_update(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::update(rows(&[Some("a")], &[7], at_millis(5)), rows(&[Some("a")], &[7], at_millis(6))),
+		));
+
+		make_due(&mut op);
+		let out = tick(&mut op, &mut txn);
+
+		assert!(out.is_empty(), "the merged row already holds the newest right: {out:?}");
+		assert!(op.waiting.is_empty(), "the due key must still be cleared");
+	}
+
+	#[test]
+	fn a_ring_push_out_on_a_waiting_key_inserts_the_newest_right_and_the_flush_sends_nothing() {
+		// a ring push-out is a remove then an insert, so only the update path merging would leave rings paying
+		// twice.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let (mut op, first, newest) = waiting_after_a_right_change(&engine, &table, &[7]);
+		let mut txn = txn_at(&engine, newest);
+
+		let removed = only_remove(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::remove(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		let inserted = only_insert(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::insert(rows(&[Some("a")], &[8], at_millis(6))),
+		));
+
+		assert_eq!(cell(&removed, "r_v", 0), Value::Int4(10), "the remove must retract what was published");
+		assert_eq!(cell(&inserted, "r_v", 0), Value::Int4(11), "the pushed-in row must carry the newest right");
+		make_due(&mut op);
+		let out = tick(&mut op, &mut txn);
+		assert!(out.is_empty(), "neither the removed nor the merged row may re-emit: {out:?}");
+	}
+
+	#[test]
+	fn a_merged_left_update_leaves_other_rows_of_the_key_to_the_flush() {
+		// clearing the waiting key on a merge would leave every other row of that key stale for good.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let (mut op, first, newest) = waiting_after_a_right_change(&engine, &table, &[7, 8]);
+		let mut txn = txn_at(&engine, newest);
+		only_update(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::update(rows(&[Some("a")], &[7], at_millis(5)), rows(&[Some("a")], &[7], at_millis(6))),
+		));
+		assert_eq!(op.waiting.len(), 1, "a merge must not clear the waiting key");
+
+		make_due(&mut op);
+		let (pre, post) = only_update(&tick(&mut op, &mut txn));
+
+		assert_eq!(post.num_rows(), 1, "exactly the untouched row re-emits");
+		assert_eq!(cell(&pre, "r_v", 0), Value::Int4(10));
+		assert_eq!(cell(&post, "r_v", 0), Value::Int4(11));
+	}
+
+	#[test]
+	fn a_merged_left_update_retracts_exactly_the_row_last_published() {
+		// a pre built from the new left row would retract a row the view never held.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let mut op = delayed(&table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(&engine, first);
+		let published = only_insert(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		commit(&engine, &mut txn);
+		let newest = put_right(&engine, "a", 11);
+		let mut txn = txn_at(&engine, newest);
+		run_right(&mut op, &mut txn, newest, Diff::insert(right_rows("a")));
+
+		let (pre, post) = only_update(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::update(rows(&[Some("a")], &[7], at_millis(5)), rows(&[Some("a")], &[7], at_millis(6))),
+		));
+
+		assert_eq!(cell(&pre, "r_v", 0), cell(&published, "r_v", 0), "the pre must be the published right");
+		assert_eq!(
+			row_numbers(&pre).unwrap(),
+			row_numbers(&published).unwrap(),
+			"the pre must be the published row"
+		);
+		assert_eq!(
+			row_numbers(&post).unwrap(),
+			row_numbers(&published).unwrap(),
+			"a merge keeps the output id"
+		);
+	}
+
+	#[test]
+	fn a_delayed_lookup_with_nothing_waiting_still_reads_at_the_source() {
+		// LT3 must keep holding wherever no re-emit is pending, or a lagging step pairs rows with a later
+		// right.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let first = put_right(&engine, "a", 10);
+		let second = put_right(&engine, "a", 11);
+		let mut op = delayed(&table, Duration::from_hours(1).unwrap());
+		let mut txn = txn_at(&engine, second);
+
+		let out = only_insert(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+
+		assert!(op.waiting.is_empty());
+		assert_eq!(
+			cell(&out, "r_v", 0),
+			Value::Int4(10),
+			"with nothing waiting the source version's right is read"
 		);
 	}
 
