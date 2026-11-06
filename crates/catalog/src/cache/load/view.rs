@@ -4,7 +4,10 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
-		catalog::{id::PrimaryKeyId, key::PrimaryKey, object::ObjectId, view::View},
+		catalog::{
+			id::{PrimaryKeyId, ViewId},
+			object::ObjectId,
+		},
 		store::MultiVersionRow,
 	},
 	key::catalog::ViewKey,
@@ -21,31 +24,27 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	let range = ViewKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
-	let mut views = Vec::new();
+	let mut rows = Vec::new();
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		let version = multi.version;
-
 		let pk_id = get_view_primary_key_id(&multi);
-		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let view = convert_view(multi, primary_key)?;
-		if let Some(id) = pk_id {
-			catalog.set_primary_key_object(ObjectId::View(view.id()), id);
-		}
-		views.push((view, version));
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, multi.version));
+		rows.push((multi, pk_id, primary_key));
 	}
 	drop(stream);
 
-	for (mut view, version) in views {
-		*view.columns_mut() = CatalogStore::list_columns(rx, view.id())?;
-		catalog.set_view(view.id(), version, Some(view));
+	for (multi, pk_id, primary_key) in rows {
+		let bytes = EncodedCatalogRow::view(&multi.bytes);
+		let id = ViewId(view::get_id(bytes));
+		let columns = CatalogStore::list_columns(rx, id)?;
+		let view = decode_view(rx, bytes, columns, primary_key)?;
+		if let Some(pk) = pk_id {
+			catalog.set_primary_key_object(ObjectId::View(view.id()), pk);
+		}
+		catalog.set_view(view.id(), multi.version, Some(view));
 	}
 
 	Ok(())
-}
-
-fn convert_view<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<View> {
-	decode_view(EncodedCatalogRow::view(&multi.bytes), vec![], primary_key)
 }
 
 fn get_view_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKeyId> {

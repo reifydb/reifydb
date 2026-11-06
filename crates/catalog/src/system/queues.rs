@@ -18,7 +18,7 @@ pub fn queues() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: QUEUES,
-			namespace: NamespaceId::SYSTEM,
+			namespace: NamespaceId::SYSTEM_QUEUE,
 			name: "queues".to_string(),
 			columns: vec![
 				Column {
@@ -78,15 +78,15 @@ pub fn queues() -> Arc<VTable> {
 				Column {
 					id: DEDUPLICATE_TTL,
 					name: "deduplicate_ttl".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Duration),
 					properties: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				Column {
-					id: TIME,
-					name: "time".to_string(),
+					id: TIME_DOMAIN,
+					name: "time_domain".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(7),
@@ -94,8 +94,8 @@ pub fn queues() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TS,
-					name: "ts".to_string(),
+					id: TIME_COLUMN,
+					name: "time_column".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(8),

@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{
-	columns::identity_attribute_values::{ATTRIBUTE, ATTRIBUTE_ID, IDENTITY, VALUE},
+	columns::identity_attribute_values::{ATTRIBUTE, ATTRIBUTE_ID, IDENTITY_ID, VALUE},
 	vtable::IDENTITY_ATTRIBUTE_VALUES,
 };
 
@@ -25,8 +25,8 @@ pub fn identity_attribute_values() -> Arc<VTable> {
 			name: "identity_attribute_values".to_string(),
 			columns: vec![
 				Column {
-					id: IDENTITY,
-					name: "identity".to_string(),
+					id: IDENTITY_ID,
+					name: "identity_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::IdentityId),
 					properties: vec![],
 					index: ColumnIndex(0),

@@ -17,18 +17,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemBindingsGrpc {
+pub struct SystemBindingGrpc {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemBindingsGrpc {
+impl Default for SystemBindingGrpc {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemBindingsGrpc {
+impl SystemBindingGrpc {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_bindings_grpc_table().clone(),
@@ -37,7 +37,7 @@ impl SystemBindingsGrpc {
 	}
 }
 
-impl BaseVTable for SystemBindingsGrpc {
+impl BaseVTable for SystemBindingGrpc {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

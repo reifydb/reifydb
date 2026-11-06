@@ -68,12 +68,12 @@ impl BaseVTable for SystemOperatorLibraries {
 		}
 
 		let columns = vec![
-			operators.finish("operator"),
+			operators.finish("operator_name"),
 			library_paths.finish("library_path"),
 			abis.finish("abi"),
-			cap_inserts.finish("cap_insert"),
-			cap_updates.finish("cap_update"),
-			cap_deletes.finish("cap_delete"),
+			cap_inserts.finish("can_insert"),
+			cap_updates.finish("can_update"),
+			cap_deletes.finish("can_delete"),
 		];
 
 		self.exhausted = true;

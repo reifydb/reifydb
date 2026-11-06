@@ -8,19 +8,19 @@ use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const LEFT: &str = "from system::metrics::flow::state::current
+const LEFT: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_LEFT' }";
 
-const PUBLISHED: &str = "from system::metrics::flow::state::current
+const PUBLISHED: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_PUBLISHED' }";
 
-const PIN: &str = "from system::metrics::flow::state::current
+const PIN: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_PIN' }";
 
-const RIGHT: &str = "from system::metrics::flow::state::current
+const RIGHT: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'JOIN_RIGHT' }";
 
-const SURFACE: &str = "from system::metrics::flow::state::current";
+const SURFACE: &str = "from system::metric::flow::state::current";
 
 fn setup() -> TestDb {
 	TestDb::from(
@@ -77,7 +77,7 @@ fn join_operator(db: &TestDb) -> u64 {
 }
 
 fn state_of(operator: u64) -> String {
-	format!("{SURFACE} filter {{ operator == {operator} }}")
+	format!("{SURFACE} filter {{ operator_id == {operator} }}")
 }
 
 fn per_key_state_of(operator: u64) -> String {

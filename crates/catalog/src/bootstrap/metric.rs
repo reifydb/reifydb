@@ -57,24 +57,24 @@ pub fn bootstrap_metric_ringbuffers(
 	let ns_id = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS,
-		"system::metrics",
-		"metrics",
+		NamespaceId::SYSTEM_METRIC,
+		"system::metric",
+		"metric",
 		NamespaceId::SYSTEM,
 	)?;
 	let storage_ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_STORAGE,
-		"system::metrics::storage",
-		"storage",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC_STORE,
+		"system::metric::store",
+		"store",
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		storage_ns,
-		"system::metrics::storage",
+		"system::metric::store",
 		SeriesId::STORAGE_SNAPSHOTS,
 		storage_snapshot_columns(),
 		&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
@@ -96,7 +96,7 @@ pub fn bootstrap_metric_ringbuffers(
 				ColumnId::REQUEST_HISTORY_NORMALIZED_RQL,
 			],
 		)?;
-		info!("Created system::metrics::request_history ring buffer");
+		info!("Created system::metric::request_history ring buffer");
 	}
 
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "statement_stats")?.is_none()
@@ -118,7 +118,7 @@ pub fn bootstrap_metric_ringbuffers(
 				ColumnId::STATEMENT_STATS_ERRORS,
 			],
 		)?;
-		info!("Created system::metrics::statement_stats ring buffer");
+		info!("Created system::metric::statement_stats ring buffer");
 	}
 
 	admin.commit()?;
@@ -142,13 +142,13 @@ fn request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		name: Fragment::internal("request_history"),
 		namespace,
 		columns: vec![
-			metric_col("timestamp", ValueType::DateTime),
+			metric_col("ts", ValueType::DateTime),
 			metric_col("operation", ValueType::Utf8),
 			metric_col("fingerprint", ValueType::Utf8),
-			metric_col("total_duration", ValueType::Duration),
-			metric_col("compute_duration", ValueType::Duration),
+			metric_col("total", ValueType::Duration),
+			metric_col("compute", ValueType::Duration),
 			metric_col("success", ValueType::Boolean),
-			metric_col("statement_count", ValueType::Int8),
+			metric_col("statement_count", ValueType::Uint8),
 			metric_col("normalized_rql", ValueType::Utf8),
 		],
 		capacity: REQUEST_HISTORY_CAPACITY,
@@ -162,16 +162,16 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		name: Fragment::internal("statement_stats"),
 		namespace,
 		columns: vec![
-			metric_col("snapshot_timestamp", ValueType::DateTime),
+			metric_col("ts", ValueType::DateTime),
 			metric_col("fingerprint", ValueType::Utf8),
 			metric_col("normalized_rql", ValueType::Utf8),
-			metric_col("calls", ValueType::Int8),
-			metric_col("total_duration", ValueType::Duration),
-			metric_col("mean_duration", ValueType::Duration),
-			metric_col("max_duration", ValueType::Duration),
-			metric_col("min_duration", ValueType::Duration),
-			metric_col("total_rows", ValueType::Int8),
-			metric_col("errors", ValueType::Int8),
+			metric_col("calls", ValueType::Uint8),
+			metric_col("total", ValueType::Duration),
+			metric_col("mean", ValueType::Duration),
+			metric_col("max", ValueType::Duration),
+			metric_col("min", ValueType::Duration),
+			metric_col("total_rows", ValueType::Uint8),
+			metric_col("errors", ValueType::Uint8),
 		],
 		capacity: STATEMENT_STATS_CAPACITY,
 		partition_by: vec![],
@@ -234,7 +234,7 @@ fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
 		series_col("object_kind", ValueType::Utf8),
-		series_col("id", ValueType::Uint8),
+		series_col("object_id", ValueType::Uint8),
 		series_col("namespace_id", ValueType::Uint8),
 		series_col("tier", ValueType::Utf8),
 		series_col("estimated_live_key_bytes", ValueType::Uint8),

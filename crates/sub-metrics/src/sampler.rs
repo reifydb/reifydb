@@ -593,7 +593,7 @@ fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
 		};
 		let measures = match taken.remove(&view.id()) {
 			Some(latency) => latency_measures(latency)?,
-			None => vec![level_count("n", 0)],
+			None => vec![level_count("samples", 0)],
 		};
 		rows.push(MetricsRow {
 			dimensions: vec![
@@ -607,7 +607,7 @@ fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
 }
 
 fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>> {
-	let mut measures = vec![level_count("n", latency.n)];
+	let mut measures = vec![level_count("samples", latency.n)];
 	digest_measures(&mut measures, ["p50", "p90", "p99"], "max", "digest", latency.max, latency.end_to_end)?;
 	digest_measures(
 		&mut measures,

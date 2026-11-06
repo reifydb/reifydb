@@ -54,28 +54,30 @@ impl BaseVTable for SystemColumnsTable {
 		let mut positions = Vec::new();
 		let mut auto_increments = Vec::new();
 		let mut dictionary_ids = Vec::new();
+		let mut dictionary_present = Vec::new();
 
 		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
 			object_ids.push(info.object_id.as_u64());
-			object_types.push(info.object_id.type_tag());
+			object_types.push(info.object_id.kind_name());
 			column_names.push(info.column.name);
 			column_types.push(type_constraint_text(&info.column.constraint));
-			positions.push(info.column.index.0);
+			positions.push(u16::from(info.column.index.0));
 			auto_increments.push(info.column.auto_increment);
-			dictionary_ids.push(info.column.dictionary_id.map(|d| d.0).unwrap_or(0));
+			dictionary_ids.push(info.column.dictionary_id.map_or(0, |d| d.0));
+			dictionary_present.push(info.column.dictionary_id.is_some());
 		}
 
 		let columns = vec![
 			factory::uint8("id", column_ids),
 			factory::uint8("object_id", object_ids),
-			factory::uint1("object_type", object_types),
+			factory::utf8("object_kind", object_types),
 			factory::utf8("name", column_names),
 			factory::utf8("type", column_types),
-			factory::uint1("position", positions),
+			factory::uint2("position", positions),
 			factory::bool("auto_increment", auto_increments),
-			factory::uint8("dictionary_id", dictionary_ids),
+			factory::uint8_with_bitvec("dictionary_id", dictionary_ids, dictionary_present),
 		];
 
 		self.exhausted = true;

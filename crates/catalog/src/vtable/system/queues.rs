@@ -19,18 +19,18 @@ use crate::{
 	},
 };
 
-pub struct SystemQueues {
+pub struct SystemQueueQueues {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemQueues {
+impl Default for SystemQueueQueues {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemQueues {
+impl SystemQueueQueues {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_queues_table().clone(),
@@ -39,7 +39,7 @@ impl SystemQueues {
 	}
 }
 
-impl BaseVTable for SystemQueues {
+impl BaseVTable for SystemQueueQueues {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -58,7 +58,7 @@ impl BaseVTable for SystemQueues {
 		let mut partition_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut ordered_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut deduplicate_by = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
-		let mut deduplicate_ttl = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
+		let mut deduplicate_ttl = ColumnBuilder::with_capacity(ValueType::Duration, queues.len());
 		let mut times = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut timestamps = ColumnBuilder::with_capacity(ValueType::Utf8, queues.len());
 		let mut depths = ColumnBuilder::with_capacity(ValueType::Uint8, queues.len());
@@ -83,19 +83,22 @@ impl BaseVTable for SystemQueues {
 			match &queue.deduplicate {
 				Some(deduplicate) => {
 					deduplicate_by.push_value(Value::Utf8(deduplicate.by.join(",")));
-					deduplicate_ttl.push_value(Value::Utf8(if deduplicate.is_forever() {
-						"forever".to_string()
+					if deduplicate.is_forever() {
+						deduplicate_ttl.push_none();
 					} else {
-						deduplicate.ttl.to_string()
-					}));
+						deduplicate_ttl.push(deduplicate.ttl);
+					}
 				}
 				None => {
 					deduplicate_by.push_value(Value::none_of(ValueType::Utf8));
-					deduplicate_ttl.push_value(Value::none_of(ValueType::Utf8));
+					deduplicate_ttl.push_none();
 				}
 			}
 			times.push(queue.time.domain().as_str());
-			timestamps.push(queue.time.ts().unwrap_or_default());
+			match queue.time.ts() {
+				Some(value) => timestamps.push(value),
+				None => timestamps.push_none(),
+			}
 
 			match partition_stats(txn, &queue)? {
 				Some(stats) => {
@@ -134,8 +137,8 @@ impl BaseVTable for SystemQueues {
 			ordered_by.finish("ordered_by"),
 			deduplicate_by.finish("deduplicate_by"),
 			deduplicate_ttl.finish("deduplicate_ttl"),
-			times.finish("time"),
-			timestamps.finish("ts"),
+			times.finish("time_domain"),
+			timestamps.finish("time_column"),
 			depths.finish("depth"),
 			in_flights.finish("in_flight"),
 			blocked_keys.finish("blocked_keys"),

@@ -26,7 +26,7 @@ fn watermark_metrics_live_in_the_watermarks_domain_not_memory() {
 	let db = db_with_runtime_refresh();
 
 	let watermark_lag = db.await_row_count(
-		"from system::metrics::runtime::watermarks::current filter { metric == \"watermark_lag\" }",
+		"from system::metric::runtime::watermark::current filter { metric == \"watermark_lag\" }",
 		1,
 		TIMEOUT,
 	);
@@ -34,20 +34,20 @@ fn watermark_metrics_live_in_the_watermarks_domain_not_memory() {
 
 	assert_eq!(
 		db.row_count(
-			"from system::metrics::runtime::watermarks::current filter { metric == \"oracle_window_count\" }"
+			"from system::metric::runtime::watermark::current filter { metric == \"oracle_window_count\" }"
 		),
 		1,
 		"oracle_window_count must be in the watermarks domain",
 	);
 
 	assert_eq!(
-		db.row_count("from system::metrics::runtime::memory::current filter { metric == \"watermark_lag\" }"),
+		db.row_count("from system::metric::runtime::memory::current filter { metric == \"watermark_lag\" }"),
 		0,
 		"watermark_lag must not appear in the memory domain",
 	);
 
 	assert_eq!(
-		db.row_count("from system::metrics::runtime::operators::current"),
+		db.row_count("from system::metric::runtime::operator::current"),
 		0,
 		"operators::current must be queryable and empty without any flow-operator state",
 	);

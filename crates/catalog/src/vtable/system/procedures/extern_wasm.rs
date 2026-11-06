@@ -17,13 +17,13 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresExternWasm {
+pub struct SystemProcedureExternWasm {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProceduresExternWasm {
+impl SystemProcedureExternWasm {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_procedures_extern_wasm_table().clone(),
@@ -33,7 +33,7 @@ impl SystemProceduresExternWasm {
 	}
 }
 
-impl BaseVTable for SystemProceduresExternWasm {
+impl BaseVTable for SystemProcedureExternWasm {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

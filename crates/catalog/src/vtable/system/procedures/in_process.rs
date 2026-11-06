@@ -17,13 +17,13 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresInProcess {
+pub struct SystemProcedureInProcess {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProceduresInProcess {
+impl SystemProcedureInProcess {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_procedures_in_process_table().clone(),
@@ -33,7 +33,7 @@ impl SystemProceduresInProcess {
 	}
 }
 
-impl BaseVTable for SystemProceduresInProcess {
+impl BaseVTable for SystemProcedureInProcess {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

@@ -55,7 +55,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(type_constraint_text(&col.constraint));
-				positions.push(col.index.0);
+				positions.push(u16::from(col.index.0));
 			}
 		}
 
@@ -65,7 +65,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(type_constraint_text(&col.constraint));
-				positions.push(col.index.0);
+				positions.push(u16::from(col.index.0));
 			}
 		}
 
@@ -74,7 +74,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 			factory::uint8("vtable_id", vtable_ids),
 			factory::utf8("name", names),
 			factory::utf8("type", types),
-			factory::uint1("position", positions),
+			factory::uint2("position", positions),
 		];
 
 		self.exhausted = true;

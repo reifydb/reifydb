@@ -8,7 +8,7 @@ import {Shape, Utf8Value, Int4Value, InferShape} from "@reifydb/core";
 // Define the shape once
 const versionShape = Shape.object({
     name: Shape.string(),
-    type: Shape.string(),
+    kind: Shape.string(),
     version: Shape.string(),
     description: Shape.string()
 });
@@ -68,13 +68,13 @@ describe.each([
                 
                 // Check that values are primitives, not Value objects
                 expect(typeof row.name).toBe('string');
-                expect(typeof row.type).toBe('string');
+                expect(typeof row.kind).toBe('string');
                 expect(typeof row.version).toBe('string');
                 expect(typeof row.description).toBe('string');
                 
                 // Ensure they are NOT Value objects
                 expect(row.name).not.toBeInstanceOf(Utf8Value);
-                expect(row.type).not.toBeInstanceOf(Utf8Value);
+                expect(row.kind).not.toBeInstanceOf(Utf8Value);
                 expect(row.version).not.toBeInstanceOf(Utf8Value);
                 expect(row.description).not.toBeInstanceOf(Utf8Value);
                 
@@ -199,7 +199,7 @@ describe.each([
             
             // Without shape, should get Value objects
             expect(row.name).toBeInstanceOf(Utf8Value);
-            expect(row.type).toBeInstanceOf(Utf8Value);
+            expect(row.kind).toBeInstanceOf(Utf8Value);
             expect(row.version).toBeInstanceOf(Utf8Value);
             expect(row.description).toBeInstanceOf(Utf8Value);
         }, 5000);

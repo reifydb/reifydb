@@ -15,7 +15,8 @@ use crate::{
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
-			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
+			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, ViewQueueKey, ViewRingBufferKey,
+			WindowedViewGroupKey,
 		},
 		column::{
 			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
@@ -82,6 +83,8 @@ pub enum TaggedKey {
 	IndexEntry(IndexEntryKey),
 	ColumnSequence(ColumnSequenceKey),
 	View(ViewKey),
+	ViewRingBuffer(ViewRingBufferKey),
+	ViewQueue(ViewQueueKey),
 	NamespaceView(NamespaceViewKey),
 	PrimaryKey(PrimaryKeyKey),
 	OperatorState(OperatorStateKey),
@@ -182,6 +185,8 @@ impl TaggedKey {
 			Self::IndexEntry(_) => KeyTag::IndexEntry,
 			Self::ColumnSequence(_) => KeyTag::ColumnSequence,
 			Self::View(_) => KeyTag::View,
+			Self::ViewRingBuffer(_) => KeyTag::ViewRingBuffer,
+			Self::ViewQueue(_) => KeyTag::ViewQueue,
 			Self::NamespaceView(_) => KeyTag::NamespaceView,
 			Self::PrimaryKey(_) => KeyTag::PrimaryKey,
 			Self::OperatorState(_) => KeyTag::OperatorState,
@@ -282,6 +287,8 @@ impl TaggedKey {
 			Self::IndexEntry(key) => key.encode(),
 			Self::ColumnSequence(key) => key.encode(),
 			Self::View(key) => key.encode(),
+			Self::ViewRingBuffer(key) => key.encode(),
+			Self::ViewQueue(key) => key.encode(),
 			Self::NamespaceView(key) => key.encode(),
 			Self::PrimaryKey(key) => key.encode(),
 			Self::OperatorState(key) => key.encode(),
@@ -382,6 +389,8 @@ impl TaggedKey {
 			KeyTag::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
 			KeyTag::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::ColumnSequence),
 			KeyTag::View => ViewKey::decode(key).map(Self::View),
+			KeyTag::ViewRingBuffer => ViewRingBufferKey::decode(key).map(Self::ViewRingBuffer),
+			KeyTag::ViewQueue => ViewQueueKey::decode(key).map(Self::ViewQueue),
 			KeyTag::NamespaceView => NamespaceViewKey::decode(key).map(Self::NamespaceView),
 			KeyTag::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
 			KeyTag::OperatorState => OperatorStateKey::decode(key).map(Self::OperatorState),
@@ -572,6 +581,18 @@ impl From<ColumnSequenceKey> for TaggedKey {
 impl From<ViewKey> for TaggedKey {
 	fn from(key: ViewKey) -> Self {
 		Self::View(key)
+	}
+}
+
+impl From<ViewRingBufferKey> for TaggedKey {
+	fn from(key: ViewRingBufferKey) -> Self {
+		Self::ViewRingBuffer(key)
+	}
+}
+
+impl From<ViewQueueKey> for TaggedKey {
+	fn from(key: ViewQueueKey) -> Self {
+		Self::ViewQueue(key)
 	}
 }
 
@@ -1245,6 +1266,8 @@ impl KeyFields for TaggedKey {
 			Self::IndexEntry(key) => key.fields(),
 			Self::ColumnSequence(key) => key.fields(),
 			Self::View(key) => key.fields(),
+			Self::ViewRingBuffer(key) => key.fields(),
+			Self::ViewQueue(key) => key.fields(),
 			Self::NamespaceView(key) => key.fields(),
 			Self::PrimaryKey(key) => key.fields(),
 			Self::OperatorState(key) => key.fields(),
@@ -1347,6 +1370,8 @@ impl Ord for TaggedKey {
 			(Self::IndexEntry(left), Self::IndexEntry(right)) => left.cmp_fields(right),
 			(Self::ColumnSequence(left), Self::ColumnSequence(right)) => left.cmp_fields(right),
 			(Self::View(left), Self::View(right)) => left.cmp_fields(right),
+			(Self::ViewRingBuffer(left), Self::ViewRingBuffer(right)) => left.cmp_fields(right),
+			(Self::ViewQueue(left), Self::ViewQueue(right)) => left.cmp_fields(right),
 			(Self::NamespaceView(left), Self::NamespaceView(right)) => left.cmp_fields(right),
 			(Self::PrimaryKey(left), Self::PrimaryKey(right)) => left.cmp_fields(right),
 			(Self::OperatorState(left), Self::OperatorState(right)) => left.cmp_fields(right),

@@ -101,7 +101,7 @@ fn extend(db: &TestDb, token: &str, ttl_ms: u64) {
 }
 
 fn depth_and_in_flight(db: &TestDb) -> (u64, u64) {
-	let frames = db.query(r#"FROM system::queues FILTER { name == "jobs" } MAP { depth, in_flight }"#);
+	let frames = db.query(r#"FROM system::queue::queues FILTER { name == "jobs" } MAP { depth, in_flight }"#);
 	(uint8(&frames, "depth"), uint8(&frames, "in_flight"))
 }
 

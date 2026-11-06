@@ -17,7 +17,7 @@ fn multi_range_current_and_total_are_queryable_after_bootstrap() {
 
 	for table in ["current", "total"] {
 		assert_eq!(
-			db.row_count(&format!("from system::metrics::store::multi::range::{table}")),
+			db.row_count(&format!("from system::metric::store::multi::range::{table}")),
 			0,
 			"store::multi::range::{table} must be queryable and empty for a store without a range tier",
 		);

@@ -31,8 +31,8 @@ pub fn authentication_credentials() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: USER_ID,
-					name: "identity".to_string(),
+					id: IDENTITY_ID,
+					name: "identity_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::IdentityId),
 					properties: vec![],
 					index: ColumnIndex(1),

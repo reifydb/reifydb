@@ -3,7 +3,7 @@
 
 use reifydb::{RuntimeConfig, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::column_values;
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
 fn new_db() -> TestDb {
 	TestDb::from(embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build"))
@@ -36,13 +36,13 @@ fn methods_lists_each_declared_method_with_its_settings() {
 	let github = "FROM system::authentication::methods FILTER { name == \"github\" }";
 	let token = "FROM system::authentication::methods FILTER { name == \"token\" }";
 	assert_eq!(db.row_count("FROM system::authentication::methods"), 2);
-	assert_eq!(single(&db, github, "ttl"), Value::Utf8("30d".to_string()));
+	assert_eq!(single(&db, github, "ttl"), Value::duration(Duration::from_days(30).unwrap()));
 	assert_eq!(single(&db, github, "promote_guest"), Value::Boolean(true));
 	assert_eq!(
 		single(&db, github, "properties"),
 		Value::Utf8(r#"{"client_id":"abc","redirect_uri":"x"}"#.to_string())
 	);
-	assert_eq!(single(&db, token, "ttl"), Value::Utf8("forever".to_string()));
+	assert!(matches!(single(&db, token, "ttl"), Value::None { .. }), "a forever ttl has no duration");
 	assert_eq!(single(&db, token, "promote_guest"), Value::Boolean(false));
 }
 

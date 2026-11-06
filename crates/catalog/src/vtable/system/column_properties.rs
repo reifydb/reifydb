@@ -55,16 +55,15 @@ impl BaseVTable for SystemColumnProperties {
 		for prop in properties {
 			property_ids.push(prop.id.0);
 			column_ids.push(prop.column.0);
-			let (ty, val) = prop.property.to_u8();
-			property_types.push(ty);
-			property_values.push(val);
+			property_types.push(prop.property.kind_name());
+			property_values.push(prop.property.value_name());
 		}
 
 		let columns = vec![
 			factory::uint8("id", property_ids),
 			factory::uint8("column_id", column_ids),
-			factory::uint1("type", property_types),
-			factory::uint1("value", property_values),
+			factory::utf8("kind", property_types),
+			factory::utf8("value", property_values),
 		];
 
 		self.exhausted = true;

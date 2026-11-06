@@ -31,7 +31,7 @@ fn a_current_table_with_a_counter_column_is_rejected_at_registration() {
 	// Failing at boot beats CI: a Counter in ::current is exactly the partially-sums-up
 	// inconsistency the redesign removed, and no code path may reintroduce it silently.
 	let engine = TestEngine::new();
-	let result = (*engine).register_virtual_table(NamespaceId::SYSTEM_METRICS, "current", CounterTable);
+	let result = (*engine).register_virtual_table(NamespaceId::SYSTEM_METRIC, "current", CounterTable);
 	assert!(result.is_err(), "a Counter column in a table named 'current' must be rejected");
 }
 
@@ -40,6 +40,6 @@ fn the_same_columns_register_fine_under_any_other_name() {
 	// The rule is about the ::current contract, not about counters in general; ::total is
 	// exactly where cumulative counters belong.
 	let engine = TestEngine::new();
-	let result = (*engine).register_virtual_table(NamespaceId::SYSTEM_METRICS, "total", CounterTable);
+	let result = (*engine).register_virtual_table(NamespaceId::SYSTEM_METRIC, "total", CounterTable);
 	assert!(result.is_ok(), "a Counter column outside 'current' must register: {:?}", result.err());
 }

@@ -25,8 +25,8 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, capacity);
 	let mut category = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 	let mut span_name = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
-	let mut dim_1 = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
-	let mut dim_2 = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+	let mut dimension_1 = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
+	let mut dimension_2 = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 	let mut calls = ColumnBuilder::with_capacity(ValueType::Uint8, capacity);
 	let mut total = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
 	let mut p50 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
@@ -44,8 +44,14 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 		ts.push(now);
 		category.push(record.category.name());
 		span_name.push(record.span_name.as_str());
-		dim_1.push(record.dimensions.first().map(|s| s.as_str()).unwrap_or(""));
-		dim_2.push(record.dimensions.get(1).map(|s| s.as_str()).unwrap_or(""));
+		match record.dimensions.first() {
+			Some(value) => dimension_1.push(value.as_str()),
+			None => dimension_1.push_none(),
+		}
+		match record.dimensions.get(1) {
+			Some(value) => dimension_2.push(value.as_str()),
+			None => dimension_2.push_none(),
+		}
 		calls.push(record.calls);
 		total.push(record.total());
 		let percentiles = record.percentiles();
@@ -66,8 +72,8 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 		ts.finish("ts"),
 		category.finish("category"),
 		span_name.finish("span_name"),
-		dim_1.finish("dim_1"),
-		dim_2.finish("dim_2"),
+		dimension_1.finish("dimension_1"),
+		dimension_2.finish("dimension_2"),
 		calls.finish("calls"),
 		total.finish("total"),
 		p50.finish("p50"),

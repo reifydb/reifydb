@@ -17,18 +17,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresTest {
+pub struct SystemProcedureTest {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemProceduresTest {
+impl Default for SystemProcedureTest {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemProceduresTest {
+impl SystemProcedureTest {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_procedures_test_table().clone(),
@@ -37,7 +37,7 @@ impl SystemProceduresTest {
 	}
 }
 
-impl BaseVTable for SystemProceduresTest {
+impl BaseVTable for SystemProcedureTest {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

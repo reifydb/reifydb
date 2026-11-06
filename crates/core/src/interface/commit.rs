@@ -186,6 +186,8 @@ mod exclusion_tests {
 			KeyTag::IndexEntry => {}
 			KeyTag::ColumnSequence => {}
 			KeyTag::View => {}
+			KeyTag::ViewRingBuffer => {}
+			KeyTag::ViewQueue => {}
 			KeyTag::NamespaceView => {}
 			KeyTag::PrimaryKey => {}
 			KeyTag::OperatorState => {}

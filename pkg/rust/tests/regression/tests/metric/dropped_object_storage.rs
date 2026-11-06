@@ -6,7 +6,7 @@ use reifydb_value::value::duration::Duration;
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const TABLES: &str = "from system::metrics::storage::current filter { object_kind == 'table' }";
+const TABLES: &str = "from system::metric::store::current filter { object_kind == 'table' }";
 
 fn setup() -> TestDb {
 	// The sampler defaults to a 10s cadence, which would turn every wait below into a timeout.

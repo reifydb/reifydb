@@ -30,9 +30,9 @@ pub fn bootstrap_system_bindings(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_BINDINGS,
-		"system::bindings",
-		"bindings",
+		NamespaceId::SYSTEM_BINDING,
+		"system::binding",
+		"binding",
 		NamespaceId::SYSTEM,
 	)?;
 

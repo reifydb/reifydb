@@ -36,16 +36,16 @@ pub fn bootstrap_lifecycle(
 	let ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_LIFECYCLE,
-		"system::metrics::lifecycle",
+		NamespaceId::SYSTEM_METRIC_LIFECYCLE,
+		"system::metric::lifecycle",
 		"lifecycle",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		ns,
-		"system::metrics::lifecycle",
+		"system::metric::lifecycle",
 		SeriesId::LIFECYCLE_SNAPSHOTS,
 		lifecycle_snapshot_columns(),
 		&ColumnId::LIFECYCLE_SNAPSHOTS_COLUMNS,

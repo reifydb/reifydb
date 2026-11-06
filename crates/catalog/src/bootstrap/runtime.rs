@@ -49,10 +49,10 @@ pub fn bootstrap_runtime(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_RUNTIME,
-		"system::metrics::runtime",
+		NamespaceId::SYSTEM_METRIC_RUNTIME,
+		"system::metric::runtime",
 		"runtime",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 
 	for (ns_id, path, local_name, series_id, column_ids) in RUNTIME_DOMAINS {
@@ -62,7 +62,7 @@ pub fn bootstrap_runtime(
 			ns_id,
 			path,
 			local_name,
-			NamespaceId::SYSTEM_METRICS_RUNTIME,
+			NamespaceId::SYSTEM_METRIC_RUNTIME,
 		)?;
 
 		if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut admin), ns, "snapshots")?.is_none() {
@@ -95,23 +95,23 @@ pub fn bootstrap_runtime(
 
 const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 3] = [
 	(
-		NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
-		"system::metrics::runtime::memory",
+		NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY,
+		"system::metric::runtime::memory",
 		"memory",
 		SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
 		&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	),
 	(
-		NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS,
-		"system::metrics::runtime::watermarks",
-		"watermarks",
+		NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK,
+		"system::metric::runtime::watermark",
+		"watermark",
 		SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
 		&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
 	),
 	(
-		NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS,
-		"system::metrics::runtime::operators",
-		"operators",
+		NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR,
+		"system::metric::runtime::operator",
+		"operator",
 		SeriesId::RUNTIME_OPERATORS_SNAPSHOTS,
 		&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
 	),

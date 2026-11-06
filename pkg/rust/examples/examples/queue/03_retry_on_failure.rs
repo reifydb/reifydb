@@ -52,5 +52,5 @@ fn main() {
 	command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
 
 	info!("A dead job leaves both counters at zero - it is out of the working set, not deleted...");
-	query(&db, r#"FROM system::queues FILTER { name == "charges" } MAP { name, depth, in_flight }"#);
+	query(&db, r#"FROM system::queue::queues FILTER { name == "charges" } MAP { name, depth, in_flight }"#);
 }

@@ -792,14 +792,14 @@ mod tests {
 		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(1, 100), storage_row(2, 200)]);
 		let published = acc.roll(now(1_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
-		assert_eq!(column_values(current, "id"), vec![Value::Uint8(1), Value::Uint8(2)]);
+		assert_eq!(column_values(current, "object_id"), vec![Value::Uint8(1), Value::Uint8(2)]);
 		assert_eq!(column_values(current, "estimated_live_bytes"), vec![Value::Uint8(100), Value::Uint8(200)]);
 
 		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(2, 200)]);
 		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
 		assert_eq!(
-			column_values(current, "id"),
+			column_values(current, "object_id"),
 			vec![Value::Uint8(2)],
 			"a gauge row that stops being reported must not survive the next push"
 		);

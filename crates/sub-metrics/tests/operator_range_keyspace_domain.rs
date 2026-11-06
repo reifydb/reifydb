@@ -13,7 +13,7 @@ fn operator_range_keyspace_current_and_total_are_queryable_after_bootstrap() {
 
 	for table in ["current", "total"] {
 		assert_eq!(
-			db.row_count(&format!("from system::metrics::store::operator::range::keyspace::{table}")),
+			db.row_count(&format!("from system::metric::store::operator::range::keyspace::{table}")),
 			0,
 			"store::operator::range::keyspace::{table} must be queryable and empty without a range tier",
 		);

@@ -42,7 +42,7 @@ pub fn authentication_methods() -> Arc<VTable> {
 				Column {
 					id: TTL,
 					name: "ttl".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Duration),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,

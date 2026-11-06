@@ -68,7 +68,7 @@ impl BaseVTable for SystemVersions {
 			names_to_insert.finish("name"),
 			versions_to_insert.finish("version"),
 			descriptions_to_insert.finish("description"),
-			types_to_insert.finish("type"),
+			types_to_insert.finish("kind"),
 		];
 
 		self.exhausted = true;

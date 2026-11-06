@@ -40,9 +40,9 @@ pub fn column_properties() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TYPE,
-					name: "type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					id: KIND,
+					name: "kind".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -51,7 +51,7 @@ pub fn column_properties() -> Arc<VTable> {
 				Column {
 					id: VALUE,
 					name: "value".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

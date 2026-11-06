@@ -104,6 +104,8 @@ pub enum KeyTag {
 	RingBufferOrder = 0x64,
 	PartitionedRingBufferOrder = 0x65,
 	RingBufferFree = 0x66,
+	ViewRingBuffer = 0x67,
+	ViewQueue = 0x68,
 }
 
 impl KeyTag {
@@ -222,6 +224,8 @@ impl TryFrom<u8> for KeyTag {
 			0x64 => Ok(Self::RingBufferOrder),
 			0x65 => Ok(Self::PartitionedRingBufferOrder),
 			0x66 => Ok(Self::RingBufferFree),
+			0x67 => Ok(Self::ViewRingBuffer),
+			0x68 => Ok(Self::ViewQueue),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

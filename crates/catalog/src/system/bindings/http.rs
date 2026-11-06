@@ -52,7 +52,7 @@ pub fn bindings_http() -> Arc<VTable> {
 
 		Arc::new(VTable {
 			id: BINDINGS_HTTP,
-			namespace: NamespaceId::SYSTEM_BINDINGS,
+			namespace: NamespaceId::SYSTEM_BINDING,
 			name: "http".to_string(),
 			columns,
 		})

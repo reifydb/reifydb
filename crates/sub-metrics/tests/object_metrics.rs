@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The `system::metrics::storage::current` surface, driven end to
+//! The `system::metric::store::current` surface, driven end to
 //! end: the flush actor scans the metrics KV store, resolves object ids through the catalog, and pushes wide
 //! rows to the sampler, which publishes them. A break anywhere in that chain leaves the surface empty.
 
@@ -30,7 +30,7 @@ fn storage_current_reports_a_written_table_under_its_object_kind() {
 	db.command("insert test::t [{ id: 1 }]");
 
 	let rows = db.await_row_count(
-		"from system::metrics::storage::current filter { object_kind == 'table' and estimated_live_count > 0 }",
+		"from system::metric::store::current filter { object_kind == 'table' and estimated_live_count > 0 }",
 		1,
 		TIMEOUT,
 	);

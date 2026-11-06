@@ -190,9 +190,9 @@ pub fn bootstrap_system_procedures(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_PROCEDURES,
-		"system::procedures",
-		"procedures",
+		NamespaceId::SYSTEM_PROCEDURE,
+		"system::procedure",
+		"procedure",
 		NamespaceId::SYSTEM,
 	)?;
 

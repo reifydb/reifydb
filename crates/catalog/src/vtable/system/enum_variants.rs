@@ -55,8 +55,8 @@ impl BaseVTable for SystemEnumVariants {
 		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, 0);
 		let mut variant_tags = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
 		let mut variant_names = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
-		let mut field_counts = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
-		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint1, 0);
+		let mut field_counts = ColumnBuilder::with_capacity(ValueType::Uint2, 0);
+		let mut field_indices = ColumnBuilder::with_capacity(ValueType::Uint2, 0);
 		let mut field_names = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 		let mut field_types = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 
@@ -66,17 +66,17 @@ impl BaseVTable for SystemEnumVariants {
 					ids.push(st.id.0);
 					variant_tags.push(variant.tag);
 					variant_names.push(variant.name.as_str());
-					field_counts.push(0u8);
-					field_indices.push(0u8);
-					field_names.push("");
-					field_types.push("");
+					field_counts.push(0u16);
+					field_indices.push_none();
+					field_names.push_none();
+					field_types.push_none();
 				} else {
 					for (idx, field) in variant.fields.iter().enumerate() {
 						ids.push(st.id.0);
 						variant_tags.push(variant.tag);
 						variant_names.push(variant.name.as_str());
-						field_counts.push(variant.fields.len() as u8);
-						field_indices.push(idx as u8);
+						field_counts.push(variant.fields.len() as u16);
+						field_indices.push(idx as u16);
 						field_names.push(field.name.as_str());
 						field_types.push(type_constraint_text(&field.field_type).as_str());
 					}

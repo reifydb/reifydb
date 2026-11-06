@@ -197,6 +197,31 @@ impl From<ObjectId> for u64 {
 }
 
 impl ObjectId {
+	pub fn kind_name(&self) -> &'static str {
+		match self {
+			ObjectId::Table(_) => "table",
+			ObjectId::View(_) => "view",
+			ObjectId::TableVirtual(_) => "virtual_table",
+			ObjectId::RingBuffer(_) => "ringbuffer",
+			ObjectId::Dictionary(_) => "dictionary",
+			ObjectId::Series(_) => "series",
+			ObjectId::Queue(_) => "queue",
+		}
+	}
+
+	pub fn from_kind_name(kind: &str, id: u64) -> Option<Self> {
+		Some(match kind {
+			"table" => ObjectId::Table(TableId(id)),
+			"view" => ObjectId::View(ViewId(id)),
+			"virtual_table" => ObjectId::TableVirtual(VTableId(id)),
+			"ringbuffer" => ObjectId::RingBuffer(RingBufferId(id)),
+			"dictionary" => ObjectId::Dictionary(DictionaryId(id)),
+			"series" => ObjectId::Series(SeriesId(id)),
+			"queue" => ObjectId::Queue(QueueId(id)),
+			_ => return None,
+		})
+	}
+
 	pub fn type_tag(&self) -> u8 {
 		match self {
 			ObjectId::Table(_) => 0x01,

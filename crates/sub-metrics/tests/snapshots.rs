@@ -20,12 +20,12 @@ fn snapshots_append_readings_when_the_interval_is_set() {
 			.expect("build"),
 	);
 
-	let rows = db.await_row_count("from system::metrics::runtime::watermarks::snapshots", 1, TIMEOUT);
+	let rows = db.await_row_count("from system::metric::runtime::watermark::snapshots", 1, TIMEOUT);
 	assert!(rows >= 1, "the watermarks ::current reading never reached its ::snapshots series");
 
 	// Lifecycle rows carry a none-valued optional column (binding), so this pins the
 	// append path's none handling against the wide series schema.
-	let lifecycle = db.await_row_count("from system::metrics::lifecycle::snapshots", 1, TIMEOUT);
+	let lifecycle = db.await_row_count("from system::metric::lifecycle::snapshots", 1, TIMEOUT);
 	assert!(lifecycle >= 1, "the lifecycle ::current reading never reached its ::snapshots series");
 }
 
@@ -41,9 +41,9 @@ fn snapshots_stay_empty_when_the_interval_is_none() {
 			.expect("build"),
 	);
 
-	db.await_row_count("from system::metrics::runtime::watermarks::current", 1, TIMEOUT);
+	db.await_row_count("from system::metric::runtime::watermark::current", 1, TIMEOUT);
 	assert_eq!(
-		db.row_count("from system::metrics::runtime::watermarks::snapshots"),
+		db.row_count("from system::metric::runtime::watermark::snapshots"),
 		0,
 		"with no snapshot interval configured, no series row may ever be written"
 	);

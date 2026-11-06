@@ -114,8 +114,8 @@ fn probe_object_in_namespace(
 			| NamespaceId::SYSTEM_FLOW
 			| NamespaceId::SYSTEM_FLOW_OPERATOR
 			| NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY
-			| NamespaceId::SYSTEM_PROCEDURES
-			| NamespaceId::SYSTEM_BINDINGS
+			| NamespaceId::SYSTEM_PROCEDURE
+			| NamespaceId::SYSTEM_BINDING
 			| NamespaceId::SYSTEM_QUEUE
 			| NamespaceId::SYSTEM_AUTHENTICATION
 	) {

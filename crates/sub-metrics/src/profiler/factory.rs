@@ -155,12 +155,12 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 		}
 
 		engine.register_virtual_table(
-			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+			NamespaceId::SYSTEM_METRIC_PROFILER_SPAN,
 			"current",
 			CurrentVTable::new(current_cache),
 		)?;
 		engine.register_virtual_table(
-			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+			NamespaceId::SYSTEM_METRIC_PROFILER_SPAN,
 			"total",
 			CurrentVTable::new(total_cache),
 		)?;

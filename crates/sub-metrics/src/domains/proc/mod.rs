@@ -108,8 +108,8 @@ pub fn process_sched_rows() -> Vec<MetricsRow> {
 	let mut measures = vec![
 		cumulative_count("minor_faults", stat.minor_faults),
 		cumulative_count("major_faults", stat.major_faults),
-		cumulative_micros("user_time", ticks_to_micros(stat.user_ticks, hertz)),
-		cumulative_micros("system_time", ticks_to_micros(stat.system_ticks, hertz)),
+		cumulative_micros("user", ticks_to_micros(stat.user_ticks, hertz)),
+		cumulative_micros("system", ticks_to_micros(stat.system_ticks, hertz)),
 		cumulative_count("voluntary_context_switches", status.voluntary_context_switches),
 		cumulative_count("involuntary_context_switches", status.involuntary_context_switches),
 	];

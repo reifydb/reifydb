@@ -16,18 +16,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemFlows {
+pub struct SystemFlowFlows {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemFlows {
+impl Default for SystemFlowFlows {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemFlows {
+impl SystemFlowFlows {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_flows_table().clone(),
@@ -36,7 +36,7 @@ impl SystemFlows {
 	}
 }
 
-impl BaseVTable for SystemFlows {
+impl BaseVTable for SystemFlowFlows {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

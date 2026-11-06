@@ -48,7 +48,7 @@ impl BaseVTable for SystemOperatorLibraryOutputs {
 		let capacity: usize = infos.iter().map(|op| op.output_columns.len()).sum();
 
 		let mut operators = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
-		let mut positions = ColumnBuilder::with_capacity(ValueType::Uint1, capacity);
+		let mut positions = ColumnBuilder::with_capacity(ValueType::Uint2, capacity);
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 		let mut column_types = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
 		let mut descriptions = ColumnBuilder::with_capacity(ValueType::Utf8, capacity);
@@ -56,7 +56,7 @@ impl BaseVTable for SystemOperatorLibraryOutputs {
 		for info in infos {
 			for (position, col) in info.output_columns.iter().enumerate() {
 				operators.push(info.operator.as_str());
-				positions.push(position as u8);
+				positions.push(position as u16);
 				names.push(col.name.as_str());
 				column_types.push(type_constraint_text(&col.field_type).as_str());
 				descriptions.push(col.description.as_str());
@@ -64,7 +64,7 @@ impl BaseVTable for SystemOperatorLibraryOutputs {
 		}
 
 		let columns = vec![
-			operators.finish("operator"),
+			operators.finish("operator_name"),
 			positions.finish("position"),
 			names.finish("name"),
 			column_types.finish("type"),

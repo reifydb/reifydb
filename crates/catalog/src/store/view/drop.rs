@@ -4,7 +4,10 @@
 use reifydb_core::{
 	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
 	key::{
-		any::TaggedKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
+		any::TaggedKey,
+		catalog::{ViewKey, ViewQueueKey, ViewRingBufferKey},
+		namespace::NamespaceViewKey,
+		ringbuffer::RingBufferMetadataKey,
 		row::RowSettingsKey,
 	},
 	return_internal_error,
@@ -54,16 +57,24 @@ impl CatalogStore {
 				for key in keys {
 					txn.remove(vec![(key.clone().into(), None)])?;
 				}
+				txn.remove(vec![(ViewRingBufferKey::new(view).into(), None)])?;
 				Self::drop_ring_index(txn, StorageId::View(view))
 			}
-			ViewStorageKind::Series | ViewStorageKind::Queue => Ok(()),
+			ViewStorageKind::Series => Ok(()),
+			ViewStorageKind::Queue => {
+				txn.remove(vec![(ViewQueueKey::new(view).into(), None)])?;
+				Ok(())
+			}
 		}
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::id::ViewId;
+	use reifydb_core::{
+		interface::catalog::id::{QueueId, ViewId},
+		key::catalog::{ViewQueueKey, ViewRingBufferKey},
+	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -73,9 +84,64 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::view::create::ViewColumnToCreate,
+		store::view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
+
+	#[test]
+	fn dropping_a_ring_or_queue_view_removes_its_side_row() {
+		// A side row left behind is orphaned catalog storage that no view will ever read or drop again.
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+		let mut created = Vec::new();
+		for (name, storage) in [
+			(
+				"r",
+				ViewStorage::RingBuffer {
+					capacity: 8,
+					partition_by: vec![],
+				},
+			),
+			(
+				"q",
+				ViewStorage::Queue {
+					queue: QueueId(4321),
+					partition_by: vec![],
+				},
+			),
+		] {
+			let view = CatalogStore::create_deferred_view(
+				&mut txn,
+				ViewToCreate {
+					name: Fragment::internal(name),
+					namespace: namespace.id(),
+					columns: vec![ViewColumnToCreate {
+						name: Fragment::internal("k"),
+						fragment: Fragment::None,
+						constraint: TypeConstraint::unconstrained(ValueType::Int8),
+						dictionary_id: None,
+					}],
+					storage,
+					sort: vec![],
+				},
+			)
+			.unwrap();
+			created.push(view.id());
+		}
+		let ring = ViewRingBufferKey::new(created[0]).into();
+		let queue = ViewQueueKey::new(created[1]).into();
+		assert!(
+			txn.get(&[ring, queue]).unwrap().iter().all(Option::is_some),
+			"both side rows must exist first"
+		);
+
+		for view in &created {
+			CatalogStore::drop_view(&mut txn, *view).unwrap();
+		}
+		let ring = ViewRingBufferKey::new(created[0]).into();
+		let queue = ViewQueueKey::new(created[1]).into();
+		assert!(txn.get(&[ring, queue]).unwrap().iter().all(Option::is_none));
+	}
 
 	#[test]
 	fn test_drop_view() {

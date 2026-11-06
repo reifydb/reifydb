@@ -49,8 +49,8 @@ pub fn versions() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TYPE,
-					name: "type".to_string(),
+					id: KIND,
+					name: "kind".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),

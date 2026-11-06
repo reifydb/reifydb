@@ -43,7 +43,7 @@ pub fn bindings_grpc() -> Arc<VTable> {
 
 		Arc::new(VTable {
 			id: BINDINGS_GRPC,
-			namespace: NamespaceId::SYSTEM_BINDINGS,
+			namespace: NamespaceId::SYSTEM_BINDING,
 			name: "grpc".to_string(),
 			columns,
 		})

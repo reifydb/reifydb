@@ -8,7 +8,7 @@ import {Shape, Utf8Value, Int4Value, InferShape} from "@reifydb/core";
 // shape has to be honoured on a separate code path from the http/ws suites.
 const versionShape = Shape.object({
     name: Shape.string(),
-    type: Shape.string(),
+    kind: Shape.string(),
     version: Shape.string(),
     description: Shape.string()
 });
@@ -34,7 +34,7 @@ describe('Shape Type Conversion [json-http]', () => {
 
             const row = rows[0] as VersionRow;
             expect(typeof row.name).toBe('string');
-            expect(typeof row.type).toBe('string');
+            expect(typeof row.kind).toBe('string');
             expect(typeof row.version).toBe('string');
             expect(typeof row.description).toBe('string');
             expect(row.name).not.toBeInstanceOf(Utf8Value);

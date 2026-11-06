@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! `system::metrics::epoch::current` must report the durable log's own size, which no metrics code can read: the
+//! `system::metric::epoch::current` must report the durable log's own size, which no metrics code can read: the
 //! keyspace belongs to the lifecycle subsystem, so the figure crosses on the event bus. Driven end to end because a
 //! missing emit, an unregistered listener and an unwired gauge all leave the column reading zero.
 
@@ -24,8 +24,7 @@ fn epoch_current_reports_the_durable_sample_count_over_the_event_bus() {
 	db.admin("create table test::t { id: int4 }");
 	db.command("insert test::t [{ id: 1 }]");
 
-	let rows =
-		db.await_row_count("from system::metrics::epoch::current filter { durable_samples > 0 }", 1, TIMEOUT);
+	let rows = db.await_row_count("from system::metric::epoch::current filter { durable_samples > 0 }", 1, TIMEOUT);
 
 	assert_eq!(
 		rows, 1,
@@ -45,10 +44,10 @@ fn epoch_current_reports_coverage_the_epoch_can_actually_resolve() {
 			.expect("build"),
 	);
 
-	let rows = db.await_row_count("from system::metrics::epoch::current", 1, TIMEOUT);
+	let rows = db.await_row_count("from system::metric::epoch::current", 1, TIMEOUT);
 	assert_eq!(rows, 1, "the epoch domain must serve exactly one row");
 
-	let frames = db.query("from system::metrics::epoch::current");
+	let frames = db.query("from system::metric::epoch::current");
 	let frame = frames.first().expect("one frame");
 	let guaranteed = frame.column("guaranteed_coverage").expect("column view").expect("column");
 

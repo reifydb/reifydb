@@ -67,8 +67,8 @@ pub fn ringbuffers() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TIME,
-					name: "time".to_string(),
+					id: TIME_DOMAIN,
+					name: "time_domain".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(5),
@@ -76,8 +76,8 @@ pub fn ringbuffers() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TS,
-					name: "ts".to_string(),
+					id: TIME_COLUMN,
+					name: "time_column".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(6),

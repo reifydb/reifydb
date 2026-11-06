@@ -86,7 +86,7 @@ impl BaseVTable for SystemViews {
 			namespaces.finish("namespace_id"),
 			names.finish("name"),
 			kinds.finish("kind"),
-			storages.finish("storage"),
+			storages.finish("storage_kind"),
 			primary_keys.finish("primary_key_id"),
 		];
 

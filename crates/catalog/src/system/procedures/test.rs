@@ -18,7 +18,7 @@ pub fn procedures_test() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: PROCEDURES_TEST,
-			namespace: NamespaceId::SYSTEM_PROCEDURES,
+			namespace: NamespaceId::SYSTEM_PROCEDURE,
 			name: "test".to_string(),
 			columns: vec![
 				Column {

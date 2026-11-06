@@ -36,16 +36,16 @@ pub fn bootstrap_epoch(
 	let ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_EPOCH,
-		"system::metrics::epoch",
+		NamespaceId::SYSTEM_METRIC_EPOCH,
+		"system::metric::epoch",
 		"epoch",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		ns,
-		"system::metrics::epoch",
+		"system::metric::epoch",
 		SeriesId::EPOCH_SNAPSHOTS,
 		epoch_snapshot_columns(),
 		&ColumnId::EPOCH_SNAPSHOTS_COLUMNS,

@@ -299,16 +299,16 @@ impl MetricsDomain {
 
 	pub fn snapshots_path(self) -> Option<&'static str> {
 		match self {
-			MetricsDomain::RuntimeMemory => Some("system::metrics::runtime::memory::snapshots"),
-			MetricsDomain::RuntimeWatermarks => Some("system::metrics::runtime::watermarks::snapshots"),
-			MetricsDomain::RuntimeOperators => Some("system::metrics::runtime::operators::snapshots"),
-			MetricsDomain::Instruments => Some("system::metrics::instruments::snapshots"),
-			MetricsDomain::Epoch => Some("system::metrics::epoch::snapshots"),
-			MetricsDomain::Lifecycle => Some("system::metrics::lifecycle::snapshots"),
-			MetricsDomain::Storage => Some("system::metrics::storage::snapshots"),
-			MetricsDomain::ProfilerSpans => Some("system::metrics::profiler::spans::snapshots"),
-			MetricsDomain::FlowState => Some("system::metrics::flow::state::snapshots"),
-			MetricsDomain::FlowLatency => Some("system::metrics::flow::latency::snapshots"),
+			MetricsDomain::RuntimeMemory => Some("system::metric::runtime::memory::snapshots"),
+			MetricsDomain::RuntimeWatermarks => Some("system::metric::runtime::watermark::snapshots"),
+			MetricsDomain::RuntimeOperators => Some("system::metric::runtime::operator::snapshots"),
+			MetricsDomain::Instruments => Some("system::metric::instrument::snapshots"),
+			MetricsDomain::Epoch => Some("system::metric::epoch::snapshots"),
+			MetricsDomain::Lifecycle => Some("system::metric::lifecycle::snapshots"),
+			MetricsDomain::Storage => Some("system::metric::store::snapshots"),
+			MetricsDomain::ProfilerSpans => Some("system::metric::profiler::span::snapshots"),
+			MetricsDomain::FlowState => Some("system::metric::flow::state::snapshots"),
+			MetricsDomain::FlowLatency => Some("system::metric::flow::latency::snapshots"),
 			MetricsDomain::ProcProcessIo
 			| MetricsDomain::ProcProcessMemory
 			| MetricsDomain::ProcProcessSched
@@ -334,18 +334,18 @@ impl MetricsDomain {
 	pub fn spec(self) -> DomainSpec {
 		match self {
 			MetricsDomain::RuntimeMemory => {
-				long_spec(self, NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY, false)
+				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY, false)
 			}
 			MetricsDomain::RuntimeWatermarks => {
-				long_spec(self, NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS, false)
+				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK, false)
 			}
 			MetricsDomain::RuntimeOperators => {
-				long_spec(self, NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS, true)
+				long_spec(self, NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR, true)
 			}
-			MetricsDomain::Instruments => long_spec(self, NamespaceId::SYSTEM_METRICS_INSTRUMENTS, true),
+			MetricsDomain::Instruments => long_spec(self, NamespaceId::SYSTEM_METRIC_INSTRUMENT, true),
 			MetricsDomain::ProcProcessIo => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_IO,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_PROCESS_IO,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -361,7 +361,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcProcessMemory => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_MEMORY,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_PROCESS_MEMORY,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -383,14 +383,14 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcProcessSched => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_SCHED,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_PROCESS_SCHED,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
 					cumulative("minor_faults", ValueType::Uint8),
 					cumulative("major_faults", ValueType::Uint8),
-					cumulative("user_time", ValueType::Duration),
-					cumulative("system_time", ValueType::Duration),
+					cumulative("user", ValueType::Duration),
+					cumulative("system", ValueType::Duration),
 					cumulative("run_queue_wait", ValueType::Duration),
 					cumulative("voluntary_context_switches", ValueType::Uint8),
 					cumulative("involuntary_context_switches", ValueType::Uint8),
@@ -401,7 +401,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcCgroupIo => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_IO,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_CGROUP_IO,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("device", ValueType::Utf8)],
 				measures: vec![
@@ -416,7 +416,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcCgroupMemory => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_MEMORY,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_CGROUP_MEMORY,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -437,7 +437,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcCgroupCpu => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_CPU,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_CGROUP_CPU,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -452,7 +452,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::ProcCgroupPressure => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_PRESSURE,
+				namespace: NamespaceId::SYSTEM_METRIC_PROC_CGROUP_PRESSURE,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("resource", ValueType::Utf8)],
 				measures: vec![
@@ -469,7 +469,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreMultiCommit => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_COMMIT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_MULTI_COMMIT,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -482,7 +482,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreMultiRange => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_RANGE,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_MULTI_RANGE,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("shard", ValueType::Uint2)],
 				measures: vec![
@@ -508,7 +508,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreMultiPoint => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_POINT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_MULTI_POINT,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("shard", ValueType::Uint2)],
 				measures: vec![
@@ -525,7 +525,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreMultiPersistent => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_PERSISTENT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_MULTI_PERSISTENT,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -546,7 +546,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreSingleCommit => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_SINGLE_COMMIT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_SINGLE_COMMIT,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -557,7 +557,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreSinglePersistent => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_SINGLE_PERSISTENT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_SINGLE_PERSISTENT,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -573,7 +573,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreOperatorRangeKeyspace => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_OPERATOR_RANGE_KEYSPACE,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("keyspace", ValueType::Utf8)],
 				measures: vec![
@@ -596,7 +596,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::StoreOperatorPersistent => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE_OPERATOR_PERSISTENT,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -611,7 +611,7 @@ impl MetricsDomain {
 
 			MetricsDomain::Epoch => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_EPOCH,
+				namespace: NamespaceId::SYSTEM_METRIC_EPOCH,
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
@@ -626,7 +626,7 @@ impl MetricsDomain {
 			},
 			MetricsDomain::Lifecycle => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_LIFECYCLE,
+				namespace: NamespaceId::SYSTEM_METRIC_LIFECYCLE,
 				shape: DomainShape::Wide,
 				dimensions: vec![
 					dim("class", ValueType::Utf8),
@@ -645,11 +645,11 @@ impl MetricsDomain {
 			},
 			MetricsDomain::Storage => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORAGE,
+				namespace: NamespaceId::SYSTEM_METRIC_STORE,
 				shape: DomainShape::Wide,
 				dimensions: vec![
 					dim("object_kind", ValueType::Utf8),
-					dim("id", ValueType::Uint8),
+					dim("object_id", ValueType::Uint8),
 					dim("namespace_id", ValueType::Uint8),
 					dim("tier", ValueType::Utf8),
 				],
@@ -668,10 +668,10 @@ impl MetricsDomain {
 			},
 			MetricsDomain::FlowState => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_FLOW_STATE,
+				namespace: NamespaceId::SYSTEM_METRIC_FLOW_STATE,
 				shape: DomainShape::Wide,
 				dimensions: vec![
-					dim("operator", ValueType::Uint8),
+					dim("operator_id", ValueType::Uint8),
 					dim_optional("name", ValueType::Utf8),
 					dim_optional("unmanaged_because", ValueType::Utf8),
 					dim("keyspace", ValueType::Utf8),
@@ -687,11 +687,11 @@ impl MetricsDomain {
 			},
 			MetricsDomain::FlowLatency => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_FLOW_LATENCY,
+				namespace: NamespaceId::SYSTEM_METRIC_FLOW_LATENCY,
 				shape: DomainShape::Wide,
-				dimensions: vec![dim("view", ValueType::Uint8), dim("name", ValueType::Utf8)],
+				dimensions: vec![dim("view_id", ValueType::Uint8), dim("name", ValueType::Utf8)],
 				measures: vec![
-					level("n", ValueType::Uint8),
+					level("samples", ValueType::Uint8),
 					level_optional("p50", ValueType::Duration),
 					level_optional("p90", ValueType::Duration),
 					level_optional("p99", ValueType::Duration),
@@ -708,13 +708,13 @@ impl MetricsDomain {
 
 			MetricsDomain::ProfilerSpans => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+				namespace: NamespaceId::SYSTEM_METRIC_PROFILER_SPAN,
 				shape: DomainShape::Wide,
 				dimensions: vec![
 					dim("category", ValueType::Utf8),
 					dim("span_name", ValueType::Utf8),
-					dim("dim_1", ValueType::Utf8),
-					dim("dim_2", ValueType::Utf8),
+					dim_optional("dimension_1", ValueType::Utf8),
+					dim_optional("dimension_2", ValueType::Utf8),
 				],
 				measures: vec![
 					counter("calls", ValueType::Uint8),

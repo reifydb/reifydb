@@ -43,7 +43,7 @@ pub fn bindings_ws() -> Arc<VTable> {
 
 		Arc::new(VTable {
 			id: BINDINGS_WS,
-			namespace: NamespaceId::SYSTEM_BINDINGS,
+			namespace: NamespaceId::SYSTEM_BINDING,
 			name: "ws".to_string(),
 			columns,
 		})

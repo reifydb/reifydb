@@ -18,6 +18,6 @@ query 'from system::policies filter { name == "p" } map { target_namespace, targ
 > +--------------------+-----------------+
 > |  target_namespace  |  target_object  |
 > +--------------------+-----------------+
-> |      foo::bar      |                 |
+> |      foo::bar      |      none       |
 > +--------------------+-----------------+
 >

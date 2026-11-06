@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{
-	columns::operator_libraries::{ABI, CAP_DELETE, CAP_INSERT, CAP_UPDATE, LIBRARY_PATH, OPERATOR},
+	columns::operator_libraries::{ABI, CAN_DELETE, CAN_INSERT, CAN_UPDATE, LIBRARY_PATH, OPERATOR_NAME},
 	vtable::OPERATOR_LIBRARIES,
 };
 
@@ -25,8 +25,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 			name: "libraries".to_string(),
 			columns: vec![
 				Column {
-					id: OPERATOR,
-					name: "operator".to_string(),
+					id: OPERATOR_NAME,
+					name: "operator_name".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(0),
@@ -52,8 +52,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: CAP_INSERT,
-					name: "cap_insert".to_string(),
+					id: CAN_INSERT,
+					name: "can_insert".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(3),
@@ -61,8 +61,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: CAP_UPDATE,
-					name: "cap_update".to_string(),
+					id: CAN_UPDATE,
+					name: "can_update".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(4),
@@ -70,8 +70,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: CAP_DELETE,
-					name: "cap_delete".to_string(),
+					id: CAN_DELETE,
+					name: "can_delete".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(5),

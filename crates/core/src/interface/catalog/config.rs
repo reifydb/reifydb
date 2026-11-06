@@ -447,7 +447,7 @@ impl ConfigKey {
 			Self::FlowTick => "How often each deferred flow actor wakes up to dispatch due flows.",
 			Self::FlowSampleInterval => {
 				"How often each flow actor samples its operators' approximate memory into the \
-				 system::metrics::runtime::memory samples (scope operator::N). Runs on the operator's \
+				 system::metric::runtime::memory samples (scope operator::N). Runs on the operator's \
 				 own thread, off the apply path. When none, operator sampling is disabled entirely; when \
 				 set, must be > 0."
 			}
@@ -536,11 +536,11 @@ impl ConfigKey {
 			}
 			Self::MetricsFlushInterval => {
 				"How often the metric collector flushes accumulated storage accounting into the \
-				 system::metrics KV store that backs the storage views. Must be > 0."
+				 system::metric KV store that backs the storage views. Must be > 0."
 			}
 			Self::MetricsSampleInterval => {
 				"How often the metrics sampler polls every domain, rolls the window and publishes the \
-				 system::metrics ::current and ::total caches. Always on; there is no off value, only a \
+				 system::metric ::current and ::total caches. Always on; there is no off value, only a \
 				 cadence. Must be > 0. Read once at boot; changing it requires a restart."
 			}
 			Self::MetricsSnapshotInterval => {
@@ -549,7 +549,7 @@ impl ConfigKey {
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
 			Self::MetricsSnapshotTtl => {
-				"How long a row stays in every system::metrics ::snapshots series before the retention evictor \
+				"How long a row stays in every system::metric ::snapshots series before the retention evictor \
 				 drops it. Must be > 0. Applied to each snapshots series at boot; changing it requires a restart."
 			}
 			Self::QueueLeaseReapInterval => {

@@ -8,7 +8,7 @@ use reifydb_catalog::vtable::{
 	VTableContext,
 	system::{
 		authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
-		bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
+		bindings::{grpc::SystemBindingGrpc, http::SystemBindingHttp, ws::SystemBindingWs},
 		column_properties::SystemColumnProperties,
 		columns::SystemColumnsTable,
 		configs::SystemConfigs,
@@ -20,7 +20,7 @@ use reifydb_catalog::vtable::{
 		flow_edges::SystemFlowEdges,
 		flow_units::SystemFlowUnits,
 		flow_watermarks::SystemFlowWatermarks,
-		flows::SystemFlows,
+		flows::SystemFlowFlows,
 		granted_roles::SystemGrantedRoles,
 		handlers::SystemHandlers,
 		identities::SystemIdentities,
@@ -38,11 +38,11 @@ use reifydb_catalog::vtable::{
 		primary_key_columns::SystemPrimaryKeyColumns,
 		primary_keys::SystemPrimaryKeys,
 		procedures::{
-			extern_c::SystemProceduresExternC, extern_wasm::SystemProceduresExternWasm,
-			in_process::SystemProceduresInProcess, rql::SystemProceduresRql, test::SystemProceduresTest,
+			extern_c::SystemProcedureExternC, extern_wasm::SystemProcedureExternWasm,
+			in_process::SystemProcedureInProcess, rql::SystemProcedureRql, test::SystemProcedureTest,
 		},
 		queue_partitions::SystemQueuePartitions,
-		queues::SystemQueues,
+		queues::SystemQueueQueues,
 		relationships::SystemRelationships,
 		ringbuffers::SystemRingBuffers,
 		roles::SystemRoles,
@@ -95,9 +95,9 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		compile_flow_operator_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY {
 		compile_flow_operator_library_vtable(&table.name, &context)
-	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
+	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURE {
 		compile_procedures_vtable(&table.name, &context)
-	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
+	} else if namespace.id() == NamespaceId::SYSTEM_BINDING {
 		compile_bindings_vtable(&table.name)
 	} else if namespace.id() == NamespaceId::SYSTEM_QUEUE {
 		compile_queue_vtable(&table.name)
@@ -134,7 +134,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"namespaces" => VTables::Namespaces(SystemNamespaces::new()),
 		"tables" => VTables::Tables(SystemTables::new()),
 		"views" => VTables::Views(SystemViews::new()),
-		"flows" => VTables::Flows(SystemFlows::new()),
 		"subscription_watermarks" => {
 			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
 		}
@@ -152,7 +151,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
-		"queues" => VTables::Queues(SystemQueues::new()),
 		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),
 		"row_shape_fields" => {
 			VTables::RowShapeFields(SystemRowShapeFields::new(context.services.catalog.clone()))
@@ -182,6 +180,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 
 fn compile_flow_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 	Some(match name {
+		"flows" => VTables::FlowFlows(SystemFlowFlows::new()),
 		"operators" => VTables::Operators(SystemOperators::new()),
 		"edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"units" => VTables::FlowUnits(SystemFlowUnits::new(context.services.ioc.clone())),
@@ -215,26 +214,27 @@ fn compile_flow_operator_library_vtable(name: &str, context: &QueryContext) -> O
 fn compile_procedures_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 	let catalog = context.services.catalog.clone();
 	Some(match name {
-		"rql" => VTables::ProceduresRql(SystemProceduresRql::new()),
-		"test" => VTables::ProceduresTest(SystemProceduresTest::new()),
-		"in_process" => VTables::ProceduresInProcess(SystemProceduresInProcess::new(catalog)),
-		"extern_c" => VTables::ProceduresExternC(SystemProceduresExternC::new(catalog)),
-		"extern_wasm" => VTables::ProceduresExternWasm(SystemProceduresExternWasm::new(catalog)),
+		"rql" => VTables::ProcedureRql(SystemProcedureRql::new()),
+		"test" => VTables::ProcedureTest(SystemProcedureTest::new()),
+		"in_process" => VTables::ProcedureInProcess(SystemProcedureInProcess::new(catalog)),
+		"extern_c" => VTables::ProcedureExternC(SystemProcedureExternC::new(catalog)),
+		"extern_wasm" => VTables::ProcedureExternWasm(SystemProcedureExternWasm::new(catalog)),
 		_ => return None,
 	})
 }
 
 fn compile_bindings_vtable(name: &str) -> Option<VTables> {
 	Some(match name {
-		"http" => VTables::BindingsHttp(SystemBindingsHttp::new()),
-		"grpc" => VTables::BindingsGrpc(SystemBindingsGrpc::new()),
-		"ws" => VTables::BindingsWs(SystemBindingsWs::new()),
+		"http" => VTables::BindingHttp(SystemBindingHttp::new()),
+		"grpc" => VTables::BindingGrpc(SystemBindingGrpc::new()),
+		"ws" => VTables::BindingWs(SystemBindingWs::new()),
 		_ => return None,
 	})
 }
 
 fn compile_queue_vtable(name: &str) -> Option<VTables> {
 	Some(match name {
+		"queues" => VTables::QueueQueues(SystemQueueQueues::new()),
 		"partitions" => VTables::QueuePartitions(SystemQueuePartitions::new()),
 		_ => return None,
 	})

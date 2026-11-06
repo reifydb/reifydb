@@ -125,6 +125,14 @@ pub fn bootstrap_root_namespaces(
 		"queue",
 		NamespaceId::SYSTEM,
 	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_FLOW,
+		"system::flow",
+		"flow",
+		NamespaceId::SYSTEM,
+	)?;
 	admin.commit()?;
 	Ok(())
 }

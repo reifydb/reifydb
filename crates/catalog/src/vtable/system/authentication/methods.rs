@@ -18,8 +18,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-const FOREVER: &str = "forever";
-
 pub struct SystemAuthenticationMethods {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -55,7 +53,7 @@ impl BaseVTable for SystemAuthenticationMethods {
 
 		let mut ids = ColumnBuilder::with_capacity(ValueType::Uint8, methods.len());
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, methods.len());
-		let mut ttls = ColumnBuilder::with_capacity(ValueType::Utf8, methods.len());
+		let mut ttls = ColumnBuilder::with_capacity(ValueType::Duration, methods.len());
 		let mut promote_guests = ColumnBuilder::with_capacity(ValueType::Boolean, methods.len());
 		let mut properties = ColumnBuilder::with_capacity(ValueType::Utf8, methods.len());
 
@@ -67,7 +65,10 @@ impl BaseVTable for SystemAuthenticationMethods {
 				})?;
 			ids.push(m.id);
 			names.push(m.name.as_str());
-			ttls.push(m.ttl.map(|ttl| ttl.to_string()).unwrap_or_else(|| FOREVER.to_string()).as_str());
+			match m.ttl {
+				Some(ttl) => ttls.push(ttl),
+				None => ttls.push_none(),
+			}
 			promote_guests.push(m.promote_guest);
 			properties.push(json.as_str());
 		}

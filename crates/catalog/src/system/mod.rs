@@ -140,10 +140,11 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(4);
-			pub const TIME: ColumnId = ColumnId(5);
-			pub const TS: ColumnId = ColumnId(6);
+			pub const TIME_DOMAIN: ColumnId = ColumnId(5);
+			pub const TIME_COLUMN: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, PRIMARY_KEY_ID, TIME, TS];
+			pub const ALL: [ColumnId; 6] =
+				[ID, NAMESPACE_ID, NAME, PRIMARY_KEY_ID, TIME_DOMAIN, TIME_COLUMN];
 		}
 
 		pub mod views {
@@ -154,9 +155,9 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const KIND: ColumnId = ColumnId(4);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
-			pub const STORAGE: ColumnId = ColumnId(6);
+			pub const STORAGE_KIND: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, KIND, STORAGE, PRIMARY_KEY_ID];
+			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, KIND, STORAGE_KIND, PRIMARY_KEY_ID];
 		}
 
 		pub mod flows {
@@ -186,10 +187,10 @@ pub mod ids {
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const FLOW_ID: ColumnId = ColumnId(2);
-			pub const SOURCE: ColumnId = ColumnId(3);
-			pub const TARGET: ColumnId = ColumnId(4);
+			pub const SOURCE_ID: ColumnId = ColumnId(3);
+			pub const TARGET_ID: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, SOURCE, TARGET];
+			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, SOURCE_ID, TARGET_ID];
 		}
 
 		#[allow(clippy::module_inception)]
@@ -198,7 +199,7 @@ pub mod ids {
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const OBJECT_ID: ColumnId = ColumnId(2);
-			pub const OBJECT_TYPE: ColumnId = ColumnId(3);
+			pub const OBJECT_KIND: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
@@ -206,7 +207,7 @@ pub mod ids {
 			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
 			pub const ALL: [ColumnId; 8] =
-				[ID, OBJECT_ID, OBJECT_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+				[ID, OBJECT_ID, OBJECT_KIND, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod enum_variants {
@@ -269,7 +270,7 @@ pub mod ids {
 				pub const RETURN_TYPE: ColumnId = ColumnId(4);
 				pub const BODY: ColumnId = ColumnId(5);
 				pub const TRIGGER_KIND: ColumnId = ColumnId(6);
-				pub const EVENT_VARIANT_SUMTYPE_ID: ColumnId = ColumnId(7);
+				pub const EVENT_SUMTYPE_ID: ColumnId = ColumnId(7);
 				pub const EVENT_VARIANT_INDEX: ColumnId = ColumnId(8);
 				pub const RUN_AS: ColumnId = ColumnId(9);
 
@@ -280,7 +281,7 @@ pub mod ids {
 					RETURN_TYPE,
 					BODY,
 					TRIGGER_KIND,
-					EVENT_VARIANT_SUMTYPE_ID,
+					EVENT_SUMTYPE_ID,
 					EVENT_VARIANT_INDEX,
 					RUN_AS,
 				];
@@ -390,10 +391,11 @@ pub mod ids {
 			pub const KEY_COLUMN: ColumnId = ColumnId(5);
 			pub const KEY_KIND: ColumnId = ColumnId(6);
 
-			pub const TIME: ColumnId = ColumnId(7);
-			pub const TS: ColumnId = ColumnId(8);
+			pub const TIME_DOMAIN: ColumnId = ColumnId(7);
+			pub const TIME_COLUMN: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 8] = [ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND, TIME, TS];
+			pub const ALL: [ColumnId; 8] =
+				[ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND, TIME_DOMAIN, TIME_COLUMN];
 		}
 
 		pub mod handlers {
@@ -402,10 +404,10 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
-			pub const ON_SUMTYPE_ID: ColumnId = ColumnId(4);
-			pub const ON_VARIANT_TAG: ColumnId = ColumnId(5);
+			pub const SUMTYPE_ID: ColumnId = ColumnId(4);
+			pub const VARIANT_TAG: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, ON_SUMTYPE_ID, ON_VARIANT_TAG];
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, SUMTYPE_ID, VARIANT_TAG];
 		}
 
 		pub mod migrations {
@@ -451,8 +453,8 @@ pub mod ids {
 			pub const DEDUPLICATE_BY: ColumnId = ColumnId(6);
 			pub const DEDUPLICATE_TTL: ColumnId = ColumnId(7);
 
-			pub const TIME: ColumnId = ColumnId(8);
-			pub const TS: ColumnId = ColumnId(9);
+			pub const TIME_DOMAIN: ColumnId = ColumnId(8);
+			pub const TIME_COLUMN: ColumnId = ColumnId(9);
 
 			pub const DEPTH: ColumnId = ColumnId(10);
 			pub const IN_FLIGHT: ColumnId = ColumnId(11);
@@ -467,8 +469,8 @@ pub mod ids {
 				ORDERED_BY,
 				DEDUPLICATE_BY,
 				DEDUPLICATE_TTL,
-				TIME,
-				TS,
+				TIME_DOMAIN,
+				TIME_COLUMN,
 				DEPTH,
 				IN_FLIGHT,
 				BLOCKED_KEYS,
@@ -549,10 +551,11 @@ pub mod ids {
 			pub const CAPACITY: ColumnId = ColumnId(4);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
 
-			pub const TIME: ColumnId = ColumnId(6);
-			pub const TS: ColumnId = ColumnId(7);
+			pub const TIME_DOMAIN: ColumnId = ColumnId(6);
+			pub const TIME_COLUMN: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 7] = [ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID, TIME, TS];
+			pub const ALL: [ColumnId; 7] =
+				[ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID, TIME_DOMAIN, TIME_COLUMN];
 		}
 
 		pub mod primary_key_columns {
@@ -570,10 +573,10 @@ pub mod ids {
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const COLUMN_ID: ColumnId = ColumnId(2);
-			pub const TYPE: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [ID, COLUMN_ID, TYPE, VALUE];
+			pub const ALL: [ColumnId; 4] = [ID, COLUMN_ID, KIND, VALUE];
 		}
 
 		pub mod versions {
@@ -582,9 +585,9 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(1);
 			pub const VERSION: ColumnId = ColumnId(2);
 			pub const DESCRIPTION: ColumnId = ColumnId(3);
-			pub const TYPE: ColumnId = ColumnId(4);
+			pub const KIND: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, TYPE];
+			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, KIND];
 		}
 
 		pub mod configs {
@@ -602,39 +605,39 @@ pub mod ids {
 		pub mod operator_libraries {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
 			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
 			pub const ABI: ColumnId = ColumnId(3);
-			pub const CAP_INSERT: ColumnId = ColumnId(4);
-			pub const CAP_UPDATE: ColumnId = ColumnId(5);
-			pub const CAP_DELETE: ColumnId = ColumnId(6);
+			pub const CAN_INSERT: ColumnId = ColumnId(4);
+			pub const CAN_UPDATE: ColumnId = ColumnId(5);
+			pub const CAN_DELETE: ColumnId = ColumnId(6);
 
 			pub const ALL: [ColumnId; 6] =
-				[OPERATOR, LIBRARY_PATH, ABI, CAP_INSERT, CAP_UPDATE, CAP_DELETE];
+				[OPERATOR_NAME, LIBRARY_PATH, ABI, CAN_INSERT, CAN_UPDATE, CAN_DELETE];
 		}
 
 		pub mod operator_library_inputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
 			pub const POSITION: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
 			pub const DESCRIPTION: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
+			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, POSITION, NAME, TYPE, DESCRIPTION];
 		}
 
 		pub mod operator_library_outputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
 			pub const POSITION: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
 			pub const DESCRIPTION: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
+			pub const ALL: [ColumnId; 5] = [OPERATOR_NAME, POSITION, NAME, TYPE, DESCRIPTION];
 		}
 
 		pub mod virtual_tables {
@@ -750,12 +753,12 @@ pub mod ids {
 		pub mod identity_attribute_values {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const IDENTITY: ColumnId = ColumnId(1);
+			pub const IDENTITY_ID: ColumnId = ColumnId(1);
 			pub const ATTRIBUTE_ID: ColumnId = ColumnId(2);
 			pub const ATTRIBUTE: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [IDENTITY, ATTRIBUTE_ID, ATTRIBUTE, VALUE];
+			pub const ALL: [ColumnId; 4] = [IDENTITY_ID, ATTRIBUTE_ID, ATTRIBUTE, VALUE];
 		}
 
 		pub mod policies {
@@ -776,10 +779,10 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const USER_ID: ColumnId = ColumnId(2);
+			pub const IDENTITY_ID: ColumnId = ColumnId(2);
 			pub const METHOD: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [ID, USER_ID, METHOD];
+			pub const ALL: [ColumnId; 3] = [ID, IDENTITY_ID, METHOD];
 		}
 
 		pub mod authentication_methods {

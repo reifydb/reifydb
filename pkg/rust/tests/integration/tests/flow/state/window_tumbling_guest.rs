@@ -36,10 +36,10 @@ use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const ACCUMULATORS: &str = "from system::metrics::flow::state::current
+const ACCUMULATORS: &str = "from system::metric::flow::state::current
 	filter { keyspace == 'GUEST_ACCUMULATOR' }";
 
-const SURFACE: &str = "from system::metrics::flow::state::current";
+const SURFACE: &str = "from system::metric::flow::state::current";
 
 #[reifydb::r#macro::operator_state]
 #[derive(Clone, Debug, PartialEq, HeapSize)]
@@ -171,7 +171,7 @@ fn guest_operator(db: &TestDb) -> u64 {
 }
 
 fn state_of(operator: u64) -> String {
-	format!("from system::metrics::flow::state::current filter {{ operator == {operator} }}")
+	format!("from system::metric::flow::state::current filter {{ operator_id == {operator} }}")
 }
 
 fn per_window_state_of(operator: u64) -> String {

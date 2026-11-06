@@ -18,7 +18,7 @@ pub fn procedures_extern_c() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: PROCEDURES_EXTERN_C,
-			namespace: NamespaceId::SYSTEM_PROCEDURES,
+			namespace: NamespaceId::SYSTEM_PROCEDURE,
 			name: "extern_c".to_string(),
 			columns: vec![
 				Column {

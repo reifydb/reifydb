@@ -57,7 +57,7 @@ impl BaseVTable for SystemGrantedRoles {
 			role_ids.push(ir.role_id);
 		}
 
-		let columns = vec![identities.finish("identity"), role_ids.finish("role_id")];
+		let columns = vec![identities.finish("identity_id"), role_ids.finish("role_id")];
 
 		self.exhausted = true;
 		Ok(Some(Batch {

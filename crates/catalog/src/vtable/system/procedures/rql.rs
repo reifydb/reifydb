@@ -20,18 +20,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresRql {
+pub struct SystemProcedureRql {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemProceduresRql {
+impl Default for SystemProcedureRql {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemProceduresRql {
+impl SystemProcedureRql {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_procedures_rql_table().clone(),
@@ -40,7 +40,7 @@ impl SystemProceduresRql {
 	}
 }
 
-impl BaseVTable for SystemProceduresRql {
+impl BaseVTable for SystemProcedureRql {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -112,7 +112,7 @@ impl BaseVTable for SystemProceduresRql {
 			return_types.finish("return_type"),
 			bodies.finish("body"),
 			trigger_kinds.finish("trigger_kind"),
-			event_sumtypes.finish("event_variant_sumtype_id"),
+			event_sumtypes.finish("event_sumtype_id"),
 			event_indexes.finish("event_variant_index"),
 			run_ases.finish("run_as"),
 		];

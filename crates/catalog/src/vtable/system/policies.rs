@@ -58,10 +58,19 @@ impl BaseVTable for SystemPolicies {
 
 		for p in policies {
 			ids.push(p.id);
-			names.push(p.name.as_deref().unwrap_or(""));
+			match p.name.as_deref() {
+				Some(value) => names.push(value),
+				None => names.push_none(),
+			}
 			target_types.push(p.target_type.as_str());
-			target_namespaces.push(p.target_namespace.as_deref().unwrap_or(""));
-			target_objects.push(p.target_object.as_deref().unwrap_or(""));
+			match p.target_namespace.as_deref() {
+				Some(value) => target_namespaces.push(value),
+				None => target_namespaces.push_none(),
+			}
+			match p.target_object.as_deref() {
+				Some(value) => target_objects.push(value),
+				None => target_objects.push_none(),
+			}
 			enabled_flags.push(p.enabled);
 		}
 

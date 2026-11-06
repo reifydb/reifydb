@@ -8,7 +8,7 @@ use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(15);
 
-const SURFACE: &str = "from system::metrics::flow::state::current";
+const SURFACE: &str = "from system::metric::flow::state::current";
 
 fn setup() -> TestDb {
 	TestDb::from(
@@ -54,7 +54,7 @@ fn append_operator(db: &TestDb) -> u64 {
 }
 
 fn state_of(operator: u64) -> String {
-	format!("from system::metrics::flow::state::current filter {{ operator == {operator} }}")
+	format!("from system::metric::flow::state::current filter {{ operator_id == {operator} }}")
 }
 
 #[test]

@@ -52,7 +52,7 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 	}
 
 	let mut flows: HashMap<u64, String> = HashMap::new();
-	for r in rows(db, "from system::flows")? {
+	for r in rows(db, "from system::flow::flows")? {
 		if let (Some(id), Some(name)) = (u64c(&r, "id"), strc(&r, "name")) {
 			flows.insert(id, qualify(&namespaces, u64c(&r, "namespace_id"), &name));
 		}

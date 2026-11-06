@@ -18,9 +18,9 @@ impl Domain {
 
 	pub fn namespace(&self) -> NamespaceId {
 		match self {
-			Domain::Memory => NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
-			Domain::Watermarks => NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS,
-			Domain::Operators => NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS,
+			Domain::Memory => NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY,
+			Domain::Watermarks => NamespaceId::SYSTEM_METRIC_RUNTIME_WATERMARK,
+			Domain::Operators => NamespaceId::SYSTEM_METRIC_RUNTIME_OPERATOR,
 		}
 	}
 

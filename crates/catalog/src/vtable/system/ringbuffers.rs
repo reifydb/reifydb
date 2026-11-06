@@ -70,7 +70,10 @@ impl BaseVTable for SystemRingBuffers {
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
 			times.push(ringbuffer.time.domain().as_str());
-			timestamps.push(ringbuffer.time.ts().unwrap_or_default());
+			match ringbuffer.time.ts() {
+				Some(value) => timestamps.push(value),
+				None => timestamps.push_none(),
+			}
 		}
 
 		let columns = vec![
@@ -79,8 +82,8 @@ impl BaseVTable for SystemRingBuffers {
 			names.finish("name"),
 			capacities.finish("capacity"),
 			primary_keys.finish("primary_key_id"),
-			times.finish("time"),
-			timestamps.finish("ts"),
+			times.finish("time_domain"),
+			timestamps.finish("time_column"),
 		];
 
 		self.exhausted = true;

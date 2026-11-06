@@ -149,7 +149,7 @@ fn a_registered_custom_operator_is_in_the_operator_catalog_before_any_view_is_cr
 
 	assert_eq!(
 		db.row_count(&format!(
-			"FROM system::flow::operator::libraries FILTER {{ operator == '{PANICKING_OPERATOR}' }}"
+			"FROM system::flow::operator::libraries FILTER {{ operator_name == '{PANICKING_OPERATOR}' }}"
 		)),
 		1,
 		"the operator must be published by the time the first statement runs"

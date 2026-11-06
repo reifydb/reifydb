@@ -24,7 +24,7 @@ message CommandResponse { bytes rbcf = 1; }
 message QueryRequest  { string rql = 1; optional Params params = 2; }
 message QueryResponse { bytes rbcf = 1; }
 
-// Call a bound procedure via its gRPC binding name (globally unique across `system::bindings::grpc`).
+// Call a bound procedure via its gRPC binding name (globally unique across `system::binding::grpc`).
 message OperationRequest  { string name = 1; optional Params params = 2; }
 message OperationResponse { bytes rbcf = 1; }
 

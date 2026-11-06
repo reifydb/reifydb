@@ -49,8 +49,8 @@ pub fn handlers() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: ON_SUMTYPE_ID,
-					name: "on_sumtype_id".to_string(),
+					id: SUMTYPE_ID,
+					name: "sumtype_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(3),
@@ -58,8 +58,8 @@ pub fn handlers() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: ON_VARIANT_TAG,
-					name: "on_variant_tag".to_string(),
+					id: VARIANT_TAG,
+					name: "variant_tag".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
 					properties: vec![],
 					index: ColumnIndex(4),

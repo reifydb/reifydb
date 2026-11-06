@@ -276,7 +276,7 @@ fn count(engine: &StandardEngine, rql: &str) -> Result<usize, String> {
 
 fn only_flow(db: &TestDb) -> FlowId {
 	let ids: Vec<u64> = db
-		.query("FROM system::flows")
+		.query("FROM system::flow::flows")
 		.iter()
 		.flat_map(|frame| frame.rows())
 		.map(|row| row.get::<u64>("id").expect("the flow id column reads").expect("a flow id"))
@@ -305,7 +305,7 @@ fn catalog_id(db: &TestDb, system: &str, name: &str) -> u64 {
 }
 
 fn flow_named(db: &TestDb, name: &str) -> FlowId {
-	FlowId(catalog_id(db, "flows", name))
+	FlowId(catalog_id(db, "flow::flows", name))
 }
 
 fn table_object(db: &TestDb, name: &str) -> ObjectId {
@@ -2137,7 +2137,7 @@ fn a_backfill_holds_the_checkpoint_floor_at_v_until_its_checkpoint_commits() {
 	);
 }
 
-const MANAGED_KEYS: &str = "FROM system::metrics::flow::state::current FILTER { keyspace == 'CUSTOM_MANAGED' }";
+const MANAGED_KEYS: &str = "FROM system::metric::flow::state::current FILTER { keyspace == 'CUSTOM_MANAGED' }";
 
 const G_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
 	name: "g",
@@ -2258,8 +2258,10 @@ fn managed_keys(db: &TestDb, operators: &[OperatorId]) -> u64 {
 		.iter()
 		.flat_map(|frame| frame.rows())
 		.filter_map(|row| {
-			let operator =
-				row.get::<u64>("operator").expect("the operator column reads").expect("an operator id");
+			let operator = row
+				.get::<u64>("operator_id")
+				.expect("the operator column reads")
+				.expect("an operator id");
 			operators
 				.contains(&OperatorId(operator))
 				.then(|| row.get::<u64>("keys").expect("the keys column reads").expect("a key count"))

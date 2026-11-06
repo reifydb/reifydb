@@ -27,7 +27,8 @@ use crate::{
 		catalog::{
 			BindingKey, ColumnPropertyKey, DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey,
 			HandlerKey, IndexEntryKey, IndexKey, PrimaryKeyKey, RelationshipKey, SinkKey, SourceKey,
-			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, WindowedViewGroupKey,
+			SumTypeKey, TableKey, VariantHandlerKey, ViewKey, ViewQueueKey, ViewRingBufferKey,
+			WindowedViewGroupKey,
 		},
 		column::{
 			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
@@ -76,7 +77,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 95;
+const DECLARED_KINDS: usize = 97;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -147,6 +148,14 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		}
 		.encode(),
 		KeyTag::View => ViewKey {
+			view: ViewId(1),
+		}
+		.encode(),
+		KeyTag::ViewRingBuffer => ViewRingBufferKey {
+			view: ViewId(1),
+		}
+		.encode(),
+		KeyTag::ViewQueue => ViewQueueKey {
 			view: ViewId(1),
 		}
 		.encode(),

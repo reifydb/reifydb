@@ -243,7 +243,7 @@ fn a_rejected_create_registers_no_flow() {
 	assert_eq!(diagnostic.code, "FLOW_071", "{diagnostic:?}");
 
 	let rows: usize = db
-		.query("from system::flows filter { name == 'v' }")
+		.query("from system::flow::flows filter { name == 'v' }")
 		.iter()
 		.map(|frame| column_values(frame, "name").len())
 		.sum();
@@ -461,7 +461,7 @@ fn refused_code(db: &TestDb, apply: &str) -> String {
 }
 
 fn flow_rows(db: &TestDb, name: &str) -> usize {
-	db.query(&format!("from system::flows filter {{ name == '{name}' }}"))
+	db.query(&format!("from system::flow::flows filter {{ name == '{name}' }}"))
 		.iter()
 		.map(|frame| column_values(frame, "name").len())
 		.sum()

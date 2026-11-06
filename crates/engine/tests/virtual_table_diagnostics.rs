@@ -13,7 +13,7 @@ use reifydb_test_harness::engine::TestEngine;
 // purpose. The final test is the one that keeps the others honest: the names that do exist must still
 // work, or a fix that rejected everything would look just as green.
 //
-// Only the `system` namespace is covered here: `system::procedures` and `system::bindings` are
+// Only the `system` namespace is covered here: `system::procedure` and `system::binding` are
 // registered by the server, not by this harness, so a query against them fails at namespace
 // resolution before it ever reaches the compiler. They take the same path once resolved.
 

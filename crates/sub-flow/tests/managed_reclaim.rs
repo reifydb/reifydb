@@ -30,7 +30,7 @@ use reifydb_value::{
 
 const TIMEOUT: Duration = Duration::from_seconds_const(20);
 
-const MANAGED_KEYS: &str = "from system::metrics::flow::state::current filter { keyspace == 'CUSTOM_MANAGED' }";
+const MANAGED_KEYS: &str = "from system::metric::flow::state::current filter { keyspace == 'CUSTOM_MANAGED' }";
 
 const MANAGED_VIEW: &str =
 	"CREATE DEFERRED VIEW app::v { g: int4 } AS { FROM app::t APPLY tally{} WITH { lateness: 2s } }";

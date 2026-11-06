@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-//! `system::metrics::lifecycle::current` exposes the retention plane's per-class ledger.
+//! `system::metric::lifecycle::current` exposes the retention plane's per-class ledger.
 //!
 //! Without it the ledger is in-process only, so an operator cannot tell a class that is keeping up from one that
 //! has never run - both read as "no complaints". Driven end to end because an unregistered vtable, an unresolved
@@ -30,7 +30,7 @@ fn lifecycle_current_reports_every_retention_class_before_any_of_them_has_run() 
 	let db = db_with_refresh();
 	let want = RetentionClass::all().len();
 
-	let rows = db.await_row_count("from system::metrics::lifecycle::current", want, TIMEOUT);
+	let rows = db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 
 	assert_eq!(
 		rows, want,
@@ -45,10 +45,10 @@ fn lifecycle_current_names_each_class_so_a_row_can_be_attributed() {
 	// operator filters on, so each row must name a distinct, real class.
 	let db = db_with_refresh();
 	let want = RetentionClass::all().len();
-	db.await_row_count("from system::metrics::lifecycle::current", want, TIMEOUT);
+	db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 
 	for class in RetentionClass::all() {
-		let rql = format!("from system::metrics::lifecycle::current filter {{ class == '{}' }}", class.name());
+		let rql = format!("from system::metric::lifecycle::current filter {{ class == '{}' }}", class.name());
 		assert_eq!(db.row_count(&rql), 1, "class {} must be addressable by name in the surface", class.name());
 	}
 }
@@ -66,6 +66,6 @@ fn lifecycle_current_populates_without_per_domain_opt_in() {
 	);
 
 	let want = RetentionClass::all().len();
-	let rows = db.await_row_count("from system::metrics::lifecycle::current", want, TIMEOUT);
+	let rows = db.await_row_count("from system::metric::lifecycle::current", want, TIMEOUT);
 	assert_eq!(rows, want, "the sampler must publish the lifecycle ledger without any per-domain opt-in");
 }

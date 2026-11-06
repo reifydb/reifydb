@@ -69,7 +69,10 @@ impl BaseVTable for SystemMigrations {
 			names.push(def.name.as_str());
 			actions.push(action_str);
 			bodies.push(def.body.as_str());
-			rollback_bodies.push(def.rollback_body.as_deref().unwrap_or(""));
+			match def.rollback_body.as_deref() {
+				Some(value) => rollback_bodies.push(value),
+				None => rollback_bodies.push_none(),
+			}
 		}
 
 		let columns = vec![

@@ -103,8 +103,8 @@ impl BaseVTable for SystemHandlers {
 			id_col.finish("id"),
 			ns_col.finish("namespace_id"),
 			name_col.finish("name"),
-			sumtype_col.finish("on_sumtype_id"),
-			tag_col.finish("on_variant_tag"),
+			sumtype_col.finish("sumtype_id"),
+			tag_col.finish("variant_tag"),
 		];
 
 		self.exhausted = true;

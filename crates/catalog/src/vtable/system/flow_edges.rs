@@ -64,8 +64,8 @@ impl BaseVTable for SystemFlowEdges {
 		let columns = vec![
 			ids.finish("id"),
 			flow_ids.finish("flow_id"),
-			sources.finish("source"),
-			targets.finish("target"),
+			sources.finish("source_id"),
+			targets.finish("target_id"),
 		];
 
 		self.exhausted = true;

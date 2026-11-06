@@ -14,7 +14,11 @@ use reifydb_core::{
 			ViewSortKey, ViewStorageKind,
 		},
 	},
-	key::{catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey},
+	key::{
+		catalog::{ViewKey, ViewQueueKey, ViewRingBufferKey},
+		namespace::NamespaceViewKey,
+		ringbuffer::RingBufferMetadataKey,
+	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -29,7 +33,7 @@ use crate::{
 		column::create::ColumnToCreate,
 		definition::{reject_invalid_column_list, reject_zero_tag},
 		sequence::system::SystemSequence,
-		view::shape::{encode_view_sort, set_queue_id, view, view_namespace},
+		view::shape::{encode_view_sort, view, view_namespace, view_queue, view_ringbuffer},
 	},
 };
 
@@ -256,7 +260,6 @@ impl CatalogStore {
 				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::Table as u8);
-				view::set_capacity(&mut row, 0u64);
 				view::set_key_column(&mut row, "");
 				view::set_key_kind(&mut row, 0u8);
 				view::set_precision(&mut row, 0u8);
@@ -267,7 +270,9 @@ impl CatalogStore {
 				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::RingBuffer as u8);
-				view::set_capacity(&mut row, *capacity);
+				let mut ringbuffer = view_ringbuffer::allocate();
+				view_ringbuffer::set_capacity(&mut ringbuffer, *capacity);
+				txn.set(vec![(ViewRingBufferKey::new(view).into(), ringbuffer.freeze().into())])?;
 				view::set_key_column(&mut row, "");
 				view::set_key_kind(&mut row, 0u8);
 				view::set_precision(&mut row, 0u8);
@@ -279,7 +284,6 @@ impl CatalogStore {
 				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::Series as u8);
-				view::set_capacity(&mut row, 0u64);
 				view::set_key_column(&mut row, key.column());
 				let (key_kind_u8, precision_u8) = match key {
 					SeriesKey::DateTime {
@@ -299,7 +303,9 @@ impl CatalogStore {
 				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::Queue as u8);
-				set_queue_id(&mut row, *queue);
+				let mut queue_row = view_queue::allocate();
+				view_queue::set_queue(&mut queue_row, queue.0);
+				txn.set(vec![(ViewQueueKey::new(view).into(), queue_row.freeze().into())])?;
 				view::set_key_column(&mut row, "");
 				view::set_key_kind(&mut row, 0u8);
 				view::set_precision(&mut row, 0u8);

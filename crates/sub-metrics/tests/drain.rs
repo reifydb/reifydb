@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Executed requests must land in system::metrics::request_history and per-fingerprint
-//! aggregates in system::metrics::statement_stats on the flush tick.
+//! Executed requests must land in system::metric::request_history and per-fingerprint
+//! aggregates in system::metric::statement_stats on the flush tick.
 
 use std::{
 	sync::Arc,
@@ -82,16 +82,16 @@ fn executed_requests_drain_into_both_ringbuffers() {
 	// Poll, never a fixed sleep: under load the drain tick can land past any fixed wait.
 	let deadline = Instant::now() + StdDuration::from_secs(10);
 	while Instant::now() < deadline
-		&& (TestEngine::row_count(&test_engine.query("from system::metrics::request_history")) < 1
-			|| TestEngine::row_count(&test_engine.query("from system::metrics::statement_stats")) < 1)
+		&& (TestEngine::row_count(&test_engine.query("from system::metric::request_history")) < 1
+			|| TestEngine::row_count(&test_engine.query("from system::metric::statement_stats")) < 1)
 	{
 		thread::sleep(StdDuration::from_millis(10));
 	}
 
-	let history = test_engine.query("from system::metrics::request_history");
+	let history = test_engine.query("from system::metric::request_history");
 	assert_eq!(TestEngine::row_count(&history), 1, "the executed request must appear in request_history");
 
-	let stats = test_engine.query("from system::metrics::statement_stats");
+	let stats = test_engine.query("from system::metric::statement_stats");
 	assert!(
 		TestEngine::row_count(&stats) >= 1,
 		"the statement aggregate must appear in statement_stats; each tick appends a snapshot"

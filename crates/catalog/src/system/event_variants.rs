@@ -51,7 +51,7 @@ pub fn event_variants() -> Arc<VTable> {
 				Column {
 					id: FIELD_COUNT,
 					name: "field_count".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
@@ -60,7 +60,7 @@ pub fn event_variants() -> Arc<VTable> {
 				Column {
 					id: FIELD_INDEX,
 					name: "field_index".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,

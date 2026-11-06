@@ -67,7 +67,10 @@ impl BaseVTable for SystemTables {
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
 			times.push(table.time.domain().as_str());
-			timestamps.push(table.time.ts().unwrap_or_default());
+			match table.time.ts() {
+				Some(value) => timestamps.push(value),
+				None => timestamps.push_none(),
+			}
 		}
 
 		let columns = vec![
@@ -75,8 +78,8 @@ impl BaseVTable for SystemTables {
 			namespaces.finish("namespace_id"),
 			names.finish("name"),
 			primary_keys.finish("primary_key_id"),
-			times.finish("time"),
-			timestamps.finish("ts"),
+			times.finish("time_domain"),
+			timestamps.finish("time_column"),
 		];
 
 		self.exhausted = true;

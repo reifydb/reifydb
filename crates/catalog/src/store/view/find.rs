@@ -4,18 +4,22 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
-		id::{NamespaceId, ViewId},
+		id::{NamespaceId, QueueId, ViewId},
 		series::SeriesKey,
 		view::{QueueView, RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
-	key::{catalog::ViewKey, namespace::NamespaceViewKey},
+	key::{
+		catalog::{ViewKey, ViewQueueKey, ViewRingBufferKey},
+		namespace::NamespaceViewKey,
+	},
+	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{
 	CatalogStore, Result,
-	store::view::shape::{get_queue_id, parse_view_sort, view, view_namespace},
+	store::view::shape::{parse_view_sort, view, view_namespace, view_queue, view_ringbuffer},
 };
 
 impl CatalogStore {
@@ -27,7 +31,7 @@ impl CatalogStore {
 		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
-		let view = decode_view(&bytes, columns, primary_key)?;
+		let view = decode_view(rx, &bytes, columns, primary_key)?;
 
 		Ok(Some(view))
 	}
@@ -69,6 +73,7 @@ use reifydb_value::{
 };
 
 pub(crate) fn decode_view(
+	rx: &mut Transaction<'_>,
 	bytes: &EncodedCatalogRow,
 	columns: Vec<Column>,
 	primary_key: Option<PrimaryKey>,
@@ -118,7 +123,13 @@ pub(crate) fn decode_view(
 			sort,
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
-			let capacity = view::get_capacity(bytes);
+			let Some(side) = rx.get(&[ViewRingBufferKey::new(id).into()])?.pop().flatten() else {
+				return_internal_error!(
+					"view {:?} is a ring buffer view but has no ring buffer row. This indicates a corrupt catalog.",
+					id
+				)
+			};
+			let capacity = view_ringbuffer::get_capacity(EncodedCatalogRow::view(&side.bytes));
 			View::RingBuffer(RingBufferView {
 				id,
 				name,
@@ -155,17 +166,25 @@ pub(crate) fn decode_view(
 				sort,
 			})
 		}
-		x if x == ViewStorageKind::Queue as u8 => View::Queue(QueueView {
-			id,
-			name,
-			namespace,
-			kind,
-			columns,
-			primary_key,
-			partition_by,
-			queue: get_queue_id(bytes),
-			sort,
-		}),
+		x if x == ViewStorageKind::Queue as u8 => {
+			let Some(side) = rx.get(&[ViewQueueKey::new(id).into()])?.pop().flatten() else {
+				return_internal_error!(
+					"view {:?} is a queue view but has no queue row. This indicates a corrupt catalog.",
+					id
+				)
+			};
+			View::Queue(QueueView {
+				id,
+				name,
+				namespace,
+				kind,
+				columns,
+				primary_key,
+				partition_by,
+				queue: QueueId(view_queue::get_queue(EncodedCatalogRow::view(&side.bytes))),
+				sort,
+			})
+		}
 
 		_ => View::Table(TableView {
 			id,
@@ -273,9 +292,12 @@ pub mod tests {
 
 #[cfg(test)]
 mod queue_view_tests {
-	use reifydb_core::interface::catalog::{id::QueueId, storage::StorageId, view::View};
+	use reifydb_core::{
+		interface::catalog::{id::QueueId, series::SeriesKey, storage::StorageId, view::View},
+		key::catalog::{ViewQueueKey, ViewRingBufferKey},
+	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
+	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, value_type::ValueType},
@@ -286,6 +308,96 @@ mod queue_view_tests {
 		store::view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 		test_utils::ensure_test_namespace,
 	};
+
+	fn create(txn: &mut AdminTransaction, name: &str, storage: ViewStorage) -> View {
+		let namespace = ensure_test_namespace(txn);
+		CatalogStore::create_deferred_view(
+			txn,
+			ViewToCreate {
+				name: Fragment::internal(name),
+				namespace: namespace.id(),
+				columns: vec![ViewColumnToCreate {
+					name: Fragment::internal("k"),
+					fragment: Fragment::None,
+					constraint: TypeConstraint::unconstrained(ValueType::Int8),
+					dictionary_id: None,
+				}],
+				storage,
+				sort: vec![],
+			},
+		)
+		.unwrap()
+	}
+
+	fn has_side_row(txn: &mut AdminTransaction, view: &View) -> (bool, bool) {
+		let ring = txn.get(&[ViewRingBufferKey::new(view.id()).into()]).unwrap().pop().flatten().is_some();
+		let queue = txn.get(&[ViewQueueKey::new(view.id()).into()]).unwrap().pop().flatten().is_some();
+		(ring, queue)
+	}
+
+	#[test]
+	fn a_ring_buffer_view_keeps_its_capacity_through_the_store() {
+		// A lost capacity reads back as zero and the view would evict every row it is handed.
+		let mut txn = create_test_admin_transaction();
+		let created = create(
+			&mut txn,
+			"r",
+			ViewStorage::RingBuffer {
+				capacity: 777,
+				partition_by: vec![],
+			},
+		);
+		let found = CatalogStore::find_view(&mut Transaction::Admin(&mut txn), created.id()).unwrap().unwrap();
+		let View::RingBuffer(view) = &found else {
+			panic!("expected a ring buffer view, got {found:?}");
+		};
+		assert_eq!(view.capacity, 777);
+		assert_eq!(has_side_row(&mut txn, &found), (true, false));
+	}
+
+	#[test]
+	fn table_and_series_views_write_no_side_row() {
+		// Only ring and queue views carry a side row; any other kind writing one pays for storage it never
+		// reads.
+		let mut txn = create_test_admin_transaction();
+		let table = create(
+			&mut txn,
+			"t",
+			ViewStorage::Table {
+				partition_by: vec![],
+			},
+		);
+		let series = create(
+			&mut txn,
+			"s",
+			ViewStorage::Series {
+				key: SeriesKey::Integer {
+					column: "k".to_string(),
+				},
+				tag: None,
+				partition_by: vec![],
+			},
+		);
+		assert_eq!(has_side_row(&mut txn, &table), (false, false));
+		assert_eq!(has_side_row(&mut txn, &series), (false, false));
+	}
+
+	#[test]
+	fn a_queue_view_without_its_queue_row_is_a_corrupt_catalog() {
+		// A default queue id here would point the view at queue 0 and drain someone else's items.
+		let mut txn = create_test_admin_transaction();
+		let created = create(
+			&mut txn,
+			"q",
+			ViewStorage::Queue {
+				queue: QueueId(4321),
+				partition_by: vec![],
+			},
+		);
+		txn.remove(vec![(ViewQueueKey::new(created.id()).into(), None)]).unwrap();
+		let error = CatalogStore::find_view(&mut Transaction::Admin(&mut txn), created.id()).unwrap_err();
+		assert_eq!(error.0.code, "INTERNAL_ERROR");
+	}
 
 	#[test]
 	fn test_a_queue_view_row_keeps_its_queue_link_and_partition_through_the_store() {

@@ -133,7 +133,7 @@ fn test_system_queues_lists_definitions() {
 	t.admin("CREATE QUEUE test::plain { id: int4 } WITH { fifo: {} }");
 	t.admin("CREATE QUEUE test::keyed { id: int4 } WITH { partition: { by: { id } }, fifo: { ordered_by: id } }");
 
-	let frames = t.query("FROM system::queues SORT { name: asc }");
+	let frames = t.query("FROM system::queue::queues SORT { name: asc }");
 	let rows: Vec<_> = frames[0].rows().collect();
 
 	assert_eq!(rows.len(), 2);
@@ -157,7 +157,7 @@ fn test_drop_queue_removes_the_definition() {
 	assert!(frames[0].rows().next().unwrap().get::<bool>("dropped").unwrap().unwrap());
 
 	assert!(find_queue(&t, "test", "jobs").is_none());
-	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
+	assert_eq!(TestEngine::row_count(&t.query("FROM system::queue::queues")), 0);
 }
 
 #[test]
@@ -197,11 +197,11 @@ fn test_drop_namespace_cascades_to_queues() {
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 	t.admin("CREATE QUEUE test::other { id: int4 } WITH { fifo: {} }");
 
-	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 2);
+	assert_eq!(TestEngine::row_count(&t.query("FROM system::queue::queues")), 2);
 
 	t.admin("DROP NAMESPACE test");
 
-	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
+	assert_eq!(TestEngine::row_count(&t.query("FROM system::queue::queues")), 0);
 }
 
 #[test]
@@ -343,8 +343,8 @@ fn test_deduplicate_rejects_a_bare_identifier_ttl() {
 
 #[test]
 fn test_system_queues_exposes_the_deduplicate_declaration() {
-	// An operator must see the declaration without reading the DDL back, and `forever`
-	// must read as `forever` rather than as a max-duration number.
+	// An operator must see the declaration without reading the DDL back; a forever ttl reads as none, never a max
+	// duration.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(
@@ -353,7 +353,7 @@ fn test_system_queues_exposes_the_deduplicate_declaration() {
 	t.admin("CREATE QUEUE test::unbounded { a: int4 } WITH { fifo: {}, deduplicate: { by: {a} } }");
 	t.admin("CREATE QUEUE test::plain { a: int4 } WITH { fifo: {} }");
 
-	let frames = t.query("FROM system::queues");
+	let frames = t.query("FROM system::queue::queues");
 	let rows: Vec<_> = frames[0].rows().collect();
 
 	let by = |name: &str| -> Option<String> {
@@ -361,13 +361,14 @@ fn test_system_queues_exposes_the_deduplicate_declaration() {
 			.find(|r| r.get::<String>("name").unwrap().unwrap() == name)
 			.and_then(|r| r.get::<String>("deduplicate_by").unwrap())
 	};
-	let ttl = |name: &str| -> Option<String> {
+	let ttl = |name: &str| -> Option<Duration> {
 		rows.iter()
 			.find(|r| r.get::<String>("name").unwrap().unwrap() == name)
-			.and_then(|r| r.get::<String>("deduplicate_ttl").unwrap())
+			.and_then(|r| r.get::<Duration>("deduplicate_ttl").unwrap())
 	};
 
 	assert_eq!(by("bounded"), Some("a,b".to_string()));
-	assert_eq!(ttl("unbounded"), Some("forever".to_string()), "forever must not render as a number");
+	assert_eq!(ttl("bounded"), Some(Duration::from_days(1).unwrap()));
+	assert_eq!(ttl("unbounded"), None, "forever must not render as a max duration");
 	assert_eq!(by("plain"), None, "a queue without the declaration reports none");
 }

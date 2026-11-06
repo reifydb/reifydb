@@ -17,18 +17,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemBindingsHttp {
+pub struct SystemBindingHttp {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemBindingsHttp {
+impl Default for SystemBindingHttp {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemBindingsHttp {
+impl SystemBindingHttp {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_bindings_http_table().clone(),
@@ -37,7 +37,7 @@ impl SystemBindingsHttp {
 	}
 }
 
-impl BaseVTable for SystemBindingsHttp {
+impl BaseVTable for SystemBindingHttp {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

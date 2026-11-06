@@ -18,7 +18,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: PROCEDURES_RQL,
-			namespace: NamespaceId::SYSTEM_PROCEDURES,
+			namespace: NamespaceId::SYSTEM_PROCEDURE,
 			name: "rql".to_string(),
 			columns: vec![
 				Column {
@@ -76,8 +76,8 @@ pub fn procedures_rql() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: EVENT_VARIANT_SUMTYPE_ID,
-					name: "event_variant_sumtype_id".to_string(),
+					id: EVENT_SUMTYPE_ID,
+					name: "event_sumtype_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(6),

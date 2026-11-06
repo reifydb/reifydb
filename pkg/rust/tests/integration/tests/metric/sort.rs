@@ -14,7 +14,7 @@ fn await_table_metrics(db: &TestDb, query: &str, want: usize) {
 	// The sampler publishes asynchronously, so poll the very query under test until every written
 	// table has surfaced; a fixed sleep would leave the sort assertions running on a short frame.
 	let rows = db.await_row_count(query, want, TIMEOUT);
-	assert_eq!(rows, want, "expected {} table rows in system::metrics::storage::current, got {}", want, rows);
+	assert_eq!(rows, want, "expected {} table rows in system::metric::store::current, got {}", want, rows);
 }
 
 fn new_db_with_metrics() -> TestDb {
@@ -26,7 +26,7 @@ fn new_db_with_metrics() -> TestDb {
 	TestDb::from(
 		db_embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().seeded(0))
-			// Seed a fast flush interval so the collector populates system::metrics::storage::current
+			// Seed a fast flush interval so the collector populates system::metric::store::current
 			// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
 			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
@@ -56,9 +56,9 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	"#,
 	);
 
-	// The nine per-object metrics tables merged into system::metrics::storage::current, so the
+	// The nine per-object metrics tables merged into system::metric::store::current, so the
 	// table rows this test sorts are now selected by the object_kind dimension.
-	let multiline_query = "from system::metrics::storage::current
+	let multiline_query = "from system::metric::store::current
 filter {object_kind == 'table'}
 sort {estimated_total_bytes:asc}";
 
@@ -67,7 +67,7 @@ sort {estimated_total_bytes:asc}";
 	let frames = db.query(multiline_query);
 
 	let frame = frames.first().expect("Expected at least one frame");
-	let id_col = frame.column("id").expect("the column reads").unwrap();
+	let id_col = frame.column("object_id").expect("the column reads").unwrap();
 	let bytes_col = frame.column("estimated_total_bytes").expect("the column reads").unwrap();
 
 	let mut data: Vec<(u64, u64)> = Vec::new();
@@ -116,8 +116,8 @@ fn test_asc_is_not_desc() {
 	"#,
 	);
 
-	let asc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:asc}";
-	let desc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:desc}";
+	let asc = "from system::metric::store::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:asc}";
+	let desc = "from system::metric::store::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:desc}";
 
 	await_table_metrics(&db, asc, 2);
 
@@ -179,7 +179,8 @@ fn test_sort_table_storage_stats_by_estimated_total_bytes() {
 	"#,
 	);
 
-	let asc = "FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:ASC}";
+	let asc =
+		"FROM system::metric::store::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:ASC}";
 
 	await_table_metrics(&db, asc, 4);
 
@@ -203,7 +204,7 @@ fn test_sort_table_storage_stats_by_estimated_total_bytes() {
 	}
 
 	let frames_desc = db.query(
-		"FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:DESC}",
+		"FROM system::metric::store::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:DESC}",
 	);
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");

@@ -17,18 +17,18 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemBindingsWs {
+pub struct SystemBindingWs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemBindingsWs {
+impl Default for SystemBindingWs {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemBindingsWs {
+impl SystemBindingWs {
 	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_bindings_ws_table().clone(),
@@ -37,7 +37,7 @@ impl SystemBindingsWs {
 	}
 }
 
-impl BaseVTable for SystemBindingsWs {
+impl BaseVTable for SystemBindingWs {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

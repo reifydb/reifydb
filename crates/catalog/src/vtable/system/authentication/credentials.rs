@@ -59,7 +59,7 @@ impl BaseVTable for SystemAuthenticationCredentials {
 			methods.push(a.method.as_str());
 		}
 
-		let columns = vec![ids.finish("id"), identities.finish("identity"), methods.finish("method")];
+		let columns = vec![ids.finish("id"), identities.finish("identity_id"), methods.finish("method")];
 
 		self.exhausted = true;
 		Ok(Some(Batch {

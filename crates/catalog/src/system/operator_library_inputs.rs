@@ -22,8 +22,8 @@ pub fn operator_library_inputs() -> Arc<VTable> {
 			name: "inputs".to_string(),
 			columns: vec![
 				Column {
-					id: OPERATOR,
-					name: "operator".to_string(),
+					id: OPERATOR_NAME,
+					name: "operator_name".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(0),
@@ -33,7 +33,7 @@ pub fn operator_library_inputs() -> Arc<VTable> {
 				Column {
 					id: POSITION,
 					name: "position".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

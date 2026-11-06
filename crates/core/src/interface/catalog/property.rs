@@ -23,6 +23,19 @@ pub enum ColumnPropertyKind {
 }
 
 impl ColumnPropertyKind {
+	pub fn kind_name(&self) -> &'static str {
+		match self {
+			ColumnPropertyKind::Saturation(_) => "saturation",
+		}
+	}
+
+	pub fn value_name(&self) -> &'static str {
+		match self {
+			ColumnPropertyKind::Saturation(ColumnSaturationStrategy::Error) => "error",
+			ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None) => "none",
+		}
+	}
+
 	pub fn to_u8(&self) -> (u8, u8) {
 		match self {
 			ColumnPropertyKind::Saturation(strategy) => match strategy {

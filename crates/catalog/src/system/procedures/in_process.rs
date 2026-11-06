@@ -18,7 +18,7 @@ pub fn procedures_in_process() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: PROCEDURES_IN_PROCESS,
-			namespace: NamespaceId::SYSTEM_PROCEDURES,
+			namespace: NamespaceId::SYSTEM_PROCEDURE,
 			name: "in_process".to_string(),
 			columns: vec![
 				Column {

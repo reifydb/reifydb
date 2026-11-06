@@ -36,13 +36,13 @@ fn main() {
 	);
 
 	info!("depth counts what is waiting, in_flight what a worker currently holds...");
-	query(&db, r#"FROM system::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
+	query(&db, r#"FROM system::queue::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
 
 	info!("A worker claims work by name, taking a lease for as long as it expects to need...");
 	let claimed = command(&db, r#"CALL queue::claim("worker-1", "jobs::emails", 2, duration::seconds(30))"#);
 
 	info!("The claim hands back a token per item, plus the item's payload columns...");
-	query(&db, r#"FROM system::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
+	query(&db, r#"FROM system::queue::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
 
 	info!("The token is what proves the worker still holds the lease when it reports back...");
 	for token in utf8_column(&claimed, "token") {
@@ -50,5 +50,5 @@ fn main() {
 	}
 
 	info!("Both jobs are done - nothing waiting, nothing in flight...");
-	query(&db, r#"FROM system::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
+	query(&db, r#"FROM system::queue::queues FILTER { name == "emails" } MAP { name, depth, in_flight }"#);
 }

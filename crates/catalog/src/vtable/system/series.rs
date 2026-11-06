@@ -84,7 +84,10 @@ impl BaseVTable for SystemSeries {
 				} => "integer",
 			});
 			times.push(s.time.domain().as_str());
-			timestamps.push(s.time.ts().unwrap_or_default());
+			match s.time.ts() {
+				Some(value) => timestamps.push(value),
+				None => timestamps.push_none(),
+			}
 		}
 
 		let columns = vec![
@@ -94,8 +97,8 @@ impl BaseVTable for SystemSeries {
 			tag_ids.finish("tag_id"),
 			key_columns.finish("key_column"),
 			key_kinds.finish("key_kind"),
-			times.finish("time"),
-			timestamps.finish("ts"),
+			times.finish("time_domain"),
+			timestamps.finish("time_column"),
 		];
 
 		self.exhausted = true;

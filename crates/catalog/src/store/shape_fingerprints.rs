@@ -47,7 +47,10 @@ use crate::store::{
 	sumtype::shape::{sumtype::SHAPE as SUMTYPE_SHAPE, sumtype_namespace::SHAPE as SUMTYPE_NAMESPACE_SHAPE},
 	table::shape::{table::SHAPE as TABLE_SHAPE, table_namespace::SHAPE as TABLE_NAMESPACE_SHAPE},
 	token::shape::token::SHAPE as TOKEN_SHAPE,
-	view::shape::{view::SHAPE as VIEW_SHAPE, view_namespace::SHAPE as VIEW_NAMESPACE_SHAPE},
+	view::shape::{
+		view::SHAPE as VIEW_SHAPE, view_namespace::SHAPE as VIEW_NAMESPACE_SHAPE,
+		view_queue::SHAPE as VIEW_QUEUE_SHAPE, view_ringbuffer::SHAPE as VIEW_RINGBUFFER_SHAPE,
+	},
 	windowed_view_group::shape::{
 		windowed_view_group::SHAPE as WINDOWED_VIEW_GROUP_SHAPE,
 		windowed_view_group_namespace::SHAPE as WINDOWED_VIEW_GROUP_NAMESPACE_SHAPE,
@@ -366,7 +369,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"view::view",
 			&*VIEW_SHAPE,
-			0x55a46edaba9bc51a,
+			0x26ee0fa5e0004d5e,
 			&[
 				"id",
 				"namespace",
@@ -374,7 +377,6 @@ fn pinned() -> Vec<Pin> {
 				"kind",
 				"primary_key",
 				"storage_kind",
-				"capacity",
 				"key_column",
 				"key_kind",
 				"precision",
@@ -384,6 +386,8 @@ fn pinned() -> Vec<Pin> {
 			],
 		),
 		("view::view_namespace", &*VIEW_NAMESPACE_SHAPE, 0x4ba761281fac062e, &["id", "name"]),
+		("view::view_ringbuffer", &*VIEW_RINGBUFFER_SHAPE, 0xd817722bcaf152cf, &["capacity"]),
+		("view::view_queue", &*VIEW_QUEUE_SHAPE, 0x173c43358084241e, &["queue"]),
 		(
 			"windowed_view_group::windowed_view_group",
 			&*WINDOWED_VIEW_GROUP_SHAPE,

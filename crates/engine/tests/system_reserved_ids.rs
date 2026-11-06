@@ -54,7 +54,7 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 	let profiler_spans = catalog_api
 		.find_series_by_name(
 			&mut Transaction::Admin(&mut admin),
-			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+			NamespaceId::SYSTEM_METRIC_PROFILER_SPAN,
 			"snapshots",
 		)
 		.expect("lookup")
@@ -69,7 +69,7 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 	let runtime_memory = catalog_api
 		.find_series_by_name(
 			&mut Transaction::Admin(&mut admin),
-			NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
+			NamespaceId::SYSTEM_METRIC_RUNTIME_MEMORY,
 			"snapshots",
 		)
 		.expect("lookup")

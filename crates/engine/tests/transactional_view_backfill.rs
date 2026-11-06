@@ -636,7 +636,7 @@ fn rolling_back_the_create_txn_leaves_no_view_no_view_rows_and_no_source_rows() 
 	txn.rollback().unwrap();
 	assert_eq!(t.current_version().expect("current version"), before, "a rolled back create must commit nothing");
 	assert_eq!(named(&t, "views", "late"), 0);
-	assert_eq!(named(&t, "flows", "late"), 0);
+	assert_eq!(named(&t, "flow::flows", "late"), 0);
 	assert_eq!(pairs(&t.query("FROM bf::src")), vec![(1, 10), (2, 20), (3, 30)]);
 	assert_eq!(pairs(&t.query("FROM bf::early")), vec![(1, 10), (2, 20), (3, 30)]);
 	t.admin("CREATE TRANSACTIONAL VIEW bf::late { id: int4, v: int4 } AS { FROM bf::src }");
@@ -850,7 +850,7 @@ mod scan_hooks {
 			"a failed create must commit nothing"
 		);
 		assert_eq!(named(t, "views", "late"), 0);
-		assert_eq!(named(t, "flows", "late"), 0);
+		assert_eq!(named(t, "flow::flows", "late"), 0);
 		assert_eq!(ids(&t.query("FROM bf::src")), vec![1, 2, 4, 6, 7]);
 		install(t, Refuse::Never);
 		create(t, "bf::late", COLUMNS, "FROM bf::src");

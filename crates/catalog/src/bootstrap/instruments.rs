@@ -36,16 +36,16 @@ pub fn bootstrap_instruments(
 	let ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_INSTRUMENTS,
-		"system::metrics::instruments",
-		"instruments",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC_INSTRUMENT,
+		"system::metric::instrument",
+		"instrument",
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		ns,
-		"system::metrics::instruments",
+		"system::metric::instrument",
 		SeriesId::INSTRUMENTS_SNAPSHOTS,
 		instruments_snapshot_columns(),
 		&ColumnId::INSTRUMENTS_SNAPSHOTS_COLUMNS,

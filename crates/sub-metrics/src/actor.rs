@@ -290,9 +290,8 @@ impl MetricsFlushActor {
 	fn flush(&self, state: &mut MetricsFlushActorState) {
 		state.storage_writer.flush().expect("metrics flush must persist storage stats");
 		let pending = mem::take(&mut state.pending);
-		self.drain_request_history(pending)
-			.expect("metrics flush must append system::metrics::request_history");
-		self.drain_statement_metrics().expect("metrics flush must append system::metrics::statement_stats");
+		self.drain_request_history(pending).expect("metrics flush must append system::metric::request_history");
+		self.drain_statement_metrics().expect("metrics flush must append system::metric::statement_stats");
 		self.push_object_metrics();
 		emit_stats_processed(&self.event_bus, &mut state.max_version);
 	}
@@ -374,7 +373,7 @@ impl MetricsFlushActor {
 		}
 		for chunk in pending.chunks(REQUEST_HISTORY_CAPACITY as usize) {
 			let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-			builder.ringbuffer("system::metrics::request_history")
+			builder.ringbuffer("system::metric::request_history")
 				.batch(request_history_batch(chunk)?)
 				.done();
 			builder.execute()?;
@@ -392,7 +391,7 @@ impl MetricsFlushActor {
 		}
 		let now = clock.now();
 		let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-		builder.ringbuffer("system::metrics::statement_stats")
+		builder.ringbuffer("system::metric::statement_stats")
 			.batch(statement_metrics_batch(now, &snapshot)?)
 			.done();
 		builder.execute()?;
@@ -420,13 +419,13 @@ fn request_parts(request: &Request) -> (&'static str, &RequestFingerprint, &[Sta
 fn request_history_batch(pending: &[RequestExecutedEvent]) -> Result<RecordBatch> {
 	let parts: Vec<_> = pending.iter().map(|event| request_parts(event.request())).collect();
 	batch(vec![
-		factory::datetime("timestamp", pending.iter().map(|event| *event.timestamp())),
+		factory::datetime("ts", pending.iter().map(|event| *event.timestamp())),
 		factory::utf8("operation", parts.iter().map(|(operation, _, _)| *operation)),
 		factory::utf8("fingerprint", parts.iter().map(|(_, fingerprint, _)| fingerprint.to_hex())),
-		factory::duration("total_duration", pending.iter().map(|event| *event.total())),
-		factory::duration("compute_duration", pending.iter().map(|event| *event.compute())),
+		factory::duration("total", pending.iter().map(|event| *event.total())),
+		factory::duration("compute", pending.iter().map(|event| *event.compute())),
 		factory::bool("success", pending.iter().map(|event| *event.success())),
-		factory::int8("statement_count", parts.iter().map(|(_, _, statements)| statements.len() as i64)),
+		factory::uint8("statement_count", parts.iter().map(|(_, _, statements)| statements.len() as u64)),
 		factory::utf8(
 			"normalized_rql",
 			parts.iter().map(|(_, _, statements)| {
@@ -441,19 +440,19 @@ fn statement_metrics_batch(
 	snapshot: &[(StatementFingerprint, Arc<StatementMetricsAggregate>)],
 ) -> Result<RecordBatch> {
 	batch(vec![
-		factory::datetime("snapshot_timestamp", snapshot.iter().map(|_| now)),
+		factory::datetime("ts", snapshot.iter().map(|_| now)),
 		factory::utf8("fingerprint", snapshot.iter().map(|(fingerprint, _)| fingerprint.to_hex())),
 		factory::utf8(
 			"normalized_rql",
 			snapshot.iter().map(|(_, aggregate)| aggregate.normalized_rql().to_string()),
 		),
-		factory::int8("calls", snapshot.iter().map(|(_, aggregate)| aggregate.calls() as i64)),
-		factory::duration("total_duration", snapshot.iter().map(|(_, aggregate)| aggregate.total_duration())),
-		factory::duration("mean_duration", snapshot.iter().map(|(_, aggregate)| aggregate.mean_duration())),
-		factory::duration("max_duration", snapshot.iter().map(|(_, aggregate)| aggregate.max_duration())),
-		factory::duration("min_duration", snapshot.iter().map(|(_, aggregate)| aggregate.min_duration())),
-		factory::int8("total_rows", snapshot.iter().map(|(_, aggregate)| aggregate.total_rows() as i64)),
-		factory::int8("errors", snapshot.iter().map(|(_, aggregate)| aggregate.errors() as i64)),
+		factory::uint8("calls", snapshot.iter().map(|(_, aggregate)| aggregate.calls())),
+		factory::duration("total", snapshot.iter().map(|(_, aggregate)| aggregate.total_duration())),
+		factory::duration("mean", snapshot.iter().map(|(_, aggregate)| aggregate.mean_duration())),
+		factory::duration("max", snapshot.iter().map(|(_, aggregate)| aggregate.max_duration())),
+		factory::duration("min", snapshot.iter().map(|(_, aggregate)| aggregate.min_duration())),
+		factory::uint8("total_rows", snapshot.iter().map(|(_, aggregate)| aggregate.total_rows())),
+		factory::uint8("errors", snapshot.iter().map(|(_, aggregate)| aggregate.errors())),
 	])
 }
 

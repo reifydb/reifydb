@@ -40,8 +40,8 @@ pub fn flow_edges() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: SOURCE,
-					name: "source".to_string(),
+					id: SOURCE_ID,
+					name: "source_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(2),
@@ -49,8 +49,8 @@ pub fn flow_edges() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TARGET,
-					name: "target".to_string(),
+					id: TARGET_ID,
+					name: "target_id".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(3),

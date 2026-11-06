@@ -70,7 +70,7 @@ impl BaseVTable for SystemIdentityAttributeValues {
 		}
 
 		let columns = vec![
-			identities.finish("identity"),
+			identities.finish("identity_id"),
 			attribute_ids.finish("attribute_id"),
 			attributes.finish("attribute"),
 			values.finish("value"),

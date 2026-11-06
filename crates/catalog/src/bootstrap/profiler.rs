@@ -49,19 +49,19 @@ pub fn bootstrap_profiler(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_PROFILER,
-		"system::metrics::profiler",
+		NamespaceId::SYSTEM_METRIC_PROFILER,
+		"system::metric::profiler",
 		"profiler",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 
 	let spans_ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
-		"system::metrics::profiler::spans",
-		"spans",
-		NamespaceId::SYSTEM_METRICS_PROFILER,
+		NamespaceId::SYSTEM_METRIC_PROFILER_SPAN,
+		"system::metric::profiler::span",
+		"span",
+		NamespaceId::SYSTEM_METRIC_PROFILER,
 	)?;
 
 	let columns = spans_snapshot_columns();
@@ -70,7 +70,7 @@ pub fn bootstrap_profiler(
 		Some(series) if matches_columns(&series, &columns) => false,
 		Some(series) => {
 			catalog_api.drop_series(&mut admin, series)?;
-			info!("Dropped system::metrics::profiler::spans::snapshots series with drifted columns");
+			info!("Dropped system::metric::profiler::span::snapshots series with drifted columns");
 			true
 		}
 		None => true,
@@ -95,7 +95,7 @@ pub fn bootstrap_profiler(
 			},
 			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
 		)?;
-		info!("Created system::metrics::profiler::spans::snapshots series");
+		info!("Created system::metric::profiler::span::snapshots series");
 	}
 	ensure_snapshot_ttl(&catalog_api, &mut admin, SeriesId::PROFILER_SPANS_SNAPSHOTS)?;
 
@@ -116,8 +116,8 @@ fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("ts", ValueType::DateTime),
 		series_col("category", ValueType::Utf8),
 		series_col("span_name", ValueType::Utf8),
-		series_col("dim_1", ValueType::Utf8),
-		series_col("dim_2", ValueType::Utf8),
+		series_col("dimension_1", ValueType::Utf8),
+		series_col("dimension_2", ValueType::Utf8),
 		series_col("calls", ValueType::Uint8),
 		series_col("total", ValueType::Duration),
 		series_col("p50", ValueType::Duration),

@@ -142,9 +142,9 @@ fn text_or_none(value: Value) -> Option<String> {
 fn owners(db: &TestDb, keyspace: Option<&str>) -> BTreeSet<(Option<String>, Option<String>)> {
 	let query = match keyspace {
 		Some(keyspace) => {
-			format!("from system::metrics::flow::state::current filter {{ keyspace == '{keyspace}' }}")
+			format!("from system::metric::flow::state::current filter {{ keyspace == '{keyspace}' }}")
 		}
-		None => "from system::metrics::flow::state::current".to_string(),
+		None => "from system::metric::flow::state::current".to_string(),
 	};
 	db.query(&query)
 		.iter()

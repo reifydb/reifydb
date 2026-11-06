@@ -1106,6 +1106,64 @@ pub mod view_key_tests {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ViewRingBuffer)]
+pub struct ViewRingBufferKey {
+	pub view: ViewId,
+}
+
+impl ViewRingBufferKey {
+	pub fn new(view: impl Into<ViewId>) -> Self {
+		Self {
+			view: view.into(),
+		}
+	}
+}
+
+#[cfg(test)]
+pub mod view_ringbuffer_key_tests {
+	use super::ViewRingBufferKey;
+	use crate::{interface::catalog::id::ViewId, key::tag::KeyTag};
+
+	#[test]
+	fn test_encode_decode() {
+		// A tag collision with the view row would make a key scan read the capacity as a view definition.
+		let key = ViewRingBufferKey::new(ViewId(0xABCD));
+		let encoded = key.encode();
+		assert_eq!(KeyTag::of(&encoded), Some(KeyTag::ViewRingBuffer));
+		assert_eq!(ViewRingBufferKey::decode(&encoded).unwrap().view, 0xABCD);
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ViewQueue)]
+pub struct ViewQueueKey {
+	pub view: ViewId,
+}
+
+impl ViewQueueKey {
+	pub fn new(view: impl Into<ViewId>) -> Self {
+		Self {
+			view: view.into(),
+		}
+	}
+}
+
+#[cfg(test)]
+pub mod view_queue_key_tests {
+	use super::ViewQueueKey;
+	use crate::{interface::catalog::id::ViewId, key::tag::KeyTag};
+
+	#[test]
+	fn test_encode_decode() {
+		// A tag collision with the ring buffer side row would hand a queue view a ring capacity as its queue.
+		let key = ViewQueueKey::new(ViewId(0xABCD));
+		let encoded = key.encode();
+		assert_eq!(KeyTag::of(&encoded), Some(KeyTag::ViewQueue));
+		assert_eq!(ViewQueueKey::decode(&encoded).unwrap().view, 0xABCD);
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
 #[key(tag = Table)]
 pub struct TableKey {
 	pub table: TableId,

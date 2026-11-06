@@ -17,7 +17,7 @@ pub fn setup_with_metrics() -> TestDb {
 }
 
 pub fn keyspace_keys(db: &TestDb, keyspace: &str) -> u64 {
-	db.query(&format!("from system::metrics::flow::state::current filter {{ keyspace == '{keyspace}' }}"))
+	db.query(&format!("from system::metric::flow::state::current filter {{ keyspace == '{keyspace}' }}"))
 		.iter()
 		.flat_map(|frame| column_values(frame, "keys"))
 		.map(|value| match value {

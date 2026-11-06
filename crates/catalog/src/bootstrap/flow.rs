@@ -61,24 +61,24 @@ pub fn bootstrap_flow(
 	ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_FLOW,
-		"system::metrics::flow",
+		NamespaceId::SYSTEM_METRIC_FLOW,
+		"system::metric::flow",
 		"flow",
-		NamespaceId::SYSTEM_METRICS,
+		NamespaceId::SYSTEM_METRIC,
 	)?;
 	let ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_FLOW_STATE,
-		"system::metrics::flow::state",
+		NamespaceId::SYSTEM_METRIC_FLOW_STATE,
+		"system::metric::flow::state",
 		"state",
-		NamespaceId::SYSTEM_METRICS_FLOW,
+		NamespaceId::SYSTEM_METRIC_FLOW,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		ns,
-		"system::metrics::flow::state",
+		"system::metric::flow::state",
 		SeriesId::FLOW_STATE_SNAPSHOTS,
 		flow_state_snapshot_columns(),
 		&ColumnId::FLOW_STATE_SNAPSHOTS_COLUMNS,
@@ -86,16 +86,16 @@ pub fn bootstrap_flow(
 	let ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
-		NamespaceId::SYSTEM_METRICS_FLOW_LATENCY,
-		"system::metrics::flow::latency",
+		NamespaceId::SYSTEM_METRIC_FLOW_LATENCY,
+		"system::metric::flow::latency",
 		"latency",
-		NamespaceId::SYSTEM_METRICS_FLOW,
+		NamespaceId::SYSTEM_METRIC_FLOW,
 	)?;
 	ensure_snapshot_series(
 		&catalog_api,
 		&mut admin,
 		ns,
-		"system::metrics::flow::latency",
+		"system::metric::flow::latency",
 		SeriesId::FLOW_LATENCY_SNAPSHOTS,
 		flow_latency_snapshot_columns(),
 		&ColumnId::FLOW_LATENCY_SNAPSHOTS_COLUMNS,
@@ -108,7 +108,7 @@ pub fn bootstrap_flow(
 fn flow_state_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
-		series_col("operator", ValueType::Uint8),
+		series_col("operator_id", ValueType::Uint8),
 		series_col("name", ValueType::Utf8),
 		series_col("unmanaged_because", ValueType::Utf8),
 		series_col("keyspace", ValueType::Utf8),
@@ -123,9 +123,9 @@ fn flow_state_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 fn flow_latency_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
-		series_col("view", ValueType::Uint8),
+		series_col("view_id", ValueType::Uint8),
 		series_col("name", ValueType::Utf8),
-		series_col("n", ValueType::Uint8),
+		series_col("samples", ValueType::Uint8),
 		series_col("p50", ValueType::Duration),
 		series_col("p90", ValueType::Duration),
 		series_col("p99", ValueType::Duration),
