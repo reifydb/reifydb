@@ -31,6 +31,7 @@ use reifydb_flow_async::{
 				ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
 		},
+		coord::DateTimeCoord,
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
@@ -51,11 +52,11 @@ use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::{
 	config::ExtensionParams,
 	factory::time::{at_millis, millis},
-	value::{Value, datetime::DateTime, value_type::ValueType},
+	value::{Value, value_type::ValueType},
 };
 
-pub fn settings(with: &ApplyWith) -> WindowSettings<DateTime> {
-	<DateTime as SealDomain>::window_settings_of(with).expect("valid window settings")
+pub fn settings(with: &ApplyWith) -> WindowSettings<DateTimeCoord> {
+	<DateTimeCoord as SealDomain>::window_settings_of(with).expect("valid window settings")
 }
 
 pub const WINDOW: u64 = 60;
@@ -182,7 +183,7 @@ impl OperatorMetadata for VolumeTumbling {
 }
 
 impl WindowedOperator for VolumeTumbling {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
@@ -191,12 +192,14 @@ impl WindowedOperator for VolumeTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -226,7 +229,7 @@ impl WindowedOperator for VolumeTumbling {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> VolumeAccumulator {
 		VolumeAccumulator::default()
 	}
 }
@@ -234,7 +237,7 @@ impl WindowedOperator for VolumeTumbling {
 impl Emit for VolumeTumbling {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OrdF64) -> Option<VolumeOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<VolumeOut> {
 		Some(VolumeOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -296,7 +299,7 @@ impl OperatorMetadata for MinTumbling {
 }
 
 impl WindowedOperator for MinTumbling {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
@@ -305,12 +308,14 @@ impl WindowedOperator for MinTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -343,7 +348,7 @@ impl WindowedOperator for MinTumbling {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> MinAccumulator {
 		MinAccumulator::default()
 	}
 }
@@ -351,7 +356,7 @@ impl WindowedOperator for MinTumbling {
 impl Emit for MinTumbling {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OrdF64) -> Option<MinOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<MinOut> {
 		Some(MinOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -365,9 +370,9 @@ impl Emit for MinTumbling {
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
-	high: SealingMax<DateTime, OrdF64>,
-	low: SealingMin<DateTime, OrdF64>,
-	ends: SealingEndpoint<DateTime, OrdF64>,
+	high: SealingMax<DateTimeCoord, OrdF64>,
+	low: SealingMin<DateTimeCoord, OrdF64>,
+	ends: SealingEndpoint<DateTimeCoord, OrdF64>,
 }
 
 impl Default for OhlcvAcc {
@@ -389,16 +394,16 @@ pub struct OhlcvValue {
 }
 
 impl WindowAccumulator for OhlcvAcc {
-	type Contribution = (DateTime, OrdF64);
+	type Contribution = (DateTimeCoord, OrdF64);
 	type Output = OhlcvValue;
 
-	fn add(&mut self, contribution: &(DateTime, OrdF64)) {
+	fn add(&mut self, contribution: &(DateTimeCoord, OrdF64)) {
 		self.high.add(contribution);
 		self.low.add(contribution);
 		self.ends.add(contribution);
 	}
 
-	fn remove(&mut self, contribution: &(DateTime, OrdF64)) {
+	fn remove(&mut self, contribution: &(DateTimeCoord, OrdF64)) {
 		self.high.remove(contribution);
 		self.low.remove(contribution);
 		self.ends.remove(contribution);
@@ -453,7 +458,7 @@ impl OperatorMetadata for OhlcvSealingTumbling {
 }
 
 impl WindowedOperator for OhlcvSealingTumbling {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
@@ -462,12 +467,14 @@ impl WindowedOperator for OhlcvSealingTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -479,12 +486,12 @@ impl WindowedOperator for OhlcvSealingTumbling {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (DateTime, OrdF64))>>> {
+	) -> Result<Vec<Option<(String, (DateTimeCoord, OrdF64))>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, (DateTime, OrdF64))>> {
+					.map(|row| -> Result<Option<(String, (DateTimeCoord, OrdF64))>> {
 						let (Some(group), Some(slot), Some(price)) =
 							(row.utf8("group")?, row.u64("slot")?, row.f64("price")?)
 						else {
@@ -493,7 +500,10 @@ impl WindowedOperator for OhlcvSealingTumbling {
 						let Some(price) = OrdF64::new(price) else {
 							return Ok(None);
 						};
-						Ok(Some((group.to_string(), (at_millis(slot as i64), price))))
+						Ok(Some((
+							group.to_string(),
+							(DateTimeCoord(at_millis(slot as i64)), price),
+						)))
 					})
 					.transpose()
 					.map(Option::flatten)
@@ -501,7 +511,7 @@ impl WindowedOperator for OhlcvSealingTumbling {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> OhlcvAcc {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> OhlcvAcc {
 		OhlcvAcc::default()
 	}
 }
@@ -509,7 +519,12 @@ impl WindowedOperator for OhlcvSealingTumbling {
 impl Emit for OhlcvSealingTumbling {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &OhlcvValue) -> Option<OhlcvOut> {
+	fn build_output(
+		&self,
+		group: &String,
+		span: WindowSpan<DateTimeCoord>,
+		value: &OhlcvValue,
+	) -> Option<OhlcvOut> {
 		Some(OhlcvOut {
 			group: group.clone(),
 			window_start: span.start.to_order(),
@@ -593,7 +608,7 @@ impl OperatorMetadata for RollingSum {
 }
 
 impl WindowedOperator for RollingSum {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = WindowSum;
 	type Output = RollingOut;
@@ -602,12 +617,14 @@ impl WindowedOperator for RollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -638,7 +655,7 @@ impl WindowedOperator for RollingSum {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> WindowSum {
 		WindowSum::default()
 	}
 }
@@ -646,7 +663,12 @@ impl WindowedOperator for RollingSum {
 impl Emit for RollingSum {
 	type Kinds = AllKinds;
 
-	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<RollingOut> {
+	fn build_output(
+		&self,
+		group: &String,
+		_span: WindowSpan<DateTimeCoord>,
+		value: &(f64, u32),
+	) -> Option<RollingOut> {
 		Some(RollingOut {
 			group: group.clone(),
 			rolling_sum: value.0,
@@ -683,7 +705,7 @@ impl OperatorMetadata for TopVolumeRollingTopK {
 }
 
 impl WindowedOperator for TopVolumeRollingTopK {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type Output = BTreeMap<u32, TopOut>;
@@ -692,12 +714,14 @@ impl WindowedOperator for TopVolumeRollingTopK {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -728,7 +752,10 @@ impl WindowedOperator for TopVolumeRollingTopK {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+	fn new_accumulator(
+		&self,
+		_settings: &WindowSettings<DateTimeCoord>,
+	) -> KeyedInvertibleAccumulator<u64, Moments> {
 		KeyedInvertibleAccumulator::default()
 	}
 }
@@ -739,7 +766,7 @@ impl Emit for TopVolumeRollingTopK {
 	fn build_output(
 		&self,
 		group: &String,
-		_span: WindowSpan<DateTime>,
+		_span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, Moments>,
 	) -> Option<BTreeMap<u32, TopOut>> {
 		let mut ranked: Vec<(u64, f64)> =
@@ -794,7 +821,7 @@ impl OperatorMetadata for TwapCarry {
 }
 
 impl WindowedOperator for TwapCarry {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
@@ -803,12 +830,14 @@ impl WindowedOperator for TwapCarry {
 		Ok(TwapCarry)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -839,7 +868,7 @@ impl WindowedOperator for TwapCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -850,7 +879,7 @@ impl CarryEmit for TwapCarry {
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {

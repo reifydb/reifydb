@@ -138,21 +138,19 @@ impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<S, V> {
 mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_value::{
-		factory::time::{at_millis, millis},
-		value::datetime::DateTime,
-	};
+	use reifydb_value::factory::time::millis;
 
 	use super::*;
+	use crate::{factory::coord::event_coord_at_millis, window::coord::DateTimeCoord};
 
 	#[test]
 	fn sealing_a_tail_matches_the_btreemap_it_replaced() {
 		// a container that orders or ages differently silently changes the aggregate a window emits
 		let immutable = millis(20);
-		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(immutable));
-		let mut tail: BTreeMap<DateTime, i64> = BTreeMap::new();
-		let mut high_water: Option<DateTime> = None;
-		let mut sealed_high: Option<DateTime> = None;
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(immutable));
+		let mut tail: BTreeMap<DateTimeCoord, i64> = BTreeMap::new();
+		let mut high_water: Option<DateTimeCoord> = None;
+		let mut sealed_high: Option<DateTimeCoord> = None;
 		let mut sealed_count: u64 = 0;
 		let mut aged_apart = false;
 
@@ -161,7 +159,7 @@ mod tests {
 			state ^= state << 13;
 			state ^= state >> 7;
 			state ^= state << 17;
-			let slot = at_millis(
+			let slot = event_coord_at_millis(
 				i64::try_from(step / 4 * 5 + state % 40)
 					.expect("test slot offset fits in i64 milliseconds"),
 			);
@@ -175,7 +173,7 @@ mod tests {
 			}
 
 			let aged = base.push(slot, value);
-			let mut expected_aged: Vec<(DateTime, i64)> = Vec::new();
+			let mut expected_aged: Vec<(DateTimeCoord, i64)> = Vec::new();
 			if !matches!(sealed_high, Some(sealed) if slot <= sealed) {
 				high_water = Some(match high_water {
 					Some(hw) if hw >= slot => hw,
@@ -213,42 +211,42 @@ mod tests {
 	#[test]
 	fn a_coordinate_exactly_one_immutable_span_behind_the_high_water_stays_live() {
 		// The boundary is load-bearing: sealing it would discard a retraction that is still admissible.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
-		base.push(at_millis(0), 1);
-		base.push(at_millis(10), 2);
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(10)));
+		base.push(event_coord_at_millis(0), 1);
+		base.push(event_coord_at_millis(10), 2);
 		assert_eq!(base.sealed_count(), 0, "a coordinate exactly at the bound is still immutable");
-		assert!(base.tail().contains_key(&at_millis(0)));
+		assert!(base.tail().contains_key(&event_coord_at_millis(0)));
 
-		base.push(at_millis(11), 3);
+		base.push(event_coord_at_millis(11), 3);
 		assert_eq!(base.sealed_count(), 1, "one millisecond past the bound seals");
-		assert!(!base.tail().contains_key(&at_millis(0)));
+		assert!(!base.tail().contains_key(&event_coord_at_millis(0)));
 	}
 
 	#[test]
 	fn a_corrected_coordinate_that_seals_twice_is_still_one_observation() {
 		// A repeat of an already sealed slot is that row arriving again, never a second one.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(1)));
-		base.push(at_millis(0), 10);
-		base.push(at_millis(2), 20);
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(1)));
+		base.push(event_coord_at_millis(0), 10);
+		base.push(event_coord_at_millis(2), 20);
 		assert_eq!(base.len(), 2);
 
-		base.push(at_millis(0), 99);
+		base.push(event_coord_at_millis(0), 99);
 		assert_eq!(base.len(), 2, "re-sealing a corrected coordinate must not count it twice");
 	}
 
 	#[test]
 	fn a_row_below_the_seal_line_is_dropped_while_one_just_above_it_still_counts() {
 		// The fast path assumes ordered arrival, so a row at or under the highest sealed slot is lost.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(1)));
-		base.push(at_millis(0), 1);
-		base.push(at_millis(10), 2);
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(1)));
+		base.push(event_coord_at_millis(0), 1);
+		base.push(event_coord_at_millis(10), 2);
 		assert_eq!(base.sealed_count(), 1);
 		assert_eq!(base.len(), 2);
 
-		base.push(at_millis(0), 99);
+		base.push(event_coord_at_millis(0), 99);
 		assert_eq!(base.len(), 2, "a row at the seal line never reaches the tail");
 
-		base.push(at_millis(1), 3);
+		base.push(event_coord_at_millis(1), 3);
 		assert_eq!(base.sealed_count(), 2, "a row one tick above the seal line is admitted and then sealed");
 		assert_eq!(base.len(), 3);
 	}
@@ -256,15 +254,15 @@ mod tests {
 	#[test]
 	fn removing_the_row_that_set_the_high_water_does_not_lower_the_seal_line() {
 		// The seal line is monotonic: a retraction of the newest row must never un-seal what it aged out.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
-		base.push(at_millis(0), 1);
-		base.push(at_millis(50), 2);
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(10)));
+		base.push(event_coord_at_millis(0), 1);
+		base.push(event_coord_at_millis(50), 2);
 		assert_eq!(base.sealed_count(), 1);
 
-		base.remove(&at_millis(50));
+		base.remove(&event_coord_at_millis(50));
 		assert!(base.tail().is_empty());
 
-		base.push(at_millis(30), 3);
+		base.push(event_coord_at_millis(30), 3);
 		assert_eq!(base.sealed_count(), 2, "the retracted high water still holds the seal line");
 		assert!(base.tail().is_empty());
 	}
@@ -272,15 +270,15 @@ mod tests {
 	#[test]
 	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
 		// absorb takes slot-disjoint branches, so dropping the other side's sealed total undercounts it.
-		let mut left: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
-		left.push(at_millis(0), 1);
-		left.push(at_millis(50), 2);
+		let mut left: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(10)));
+		left.push(event_coord_at_millis(0), 1);
+		left.push(event_coord_at_millis(50), 2);
 		assert_eq!(left.sealed_count(), 1);
 		assert_eq!(left.len(), 2);
 
-		let mut right: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
-		right.push(at_millis(100), 3);
-		right.push(at_millis(200), 4);
+		let mut right: SealingBase<DateTimeCoord, i64> = SealingBase::maybe_immutable(Some(millis(10)));
+		right.push(event_coord_at_millis(100), 3);
+		right.push(event_coord_at_millis(200), 4);
 		assert_eq!(right.sealed_count(), 1);
 		assert_eq!(right.len(), 2);
 
@@ -296,27 +294,27 @@ mod tests {
 	#[test]
 	fn absorb_resolves_a_shared_live_coordinate_through_the_combine_rule() {
 		// A slot both branches hold live is one row, so it must collapse to a single counted entry.
-		let mut left: SealingBase<DateTime, i64> = SealingBase::default();
-		left.push(at_millis(0), 1);
-		let mut right: SealingBase<DateTime, i64> = SealingBase::default();
-		right.push(at_millis(0), 9);
+		let mut left: SealingBase<DateTimeCoord, i64> = SealingBase::default();
+		left.push(event_coord_at_millis(0), 1);
+		let mut right: SealingBase<DateTimeCoord, i64> = SealingBase::default();
+		right.push(event_coord_at_millis(0), 9);
 
 		left.absorb(&right, |mine, theirs| *mine.max(theirs));
 
 		assert_eq!(left.len(), 1, "a shared coordinate must never count twice");
-		assert_eq!(left.tail().get(&at_millis(0)), Some(&9));
+		assert_eq!(left.tail().get(&event_coord_at_millis(0)), Some(&9));
 	}
 
 	#[test]
 	fn without_an_immutable_span_no_distance_is_far_enough_to_seal() {
 		// Every differential test compares against this arm, so it must retain every slot it is given.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::default();
-		base.push(at_millis(0), 1);
-		base.push(at_millis(1_000_000), 2);
-		base.push(at_millis(0), 3);
+		let mut base: SealingBase<DateTimeCoord, i64> = SealingBase::default();
+		base.push(event_coord_at_millis(0), 1);
+		base.push(event_coord_at_millis(1_000_000), 2);
+		base.push(event_coord_at_millis(0), 3);
 
 		assert_eq!(base.sealed_count(), 0);
 		assert_eq!(base.tail().len(), 2, "a repeat of a live coordinate corrects it in place");
-		assert_eq!(base.tail().get(&at_millis(0)), Some(&3));
+		assert_eq!(base.tail().get(&event_coord_at_millis(0)), Some(&3));
 	}
 }

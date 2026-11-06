@@ -5,7 +5,7 @@ use reifydb_core::{key::operator::state::GroupId, state::timer::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{
-	coord::{EventCoord, TimeStamped},
+	coord::{DateTimeCoord, TimeStamped},
 	meta::WindowMeta,
 };
 
@@ -20,8 +20,8 @@ impl<'a> Mint<'a> {
 		}
 	}
 
-	pub fn event(row: &impl TimeStamped) -> EventCoord {
-		EventCoord::of(row)
+	pub fn event(row: &impl TimeStamped) -> DateTimeCoord {
+		DateTimeCoord::of(row)
 	}
 
 	pub fn membership(
@@ -93,12 +93,11 @@ mod tests {
 	}
 
 	#[test]
-	fn an_event_coordinate_is_minted_from_the_row_and_never_from_the_counter() {
-		// A time window's coordinate comes from the row's own instant, never the arrival counter one
-		// call away. The signatures enforce it: `event` cannot see the store, `ordinal` cannot see a row.
+	fn an_event_coordinate_is_minted_from_the_row_time() {
+		// A coordinate from anything but the row's own time puts rows in windows the seal cannot reason about.
 		let row = DateTime::from_millis(5_000);
 
-		assert_eq!(Mint::event(&row).at(), DateTime::from_millis(5_000));
+		assert_eq!(Mint::event(&row).0, DateTime::from_millis(5_000));
 	}
 
 	#[test]

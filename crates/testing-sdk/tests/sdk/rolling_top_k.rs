@@ -14,6 +14,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::window::{
 	accumulator::invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments},
+	coord::DateTimeCoord,
 	settings::WindowSettings,
 	span::WindowSpan,
 };
@@ -75,7 +76,7 @@ impl OperatorMetadata for TestTopVolume {
 }
 
 impl WindowedOperator for TestTopVolume {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type Output = BTreeMap<u32, TopOut>;
@@ -84,12 +85,14 @@ impl WindowedOperator for TestTopVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -120,7 +123,10 @@ impl WindowedOperator for TestTopVolume {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+	fn new_accumulator(
+		&self,
+		_settings: &WindowSettings<DateTimeCoord>,
+	) -> KeyedInvertibleAccumulator<u64, Moments> {
 		KeyedInvertibleAccumulator::default()
 	}
 }
@@ -131,7 +137,7 @@ impl Emit for TestTopVolume {
 	fn build_output(
 		&self,
 		group: &String,
-		_span: WindowSpan<DateTime>,
+		_span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, Moments>,
 	) -> Option<BTreeMap<u32, TopOut>> {
 		let mut ranked: Vec<(u64, f64)> =
@@ -384,7 +390,7 @@ impl OperatorMetadata for SealedTopVolume {
 }
 
 impl WindowedOperator for SealedTopVolume {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type Output = BTreeMap<u32, TopOut>;
@@ -393,12 +399,14 @@ impl WindowedOperator for SealedTopVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -414,7 +422,10 @@ impl WindowedOperator for SealedTopVolume {
 		TestTopVolume.extract(ctx, cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
+	fn new_accumulator(
+		&self,
+		_settings: &WindowSettings<DateTimeCoord>,
+	) -> KeyedInvertibleAccumulator<u64, Moments> {
 		KeyedInvertibleAccumulator::default()
 	}
 }
@@ -425,7 +436,7 @@ impl Emit for SealedTopVolume {
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, Moments>,
 	) -> Option<BTreeMap<u32, TopOut>> {
 		TestTopVolume.build_output(group, span, value)

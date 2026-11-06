@@ -118,46 +118,49 @@ impl<S: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMin<S, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::{
-		factory::time::{at_millis, millis},
-		value::datetime::DateTime,
-	};
+	use reifydb_value::factory::time::millis;
 
 	use super::*;
-	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive};
+	use crate::{
+		factory::coord::event_coord_at_millis,
+		window::{
+			accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive},
+			coord::DateTimeCoord,
+		},
+	};
 
 	#[test]
 	fn sealing_min_seals_aged_extreme() {
-		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
-		accumulator.add(&(at_millis(0), 2));
-		accumulator.add(&(at_millis(5), 9));
-		accumulator.add(&(at_millis(12), 7));
+		let mut accumulator: SealingMin<DateTimeCoord, i64> = SealingMin::immutable(millis(10));
+		accumulator.add(&(event_coord_at_millis(0), 2));
+		accumulator.add(&(event_coord_at_millis(5), 9));
+		accumulator.add(&(event_coord_at_millis(12), 7));
 		assert_eq!(accumulator.min(), Some(2));
-		accumulator.remove(&(at_millis(5), 9));
+		accumulator.remove(&(event_coord_at_millis(5), 9));
 		assert_eq!(accumulator.min(), Some(2), "sealed min 2 survives removal of a live event");
 	}
 
 	#[test]
 	fn sealing_min_default_never_seals_and_is_fully_invertible() {
 		// Without an immutable span the minimum is never frozen, so retracting it must reveal the next one.
-		assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(
-			&[(at_millis(1), 10i64), (at_millis(2), 20)],
-			(at_millis(3), 30i64),
+		assert_add_remove_is_inverse::<SealingMin<DateTimeCoord, i64>>(
+			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
+			(event_coord_at_millis(3), 30i64),
 		);
-		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
-		accumulator.add(&(at_millis(0), 5));
-		accumulator.add(&(at_millis(1_000_000), 8));
-		accumulator.remove(&(at_millis(0), 5));
+		let mut accumulator: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+		accumulator.add(&(event_coord_at_millis(0), 5));
+		accumulator.add(&(event_coord_at_millis(1_000_000), 8));
+		accumulator.remove(&(event_coord_at_millis(0), 5));
 		assert_eq!(accumulator.min(), Some(8), "removing the min reveals the next min (no sealing)");
 	}
 
 	#[test]
 	fn sealing_min_merge_keeps_the_smaller_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a smaller one.
-		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
-		accumulator.add(&(at_millis(0), 1));
-		let mut other: SealingMin<DateTime, i64> = SealingMin::default();
-		other.add(&(at_millis(0), 9));
+		let mut accumulator: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+		accumulator.add(&(event_coord_at_millis(0), 1));
+		let mut other: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+		other.add(&(event_coord_at_millis(0), 9));
 
 		accumulator.merge(&other);
 		assert_eq!(
@@ -170,16 +173,16 @@ mod tests {
 	#[test]
 	fn sealing_min_default_merge_leaves_nothing_sealed() {
 		// merge is the only path that can seal without an immutable span, and a sealed minimum never retracts.
-		let mut left: SealingMin<DateTime, i64> = SealingMin::default();
-		left.add(&(at_millis(0), 5));
-		let mut right: SealingMin<DateTime, i64> = SealingMin::default();
-		right.add(&(at_millis(1_000_000), 8));
+		let mut left: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+		left.add(&(event_coord_at_millis(0), 5));
+		let mut right: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+		right.add(&(event_coord_at_millis(1_000_000), 8));
 
 		left.merge(&right);
 		assert_eq!(left.min(), Some(5));
 
-		left.remove(&(at_millis(0), 5));
-		left.remove(&(at_millis(1_000_000), 8));
+		left.remove(&(event_coord_at_millis(0), 5));
+		left.remove(&(event_coord_at_millis(1_000_000), 8));
 		assert!(left.is_empty(), "every merged row stays retractable while nothing seals");
 		assert_eq!(left.finalize(), None);
 	}
@@ -187,15 +190,15 @@ mod tests {
 	#[test]
 	fn sealing_min_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut sealed: SealingMin<DateTime, i64> = SealingMin::immutable(millis(1_000));
-		let mut unsealed: SealingMin<DateTime, i64> = SealingMin::default();
+		let mut sealed: SealingMin<DateTimeCoord, i64> = SealingMin::immutable(millis(1_000));
+		let mut unsealed: SealingMin<DateTimeCoord, i64> = SealingMin::default();
 		for (slot, value) in [(0, 5i64), (10, 2), (20, 7)] {
-			sealed.add(&(at_millis(slot), value));
-			unsealed.add(&(at_millis(slot), value));
+			sealed.add(&(event_coord_at_millis(slot), value));
+			unsealed.add(&(event_coord_at_millis(slot), value));
 		}
 
-		sealed.remove(&(at_millis(10), 2));
-		unsealed.remove(&(at_millis(10), 2));
+		sealed.remove(&(event_coord_at_millis(10), 2));
+		unsealed.remove(&(event_coord_at_millis(10), 2));
 		assert_eq!(sealed.min(), unsealed.min(), "with nothing sealed the two arms must agree");
 		assert_eq!(sealed.min(), Some(5));
 	}
@@ -204,13 +207,13 @@ mod tests {
 	fn sealing_min_matches_the_unsealed_arm_for_in_order_adds() {
 		// Sealing is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			SealingMin::<DateTime, i64>::immutable(millis(5)),
-			SealingMin::<DateTime, i64>::default(),
+			SealingMin::<DateTimeCoord, i64>::immutable(millis(5)),
+			SealingMin::<DateTimeCoord, i64>::default(),
 			&[
-				Op::Add((at_millis(0), 9)),
-				Op::Add((at_millis(10), 2)),
-				Op::Add((at_millis(20), 7)),
-				Op::Add((at_millis(30), 4)),
+				Op::Add((event_coord_at_millis(0), 9)),
+				Op::Add((event_coord_at_millis(10), 2)),
+				Op::Add((event_coord_at_millis(20), 7)),
+				Op::Add((event_coord_at_millis(30), 4)),
 			],
 			"an immutable span must not change the minimum when every row arrives in order",
 		);
@@ -220,14 +223,14 @@ mod tests {
 	fn sealing_min_never_drains_to_empty_once_a_row_has_sealed() {
 		// A sealed minimum cannot be retracted, so the sealed arm's state is never reclaimable.
 		let ops = [
-			Op::Add((at_millis(0), 5i64)),
-			Op::Add((at_millis(50), 8)),
-			Op::Remove((at_millis(0), 5)),
-			Op::Remove((at_millis(50), 8)),
+			Op::Add((event_coord_at_millis(0), 5i64)),
+			Op::Add((event_coord_at_millis(50), 8)),
+			Op::Remove((event_coord_at_millis(0), 5)),
+			Op::Remove((event_coord_at_millis(50), 8)),
 		];
-		let mut sealed: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
+		let mut sealed: SealingMin<DateTimeCoord, i64> = SealingMin::immutable(millis(10));
 		drive(&mut sealed, &ops);
-		let mut unsealed: SealingMin<DateTime, i64> = SealingMin::default();
+		let mut unsealed: SealingMin<DateTimeCoord, i64> = SealingMin::default();
 		drive(&mut unsealed, &ops);
 
 		assert!(unsealed.is_empty(), "with nothing sealed every row stays retractable");
@@ -239,12 +242,12 @@ mod tests {
 	fn sealing_min_merge_keeps_a_branch_minimum_that_predates_the_seal_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
-		left.add(&(at_millis(0), 5));
+		let mut left: SealingMin<DateTimeCoord, i64> = SealingMin::immutable(millis(10));
+		left.add(&(event_coord_at_millis(0), 5));
 
-		let mut right: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
-		right.add(&(at_millis(50), 7));
-		right.add(&(at_millis(70), 9));
+		let mut right: SealingMin<DateTimeCoord, i64> = SealingMin::immutable(millis(10));
+		right.add(&(event_coord_at_millis(50), 7));
+		right.add(&(event_coord_at_millis(70), 9));
 
 		let mut left_first = left.clone();
 		left_first.merge(&right);
@@ -258,8 +261,8 @@ mod tests {
 	#[test]
 	fn sealing_min_compacts_only_with_an_immutable_span() {
 		// without an immutable span nothing seals, so the tail must count as growing with every sample
-		assert!(!SealingMin::<DateTime, i64>::default().compacts());
-		assert!(!SealingMin::<DateTime, i64>::maybe_immutable(None).compacts());
-		assert!(SealingMin::<DateTime, i64>::immutable(millis(10)).compacts());
+		assert!(!SealingMin::<DateTimeCoord, i64>::default().compacts());
+		assert!(!SealingMin::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
+		assert!(SealingMin::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
 	}
 }

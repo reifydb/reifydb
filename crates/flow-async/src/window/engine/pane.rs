@@ -948,6 +948,7 @@ mod tests {
 		operator::state::mock::MockStore,
 		window::{
 			accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
+			coord::DateTimeCoord,
 			engine::{config::WindowEngineConfig, daba::Merge, publish::RowPublisher},
 			meta::NoKey,
 		},
@@ -1000,7 +1001,7 @@ mod tests {
 		}
 	}
 
-	type Engine = PaneEngine<u32, DateTime, Bag>;
+	type Engine = PaneEngine<u32, DateTimeCoord, Bag>;
 
 	struct Lcg(u64);
 
@@ -1011,8 +1012,8 @@ mod tests {
 		}
 	}
 
-	fn ms(millis: u64) -> DateTime {
-		DateTime::from_millis(i64::try_from(millis).unwrap())
+	fn ms(millis: u64) -> DateTimeCoord {
+		DateTimeCoord(DateTime::from_millis(i64::try_from(millis).unwrap()))
 	}
 
 	fn span(millis: u64) -> Duration {
@@ -1108,7 +1109,7 @@ mod tests {
 		let (mut base, mut row, mut cutoff) = (1_000u64, 0u64, None::<u64>);
 		let (mut emitted, mut dropped, mut expired) = (0usize, 0u64, 0usize);
 		for round in 0..400u64 {
-			let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
+			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 			let mut admitted: Vec<(u32, u64, u64, i64, bool)> = Vec::new();
 			let mut round_dropped = 0u64;
 			let mut push = |model: &Model, group: u32, pane: u64, row: u64, value: i64, add: bool| {
@@ -1167,7 +1168,7 @@ mod tests {
 					&Bag::default,
 					&RowPublisher {
 						key: Some(&|_: &u32| NoKey),
-						finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
 					},
 				)
 				.unwrap();
@@ -1191,7 +1192,9 @@ mod tests {
 						ms(cutoff.unwrap()),
 						&RowPublisher::<_, NoKey, _, _, _> {
 							key: None,
-							finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+							finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| {
+								bag.finalize()
+							},
 						},
 					)
 					.unwrap();
@@ -1273,7 +1276,7 @@ mod tests {
 			let group = GroupId::hashed(Hash128(1));
 			let mut visited = Vec::new();
 			for pane in 1_000..3_000u64 {
-				let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
+				let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 				groups.insert(1, (group, vec![PaneEvent::Insert(ms(pane), pane, (pane, 1))]));
 				let before = store.rows_visited();
 				engine.apply(
@@ -1283,7 +1286,7 @@ mod tests {
 					&Bag::default,
 					&RowPublisher {
 						key: Some(&|_: &u32| NoKey),
-						finalize: &|_: &u32, _: DateTime, bag: &Bag| bag.finalize(),
+						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
 					},
 				)
 				.unwrap();
@@ -1357,7 +1360,7 @@ mod tests {
 			lateness: span(4),
 			retract: span(4),
 		};
-		let mut engine: PaneEngine<u32, DateTime, Tally> =
+		let mut engine: PaneEngine<u32, DateTimeCoord, Tally> =
 			PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of());
 		let mut store = MockStore::default();
 		let group = GroupId::hashed(Hash128(7));
@@ -1372,7 +1375,7 @@ mod tests {
 					(pane * 10 + row, rng.below(50) as i64),
 				));
 			}
-			let mut groups: PaneGroups<u32, DateTime, (u64, i64)> = BTreeMap::new();
+			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));
 			engine.apply(
 				&mut store,
@@ -1381,7 +1384,7 @@ mod tests {
 				&Tally::default,
 				&RowPublisher {
 					key: Some(&|_: &u32| NoKey),
-					finalize: &|_: &u32, _: DateTime, t: &Tally| t.finalize(),
+					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
 				},
 			)
 			.unwrap();

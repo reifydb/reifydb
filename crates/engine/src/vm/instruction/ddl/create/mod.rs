@@ -14,8 +14,8 @@ use reifydb_core::{
 			flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 			flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 			flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
-			flow_operator_with_window_size_duration, flow_transactional_not_supported,
-			flow_transactional_reads_deferred_view, flow_view_calls_script_routine,
+			flow_transactional_not_supported, flow_transactional_reads_deferred_view,
+			flow_view_calls_script_routine,
 		},
 		operation::lookup_outside_deferred_view,
 		query,
@@ -333,14 +333,8 @@ fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith)
 			&requirements.kinds.join(", ")
 		)));
 	}
-	match (requirements.domain, kind.size()) {
-		(WindowSizeDomain::Time, Some(WindowSize::Count(count))) => {
-			return Err(error!(flow_operator_with_window_size_count(*count)));
-		}
-		(WindowSizeDomain::Slots, Some(WindowSize::Duration(size))) => {
-			return Err(error!(flow_operator_with_window_size_duration(*size)));
-		}
-		_ => {}
+	if let (WindowSizeDomain::Time, Some(WindowSize::Count(count))) = (requirements.domain, kind.size()) {
+		return Err(error!(flow_operator_with_window_size_count(*count)));
 	}
 	if requirements.needs_pane
 		&& matches!(

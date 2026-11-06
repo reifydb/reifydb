@@ -119,49 +119,52 @@ impl<S: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<S, V> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::operator::state::decode;
-	use reifydb_value::{
-		factory::time::{at_millis, millis},
-		value::datetime::DateTime,
-	};
+	use reifydb_value::factory::time::millis;
 
 	use super::*;
-	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree};
+	use crate::{
+		factory::coord::event_coord_at_millis,
+		window::{
+			accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
+			coord::DateTimeCoord,
+		},
+	};
 
 	#[test]
 	fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
-		accumulator.add(&(at_millis(0), 5));
-		accumulator.add(&(at_millis(5), 8));
-		accumulator.add(&(at_millis(12), 3));
+		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		accumulator.add(&(event_coord_at_millis(0), 5));
+		accumulator.add(&(event_coord_at_millis(5), 8));
+		accumulator.add(&(event_coord_at_millis(12), 3));
 		assert_eq!(accumulator.max(), Some(8));
 
-		accumulator.remove(&(at_millis(0), 5));
+		accumulator.remove(&(event_coord_at_millis(0), 5));
 		assert_eq!(accumulator.max(), Some(8), "aged removal does not disturb the sealed max");
 
-		accumulator.remove(&(at_millis(5), 8));
+		accumulator.remove(&(event_coord_at_millis(5), 8));
 		assert_eq!(accumulator.max(), Some(5), "tail max 8 removed; falls back to sealed 5");
 	}
 
 	#[test]
 	fn sealing_max_default_never_seals_and_is_fully_invertible() {
-		assert_add_remove_is_inverse::<SealingMax<DateTime, i64>>(
-			&[(at_millis(1), 10i64), (at_millis(2), 20)],
-			(at_millis(3), 30i64),
+		assert_add_remove_is_inverse::<SealingMax<DateTimeCoord, i64>>(
+			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
+			(event_coord_at_millis(3), 30i64),
 		);
-		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
-		accumulator.add(&(at_millis(0), 5));
-		accumulator.add(&(at_millis(100), 8));
-		accumulator.remove(&(at_millis(100), 8));
+		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		accumulator.add(&(event_coord_at_millis(0), 5));
+		accumulator.add(&(event_coord_at_millis(100), 8));
+		accumulator.remove(&(event_coord_at_millis(100), 8));
 		assert_eq!(accumulator.max(), Some(5), "removing the max reveals the prior max (no sealing)");
 	}
 
 	#[test]
 	fn sealing_max_merge_keeps_the_larger_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a larger one.
-		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
-		accumulator.add(&(at_millis(0), 9));
-		let mut other: SealingMax<DateTime, i64> = SealingMax::default();
-		other.add(&(at_millis(0), 1));
+		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		accumulator.add(&(event_coord_at_millis(0), 9));
+		let mut other: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		other.add(&(event_coord_at_millis(0), 1));
 
 		accumulator.merge(&other);
 		assert_eq!(
@@ -174,16 +177,16 @@ mod tests {
 	#[test]
 	fn sealing_max_default_merge_leaves_nothing_sealed() {
 		// merge is the only path that can seal without an immutable span, and a sealed maximum never retracts.
-		let mut left: SealingMax<DateTime, i64> = SealingMax::default();
-		left.add(&(at_millis(0), 9));
-		let mut right: SealingMax<DateTime, i64> = SealingMax::default();
-		right.add(&(at_millis(1_000_000), 3));
+		let mut left: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		left.add(&(event_coord_at_millis(0), 9));
+		let mut right: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		right.add(&(event_coord_at_millis(1_000_000), 3));
 
 		left.merge(&right);
 		assert_eq!(left.max(), Some(9));
 
-		left.remove(&(at_millis(0), 9));
-		left.remove(&(at_millis(1_000_000), 3));
+		left.remove(&(event_coord_at_millis(0), 9));
+		left.remove(&(event_coord_at_millis(1_000_000), 3));
 		assert!(left.is_empty(), "every merged row stays retractable while nothing seals");
 		assert_eq!(left.finalize(), None);
 	}
@@ -191,15 +194,15 @@ mod tests {
 	#[test]
 	fn sealing_max_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut sealed: SealingMax<DateTime, i64> = SealingMax::immutable(millis(1_000));
-		let mut unsealed: SealingMax<DateTime, i64> = SealingMax::default();
+		let mut sealed: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(1_000));
+		let mut unsealed: SealingMax<DateTimeCoord, i64> = SealingMax::default();
 		for (slot, value) in [(0, 5i64), (10, 9), (20, 7)] {
-			sealed.add(&(at_millis(slot), value));
-			unsealed.add(&(at_millis(slot), value));
+			sealed.add(&(event_coord_at_millis(slot), value));
+			unsealed.add(&(event_coord_at_millis(slot), value));
 		}
 
-		sealed.remove(&(at_millis(10), 9));
-		unsealed.remove(&(at_millis(10), 9));
+		sealed.remove(&(event_coord_at_millis(10), 9));
+		unsealed.remove(&(event_coord_at_millis(10), 9));
 		assert_eq!(sealed.max(), unsealed.max(), "with nothing sealed the two arms must agree");
 		assert_eq!(sealed.max(), Some(7));
 	}
@@ -208,13 +211,13 @@ mod tests {
 	fn sealing_max_matches_the_unsealed_arm_for_in_order_adds() {
 		// Sealing is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			SealingMax::<DateTime, i64>::immutable(millis(5)),
-			SealingMax::<DateTime, i64>::default(),
+			SealingMax::<DateTimeCoord, i64>::immutable(millis(5)),
+			SealingMax::<DateTimeCoord, i64>::default(),
 			&[
-				Op::Add((at_millis(0), 9)),
-				Op::Add((at_millis(10), 2)),
-				Op::Add((at_millis(20), 7)),
-				Op::Add((at_millis(30), 4)),
+				Op::Add((event_coord_at_millis(0), 9)),
+				Op::Add((event_coord_at_millis(10), 2)),
+				Op::Add((event_coord_at_millis(20), 7)),
+				Op::Add((event_coord_at_millis(30), 4)),
 			],
 			"an immutable span must not change the maximum when every row arrives in order",
 		);
@@ -224,12 +227,12 @@ mod tests {
 	fn sealing_max_merge_keeps_a_branch_maximum_that_predates_the_seal_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
-		left.add(&(at_millis(0), 9));
+		let mut left: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		left.add(&(event_coord_at_millis(0), 9));
 
-		let mut right: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
-		right.add(&(at_millis(50), 1));
-		right.add(&(at_millis(70), 3));
+		let mut right: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		right.add(&(event_coord_at_millis(50), 1));
+		right.add(&(event_coord_at_millis(70), 3));
 
 		let mut left_first = left.clone();
 		left_first.merge(&right);
@@ -242,19 +245,19 @@ mod tests {
 
 	#[test]
 	fn sealing_max_roundtrip() {
-		let mut mx: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
-		mx.add(&(at_millis(0), 5));
-		mx.add(&(at_millis(12), 8));
+		let mut mx: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		mx.add(&(event_coord_at_millis(0), 5));
+		mx.add(&(event_coord_at_millis(12), 8));
 		let bytes = mx.encode_state().expect("encode");
-		let restored: SealingMax<DateTime, i64> = decode(&bytes).expect("decode");
+		let restored: SealingMax<DateTimeCoord, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, mx);
 	}
 
 	#[test]
 	fn sealing_max_compacts_only_with_an_immutable_span() {
 		// without an immutable span nothing seals, so the tail must count as growing with every sample
-		assert!(!SealingMax::<DateTime, i64>::default().compacts());
-		assert!(!SealingMax::<DateTime, i64>::maybe_immutable(None).compacts());
-		assert!(SealingMax::<DateTime, i64>::immutable(millis(10)).compacts());
+		assert!(!SealingMax::<DateTimeCoord, i64>::default().compacts());
+		assert!(!SealingMax::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
+		assert!(SealingMax::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
 	}
 }

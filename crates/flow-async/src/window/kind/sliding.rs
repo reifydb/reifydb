@@ -3,11 +3,11 @@
 
 use std::iter::successors;
 
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::duration::Duration;
 
 use crate::{
 	operator::state::seal::coord::Coord,
-	window::{coord::EventCoord, span::WindowSpan},
+	window::{coord::DateTimeCoord, span::WindowSpan},
 };
 
 fn fits_span(size: Duration, slide: Duration) -> Option<(Duration, Duration)> {
@@ -28,25 +28,26 @@ impl SlidingOverTime {
 		})
 	}
 
-	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		let start = <DateTime as Coord>::from_order(anchor);
-		WindowSpan::new(start, start.saturating_add(self.size))
+	pub fn span(&self, anchor: u64) -> WindowSpan<DateTimeCoord> {
+		let start = <DateTimeCoord as Coord>::from_order(anchor);
+		WindowSpan::new(start, DateTimeCoord(start.0.saturating_add(self.size)))
 	}
 
-	pub fn anchors(&self, coord: EventCoord) -> impl Iterator<Item = u64> + use<> {
-		let instant = coord.at();
+	pub fn anchors(&self, coord: DateTimeCoord) -> impl Iterator<Item = u64> + use<> {
 		let (size, slide) = (self.size, self.slide);
-		successors(Some(instant.saturating_sub(size).floor_to(slide)), move |start| {
-			Some(start.saturating_add(slide))
+		successors(Some(coord.saturating_sub_span(size).floor_to(slide)), move |start| {
+			Some(DateTimeCoord(start.0.saturating_add(slide)))
 		})
-		.take_while(move |start| *start <= instant)
-		.filter(move |start| instant < start.saturating_add(size))
+		.take_while(move |start| *start <= coord)
+		.filter(move |start| coord.0 < start.0.saturating_add(size))
 		.map(|start| start.to_order())
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::value::datetime::DateTime;
+
 	use super::*;
 	use crate::factory::coord::event_coord_at_millis;
 
@@ -120,7 +121,7 @@ mod tests {
 		// was admitted against, and the seal timer armed from it closes a different window.
 		let span = timed().span(order(4_250));
 
-		assert_eq!(span.start, DateTime::from_millis(4_250));
-		assert_eq!(span.end, DateTime::from_millis(5_250));
+		assert_eq!(span.start, DateTimeCoord(DateTime::from_millis(4_250)));
+		assert_eq!(span.end, DateTimeCoord(DateTime::from_millis(5_250)));
 	}
 }

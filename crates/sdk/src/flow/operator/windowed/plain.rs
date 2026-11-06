@@ -1399,7 +1399,7 @@ mod tests {
 	};
 	use reifydb_flow_async::window::{
 		accumulator::invertible::last_value::LastValue,
-		coord::{OrdinalCoord, RowSpan},
+		coord::{DateTimeCoord, RowSpan, U8Coord},
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
@@ -1495,8 +1495,8 @@ mod tests {
 		};
 	}
 
-	probe!(DateTime, u32, Duration, |s: &WindowSettings<DateTime>| s.immutable);
-	probe!(OrdinalCoord, u64, RowSpan, |s: &WindowSettings<OrdinalCoord>| s.immutable);
+	probe!(DateTimeCoord, u32, Duration, |s: &WindowSettings<DateTimeCoord>| s.immutable);
+	probe!(U8Coord, u64, RowSpan, |s: &WindowSettings<U8Coord>| s.immutable);
 
 	type TimeProbe = Probe<Duration, u32>;
 	type SlotProbe = Probe<RowSpan, u64>;
@@ -1528,11 +1528,11 @@ mod tests {
 	fn the_row_key_is_the_group_bytes_then_the_coordinate() {
 		// The driver owns the row key: a group bytes prefix keeps one group's windows together, and the
 		// coordinate must follow it, or two windows of one group collide or two groups interleave.
-		let start = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
+		let start = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
 
 		let key = PlainDriver::<TimeProbe>::row_key(&7u32, start);
 
-		assert_eq!(key, EncodedKey::builder().u32(7u32).datetime(&start).build());
+		assert_eq!(key, EncodedKey::builder().u32(7u32).datetime(&start.0).build());
 		assert_ne!(key, PlainDriver::<TimeProbe>::row_key(&8u32, start));
 	}
 
@@ -1540,22 +1540,22 @@ mod tests {
 	fn the_span_is_the_declared_size_aligned_down_from_the_coordinate() {
 		// The engine builds the span from the size in the with clause; a hard-coded or ignored size would give
 		// every operator the same window.
-		let coord = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let coord = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
 		let minute = time_driver(&tumbling_time(60, None, None));
 		let five_minutes = time_driver(&tumbling_time(300, None, None));
 
 		assert_eq!(
 			minute.window_span(coord),
 			WindowSpan::new(
-				DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap(),
-				DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap()
+				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
+				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap())
 			)
 		);
 		assert_eq!(
 			five_minutes.window_span(coord),
 			WindowSpan::new(
-				DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap(),
-				DateTime::from_ymd_hms(2024, 1, 15, 10, 35, 0).unwrap()
+				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
+				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 35, 0).unwrap())
 			)
 		);
 	}
@@ -1579,10 +1579,10 @@ mod tests {
 	fn a_slot_row_key_carries_the_group_slot_and_the_coordinate() {
 		// The slot operators keep the slot in the group key and in the coordinate; the row key must hold both,
 		// so two slots never share a key.
-		let key = PlainDriver::<SlotProbe>::row_key(&5u64, OrdinalCoord::from_arrival_counter(5));
+		let key = PlainDriver::<SlotProbe>::row_key(&5u64, U8Coord(5));
 
 		assert_eq!(key, EncodedKey::builder().u64(5u64).u64(5u64).build());
-		assert_ne!(key, PlainDriver::<SlotProbe>::row_key(&6u64, OrdinalCoord::from_arrival_counter(6)));
+		assert_ne!(key, PlainDriver::<SlotProbe>::row_key(&6u64, U8Coord(6)));
 	}
 
 	#[test]
@@ -1603,10 +1603,7 @@ mod tests {
 		assert_eq!(driver.settings.size, Some(RowSpan::of(10)));
 		assert_eq!(driver.settings.lateness, RowSpan::of(4));
 		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
-		assert_eq!(
-			driver.window_span(OrdinalCoord::from_arrival_counter(23)),
-			WindowSpan::new(OrdinalCoord::from_arrival_counter(20), OrdinalCoord::from_arrival_counter(30))
-		);
+		assert_eq!(driver.window_span(U8Coord(23)), WindowSpan::new(U8Coord(20), U8Coord(30)));
 	}
 
 	#[test]
@@ -1627,17 +1624,8 @@ mod tests {
 
 		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
 		assert_eq!(
-			sliding.engine.spans(OrdinalCoord::from_arrival_counter(23)),
-			vec![
-				WindowSpan::new(
-					OrdinalCoord::from_arrival_counter(16),
-					OrdinalCoord::from_arrival_counter(26)
-				),
-				WindowSpan::new(
-					OrdinalCoord::from_arrival_counter(20),
-					OrdinalCoord::from_arrival_counter(30)
-				),
-			]
+			sliding.engine.spans(U8Coord(23)),
+			vec![WindowSpan::new(U8Coord(16), U8Coord(26)), WindowSpan::new(U8Coord(20), U8Coord(30)),]
 		);
 	}
 

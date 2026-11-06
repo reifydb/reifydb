@@ -14,8 +14,10 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator, coord::OrdinalCoord,
-		settings::WindowSettings, span::WindowSpan,
+		accumulator::invertible::retained_map::RetainedAccumulator,
+		coord::{DateTimeCoord, U8Coord},
+		settings::WindowSettings,
+		span::WindowSpan,
 	},
 };
 use reifydb_sdk::{
@@ -71,7 +73,7 @@ impl OperatorMetadata for LateCarry {
 }
 
 impl WindowedOperator for LateCarry {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = LateOut;
@@ -80,12 +82,14 @@ impl WindowedOperator for LateCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -116,7 +120,7 @@ impl WindowedOperator for LateCarry {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -127,7 +131,7 @@ impl CarryEmit for LateCarry {
 	fn build_output(
 		&self,
 		_group: &String,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<LateOut> {
@@ -348,7 +352,7 @@ impl OperatorMetadata for SlotCarry {
 }
 
 impl WindowedOperator for SlotCarry {
-	type Coord = OrdinalCoord;
+	type Coord = U8Coord;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = LateOut;
@@ -357,7 +361,7 @@ impl WindowedOperator for SlotCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, _cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<OrdinalCoord>>> {
+	fn coord(&self, _cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<U8Coord>>> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -370,7 +374,7 @@ impl WindowedOperator for SlotCarry {
 		Ok(vec![None; rows.len()])
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<OrdinalCoord>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<U8Coord>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -381,7 +385,7 @@ impl CarryEmit for SlotCarry {
 	fn build_output(
 		&self,
 		_group: &String,
-		_span: WindowSpan<OrdinalCoord>,
+		_span: WindowSpan<U8Coord>,
 		_value: &BTreeMap<u64, f64>,
 		_prev_carry: Option<&f64>,
 	) -> Option<LateOut> {

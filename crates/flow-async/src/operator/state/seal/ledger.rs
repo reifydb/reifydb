@@ -12,10 +12,7 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::{
-	operator::state::seal::{coord::Coord, rule::SealedThrough},
-	timer::Timer,
-};
+use crate::{operator::state::seal::rule::SealedThrough, timer::Timer};
 
 #[operator_state]
 #[derive(Clone, Default)]

@@ -20,7 +20,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{Value, duration::Duration, row_number::RowNumber},
 };
 use tracing::{Span, instrument};
 
@@ -55,6 +55,7 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
+		coord::DateTimeCoord,
 		engine::{AccumulatorEvent, ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
@@ -80,14 +81,14 @@ fn route_engine_columns(
 		columns,
 		is_add,
 		|row_idx| {
-			let ts = timestamps[row_idx];
-			(WindowSpan::for_coord(ts, window_size), ts)
+			let event_coord = DateTimeCoord(timestamps[row_idx]);
+			(WindowSpan::for_coord(event_coord, window_size), event_coord)
 		},
 		routing,
 	)
 }
 
-fn first_open_window(gate: &SealGate, window_size: Duration) -> DateTime {
+fn first_open_window(gate: &SealGate, window_size: Duration) -> DateTimeCoord {
 	let floor = WindowSpan::for_coord(gate.horizon(), window_size).start;
 	match gate.admits(floor.to_order()) {
 		true => floor,
@@ -98,9 +99,9 @@ fn first_open_window(gate: &SealGate, window_size: Duration) -> DateTime {
 fn drop_straddling(
 	pre: &RecordBatch,
 	post: &RecordBatch,
-	open_from: DateTime,
+	open_from: DateTimeCoord,
 ) -> Result<(RecordBatch, RecordBatch, usize)> {
-	let kept = eq(&time_at_or_after(pre, open_from)?, &time_at_or_after(post, open_from)?)
+	let kept = eq(&time_at_or_after(pre, open_from.0)?, &time_at_or_after(post, open_from.0)?)
 		.map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
 	let dropped = kept.false_count();
 	if dropped == 0 {
@@ -113,16 +114,16 @@ fn push_count_event(
 	routing: &mut Routing,
 	hash: Hash128,
 	gvals: &[Value],
-	span: WindowSpan<DateTime>,
+	span: WindowSpan<DateTimeCoord>,
 	coord: WindowSlotKey,
 	event: AccumulatorEvent<SlotRow>,
-	event_ts: DateTime,
+	event_coord: DateTimeCoord,
 ) {
 	let event = match event {
 		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
 		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
 	};
-	routing.push(hash, gvals, span, event, event_ts);
+	routing.push(hash, gvals, span, event, event_coord);
 }
 
 struct DiffGroups {
@@ -217,14 +218,14 @@ pub fn apply_tumbling_engine(
 		mut buckets,
 		group_values,
 		mut arrival,
-		window_max_ts,
+		window_max_coord,
 	} = routing.finish();
 	drop_sealed_events(
 		operator,
 		host,
 		&mut buckets,
 		&mut arrival,
-		&window_max_ts,
+		&window_max_coord,
 		rule,
 		ExpiryAnchor::WindowStart,
 	)?;
@@ -242,7 +243,7 @@ pub fn apply_tumbling_engine(
 		buckets,
 		&group_values,
 		arrival,
-		window_max_ts,
+		window_max_coord,
 		&groups,
 		&kinds,
 		engine_config,
@@ -256,7 +257,7 @@ pub fn apply_tumbling_engine(
 }
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
-fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTime>)]) -> WindowGroups {
+fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTimeCoord>)]) -> WindowGroups {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	intern_window_groups(&windows)
 }
@@ -274,16 +275,16 @@ fn route_time_sliding(
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	let views = operator.core.slot_views(columns, &slot_cols)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let event_ts = timestamps[row_idx];
-		let contribution = views.contribution(row_idx, event_ts);
-		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
-		for wid in bound.anchors(event_ts.to_order()) {
+		let event_coord = DateTimeCoord(timestamps[row_idx]);
+		let contribution = views.contribution(row_idx, event_coord.0);
+		let coord = slot_coord(event_coord, row_numbers[row_idx].0);
+		for wid in bound.anchors(event_coord.to_order()) {
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution.clone())
 			} else {
 				AccumulatorEvent::Remove(contribution.clone())
 			};
-			push_count_event(routing, *hash, gvals, bound.span(wid), coord, event, event_ts);
+			push_count_event(routing, *hash, gvals, bound.span(wid), coord, event, event_coord);
 		}
 	}
 	Ok(())
@@ -328,7 +329,7 @@ pub fn apply_sliding_engine(
 		mut buckets,
 		group_values,
 		mut arrival,
-		window_max_ts,
+		window_max_coord,
 	} = routing.finish();
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 	drop_sealed_events(
@@ -336,7 +337,7 @@ pub fn apply_sliding_engine(
 		host,
 		&mut buckets,
 		&mut arrival,
-		&window_max_ts,
+		&window_max_coord,
 		rule,
 		ExpiryAnchor::WindowStart,
 	)?;
@@ -354,7 +355,7 @@ pub fn apply_sliding_engine(
 		buckets,
 		&group_values,
 		arrival,
-		window_max_ts,
+		window_max_coord,
 		&groups,
 		&kinds,
 		engine_config,
@@ -367,11 +368,11 @@ pub fn apply_sliding_engine(
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-type SealedWindows = HashSet<(Hash128, WindowSpan<DateTime>)>;
+type SealedWindows = HashSet<(Hash128, WindowSpan<DateTimeCoord>)>;
 
 struct GroupSessions {
 	loaded_due: Option<u64>,
-	open: OpenSessions<DateTime>,
+	open: OpenSessions<DateTimeCoord>,
 }
 
 struct IndexEvent {
@@ -402,13 +403,13 @@ fn withdraw_sealed_admissions(
 	Ok(())
 }
 
-fn earliest_due(open: &OpenSessions<DateTime>, gap: Duration) -> Option<u64> {
+fn earliest_due(open: &OpenSessions<DateTimeCoord>, gap: Duration) -> Option<u64> {
 	open.sessions()
 		.iter()
 		.map(|session| session.last)
 		.min()
 		.or(open.sealed_last())
-		.map(|last| last.saturating_add(gap).to_order())
+		.map(|last| last.0.saturating_add(gap).to_order())
 }
 
 fn group_sessions<'a>(
@@ -416,9 +417,9 @@ fn group_sessions<'a>(
 	store: &mut dyn StateStore,
 	groups: &'a mut HashMap<Hash128, GroupSessions>,
 	hash: Hash128,
-	horizon: DateTime,
+	horizon: DateTimeCoord,
 	gap: Duration,
-) -> Result<&'a mut OpenSessions<DateTime>> {
+) -> Result<&'a mut OpenSessions<DateTimeCoord>> {
 	if let Entry::Vacant(entry) = groups.entry(hash) {
 		let mut open = operator.load_open_sessions(store, hash)?;
 		let loaded_due = earliest_due(&open, gap);
@@ -440,7 +441,7 @@ struct SessionPass<'a> {
 	routing: &'a mut Routing,
 	groups: &'a mut HashMap<Hash128, GroupSessions>,
 	index_events: &'a mut Vec<IndexEvent>,
-	horizon: DateTime,
+	horizon: DateTimeCoord,
 	gap: Duration,
 }
 
@@ -453,11 +454,11 @@ impl SessionPass<'_> {
 		gvals: &[Value],
 		from: u64,
 		to: u64,
-		members: &[Member<DateTime>],
+		members: &[Member<DateTimeCoord>],
 	) -> Result<()> {
 		for member in members {
 			let slot = operator.load_session_member(store, hash, from, member.row)?;
-			let coord = slot_coord(false, member.at, member.row.0);
+			let coord = slot_coord(member.at, member.row.0);
 			push_count_event(
 				self.routing,
 				hash,
@@ -490,7 +491,7 @@ impl SessionPass<'_> {
 		store: &mut dyn StateStore,
 		hash: Hash128,
 		gvals: &[Value],
-		at: DateTime,
+		at: DateTimeCoord,
 		row: RowNumber,
 		contribution: SlotRow,
 	) -> Result<bool> {
@@ -529,7 +530,7 @@ impl SessionPass<'_> {
 			hash,
 			gvals,
 			ordinal_window_span(target),
-			slot_coord(false, at, row.0),
+			slot_coord(at, row.0),
 			AccumulatorEvent::Add(contribution),
 			at,
 		);
@@ -542,7 +543,7 @@ impl SessionPass<'_> {
 		store: &mut dyn StateStore,
 		hash: Hash128,
 		gvals: &[Value],
-		at: DateTime,
+		at: DateTimeCoord,
 		row: RowNumber,
 		contribution: SlotRow,
 	) -> Result<()> {
@@ -556,7 +557,7 @@ impl SessionPass<'_> {
 				hash,
 				gvals,
 				ordinal_window_span(session_id),
-				slot_coord(false, at, row.0),
+				slot_coord(at, row.0),
 				AccumulatorEvent::Remove(contribution.clone()),
 				at,
 			);
@@ -584,7 +585,7 @@ impl SessionPass<'_> {
 		store: &mut dyn StateStore,
 		hash: Hash128,
 		gvals: &[Value],
-		at: DateTime,
+		at: DateTimeCoord,
 		row: RowNumber,
 		pre: SlotRow,
 		post: SlotRow,
@@ -594,7 +595,7 @@ impl SessionPass<'_> {
 			if !open.sessions().iter().any(|session| session.id == session_id) {
 				continue;
 			}
-			let coord = slot_coord(false, at, row.0);
+			let coord = slot_coord(at, row.0);
 			let span = ordinal_window_span(session_id);
 			push_count_event(
 				self.routing,
@@ -666,7 +667,7 @@ pub fn apply_session_engine(
 							&mut store,
 							*hash,
 							gvals,
-							at,
+							DateTimeCoord(at),
 							post_rows[row_idx],
 							contribution,
 						)? {
@@ -691,7 +692,7 @@ pub fn apply_session_engine(
 							&mut store,
 							*hash,
 							gvals,
-							at,
+							DateTimeCoord(at),
 							pre_rows[row_idx],
 							contribution,
 						)?;
@@ -724,7 +725,7 @@ pub fn apply_session_engine(
 								&mut store,
 								*hash,
 								gvals,
-								at,
+								DateTimeCoord(at),
 								row,
 								pre_contrib,
 								post_contrib,
@@ -737,7 +738,7 @@ pub fn apply_session_engine(
 								&mut store,
 								*hash,
 								gvals,
-								pre_at,
+								DateTimeCoord(pre_at),
 								row,
 								pre_contrib,
 							)?;
@@ -747,7 +748,7 @@ pub fn apply_session_engine(
 							&mut store,
 							*post_hash,
 							post_gvals,
-							at,
+							DateTimeCoord(at),
 							row,
 							post_contrib,
 						)? {
@@ -767,7 +768,7 @@ pub fn apply_session_engine(
 		mut buckets,
 		group_values,
 		mut arrival,
-		window_max_ts,
+		window_max_coord,
 		..
 	} = routing.finish();
 	let (gated, sealed) = drop_sealed_events(
@@ -775,7 +776,7 @@ pub fn apply_session_engine(
 		host,
 		&mut buckets,
 		&mut arrival,
-		&window_max_ts,
+		&window_max_coord,
 		rule,
 		ExpiryAnchor::LastEvent,
 	)?;
@@ -818,7 +819,7 @@ pub fn apply_session_engine(
 		buckets,
 		&group_values,
 		arrival,
-		window_max_ts,
+		window_max_coord,
 		&interned,
 		&kinds,
 		engine_config,
@@ -830,7 +831,7 @@ pub fn apply_session_engine(
 	if !gone.is_empty() {
 		let engine_config = operator.engine_config();
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(engine_config))
+			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
 		});
 		drain_groups(host, &gone, &mut *engine, usize::MAX)?;
 		*operator.core.tumbling_engine_slot() = Some(engine);
@@ -844,8 +845,8 @@ fn drop_sealed_events(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	buckets: &mut EngineBuckets,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	arrival: &mut Vec<(Hash128, WindowSpan<DateTimeCoord>)>,
+	window_max_coord: &HashMap<(Hash128, WindowSpan<DateTimeCoord>), DateTimeCoord>,
 	rule: SealRule,
 	anchor: ExpiryAnchor,
 ) -> Result<(GatedMeta, SealedWindows)> {
@@ -867,7 +868,7 @@ fn drop_sealed_events(
 			);
 		}
 	}
-	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
+	let mut sealed: Vec<(Hash128, WindowSpan<DateTimeCoord>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
 		for (key, events) in buckets.iter() {
@@ -879,7 +880,7 @@ fn drop_sealed_events(
 						.expect("the gate reads the engine meta of every bucket")
 						.as_ref()
 						.map(|meta| meta.last_event_time);
-					let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
+					let batch_last = window_max_coord.get(key).map(|ts| ts.to_order());
 					anchor.of(window_start, prior_last.max(batch_last))
 				}
 				ExpiryAnchor::WindowStart | ExpiryAnchor::Unindexed => anchor.of(window_start, None),
@@ -908,11 +909,10 @@ fn drop_sealed_events(
 
 fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
 	let config = operator.engine_config();
-	let mut engine = operator
-		.core
-		.tumbling_engine_slot()
-		.take()
-		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
+	let mut engine =
+		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+		});
 	let earliest = engine.earliest_expiry(host)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
 	Ok(earliest)
@@ -944,10 +944,9 @@ fn seal_due_windows(
 	let config = operator.engine_config();
 	let budget = config.expire_batch().saturating_mul(runs);
 	let expired = {
-		let mut engine =
-			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
-			});
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+		});
 		let res = engine.expire_within(host, threshold.to_order(), budget)?;
 		let retires = host.state_retires_groups() && !matches!(operator.kind, WindowKind::Session { .. });
 		if retires {
@@ -984,11 +983,10 @@ fn maintenance_rule(operator: &WindowOperator) -> Option<SealRule> {
 pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<usize> {
 	let config = operator.engine_config();
 	let budget = config.expire_batch();
-	let mut engine = operator
-		.core
-		.tumbling_engine_slot()
-		.take()
-		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
+	let mut engine =
+		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+		});
 	let drained = drain(host, &mut *engine, budget)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
 	if !drained.queue_is_empty()
@@ -1065,7 +1063,8 @@ fn retire_session_trackers(
 			saves.push((hash, open));
 		}
 	}
-	let saving: Vec<(Hash128, &OpenSessions<DateTime>)> = saves.iter().map(|(hash, open)| (*hash, open)).collect();
+	let saving: Vec<(Hash128, &OpenSessions<DateTimeCoord>)> =
+		saves.iter().map(|(hash, open)| (*hash, open)).collect();
 	operator.save_open_sessions(host, &saving)?;
 	if !removes.is_empty() {
 		host.state_remove(&removes)?;
@@ -1090,9 +1089,9 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
 	use super::SealRule;
-	use crate::operator::state::seal::{
-		coord::Coord,
-		rule::{is_sealed, seal_horizon},
+	use crate::{
+		operator::state::seal::rule::{is_sealed, seal_horizon},
+		window::coord::DateTimeCoord,
 	};
 
 	#[test]
@@ -1127,16 +1126,16 @@ mod tests {
 		let lateness = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
-			seal_horizon(at_millis(3), lateness),
-			at_millis(-7),
+			seal_horizon(DateTimeCoord(at_millis(3)), lateness),
+			DateTimeCoord(at_millis(-7)),
 			"young watermark minus lateness is a real pre-epoch instant"
 		);
 		assert!(
-			!is_sealed(at_millis(0), seal_horizon(at_millis(3), lateness)),
+			!is_sealed(DateTimeCoord(at_millis(0)), seal_horizon(DateTimeCoord(at_millis(3)), lateness)),
 			"the epoch is still after a pre-epoch horizon"
 		);
 		assert!(
-			is_sealed(at_millis(4), seal_horizon(at_millis(20), lateness)),
+			is_sealed(DateTimeCoord(at_millis(4)), seal_horizon(DateTimeCoord(at_millis(20)), lateness)),
 			"anchor below watermark - lateness is sealed"
 		);
 	}
@@ -1155,7 +1154,10 @@ mod reap_tests {
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
+	use reifydb_value::{
+		factory::time::at_millis,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 	use crate::{
@@ -1274,7 +1276,10 @@ mod seal_arm_tests {
 	use reifydb_routine_abi::registry::Routines;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
+	use reifydb_value::{
+		factory::time::at_millis,
+		value::{datetime::DateTime, duration::Duration},
+	};
 
 	use super::*;
 	use crate::{
@@ -1352,22 +1357,21 @@ mod seal_arm_tests {
 
 	fn index_windows(operator: &mut WindowOperator, host: &mut dyn HostContext, starts: &[u64]) {
 		let config = operator.engine_config();
-		let mut engine =
-			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
-			});
+		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+		});
 		let slot_key = EncodedKey::new(Vec::new());
-		let windows: Vec<(Hash128, DateTime)> = starts
+		let windows: Vec<(Hash128, DateTimeCoord)> = starts
 			.iter()
 			.enumerate()
 			.map(|(n, start_ms)| {
-				let start = at_millis(
+				let start = DateTimeCoord(at_millis(
 					i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
-				);
+				));
 				(Hash128::from(n as u128), start)
 			})
 			.collect();
-		let entries: Vec<WindowReindex<'_, Hash128, DateTime>> = windows
+		let entries: Vec<WindowReindex<'_, Hash128, DateTimeCoord>> = windows
 			.iter()
 			.map(|(group, start)| WindowReindex {
 				group,
@@ -1513,7 +1517,7 @@ mod seal_arm_tests {
 		let (alive, closing) = (Hash128::from(1u128), Hash128::from(2u128));
 		let gap = Duration::from_milliseconds_const(1_000);
 		let one_session = |millis: i64| {
-			let at = at_millis(millis);
+			let at = DateTimeCoord(at_millis(millis));
 			OpenSessions::resumed(
 				gap,
 				SessionIds::StartTime,
@@ -1666,10 +1670,10 @@ mod seal_arm_tests {
 		let mut operator = window();
 		let id = operator.core.operator;
 		let hash = Hash128(7);
-		let start = at_millis(0);
+		let start = DateTimeCoord(at_millis(0));
 		let span = WindowSpan {
 			start,
-			end: at_millis(SIZE_MS as i64),
+			end: DateTimeCoord(at_millis(SIZE_MS as i64)),
 		};
 		let group = GroupId::window(hash, start.to_order());
 		let mut txn = txn_at(&engine, 100);
@@ -1680,25 +1684,18 @@ mod seal_arm_tests {
 				AccumulatorEvent::Add(slot_row(Vec::new())),
 				AccumulatorEvent::Remove(slot_row(Vec::new())),
 			] {
-				push_count_event(
-					&mut routing,
-					hash,
-					&[],
-					span,
-					slot_coord(false, start, 1),
-					event,
-					start,
-				);
+				push_count_event(&mut routing, hash, &[], span, slot_coord(start, 1), event, start);
 			}
 			let Routed {
 				buckets,
 				group_values,
 				arrival,
-				window_max_ts,
+				window_max_coord,
 				..
 			} = routing.finish();
 			let groups = intern_batch(&arrival);
-			let change = Change::from_flow(id, ChangeVersion::from(CommitVersion(100)), Vec::new(), start);
+			let change =
+				Change::from_flow(id, ChangeVersion::from(CommitVersion(100)), Vec::new(), start.0);
 			let config = operator.engine_config();
 			let diffs = finish_tumbling_engine(
 				&mut operator.core,
@@ -1707,7 +1704,7 @@ mod seal_arm_tests {
 				buckets,
 				&group_values,
 				arrival,
-				window_max_ts,
+				window_max_coord,
 				&groups,
 				&[],
 				config,

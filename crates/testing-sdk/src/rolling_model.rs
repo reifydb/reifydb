@@ -225,15 +225,16 @@ impl<G: Ord + Clone, C: Coord, V: Clone> RollingModel<G, C, V> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_flow_async::window::coord::DateTimeCoord;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 	use super::{RollingModel, RollingRules};
 
-	fn at(ms: i64) -> DateTime {
-		DateTime::from_epoch_millis(ms).unwrap()
+	fn at(ms: i64) -> DateTimeCoord {
+		DateTimeCoord(DateTime::from_epoch_millis(ms).unwrap())
 	}
 
-	fn model(size_ms: i64, lateness_ms: i64, retract_ms: i64) -> RollingModel<i32, DateTime, i64> {
+	fn model(size_ms: i64, lateness_ms: i64, retract_ms: i64) -> RollingModel<i32, DateTimeCoord, i64> {
 		RollingModel::new(RollingRules {
 			size: Duration::from_milliseconds(size_ms).unwrap(),
 			lateness: Duration::from_milliseconds(lateness_ms).unwrap(),
@@ -241,7 +242,7 @@ mod tests {
 		})
 	}
 
-	fn held(model: &RollingModel<i32, DateTime, i64>) -> Vec<(i32, Vec<i64>)> {
+	fn held(model: &RollingModel<i32, DateTimeCoord, i64>) -> Vec<(i32, Vec<i64>)> {
 		let mut out: Vec<(i32, Vec<i64>)> = model
 			.groups()
 			.map(|(group, rows)| {

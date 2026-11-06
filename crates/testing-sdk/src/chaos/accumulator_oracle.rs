@@ -26,6 +26,7 @@ use reifydb_flow_async::{
 	transaction::FlowTransaction,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		coord::DateTimeCoord,
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
@@ -290,12 +291,12 @@ where
 #[allow(clippy::type_complexity)]
 fn rolling_windows<A>(
 	aggregate: &A,
-	settings: &WindowSettings<DateTime>,
+	settings: &WindowSettings<DateTimeCoord>,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 ) -> Vec<(RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>)>
 where
-	A: WindowedOperator<Coord = DateTime>,
+	A: WindowedOperator<Coord = DateTimeCoord>,
 {
 	let pane = rolling_pane::<A>(settings);
 	let size = settings.fixed_size();
@@ -360,7 +361,7 @@ where
 	}
 
 	let drain_ms = i64::try_from(ctx.drain_at_ms).expect("chaos ledger time fits in i64 milliseconds");
-	let drain = DateTime::from_epoch_millis(drain_ms).expect("rolling oracle drain time");
+	let drain = DateTimeCoord(DateTime::from_epoch_millis(drain_ms).expect("rolling oracle drain time"));
 	if let Some(cutoff) = drain.checked_sub_span(size).map(|cutoff| cutoff.floor_to(pane)) {
 		replay_rolling(aggregate, settings, &mut panes, model.advance_cutoff(cutoff));
 	}
@@ -412,11 +413,11 @@ pub fn rolling_accumulator_oracle<A>(
 	output_key_columns: &[String],
 ) -> MaterializedView
 where
-	A: Emit + WindowedOperator<Coord = DateTime>,
+	A: Emit + WindowedOperator<Coord = DateTimeCoord>,
 	A::Accumulator: MergeAccumulator,
 	A::Output: Row,
 {
-	let settings = <DateTime as SealDomain>::window_settings_of(with).expect("rolling oracle window settings");
+	let settings = <DateTimeCoord as SealDomain>::window_settings_of(with).expect("rolling oracle window settings");
 	let pane = rolling_pane::<A>(&settings);
 	let outputs: Vec<A::Output> = rolling_windows(aggregate, &settings, ctx, batches)
 		.into_iter()
@@ -643,13 +644,13 @@ where
 
 pub fn rolling_top_k_accumulator_oracle<A, SK, R>(
 	aggregate: &A,
-	settings: &WindowSettings<DateTime>,
+	settings: &WindowSettings<DateTimeCoord>,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedView
 where
-	A: Emit<Output = BTreeMap<SK, R>> + WindowedOperator<Coord = DateTime>,
+	A: Emit<Output = BTreeMap<SK, R>> + WindowedOperator<Coord = DateTimeCoord>,
 	A::Accumulator: MergeAccumulator,
 	SK: Ord,
 	R: Row,

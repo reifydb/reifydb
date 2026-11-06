@@ -61,7 +61,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	operator::aggregation::accumulator::{RowAccumulator, avg_type, sum_type},
-	window::{engine::tumbling::TumblingEngine, span::WindowSpan},
+	window::{coord::DateTimeCoord, engine::tumbling::TumblingEngine, span::WindowSpan},
 };
 
 #[derive(Default)]
@@ -425,7 +425,7 @@ pub struct EmitRow {
 	pub group_values: Vec<Value>,
 	pub slot_values: Vec<Value>,
 	pub row_number: RowNumber,
-	pub span: Option<WindowSpan<DateTime>>,
+	pub span: Option<WindowSpan<DateTimeCoord>>,
 }
 
 fn row_types(row: &EmitRow) -> Vec<Option<ValueType>> {
@@ -457,7 +457,7 @@ pub struct Aggregation {
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
-	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>,
+	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>>>,
 	digests: DigestSlots,
 	pub ctx: Arc<FlowContext>,
 }
@@ -594,7 +594,7 @@ impl Aggregation {
 
 	pub(crate) fn tumbling_engine_slot(
 		&mut self,
-	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
+	) -> &mut Option<Box<TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>>> {
 		&mut self.tumbling_engine
 	}
 
@@ -718,7 +718,7 @@ impl Aggregation {
 		self.slot_inputs.iter().any(|input| matches!(input, SlotInput::EventTime))
 	}
 
-	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<DateTime>) -> Option<Vec<Value>> {
+	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<DateTimeCoord>) -> Option<Vec<Value>> {
 		let kinds = self.slot_kinds.as_ref()?;
 		if !kinds.iter().any(|kind| kind.requires_span()) {
 			return None;
@@ -726,10 +726,10 @@ impl Aggregation {
 		let mut out = slot_values.to_vec();
 		for (value, kind) in out.iter_mut().zip(kinds.iter()) {
 			*value = match kind {
-				SlotKind::WindowStart => Value::DateTime(span.start),
-				SlotKind::WindowEnd => Value::DateTime(span.end),
+				SlotKind::WindowStart => Value::DateTime(span.start.0),
+				SlotKind::WindowEnd => Value::DateTime(span.end.0),
 				SlotKind::WindowDuration => {
-					Value::Duration(span.end.saturating_duration_since(span.start))
+					Value::Duration(span.end.0.saturating_duration_since(span.start.0))
 				}
 				_ => continue,
 			};
@@ -834,7 +834,7 @@ impl Aggregation {
 		columns.push(system(SystemColumn::UpdatedAt, stamps));
 		columns.push(system(
 			SystemColumn::Time,
-			Arc::new(datetime_array(rows.iter().map(|row| row.span.map_or(ts, |span| span.start)))),
+			Arc::new(datetime_array(rows.iter().map(|row| row.span.map_or(ts, |span| span.start.0)))),
 		));
 		let out = match &self.emit_schema {
 			Some(schema) => batch_with(schema, columns, count)?,

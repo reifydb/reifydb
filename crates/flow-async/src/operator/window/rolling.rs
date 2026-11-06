@@ -27,6 +27,7 @@ use crate::{
 	},
 	window::{
 		accumulator::WindowAccumulator,
+		coord::DateTimeCoord,
 		engine::{
 			daba::Merge,
 			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
@@ -37,7 +38,7 @@ use crate::{
 	},
 };
 
-pub(crate) type NativePaneEngine = PaneEngine<Hash128, DateTime, RowAccumulator>;
+pub(crate) type NativePaneEngine = PaneEngine<Hash128, DateTimeCoord, RowAccumulator>;
 
 type Contribution = (WindowSlotKey, SlotRow);
 
@@ -55,7 +56,7 @@ pub(crate) fn rolling_runs_on_running_total(kinds: &[SlotKind]) -> bool {
 	})
 }
 
-fn floor_to_pane(operator: &WindowOperator, at: DateTime) -> DateTime {
+fn floor_to_pane(operator: &WindowOperator, at: DateTimeCoord) -> DateTimeCoord {
 	match operator.rolling_pane() {
 		Some(pane) => at.floor_to(pane),
 		None => at,
@@ -66,8 +67,8 @@ fn rolling_over_time(operator: &WindowOperator) -> RollingOverTime {
 	RollingOverTime::new(operator.size_duration().unwrap_or_default(), operator.rolling_lag())
 }
 
-fn expiry_cutoff(operator: &WindowOperator, clock: DateTime) -> Option<DateTime> {
-	rolling_over_time(operator).eviction_cutoff(clock).map(|cutoff| floor_to_pane(operator, cutoff))
+fn expiry_cutoff(operator: &WindowOperator, clock: DateTime) -> Option<DateTimeCoord> {
+	rolling_over_time(operator).eviction_cutoff(DateTimeCoord(clock)).map(|cutoff| floor_to_pane(operator, cutoff))
 }
 
 fn rolling_spans(operator: &WindowOperator) -> PaneSpans<Duration> {
@@ -101,7 +102,7 @@ fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 struct RoutedRow {
 	group: Hash128,
 	group_values: Vec<Value>,
-	pane: DateTime,
+	pane: DateTimeCoord,
 	row: u64,
 	contribution: Contribution,
 }
@@ -118,7 +119,7 @@ fn routed_rows(operator: &WindowOperator, columns: &RecordBatch) -> Result<Vec<R
 	let views = operator.core.slot_views(columns, &slot_cols)?;
 	let mut rows = Vec::with_capacity(row_count);
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let pane = floor_to_pane(operator, timestamps[row_idx]);
+		let pane = floor_to_pane(operator, DateTimeCoord(timestamps[row_idx]));
 		rows.push(RoutedRow {
 			group: *hash,
 			group_values: gvals.to_vec(),
@@ -135,13 +136,13 @@ fn routed_rows(operator: &WindowOperator, columns: &RecordBatch) -> Result<Vec<R
 
 #[derive(Default)]
 struct Routing {
-	events: BTreeMap<Hash128, Vec<PaneEvent<DateTime, Contribution>>>,
+	events: BTreeMap<Hash128, Vec<PaneEvent<DateTimeCoord, Contribution>>>,
 	group_values: HashMap<Hash128, Vec<Value>>,
 	touched: Vec<Hash128>,
 }
 
 impl Routing {
-	fn push(&mut self, group: Hash128, group_values: Vec<Value>, event: PaneEvent<DateTime, Contribution>) {
+	fn push(&mut self, group: Hash128, group_values: Vec<Value>, event: PaneEvent<DateTimeCoord, Contribution>) {
 		if !self.events.contains_key(&group) {
 			self.touched.push(group);
 		}
@@ -215,7 +216,7 @@ fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> 
 	Ok(routing)
 }
 
-fn finalize_rolling(_group: &Hash128, _newest: DateTime, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
+fn finalize_rolling(_group: &Hash128, _newest: DateTimeCoord, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
 	accumulator.finalize()
 }
 
@@ -236,7 +237,7 @@ pub fn apply_rolling_engine(
 	let cutoff = expiry_cutoff(operator, clock);
 
 	let groups = intern_partitions(&routing.touched);
-	let mut pane_groups: PaneGroups<Hash128, DateTime, Contribution> = BTreeMap::new();
+	let mut pane_groups: PaneGroups<Hash128, DateTimeCoord, Contribution> = BTreeMap::new();
 	for (hash, events) in routing.events {
 		pane_groups.insert(hash, (group_of(&groups, hash, 0), events));
 	}
@@ -397,7 +398,7 @@ mod tests {
 			"a coordinate exactly one span behind the watermark must already be due"
 		);
 		assert_eq!(
-			armed.saturating_sub_span(span).to_order(),
+			DateTimeCoord(armed).saturating_sub_span(span).to_order(),
 			order(5_000),
 			"and the cutoff that firing derives must land on that coordinate, not past it"
 		);
@@ -666,8 +667,8 @@ mod tests {
 		}
 	}
 
-	fn millis(ms: u64) -> DateTime {
-		DateTime::from_millis(i64::try_from(ms).expect("test millis fit in i64"))
+	fn millis(ms: u64) -> DateTimeCoord {
+		DateTimeCoord(DateTime::from_millis(i64::try_from(ms).expect("test millis fit in i64")))
 	}
 
 	fn drive_time_frame(kinds: &[SlotKind], immutable_ms: Option<u64>, seed: u64) {
@@ -730,7 +731,7 @@ mod tests {
 				plan.push((group, key, rng.latency(), true));
 			}
 
-			let mut groups: PaneGroups<Hash128, DateTime, Contribution> = TestBTreeMap::new();
+			let mut groups: PaneGroups<Hash128, DateTimeCoord, Contribution> = TestBTreeMap::new();
 			let mut admitted: Vec<(Hash128, TimeKey, Option<f64>, bool)> = Vec::new();
 			let mut round_dropped = 0u64;
 			for (group, (ms, seq), value, is_add) in &plan {

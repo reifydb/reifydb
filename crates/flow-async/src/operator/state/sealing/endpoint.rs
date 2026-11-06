@@ -135,39 +135,42 @@ impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<S, V> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::operator::state::decode;
-	use reifydb_value::{
-		factory::time::{at_millis, millis},
-		value::datetime::DateTime,
-	};
+	use reifydb_value::factory::time::millis;
 
 	use super::*;
-	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree};
+	use crate::{
+		factory::coord::event_coord_at_millis,
+		window::{
+			accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
+			coord::DateTimeCoord,
+		},
+	};
 
 	#[test]
 	fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
-		accumulator.add(&(at_millis(0), 100));
-		accumulator.add(&(at_millis(5), 200));
-		accumulator.add(&(at_millis(12), 300));
+		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		accumulator.add(&(event_coord_at_millis(0), 100));
+		accumulator.add(&(event_coord_at_millis(5), 200));
+		accumulator.add(&(event_coord_at_millis(12), 300));
 		assert_eq!(accumulator.open(), Some(&100), "open frozen to the earliest observation");
 		assert_eq!(accumulator.close(), Some(&300), "close is the latest live observation");
 
-		accumulator.remove(&(at_millis(0), 100));
+		accumulator.remove(&(event_coord_at_millis(0), 100));
 		assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
 
-		accumulator.remove(&(at_millis(12), 300));
+		accumulator.remove(&(event_coord_at_millis(12), 300));
 		assert_eq!(accumulator.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
 
-		accumulator.add(&(at_millis(20), 400));
+		accumulator.add(&(event_coord_at_millis(20), 400));
 		assert_eq!(accumulator.open(), Some(&100));
 		assert_eq!(accumulator.close(), Some(&400));
 	}
 
 	#[test]
 	fn sealing_endpoint_default_is_fully_invertible() {
-		assert_add_remove_is_inverse::<SealingEndpoint<DateTime, i64>>(
-			&[(at_millis(1), 10i64), (at_millis(3), 30)],
-			(at_millis(2), 20i64),
+		assert_add_remove_is_inverse::<SealingEndpoint<DateTimeCoord, i64>>(
+			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(3), 30)],
+			(event_coord_at_millis(2), 20i64),
 		);
 	}
 
@@ -175,18 +178,18 @@ mod tests {
 	fn sealing_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
 		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
 		// next.
-		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::default();
-		accumulator.add(&(at_millis(0), 100));
-		accumulator.add(&(at_millis(5), 200));
-		accumulator.add(&(at_millis(1_000_000), 300));
+		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::default();
+		accumulator.add(&(event_coord_at_millis(0), 100));
+		accumulator.add(&(event_coord_at_millis(5), 200));
+		accumulator.add(&(event_coord_at_millis(1_000_000), 300));
 		assert_eq!(accumulator.finalize(), Some((100, 300)));
 
-		accumulator.remove(&(at_millis(0), 100));
+		accumulator.remove(&(event_coord_at_millis(0), 100));
 		assert_eq!(accumulator.open(), Some(&200), "the open is retractable while nothing is sealed");
 		assert_eq!(accumulator.finalize(), Some((200, 300)));
 
-		accumulator.remove(&(at_millis(5), 200));
-		accumulator.remove(&(at_millis(1_000_000), 300));
+		accumulator.remove(&(event_coord_at_millis(5), 200));
+		accumulator.remove(&(event_coord_at_millis(1_000_000), 300));
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 	}
@@ -195,12 +198,12 @@ mod tests {
 	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
 		// Only the earliest sealed slot is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
-		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
-		accumulator.add(&(at_millis(0), 1));
-		accumulator.add(&(at_millis(5), 2));
-		accumulator.add(&(at_millis(20), 3));
+		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		accumulator.add(&(event_coord_at_millis(0), 1));
+		accumulator.add(&(event_coord_at_millis(5), 2));
+		accumulator.add(&(event_coord_at_millis(20), 3));
 
-		accumulator.remove(&(at_millis(20), 3));
+		accumulator.remove(&(event_coord_at_millis(20), 3));
 		assert_eq!(accumulator.close(), Some(&2), "close is the latest surviving observation");
 		assert_eq!(accumulator.finalize(), Some((1, 2)));
 	}
@@ -209,9 +212,13 @@ mod tests {
 	fn sealing_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
 		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
 		assert_arms_agree(
-			SealingEndpoint::<DateTime, i64>::immutable(millis(5)),
-			SealingEndpoint::<DateTime, i64>::default(),
-			&[Op::Add((at_millis(0), 1)), Op::Add((at_millis(10), 2)), Op::Add((at_millis(20), 3))],
+			SealingEndpoint::<DateTimeCoord, i64>::immutable(millis(5)),
+			SealingEndpoint::<DateTimeCoord, i64>::default(),
+			&[
+				Op::Add((event_coord_at_millis(0), 1)),
+				Op::Add((event_coord_at_millis(10), 2)),
+				Op::Add((event_coord_at_millis(20), 3)),
+			],
 			"an immutable span must not change the endpoints when every row arrives in order",
 		);
 	}
@@ -220,12 +227,12 @@ mod tests {
 	fn sealing_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
 		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
-		left.add(&(at_millis(0), 1));
+		let mut left: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		left.add(&(event_coord_at_millis(0), 1));
 
-		let mut right: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
-		right.add(&(at_millis(50), 5));
-		right.add(&(at_millis(70), 7));
+		let mut right: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		right.add(&(event_coord_at_millis(50), 5));
+		right.add(&(event_coord_at_millis(70), 7));
 
 		let mut left_first = left.clone();
 		left_first.merge(&right);
@@ -238,11 +245,11 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_roundtrip() {
-		let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
-		ep.add(&(at_millis(0), 100));
-		ep.add(&(at_millis(12), 300));
+		let mut ep: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		ep.add(&(event_coord_at_millis(0), 100));
+		ep.add(&(event_coord_at_millis(12), 300));
 		let bytes = ep.encode_state().expect("encode");
-		let restored: SealingEndpoint<DateTime, i64> = decode(&bytes).expect("decode");
+		let restored: SealingEndpoint<DateTimeCoord, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, ep);
 	}
 }

@@ -24,11 +24,12 @@ impl<C: Coord> WindowSettings<C> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::common::{WindowKind, WindowSize};
-	use reifydb_value::value::{datetime::DateTime, duration::Duration};
+	use reifydb_value::value::duration::Duration;
 
 	use super::WindowSettings;
+	use crate::window::coord::DateTimeCoord;
 
-	fn settings(pane: Option<Duration>) -> WindowSettings<DateTime> {
+	fn settings(pane: Option<Duration>) -> WindowSettings<DateTimeCoord> {
 		let hour = Duration::from_hours(1).unwrap();
 		WindowSettings {
 			kind: WindowKind::Rolling {

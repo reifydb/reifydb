@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_flow_async::window::coord::DateTimeCoord;
 use reifydb_testing_chaos::operator::model::Model;
 use reifydb_testing_sdk::rolling_model::{RollingModel, RollingRules};
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
@@ -13,19 +14,19 @@ pub struct Oracle {
 	size_ms: u64,
 	lateness_ms: u64,
 	ledger: u64,
-	model: RollingModel<i32, DateTime, i64>,
+	model: RollingModel<i32, DateTimeCoord, i64>,
 	fold: Fold,
 }
 
-fn at(ms: u64) -> DateTime {
-	DateTime::from_epoch_millis(ms as i64).expect("rolling oracle coordinate")
+fn at(ms: u64) -> DateTimeCoord {
+	DateTimeCoord(DateTime::from_epoch_millis(ms as i64).expect("rolling oracle coordinate"))
 }
 
 fn span(ms: u64) -> Duration {
 	Duration::from_milliseconds(ms as i64).expect("rolling oracle span")
 }
 
-fn model(size_ms: u64, lateness_ms: u64, retract_ms: u64) -> RollingModel<i32, DateTime, i64> {
+fn model(size_ms: u64, lateness_ms: u64, retract_ms: u64) -> RollingModel<i32, DateTimeCoord, i64> {
 	RollingModel::new(RollingRules {
 		size: span(size_ms),
 		lateness: span(lateness_ms),

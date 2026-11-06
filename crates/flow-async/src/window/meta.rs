@@ -393,7 +393,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, util::hash::Hash128, value::row_number::RowNumber};
 
 	use super::{OpenSessionsState, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
-	use crate::operator::state::{mock::MockStore, seal::coord::Coord};
+	use crate::operator::state::mock::MockStore;
 
 	fn group_id() -> GroupId {
 		GroupId::hashed(Hash128(42))

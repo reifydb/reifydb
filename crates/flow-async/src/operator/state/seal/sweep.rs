@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::datetime::DateTime;
-
-use crate::operator::state::seal::{ledger::FiredAt, rule::SealRule};
+use crate::{
+	operator::state::seal::{ledger::FiredAt, rule::SealRule},
+	window::coord::DateTimeCoord,
+};
 
 pub struct SealSweep {
 	rule: SealRule,
@@ -16,8 +17,8 @@ impl SealSweep {
 		}
 	}
 
-	pub fn horizon(&self, fired: FiredAt) -> Option<DateTime> {
-		self.rule.horizon_at(fired.at())
+	pub fn horizon(&self, fired: FiredAt) -> Option<DateTimeCoord> {
+		self.rule.horizon_at(DateTimeCoord(fired.at()))
 	}
 }
 
@@ -25,10 +26,10 @@ impl SealSweep {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::state::timer::TimerKind;
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::{operator::state::seal::coord::Coord, timer::Timer};
+	use crate::timer::Timer;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
@@ -40,7 +41,7 @@ mod tests {
 
 	fn fired(order: u64) -> FiredAt {
 		FiredAt::of(&Timer {
-			due: <DateTime as Coord>::from_order(order),
+			due: DateTime::from_order(order),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		})
@@ -57,7 +58,7 @@ mod tests {
 		let event = order(5_000);
 		let instant = rule.seal_instant_from_order(event).at();
 
-		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTime::from_millis(5_000)));
+		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTimeCoord(DateTime::from_millis(5_000))));
 	}
 
 	#[test]
@@ -65,13 +66,13 @@ mod tests {
 		// Wrapping through u64 there would yield a horizon near u64::MAX and seal every window in one tick
 		let sweep = SealSweep::new(SealRule::tumbling(ms(1_000), ms(200)));
 
-		assert_eq!(sweep.horizon(fired(order(0))), Some(DateTime::from_millis(-1_201)));
+		assert_eq!(sweep.horizon(fired(order(0))), Some(DateTimeCoord(DateTime::from_millis(-1_201))));
 		assert_eq!(
 			sweep.horizon(fired(order(1_200))),
-			Some(DateTime::from_millis(-1)),
+			Some(DateTimeCoord(DateTime::from_millis(-1))),
 			"the horizon is 0 - 1, not 0"
 		);
-		assert_eq!(sweep.horizon(fired(order(1_201))), Some(DateTime::from_millis(0)));
+		assert_eq!(sweep.horizon(fired(order(1_201))), Some(DateTimeCoord(DateTime::from_millis(0))));
 	}
 
 	#[test]
@@ -79,6 +80,6 @@ mod tests {
 		// a zero admissible span must sweep just behind the fired instant, otherwise a zero gap never seals.
 		let sweep = SealSweep::new(SealRule::tumbling(ms(0), ms(0)));
 
-		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTime::from_millis(4_999)));
+		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTimeCoord(DateTime::from_millis(4_999))));
 	}
 }

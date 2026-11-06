@@ -6,7 +6,10 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
 	operator::state::seal::coord::Coord,
-	window::kind::{rolling::RollingOverTime, session::SessionKind},
+	window::{
+		coord::DateTimeCoord,
+		kind::{rolling::RollingOverTime, session::SessionKind},
+	},
 };
 
 pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
@@ -43,7 +46,7 @@ pub struct SealedThrough(DateTime);
 
 impl SealedThrough {
 	pub fn from_order(order: u64) -> Self {
-		Self(<DateTime as Coord>::from_order(order))
+		Self(DateTime::from_order(order))
 	}
 
 	pub fn at(self) -> DateTime {
@@ -115,11 +118,13 @@ impl SealRule {
 	}
 
 	pub fn seal_instant_from_order(self, event_order: u64) -> SealInstant {
-		self.seal_instant(<DateTime as Coord>::from_order(event_order))
+		self.seal_instant(DateTime::from_order(event_order))
 	}
 
-	pub fn horizon_at(self, at: DateTime) -> Option<DateTime> {
-		at.checked_sub(self.admissible.0).and_then(|horizon| horizon.checked_sub(SEAL_GATE_STEP))
+	pub fn horizon_at(self, at: DateTimeCoord) -> Option<DateTimeCoord> {
+		at.0.checked_sub(self.admissible.0)
+			.and_then(|horizon| horizon.checked_sub(SEAL_GATE_STEP))
+			.map(DateTimeCoord)
 	}
 }
 
@@ -148,7 +153,7 @@ impl EvictionRule {
 	}
 
 	pub fn eviction_instant_from_order(self, event_order: u64) -> EvictionInstant {
-		self.eviction_instant(<DateTime as Coord>::from_order(event_order))
+		self.eviction_instant(DateTime::from_order(event_order))
 	}
 }
 
@@ -181,12 +186,12 @@ mod tests {
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let horizon = rule.horizon_at(ledger).expect("the ledger is past one admissible span");
+		let horizon = rule.horizon_at(DateTimeCoord(ledger)).expect("the ledger is past one admissible span");
 
-		assert_eq!(horizon, at_millis(283_261), "ledger - (size + lateness) - 1");
-		assert!(horizon < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
+		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
+		assert!(horizon.0 < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
-			rule.seal_instant(horizon).at(),
+			rule.seal_instant(horizon.0).at(),
 			ledger,
 			"and it is the exact inverse of arming, so a window at this horizon sealed at precisely \
 			 this ledger rather than one millisecond either side of it"
@@ -198,9 +203,13 @@ mod tests {
 		// Wrapping through u64 would put the horizon near u64::MAX and report every window sealed
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(rule.horizon_at(at_millis(0)), Some(at_millis(-75_001)));
-		assert_eq!(rule.horizon_at(at_millis(75_000)), Some(at_millis(-1)), "the horizon is 0 - 1, not 0");
-		assert_eq!(rule.horizon_at(at_millis(75_001)), Some(at_millis(0)));
+		assert_eq!(rule.horizon_at(DateTimeCoord(at_millis(0))), Some(DateTimeCoord(at_millis(-75_001))));
+		assert_eq!(
+			rule.horizon_at(DateTimeCoord(at_millis(75_000))),
+			Some(DateTimeCoord(at_millis(-1))),
+			"the horizon is 0 - 1, not 0"
+		);
+		assert_eq!(rule.horizon_at(DateTimeCoord(at_millis(75_001))), Some(DateTimeCoord(at_millis(0))));
 	}
 
 	#[test]

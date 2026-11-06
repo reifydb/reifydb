@@ -461,7 +461,8 @@ mod tests {
 	use std::{collections::BTreeMap, marker::PhantomData};
 
 	use reifydb_core::common::{WindowKind, WindowSize};
-	use reifydb_value::value::{datetime::DateTime, duration::Duration};
+	use reifydb_flow_async::window::coord::DateTimeCoord;
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::row;
@@ -554,7 +555,7 @@ mod tests {
 		};
 	}
 
-	probe!(TimeProbe, DateTime);
+	probe!(TimeProbe, DateTimeCoord);
 
 	fn params() -> ExtensionParams {
 		ExtensionParams::new("probe", Default::default())

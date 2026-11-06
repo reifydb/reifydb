@@ -18,6 +18,7 @@ use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		coord::DateTimeCoord,
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
@@ -109,7 +110,7 @@ row!(TopOut {
 	end: u64
 });
 
-fn ranked(group: &str, span: WindowSpan<DateTime>, volumes: &BTreeMap<u64, f64>) -> BTreeMap<u32, TopOut> {
+fn ranked(group: &str, span: WindowSpan<DateTimeCoord>, volumes: &BTreeMap<u64, f64>) -> BTreeMap<u32, TopOut> {
 	let mut totals: Vec<(u64, f64)> = volumes.iter().map(|(trader, volume)| (*trader, *volume)).collect();
 	totals.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
 	totals.into_iter()
@@ -146,7 +147,7 @@ macro_rules! volume_operator {
 		}
 
 		impl WindowedOperator for $name {
-			type Coord = DateTime;
+			type Coord = DateTimeCoord;
 			type GroupKey = String;
 			type Accumulator = TraderVolumes;
 			type Output = $output;
@@ -155,12 +156,14 @@ macro_rules! volume_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+							.map(|row| -> Result<Option<DateTimeCoord>> {
+								Ok(row.row_time().map(DateTimeCoord))
+							})
 							.transpose()
 							.map(Option::flatten)
 					})
@@ -193,7 +196,7 @@ macro_rules! volume_operator {
 					.collect()
 			}
 
-			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> TraderVolumes {
+			fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> TraderVolumes {
 				TraderVolumes::default()
 			}
 		}
@@ -204,7 +207,7 @@ macro_rules! volume_operator {
 			fn build_output(
 				&self,
 				group: &String,
-				span: WindowSpan<DateTime>,
+				span: WindowSpan<DateTimeCoord>,
 				value: &BTreeMap<u64, f64>,
 			) -> Option<$output> {
 				$build(group, span, value)
@@ -216,15 +219,17 @@ macro_rules! volume_operator {
 volume_operator!(
 	TopVolume,
 	BTreeMap<u32, TopOut>,
-	|group: &String, span: WindowSpan<DateTime>, value: &BTreeMap<u64, f64>| Some(ranked(group, span, value))
+	|group: &String, span: WindowSpan<DateTimeCoord>, value: &BTreeMap<u64, f64>| Some(ranked(group, span, value))
 );
 volume_operator!(
 	CappedVolume,
 	BTreeMap<u32, TopOut>,
-	|group: &String, span: WindowSpan<DateTime>, value: &BTreeMap<u64, f64>| (value.values().sum::<f64>() <= 100.0)
+	|group: &String, span: WindowSpan<DateTimeCoord>, value: &BTreeMap<u64, f64>| (value.values().sum::<f64>() <= 100.0)
 		.then(|| ranked(group, span, value))
 );
-volume_operator!(LeaderVolume, TopOut, |group: &String, span: WindowSpan<DateTime>, value: &BTreeMap<u64, f64>| {
+volume_operator!(LeaderVolume, TopOut, |group: &String,
+                                        span: WindowSpan<DateTimeCoord>,
+                                        value: &BTreeMap<u64, f64>| {
 	ranked(group, span, value).remove(&1)
 });
 

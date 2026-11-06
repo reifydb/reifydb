@@ -12,7 +12,8 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
+	accumulator::invertible::retained_map::RetainedAccumulator, coord::DateTimeCoord, settings::WindowSettings,
+	span::WindowSpan,
 };
 use reifydb_sdk::{
 	error::Result,
@@ -74,7 +75,7 @@ impl OperatorMetadata for TestRetained {
 }
 
 impl WindowedOperator for TestRetained {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, i64>;
 	type Output = RetainedOut;
@@ -83,12 +84,14 @@ impl WindowedOperator for TestRetained {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -119,7 +122,7 @@ impl WindowedOperator for TestRetained {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, i64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, i64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -130,7 +133,7 @@ impl Emit for TestRetained {
 	fn build_output(
 		&self,
 		group: &String,
-		_span: WindowSpan<DateTime>,
+		_span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, i64>,
 	) -> Option<RetainedOut> {
 		Some(RetainedOut {

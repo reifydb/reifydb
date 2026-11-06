@@ -119,9 +119,8 @@ impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::datetime::DateTime;
-
 	use super::*;
+	use crate::window::coord::DateTimeCoord;
 
 	#[test]
 	fn the_expire_batch_defaults_and_survives_an_override() {
@@ -132,7 +131,7 @@ mod tests {
 
 	#[test]
 	fn a_carry_config_forwards_its_base() {
-		let config: TumblingCarryConfig<DateTime> =
+		let config: TumblingCarryConfig<DateTimeCoord> =
 			TumblingCarryConfig::builder(WindowEngineConfig::builder().expire_batch(7).build())
 				.retention(None)
 				.build();

@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_flow::{aggregate::AggregateContext, context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
+use reifydb_value::{Result, util::hash::Hash128};
 
 use super::{
 	core::Aggregation,
@@ -29,6 +29,7 @@ use super::{
 use crate::{
 	operator::{HostOperator, host::HostContext, row_times, state::seal::coord::Coord},
 	window::{
+		coord::DateTimeCoord,
 		engine::{ExpiryAnchor, config::WindowEngineConfig},
 		span::WindowSpan,
 	},
@@ -121,7 +122,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		buckets,
 		group_values,
 		arrival,
-		window_max_ts,
+		window_max_coord,
 		..
 	} = routing.finish();
 	let engine_config = WindowEngineConfig::builder().build();
@@ -136,7 +137,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		buckets,
 		&group_values,
 		arrival,
-		window_max_ts,
+		window_max_coord,
 		&groups,
 		&kinds,
 		engine_config,
@@ -150,12 +151,13 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 
 fn route_grouped(core: &Aggregation, batch: &RecordBatch, is_add: bool, routing: &mut Routing) -> Result<()> {
 	let times = row_times(batch)?;
-	let degenerate = WindowSpan::new(<DateTime as Coord>::from_order(0), <DateTime as Coord>::from_order(1));
+	let degenerate =
+		WindowSpan::new(<DateTimeCoord as Coord>::from_order(0), <DateTimeCoord as Coord>::from_order(1));
 	route_into_buckets(
 		core,
 		batch,
 		is_add,
-		|row_idx| (degenerate, times.get(row_idx).copied().flatten().unwrap_or_default()),
+		|row_idx| (degenerate, DateTimeCoord(times.get(row_idx).copied().flatten().unwrap_or_default())),
 		routing,
 	)
 }

@@ -10,7 +10,6 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value,
-		datetime::DateTime,
 		digest::Digest,
 		duration::Duration,
 		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
@@ -28,6 +27,7 @@ use crate::{
 			Applied, MergeAccumulator, UnmergeAccumulator, WindowAccumulator,
 			invertible::multiset::Multiset,
 		},
+		coord::DateTimeCoord,
 		engine::AccumulatorEvent,
 		span::Slot,
 	},
@@ -36,7 +36,7 @@ use crate::{
 #[operator_state]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WindowSlotKey {
-	pub timestamp: DateTime,
+	pub coord: DateTimeCoord,
 	pub seq: u64,
 }
 
@@ -47,24 +47,24 @@ impl HeapSize for WindowSlotKey {
 }
 
 impl WindowSlotKey {
-	pub fn new(timestamp: DateTime, seq: u64) -> Self {
+	pub fn new(coord: DateTimeCoord, seq: u64) -> Self {
 		Self {
-			timestamp,
+			coord,
 			seq,
 		}
 	}
 }
 
 impl Slot for WindowSlotKey {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 
-	fn order_key(&self) -> DateTime {
-		self.timestamp
+	fn order_key(&self) -> DateTimeCoord {
+		self.coord
 	}
 
-	fn from_order_key(coord: DateTime) -> Self {
+	fn from_order_key(coord: DateTimeCoord) -> Self {
 		WindowSlotKey {
-			timestamp: coord,
+			coord,
 			seq: 0,
 		}
 	}
@@ -922,8 +922,8 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::row::operator::state::{OperatorState, decode};
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_codec::row::operator::state::{OperatorState, decode, encode};
+	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 	use super::*;
 	use crate::{
@@ -945,10 +945,31 @@ mod tests {
 	}
 
 	#[test]
+	fn a_window_slot_key_encodes_to_the_same_bytes_as_the_raw_datetime_layout_it_replaced() {
+		// A changed persisted layout is silent: every stored window member would be reinterpreted, not
+		// rejected.
+		#[operator_state]
+		struct RawDateTimeSlotKey {
+			timestamp: DateTime,
+			seq: u64,
+		}
+		let at = DateTime::from_nanos(1_700_000_000_123_456_789);
+
+		let current = encode(&WindowSlotKey::new(DateTimeCoord(at), 7)).expect("encode");
+		let raw = encode(&RawDateTimeSlotKey {
+			timestamp: at,
+			seq: 7,
+		})
+		.expect("encode");
+
+		assert_eq!(current.body(), raw.body(), "the coord field changed the persisted slot layout");
+	}
+
+	#[test]
 	fn window_slot_key_order_key_survives_storage_and_ignores_seq() {
 		// A stored key that orders differently from the writer makes the sweep reclaim live groups.
 		let key = WindowSlotKey {
-			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
+			coord: DateTimeCoord(DateTime::from_nanos(1_700_000_000_123_456_789)),
 			seq: 7,
 		};
 		let bytes = key.encode_state().unwrap();
@@ -957,12 +978,12 @@ mod tests {
 		assert_eq!(restored.order_key(), key.order_key());
 		assert_eq!(
 			restored.order_key().to_order(),
-			key.timestamp.to_order(),
+			key.coord.to_order(),
 			"the order key is the stored layout, so sub-millisecond detail must survive it"
 		);
 
 		let same_millis_other_seq = WindowSlotKey {
-			timestamp: key.timestamp,
+			coord: key.coord,
 			seq: 99,
 		};
 		let other_bytes = same_millis_other_seq.encode_state().unwrap();
@@ -981,9 +1002,10 @@ mod tests {
 		let duration = Duration::from_seconds(60).expect("representable span");
 		let base = 1_700_000_040_000i64;
 
-		let early = WindowSlotKey::new(DateTime::from_epoch_millis(base).expect("representable"), 0);
+		let early =
+			WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_millis(base).expect("representable")), 0);
 		let late = WindowSlotKey::new(
-			DateTime::from_epoch_millis(base + 59_999).expect("representable"),
+			DateTimeCoord(DateTime::from_epoch_millis(base + 59_999).expect("representable")),
 			u64::MAX,
 		);
 
@@ -999,7 +1021,9 @@ mod tests {
 		assert!(
 			!early_span.contains(
 				WindowSlotKey::new(
-					DateTime::from_epoch_millis(base + 60_000).expect("representable"),
+					DateTimeCoord(
+						DateTime::from_epoch_millis(base + 60_000).expect("representable")
+					),
 					0,
 				)
 				.order_key()
@@ -1039,7 +1063,7 @@ mod tests {
 	}
 
 	fn at_time(secs: u64, seq: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTime::from_epoch_secs(secs as i64).unwrap(), seq)
+		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), seq)
 	}
 
 	fn dt(secs: u64) -> Value {
@@ -1194,11 +1218,11 @@ mod tests {
 	}
 
 	fn at(seq: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTime::default(), seq)
+		WindowSlotKey::new(DateTimeCoord(DateTime::default()), seq)
 	}
 
 	fn coord(secs: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTime::from_epoch_secs(secs as i64).unwrap(), secs)
+		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), secs)
 	}
 
 	fn add(a: &mut RowAccumulator, seq: u64, values: Vec<Option<Value>>) {

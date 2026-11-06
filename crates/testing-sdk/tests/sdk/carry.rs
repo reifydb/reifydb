@@ -13,7 +13,8 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator, settings::WindowSettings, span::WindowSpan,
+		accumulator::invertible::retained_map::RetainedAccumulator, coord::DateTimeCoord,
+		settings::WindowSettings, span::WindowSpan,
 	},
 };
 use reifydb_sdk::{
@@ -64,7 +65,7 @@ struct Probe;
 impl Probe {
 	fn output(
 		group: &str,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
@@ -96,7 +97,7 @@ impl OperatorMetadata for Probe {
 }
 
 impl WindowedOperator for Probe {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
@@ -105,12 +106,14 @@ impl WindowedOperator for Probe {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -134,7 +137,7 @@ impl WindowedOperator for Probe {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> RetainedAccumulator<u64, f64> {
 		RetainedAccumulator::default()
 	}
 }
@@ -145,7 +148,7 @@ impl CarryEmit for Probe {
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		value: &BTreeMap<u64, f64>,
 		prev: Option<&f64>,
 	) -> Option<CarryOut> {

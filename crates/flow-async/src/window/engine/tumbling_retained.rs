@@ -588,19 +588,22 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::key::operator::state::GroupId;
-	use reifydb_value::{Result, factory::time::at_millis, util::hash::Hash128, value::datetime::DateTime};
+	use reifydb_value::{Result, util::hash::Hash128};
 
 	use super::{RetainedHeader, RetainedResult, RetainedTumblingEngine};
 	use crate::{
+		factory::coord::event_coord_at_millis,
 		operator::{
 			state::{
 				mock::MockStore,
 				reaper::{StoreReaper, enqueue, reap_group},
+				seal::coord::Coord,
 			},
 			state_access::get,
 		},
 		window::{
 			accumulator::invertible::retained_map::RetainedAccumulator,
+			coord::DateTimeCoord,
 			engine::{
 				AccumulatorEvent::{self, Add, Remove},
 				EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
@@ -611,23 +614,27 @@ mod tests {
 		},
 	};
 
-	type Engine = RetainedTumblingEngine<u32, DateTime, u64, i64>;
-	type Blob = TumblingEngine<u32, DateTime, RetainedAccumulator<u64, i64>>;
+	type Engine = RetainedTumblingEngine<u32, DateTimeCoord, u64, i64>;
+	type Blob = TumblingEngine<u32, DateTimeCoord, RetainedAccumulator<u64, i64>>;
 	type Event = AccumulatorEvent<(u64, i64)>;
 
 	fn test_config() -> WindowEngineConfig {
 		WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
 	}
 
-	fn group_slot(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
+	fn group_slot(group: &u32, window_start: DateTimeCoord) -> (GroupId, EncodedKey) {
 		(GroupId::window(Hash128(u128::from(*group)), window_start.to_order()), EncodedKey::new(Vec::new()))
 	}
 
-	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, DateTime, (u64, i64)> {
-		BTreeMap::from([((1u32, WindowSpan::new(at_millis(0), at_millis(10))), events)])
+	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, DateTimeCoord, (u64, i64)> {
+		BTreeMap::from([((1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(10))), events)])
 	}
 
-	fn apply(engine: &mut Engine, store: &mut MockStore, events: Vec<Event>) -> Vec<RetainedResult<u32, DateTime>> {
+	fn apply(
+		engine: &mut Engine,
+		store: &mut MockStore,
+		events: Vec<Event>,
+	) -> Vec<RetainedResult<u32, DateTimeCoord>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
 		engine.apply(store, buckets, &order, group_slot).expect("apply")
@@ -637,13 +644,13 @@ mod tests {
 		engine: &mut Blob,
 		store: &mut MockStore,
 		events: Vec<Event>,
-	) -> Vec<WindowResult<u32, DateTime, BTreeMap<u64, i64>>> {
+	) -> Vec<WindowResult<u32, DateTimeCoord, BTreeMap<u64, i64>>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
 		engine.apply(store, buckets, &order, group_slot, RetainedAccumulator::default).expect("apply")
 	}
 
-	fn kinds(results: &[RetainedResult<u32, DateTime>]) -> Vec<EmitKind> {
+	fn kinds(results: &[RetainedResult<u32, DateTimeCoord>]) -> Vec<EmitKind> {
 		results.iter().map(|r| r.kind).collect()
 	}
 
@@ -678,7 +685,7 @@ mod tests {
 				_ => theirs[0].value.clone(),
 			};
 			assert_eq!(
-				stored(&engine, &mut entries_store, group_slot(&1, at_millis(0))).unwrap(),
+				stored(&engine, &mut entries_store, group_slot(&1, event_coord_at_millis(0))).unwrap(),
 				expected,
 				"step {step}"
 			);
@@ -705,7 +712,7 @@ mod tests {
 		let out = apply(&mut engine, &mut store, vec![Remove((1, 10))]);
 		assert_eq!(kinds(&out), vec![EmitKind::Update]);
 		assert_eq!(
-			stored(&engine, &mut store, group_slot(&1, at_millis(0))).unwrap(),
+			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap(),
 			BTreeMap::from([(1, 99)])
 		);
 	}
@@ -719,12 +726,12 @@ mod tests {
 		let out = apply(&mut engine, &mut store, vec![Remove((1, 10))]);
 		assert!(out.is_empty(), "an empty window publishes nothing");
 		assert!(
-			stored(&engine, &mut store, group_slot(&1, at_millis(0))).unwrap().is_empty(),
+			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap().is_empty(),
 			"nothing is stored"
 		);
 		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Add((1, 10))])), vec![EmitKind::Insert]);
 		assert_eq!(
-			stored(&engine, &mut store, group_slot(&1, at_millis(0))).unwrap(),
+			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap(),
 			BTreeMap::from([(1, 10)])
 		);
 		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Remove((1, 10))])), vec![EmitKind::Remove]);
@@ -737,7 +744,7 @@ mod tests {
 		let mut engine = Engine::new(test_config());
 		apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20)), Add((3, 30))]);
 		assert_eq!(
-			stored(&engine, &mut store, group_slot(&1, at_millis(0))).unwrap().len(),
+			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap().len(),
 			3,
 			"precondition: entries exist"
 		);
@@ -752,7 +759,7 @@ mod tests {
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		let out = apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20))]);
-		let (group, slot) = group_slot(&1, at_millis(0));
+		let (group, slot) = group_slot(&1, event_coord_at_millis(0));
 		assert_eq!(out[0].group_id, group);
 		assert_eq!(
 			stored(&engine, &mut store, (group, slot.clone())).unwrap().len(),
@@ -763,7 +770,7 @@ mod tests {
 			&mut store,
 			&[WindowReindex {
 				group: &1,
-				window_start: at_millis(0),
+				window_start: event_coord_at_millis(0),
 				id: group,
 				slot_key: &slot,
 				prior: None,

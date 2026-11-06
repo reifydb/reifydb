@@ -273,14 +273,16 @@ mod tests {
 	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+		value::{duration::Duration, row_number::RowNumber},
 	};
 
 	use super::SessionEngine;
 	use crate::{
+		factory::coord::event_coord_at_millis,
 		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
 			accumulator::mock::SumAccumulator,
+			coord::DateTimeCoord,
 			engine::{WindowReindex, config::WindowEngineConfig},
 			kind::session::open::{Insertion, SessionIds},
 		},
@@ -290,7 +292,7 @@ mod tests {
 		GroupId::of(&EncodedKey::new(name.as_bytes()))
 	}
 
-	type Engine = SessionEngine<u32, DateTime, SumAccumulator>;
+	type Engine = SessionEngine<u32, DateTimeCoord, SumAccumulator>;
 
 	fn engine(gap_ms: i64) -> Engine {
 		SessionEngine::new(WindowEngineConfig::builder().build(), Duration::from_milliseconds_const(gap_ms))
@@ -304,10 +306,19 @@ mod tests {
 		let (partition, other) = (group_id("BTC"), group_id("ETH"));
 
 		let mut open = engine.load_open(&mut store, &[partition]).unwrap().remove(0);
-		assert_eq!(open.insert(at_millis(100), RowNumber(1), at_millis(0)), Insertion::Opened(0));
-		assert_eq!(open.insert(at_millis(105), RowNumber(2), at_millis(0)), Insertion::Extended(0));
-		assert_eq!(open.insert(at_millis(130), RowNumber(3), at_millis(0)), Insertion::Opened(1));
-		open.close(at_millis(110));
+		assert_eq!(
+			open.insert(event_coord_at_millis(100), RowNumber(1), event_coord_at_millis(0)),
+			Insertion::Opened(0)
+		);
+		assert_eq!(
+			open.insert(event_coord_at_millis(105), RowNumber(2), event_coord_at_millis(0)),
+			Insertion::Extended(0)
+		);
+		assert_eq!(
+			open.insert(event_coord_at_millis(130), RowNumber(3), event_coord_at_millis(0)),
+			Insertion::Opened(1)
+		);
+		open.close(event_coord_at_millis(110));
 		engine.save_open(&mut store, &[(partition, &open)], &[]).unwrap();
 
 		let resumed = engine.load_open(&mut store, &[partition, other]).unwrap();
@@ -318,7 +329,7 @@ mod tests {
 				next: 2
 			}
 		);
-		assert_eq!(resumed[0].sealed_last(), Some(at_millis(105)));
+		assert_eq!(resumed[0].sealed_last(), Some(event_coord_at_millis(105)));
 		assert!(resumed[1].sessions().is_empty(), "another group must not see this group's sessions");
 
 		engine.save_open(&mut store, &[], &[partition]).unwrap();
@@ -333,11 +344,19 @@ mod tests {
 		let (first, second) = (group_id("s0"), group_id("s1"));
 
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), None);
-		engine.save_records(&mut store, &[(first, at_millis(99), at_millis(95), at_millis(107))], &[]).unwrap();
-		assert_eq!(engine.load_record(&mut store, first).unwrap(), Some((at_millis(95), at_millis(107))));
+		engine.save_records(
+			&mut store,
+			&[(first, at_millis(99), event_coord_at_millis(95), event_coord_at_millis(107))],
+			&[],
+		)
+		.unwrap();
+		assert_eq!(
+			engine.load_record(&mut store, first).unwrap(),
+			Some((event_coord_at_millis(95), event_coord_at_millis(107)))
+		);
 		assert_eq!(
 			engine.load_records(&mut store, &[first, second]).unwrap(),
-			vec![Some((at_millis(99), at_millis(95), at_millis(107))), None]
+			vec![Some((at_millis(99), event_coord_at_millis(95), event_coord_at_millis(107))), None]
 		);
 		engine.save_records(&mut store, &[], &[first]).unwrap();
 		assert_eq!(engine.load_record(&mut store, first).unwrap(), None);
@@ -362,21 +381,24 @@ mod tests {
 					&mut store,
 					&[WindowReindex {
 						group: &1u32,
-						window_start: DateTime::from_order(0),
+						window_start: <DateTimeCoord as Coord>::from_order(0),
 						id: session,
 						slot_key: &slot,
-						prior: prior.map(|ms| at_millis(ms).to_order()),
-						new: Some(at_millis(last).to_order()),
+						prior: prior.map(|ms| event_coord_at_millis(ms).to_order()),
+						new: Some(event_coord_at_millis(last).to_order()),
 					}],
 				)
 				.unwrap();
 		}
 
 		assert!(
-			engine.tumbling_mut().expire(&mut store, at_millis(106).to_order()).unwrap().is_empty(),
+			engine.tumbling_mut()
+				.expire(&mut store, event_coord_at_millis(106).to_order())
+				.unwrap()
+				.is_empty(),
 			"no anchor may remain below 107"
 		);
-		let due = engine.tumbling_mut().expire(&mut store, at_millis(107).to_order()).unwrap();
+		let due = engine.tumbling_mut().expire(&mut store, event_coord_at_millis(107).to_order()).unwrap();
 		assert_eq!(due.len(), 1, "exactly one expiry row per session");
 		assert_eq!(due[0].group_id, session);
 	}

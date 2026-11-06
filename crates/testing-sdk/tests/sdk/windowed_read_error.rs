@@ -15,6 +15,7 @@ use reifydb_flow_async::window::{
 		WindowAccumulator,
 		invertible::{moments::Moments, ordf64::OrdF64},
 	},
+	coord::DateTimeCoord,
 	settings::WindowSettings,
 	span::WindowSpan,
 };
@@ -94,7 +95,7 @@ impl OperatorMetadata for ReadsSizeAsInt {
 }
 
 impl WindowedOperator for ReadsSizeAsInt {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = SumAccumulator;
 	type Output = SumOut;
@@ -103,12 +104,14 @@ impl WindowedOperator for ReadsSizeAsInt {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -138,7 +141,7 @@ impl WindowedOperator for ReadsSizeAsInt {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> SumAccumulator {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> SumAccumulator {
 		SumAccumulator::default()
 	}
 }
@@ -146,7 +149,7 @@ impl WindowedOperator for ReadsSizeAsInt {
 impl Emit for ReadsSizeAsInt {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, value: &OrdF64) -> Option<SumOut> {
+	fn build_output(&self, group: &String, _span: WindowSpan<DateTimeCoord>, value: &OrdF64) -> Option<SumOut> {
 		Some(SumOut {
 			group: group.clone(),
 			total: value.get(),

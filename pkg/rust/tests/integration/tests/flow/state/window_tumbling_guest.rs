@@ -21,12 +21,15 @@ use reifydb::{
 		row,
 	},
 	testing::db::TestDb,
-	window::{accumulator::invertible::moments::Moments, settings::WindowSettings, span::WindowSpan},
+	window::{
+		accumulator::invertible::moments::Moments, coord::DateTimeCoord, settings::WindowSettings,
+		span::WindowSpan,
+	},
 };
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
 	config::ExtensionParams,
-	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
 };
 
 use crate::flow::state::{await_state_keys, state_keys};
@@ -53,7 +56,7 @@ row!(GuestWindow {
 struct GuestTumbling;
 
 impl WindowedOperator for GuestTumbling {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = i32;
 	type Accumulator = Moments;
 	type Output = GuestWindow;
@@ -62,12 +65,14 @@ impl WindowedOperator for GuestTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> SdkResult<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> SdkResult<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -96,7 +101,7 @@ impl WindowedOperator for GuestTumbling {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> Moments {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> Moments {
 		Moments::default()
 	}
 }
@@ -104,7 +109,7 @@ impl WindowedOperator for GuestTumbling {
 impl Emit for GuestTumbling {
 	type Kinds = NoRolling;
 
-	fn build_output(&self, group: &i32, _span: WindowSpan<DateTime>, value: &Moments) -> Option<GuestWindow> {
+	fn build_output(&self, group: &i32, _span: WindowSpan<DateTimeCoord>, value: &Moments) -> Option<GuestWindow> {
 		Some(GuestWindow {
 			g: *group,
 			total: value.sum() as i64,

@@ -245,39 +245,43 @@ fn insert_sorted<S: Coord>(members: &mut Vec<Member<S>>, member: Member<S>) {
 mod tests {
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+		value::{duration::Duration, row_number::RowNumber},
 	};
 
 	use super::{Insertion, Member, OpenSession, OpenSessions, Removal, SessionIds};
+	use crate::{
+		factory::coord::event_coord_at_millis, operator::state::seal::coord::Coord,
+		window::coord::DateTimeCoord,
+	};
 
-	fn sessions() -> OpenSessions<DateTime> {
+	fn sessions() -> OpenSessions<DateTimeCoord> {
 		OpenSessions::new(Duration::from_milliseconds_const(1_000), SessionIds::StartTime)
 	}
 
 	fn id(millis: i64) -> u64 {
-		at_millis(millis).to_order()
+		event_coord_at_millis(millis).to_order()
 	}
 
-	fn member(millis: i64, row: u64) -> Member<DateTime> {
+	fn member(millis: i64, row: u64) -> Member<DateTimeCoord> {
 		Member {
-			at: at_millis(millis),
+			at: event_coord_at_millis(millis),
 			row: RowNumber(row),
 		}
 	}
 
-	fn far_past() -> DateTime {
-		at_millis(0)
+	fn far_past() -> DateTimeCoord {
+		event_coord_at_millis(0)
 	}
 
-	fn seeded(points: &[(i64, u64)]) -> OpenSessions<DateTime> {
+	fn seeded(points: &[(i64, u64)]) -> OpenSessions<DateTimeCoord> {
 		let mut open = sessions();
 		for &(millis, row) in points {
-			open.insert(at_millis(millis), RowNumber(row), far_past());
+			open.insert(event_coord_at_millis(millis), RowNumber(row), far_past());
 		}
 		open
 	}
 
-	fn bounds(open: &OpenSessions<DateTime>) -> Vec<(u64, DateTime, DateTime, usize)> {
+	fn bounds(open: &OpenSessions<DateTimeCoord>) -> Vec<(u64, DateTimeCoord, DateTimeCoord, usize)> {
 		open.sessions().iter().map(|s| (s.id, s.start, s.last, s.members.len())).collect()
 	}
 
@@ -285,7 +289,10 @@ mod tests {
 	fn removing_the_bridge_row_splits_the_session_and_the_back_half_gets_a_new_id() {
 		// Without the split a deleted bridge keeps two quiet-separated runs in one session, unlike a fresh run.
 		let mut open = seeded(&[(10_000, 1), (10_800, 2), (11_600, 3)]);
-		assert_eq!(bounds(&open), vec![(id(10_000), at_millis(10_000), at_millis(11_600), 3)]);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(10_000), event_coord_at_millis(10_000), event_coord_at_millis(11_600), 3)]
+		);
 
 		let removal = open.remove(id(10_000), RowNumber(2)).unwrap();
 
@@ -295,8 +302,8 @@ mod tests {
 				kept: id(10_000),
 				moved: OpenSession {
 					id: id(11_600),
-					start: at_millis(11_600),
-					last: at_millis(11_600),
+					start: event_coord_at_millis(11_600),
+					last: event_coord_at_millis(11_600),
 					members: vec![member(11_600, 3)],
 				},
 			})
@@ -304,8 +311,8 @@ mod tests {
 		assert_eq!(
 			bounds(&open),
 			vec![
-				(id(10_000), at_millis(10_000), at_millis(10_000), 1),
-				(id(11_600), at_millis(11_600), at_millis(11_600), 1),
+				(id(10_000), event_coord_at_millis(10_000), event_coord_at_millis(10_000), 1),
+				(id(11_600), event_coord_at_millis(11_600), event_coord_at_millis(11_600), 1),
 			]
 		);
 	}
@@ -316,8 +323,14 @@ mod tests {
 		let mut open = seeded(&[(11_000, 1), (11_200, 2)]);
 
 		assert_eq!(open.remove(id(11_000), RowNumber(2)).unwrap(), Some(Removal::Shrunk(id(11_000))));
-		assert_eq!(bounds(&open), vec![(id(11_000), at_millis(11_000), at_millis(11_000), 1)]);
-		assert_eq!(open.insert(at_millis(12_050), RowNumber(2), far_past()), Insertion::Opened(id(12_050)));
+		assert_eq!(
+			bounds(&open),
+			vec![(id(11_000), event_coord_at_millis(11_000), event_coord_at_millis(11_000), 1)]
+		);
+		assert_eq!(
+			open.insert(event_coord_at_millis(12_050), RowNumber(2), far_past()),
+			Insertion::Opened(id(12_050))
+		);
 	}
 
 	#[test]
@@ -337,8 +350,8 @@ mod tests {
 		assert_eq!(
 			bounds(&open),
 			vec![
-				(id(11_100), at_millis(11_100), at_millis(11_100), 1),
-				(id(12_100), at_millis(12_100), at_millis(12_100), 1)
+				(id(11_100), event_coord_at_millis(11_100), event_coord_at_millis(11_100), 1),
+				(id(12_100), event_coord_at_millis(12_100), event_coord_at_millis(12_100), 1)
 			]
 		);
 	}
@@ -349,7 +362,7 @@ mod tests {
 		// start.
 		let mut open = seeded(&[(11_100, 1), (12_100, 2)]);
 
-		let insertion = open.insert(at_millis(11_650), RowNumber(3), far_past());
+		let insertion = open.insert(event_coord_at_millis(11_650), RowNumber(3), far_past());
 
 		assert_eq!(
 			insertion,
@@ -357,8 +370,8 @@ mod tests {
 				survivor: id(11_100),
 				absorbed: vec![OpenSession {
 					id: id(12_100),
-					start: at_millis(12_100),
-					last: at_millis(12_100),
+					start: event_coord_at_millis(12_100),
+					last: event_coord_at_millis(12_100),
 					members: vec![member(12_100, 2)],
 				}],
 			}
@@ -367,8 +380,8 @@ mod tests {
 			open.sessions(),
 			&[OpenSession {
 				id: id(11_100),
-				start: at_millis(11_100),
-				last: at_millis(12_100),
+				start: event_coord_at_millis(11_100),
+				last: event_coord_at_millis(12_100),
 				members: vec![member(11_100, 1), member(11_650, 3), member(12_100, 2)],
 			}]
 		);
@@ -380,9 +393,18 @@ mod tests {
 		// sessions.
 		let mut open = seeded(&[(10_000, 1)]);
 
-		assert_eq!(open.insert(at_millis(9_500), RowNumber(2), far_past()), Insertion::Extended(id(10_000)));
-		assert_eq!(open.insert(at_millis(10_900), RowNumber(3), far_past()), Insertion::Extended(id(10_000)));
-		assert_eq!(bounds(&open), vec![(id(10_000), at_millis(9_500), at_millis(10_900), 3)]);
+		assert_eq!(
+			open.insert(event_coord_at_millis(9_500), RowNumber(2), far_past()),
+			Insertion::Extended(id(10_000))
+		);
+		assert_eq!(
+			open.insert(event_coord_at_millis(10_900), RowNumber(3), far_past()),
+			Insertion::Extended(id(10_000))
+		);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(10_000), event_coord_at_millis(9_500), event_coord_at_millis(10_900), 3)]
+		);
 	}
 
 	#[test]
@@ -390,12 +412,18 @@ mod tests {
 		// Closed means final: admitting the bridge would either amend a published session or misfile the row.
 		let mut open = seeded(&[(10_000, 1), (11_300, 2)]);
 
-		let closed = open.close(at_millis(11_100));
+		let closed = open.close(event_coord_at_millis(11_100));
 
 		assert_eq!(closed.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id(10_000)]);
-		assert_eq!(open.sealed_last(), Some(at_millis(10_000)));
-		assert_eq!(open.insert(at_millis(10_600), RowNumber(3), at_millis(11_100)), Insertion::Refused);
-		assert_eq!(bounds(&open), vec![(id(11_300), at_millis(11_300), at_millis(11_300), 1)]);
+		assert_eq!(open.sealed_last(), Some(event_coord_at_millis(10_000)));
+		assert_eq!(
+			open.insert(event_coord_at_millis(10_600), RowNumber(3), event_coord_at_millis(11_100)),
+			Insertion::Refused
+		);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(11_300), event_coord_at_millis(11_300), event_coord_at_millis(11_300), 1)]
+		);
 	}
 
 	#[test]
@@ -404,11 +432,17 @@ mod tests {
 		let mut open = seeded(&[(10_100, 1), (10_900, 2), (11_700, 3)]);
 
 		open.remove(id(10_100), RowNumber(2)).unwrap();
-		let closed = open.close(at_millis(11_100));
+		let closed = open.close(event_coord_at_millis(11_100));
 
 		assert_eq!(closed.iter().map(|s| s.id).collect::<Vec<_>>(), vec![id(10_100)]);
-		assert_eq!(open.insert(at_millis(10_500), RowNumber(4), at_millis(11_100)), Insertion::Refused);
-		assert_eq!(bounds(&open), vec![(id(11_700), at_millis(11_700), at_millis(11_700), 1)]);
+		assert_eq!(
+			open.insert(event_coord_at_millis(10_500), RowNumber(4), event_coord_at_millis(11_100)),
+			Insertion::Refused
+		);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(11_700), event_coord_at_millis(11_700), event_coord_at_millis(11_700), 1)]
+		);
 	}
 
 	#[test]
@@ -416,7 +450,10 @@ mod tests {
 		// Opening a session behind the horizon creates a window that is already past its close time.
 		let mut open = sessions();
 
-		assert_eq!(open.insert(at_millis(9_000), RowNumber(1), at_millis(9_500)), Insertion::Refused);
+		assert_eq!(
+			open.insert(event_coord_at_millis(9_000), RowNumber(1), event_coord_at_millis(9_500)),
+			Insertion::Refused
+		);
 		assert!(open.sessions().is_empty());
 	}
 
@@ -424,10 +461,10 @@ mod tests {
 	fn a_row_far_after_the_newest_closed_session_opens_normally() {
 		// Refusing every row after a close would freeze the group once its first session sealed.
 		let mut open = seeded(&[(10_000, 1)]);
-		open.close(at_millis(10_500));
+		open.close(event_coord_at_millis(10_500));
 
 		assert_eq!(
-			open.insert(at_millis(11_000), RowNumber(2), at_millis(10_500)),
+			open.insert(event_coord_at_millis(11_000), RowNumber(2), event_coord_at_millis(10_500)),
 			Insertion::Opened(id(11_000))
 		);
 	}
@@ -436,10 +473,13 @@ mod tests {
 	fn removing_a_member_of_a_closed_session_changes_nothing() {
 		// Closed means final, so a late retraction must not reach a published session.
 		let mut open = seeded(&[(10_000, 1), (12_000, 2)]);
-		open.close(at_millis(11_500));
+		open.close(event_coord_at_millis(11_500));
 
 		assert_eq!(open.remove(id(10_000), RowNumber(1)).unwrap(), None);
-		assert_eq!(bounds(&open), vec![(id(12_000), at_millis(12_000), at_millis(12_000), 1)]);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(12_000), event_coord_at_millis(12_000), event_coord_at_millis(12_000), 1)]
+		);
 	}
 
 	#[test]
@@ -451,14 +491,14 @@ mod tests {
 				next: 0,
 			},
 		);
-		assert_eq!(open.insert(at_millis(10_000), RowNumber(1), far_past()), Insertion::Opened(0));
-		open.insert(at_millis(10_800), RowNumber(2), far_past());
-		open.insert(at_millis(11_600), RowNumber(3), far_past());
+		assert_eq!(open.insert(event_coord_at_millis(10_000), RowNumber(1), far_past()), Insertion::Opened(0));
+		open.insert(event_coord_at_millis(10_800), RowNumber(2), far_past());
+		open.insert(event_coord_at_millis(11_600), RowNumber(3), far_past());
 
 		let removal = open.remove(0, RowNumber(2)).unwrap();
 
 		assert!(matches!(removal, Some(Removal::Split { kept: 0, moved }) if moved.id == 1));
-		assert_eq!(open.insert(at_millis(20_000), RowNumber(4), far_past()), Insertion::Opened(2));
+		assert_eq!(open.insert(event_coord_at_millis(20_000), RowNumber(4), far_past()), Insertion::Opened(2));
 	}
 
 	#[test]
@@ -467,16 +507,22 @@ mod tests {
 		let mut open = seeded(&[(10_000, 1)]);
 
 		assert!(open.remove(id(10_000), RowNumber(99)).is_err());
-		assert_eq!(bounds(&open), vec![(id(10_000), at_millis(10_000), at_millis(10_000), 1)]);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(10_000), event_coord_at_millis(10_000), event_coord_at_millis(10_000), 1)]
+		);
 	}
 
 	#[test]
 	fn a_row_within_the_gap_after_a_closed_session_is_refused_even_ahead_of_the_horizon() {
 		// Without sealed_last this row opens a session a fresh run would have merged into the closed one.
 		let mut open = seeded(&[(10_000, 1)]);
-		open.close(at_millis(10_500));
+		open.close(event_coord_at_millis(10_500));
 
-		assert_eq!(open.insert(at_millis(10_600), RowNumber(2), at_millis(10_500)), Insertion::Refused);
+		assert_eq!(
+			open.insert(event_coord_at_millis(10_600), RowNumber(2), event_coord_at_millis(10_500)),
+			Insertion::Refused
+		);
 		assert!(open.sessions().is_empty());
 	}
 
@@ -486,10 +532,13 @@ mod tests {
 		let mut open = seeded(&[(11_300, 1)]);
 
 		assert_eq!(
-			open.insert(at_millis(11_050), RowNumber(2), at_millis(11_099)),
+			open.insert(event_coord_at_millis(11_050), RowNumber(2), event_coord_at_millis(11_099)),
 			Insertion::Extended(id(11_300))
 		);
-		assert_eq!(bounds(&open), vec![(id(11_300), at_millis(11_050), at_millis(11_300), 2)]);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(11_300), event_coord_at_millis(11_050), event_coord_at_millis(11_300), 2)]
+		);
 	}
 
 	#[test]
@@ -497,12 +546,15 @@ mod tests {
 		// Time zero is an ordinary instant; treating it as unopened folds every later row into one session.
 		let mut open = seeded(&[(0, 1)]);
 
-		assert_eq!(open.insert(at_millis(1_000), RowNumber(2), far_past()), Insertion::Opened(id(1_000)));
+		assert_eq!(
+			open.insert(event_coord_at_millis(1_000), RowNumber(2), far_past()),
+			Insertion::Opened(id(1_000))
+		);
 		assert_eq!(
 			bounds(&open),
 			vec![
-				(id(0), at_millis(0), at_millis(0), 1),
-				(id(1_000), at_millis(1_000), at_millis(1_000), 1)
+				(id(0), event_coord_at_millis(0), event_coord_at_millis(0), 1),
+				(id(1_000), event_coord_at_millis(1_000), event_coord_at_millis(1_000), 1)
 			]
 		);
 	}
@@ -512,16 +564,23 @@ mod tests {
 		// A zero gap is the group-by-instant case: a repeated instant joins, the next instant must not.
 		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0), SessionIds::StartTime);
 
-		assert_eq!(open.insert(at_millis(5_000), RowNumber(1), far_past()), Insertion::Opened(id(5_000)));
-		assert_eq!(open.insert(at_millis(5_000), RowNumber(2), far_past()), Insertion::Extended(id(5_000)));
+		assert_eq!(
+			open.insert(event_coord_at_millis(5_000), RowNumber(1), far_past()),
+			Insertion::Opened(id(5_000))
+		);
+		assert_eq!(
+			open.insert(event_coord_at_millis(5_000), RowNumber(2), far_past()),
+			Insertion::Extended(id(5_000))
+		);
 		assert_eq!(
 			open.insert(
-				at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1)),
+				DateTimeCoord(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1))),
 				RowNumber(3),
 				far_past()
 			),
 			Insertion::Opened(
-				at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1)).to_order()
+				DateTimeCoord(at_millis(5_000).saturating_add(Duration::from_nanoseconds_const(1)))
+					.to_order()
 			)
 		);
 	}
@@ -530,7 +589,10 @@ mod tests {
 	fn a_split_whose_back_half_starts_at_the_kept_id_gets_a_distinct_id() {
 		// The kept half keeps the opener's id, so minting the back half from its start can collide.
 		let mut open = seeded(&[(4_639, 2), (4_000, 8), (3_400, 9)]);
-		assert_eq!(bounds(&open), vec![(id(4_639), at_millis(3_400), at_millis(4_639), 3)]);
+		assert_eq!(
+			bounds(&open),
+			vec![(id(4_639), event_coord_at_millis(3_400), event_coord_at_millis(4_639), 3)]
+		);
 
 		let Some(Removal::Split {
 			kept,
@@ -550,11 +612,11 @@ mod tests {
 		// A repeated instant joins its session, so a split between equal instants publishes two rows at one
 		// end.
 		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0), SessionIds::StartTime);
-		open.insert(at_millis(1), RowNumber(4), far_past());
-		open.insert(at_millis(1), RowNumber(18), far_past());
-		open.insert(at_millis(1), RowNumber(25), far_past());
+		open.insert(event_coord_at_millis(1), RowNumber(4), far_past());
+		open.insert(event_coord_at_millis(1), RowNumber(18), far_past());
+		open.insert(event_coord_at_millis(1), RowNumber(25), far_past());
 
 		assert_eq!(open.remove(id(1), RowNumber(4)).unwrap(), Some(Removal::Shrunk(id(1))));
-		assert_eq!(bounds(&open), vec![(id(1), at_millis(1), at_millis(1), 2)]);
+		assert_eq!(bounds(&open), vec![(id(1), event_coord_at_millis(1), event_coord_at_millis(1), 2)]);
 	}
 }

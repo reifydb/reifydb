@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::duration::Duration;
 
-use crate::operator::state::seal::{coord::Coord, rule::SealRule};
+use crate::{
+	operator::state::seal::{coord::Coord, rule::SealRule},
+	window::coord::DateTimeCoord,
+};
 
 pub struct RollingOverTime {
 	size: Duration,
@@ -26,16 +29,15 @@ impl RollingOverTime {
 		SealRule::rolling(self.span(), lateness)
 	}
 
-	pub fn eviction_cutoff(&self, ledger: DateTime) -> Option<DateTime> {
+	pub fn eviction_cutoff(&self, ledger: DateTimeCoord) -> Option<DateTimeCoord> {
 		ledger.checked_sub_span(self.span())
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::time::at_millis;
-
 	use super::*;
+	use crate::factory::coord::event_coord_at_millis;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
@@ -57,7 +59,7 @@ mod tests {
 		// aggregate it publishes.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at_millis(8_000)), Some(at_millis(3_000)));
+		assert_eq!(rolling.eviction_cutoff(event_coord_at_millis(8_000)), Some(event_coord_at_millis(3_000)));
 	}
 
 	#[test]
@@ -65,11 +67,11 @@ mod tests {
 		// Wrapping through u64 here would put the cutoff near the maximum instant and evict everything.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at_millis(0)), Some(at_millis(-5_000)));
-		assert_eq!(rolling.eviction_cutoff(at_millis(1_000)), Some(at_millis(-4_000)));
+		assert_eq!(rolling.eviction_cutoff(event_coord_at_millis(0)), Some(event_coord_at_millis(-5_000)));
+		assert_eq!(rolling.eviction_cutoff(event_coord_at_millis(1_000)), Some(event_coord_at_millis(-4_000)));
 		assert_eq!(
-			rolling.eviction_cutoff(at_millis(5_000)),
-			Some(at_millis(0)),
+			rolling.eviction_cutoff(event_coord_at_millis(5_000)),
+			Some(event_coord_at_millis(0)),
 			"a span that has exactly elapsed yields a cutoff at the epoch"
 		);
 	}

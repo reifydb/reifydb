@@ -11,11 +11,12 @@ use reifydb_value::{
 use crate::{
 	operator::state::seal::rule::{EvictionRule, SealRule, SealedThrough},
 	timer::TimerMove,
+	window::coord::DateTimeCoord,
 };
 
 pub struct SealGate {
 	rule: SealRule,
-	frontier: DateTime,
+	frontier: DateTimeCoord,
 }
 
 impl SealGate {
@@ -23,18 +24,18 @@ impl SealGate {
 		let ledger = ledger.map_or_else(DateTime::default, SealedThrough::at);
 		Self {
 			rule,
-			frontier: watermark.map_or(ledger, |watermark| ledger.max(watermark)),
+			frontier: DateTimeCoord(watermark.map_or(ledger, |watermark| ledger.max(watermark))),
 		}
 	}
 
 	pub fn admits(&self, horizon: u64) -> bool {
-		self.rule.seal_instant_from_order(horizon).at() > self.frontier
+		self.rule.seal_instant_from_order(horizon).at() > self.frontier.0
 	}
 
-	pub fn horizon(&self) -> DateTime {
-		self.rule.horizon_at(self.frontier).map_or_else(DateTime::default, |horizon| {
-			horizon.saturating_add(Duration::from_nanoseconds_const(1))
-		})
+	pub fn horizon(&self) -> DateTimeCoord {
+		DateTimeCoord(self.rule.horizon_at(self.frontier).map_or_else(DateTime::default, |horizon| {
+			horizon.0.saturating_add(Duration::from_nanoseconds_const(1))
+		}))
 	}
 }
 
@@ -135,7 +136,7 @@ mod tests {
 		// A horizon one step off refuses a row the engine admits, or admits one it seals.
 		let gate = SealGate::new(rule(), None, Some(at_millis(5_000)));
 		let horizon = gate.horizon();
-		let just_before = horizon.saturating_sub(Duration::from_nanoseconds_const(1));
+		let just_before = horizon.0.saturating_sub(Duration::from_nanoseconds_const(1));
 
 		assert!(gate.admits(horizon.to_order()));
 		assert!(!gate.admits(just_before.to_order()));

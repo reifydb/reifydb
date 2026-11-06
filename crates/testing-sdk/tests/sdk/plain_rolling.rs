@@ -13,6 +13,7 @@ use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{MergeAccumulator, WindowAccumulator},
+		coord::DateTimeCoord,
 		settings::WindowSettings,
 	},
 };
@@ -110,7 +111,7 @@ macro_rules! sum_operator {
 		}
 
 		impl WindowedOperator for $name {
-			type Coord = DateTime;
+			type Coord = DateTimeCoord;
 			type GroupKey = String;
 			type Accumulator = PaneSum;
 			type Output = SumOut;
@@ -119,12 +120,14 @@ macro_rules! sum_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+							.map(|row| -> Result<Option<DateTimeCoord>> {
+								Ok(row.row_time().map(DateTimeCoord))
+							})
 							.transpose()
 							.map(Option::flatten)
 					})
@@ -155,7 +158,7 @@ macro_rules! sum_operator {
 					.collect()
 			}
 
-			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> PaneSum {
+			fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> PaneSum {
 				PaneSum::default()
 			}
 		}
@@ -166,7 +169,7 @@ macro_rules! sum_operator {
 			fn build_output(
 				&self,
 				group: &String,
-				span: reifydb_flow_async::window::span::WindowSpan<DateTime>,
+				span: reifydb_flow_async::window::span::WindowSpan<DateTimeCoord>,
 				value: &f64,
 			) -> Option<SumOut> {
 				Some(SumOut {

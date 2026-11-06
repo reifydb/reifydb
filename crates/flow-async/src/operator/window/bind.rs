@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 
 use super::operator::WindowOperator;
@@ -27,7 +27,7 @@ use crate::{
 		},
 	},
 	window::{
-		coord::EventCoord,
+		coord::DateTimeCoord,
 		kind::{
 			ordinal_window_span,
 			session::{
@@ -48,14 +48,15 @@ pub(super) struct SlidingBound {
 
 impl SlidingBound {
 	pub(super) fn anchors(&self, timestamp_or_row_index: u64) -> impl Iterator<Item = u64> + use<> {
-		let over_time = self.over_time.as_ref().map(|kind| {
-			kind.anchors(EventCoord::of(&<DateTime as Coord>::from_order(timestamp_or_row_index)))
-		});
+		let over_time = self
+			.over_time
+			.as_ref()
+			.map(|kind| kind.anchors(<DateTimeCoord as Coord>::from_order(timestamp_or_row_index)));
 		let neither = over_time.is_none().then_some(0);
 		over_time.into_iter().flatten().chain(neither)
 	}
 
-	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
+	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTimeCoord> {
 		self.over_time.as_ref().map_or_else(|| ordinal_window_span(anchor), |kind| kind.span(anchor))
 	}
 }
@@ -83,7 +84,7 @@ impl WindowOperator {
 		&mut self,
 		store: &mut dyn StateStore,
 		group_hash: Hash128,
-	) -> Result<OpenSessions<DateTime>> {
+	) -> Result<OpenSessions<DateTimeCoord>> {
 		Ok(self.load_open_sessions_of(store, from_ref(&group_hash))?.remove(0))
 	}
 
@@ -91,7 +92,7 @@ impl WindowOperator {
 		&mut self,
 		store: &mut dyn StateStore,
 		group_hashes: &[Hash128],
-	) -> Result<Vec<OpenSessions<DateTime>>> {
+	) -> Result<Vec<OpenSessions<DateTimeCoord>>> {
 		let gap = self.session_gap();
 		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
 		let states = self.meta_slot().load_open_sessions_of(store, &groups)?;
@@ -101,7 +102,7 @@ impl WindowOperator {
 	pub(super) fn save_open_sessions(
 		&mut self,
 		store: &mut dyn StateStore,
-		groups: &[(Hash128, &OpenSessions<DateTime>)],
+		groups: &[(Hash128, &OpenSessions<DateTimeCoord>)],
 	) -> Result<()> {
 		let states = groups
 			.iter()
@@ -251,7 +252,7 @@ impl WindowOperator {
 	}
 }
 
-fn open_sessions_of(gap: Duration, state: Option<OpenSessionsState>) -> OpenSessions<DateTime> {
+fn open_sessions_of(gap: Duration, state: Option<OpenSessionsState>) -> OpenSessions<DateTimeCoord> {
 	let Some(state) = state else {
 		return OpenSessions::new(gap, SessionIds::StartTime);
 	};
@@ -259,10 +260,10 @@ fn open_sessions_of(gap: Duration, state: Option<OpenSessionsState>) -> OpenSess
 		.sessions
 		.into_iter()
 		.map(|(id, members)| {
-			let members: Vec<Member<DateTime>> = members
+			let members: Vec<Member<DateTimeCoord>> = members
 				.into_iter()
 				.map(|(at, row)| Member {
-					at: <DateTime as Coord>::from_order(at),
+					at: <DateTimeCoord as Coord>::from_order(at),
 					row: RowNumber(row),
 				})
 				.collect();
@@ -278,6 +279,6 @@ fn open_sessions_of(gap: Duration, state: Option<OpenSessionsState>) -> OpenSess
 		gap,
 		SessionIds::StartTime,
 		sessions,
-		state.sealed_last.map(<DateTime as Coord>::from_order),
+		state.sealed_last.map(<DateTimeCoord as Coord>::from_order),
 	)
 }

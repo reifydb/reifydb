@@ -22,7 +22,7 @@ use crate::{
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
-	window::settings::WindowSettings,
+	window::{coord::DateTimeCoord, settings::WindowSettings},
 };
 
 pub trait SealDomain: Coord {
@@ -57,7 +57,7 @@ pub trait SealDomain: Coord {
 
 const ROLLING_DECAY_TIMER_KEY: &[u8] = b"rolling-decay";
 
-impl SealDomain for DateTime {
+impl SealDomain for DateTimeCoord {
 	type SealSpan = Duration;
 
 	const SIZE_DOMAIN: WindowSizeDomain = WindowSizeDomain::Time;
@@ -113,20 +113,20 @@ impl SealDomain for DateTime {
 	}
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
-		let at = newest.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
+		let at = newest.0.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 	}
 
 	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self> {
 		let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 		let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
-		Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
+		Ok(Self::from_order(ledger.max(watermark)))
 	}
 
 	fn horizon(frontier: Self, seal_span: Duration) -> Self {
-		SealRule::of(seal_span)
+		Self(SealRule::of(seal_span)
 			.horizon_at(frontier)
-			.map_or(DateTime::MIN, |horizon| horizon.saturating_add(Duration::from_nanoseconds_const(1)))
+			.map_or(DateTime::MIN, |horizon| horizon.0.saturating_add(Duration::from_nanoseconds_const(1))))
 	}
 
 	fn rearm_decay(
@@ -172,7 +172,7 @@ mod tests {
 		// the bare sum seals a window still taking late rows, so the arm must carry the strict gate step
 		let mut store = MockStore::recording_timers();
 
-		DateTime::observe(&mut store, at_millis(5_000), ms(200)).unwrap();
+		DateTimeCoord::observe(&mut store, DateTimeCoord(at_millis(5_000)), ms(200)).unwrap();
 
 		assert_eq!(
 			store.timers(),
@@ -189,8 +189,8 @@ mod tests {
 		let mut lagging_ledger = MockStore::default().with_flow_watermark(at_millis(9_000));
 		SealLedger::advance(&mut lagging_ledger, FiredAt::of(&timer(3_000))).unwrap();
 
-		assert_eq!(DateTime::frontier(&mut lagging_watermark).unwrap(), at_millis(9_000));
-		assert_eq!(DateTime::frontier(&mut lagging_ledger).unwrap(), at_millis(9_000));
+		assert_eq!(DateTimeCoord::frontier(&mut lagging_watermark).unwrap(), DateTimeCoord(at_millis(9_000)));
+		assert_eq!(DateTimeCoord::frontier(&mut lagging_ledger).unwrap(), DateTimeCoord(at_millis(9_000)));
 	}
 
 	#[test]
@@ -198,22 +198,26 @@ mod tests {
 		// neither input may default to "now", or a operator that never fired a timer drops every row
 		let mut store = MockStore::default();
 
-		assert_eq!(DateTime::frontier(&mut store).unwrap(), DateTime::MIN);
+		assert_eq!(DateTimeCoord::frontier(&mut store).unwrap(), DateTimeCoord(DateTime::MIN));
 		assert!(store.state_get(from_ref(&seal_ledger_key())).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]
 	fn a_wall_clock_horizon_is_the_frontier_less_the_lateness_and_the_gate_step_and_may_go_pre_epoch() {
 		// wrapping high instead of going negative would report every window sealed
-		let step_past = |millis| at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1));
-		assert_eq!(DateTime::horizon(at_millis(6_060_000), ms(60_000)), step_past(5_999_999));
-		assert_eq!(DateTime::horizon(at_millis(1_000), ms(60_000)), step_past(-59_001));
+		let step_past =
+			|millis| DateTimeCoord(at_millis(millis).saturating_add(Duration::from_nanoseconds_const(1)));
+		assert_eq!(
+			DateTimeCoord::horizon(DateTimeCoord(at_millis(6_060_000)), ms(60_000)),
+			step_past(5_999_999)
+		);
+		assert_eq!(DateTimeCoord::horizon(DateTimeCoord(at_millis(1_000)), ms(60_000)), step_past(-59_001));
 	}
 
 	#[test]
 	fn the_wall_clock_domain_seals_on_the_wheel() {
 		// the flow frontier reads this domain's span in wall-clock time, so it must arm off the timer wheel
-		assert!(DateTime::arms_timer());
+		assert!(DateTimeCoord::arms_timer());
 	}
 
 	#[test]
@@ -228,7 +232,7 @@ mod tests {
 			retention: None,
 		};
 
-		assert!(DateTime::seal_span_of(&with).is_err());
+		assert!(DateTimeCoord::seal_span_of(&with).is_err());
 	}
 
 	#[test]
@@ -254,8 +258,8 @@ mod tests {
 			retention: None,
 		};
 
-		let rolling = DateTime::window_settings_of(&rolling).unwrap();
-		let tumbling = DateTime::window_settings_of(&tumbling).unwrap();
+		let rolling = DateTimeCoord::window_settings_of(&rolling).unwrap();
+		let tumbling = DateTimeCoord::window_settings_of(&tumbling).unwrap();
 
 		assert_eq!(rolling.size, Some(Duration::from_seconds(3600).unwrap()));
 		assert_eq!(rolling.pane, Some(Duration::from_seconds(1).unwrap()));
@@ -278,8 +282,8 @@ mod tests {
 			retention: None,
 		};
 
-		assert!(DateTime::window_settings_of(&ApplyWith::default()).is_err());
-		assert!(DateTime::window_settings_of(&count).is_err());
+		assert!(DateTimeCoord::window_settings_of(&ApplyWith::default()).is_err());
+		assert!(DateTimeCoord::window_settings_of(&count).is_err());
 	}
 
 	#[test]
@@ -295,7 +299,7 @@ mod tests {
 			retention: None,
 		};
 
-		let settings = DateTime::window_settings_of(&sliding).unwrap();
+		let settings = DateTimeCoord::window_settings_of(&sliding).unwrap();
 
 		assert_eq!(settings.size, Some(Duration::from_seconds(600).unwrap()));
 		assert_eq!(settings.slide, Some(Duration::from_seconds(300).unwrap()));
@@ -313,7 +317,7 @@ mod tests {
 			retention: None,
 		};
 
-		let settings = DateTime::window_settings_of(&session).unwrap();
+		let settings = DateTimeCoord::window_settings_of(&session).unwrap();
 
 		assert_eq!(settings.gap, Some(Duration::from_seconds(30).unwrap()));
 		assert_eq!(settings.size, None, "a session has no fixed size");

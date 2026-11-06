@@ -31,6 +31,7 @@ use crate::{
 		state_access::{get_classified, remove, set},
 	},
 	window::{
+		coord::DateTimeCoord,
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowReindex,
 			config::WindowEngineConfig,
@@ -42,20 +43,20 @@ use crate::{
 	},
 };
 
-pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, SlotRow)>;
+pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
-pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTime, DateTime)>;
+pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTimeCoord, DateTimeCoord)>;
 
-pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTime>), Option<EngineMeta>>;
+pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTimeCoord>), Option<EngineMeta>>;
 
-type WindowKey = (Hash128, WindowSpan<DateTime>);
+type WindowKey = (Hash128, WindowSpan<DateTimeCoord>);
 
 struct RoutedWindow {
 	key: WindowKey,
 	events: Vec<AccumulatorEvent<(WindowSlotKey, SlotRow)>>,
-	latest: Option<DateTime>,
+	latest: Option<DateTimeCoord>,
 }
 
 #[derive(Default)]
@@ -69,7 +70,7 @@ pub(crate) struct Routed {
 	pub buckets: EngineBuckets,
 	pub group_values: HashMap<Hash128, Vec<Value>>,
 	pub arrival: Vec<WindowKey>,
-	pub window_max_ts: HashMap<WindowKey, DateTime>,
+	pub window_max_coord: HashMap<WindowKey, DateTimeCoord>,
 }
 
 impl Routing {
@@ -77,9 +78,9 @@ impl Routing {
 		&mut self,
 		hash: Hash128,
 		gvals: &[Value],
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<DateTimeCoord>,
 		event: AccumulatorEvent<(WindowSlotKey, SlotRow)>,
-		event_ts: DateTime,
+		event_coord: DateTimeCoord,
 	) {
 		let key = (hash, span);
 		let index = match self.index.entry(key) {
@@ -96,7 +97,9 @@ impl Routing {
 		};
 		let window = &mut self.windows[index];
 		if matches!(event, AccumulatorEvent::Add(_)) {
-			window.latest = Some(window.latest.unwrap_or_default().max(event_ts));
+			window.latest = Some(DateTimeCoord(
+				window.latest.map_or_else(DateTime::default, |latest| latest.0).max(event_coord.0),
+			));
 		}
 		window.events.push(event);
 	}
@@ -106,12 +109,12 @@ impl Routing {
 			buckets: EngineBuckets::new(),
 			group_values: self.group_values,
 			arrival: Vec::with_capacity(self.windows.len()),
-			window_max_ts: HashMap::with_capacity(self.windows.len()),
+			window_max_coord: HashMap::with_capacity(self.windows.len()),
 		};
 		for window in self.windows {
 			routed.arrival.push(window.key);
 			if let Some(latest) = window.latest {
-				routed.window_max_ts.insert(window.key, latest);
+				routed.window_max_coord.insert(window.key, latest);
 			}
 			routed.buckets.insert(window.key, window.events);
 		}
@@ -128,7 +131,7 @@ pub(crate) enum Stamp<'a> {
 fn prior_engine_meta(
 	store: &mut dyn StateStore,
 	stamp: &Stamp<'_>,
-	window: &(Hash128, WindowSpan<DateTime>),
+	window: &(Hash128, WindowSpan<DateTimeCoord>),
 	group: GroupId,
 ) -> Result<Option<EngineMeta>> {
 	match stamp {
@@ -155,13 +158,8 @@ pub(crate) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64
 	*groups.get(&(partition, window_id)).expect("every routed window is resolved before the engine runs")
 }
 
-pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) -> WindowSlotKey {
-	let timestamp = if is_count {
-		DateTime::default()
-	} else {
-		event_ts
-	};
-	WindowSlotKey::new(timestamp, row_number)
+pub(crate) fn slot_coord(event_coord: DateTimeCoord, row_number: u64) -> WindowSlotKey {
+	WindowSlotKey::new(event_coord, row_number)
 }
 
 pub(crate) fn distinct_row_runs(pre: &RecordBatch, post: &RecordBatch) -> Result<Vec<(RecordBatch, RecordBatch)>> {
@@ -192,7 +190,7 @@ pub(crate) fn route_into_buckets<F>(
 	routing: &mut Routing,
 ) -> Result<()>
 where
-	F: Fn(usize) -> (WindowSpan<DateTime>, DateTime),
+	F: Fn(usize) -> (WindowSpan<DateTimeCoord>, DateTimeCoord),
 {
 	let row_count = columns.num_rows();
 	if row_count == 0 {
@@ -203,15 +201,15 @@ where
 	let views = core.slot_views(columns, &slot_cols)?;
 	let row_numbers = require_row_numbers(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let (span, event_ts) = assign(row_idx);
-		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
-		let contribution = (coord, views.contribution(row_idx, event_ts));
+		let (span, event_coord) = assign(row_idx);
+		let coord = slot_coord(event_coord, row_numbers[row_idx].0);
+		let contribution = (coord, views.contribution(row_idx, event_coord.0));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
 			AccumulatorEvent::Remove(contribution)
 		};
-		routing.push(*hash, gvals, span, event, event_ts);
+		routing.push(*hash, gvals, span, event, event_coord);
 	}
 	Ok(())
 }
@@ -224,8 +222,8 @@ pub(crate) fn finish_tumbling_engine(
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
-	arrival: Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	arrival: Vec<(Hash128, WindowSpan<DateTimeCoord>)>,
+	window_max_coord: HashMap<(Hash128, WindowSpan<DateTimeCoord>), DateTimeCoord>,
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
@@ -234,10 +232,9 @@ pub(crate) fn finish_tumbling_engine(
 	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] indexed_retractions: bool,
 	stamp: Stamp<'_>,
 ) -> Result<Vec<Diff>> {
-	let mut engine = core
-		.tumbling_engine_slot()
-		.take()
-		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(engine_config)));
+	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
+		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
+	});
 	let results = engine.apply(
 		host,
 		buckets,
@@ -284,7 +281,7 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_meta = prior_engine_meta(&mut store, &stamp, &(r.group, r.span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let latest = prior_last.max(window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order()));
+		let latest = prior_last.max(window_max_coord.get(&(r.group, r.span)).map(|ts| ts.to_order()));
 		match r.kind {
 			EmitKind::Remove => {
 				if gone(r.group, window_start) {
@@ -299,7 +296,7 @@ pub(crate) fn finish_tumbling_engine(
 				}
 			}
 			EmitKind::Insert | EmitKind::Update => {
-				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
+				let batch_max = window_max_coord.get(&(r.group, r.span)).map(|ts| ts.to_order());
 				let last_event_time = prior_last.max(batch_max);
 				let new_index = anchor.of(window_start, last_event_time);
 				reindexed.push(WindowReindex {
@@ -320,7 +317,7 @@ pub(crate) fn finish_tumbling_engine(
 			Stamp::SpanStart => (r.span, r.span),
 			Stamp::Latest => {
 				let at = |order: Option<u64>| {
-					let time = <DateTime as Coord>::from_order(order.unwrap_or_default());
+					let time = <DateTimeCoord as Coord>::from_order(order.unwrap_or_default());
 					WindowSpan {
 						start: time,
 						end: time,
@@ -339,8 +336,8 @@ pub(crate) fn finish_tumbling_engine(
 				let first = stored.as_ref().map(|state| state.first_time);
 				let before = stored.map(|state| {
 					(
-						<DateTime as Coord>::from_order(state.session_start),
-						<DateTime as Coord>::from_order(state.last_event_time),
+						<DateTimeCoord as Coord>::from_order(state.session_start),
+						<DateTimeCoord as Coord>::from_order(state.last_event_time),
 					)
 				});
 				let now = bounds.get(&(r.group, window_start)).copied().or(before);
@@ -363,12 +360,12 @@ pub(crate) fn finish_tumbling_engine(
 								session_id: window_start,
 								last_event_time: now.1.to_order(),
 								session_start: now.0.to_order(),
-								first_time: first.unwrap_or(now.0),
+								first_time: first.unwrap_or(now.0.0),
 							},
 						)],
 					)?,
 				}
-				let span = |(start, last): (DateTime, DateTime)| WindowSpan {
+				let span = |(start, last): (DateTimeCoord, DateTimeCoord)| WindowSpan {
 					start,
 					end: last.add_span(gap),
 				};
@@ -376,14 +373,15 @@ pub(crate) fn finish_tumbling_engine(
 			}
 		});
 	}
-	let published: HashSet<(Hash128, WindowSpan<DateTime>)> = results.iter().map(|r| (r.group, r.span)).collect();
+	let published: HashSet<(Hash128, WindowSpan<DateTimeCoord>)> =
+		results.iter().map(|r| (r.group, r.span)).collect();
 	for (hash, span) in arrival.iter().filter(|key| !published.contains(key)) {
 		let group = group_of(groups, *hash, span.start.to_order());
 		let window_start = span.start.to_order();
 		let prior_meta = prior_engine_meta(&mut store, &stamp, &(*hash, *span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
+		let batch_max = window_max_coord.get(&(*hash, *span)).map(|ts| ts.to_order());
 		let last_event_time = prior_last.max(batch_max);
 		let new_index = match gone(*hash, window_start) {
 			true => None,
@@ -411,7 +409,7 @@ pub(crate) fn finish_tumbling_engine(
 	let mut removes = Vec::new();
 	for (r, (pre_span, post_span)) in results.into_iter().zip(spans) {
 		let group_values = group_values.get(&r.group).cloned().unwrap_or_default();
-		let emit = |slot_values: Vec<Value>, span: WindowSpan<DateTime>| EmitRow {
+		let emit = |slot_values: Vec<Value>, span: WindowSpan<DateTimeCoord>| EmitRow {
 			group_values: group_values.clone(),
 			slot_values,
 			row_number: r.row_number,
@@ -483,12 +481,12 @@ mod bucket_start_tests {
 		let bucket = order(1_700_000_000_000);
 
 		assert_eq!(
-			<DateTime as Coord>::from_order(bucket),
-			DateTime::from_epoch_millis(1_700_000_000_000).unwrap()
+			<DateTimeCoord as Coord>::from_order(bucket),
+			DateTimeCoord(DateTime::from_epoch_millis(1_700_000_000_000).unwrap())
 		);
 		assert_eq!(
-			<DateTime as Coord>::from_order(bucket),
-			<DateTime as Coord>::from_order(bucket),
+			<DateTimeCoord as Coord>::from_order(bucket),
+			<DateTimeCoord as Coord>::from_order(bucket),
 			"the stamp depends on the bucket alone, so it cannot vary between two runs"
 		);
 	}
@@ -497,24 +495,25 @@ mod bucket_start_tests {
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
 		// A chained rollup (1s -> 1m) collapses onto one instant unless distinct buckets get
 		// distinct stamps.
-		let first = <DateTime as Coord>::from_order(order(1_700_000_000_000));
-		let second = <DateTime as Coord>::from_order(order(1_700_000_001_000));
+		let first = <DateTimeCoord as Coord>::from_order(order(1_700_000_000_000));
+		let second = <DateTimeCoord as Coord>::from_order(order(1_700_000_001_000));
 
 		assert!(first < second, "bucket order must survive into #time");
-		assert_eq!(second - first, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
+		assert_eq!(second.0 - first.0, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
 	}
 
 	#[test]
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
 		// An unrepresentable bucket must still order above a real one; wrapping would make it
 		// look ancient and be evicted at once.
-		assert_eq!(<DateTime as Coord>::from_order(u64::MAX), DateTime::MAX);
-		assert!(<DateTime as Coord>::from_order(u64::MAX) > <DateTime as Coord>::from_order(1_700_000_000_000));
+		assert_eq!(<DateTimeCoord as Coord>::from_order(u64::MAX), DateTimeCoord(DateTime::MAX));
+		assert!(<DateTimeCoord as Coord>::from_order(u64::MAX)
+			> <DateTimeCoord as Coord>::from_order(1_700_000_000_000));
 	}
 
 	#[test]
 	fn the_zero_bucket_maps_to_the_earliest_instant() {
 		// An unset window_start must not be mistakeable for a real time far from zero.
-		assert_eq!(<DateTime as Coord>::from_order(0), DateTime::MIN);
+		assert_eq!(<DateTimeCoord as Coord>::from_order(0), DateTimeCoord(DateTime::MIN));
 	}
 }

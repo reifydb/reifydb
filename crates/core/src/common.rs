@@ -314,20 +314,11 @@ impl WindowRequirements {
 			}
 			.into());
 		}
-		match (self.domain, kind.size()) {
-			(WindowSizeDomain::Time, Some(WindowSize::Count(count))) => {
-				return Err(CoreError::OperatorWithWindowSizeCount {
-					count: *count,
-				}
-				.into());
+		if let (WindowSizeDomain::Time, Some(WindowSize::Count(count))) = (self.domain, kind.size()) {
+			return Err(CoreError::OperatorWithWindowSizeCount {
+				count: *count,
 			}
-			(WindowSizeDomain::Slots, Some(WindowSize::Duration(size))) => {
-				return Err(CoreError::OperatorWithWindowSizeDuration {
-					size: *size,
-				}
-				.into());
-			}
-			_ => {}
+			.into());
 		}
 		if self.needs_pane
 			&& matches!(

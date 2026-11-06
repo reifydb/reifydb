@@ -10,6 +10,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator, invertible::moments::Moments},
+	coord::DateTimeCoord,
 	settings::WindowSettings,
 	span::WindowSpan,
 };
@@ -115,7 +116,7 @@ impl OperatorMetadata for TestRollingSum {
 }
 
 impl WindowedOperator for TestRollingSum {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = WindowSum;
 	type Output = TestOut;
@@ -124,12 +125,14 @@ impl WindowedOperator for TestRollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -160,7 +163,7 @@ impl WindowedOperator for TestRollingSum {
 			.collect()
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> WindowSum {
 		WindowSum::default()
 	}
 }
@@ -168,7 +171,12 @@ impl WindowedOperator for TestRollingSum {
 impl Emit for TestRollingSum {
 	type Kinds = AllKinds;
 
-	fn build_output(&self, group: &String, _span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<TestOut> {
+	fn build_output(
+		&self,
+		group: &String,
+		_span: WindowSpan<DateTimeCoord>,
+		value: &(f64, u32),
+	) -> Option<TestOut> {
 		Some(TestOut {
 			group: group.clone(),
 			rolling_sum: value.0,
@@ -370,7 +378,7 @@ impl OperatorMetadata for SealedRollingSum {
 }
 
 impl WindowedOperator for SealedRollingSum {
-	type Coord = DateTime;
+	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = WindowSum;
 	type Output = TestOut;
@@ -379,12 +387,14 @@ impl WindowedOperator for SealedRollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.map(|row| -> Result<Option<DateTimeCoord>> {
+						Ok(row.row_time().map(DateTimeCoord))
+					})
 					.transpose()
 					.map(Option::flatten)
 			})
@@ -400,7 +410,7 @@ impl WindowedOperator for SealedRollingSum {
 		TestRollingSum.extract(ctx, cols, rows)
 	}
 
-	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
+	fn new_accumulator(&self, _settings: &WindowSettings<DateTimeCoord>) -> WindowSum {
 		WindowSum::default()
 	}
 }
@@ -408,7 +418,7 @@ impl WindowedOperator for SealedRollingSum {
 impl Emit for SealedRollingSum {
 	type Kinds = AllKinds;
 
-	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: &(f64, u32)) -> Option<TestOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTimeCoord>, value: &(f64, u32)) -> Option<TestOut> {
 		TestRollingSum.build_output(group, span, value)
 	}
 }
