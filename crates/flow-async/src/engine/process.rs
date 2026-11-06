@@ -105,13 +105,13 @@ impl FlowEngineInner {
 
 		let sources = self.watermark_sources(&flow);
 
-		let (mut arrivals, mut silent) =
+		let (arrivals, mut silent) =
 			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version, &sources);
 		let (lookup_arrivals, lookup_silent) =
 			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version, &sources);
-		arrivals.extend(lookup_arrivals);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
+		advance_lookup_frontiers(txn, &lookup_arrivals)?;
 		freeze_arrival_frontier(txn, &sources, &arrivals)
 	}
 
@@ -179,7 +179,7 @@ impl FlowEngineInner {
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
-		arrivals.extend(lookup_published);
+		advance_lookup_frontiers(txn, &lookup_published)?;
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, views, topo)?;
@@ -338,6 +338,13 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 			let slot = asserted.entry(object).or_insert(at);
 			*slot = (*slot).max(at);
 		}
+	}
+	Ok(())
+}
+
+fn advance_lookup_frontiers<T: FlowTransaction>(txn: &mut T, arrivals: &[SourceArrival]) -> Result<()> {
+	for arrival in arrivals {
+		SourceWatermarks::advance(arrival.source, txn, arrival.at)?;
 	}
 	Ok(())
 }
