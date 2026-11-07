@@ -103,7 +103,7 @@ impl<'bump> Parser<'bump> {
 						column,
 					}
 				};
-				let (nodes, _has_braces) = self.parse_expressions(true, false, None)?;
+				let (nodes, _has_braces) = self.parse_expressions(true, None)?;
 
 				return Ok(AstFrom::Generator(AstGenerator {
 					token,

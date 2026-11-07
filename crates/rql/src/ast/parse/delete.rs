@@ -50,7 +50,7 @@ impl<'bump> Parser<'bump> {
 
 		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
 			let returning_token = self.advance()?;
-			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
+			let (exprs, had_braces) = self.parse_expressions(true, None)?;
 			if !had_braces {
 				return Err(RqlError::OperatorMissingBraces {
 					kind: OperationKind::Returning,

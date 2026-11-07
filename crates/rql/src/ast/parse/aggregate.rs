@@ -21,7 +21,7 @@ impl<'bump> Parser<'bump> {
 				}
 				.into());
 			}
-			let (nodes, _) = self.parse_expressions(true, false, Some(Keyword::By))?;
+			let (nodes, _) = self.parse_expressions(true, Some(Keyword::By))?;
 			nodes
 		} else {
 			Vec::new()
@@ -36,7 +36,7 @@ impl<'bump> Parser<'bump> {
 				}
 				.into());
 			}
-			let (nodes, _) = self.parse_expressions(false, false, None)?;
+			let (nodes, _) = self.parse_expressions(false, None)?;
 			nodes
 		} else {
 			Vec::new()

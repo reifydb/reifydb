@@ -96,7 +96,6 @@ pub(crate) enum Precedence {
 
 const fn get_precedence_for_operator(op: Operator) -> Precedence {
 	match op {
-		As => Assignment,
 		Equal => Assignment,
 		DoubleEqual | BangEqual | LeftAngle | LeftAngleEqual | RightAngle | RightAngleEqual => Comparison,
 		Plus | Minus => Term,
@@ -605,7 +604,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_expressions(
 		&mut self,
 		allow_colon_alias: bool,
-		allow_as_keyword: bool,
 		break_on: Option<Keyword>,
 	) -> Result<(Vec<Ast<'bump>>, bool)> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
@@ -619,12 +617,6 @@ impl<'bump> Parser<'bump> {
 			return Ok((Vec::new(), true));
 		}
 
-		let precedence = if allow_as_keyword {
-			Precedence::None
-		} else {
-			Assignment
-		};
-
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			if let Some(kw) = break_on
@@ -637,10 +629,10 @@ impl<'bump> Parser<'bump> {
 				if let Some(result) = self.try_parse_colon_alias() {
 					nodes.push(result?);
 				} else {
-					nodes.push(self.parse_node(precedence)?);
+					nodes.push(self.parse_node(Assignment)?);
 				}
 			} else {
-				nodes.push(self.parse_node(precedence)?);
+				nodes.push(self.parse_node(Assignment)?);
 			}
 
 			if self.is_eof() {
@@ -652,6 +644,12 @@ impl<'bump> Parser<'bump> {
 			} else if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
 				self.advance()?;
 				break;
+			} else if has_braces && !break_on.is_some_and(|kw| self.current().is_ok_and(|t| t.is_keyword(kw))) {
+				return Err(AstError::UnexpectedToken {
+					expected: "`,` or `}`".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			} else {
 				break;
 			}
@@ -668,7 +666,7 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(keyword)?;
 
-		let (nodes, has_braces) = self.parse_expressions(true, false, None)?;
+		let (nodes, has_braces) = self.parse_expressions(true, None)?;
 
 		if !has_braces {
 			return Err(RqlError::OperatorMissingBraces {
@@ -1152,5 +1150,27 @@ pub mod tests {
 		assert!(matches!(statement[1], Ast::Filter(_)));
 		assert!(matches!(statement[2], Ast::Sort(_)));
 		assert!(matches!(statement[3], Ast::Take(_)));
+	}
+
+	#[test]
+	fn test_a_stray_token_in_braces_is_refused_where_it_stands() {
+		// A brace list must not end silently on a stray token, otherwise the next parser reports an unrelated error.
+		let bump = Bump::new();
+		let source = "MAP { 1 2 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let error = parse(&bump, source, tokens).unwrap_err();
+		assert_eq!(error.code, "AST_005");
+		assert_eq!(error.fragment.text(), "2");
+		assert_eq!((error.fragment.line().0, error.fragment.column().0), (1, 9));
+	}
+
+	#[test]
+	fn test_an_aggregate_by_block_still_parses_after_the_projection_braces() {
+		// The stray-token check must stop at the closing brace, otherwise `AGGREGATE { .. } BY { .. }` is refused.
+		let bump = Bump::new();
+		let source = "AGGREGATE { count(v) } BY { g }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens);
+		assert!(result.is_ok(), "{result:?}");
 	}
 }

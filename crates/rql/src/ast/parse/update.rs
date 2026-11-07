@@ -39,7 +39,7 @@ impl<'bump> Parser<'bump> {
 			}
 			.into());
 		}
-		let (assignments, _) = self.parse_expressions(true, false, None)?;
+		let (assignments, _) = self.parse_expressions(true, None)?;
 		reject_duplicate_aliases(&assignments)?;
 		if assignments.is_empty() {
 			return Err(RqlError::UpdateEmptyAssignmentsBlock {
@@ -65,7 +65,7 @@ impl<'bump> Parser<'bump> {
 
 		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
 			let returning_token = self.advance()?;
-			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
+			let (exprs, had_braces) = self.parse_expressions(true, None)?;
 			if !had_braces {
 				return Err(RqlError::OperatorMissingBraces {
 					kind: OperationKind::Returning,
@@ -290,5 +290,18 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_update_with_as_alias_is_refused_at_as() {
+		// A FILTER is present, so the error must point at `as`; otherwise the user is told to add a FILTER they already have.
+		let bump = Bump::new();
+		let source = "UPDATE test::t { 5 as v } FILTER { id == 1 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let error = parser.parse().unwrap_err();
+		assert_eq!(error.code, "AST_005");
+		assert_eq!(error.fragment.text(), "as");
+		assert_eq!((error.fragment.line().0, error.fragment.column().0), (1, 20));
 	}
 }

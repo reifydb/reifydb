@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstInfix, InfixOperator},
-		parse::{Parser, Precedence},
+		parse::Parser,
 	},
 	bump::BumpBox,
 	diagnostic::AstError,
@@ -19,7 +19,6 @@ impl<'bump> Parser<'bump> {
 
 		let right = match &operator {
 			InfixOperator::Call(token) => Ast::Tuple(self.parse_tuple_call(*token)?),
-			InfixOperator::As(_) => self.parse_node(Precedence::None)?,
 			_ => self.parse_node(precedence)?,
 		};
 
@@ -52,7 +51,6 @@ impl<'bump> Parser<'bump> {
 
 				Operator::Dot => Ok(InfixOperator::AccessTable(token)),
 				Operator::DoubleColon => Ok(InfixOperator::AccessNamespace(token)),
-				Operator::As => Ok(InfixOperator::As(token)),
 				Operator::And => Ok(InfixOperator::And(token)),
 				Operator::Or => Ok(InfixOperator::Or(token)),
 				Operator::Xor => Ok(InfixOperator::Xor(token)),
@@ -88,41 +86,15 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_as_one() {
+	fn test_as_alias_is_refused_at_as() {
+		// `name: expr` is the only alias form; accepting `expr as name` again would bring back a second, half-supported one.
 		let bump = Bump::new();
 		let source = "1 as one";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let result = parse(&bump, source, tokens).unwrap();
-		assert_eq!(result.len(), 1);
-
-		let Some(Ast::Infix(infix)) = result[0].nodes.first() else {
-			panic!("not infix")
-		};
-		let Ast::Literal(AstLiteral::Number(left_number)) = &*infix.left else {
-			panic!("not number")
-		};
-		assert_eq!(left_number.value(), "1");
-		assert!(matches!(infix.operator, InfixOperator::As(_)));
-		assert_eq!(infix.right.as_identifier().text(), "one");
-	}
-
-	#[test]
-	fn test_as_a() {
-		let bump = Bump::new();
-		let source = "1 as a";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let result = parse(&bump, source, tokens).unwrap();
-		assert_eq!(result.len(), 1);
-
-		let Some(Ast::Infix(infix)) = result[0].nodes.first() else {
-			panic!("not infix")
-		};
-		let Ast::Literal(AstLiteral::Number(left_number)) = &*infix.left else {
-			panic!("not number")
-		};
-		assert_eq!(left_number.value(), "1");
-		assert!(matches!(infix.operator, InfixOperator::As(_)));
-		assert_eq!(infix.right.as_identifier().text(), "a");
+		let error = parse(&bump, source, tokens).unwrap_err();
+		assert_eq!(error.code, "AST_006");
+		assert_eq!(error.fragment.text(), "as");
+		assert_eq!((error.fragment.line().0, error.fragment.column().0), (1, 3));
 	}
 
 	#[test]
