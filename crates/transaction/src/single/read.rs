@@ -22,6 +22,7 @@ impl KeyReadLock {
 
 pub struct SingleReadTransaction<'a> {
 	pub(super) inner: &'a SingleTransactionInner,
+	pub(super) ctx: Arc<TransactionContext>,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) _key_locks: Vec<KeyReadLock>,
 }
@@ -47,6 +48,6 @@ impl<'a> SingleReadTransaction<'a> {
 			return Ok(Vec::new());
 		}
 		let store = self.inner.store.read().clone();
-		SingleVersionGet::get(&store, keys)
+		SingleVersionGet::get(&store, &self.ctx, keys)
 	}
 }

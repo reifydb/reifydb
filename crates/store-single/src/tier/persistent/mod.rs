@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdown};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
@@ -93,16 +93,20 @@ impl SinglePersistentTier {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl TierStorage for SinglePersistentTier {
 	#[inline]
-	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match self {
-			Self::Sqlite(s) => s.get(keys),
+			Self::Sqlite(s) => s.get(ctx, keys),
 		}
 	}
 
 	#[inline]
-	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	fn get_with_tombstone(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match self {
-			Self::Sqlite(s) => s.get_with_tombstone(keys),
+			Self::Sqlite(s) => s.get_with_tombstone(ctx, keys),
 		}
 	}
 
@@ -116,26 +120,28 @@ impl TierStorage for SinglePersistentTier {
 	#[inline]
 	fn range_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_next(cursor, start, end, batch_size),
+			Self::Sqlite(s) => s.range_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
 	#[inline]
 	fn range_rev_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_rev_next(cursor, start, end, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
@@ -156,11 +162,15 @@ impl TierStorage for SinglePersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for SinglePersistentTier {
-	fn get(&self, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, _ctx: &TransactionContext, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match *self {}
 	}
 
-	fn get_with_tombstone(&self, _keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	fn get_with_tombstone(
+		&self,
+		_ctx: &TransactionContext,
+		_keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match *self {}
 	}
 
@@ -170,6 +180,7 @@ impl TierStorage for SinglePersistentTier {
 
 	fn range_next(
 		&self,
+		_ctx: &TransactionContext,
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
@@ -180,6 +191,7 @@ impl TierStorage for SinglePersistentTier {
 
 	fn range_rev_next(
 		&self,
+		_ctx: &TransactionContext,
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,

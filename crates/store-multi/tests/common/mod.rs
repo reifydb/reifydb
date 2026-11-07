@@ -36,7 +36,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_commit::{MultiVersionScope, TierBatch, VersionedGetResult, store::CommitStore};
@@ -48,6 +48,10 @@ use reifydb_store_multi::{
 use reifydb_testing::testscript;
 use reifydb_value::{Result as ValueResult, cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 /// Shared testscript runner for every per-backend test binary. With `auto_flush` each committing command
 /// is followed by `flush_pending_blocking()`; without it the explicit `flush` command is the only way to
@@ -125,7 +129,7 @@ impl testscript::runner::Runner for Runner {
 
 				let value = self
 					.store
-					.get(from_ref(&TaggedKey::from(script_key(&key))), version)?
+					.get(&system_ctx(), from_ref(&TaggedKey::from(script_key(&key))), version)?
 					.remove(0)
 					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
@@ -143,7 +147,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let stored: Vec<EncodedKey> = keys.iter().map(|key| script_key(key).encode()).collect();
-				let found = self.store.get_versioned(&stored, version)?;
+				let found = self.store.get_versioned(&system_ctx(), &stored, version)?;
 				for (key, stored) in keys.iter().zip(&stored) {
 					let value = found
 						.get(stored)
@@ -164,6 +168,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range(
+							&system_ctx(),
 							EncodedKeyRange::all(),
 							MultiVersionScope::AsOf {
 								read: version,
@@ -176,6 +181,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range_rev(
+							&system_ctx(),
 							EncodedKeyRange::all(),
 							MultiVersionScope::AsOf {
 								read: version,
@@ -199,6 +205,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range(
+							&system_ctx(),
 							range,
 							MultiVersionScope::AsOf {
 								read: version,
@@ -211,6 +218,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range_rev(
+							&system_ctx(),
 							range,
 							MultiVersionScope::AsOf {
 								read: version,
@@ -236,6 +244,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range(
+							&system_ctx(),
 							range,
 							MultiVersionScope::AsOf {
 								read: version,
@@ -248,6 +257,7 @@ impl testscript::runner::Runner for Runner {
 					let items: Vec<_> = self
 						.store
 						.range_rev(
+							&system_ctx(),
 							range,
 							MultiVersionScope::AsOf {
 								read: version,
@@ -375,7 +385,7 @@ impl testscript::runner::Runner for Runner {
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
 				let value = persistent
-					.get(table, std::slice::from_ref(&stored.as_ref()), version)?
+					.get(&system_ctx(), table, std::slice::from_ref(&stored.as_ref()), version)?
 					.remove(0)
 					.value()
 					.map(|v| v.to_vec());
@@ -419,7 +429,7 @@ impl testscript::runner::Runner for Runner {
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
 				let line = match persistent
-					.get(table, std::slice::from_ref(&stored.as_ref()), version)?
+					.get(&system_ctx(), table, std::slice::from_ref(&stored.as_ref()), version)?
 					.remove(0)
 				{
 					VersionedGetResult::Value {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -16,6 +16,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{MultiVersionScope, RangeCursor};
 use reifydb_store_multi::{
 	MultiStore,
@@ -23,6 +24,10 @@ use reifydb_store_multi::{
 	tier::{TierStorage, persistent::MultiPersistentTier},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn key(label: &[u8]) -> TaggedKey {
 	QueueDeduplicationKey::new(QueueId(1), label.iter().map(|b| !b).collect::<Vec<u8>>()).into()
@@ -62,7 +67,8 @@ fn single_key_scope_filter() {
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
@@ -70,7 +76,8 @@ fn single_key_scope_filter() {
 		after: CommitVersion(5),
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
@@ -78,14 +85,16 @@ fn single_key_scope_filter() {
 		after: CommitVersion(10),
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert!(rows.is_empty(), "expected no rows above watermark = 10, got {rows:?}");
 
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(4),
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
@@ -93,7 +102,8 @@ fn single_key_scope_filter() {
 		after: CommitVersion(4),
 		read: CommitVersion(7),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(5));
 }
@@ -113,7 +123,8 @@ fn multi_key_independent_filter() {
 		after: CommitVersion(5),
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 
 	assert_eq!(rows.len(), 2, "expected one row per key");
 	assert_eq!(rows[0].key, a);
@@ -139,7 +150,8 @@ fn skipped_versions_do_not_consume_batch_budget() {
 		after: CommitVersion(5),
 		read: CommitVersion(20),
 	};
-	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, N).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		store.range(&system_ctx(), EncodedKeyRange::all(), scope, N).collect::<Result<_, _>>().unwrap();
 
 	assert_eq!(rows.len(), N, "batch should fit all N qualifying keys");
 	for r in &rows {
@@ -164,6 +176,7 @@ fn sqlite_tier_parity_single_key() {
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_next(
+				&system_ctx(),
 				table,
 				&mut cursor,
 				std::ops::Bound::Unbounded,
@@ -228,7 +241,8 @@ fn asof_matches_prior_behavior() {
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(5),
 	};
-	let rows: Vec<_> = storage.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
+	let rows: Vec<_> =
+		storage.range(&system_ctx(), EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(3));
 }

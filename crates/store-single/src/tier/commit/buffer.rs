@@ -5,6 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryRowStorage;
@@ -68,16 +69,20 @@ impl MetricsCollector for SingleCommitBufferTier {
 
 impl TierStorage for SingleCommitBufferTier {
 	#[inline]
-	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match self {
-			Self::Memory(s) => s.get(keys),
+			Self::Memory(s) => s.get(ctx, keys),
 		}
 	}
 
 	#[inline]
-	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	fn get_with_tombstone(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match self {
-			Self::Memory(s) => s.get_with_tombstone(keys),
+			Self::Memory(s) => s.get_with_tombstone(ctx, keys),
 		}
 	}
 
@@ -91,26 +96,28 @@ impl TierStorage for SingleCommitBufferTier {
 	#[inline]
 	fn range_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_next(cursor, start, end, batch_size),
+			Self::Memory(s) => s.range_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
 	#[inline]
 	fn range_rev_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_rev_next(cursor, start, end, batch_size),
+			Self::Memory(s) => s.range_rev_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
@@ -133,9 +140,15 @@ impl TierBackend for SingleCommitBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
-	use std::slice::from_ref;
+	use std::{slice::from_ref, sync::Arc};
+
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 
 	use super::*;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	#[test]
 	fn test_memory_backend() {
@@ -143,7 +156,7 @@ pub mod tests {
 
 		storage.set(vec![(EncodedKey::new(b"key"), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(
-			storage.get(from_ref(&b"key".as_slice())).unwrap().remove(0).as_deref(),
+			storage.get(&system_ctx(), from_ref(&b"key".as_slice())).unwrap().remove(0).as_deref(),
 			Some(b"value".as_slice())
 		);
 	}
@@ -160,7 +173,9 @@ pub mod tests {
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
-		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
+		let batch = storage
+			.range_next(&system_ctx(), &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);

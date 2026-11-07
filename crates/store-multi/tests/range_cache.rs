@@ -21,11 +21,16 @@ use reifydb_core::{
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -83,7 +88,7 @@ fn scan_scope(
 	scope: MultiVersionScope,
 	batch: usize,
 ) -> Vec<(Vec<u8>, Vec<u8>, CommitVersion)> {
-	store.range(RowKey::full_scan(STORAGE).encode(), scope, batch)
+	store.range(&system_ctx(), RowKey::full_scan(STORAGE).encode(), scope, batch)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -263,6 +268,7 @@ fn reverse_and_small_batch_match_forward() {
 
 	let mut reverse: Vec<Vec<u8>> = store
 		.range_rev(
+			&system_ctx(),
 			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
@@ -309,6 +315,7 @@ fn non_source_range_reads_through_with_warm_cache() {
 
 	let mut got: Vec<Vec<u8>> = store
 		.range(
+			&system_ctx(),
 			EncodedKeyRange::all(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),
@@ -374,6 +381,7 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 
 	let rows: Vec<(Vec<u8>, Vec<u8>, CommitVersion)> = store
 		.range_rev(
+			&system_ctx(),
 			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
 				read: CommitVersion(1000),

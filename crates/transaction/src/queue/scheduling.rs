@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, slice::from_ref};
+use std::{ops::Bound, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -25,6 +25,7 @@ use reifydb_core::{
 	},
 	return_internal_error,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
@@ -55,9 +56,13 @@ pub struct PartitionCounterPage {
 	pub next: Option<EncodedKeyRange>,
 }
 
-pub fn partition_counters_page(single: &SingleTransaction, range: EncodedKeyRange) -> Result<PartitionCounterPage> {
+pub fn partition_counters_page(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+	range: EncodedKeyRange,
+) -> Result<PartitionCounterPage> {
 	let store = single.read_store();
-	let batch = SingleVersionRange::range_batch(&store, range.clone(), PARTITION_COUNTER_PAGE)?;
+	let batch = SingleVersionRange::range_batch(&store, ctx, range.clone(), PARTITION_COUNTER_PAGE)?;
 	let next = match (batch.has_more, batch.items.last()) {
 		(true, Some(last)) => Some(EncodedKeyRange::new(Bound::Excluded(last.key.clone()), range.end)),
 		_ => None,
@@ -76,13 +81,14 @@ pub fn partition_counters_page(single: &SingleTransaction, range: EncodedKeyRang
 }
 
 pub fn queue_partition_counters(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 ) -> Result<Vec<(Partition, QueuePartitionCounters)>> {
 	let mut counters = Vec::new();
 	let mut next = Some(QueuePartitionKey::queue_scan(queue).encode());
 	while let Some(range) = next {
-		let page = partition_counters_page(single, range)?;
+		let page = partition_counters_page(ctx, single, range)?;
 		counters.extend(page.counters);
 		next = page.next;
 	}
@@ -98,6 +104,7 @@ fn partition_ranges(queue: QueueId, partition: Partition) -> Vec<EncodedKeyRange
 }
 
 pub fn admit_ready_items(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
@@ -108,7 +115,7 @@ pub fn admit_ready_items(
 	}
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut keys: Vec<_> =
 		items.iter().map(|item| QueueItemStateKey::new(queue, partition, item.row).into()).collect();
@@ -128,7 +135,7 @@ pub fn admit_ready_items(
 		state.key_hash = item.key_hash.unwrap_or_default();
 
 		if let Some(key_hash) = item.key_hash {
-			match chain_peek(single, &mut overlay, queue, partition, key_hash)? {
+			match chain_peek(ctx, single, &mut overlay, queue, partition, key_hash)? {
 				ChainHead::Empty => {}
 				ChainHead::Single(_) => {
 					state.status = QueueItemStatus::Parked;
@@ -159,6 +166,7 @@ pub fn admit_ready_items(
 }
 
 pub fn apply_ack_transitions(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
@@ -169,7 +177,7 @@ pub fn apply_ack_transitions(
 	}
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut keys: Vec<_> =
 		acks.iter().map(|ack| QueueItemStateKey::new(queue, partition, ack.row_number).into()).collect();
@@ -207,6 +215,7 @@ pub fn apply_ack_transitions(
 		}
 
 		let effect = apply_state_transition(
+			ctx,
 			single,
 			&mut tx,
 			&mut overlay,
@@ -238,6 +247,7 @@ pub struct ExpiredLease {
 }
 
 pub fn apply_reap_transitions(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
@@ -249,7 +259,7 @@ pub fn apply_reap_transitions(
 	}
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let mut keys: Vec<_> =
 		reaps.iter().map(|(lease, _)| QueueItemStateKey::new(queue, partition, lease.row).into()).collect();
@@ -286,6 +296,7 @@ pub fn apply_reap_transitions(
 		}
 
 		let effect = apply_state_transition(
+			ctx,
 			single,
 			&mut tx,
 			&mut overlay,
@@ -310,6 +321,7 @@ pub enum ReplayOutcome {
 }
 
 pub fn apply_replay_transition(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
@@ -317,7 +329,7 @@ pub fn apply_replay_transition(
 	key_hash: Option<u64>,
 ) -> Result<ReplayOutcome> {
 	let lock_key = QueuePartitionKey::new(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let state_key = QueueItemStateKey::new(queue, partition, row);
 	let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
@@ -339,7 +351,7 @@ pub fn apply_replay_transition(
 	let mut overlay = ChainOverlay::default();
 	let mut blocked_delta = 0i64;
 	if let Some(key_hash) = key_hash {
-		match chain_peek(single, &mut overlay, queue, partition, key_hash)? {
+		match chain_peek(ctx, single, &mut overlay, queue, partition, key_hash)? {
 			ChainHead::Empty => {}
 			ChainHead::Single(_) => {
 				state.status = QueueItemStatus::Parked;
@@ -370,6 +382,7 @@ pub fn apply_replay_transition(
 }
 
 pub fn remove_item_states(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
@@ -380,7 +393,7 @@ pub fn remove_item_states(
 	}
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
-	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let keys: Vec<_> = rows.iter().map(|row| QueueItemStateKey::new(queue, partition, *row)).collect();
 	tx.get(&keys)?;
@@ -444,6 +457,7 @@ impl TransitionTarget {
 }
 
 fn apply_state_transition(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	tx: &mut SingleWriteTransaction<'_>,
 	overlay: &mut ChainOverlay,
@@ -484,7 +498,7 @@ fn apply_state_transition(
 	let blocked_delta = match (terminal, key_hash) {
 		(true, Some(key_hash)) => {
 			chain_remove(tx, overlay, queue, partition, key_hash, row)?;
-			promote_next(single, tx, overlay, queue, partition, key_hash)?
+			promote_next(ctx, single, tx, overlay, queue, partition, key_hash)?
 		}
 		_ => 0,
 	};
@@ -496,6 +510,7 @@ fn apply_state_transition(
 }
 
 fn promote_next(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	tx: &mut SingleWriteTransaction<'_>,
 	overlay: &mut ChainOverlay,
@@ -503,7 +518,7 @@ fn promote_next(
 	partition: Partition,
 	key_hash: u64,
 ) -> Result<i64> {
-	let (successor, blocked_delta) = match chain_peek(single, overlay, queue, partition, key_hash)? {
+	let (successor, blocked_delta) = match chain_peek(ctx, single, overlay, queue, partition, key_hash)? {
 		ChainHead::Empty => return Ok(0),
 		ChainHead::Single(row) => (row, -1),
 		ChainHead::Multiple(row) => (row, 0),
@@ -572,8 +587,12 @@ fn adjust_counters(
 
 	Ok(())
 }
-pub fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId) -> Result<()> {
-	let lock_keys: Vec<EncodedKey> = queue_partition_counters(single, queue)?
+pub fn remove_queue_scheduling_state(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+	queue: QueueId,
+) -> Result<()> {
+	let lock_keys: Vec<EncodedKey> = queue_partition_counters(ctx, single, queue)?
 		.into_iter()
 		.map(|(partition, _)| QueuePartitionKey::encoded(queue, partition))
 		.collect();
@@ -589,12 +608,12 @@ pub fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId)
 	for range in &ranges {
 		loop {
 			let store = single.read_store();
-			let batch = SingleVersionRange::range_batch(&store, range.clone(), 1024)?;
+			let batch = SingleVersionRange::range_batch(&store, ctx, range.clone(), 1024)?;
 			if batch.items.is_empty() {
 				break;
 			}
 
-			let mut tx = single.begin_command_ranged(lock_keys.iter(), ranges.clone())?;
+			let mut tx = single.begin_command_ranged(ctx, lock_keys.iter(), ranges.clone())?;
 			for item in &batch.items {
 				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");

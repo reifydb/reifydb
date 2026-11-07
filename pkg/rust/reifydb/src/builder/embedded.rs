@@ -12,7 +12,11 @@ use reifydb_core::{
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, io::fs::Fs, pool::PoolConfig,
+	Runtime, RuntimeConfig,
+	context::{RuntimeContext, clock::Clock, rng::Rng, transaction::TransactionContext},
+	fatal::install as install_fatal,
+	io::fs::Fs,
+	pool::PoolConfig,
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -48,6 +52,7 @@ type PoolConfigSources = (
 );
 
 fn pool_config_from_sources(
+	ctx: &TransactionContext,
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	wal_mode: WalMode,
@@ -62,7 +67,7 @@ fn pool_config_from_sources(
 	};
 	let wal = commit_wal(factory, clock, wal_mode, wal_fs);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
-	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
+	let resolved = resolve_startup_configs(ctx, &multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
@@ -275,6 +280,11 @@ impl EmbeddedBuilder {
 
 	pub fn build(self) -> Result<Database> {
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
+		let boot_ctx = TransactionContext::system(RuntimeContext::new(
+			boot_clock.clone(),
+			self.runtime_config.as_ref().map_or(Rng::Os, |config| config.rng.fork(b"startup")),
+			VersionEpoch::new(),
+		));
 		let wal_mode = self
 			.wal_configurator
 			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
@@ -292,6 +302,7 @@ impl EmbeddedBuilder {
 			wal,
 			recovery,
 		) = pool_config_from_sources(
+			&boot_ctx,
 			&self.storage_factory,
 			&self.bootstrap_configs,
 			wal_mode,

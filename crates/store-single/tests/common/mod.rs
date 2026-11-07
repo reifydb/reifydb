@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{error::Error as StdError, fmt::Write, ops::Bound};
+use std::{error::Error as StdError, fmt::Write, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -36,7 +36,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_single::{
@@ -47,6 +47,10 @@ use reifydb_store_single::{
 use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 /// Shared testscript runner for every per-backend integration test. With `auto_flush` each committing
 /// command is followed by `flush_pending_blocking()`; without it (the default) the explicit `flush`
@@ -123,7 +127,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let value: Option<SingleVersionRow> =
-					self.reader().get(&[script_key(&key).encode()])?.pop().flatten();
+					self.reader().get(&system_ctx(), &[script_key(&key).encode()])?.pop().flatten();
 				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -134,11 +138,16 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::range(self.reader(), EncodedKeyRange::all())?;
+					let batch = SingleVersionRange::range(
+						self.reader(),
+						&system_ctx(),
+						EncodedKeyRange::all(),
+					)?;
 					print(&mut output, batch.items.into_iter())
 				} else {
 					let batch = SingleVersionRangeRev::range_rev(
 						self.reader(),
+						&system_ctx(),
 						EncodedKeyRange::all(),
 					)?;
 					print(&mut output, batch.items.into_iter())
@@ -154,10 +163,11 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::range(self.reader(), range)?;
+					let batch = SingleVersionRange::range(self.reader(), &system_ctx(), range)?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch = SingleVersionRangeRev::range_rev(self.reader(), range)?;
+					let batch =
+						SingleVersionRangeRev::range_rev(self.reader(), &system_ctx(), range)?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}
@@ -171,10 +181,14 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::prefix(self.reader(), &prefix)?;
+					let batch = SingleVersionRange::prefix(self.reader(), &system_ctx(), &prefix)?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch = SingleVersionRangeRev::prefix_rev(self.reader(), &prefix)?;
+					let batch = SingleVersionRangeRev::prefix_rev(
+						self.reader(),
+						&system_ctx(),
+						&prefix,
+					)?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}
@@ -225,7 +239,10 @@ impl testscript::runner::Runner for Runner {
 
 				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
 				let value = buffer
-					.get_with_tombstone(std::slice::from_ref(&script_key(&key).encode().as_ref()))?
+					.get_with_tombstone(
+						&system_ctx(),
+						std::slice::from_ref(&script_key(&key).encode().as_ref()),
+					)?
 					.remove(0);
 				let value = match value {
 					Some(Some(v)) => Some(v.to_vec()),
@@ -243,7 +260,7 @@ impl testscript::runner::Runner for Runner {
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let value = persistent
-					.get(std::slice::from_ref(&script_key(&key).encode().as_ref()))?
+					.get(&system_ctx(), std::slice::from_ref(&script_key(&key).encode().as_ref()))?
 					.remove(0)
 					.map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;

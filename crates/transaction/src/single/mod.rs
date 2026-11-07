@@ -18,7 +18,10 @@ pub mod read;
 pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{clock::Clock, transaction::TransactionContext},
+};
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
@@ -88,27 +91,27 @@ impl SingleTransaction {
 		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner), wal, Clock::Real)
 	}
 
-	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_query<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R>,
 	{
-		let mut tx = self.begin_query(keys)?;
+		let mut tx = self.begin_query(ctx, keys)?;
 		f(&mut tx)
 	}
 
-	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_command<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R>,
 	{
-		let mut tx = self.begin_command(keys)?;
+		let mut tx = self.begin_command(ctx, keys)?;
 		let result = f(&mut tx)?;
 		tx.commit()?;
 		Ok(result)
 	}
 
-	pub fn begin_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, ctx: &Arc<TransactionContext>, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -129,20 +132,22 @@ impl SingleTransaction {
 
 		Ok(SingleReadTransaction {
 			inner: &self.inner,
+			ctx: ctx.clone(),
 			keys: keys_vec,
 			_key_locks: locks,
 		})
 	}
 
-	pub fn begin_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, ctx: &Arc<TransactionContext>, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.begin_command_ranged(keys, Vec::new())
+		self.begin_command_ranged(ctx, keys, Vec::new())
 	}
 
 	pub fn begin_command_ranged<'a, I>(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		lock_keys: I,
 		ranges: Vec<EncodedKeyRange>,
 	) -> Result<SingleWriteTransaction<'_>>
@@ -164,7 +169,7 @@ impl SingleTransaction {
 			locks.push(KeyWriteLock::new(lock));
 		}
 
-		Ok(SingleWriteTransaction::new(&self.inner, keys_vec, ranges, locks))
+		Ok(SingleWriteTransaction::new(&self.inner, ctx.clone(), keys_vec, ranges, locks))
 	}
 }
 
@@ -185,9 +190,14 @@ pub mod tests {
 	};
 
 	use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn make_key(s: &str) -> QueueDeduplicationKey {
 		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
@@ -206,7 +216,7 @@ pub mod tests {
 		let svl = create_test_svl();
 		let key = make_key("test_key");
 
-		let mut tx = svl.begin_query(vec![&key.encode()]).unwrap();
+		let mut tx = svl.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 
 		let result = tx.get(from_ref(&key.encode()));
 		assert!(result.is_ok());
@@ -218,7 +228,7 @@ pub mod tests {
 		let key1 = make_key("allowed");
 		let key2 = make_key("disallowed");
 
-		let mut tx = svl.begin_query(vec![&key1.encode()]).unwrap();
+		let mut tx = svl.begin_query(&system_ctx(), vec![&key1.encode()]).unwrap();
 
 		assert!(tx.get(from_ref(&key1.encode())).is_ok());
 
@@ -233,7 +243,7 @@ pub mod tests {
 	fn test_empty_keyset_query_panics() {
 		let svl = create_test_svl();
 
-		let _tx = svl.begin_query(iter::empty());
+		let _tx = svl.begin_query(&system_ctx(), iter::empty());
 	}
 
 	#[test]
@@ -241,7 +251,7 @@ pub mod tests {
 	fn test_empty_keyset_command_panics() {
 		let svl = create_test_svl();
 
-		let _tx = svl.begin_command(iter::empty());
+		let _tx = svl.begin_command(&system_ctx(), iter::empty());
 	}
 
 	#[test]
@@ -250,7 +260,7 @@ pub mod tests {
 		let key = make_key("test_key");
 		let value = make_value("test_value");
 
-		let mut tx = svl.begin_command(vec![&key.encode()]).unwrap();
+		let mut tx = svl.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 
 		assert!(tx.set(vec![(key.clone(), value.clone())]).is_ok());
 		assert!(tx.get(from_ref(&key)).is_ok());
@@ -264,7 +274,7 @@ pub mod tests {
 		let key2 = make_key("disallowed");
 		let value = make_value("test_value");
 
-		let mut tx = svl.begin_command(vec![&key1.encode()]).unwrap();
+		let mut tx = svl.begin_command(&system_ctx(), vec![&key1.encode()]).unwrap();
 
 		assert!(tx.set(vec![(key1.clone(), value.clone())]).is_ok());
 
@@ -286,12 +296,12 @@ pub mod tests {
 			Bound::Included(make_key("range_a").encode()),
 			Bound::Excluded(make_key("range_z").encode()),
 		);
-		let mut tx = svl.begin_command_ranged(vec![&lock_key.encode()], vec![range]).unwrap();
+		let mut tx = svl.begin_command_ranged(&system_ctx(), vec![&lock_key.encode()], vec![range]).unwrap();
 
 		assert!(tx.set(vec![(in_range.clone(), value.clone())]).is_ok());
 		assert!(tx.commit().is_ok());
 
-		let mut rx = svl.begin_query(vec![&in_range.encode()]).unwrap();
+		let mut rx = svl.begin_query(&system_ctx(), vec![&in_range.encode()]).unwrap();
 		let row = rx.get(from_ref(&in_range.encode())).unwrap().remove(0).unwrap();
 		assert_eq!(row.bytes, value);
 	}
@@ -307,7 +317,7 @@ pub mod tests {
 			Bound::Included(make_key("range_a").encode()),
 			Bound::Excluded(make_key("range_z").encode()),
 		);
-		let mut tx = svl.begin_command_ranged(vec![&lock_key.encode()], vec![range]).unwrap();
+		let mut tx = svl.begin_command_ranged(&system_ctx(), vec![&lock_key.encode()], vec![range]).unwrap();
 
 		let result = tx.set(vec![(outside.clone(), value)]);
 		assert!(result.is_err());
@@ -325,7 +335,7 @@ pub mod tests {
 			Bound::Included(make_key("range_a").encode()),
 			Bound::Excluded(make_key("range_z").encode()),
 		);
-		let mut tx = svl.begin_command_ranged(vec![&lock_key.encode()], vec![range]).unwrap();
+		let mut tx = svl.begin_command_ranged(&system_ctx(), vec![&lock_key.encode()], vec![range]).unwrap();
 
 		// A declared lock key stays writable even though it falls outside the range.
 		assert!(tx.set(vec![(lock_key.clone(), value)]).is_ok());
@@ -341,14 +351,14 @@ pub mod tests {
 		let value2 = make_value("value2");
 
 		{
-			let mut tx = svl.begin_command(vec![&key1.encode(), &key2.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key1.encode(), &key2.encode()]).unwrap();
 			tx.set(vec![(key1.clone(), value1.clone())]).unwrap();
 			tx.set(vec![(key2.clone(), value2.clone())]).unwrap();
 			tx.commit().unwrap();
 		}
 
 		{
-			let mut tx = svl.begin_query(vec![&key1.encode(), &key2.encode()]).unwrap();
+			let mut tx = svl.begin_query(&system_ctx(), vec![&key1.encode(), &key2.encode()]).unwrap();
 			let result1 = tx.get(from_ref(&key1.encode())).unwrap().remove(0);
 			let result2 = tx.get(from_ref(&key2.encode())).unwrap().remove(0);
 			assert!(result1.is_some());
@@ -369,11 +379,11 @@ pub mod tests {
 		thread::spawn(move || {
 			let encoded = declared.encode();
 			{
-				let mut tx = worker.begin_command(vec![&encoded, &encoded]).unwrap();
+				let mut tx = worker.begin_command(&system_ctx(), vec![&encoded, &encoded]).unwrap();
 				tx.set(vec![(declared.clone(), make_value("once"))]).unwrap();
 				tx.commit().unwrap();
 			}
-			let mut tx = worker.begin_query(vec![&encoded, &encoded]).unwrap();
+			let mut tx = worker.begin_query(&system_ctx(), vec![&encoded, &encoded]).unwrap();
 			done.send(tx.get(from_ref(&encoded)).unwrap().pop().flatten().map(|row| row.bytes)).unwrap();
 		});
 
@@ -390,13 +400,13 @@ pub mod tests {
 		let value = make_value("test_value");
 
 		{
-			let mut tx = svl.begin_command(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 			tx.set(vec![(key.clone(), value)]).unwrap();
 			tx.rollback().unwrap();
 		}
 
 		{
-			let mut tx = svl.begin_query(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 			let result = tx.get(from_ref(&key.encode())).unwrap().remove(0);
 			assert!(result.is_none());
 		}
@@ -409,7 +419,7 @@ pub mod tests {
 		let value = make_value("shared_value");
 
 		{
-			let mut tx = svl.begin_command(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 			tx.set(vec![(key.clone(), value.clone())]).unwrap();
 			tx.commit().unwrap();
 		}
@@ -421,7 +431,7 @@ pub mod tests {
 			let value_clone = value.clone();
 
 			let handle = thread::spawn(move || {
-				let mut tx = svl_clone.begin_query(vec![&key_clone.encode()]).unwrap();
+				let mut tx = svl_clone.begin_query(&system_ctx(), vec![&key_clone.encode()]).unwrap();
 				let result = tx.get(from_ref(&key_clone.encode())).unwrap().remove(0);
 				assert!(result.is_some());
 				assert_eq!(result.unwrap().bytes, value_clone);
@@ -445,7 +455,7 @@ pub mod tests {
 			let value = make_value(&format!("value_{}", i));
 
 			let handle = thread::spawn(move || {
-				let mut tx = svl_clone.begin_command(vec![&key.encode()]).unwrap();
+				let mut tx = svl_clone.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 				tx.set(vec![(key.clone(), value)]).unwrap();
 				tx.commit().unwrap();
 			});
@@ -460,7 +470,7 @@ pub mod tests {
 			let key = make_key(&format!("key_{}", i));
 			let expected_value = make_value(&format!("value_{}", i));
 
-			let mut tx = svl.begin_query(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 			let result = tx.get(from_ref(&key.encode())).unwrap().remove(0);
 			assert!(result.is_some());
 			assert_eq!(result.unwrap().bytes, expected_value);
@@ -476,7 +486,7 @@ pub mod tests {
 		let value2 = make_value("value2");
 
 		{
-			let mut tx = svl.begin_command(vec![&key1.encode(), &key2.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key1.encode(), &key2.encode()]).unwrap();
 			tx.set(vec![(key1.clone(), value1.clone())]).unwrap();
 			tx.set(vec![(key2.clone(), value2.clone())]).unwrap();
 			tx.commit().unwrap();
@@ -489,7 +499,7 @@ pub mod tests {
 			let value_clone = value1.clone();
 
 			let handle = thread::spawn(move || {
-				let mut tx = svl_clone.begin_query(vec![&key_clone.encode()]).unwrap();
+				let mut tx = svl_clone.begin_query(&system_ctx(), vec![&key_clone.encode()]).unwrap();
 				let result = tx.get(from_ref(&key_clone.encode())).unwrap().remove(0);
 				assert!(result.is_some());
 				assert_eq!(result.unwrap().bytes, value_clone);
@@ -501,7 +511,7 @@ pub mod tests {
 		let svl_clone = Arc::clone(&svl);
 		let new_value = make_value("new_value2");
 		let handle = thread::spawn(move || {
-			let mut tx = svl_clone.begin_command(vec![&key2.encode()]).unwrap();
+			let mut tx = svl_clone.begin_command(&system_ctx(), vec![&key2.encode()]).unwrap();
 			tx.set(vec![(key2.clone(), new_value)]).unwrap();
 			tx.commit().unwrap();
 		});
@@ -524,11 +534,12 @@ pub mod tests {
 
 			let handle = thread::spawn(move || {
 				if i % 2 == 0 {
-					let mut tx = svl_clone.begin_command(vec![&key.encode()]).unwrap();
+					let mut tx =
+						svl_clone.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 					let _ = tx.set(vec![(key.clone(), value)]);
 					let _ = tx.commit();
 				} else {
-					let mut tx = svl_clone.begin_query(vec![&key.encode()]).unwrap();
+					let mut tx = svl_clone.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 					let _ = tx.get(from_ref(&key.encode()));
 				}
 			});
@@ -550,7 +561,7 @@ pub mod tests {
 		let key1 = key.clone();
 		let barrier1 = Arc::clone(&barrier);
 		let handle1 = thread::spawn(move || {
-			let mut tx = svl1.begin_command(vec![&key1.encode()]).unwrap();
+			let mut tx = svl1.begin_command(&system_ctx(), vec![&key1.encode()]).unwrap();
 			tx.set(vec![(key1.clone(), make_value("value1"))]).unwrap();
 
 			// Signal that the write lock is held.
@@ -571,7 +582,7 @@ pub mod tests {
 			// Give thread 1 time to enter its sleep still holding the lock.
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 
-			let mut tx = svl2.begin_command(vec![&key2.encode()]).unwrap();
+			let mut tx = svl2.begin_command(&system_ctx(), vec![&key2.encode()]).unwrap();
 			tx.set(vec![(key2.clone(), make_value("value2"))]).unwrap();
 			tx.commit().unwrap();
 		});
@@ -580,7 +591,7 @@ pub mod tests {
 		handle2.join().unwrap();
 
 		// Thread 2 could only have written after thread 1 released, so its value must survive.
-		let mut tx = svl.begin_query(vec![&key.encode()]).unwrap();
+		let mut tx = svl.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 		let result = tx.get(from_ref(&key.encode())).unwrap().remove(0);
 		assert!(result.is_some());
 		assert_eq!(result.unwrap().bytes, make_value("value2"));
@@ -592,7 +603,7 @@ pub mod tests {
 		let key = make_key("blocking_key");
 
 		{
-			let mut tx = svl.begin_command(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 			tx.set(vec![(key.clone(), make_value("initial"))]).unwrap();
 			tx.commit().unwrap();
 		}
@@ -603,7 +614,7 @@ pub mod tests {
 		let key1 = key.clone();
 		let barrier1 = Arc::clone(&barrier);
 		let handle1 = thread::spawn(move || {
-			let mut tx = svl1.begin_command(vec![&key1.encode()]).unwrap();
+			let mut tx = svl1.begin_command(&system_ctx(), vec![&key1.encode()]).unwrap();
 			tx.set(vec![(key1.clone(), make_value("updated"))]).unwrap();
 
 			// Signal that the write lock is held.
@@ -624,7 +635,7 @@ pub mod tests {
 			// Give thread 1 time to enter its sleep still holding the lock.
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 
-			let mut tx = svl2.begin_query(vec![&key2.encode()]).unwrap();
+			let mut tx = svl2.begin_query(&system_ctx(), vec![&key2.encode()]).unwrap();
 			let result = tx.get(from_ref(&key2.encode())).unwrap().remove(0);
 
 			// A reader that truly blocked sees the committed value, never the initial one.
@@ -642,7 +653,7 @@ pub mod tests {
 		let key = make_key("shared_read_key");
 
 		{
-			let mut tx = svl.begin_command(vec![&key.encode()]).unwrap();
+			let mut tx = svl.begin_command(&system_ctx(), vec![&key.encode()]).unwrap();
 			tx.set(vec![(key.clone(), make_value("shared"))]).unwrap();
 			tx.commit().unwrap();
 		}
@@ -656,7 +667,7 @@ pub mod tests {
 			let barrier_clone = Arc::clone(&barrier);
 
 			let handle = thread::spawn(move || {
-				let mut tx = svl_clone.begin_query(vec![&key_clone.encode()]).unwrap();
+				let mut tx = svl_clone.begin_query(&system_ctx(), vec![&key_clone.encode()]).unwrap();
 
 				// Every reader holds its read lock past this point; a mutually exclusive
 				// read lock would deadlock here rather than fail an assertion.
@@ -691,7 +702,9 @@ pub mod tests {
 		let barrier1 = Arc::clone(&barrier);
 		let handle1 = thread::spawn(move || {
 			barrier1.wait();
-			let mut tx = svl1.begin_command(vec![&key1_clone.encode(), &key2_clone.encode()]).unwrap();
+			let mut tx = svl1
+				.begin_command(&system_ctx(), vec![&key1_clone.encode(), &key2_clone.encode()])
+				.unwrap();
 			tx.set(vec![(key1_clone.clone(), make_value("from_thread1"))]).unwrap();
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
@@ -703,7 +716,9 @@ pub mod tests {
 		let barrier2 = Arc::clone(&barrier);
 		let handle2 = thread::spawn(move || {
 			barrier2.wait();
-			let mut tx = svl2.begin_command(vec![&key2_clone2.encode(), &key1_clone2.encode()]).unwrap();
+			let mut tx = svl2
+				.begin_command(&system_ctx(), vec![&key2_clone2.encode(), &key1_clone2.encode()])
+				.unwrap();
 			tx.set(vec![(key2_clone2.clone(), make_value("from_thread2"))]).unwrap();
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
@@ -712,7 +727,7 @@ pub mod tests {
 		handle1.join().unwrap();
 		handle2.join().unwrap();
 
-		let mut tx = svl.begin_query(vec![&key1.encode(), &key2.encode()]).unwrap();
+		let mut tx = svl.begin_query(&system_ctx(), vec![&key1.encode(), &key2.encode()]).unwrap();
 		let result1 = tx.get(from_ref(&key1.encode())).unwrap().remove(0);
 		let result2 = tx.get(from_ref(&key2.encode())).unwrap().remove(0);
 		assert!(result1.is_some());
@@ -735,7 +750,7 @@ pub mod tests {
 		let barrier1 = Arc::clone(&barrier);
 		let handle1 = thread::spawn(move || {
 			barrier1.wait();
-			let mut tx = svl1.begin_command(vec![&k1_1.encode(), &k2_1.encode()]).unwrap();
+			let mut tx = svl1.begin_command(&system_ctx(), vec![&k1_1.encode(), &k2_1.encode()]).unwrap();
 			tx.set(vec![(k1_1.clone(), make_value("t1"))]).unwrap();
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
@@ -747,7 +762,7 @@ pub mod tests {
 		let barrier2 = Arc::clone(&barrier);
 		let handle2 = thread::spawn(move || {
 			barrier2.wait();
-			let mut tx = svl2.begin_command(vec![&k2_2.encode(), &k3_2.encode()]).unwrap();
+			let mut tx = svl2.begin_command(&system_ctx(), vec![&k2_2.encode(), &k3_2.encode()]).unwrap();
 			tx.set(vec![(k2_2.clone(), make_value("t2"))]).unwrap();
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
@@ -757,7 +772,7 @@ pub mod tests {
 		let barrier3 = Arc::clone(&barrier);
 		let handle3 = thread::spawn(move || {
 			barrier3.wait();
-			let mut tx = svl3.begin_command(vec![&key3.encode(), &key1.encode()]).unwrap();
+			let mut tx = svl3.begin_command(&system_ctx(), vec![&key3.encode(), &key1.encode()]).unwrap();
 			tx.set(vec![(key3.clone(), make_value("t3"))]).unwrap();
 			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
@@ -776,7 +791,7 @@ pub mod tests {
 		let svl1 = Arc::clone(&svl);
 		let key_clone = key.clone();
 		let handle1 = thread::spawn(move || {
-			let mut tx = svl1.begin_command(vec![&key_clone.encode()]).unwrap();
+			let mut tx = svl1.begin_command(&system_ctx(), vec![&key_clone.encode()]).unwrap();
 			tx.set(vec![(key_clone.clone(), make_value("dropped"))]).unwrap();
 			// Dropped here without commit.
 		});
@@ -789,14 +804,14 @@ pub mod tests {
 		let svl2 = Arc::clone(&svl);
 		let key_clone2 = key.clone();
 		let handle2 = thread::spawn(move || {
-			let mut tx = svl2.begin_command(vec![&key_clone2.encode()]).unwrap();
+			let mut tx = svl2.begin_command(&system_ctx(), vec![&key_clone2.encode()]).unwrap();
 			tx.set(vec![(key_clone2.clone(), make_value("success"))]).unwrap();
 			tx.commit().unwrap();
 		});
 
 		handle2.join().unwrap();
 
-		let mut tx = svl.begin_query(vec![&key.encode()]).unwrap();
+		let mut tx = svl.begin_query(&system_ctx(), vec![&key.encode()]).unwrap();
 		let result = tx.get(from_ref(&key.encode())).unwrap().remove(0);
 		assert!(result.is_some());
 		assert_eq!(result.unwrap().bytes, make_value("success"));

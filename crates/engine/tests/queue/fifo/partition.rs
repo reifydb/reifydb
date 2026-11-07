@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	sync::Arc,
+};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
@@ -15,9 +18,14 @@ use reifydb_core::{
 	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey},
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{queue::scheduling::queue_partition_counters, transaction::Transaction};
 use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const BY_REGION: &str =
 	"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {} }";
@@ -41,7 +49,7 @@ fn queue_id(t: &TestEngine) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> BTreeMap<RowNumber, (Partition, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -106,14 +114,19 @@ fn test_two_partitions_keep_their_scheduling_state_apart() {
 	let us = placed[&RowNumber(2)].0;
 	let store = t.inner().single().read_store();
 	let due = |partition| {
-		SingleVersionRange::range_batch(&store, QueueDueKey::partition_scan(queue, partition).encode(), 16)
-			.unwrap()
-			.items
-			.len()
+		SingleVersionRange::range_batch(
+			&store,
+			&system_ctx(),
+			QueueDueKey::partition_scan(queue, partition).encode(),
+			16,
+		)
+		.unwrap()
+		.items
+		.len()
 	};
 	assert_eq!((due(eu), due(us)), (2, 1), "each FIFO must index only its own due items");
 
-	let mut counters = queue_partition_counters(t.inner().single(), queue).unwrap();
+	let mut counters = queue_partition_counters(&system_ctx(), t.inner().single(), queue).unwrap();
 	counters.sort_by_key(|(_, counters)| counters.depth);
 	assert_eq!(counters.len(), 2);
 	assert_eq!((counters[0].0, counters[0].1.depth), (us, 1));
@@ -127,7 +140,7 @@ fn test_an_unpartitioned_queue_stays_one_fifo_across_every_transition() {
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]");
 	let queue = queue_id(&t);
 
-	let counters = queue_partition_counters(t.inner().single(), queue).unwrap();
+	let counters = queue_partition_counters(&system_ctx(), t.inner().single(), queue).unwrap();
 	assert_eq!(counters.len(), 1, "an unpartitioned queue must have exactly one counter row");
 	assert_eq!(counters[0].0, Queue::UNPARTITIONED);
 	assert_eq!(counters[0].1.depth, 5);
@@ -182,7 +195,7 @@ fn test_a_claim_pages_past_one_page_of_partition_counters() {
 	t.command(&format!("INSERT test::jobs [{}]", rows.join(", ")));
 	let queue = queue_id(&t);
 
-	assert_eq!(queue_partition_counters(t.inner().single(), queue).unwrap().len(), 1100);
+	assert_eq!(queue_partition_counters(&system_ctx(), t.inner().single(), queue).unwrap().len(), 1100);
 	assert_eq!(items(&claim(&t, "w", 5000)).len(), 1100, "every partition must be reachable in one claim");
 }
 
@@ -227,6 +240,7 @@ fn test_key_chains_are_scoped_to_the_partition() {
 		let (partition, state) = &placed[&row];
 		let chain = SingleVersionRange::range_batch(
 			&store,
+			&system_ctx(),
 			QueueKeyActiveKey::key_scan(queue, *partition, state.key_hash).encode(),
 			16,
 		)
@@ -275,5 +289,5 @@ fn test_drop_clears_the_scheduling_state_of_every_partition() {
 	t.admin("DROP QUEUE test::jobs");
 
 	assert!(states(&t, queue).is_empty(), "item state must not outlive the queue");
-	assert!(queue_partition_counters(t.inner().single(), queue).unwrap().is_empty());
+	assert!(queue_partition_counters(&system_ctx(), t.inner().single(), queue).unwrap().is_empty());
 }

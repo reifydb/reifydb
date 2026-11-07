@@ -34,6 +34,7 @@ impl KeyWriteLock {
 
 pub struct SingleWriteTransaction<'a> {
 	pub(super) inner: &'a SingleTransactionInner,
+	pub(super) ctx: Arc<TransactionContext>,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) ranges: Vec<EncodedKeyRange>,
 	pub(super) _key_locks: Vec<KeyWriteLock>,
@@ -45,12 +46,14 @@ pub struct SingleWriteTransaction<'a> {
 impl<'a> SingleWriteTransaction<'a> {
 	pub(super) fn new(
 		inner: &'a SingleTransactionInner,
+		ctx: Arc<TransactionContext>,
 		keys: Vec<EncodedKey>,
 		ranges: Vec<EncodedKeyRange>,
 		key_locks: Vec<KeyWriteLock>,
 	) -> Self {
 		Self {
 			inner,
+			ctx,
 			keys,
 			ranges,
 			_key_locks: key_locks,
@@ -97,7 +100,7 @@ impl<'a> SingleWriteTransaction<'a> {
 				counts.get_call(kinds);
 			}
 			let store = self.inner.store.read().clone();
-			for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &missing)?) {
+			for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &self.ctx, &missing)?) {
 				self.fetched.insert(key.clone(), row.map(|row| row.bytes));
 			}
 		}

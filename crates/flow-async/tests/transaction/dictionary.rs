@@ -12,7 +12,11 @@ use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryExtension,
 	substrate::FlowSubstrate,
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_runtime::context::{
+	RuntimeContext,
+	clock::{Clock, MockClock},
+	transaction::TransactionContext,
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -20,6 +24,10 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn mints() -> Dictionary {
 	Dictionary {
@@ -36,13 +44,14 @@ fn mint() -> Value {
 }
 
 fn registry_on(single: &SingleTransaction) -> DictionaryAllocatorRegistry {
-	DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())))
+	DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(system_ctx(), single.clone())))
 }
 
 fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
+		ctx: system_ctx(),
 		version,
 		pending: Pending::new(),
 		query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),

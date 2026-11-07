@@ -9,8 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::sync::Arc;
+
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
+
 use super::test_multi;
 use crate::{as_key, as_values};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[test]
 fn test_rollback_same_tx() {
@@ -18,7 +26,7 @@ fn test_rollback_same_tx() {
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.rollback().unwrap();
-	assert!(txn.get(&[as_key!(1)]).unwrap().pop().flatten().is_none());
+	assert!(txn.get(&system_ctx(), &[as_key!(1)]).unwrap().pop().flatten().is_none());
 }
 
 #[test]
@@ -29,7 +37,7 @@ fn test_rollback_different_tx() {
 	txn.rollback().unwrap();
 
 	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
-	assert!(rx.get(&[as_key!(1)]).unwrap().pop().flatten().is_none());
+	assert!(rx.get(&system_ctx(), &[as_key!(1)]).unwrap().pop().flatten().is_none());
 }
 
 #[test]
@@ -50,11 +58,11 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 
 	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	assert!(
-		rx.get(&[as_key!(1)]).unwrap().pop().flatten().is_some(),
+		rx.get(&system_ctx(), &[as_key!(1)]).unwrap().pop().flatten().is_some(),
 		"key 1 was written before the savepoint and must be committed"
 	);
 	assert!(
-		rx.get(&[as_key!(2)]).unwrap().pop().flatten().is_none(),
+		rx.get(&system_ctx(), &[as_key!(2)]).unwrap().pop().flatten().is_none(),
 		"key 2 was written after the savepoint and rolled back via restore_savepoint; \
 		 it must not be in storage. If this asserts, WriteSavepoint did not snapshot \
 		 delta_log and the commit replayed the post-savepoint write."

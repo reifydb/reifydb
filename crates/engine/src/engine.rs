@@ -177,6 +177,10 @@ impl StandardEngine {
 		TransactionId::generate(self.clock(), self.rng())
 	}
 
+	pub fn runtime_context(&self) -> &RuntimeContext {
+		&self.executor.runtime_context
+	}
+
 	pub fn clock(&self) -> &Clock {
 		&self.executor.runtime_context.clock
 	}
@@ -443,7 +447,10 @@ impl StandardEngine {
 			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
-		let metrics_reader = MetricsReader::new(metrics_store);
+		let metrics_reader = MetricsReader::new(
+			Arc::new(TransactionContext::system(config.runtime_context.clone())),
+			metrics_store,
+		);
 
 		let operator_state = config
 			.ioc
@@ -468,8 +475,10 @@ impl StandardEngine {
 		let single_for_interceptor = single.clone();
 		let wake_for_interceptor = queue_wake.clone();
 		let clock_for_interceptor = config.runtime_context.clock.clone();
+		let ctx_for_interceptor = Arc::new(TransactionContext::system(config.runtime_context.clone()));
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
 			interceptors.post_commit.add(Arc::new(QueueSchedulingInterceptor::new(
+				ctx_for_interceptor.clone(),
 				single_for_interceptor.clone(),
 				wake_for_interceptor.clone(),
 				clock_for_interceptor.clone(),
@@ -478,8 +487,10 @@ impl StandardEngine {
 
 		let interceptors = Arc::new(interceptors);
 
-		let dictionary_allocators =
-			DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+		let dictionary_allocators = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			Arc::new(TransactionContext::system(config.runtime_context.clone())),
+			single.clone(),
+		)));
 
 		Self(Arc::new(Inner {
 			multi,

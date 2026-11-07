@@ -1235,7 +1235,7 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod seal_tests {
-	use std::ops::Bound;
+	use std::{ops::Bound, sync::Arc};
 
 	use arrow_array::UInt64Array;
 	use arrow_schema::Schema;
@@ -1258,7 +1258,7 @@ mod seal_tests {
 	};
 	use reifydb_flow::txn::{Find, FlowBatch, FlowGet, Intern, Resolve};
 	use reifydb_rql::expression::parse_expression;
-	use reifydb_runtime::context::clock::Clock;
+	use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 	use reifydb_value::{
@@ -1578,6 +1578,10 @@ mod seal_tests {
 	impl FlowTransaction for CountingTxn {
 		fn version(&self) -> CommitVersion {
 			self.inner.version()
+		}
+
+		fn context(&self) -> &Arc<TransactionContext> {
+			self.inner.context()
 		}
 
 		fn clock(&self) -> &Clock {

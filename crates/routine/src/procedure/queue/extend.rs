@@ -70,6 +70,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		let now = ctx.runtime_context.clock.now();
 
 		let single = ctx.tx.single().clone();
+		let context = ctx.tx.context().clone();
 
 		let fragment = ctx.fragment.clone();
 		let stale = |reason: &str| -> RoutineError {
@@ -84,6 +85,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 
 		let lock_key = QueuePartitionKey::new(token.queue, token.partition);
 		let mut tx = single.begin_command_ranged(
+			&context,
 			[&lock_key.encode()],
 			vec![QueueItemStateKey::partition_scan(token.queue, token.partition).encode()],
 		)?;

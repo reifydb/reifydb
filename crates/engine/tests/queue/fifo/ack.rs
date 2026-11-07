@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
 	interface::{
@@ -19,6 +21,7 @@ use reifydb_core::{
 		queue::{QueueAttemptKey, QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::{QueueAckTransition, QueueRowAck},
@@ -26,6 +29,10 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -44,7 +51,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -63,7 +70,7 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -73,7 +80,7 @@ fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 
 fn counters(t: &TestEngine, queue: QueueId, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
+	SingleVersionGet::get(&store, &system_ctx(), &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
 		.pop()
 		.flatten()
@@ -373,6 +380,7 @@ fn test_an_ack_after_the_item_was_already_finished_does_not_resurrect_it() {
 /// under concurrency, unreachable single-threaded through `CALL queue::ack`.
 fn apply_ack(t: &TestEngine, queue: QueueId, row: RowNumber, attempt: u32, transition: QueueAckTransition) -> u64 {
 	apply_ack_transitions(
+		&system_ctx(),
 		t.inner().single(),
 		queue,
 		Queue::UNPARTITIONED,

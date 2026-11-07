@@ -94,7 +94,8 @@ pub fn bootstrap_root_namespaces(
 		version: SystemVersion::Storage,
 	}
 	.encode();
-	let mut version_txn = single.begin_query([&version_key])?;
+	let mut version_txn =
+		single.begin_query(&Arc::new(TransactionContext::system(runtime.clone())), [&version_key])?;
 	let initialized = version_txn.get(&[version_key.clone()])?.remove(0).is_some();
 	drop(version_txn);
 	if initialized {
@@ -220,6 +221,7 @@ pub fn load_catalog_cache(
 }
 
 pub fn read_configs(
+	ctx: &TransactionContext,
 	buffer: Option<&CommitStore>,
 	persistent: Option<&MultiPersistentTier>,
 	keys: &[ConfigKey],
@@ -228,6 +230,7 @@ pub fn read_configs(
 
 	let range = ConfigStorageKey::full_scan();
 	let batch = scan_tiers_latest(
+		ctx,
 		buffer,
 		persistent,
 		range.encode(),
@@ -313,7 +316,7 @@ pub(crate) fn ensure_namespace(
 
 #[cfg(test)]
 mod read_configs_tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, sync::Arc};
 
 	use reifydb_codec::row::bytes::RowBuilder;
 	use reifydb_core::{
@@ -321,11 +324,16 @@ mod read_configs_tests {
 		interface::{catalog::config::ConfigKey, store::EntryKind},
 		key::config::ConfigStorageKey,
 	};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_store_commit::store::CommitStore;
 	use reifydb_value::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn write_config(buffer: &CommitStore, key: ConfigKey, value: Value, version: CommitVersion) {
 		let mut row = config::allocate();
@@ -348,7 +356,7 @@ mod read_configs_tests {
 		// Compared against the key's own default rather than a literal: the default is profile dependent,
 		// so a literal pins whichever profile the test happened to build under and not this function.
 		let keys = [ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask];
-		let out = read_configs(None, None, &keys).unwrap();
+		let out = read_configs(&system_ctx(), None, None, &keys).unwrap();
 		for key in keys {
 			assert_eq!(out[&key], key.default_value(), "{key} must fall back to its own default");
 		}
@@ -360,7 +368,7 @@ mod read_configs_tests {
 		// defaults rather than literals because the default is profile dependent.
 		let buffer = CommitStore::new();
 		let keys = [ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask];
-		let out = read_configs(Some(&buffer), None, &keys).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &keys).unwrap();
 		for key in keys {
 			assert_eq!(out[&key], key.default_value(), "{key} must fall back to its own default");
 		}
@@ -371,8 +379,13 @@ mod read_configs_tests {
 		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 
-		let out =
-			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask, ConfigKey::ThreadsAsync]).unwrap();
+		let out = read_configs(
+			&system_ctx(),
+			Some(&buffer),
+			None,
+			&[ConfigKey::ThreadsTask, ConfigKey::ThreadsAsync],
+		)
+		.unwrap();
 
 		// The persisted key is a literal because the write above chose it; the unwritten one is named
 		// through the key, because its default is profile dependent and a literal would pin the profile.
@@ -395,7 +408,7 @@ mod read_configs_tests {
 		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(16), CommitVersion(5));
 		write_config(&buffer, ConfigKey::ThreadsCoordination, Value::Uint2(8), CommitVersion(3));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(16));
 	}
@@ -406,7 +419,7 @@ mod read_configs_tests {
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(12), CommitVersion(1));
 		delete_config(&buffer, ConfigKey::ThreadsTask, CommitVersion(2));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
 		// The default, not the value the tombstone buried, and named through the key so the assertion does
 		// not pin a profile.
@@ -419,7 +432,7 @@ mod read_configs_tests {
 		let buffer = CommitStore::new();
 		write_config(&buffer, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
 
 		// Zero threads is refused by the key, so the default is what is left; named through the key rather
 		// than written as a literal, which would pin whichever profile the test built under.
@@ -436,7 +449,7 @@ mod read_configs_tests {
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
 		write_config(&buffer, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
 		assert_eq!(out.len(), 1);
 		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8));
@@ -454,7 +467,7 @@ mod read_configs_tests {
 		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze_bytes().0))]);
 		buffer.set(CommitVersion(1), batches);
 
-		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
+		let out = read_configs(&system_ctx(), Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(5));
 	}
 }

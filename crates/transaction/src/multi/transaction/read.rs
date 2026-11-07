@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
 #[cfg(feature = "testing")]
 use std::sync::Mutex;
+use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -17,6 +17,7 @@ use reifydb_core::{
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::Result;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
@@ -79,7 +80,7 @@ impl MultiReadTransaction {
 		self.op_counts.lock().unwrap().clone()
 	}
 
-	pub fn get(&self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(&self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -89,16 +90,17 @@ impl MultiReadTransaction {
 			counts.get_call(keys.iter().map(TaggedKey::kind));
 		}
 		let version = self.tm.version();
-		Ok(self.engine.get(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
+		Ok(self.engine.get(ctx, keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
 	}
 
-	pub fn contains(&self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
-		Ok(self.get(keys)?.iter().map(Option::is_some).collect())
+	pub fn contains(&self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		Ok(self.get(ctx, keys)?.iter().map(Option::is_some).collect())
 	}
 
-	pub fn scan(&self) -> Result<MultiVersionBatch<TaggedKey>> {
-		let items: Vec<_> =
-			self.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
+	pub fn scan(&self, ctx: &Arc<TransactionContext>) -> Result<MultiVersionBatch<TaggedKey>> {
+		let items: Vec<_> = self
+			.range(ctx, TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -107,6 +109,7 @@ impl MultiReadTransaction {
 
 	pub fn range(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -114,11 +117,12 @@ impl MultiReadTransaction {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
-		Box::new(self.engine.store.range(range.encode(), multi_scope, batch_size))
+		Box::new(self.engine.store.range(ctx, range.encode(), multi_scope, batch_size))
 	}
 
 	pub fn range_row(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StorageRowKey>,
 		end: Bound<StorageRowKey>,
@@ -128,11 +132,12 @@ impl MultiReadTransaction {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
-		Box::new(self.engine.store.range_row(storage, start, end, multi_scope, batch_size))
+		Box::new(self.engine.store.range_row(ctx, storage, start, end, multi_scope, batch_size))
 	}
 
 	pub fn range_partitioned_row(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StoragePartitionedRowKey>,
 		end: Bound<StoragePartitionedRowKey>,
@@ -142,11 +147,12 @@ impl MultiReadTransaction {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
-		Box::new(self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size))
+		Box::new(self.engine.store.range_partitioned_row(ctx, storage, start, end, multi_scope, batch_size))
 	}
 
 	pub fn range_rev(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -154,7 +160,7 @@ impl MultiReadTransaction {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
-		Box::new(self.engine.store.range_rev(range.encode(), multi_scope, batch_size))
+		Box::new(self.engine.store.range_rev(ctx, range.encode(), multi_scope, batch_size))
 	}
 }
 

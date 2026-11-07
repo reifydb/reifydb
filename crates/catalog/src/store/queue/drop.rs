@@ -16,7 +16,7 @@ impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
 			txn.remove(vec![(NamespaceQueueKey::new(queue_def.namespace, queue).into(), None)])?;
-			remove_queue_scheduling_state(&txn.single, queue)?;
+			remove_queue_scheduling_state(txn.context(), &txn.single, queue)?;
 		}
 
 		drop_object_metadata(txn, queue.into(), None)?;

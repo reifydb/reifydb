@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
+use std::{collections::HashMap, marker::PhantomData, mem, ops::Index, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -21,7 +21,10 @@ use reifydb_flow_async::{
 		substrate::FlowSubstrate,
 	},
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_runtime::context::{
+	clock::{Clock, MockClock},
+	transaction::TransactionContext,
+};
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata, mount::mount};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::event::Row;
@@ -65,6 +68,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			.begin_query(self.engine.multi().generate_transaction_id())
 			.expect("begin_query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
 			query: Some(query),

@@ -29,7 +29,12 @@ impl CatalogStore {
 
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
-		let value = match rx.single().begin_query([&sequence_key])?.get(from_ref(&sequence_key))?.remove(0) {
+		let value = match rx
+			.single()
+			.begin_query(rx.context(), [&sequence_key])?
+			.get(from_ref(&sequence_key))?
+			.remove(0)
+		{
 			Some(row) => decode(EncodedPodRow::view(&row.bytes))?,
 			None => 0,
 		};

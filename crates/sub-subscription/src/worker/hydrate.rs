@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, num::NonZeroU64, result::Result as StdResult};
+use std::{collections::HashMap, mem, num::NonZeroU64, result::Result as StdResult, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
@@ -23,7 +23,7 @@ use reifydb_engine::{
 	subscription::{HydrateError, HydrateOutcome},
 };
 use reifydb_flow_async::engine::FlowEngineInner;
-use reifydb_runtime::context::clock::Instant;
+use reifydb_runtime::context::{clock::Instant, transaction::TransactionContext};
 use reifydb_transaction::{
 	multi::{lease::VersionLeaseGuard, transaction::read::MultiReadTransaction},
 	transaction::Transaction,
@@ -141,6 +141,7 @@ impl SubscriptionWorkerActor {
 		flow_id: FlowId,
 	) -> Result<()> {
 		let mut txn = EphemeralTransaction::new(
+			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			change.version.commit,
 			base_query.clone(),
 			self.catalog.clone(),

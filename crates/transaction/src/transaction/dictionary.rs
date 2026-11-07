@@ -39,7 +39,7 @@ impl Transaction<'_> {
 		let single = self.single();
 		let store = single.read_store();
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
-		match SingleVersionGet::get(&store, slice::from_ref(&index_key))?.pop().flatten() {
+		match SingleVersionGet::get(&store, self.context(), slice::from_ref(&index_key))?.pop().flatten() {
 			Some(v) => {
 				let value: Value = from_bytes(&v.bytes)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;

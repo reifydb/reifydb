@@ -288,7 +288,7 @@ impl AdminTransaction {
 			if let Some(registry) = &self.dictionary_allocators {
 				registry.begin_drop(dictionary.id);
 			}
-			remove_dictionary_entries(&self.single, dictionary.id)?;
+			remove_dictionary_entries(&self.context, &self.single, dictionary.id)?;
 			if let Some(registry) = &self.dictionary_allocators {
 				registry.evict(dictionary.id);
 			}
@@ -315,7 +315,7 @@ impl AdminTransaction {
 		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_command(keys, f)
+		self.single.with_command(&self.context, keys, f)
 	}
 
 	#[instrument(name = "transaction::admin::begin_single_query", level = "trace", skip(self, keys))]
@@ -324,7 +324,7 @@ impl AdminTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		self.check_active()?;
-		self.single.begin_query(keys)
+		self.single.begin_query(&self.context, keys)
 	}
 
 	#[instrument(name = "transaction::admin::begin_single_command", level = "trace", skip(self, keys))]
@@ -333,7 +333,7 @@ impl AdminTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		self.check_active()?;
-		self.single.begin_command(keys)
+		self.single.begin_command(&self.context, keys)
 	}
 
 	pub fn track_row_change(&mut self, changes: &[RowChange]) {
@@ -376,7 +376,7 @@ impl AdminTransaction {
 		Ok(self.cmd
 			.as_mut()
 			.unwrap()
-			.get_committed(keys)?
+			.get_committed(&self.context, keys)?
 			.into_iter()
 			.map(|v| v.map(|v| v.into_multi_version_row()))
 			.collect())
@@ -388,7 +388,7 @@ impl AdminTransaction {
 		Ok(self.cmd
 			.as_mut()
 			.unwrap()
-			.get(keys)?
+			.get(&self.context, keys)?
 			.into_iter()
 			.map(|v| v.map(|v| v.into_multi_version_row()))
 			.collect())
@@ -397,7 +397,7 @@ impl AdminTransaction {
 	#[inline]
 	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains(keys)
+		self.cmd.as_mut().unwrap().contains(&self.context, keys)
 	}
 
 	#[inline]
@@ -433,7 +433,7 @@ impl AdminTransaction {
 	#[inline]
 	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove(entries)
+		self.cmd.as_mut().unwrap().remove(&self.context, entries)
 	}
 
 	#[inline]
@@ -460,7 +460,7 @@ impl AdminTransaction {
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range(range, scope, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range(&self.context, range, scope, batch_size))
 	}
 
 	pub fn range_row(
@@ -472,7 +472,7 @@ impl AdminTransaction {
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_row(storage, start, end, scope, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range_row(&self.context, storage, start, end, scope, batch_size))
 	}
 
 	#[inline]
@@ -485,7 +485,14 @@ impl AdminTransaction {
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(storage, start, end, scope, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(
+			&self.context,
+			storage,
+			start,
+			end,
+			scope,
+			batch_size,
+		))
 	}
 
 	#[inline]
@@ -496,7 +503,7 @@ impl AdminTransaction {
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_rev(range, scope, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range_rev(&self.context, range, scope, batch_size))
 	}
 
 	#[inline]
@@ -507,7 +514,7 @@ impl AdminTransaction {
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(range, scope, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(&self.context, range, scope, batch_size))
 	}
 }
 

@@ -29,10 +29,15 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_sub_lifecycle::{plane::RetentionPlane, queue::retention::QueueRetentionTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -61,7 +66,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()

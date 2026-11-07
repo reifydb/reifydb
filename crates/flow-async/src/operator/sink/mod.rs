@@ -52,6 +52,7 @@ mod tests {
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
+		transaction::TransactionContext,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -76,10 +77,15 @@ mod tests {
 		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
+
 	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams {
+			ctx: system_ctx(),
 			version,
 			pending: Pending::new(),
 			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
@@ -142,12 +148,14 @@ mod tests {
 		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
 
 		let entry_id = {
-			let registry =
-				DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+			let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+				system_ctx(),
+				single.clone(),
+			)));
 			registry.intern_batch(&dictionary, &[Value::Utf8("sol".to_string())]).unwrap().remove(0).id
 		};
 
-		let decode_store = Arc::new(SingleDictionaryStore::new(single));
+		let decode_store = Arc::new(SingleDictionaryStore::new(system_ctx(), single));
 		let decode_registry = DictionaryAllocatorRegistry::new(decode_store.clone());
 		{
 			let mut txn = flow_txn(&engine, &decode_registry);
@@ -184,7 +192,8 @@ mod tests {
 		// values.
 		let engine = TestEngine::new();
 		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
-		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		let registry =
+			DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(system_ctx(), single)));
 		let mut txn = flow_txn(&engine, &registry);
 
 		let mut columns = dictionary_column_with_id(DictionaryId(9999), DictionaryEntryId::U2(1));
@@ -263,7 +272,8 @@ mod tests {
 
 	fn interned(engine: &TestEngine, dictionary: &Dictionary, values: &[&str]) -> Vec<DictionaryEntryId> {
 		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
-		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		let registry =
+			DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(system_ctx(), single)));
 		let values: Vec<Value> = values.iter().map(|value| Value::Utf8(value.to_string())).collect();
 		registry.intern_batch(dictionary, &values).unwrap().into_iter().map(|entry| entry.id).collect()
 	}
@@ -277,7 +287,7 @@ mod tests {
 		let sol = interned(&engine, &dictionary, &["sol"])[0];
 
 		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
-		let store = Arc::new(SingleDictionaryStore::new(single));
+		let store = Arc::new(SingleDictionaryStore::new(system_ctx(), single));
 		let mut txn = flow_txn(&engine, &DictionaryAllocatorRegistry::new(store.clone()));
 		let before = store.read_count();
 		DurableSink::apply(
@@ -308,6 +318,7 @@ mod tests {
 		);
 
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			system_ctx(),
 			engine.begin_admin(IdentityId::system()).unwrap().single.clone(),
 		)));
 		let mut from_foreign = flow_txn(&engine, &registry);
@@ -345,6 +356,7 @@ mod tests {
 		let view = [("m", &target), ("n", &source)];
 
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			system_ctx(),
 			engine.begin_admin(IdentityId::system()).unwrap().single.clone(),
 		)));
 		let mut from_foreign = flow_txn(&engine, &registry);

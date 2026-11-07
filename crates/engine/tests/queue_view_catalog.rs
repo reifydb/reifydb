@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	queue::EncodedQueueRow,
@@ -21,6 +23,7 @@ use reifydb_engine::{
 	queue::hydrate::hydrate_queues,
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	queue::scheduling::{QueueAdmission, admit_ready_items, queue_partition_counters},
@@ -29,6 +32,10 @@ use reifydb_transaction::{
 use reifydb_value::value::{
 	Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
 };
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn find(t: &TestEngine, name: &str) -> (Option<View>, Option<Queue>) {
 	let catalog = t.inner().catalog();
@@ -106,6 +113,7 @@ fn dropping_the_view_removes_the_queue_and_its_scheduling_state() {
 	let queue: QueueId = find(&t, "q").1.unwrap().id;
 	let single = t.inner().single().clone();
 	admit_ready_items(
+		&system_ctx(),
 		&single,
 		queue,
 		Partition(5),
@@ -116,12 +124,16 @@ fn dropping_the_view_removes_the_queue_and_its_scheduling_state() {
 		}],
 	)
 	.unwrap();
-	assert_eq!(queue_partition_counters(&single, queue).unwrap().len(), 1, "precondition: the item is scheduled");
+	assert_eq!(
+		queue_partition_counters(&system_ctx(), &single, queue).unwrap().len(),
+		1,
+		"precondition: the item is scheduled"
+	);
 
 	t.admin("DROP VIEW test::q");
 
 	assert_eq!(find(&t, "q"), (None, None));
-	assert!(queue_partition_counters(&single, queue).unwrap().is_empty());
+	assert!(queue_partition_counters(&system_ctx(), &single, queue).unwrap().is_empty());
 }
 
 #[test]
@@ -238,6 +250,7 @@ fn a_slice_admitted_while_the_drop_is_still_open_is_swept_by_the_drop_commit() {
 	let mut admin = t.inner().begin_admin(TestEngine::identity()).unwrap();
 	catalog.drop_view(&mut admin, view).unwrap();
 	admit_ready_items(
+		&system_ctx(),
 		&single,
 		queue.id,
 		Partition(5),
@@ -248,10 +261,14 @@ fn a_slice_admitted_while_the_drop_is_still_open_is_swept_by_the_drop_commit() {
 		}],
 	)
 	.unwrap();
-	assert_eq!(queue_partition_counters(&single, queue.id).unwrap().len(), 1, "precondition: the race happened");
+	assert_eq!(
+		queue_partition_counters(&system_ctx(), &single, queue.id).unwrap().len(),
+		1,
+		"precondition: the race happened"
+	);
 	admin.commit().unwrap();
 
-	assert!(queue_partition_counters(&single, queue.id).unwrap().is_empty());
+	assert!(queue_partition_counters(&system_ctx(), &single, queue.id).unwrap().is_empty());
 }
 
 #[test]
@@ -262,7 +279,10 @@ fn hydration_admits_view_items_where_the_sink_would_have_placed_them() {
 	let queue = find(&t, "q").1.unwrap();
 	let bytes = write_item(&t, &queue, 1, false);
 	let single = t.inner().single().clone();
-	assert!(queue_partition_counters(&single, queue.id).unwrap().is_empty(), "precondition: not admitted");
+	assert!(
+		queue_partition_counters(&system_ctx(), &single, queue.id).unwrap().is_empty(),
+		"precondition: not admitted"
+	);
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 1);
 
@@ -278,7 +298,7 @@ fn hydration_admits_view_items_where_the_sink_would_have_placed_them() {
 		&partition_by_indices(&queue),
 		ordered_by_index(&queue).unwrap(),
 	);
-	let counters = queue_partition_counters(&single, queue.id).unwrap();
+	let counters = queue_partition_counters(&system_ctx(), &single, queue.id).unwrap();
 	assert_eq!(counters.len(), 1);
 	assert_eq!(counters[0].0, placement.partition);
 	assert_eq!(counters[0].1.depth, 1);

@@ -7,7 +7,7 @@
 //! RebuildDriver rather than by waiting on the maintenance actor, because the driver is synchronous and the
 //! actor is not.
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -24,7 +24,11 @@ use reifydb_filter::{
 	config::FilterConfig,
 	driver::{DriverProgress, RebuildDriver},
 };
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
+	shutdown::Shutdown,
+};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store::filter::KeyFilter;
 use reifydb_store_commit::{TierBatch, store::CommitStore};
@@ -38,6 +42,10 @@ use reifydb_store_multi::{
 	},
 };
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const OTHER: EntryKind = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 
@@ -213,7 +221,7 @@ fn a_store_opened_on_empty_tables_starts_armed_and_rules_out_a_key_nothing_ever_
 
 	let before = persistent.filter().metrics();
 	assert!(
-		MultiVersionGet::get(&store, from_ref(&any_key(404)), CommitVersion(u64::MAX))
+		MultiVersionGet::get(&store, &system_ctx(), from_ref(&any_key(404)), CommitVersion(u64::MAX))
 			.expect("the read failed")
 			.remove(0)
 			.is_none(),
@@ -251,7 +259,7 @@ fn a_store_opened_on_populated_tables_starts_disabled_and_serves_back_every_exis
 	);
 
 	for n in 0..32u64 {
-		let found = MultiVersionGet::get(&store, from_ref(&any_key(n)), CommitVersion(u64::MAX))
+		let found = MultiVersionGet::get(&store, &system_ctx(), from_ref(&any_key(n)), CommitVersion(u64::MAX))
 			.expect("the read failed")
 			.remove(0)
 			.unwrap_or_else(|| {
@@ -284,6 +292,7 @@ fn a_removed_key_is_reported_absent_after_a_rebuild() {
 	assert!(
 		matches!(
 			storage.get(
+				&system_ctx(),
 				EntryKind::Multi,
 				std::slice::from_ref(&key(1).as_slice()),
 				CommitVersion(u64::MAX)
@@ -358,6 +367,7 @@ fn identical_key_bytes_in_two_entry_kinds_stay_separately_reachable_across_a_reb
 		assert!(storage.filter().may_contain((OTHER, &key(n))), "source key {n} was lost by the rebuild");
 		assert!(
 			storage.get(
+				&system_ctx(),
 				EntryKind::Multi,
 				std::slice::from_ref(&key(n).as_slice()),
 				CommitVersion(u64::MAX)
@@ -369,11 +379,16 @@ fn identical_key_bytes_in_two_entry_kinds_stay_separately_reachable_across_a_reb
 			"multi row {n} became unreadable"
 		);
 		assert!(
-			storage.get(OTHER, std::slice::from_ref(&key(n).as_slice()), CommitVersion(u64::MAX))
-				.expect("the read failed")
-				.remove(0)
-				.value()
-				.is_some(),
+			storage.get(
+				&system_ctx(),
+				OTHER,
+				std::slice::from_ref(&key(n).as_slice()),
+				CommitVersion(u64::MAX)
+			)
+			.expect("the read failed")
+			.remove(0)
+			.value()
+			.is_some(),
 			"source row {n} became unreadable"
 		);
 	}

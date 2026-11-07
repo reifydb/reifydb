@@ -173,7 +173,8 @@ fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Opti
 	let store = single.read_store();
 	let key = QueueItemStateKey::encoded(token.queue, token.partition, token.row);
 
-	let Some(stored) = SingleVersionGet::get(&store, slice::from_ref(&key))?.pop().flatten() else {
+	let Some(stored) = SingleVersionGet::get(&store, ctx.tx.context(), slice::from_ref(&key))?.pop().flatten()
+	else {
 		return Ok(None);
 	};
 	let Some(state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {

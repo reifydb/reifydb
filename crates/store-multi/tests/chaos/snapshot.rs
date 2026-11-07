@@ -5,6 +5,8 @@
 //! while commits and bounded flushes land between batch pulls. Only snapshot-preserving ops are
 //! interleaved (commits get versions > V, flushes use cutoff <= V), so any divergence is a real bug.
 
+use std::sync::Arc;
+
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -13,6 +15,7 @@ use reifydb_core::{
 	interface::store::MultiVersionCommit,
 	key::row::RowKey,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::pick;
@@ -24,6 +27,10 @@ use crate::{
 	oracle::{Oracle, Scope},
 	workload::distinct_rows,
 };
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 pub struct Params {
 	pub keyspace: u64,
@@ -99,9 +106,14 @@ fn drain_with_interleave(
 		read: CommitVersion(pinned),
 	};
 	let mut iter: Box<dyn Iterator<Item = _>> = if reverse {
-		Box::new(configs[drain_idx].1.range_rev(RowKey::full_scan(STORAGE).encode(), scope, batch))
+		Box::new(configs[drain_idx].1.range_rev(
+			&system_ctx(),
+			RowKey::full_scan(STORAGE).encode(),
+			scope,
+			batch,
+		))
 	} else {
-		Box::new(configs[drain_idx].1.range(RowKey::full_scan(STORAGE).encode(), scope, batch))
+		Box::new(configs[drain_idx].1.range(&system_ctx(), RowKey::full_scan(STORAGE).encode(), scope, batch))
 	};
 
 	let mut drained: Vec<(Vec<u8>, Vec<u8>, u64)> = Vec::new();
@@ -202,6 +214,7 @@ pub fn drive(seed: u64, p: Params) {
 	for (name, store) in &configs {
 		let got: Vec<(Vec<u8>, Vec<u8>, u64)> = store
 			.range(
+				&system_ctx(),
 				RowKey::full_scan(STORAGE).encode(),
 				MultiVersionScope::AsOf {
 					read: CommitVersion(current),

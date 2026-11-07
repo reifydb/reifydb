@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, slice};
+use std::{collections::HashMap, slice, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
@@ -17,6 +17,7 @@ use reifydb_flow::txn::FlowGet;
 use reifydb_flow_async::transaction::{
 	ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_sub_subscription::transaction::EphemeralTransaction;
 use reifydb_test_harness::{
 	engine::TestEngine,
@@ -24,10 +25,15 @@ use reifydb_test_harness::{
 };
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber};
 
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
+
 fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 	// The coordinate is fixed so a stamp never falls back to the wall clock.
 	let version = CommitVersion(1);
 	let mut txn = EphemeralTransaction::new(
+		system_ctx(),
 		version,
 		engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap(),
 		Catalog::testing(),
@@ -84,6 +90,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 	assert!(low_version < committed_at);
 
 	let mut txn = EphemeralTransaction::new(
+		system_ctx(),
 		low_version,
 		engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap(),
 		Catalog::testing(),

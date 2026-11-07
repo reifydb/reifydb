@@ -32,11 +32,16 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 use crate::fixtures::NoWalCheckpoint;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -57,9 +62,9 @@ fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bo
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(&system_ctx(), range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(&system_ctx(), range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter()
 		.map(|r| {
@@ -121,9 +126,9 @@ fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool)
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(&system_ctx(), range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(&system_ctx(), range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter()
 		.map(|r| {
@@ -259,6 +264,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
 								.get(
+									&system_ctx(),
 									from_ref(&TaggedKey::from(RowKey::new(
 										STORAGE, row,
 									))),
@@ -278,7 +284,11 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							let row =
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
-								.get(from_ref(&conc_op_key(row)), CommitVersion(read))
+								.get(
+									&system_ctx(),
+									from_ref(&conc_op_key(row)),
+									CommitVersion(read),
+								)
 								.unwrap()
 								.remove(0)
 							{

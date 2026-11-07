@@ -24,7 +24,10 @@ use reifydb_routine_abi::registry::RoutinesConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, pool::PoolConfig,
+	Runtime, RuntimeConfig,
+	context::{RuntimeContext, clock::Clock, rng::Rng, transaction::TransactionContext},
+	fatal::install as install_fatal,
+	pool::PoolConfig,
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -91,6 +94,7 @@ type PoolConfigSources = (
 );
 
 fn pool_config_from_sources(
+	ctx: &TransactionContext,
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	wal_mode: WalMode,
@@ -104,7 +108,7 @@ fn pool_config_from_sources(
 	};
 	let wal = commit_wal(factory, clock, wal_mode, None);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
-	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
+	let resolved = resolve_startup_configs(ctx, &multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
@@ -369,6 +373,11 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
+		let boot_ctx = TransactionContext::system(RuntimeContext::new(
+			boot_clock.clone(),
+			self.runtime_config.as_ref().map_or(Rng::Os, |config| config.rng.fork(b"startup")),
+			VersionEpoch::new(),
+		));
 		let wal_mode = self
 			.wal_configurator
 			.take()
@@ -387,7 +396,13 @@ impl ServerBuilder {
 			operator_flush_interval,
 			wal,
 			recovery,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, wal_mode, &boot_clock)?;
+		) = pool_config_from_sources(
+			&boot_ctx,
+			&self.storage_factory,
+			&self.bootstrap_configs,
+			wal_mode,
+			&boot_clock,
+		)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);

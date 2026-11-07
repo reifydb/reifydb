@@ -5,6 +5,7 @@ use std::{
 	collections::{HashMap, HashSet},
 	ops::AddAssign,
 	slice,
+	sync::Arc,
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -20,6 +21,7 @@ use reifydb_core::{
 	},
 	key::metric::MetricStorageKey,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::metrics::storage::encoding::{
@@ -79,10 +81,10 @@ pub struct StorageMetricsWriter<S> {
 }
 
 impl<S: SingleVersionStore> StorageMetricsWriter<S> {
-	pub fn new(storage: S) -> Self {
+	pub fn new(ctx: Arc<TransactionContext>, storage: S) -> Self {
 		let mut stats = HashMap::new();
 
-		if let Ok(batch) = storage.prefix(&storage_stats_key_prefix()) {
+		if let Ok(batch) = storage.prefix(&ctx, &storage_stats_key_prefix()) {
 			for item in batch.items {
 				if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice())
 					&& let Some(s) = decode_storage_stats(item.bytes.as_slice())
@@ -165,12 +167,14 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 
 #[derive(Clone)]
 pub struct StorageMetricsReader<S> {
+	ctx: Arc<TransactionContext>,
 	storage: S,
 }
 
 impl<S: SingleVersionStore> StorageMetricsReader<S> {
-	pub fn new(storage: S) -> Self {
+	pub fn new(ctx: Arc<TransactionContext>, storage: S) -> Self {
 		Self {
+			ctx,
 			storage,
 		}
 	}
@@ -178,7 +182,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<MultiStorageMetrics>> {
 		let key = encode_storage_stats_key(tier, id);
 		Ok(self.storage
-			.get(slice::from_ref(&key))?
+			.get(&self.ctx, slice::from_ref(&key))?
 			.pop()
 			.flatten()
 			.and_then(|v| decode_storage_stats(v.bytes.as_slice())))
@@ -186,7 +190,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 
 	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricsId), MultiStorageMetrics)>> {
 		let prefix = storage_stats_key_prefix();
-		let batch = self.storage.prefix(&prefix)?;
+		let batch = self.storage.prefix(&self.ctx, &prefix)?;
 
 		let mut results = Vec::new();
 		for item in batch.items {

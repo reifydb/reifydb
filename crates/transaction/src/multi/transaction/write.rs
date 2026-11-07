@@ -30,6 +30,7 @@ use reifydb_core::{
 	},
 	wal::CommitRecord,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_commit::VersionedGetResult;
 #[cfg(reifydb_assertions)]
 use reifydb_value::util::hex::display as hex_display;
@@ -389,11 +390,15 @@ impl MultiWriteTransaction {
 		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
-	#[instrument(name = "transaction::command::remove", level = "trace", skip(self, entries), fields(
+	#[instrument(name = "transaction::command::remove", level = "trace", skip(self, ctx, entries), fields(
 		txn_id = %self.id,
 		keys = entries.len()
 	))]
-	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	pub fn remove(
+		&mut self,
+		ctx: &TransactionContext,
+		entries: Vec<(TaggedKey, Option<EncodedBytes>)>,
+	) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -413,7 +418,7 @@ impl MultiWriteTransaction {
 			.filter(|((_, pre), first)| **first && pre.is_none())
 			.map(|((key, _), _)| key.clone())
 			.collect();
-		let mut read = self.get(&unread)?.into_iter();
+		let mut read = self.get(ctx, &unread)?.into_iter();
 		let mut pending: Vec<DeltaEntry> = Vec::with_capacity(entries.len());
 		for ((key, pre), first) in entries.into_iter().zip(first) {
 			let announce = match pre {
@@ -458,11 +463,11 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(
+	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self, ctx), fields(
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn remove_unobserved_any(&mut self, key: TaggedKey) -> Result<()> {
+	fn remove_unobserved_any(&mut self, ctx: &TransactionContext, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -470,7 +475,7 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let announce = match self.get(&[key.clone()])?.pop().flatten() {
+		let announce = match self.get(ctx, &[key.clone()])?.pop().flatten() {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
@@ -485,8 +490,12 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		self.remove_unobserved_any(key.clone().into())
+	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		ctx: &TransactionContext,
+		key: &K,
+	) -> Result<()> {
+		self.remove_unobserved_any(ctx, key.clone().into())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, pre), fields(
@@ -551,11 +560,15 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, ctx, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get_committed(
+		&mut self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<TransactionValue>>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -568,7 +581,7 @@ impl MultiWriteTransaction {
 		for key in keys {
 			self.conflicts.mark_read(key);
 		}
-		let found = self.engine.store.get_versioned(&encoded, version)?;
+		let found = self.engine.store.get_versioned(ctx, &encoded, version)?;
 		Ok(keys.iter()
 			.zip(&encoded)
 			.map(|(key, encoded)| match found.get(encoded) {
@@ -586,11 +599,11 @@ impl MultiWriteTransaction {
 			.collect())
 	}
 
-	#[instrument(name = "transaction::command::get", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self, ctx, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -601,14 +614,14 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.get_call(keys.iter().map(TaggedKey::kind));
 		}
-		self.read_many(keys)
+		self.read_many(ctx, keys)
 	}
 
-	#[instrument(name = "transaction::command::contains", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::contains", level = "trace", skip(self, ctx, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -619,10 +632,10 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.contains_call(keys.iter().map(TaggedKey::kind));
 		}
-		Ok(self.read_many(keys)?.iter().map(Option::is_some).collect())
+		Ok(self.read_many(ctx, keys)?.iter().map(Option::is_some).collect())
 	}
 
-	fn read_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	fn read_many(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		let version = self.version();
 		let mut found: Vec<Option<TransactionValue>> = Vec::with_capacity(keys.len());
 		let mut unread: Vec<usize> = Vec::new();
@@ -650,7 +663,7 @@ impl MultiWriteTransaction {
 			return Ok(found);
 		}
 		let snapshot: Vec<TaggedKey> = unread.iter().map(|&slot| keys[slot].clone()).collect();
-		for (slot, committed) in unread.into_iter().zip(self.engine.get(&snapshot, version)?) {
+		for (slot, committed) in unread.into_iter().zip(self.engine.get(ctx, &snapshot, version)?) {
 			found[slot] = committed.map(Into::into);
 		}
 		Ok(found)
@@ -821,7 +834,8 @@ impl MultiWriteTransaction {
 			})
 			.collect();
 		if !snapshot_keys.is_empty() {
-			let mut found = self.engine.get(&snapshot_keys, base)?.into_iter();
+			let ctx = TransactionContext::system(self.engine.runtime_context());
+			let mut found = self.engine.get(&ctx, &snapshot_keys, base)?.into_iter();
 			for delta in deltas.make_mut() {
 				if let Delta::Set {
 					pre,
@@ -899,7 +913,8 @@ impl MultiWriteTransaction {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		let found = self.get_committed(&keys)?;
+		let ctx = TransactionContext::system(self.engine.runtime_context());
+		let found = self.get_committed(&ctx, &keys)?;
 		self.committed_pres = keys
 			.into_iter()
 			.zip(found)
@@ -921,19 +936,20 @@ impl MultiWriteTransaction {
 			return None;
 		}
 		let store = self.engine.store.clone();
+		let ctx = TransactionContext::system(self.engine.runtime_context());
 		let base = self.base_version();
 		Some(Box::new(move |deltas: &mut CowVec<Delta>, latest: CommitVersion| {
 			for (key, rewrite) in rewrites {
-				let at_base = MultiVersionGet::get(&store, from_ref(&key), base)?
+				let at_base = MultiVersionGet::get(&store, &ctx, from_ref(&key), base)?
 					.remove(0)
 					.map(|row| row.bytes);
-				let at_latest = MultiVersionGet::get(&store, from_ref(&key), latest)?
+				let at_latest = MultiVersionGet::get(&store, &ctx, from_ref(&key), latest)?
 					.remove(0)
 					.map(|row| row.bytes);
 				rewrite(deltas, at_base.as_ref(), at_latest.as_ref())?;
 			}
 			for (key, written, steps) in rebases {
-				let Some(found) = MultiVersionGet::get(&store, from_ref(&key), latest)?.remove(0)
+				let Some(found) = MultiVersionGet::get(&store, &ctx, from_ref(&key), latest)?.remove(0)
 				else {
 					continue;
 				};
@@ -1115,6 +1131,7 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	pub fn range(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -1132,13 +1149,14 @@ impl MultiWriteTransaction {
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
 
-		let storage_iter = self.engine.store.range(encoded, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range(ctx, encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	pub fn range_row(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StorageRowKey>,
 		end: Bound<StorageRowKey>,
@@ -1163,13 +1181,14 @@ impl MultiWriteTransaction {
 			})
 			.collect();
 
-		let storage_iter = self.engine.store.range_row(storage, start, end, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_row(ctx, storage, start, end, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	pub fn range_partitioned_row(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StoragePartitionedRowKey>,
 		end: Bound<StoragePartitionedRowKey>,
@@ -1201,13 +1220,14 @@ impl MultiWriteTransaction {
 			.collect();
 
 		let storage_iter =
-			self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size);
+			self.engine.store.range_partitioned_row(ctx, storage, start, end, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	pub fn range_persistence(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -1225,13 +1245,14 @@ impl MultiWriteTransaction {
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
 
-		let storage_iter = self.engine.store.range_persistence(encoded, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_persistence(ctx, encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	pub fn range_rev(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -1250,13 +1271,14 @@ impl MultiWriteTransaction {
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
 
-		let storage_iter = self.engine.store.range_rev(encoded, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_rev(ctx, encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 
 	pub fn range_rev_untracked(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -1273,13 +1295,14 @@ impl MultiWriteTransaction {
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
 
-		let storage_iter = self.engine.store.range_rev(encoded, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_rev(ctx, encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 
 	pub fn range_rev_persistence(
 		&mut self,
+		ctx: &Arc<TransactionContext>,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
@@ -1298,7 +1321,7 @@ impl MultiWriteTransaction {
 			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
 			.collect();
 
-		let storage_iter = self.engine.store.range_rev_persistence(encoded, multi_scope, batch_size);
+		let storage_iter = self.engine.store.range_rev_persistence(ctx, encoded, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
@@ -1461,14 +1484,17 @@ fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::RangeBounds;
+	use std::{ops::RangeBounds, sync::Arc};
 
 	use reifydb_codec::key::{encoded::EncodedKeyRange, serializer::KeySerializer};
 	use reifydb_core::{
 		common::CommitVersion, event::EventListener, interface::catalog::id::QueueId,
 		key::queue::QueueDeduplicationKey,
 	};
-	use reifydb_runtime::sync::mutex::Mutex;
+	use reifydb_runtime::{
+		context::{RuntimeContext, transaction::TransactionContext},
+		sync::mutex::Mutex,
+	};
 	use reifydb_value::{
 		util::cowvec::CowVec,
 		value::{duration::Duration, partition::Partition, row_number::RowNumber},
@@ -1476,6 +1502,10 @@ mod tests {
 
 	use super::*;
 	use crate::multi::transaction::MultiTransaction;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn test_key(s: &str) -> QueueDeduplicationKey {
 		QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
@@ -1621,7 +1651,11 @@ mod tests {
 
 	fn stored(engine: &MultiTransaction, key: &str) -> Option<EncodedBytes> {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.get(&[test_key(key).into()]).unwrap().pop().flatten().map(|found| found.bytes().clone())
+		txn.get(&system_ctx(), &[test_key(key).into()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.map(|found| found.bytes().clone())
 	}
 
 	fn resolved_deltas(txn: &mut MultiWriteTransaction) -> Vec<Delta> {
@@ -1638,9 +1672,9 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
-		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("committed").into(), None)]).unwrap();
 		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
-		txn.remove(vec![(test_key("fresh").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("fresh").into(), None)]).unwrap();
 		txn.commit().unwrap();
 
 		assert_eq!((stored(&engine, "committed"), stored(&engine, "fresh")), (None, None));
@@ -1655,7 +1689,7 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
-		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("committed").into(), None)]).unwrap();
 		txn.commit_unchecked().unwrap();
 
 		assert_eq!(stored(&engine, "committed"), None);
@@ -1670,12 +1704,12 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
-		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("committed").into(), None)]).unwrap();
 		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
-		txn.remove(vec![(test_key("fresh").into(), None)]).unwrap();
-		txn.remove(vec![(test_key("again").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("fresh").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("again").into(), None)]).unwrap();
 		txn.set(vec![(test_key("again").into(), test_bytes("a2"))]).unwrap();
-		txn.remove(vec![(test_key("again").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("again").into(), None)]).unwrap();
 
 		assert_eq!(
 			resolved_deltas(&mut txn),
@@ -1696,7 +1730,7 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_with_pre(vec![(test_key("known").into(), test_bytes("v2"), SetPre::Present(test_bytes("v1")))])
 			.unwrap();
-		txn.remove(vec![(test_key("known").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("known").into(), None)]).unwrap();
 
 		assert_eq!(
 			resolved_deltas(&mut txn),
@@ -1721,7 +1755,7 @@ mod tests {
 			SetPre::Present(test_bytes("v1")),
 		)])
 		.unwrap();
-		txn.remove(vec![(test_key("tagged").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("tagged").into(), None)]).unwrap();
 		txn.commit_unchecked().unwrap();
 
 		assert_eq!(txn.op_counts.get_committed_calls(), 1);
@@ -1738,16 +1772,16 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for key in ["a", "b", "c"] {
 			txn.set(vec![(test_key(key).into(), test_bytes("new"))]).unwrap();
-			txn.remove(vec![(test_key(key).into(), None)]).unwrap();
+			txn.remove(&system_ctx(), vec![(test_key(key).into(), None)]).unwrap();
 		}
 		txn.set(vec![(test_key("a").into(), test_bytes("again"))]).unwrap();
-		txn.remove(vec![(test_key("a").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("a").into(), None)]).unwrap();
 		resolved_deltas(&mut txn);
 		assert_eq!(txn.op_counts.get_committed_calls(), 1);
 
 		let mut plain = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		plain.set(vec![(test_key("d").into(), test_bytes("d1"))]).unwrap();
-		plain.remove(vec![(test_key("a").into(), None)]).unwrap();
+		plain.remove(&system_ctx(), vec![(test_key("a").into(), None)]).unwrap();
 		resolved_deltas(&mut plain);
 		assert_eq!(plain.op_counts.get_committed_calls(), 0);
 	}
@@ -1762,7 +1796,7 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("kept").into(), test_bytes("v2"))]).unwrap();
 		let savepoint = txn.savepoint();
-		txn.remove(vec![(test_key("kept").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("kept").into(), None)]).unwrap();
 		txn.restore_savepoint(savepoint);
 		txn.commit().unwrap();
 
@@ -1778,7 +1812,7 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("contested").into(), test_bytes("v2"))]).unwrap();
-		txn.remove(vec![(test_key("contested").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("contested").into(), None)]).unwrap();
 		txn.resolve_removed_after_set().unwrap();
 		committed_with(&engine, &[("contested", "v3")]);
 		let deltas = txn.build_deltas();
@@ -1796,7 +1830,7 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let savepoint = txn.savepoint();
 		txn.set(vec![(test_key("rolled_back").into(), test_bytes("v2"))]).unwrap();
-		txn.remove(vec![(test_key("rolled_back").into(), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(test_key("rolled_back").into(), None)]).unwrap();
 		txn.restore_savepoint(savepoint);
 		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		committed_with(&engine, &[("rolled_back", "v3")]);
@@ -2076,7 +2110,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
+		txn.get(&system_ctx(), &[test_key("meta").into()]).unwrap().pop().flatten();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
@@ -2092,7 +2126,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
+		txn.get(&system_ctx(), &[test_key("meta").into()]).unwrap().pop().flatten();
 		let failing: Rebase = Arc::new(|_: &EncodedBytes| Err(TransactionError::RolledBack.into()));
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);

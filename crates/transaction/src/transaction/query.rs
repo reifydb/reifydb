@@ -136,12 +136,16 @@ impl QueryTransaction {
 
 	#[inline]
 	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-		Ok(self.multi.get(keys)?.into_iter().map(|v| v.map(|v| v.into_multi_version_row())).collect())
+		Ok(self.multi
+			.get(&self.context, keys)?
+			.into_iter()
+			.map(|v| v.map(|v| v.into_multi_version_row()))
+			.collect())
 	}
 
 	#[inline]
 	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
-		self.multi.contains(keys)
+		self.multi.contains(&self.context, keys)
 	}
 
 	#[inline]
@@ -157,7 +161,7 @@ impl QueryTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		self.multi.range(range, scope, batch_size)
+		self.multi.range(&self.context, range, scope, batch_size)
 	}
 
 	pub fn range_row(
@@ -168,7 +172,7 @@ impl QueryTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
-		self.multi.range_row(storage, start, end, scope, batch_size)
+		self.multi.range_row(&self.context, storage, start, end, scope, batch_size)
 	}
 
 	#[inline]
@@ -180,7 +184,7 @@ impl QueryTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
-		self.multi.range_partitioned_row(storage, start, end, scope, batch_size)
+		self.multi.range_partitioned_row(&self.context, storage, start, end, scope, batch_size)
 	}
 
 	#[inline]
@@ -190,7 +194,7 @@ impl QueryTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		self.multi.range_rev(range, scope, batch_size)
+		self.multi.range_rev(&self.context, range, scope, batch_size)
 	}
 
 	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
@@ -198,7 +202,7 @@ impl QueryTransaction {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.begin_query(keys)
+		self.single.begin_query(&self.context, keys)
 	}
 }
 

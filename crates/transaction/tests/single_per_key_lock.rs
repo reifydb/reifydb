@@ -9,10 +9,18 @@ use std::{
 
 use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_core::{event::EventBus, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
+	pool::Pools,
+};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{single::SingleTransaction, wal::memory_wal};
 use reifydb_value::value::value_type::ValueType;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn u64_shape() -> RowShape {
 	RowShape::testing(RowFamily::Pod, &[ValueType::Uint8])
@@ -50,7 +58,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 				scope.spawn(move || {
 					let shape = u64_shape();
 					barrier.wait();
-					txn.with_command([&locked], |tx| {
+					txn.with_command(&system_ctx(), [&locked], |tx| {
 						let current = match tx.get(from_ref(&key))?.remove(0) {
 							Some(existing) => shape.get::<u64>(&existing.bytes, 0),
 							None => 0,
@@ -66,7 +74,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 
 		let shape = u64_shape();
 		let total = txn
-			.with_command([&locked], |tx| {
+			.with_command(&system_ctx(), [&locked], |tx| {
 				Ok(shape.get::<u64>(
 					&tx.get(from_ref(&key))?
 						.remove(0)

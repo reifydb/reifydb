@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
+
 use super::test_multi;
 use crate::{as_key, as_values};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[test]
 fn test_read_after_write() {
@@ -22,7 +30,7 @@ fn test_read_after_write() {
 				txn.commit().unwrap();
 
 				let txn = db.begin_query(db.generate_transaction_id()).unwrap();
-				let sv = txn.get(&[k.clone()]).unwrap().pop().flatten().unwrap();
+				let sv = txn.get(&system_ctx(), &[k.clone()]).unwrap().pop().flatten().unwrap();
 				assert_eq!(*sv.bytes(), v);
 			})
 		})

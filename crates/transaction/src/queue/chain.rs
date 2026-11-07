@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeSet, HashMap},
 	slice::from_ref,
+	sync::Arc,
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -11,6 +12,7 @@ use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRangeRev},
 	key::queue::QueueKeyActiveKey,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
 	Result,
 	util::cowvec::CowVec,
@@ -40,6 +42,7 @@ pub enum ChainHead {
 }
 
 pub fn chain_peek(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	overlay: &mut ChainOverlay,
 	queue: QueueId,
@@ -53,6 +56,7 @@ pub fn chain_peek(
 		let store = single.read_store();
 		let batch = SingleVersionRangeRev::range_rev_batch(
 			&store,
+			ctx,
 			QueueKeyActiveKey::key_scan(queue, partition, key_hash).encode(),
 			budget,
 		)?;

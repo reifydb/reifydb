@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{actors::pending::Pending, interface::catalog::flow::OperatorId, state::timer::TimerKind};
@@ -11,12 +13,20 @@ use reifydb_flow_async::{
 	},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate},
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_runtime::context::{
+	RuntimeContext,
+	clock::{Clock, MockClock},
+	transaction::TransactionContext,
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
 
 use crate::common::persist;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const NODE: OperatorId = OperatorId(1);
 const NO_LIMIT: usize = usize::MAX;
@@ -29,6 +39,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
+		ctx: system_ctx(),
 		version,
 		pending: Pending::new(),
 		query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),

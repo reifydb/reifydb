@@ -34,6 +34,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{queue::scheduling::partition_counters_page, single::SingleTransaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -192,11 +193,12 @@ fn lease_due_items(
 	lease_ttl: Duration,
 	now: DateTime,
 ) -> Result<Vec<Lease>, RoutineError> {
+	let context = ctx.tx.context().clone();
 	let mut leases = Vec::new();
 	for range in worker_partition_walk(queue, worker) {
 		let mut next = Some(range);
 		while let Some(range) = next {
-			let page = partition_counters_page(single, range)?;
+			let page = partition_counters_page(&context, single, range)?;
 			for (partition, counters) in page.counters {
 				if leases.len() >= max_n {
 					return Ok(leases);
@@ -238,8 +240,9 @@ fn lease_from_partition(
 	lease_ttl: Duration,
 	now: DateTime,
 ) -> Result<Vec<Lease>, RoutineError> {
+	let context = ctx.tx.context().clone();
 	for _ in 0..=CONTENTION_RETRIES {
-		let candidates = due_candidates(single, queue, partition, now, need)?;
+		let candidates = due_candidates(&context, single, queue, partition, now, need)?;
 		if candidates.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -249,7 +252,7 @@ fn lease_from_partition(
 			return Ok(Vec::new());
 		}
 
-		let leases = lease_candidates(single, queue, partition, &readable, lease_ttl, now)?;
+		let leases = lease_candidates(&context, single, queue, partition, &readable, lease_ttl, now)?;
 		if !leases.is_empty() {
 			return Ok(leases);
 		}
@@ -281,6 +284,7 @@ fn readable_candidates(
 
 #[instrument(name = "queue::claim::scan", level = "trace", skip_all, fields(queue = queue.id.0, partition = partition.0))]
 fn due_candidates(
+	context: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: &Queue,
 	partition: Partition,
@@ -290,6 +294,7 @@ fn due_candidates(
 	let store = single.read_store();
 	let batch = SingleVersionRangeRev::range_rev_batch(
 		&store,
+		context,
 		QueueDueKey::partition_scan(queue.id, partition).encode(),
 		need as u64,
 	)?;
@@ -303,6 +308,7 @@ fn due_candidates(
 }
 
 fn lease_candidates(
+	context: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: &Queue,
 	partition: Partition,
@@ -312,6 +318,7 @@ fn lease_candidates(
 ) -> Result<Vec<Lease>, RoutineError> {
 	let lock_key = QueuePartitionKey::new(queue.id, partition);
 	let mut tx = single.begin_command_ranged(
+		context,
 		[&lock_key.encode()],
 		vec![
 			QueueItemStateKey::partition_scan(queue.id, partition).encode(),

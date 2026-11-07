@@ -8,18 +8,26 @@ pub mod range;
 use std::ops::Bound;
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, TierBatch, VersionedGetResult, store::CommitStore,
 };
 use reifydb_value::Result;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>>;
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>>;
 
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
 
 	fn range_next(
 		&self,
+		ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
@@ -30,6 +38,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	fn range_rev_next(
 		&self,
+		ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
@@ -42,7 +51,13 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 }
 
 impl TierStorage for CommitStore {
-	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
+	fn get(
+		&self,
+		_ctx: &TransactionContext,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
 		Ok(keys.iter().map(|&key| CommitStore::get(self, table, key, version)).collect())
 	}
 
@@ -53,6 +68,7 @@ impl TierStorage for CommitStore {
 
 	fn range_next(
 		&self,
+		_ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
@@ -65,6 +81,7 @@ impl TierStorage for CommitStore {
 
 	fn range_rev_next(
 		&self,
+		_ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,

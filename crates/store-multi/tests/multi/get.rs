@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -17,8 +17,13 @@ use reifydb_core::{
 		queue::QueueDeduplicationKey,
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn fns(node: u64, payload: &[u8]) -> TaggedKey {
 	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_UNMANAGED, payload.to_vec()).into()
@@ -71,6 +76,7 @@ fn check_get_across_tables(store: &StandardMultiStore, flush: bool) {
 
 	let found: HashMap<EncodedKey, Vec<u8>> = store
 		.get_versioned(
+			&system_ctx(),
 			&[k1.encode(), k2.encode(), p.encode(), absent_op.encode(), absent_multi.encode()],
 			CommitVersion(1),
 		)
@@ -111,7 +117,7 @@ fn check_get_bucket_boundaries(store: &StandardMultiStore) {
 		lookup.push(absent.encode());
 
 		let found: HashMap<EncodedKey, Vec<u8>> = store
-			.get_versioned(&lookup, CommitVersion(1))
+			.get_versioned(&system_ctx(), &lookup, CommitVersion(1))
 			.unwrap()
 			.into_iter()
 			.filter_map(|(key, result)| Some((key, result.value()?.to_vec())))

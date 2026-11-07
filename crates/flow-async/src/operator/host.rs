@@ -5,6 +5,7 @@ use std::{
 	borrow::Cow,
 	collections::{BTreeSet, HashMap},
 	ops::Bound,
+	sync::Arc,
 };
 
 use reifydb_codec::{
@@ -39,6 +40,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::txn::{Find, Intern, Resolve};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{
 	Result,
@@ -155,6 +157,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 }
 
 struct QueryRing<'a> {
+	ctx: Arc<TransactionContext>,
 	query: &'a MultiReadTransaction,
 	storage: StorageId,
 }
@@ -163,7 +166,7 @@ impl RingRead for QueryRing<'_> {
 	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
 		let key = RingBufferMetadataKey::of(self.storage, partition).into();
 		self.query
-			.get(&[key])?
+			.get(&self.ctx, &[key])?
 			.pop()
 			.flatten()
 			.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes())))
@@ -178,7 +181,11 @@ impl RingRead for QueryRing<'_> {
 				None => RowKey::new(self.storage, row).into(),
 			})
 			.collect();
-		Ok(self.query.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes().clone())).collect())
+		Ok(self.query
+			.get(&self.ctx, &keys)?
+			.into_iter()
+			.map(|row| row.map(|row| row.bytes().clone()))
+			.collect())
 	}
 
 	fn order(
@@ -190,7 +197,7 @@ impl RingRead for QueryRing<'_> {
 		let resume = after.map(|sequence| ring_order_key(self.storage, partition, sequence));
 		let range = ring_order_range(self.storage, partition).resume_after(resume.as_ref());
 		let mut entries = Vec::with_capacity(limit);
-		for row in self.query.range(range, RangeScope::All, limit).take(limit) {
+		for row in self.query.range(&self.ctx, range, RangeScope::All, limit).take(limit) {
 			let row = row?;
 			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
 		}
@@ -200,7 +207,11 @@ impl RingRead for QueryRing<'_> {
 
 impl RingNewest for QueryRing<'_> {
 	fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>> {
-		match self.query.range_rev(ring_order_range(self.storage, partition), RangeScope::All, 1).next() {
+		match self
+			.query
+			.range_rev(&self.ctx, ring_order_range(self.storage, partition), RangeScope::All, 1)
+			.next()
+		{
 			None => Ok(None),
 			Some(row) => {
 				let row = row?;
@@ -439,10 +450,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			panic!("lookup of storage {storage:?} must read at version {version:?}, below the held lease \
 				 floor {floor:?}: that version may be collected, so the read could return a different row");
 		}
+		let ctx = self.txn.context().clone();
 		let mut query = self.txn.query();
 		query.read_as_of_version_inclusive(version);
 		if ring {
 			let mut store = QueryRing {
+				ctx,
 				query: &query,
 				storage,
 			};
@@ -453,6 +466,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			.map(|&partition| {
 				let key = |row: u64| StoragePartitionedRowKey::new(partition, RowNumber(row));
 				query.range_partitioned_row(
+					&ctx,
 					storage,
 					Bound::Included(key(u64::MAX)),
 					Bound::Included(key(0)),

@@ -7,7 +7,7 @@
 
 use reifydb_catalog::{bootstrap::read_configs, error::CatalogError};
 use reifydb_core::interface::catalog::config::ConfigKey;
-use reifydb_runtime::pool::PoolConfig;
+use reifydb_runtime::{context::transaction::TransactionContext, pool::PoolConfig};
 use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
@@ -51,11 +51,12 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 ];
 
 pub(crate) fn resolve_startup_configs(
+	ctx: &TransactionContext,
 	buffer: &CommitStore,
 	persistent: Option<&MultiPersistentTier>,
 	overrides: &[(ConfigKey, Value)],
 ) -> Result<StartupConfig> {
-	let persisted = read_configs(Some(buffer), persistent, STARTUP_KEYS)?;
+	let persisted = read_configs(ctx, Some(buffer), persistent, STARTUP_KEYS)?;
 
 	let resolve = |key: ConfigKey| -> Value {
 		overrides
@@ -166,10 +167,17 @@ pub(crate) fn resolve_startup_configs(
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_core::default;
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_store_commit::store::CommitStore;
 
 	use super::*;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	#[test]
 	fn the_flush_interval_resolves_from_the_catalog() {
@@ -179,11 +187,11 @@ mod tests {
 		// durable checkpoint may sit still while historical versions wait on it.
 		let buffer = CommitStore::new();
 
-		let resolved = resolve_startup_configs(&buffer, None, &[]).unwrap();
+		let resolved = resolve_startup_configs(&system_ctx(), &buffer, None, &[]).unwrap();
 		assert_eq!(resolved.operator_flush_interval, default::store::OPERATOR_RESIDENT_FLUSH_EVERY_TESTING);
 
 		let shortened = [(ConfigKey::OperatorResidentFlushEvery, Value::duration_seconds(5))];
-		let resolved = resolve_startup_configs(&buffer, None, &shortened).unwrap();
+		let resolved = resolve_startup_configs(&system_ctx(), &buffer, None, &shortened).unwrap();
 		assert_eq!(resolved.operator_flush_interval, Duration::from_seconds_const(5));
 	}
 
@@ -198,7 +206,7 @@ mod tests {
 			(ConfigKey::MultiRangeBufferTotalBytes, ConfigKey::MultiRangeBufferShards),
 		] {
 			let overrides = [(total_key, Value::Uint8(1)), (shards_key, Value::Uint2(2))];
-			let Err(err) = resolve_startup_configs(&buffer, None, &overrides) else {
+			let Err(err) = resolve_startup_configs(&system_ctx(), &buffer, None, &overrides) else {
 				panic!("{total_key} below {shards_key} must be rejected");
 			};
 			let rendered = err.to_string();
@@ -219,7 +227,7 @@ mod tests {
 			(ConfigKey::MultiPointBufferTotalBytes, Value::Uint8(2)),
 			(ConfigKey::MultiPointBufferShards, Value::Uint2(2)),
 		];
-		let resolved = resolve_startup_configs(&buffer, None, &overrides).unwrap();
+		let resolved = resolve_startup_configs(&system_ctx(), &buffer, None, &overrides).unwrap();
 		assert_eq!(resolved.multi_point.unwrap().total_bytes, Some(ByteSize::from_bytes(2)));
 	}
 
@@ -234,7 +242,7 @@ mod tests {
 			(ConfigKey::MultiRangeBufferTotalBytes, Value::Uint8(ByteSize::from_mib(32).as_bytes())),
 			(ConfigKey::MultiRangeBufferShards, Value::Uint2(8)),
 		];
-		let resolved = resolve_startup_configs(&buffer, None, &overrides).unwrap();
+		let resolved = resolve_startup_configs(&system_ctx(), &buffer, None, &overrides).unwrap();
 
 		let point = resolved.multi_point.unwrap();
 		assert_eq!((point.total_bytes, point.shards), (Some(ByteSize::from_mib(64)), 16));

@@ -5,7 +5,7 @@
 //! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
 //! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
-use std::slice::from_ref;
+use std::{slice::from_ref, sync::Arc};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -22,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
@@ -31,6 +31,10 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn memory_store() -> StandardMultiStore {
 	let pools = Pools::new(PoolConfig::default());
@@ -67,6 +71,7 @@ fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 
 fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<TaggedKey> {
 	store.range(
+		&system_ctx(),
 		node_range(node),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(version),
@@ -114,7 +119,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 	MultiVersionCommit::commit(&store, cow_vec![(Delta::remove_silent(key_a.clone()))], CommitVersion(3)).unwrap();
 
 	assert!(
-		store.get(from_ref(&key_a), CommitVersion(4)).unwrap().remove(0).is_none(),
+		store.get(&system_ctx(), from_ref(&key_a), CommitVersion(4)).unwrap().remove(0).is_none(),
 		"a committed drop must be invisible to a later get without waiting for the drop worker"
 	);
 	assert_eq!(

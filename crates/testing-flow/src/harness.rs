@@ -38,6 +38,7 @@ use reifydb_flow_async::{
 use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
+	transaction::TransactionContext,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::mount::mount;
@@ -113,6 +114,7 @@ impl<O> Harness<O> {
 			.begin_query(self.engine.multi().generate_transaction_id())
 			.expect("begin_query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
 			query: Some(query),
@@ -212,14 +214,20 @@ impl<O: HostOperator> Harness<O> {
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
-		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			single,
+		)));
 		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
 		self
 	}
 
 	pub fn dictionary_registry(&self) -> DictionaryAllocatorRegistry {
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
-		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)))
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			single,
+		)))
 	}
 
 	pub fn engine(&self) -> &TestEngine {

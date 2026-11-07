@@ -1021,6 +1021,7 @@ mod tests {
 	};
 	use reifydb_flow::operator::{sink::table::TableSink, source::catalog_schema};
 	use reifydb_rql::expression::parse_expression;
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
@@ -1051,6 +1052,10 @@ mod tests {
 			substrate::persist,
 		},
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	const OP: u64 = 77;
 	const LEFT: u64 = 76;
@@ -1231,13 +1236,20 @@ mod tests {
 	fn stored_partitions(engine: &TestEngine, storage: StorageId) -> Vec<(Partition, EncodedBytes)> {
 		let query =
 			engine.inner().multi().begin_query(engine.inner().multi().generate_transaction_id()).unwrap();
-		query.range_partitioned_row(storage, Bound::Unbounded, Bound::Unbounded, RangeScope::All, 16)
-			.map(|row| {
-				let row = row.unwrap();
-				let key: StoragePartitionedRowKey = row.key;
-				(key.partition.0, row.bytes)
-			})
-			.collect()
+		query.range_partitioned_row(
+			&system_ctx(),
+			storage,
+			Bound::Unbounded,
+			Bound::Unbounded,
+			RangeScope::All,
+			16,
+		)
+		.map(|row| {
+			let row = row.unwrap();
+			let key: StoragePartitionedRowKey = row.key;
+			(key.partition.0, row.bytes)
+		})
+		.collect()
 	}
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {

@@ -18,6 +18,8 @@ use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
 #[cfg(test)]
 use reifydb_runtime::context::clock::Clock;
+#[cfg(test)]
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
@@ -109,7 +111,10 @@ impl Services {
 				remote_registry: None,
 			},
 			OperatorLibrary::new(),
-			MetricsReader::new(store),
+			MetricsReader::new(
+				Arc::new(TransactionContext::system(RuntimeContext::with_clock(Clock::Real))),
+				store,
+			),
 		);
 		Arc::new(services)
 	}

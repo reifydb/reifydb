@@ -1307,7 +1307,11 @@ impl Actor for FlowActor {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod pull_protocol {
-	use std::{collections::HashMap, sync::mpsc, thread::sleep};
+	use std::{
+		collections::HashMap,
+		sync::{Arc, mpsc},
+		thread::sleep,
+	};
 
 	use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 	use reifydb_core::{
@@ -1341,7 +1345,10 @@ mod pull_protocol {
 			DeferredParams, FlowTransaction, deferred::DeferredTransaction, watermark::SourceWatermarks,
 		},
 	};
-	use reifydb_runtime::sync::waiter::WaiterHandle;
+	use reifydb_runtime::{
+		context::{RuntimeContext, transaction::TransactionContext},
+		sync::waiter::WaiterHandle,
+	};
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -1368,6 +1375,10 @@ mod pull_protocol {
 		discovery::routing,
 		progress::tracker::{FLOW_WAKE_COALESCE_NANOS, FlowWaker},
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	struct Harness {
 		te: TestEngine,
@@ -1722,6 +1733,7 @@ mod pull_protocol {
 				.collect();
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
 			let mut txn = DeferredTransaction::new(DeferredParams {
+				ctx: system_ctx(),
 				version: self.engine.current_version().expect("current version"),
 				pending: Pending::new(),
 				query: Some(self
@@ -2675,7 +2687,7 @@ mod pull_protocol {
 		let query = h.engine.multi().begin_query(h.engine.multi().generate_transaction_id()).expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
-				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+				.range(&system_ctx(), OperatorStateKey::node_range(operator), RangeScope::All, 1024)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan the operator's state range");
 			assert!(
@@ -2821,7 +2833,7 @@ mod pull_protocol {
 					.begin_query(h.engine.multi().generate_transaction_id())
 					.expect("query");
 			let rows: Vec<_> = query
-				.range(TaggedKeyBoundRange::all(), RangeScope::All, 100_000)
+				.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 100_000)
 				.collect::<Result<Vec<_>>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()
@@ -2873,7 +2885,7 @@ mod tick_failures {
 	use std::{
 		collections::HashMap,
 		marker::PhantomData,
-		sync::{atomic::AtomicUsize, mpsc},
+		sync::{Arc, atomic::AtomicUsize, mpsc},
 	};
 
 	use arrow_array::{ArrayRef, UInt64Array};
@@ -2910,7 +2922,7 @@ mod tick_failures {
 			testing::TestHarness,
 			traits::{Actor, Directive},
 		},
-		context::clock::MockClock,
+		context::{RuntimeContext, clock::MockClock, transaction::TransactionContext},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
@@ -2930,6 +2942,10 @@ mod tick_failures {
 		commit::persist,
 		progress::tracker::{FLOW_WAKE_COALESCE_NANOS, FlowWaker},
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	const FLOW: FlowId = FlowId(9_000);
 	const SOURCE: OperatorId = OperatorId(9_001);
@@ -3398,6 +3414,7 @@ mod tick_failures {
 			.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
 			.expect("state query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: system_ctx(),
 			version,
 			pending: Pending::new(),
 			query: Some(query),

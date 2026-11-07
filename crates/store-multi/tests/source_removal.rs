@@ -7,7 +7,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -22,6 +22,7 @@ use reifydb_core::{
 		row::{PartitionedRowKey, RowKey},
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{MultiVersionScope, TierBatch};
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{
@@ -29,6 +30,10 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn table_row_key(table: u64, row: u64) -> TaggedKey {
 	RowKey::new(StorageId::Table(TableId(table)), RowNumber(row)).into()
@@ -53,7 +58,12 @@ fn persistent_row(store: &StandardMultiStore, k: &TaggedKey) -> Option<(u64, Vec
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
 	match persistent
-		.get(classify_key(&encoded), std::slice::from_ref(&encoded.as_ref()), CommitVersion(u64::MAX))
+		.get(
+			&system_ctx(),
+			classify_key(&encoded),
+			std::slice::from_ref(&encoded.as_ref()),
+			CommitVersion(u64::MAX),
+		)
 		.unwrap()
 		.remove(0)
 	{
@@ -66,11 +76,12 @@ fn persistent_row(store: &StandardMultiStore, k: &TaggedKey) -> Option<(u64, Vec
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
+	store.get(&system_ctx(), from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<TaggedKey> {
 	store.range(
+		&system_ctx(),
 		range,
 		MultiVersionScope::AsOf {
 			read: CommitVersion(read),

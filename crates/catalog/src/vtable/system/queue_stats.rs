@@ -21,14 +21,16 @@ pub(crate) struct PartitionStats {
 
 pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Result<Vec<PartitionStats>> {
 	let single = txn.single();
+	let ctx = txn.context();
 
 	let store = single.read_store();
-	let partitions = queue_partition_counters(single, queue.id)?;
+	let partitions = queue_partition_counters(ctx, single, queue.id)?;
 	let mut stats = Vec::with_capacity(partitions.len());
 
 	for (partition, counters) in partitions {
 		let batch = SingleVersionRangeRev::range_rev_batch(
 			&store,
+			ctx,
 			QueueDueKey::partition_scan(queue.id, partition).encode(),
 			1,
 		)?;

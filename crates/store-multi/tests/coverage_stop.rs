@@ -21,7 +21,10 @@ use reifydb_core::{
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_runtime::{
+	context::{RuntimeContext, transaction::TransactionContext},
+	shutdown::Shutdown,
+};
 use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop};
 use reifydb_store_multi::{
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
@@ -30,6 +33,10 @@ use reifydb_store_multi::{
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 /// The store's own persistent chunk size. Every boundary here is stated against it, so a chunk that comes
 /// back exactly this full is the one case a short-page test must not confuse with a scan that ran out.
@@ -77,6 +84,7 @@ fn materializes(store: &StandardMultiStore) -> u64 {
 fn chunk(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read: u64) -> (usize, bool) {
 	let batch = store
 		.range_next(
+			&system_ctx(),
 			cursor,
 			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
@@ -110,6 +118,7 @@ fn tier_with_rows(rows: u64, version: u64) -> (MultiPersistentTier, impl Drop) {
 
 fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor, read: u64) -> usize {
 	tier.range_next(
+		&system_ctx(),
 		EntryKind::Source(STORAGE, EntryLayout::Row),
 		cursor,
 		Bound::Unbounded,
@@ -148,6 +157,7 @@ fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
 		calls += 1;
 		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
 		let outcome = store.range_next(
+			&system_ctx(),
 			&mut cursor,
 			RowKey::full_scan(STORAGE).encode(),
 			MultiVersionScope::AsOf {
@@ -233,6 +243,7 @@ fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
 	tier.shutdown().unwrap();
 
 	let refused = tier.range_next(
+		&system_ctx(),
 		EntryKind::Source(STORAGE, EntryLayout::Row),
 		&mut cursor,
 		Bound::Unbounded,

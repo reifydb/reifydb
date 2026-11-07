@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::txn::{FlowBatch, FlowGet};
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
 	dictionary::DictionaryAllocatorRegistry,
@@ -63,6 +63,7 @@ pub struct ChangeCoordinate {
 }
 
 pub struct DeferredParams {
+	pub ctx: Arc<TransactionContext>,
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub query: Option<MultiReadTransaction>,
@@ -98,6 +99,7 @@ impl DeferredParams {
 		clock: Clock,
 	) -> Self {
 		Self {
+			ctx: Arc::new(TransactionContext::system(parent.multi.runtime_context())),
 			version,
 			pending: Pending::new(),
 			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
@@ -121,6 +123,8 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 	fn clock(&self) -> &Clock;
 
 	fn catalog(&self) -> &Catalog;
+
+	fn context(&self) -> &Arc<TransactionContext>;
 
 	fn query(&self) -> MultiReadTransaction;
 

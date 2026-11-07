@@ -45,7 +45,7 @@ use reifydb_runtime::{
 		system::{ActorConfig, ActorHandle, ActorSpawner},
 		traits::{Actor, Directive},
 	},
-	context::clock::Clock,
+	context::{clock::Clock, transaction::TransactionContext},
 };
 use reifydb_store_operator::{
 	error::Result,
@@ -384,7 +384,10 @@ impl FlowSupervisor {
 	}
 
 	fn hydrate_frontiers(&self) {
-		match output_frontier::hydrate(&self.engine.single().read_store()) {
+		match output_frontier::hydrate(
+			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			&self.engine.single().read_store(),
+		) {
 			Ok(entries) => {
 				if !entries.is_empty() {
 					debug!(count = entries.len(), "hydrated output frontiers");
@@ -396,7 +399,11 @@ impl FlowSupervisor {
 	}
 
 	fn handle_persist_frontiers(&self, ctx: &Context<FlowSupervisorMessage>) {
-		output_frontier::sweep(self.engine.single(), &self.substrate.frontiers);
+		output_frontier::sweep(
+			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			self.engine.single(),
+			&self.substrate.frontiers,
+		);
 		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
 	}
 

@@ -68,7 +68,7 @@ impl DictionaryScanNode {
 
 		let single = rx.single();
 		let store = single.read_store();
-		let batch = SingleVersionRange::range_batch(&store, range.encode(), batch_size)?;
+		let batch = SingleVersionRange::range_batch(&store, rx.context(), range.encode(), batch_size)?;
 
 		for entry in batch.items {
 			let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) else {

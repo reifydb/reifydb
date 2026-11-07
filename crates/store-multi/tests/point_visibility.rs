@@ -5,7 +5,7 @@
 //! `(version, value)` plus the one version it superseded, so a hit must never serve a value the requested
 //! snapshot cannot see, and a newer commit must invalidate the entry rather than shadow it.
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -17,12 +17,17 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{MultiVersionScope, TierBatch};
 use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn key(s: &str) -> TaggedKey {
 	QueueDeduplicationKey::new(QueueId(1), s.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
@@ -53,7 +58,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, 
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
+	store.get(&system_ctx(), from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 #[test]
@@ -119,6 +124,7 @@ fn buffer_shadows_cache_for_freshly_committed_keys() {
 
 fn scan(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 	store.range(
+		&system_ctx(),
 		EncodedKeyRange::all(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(version),

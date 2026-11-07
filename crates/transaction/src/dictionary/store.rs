@@ -3,7 +3,10 @@
 
 use std::{
 	slice,
-	sync::atomic::{AtomicU64, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_codec::{
@@ -18,6 +21,7 @@ use reifydb_core::{
 	},
 	return_internal_error,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{Result, value::dictionary::DictionaryId};
 
 use crate::single::SingleTransaction;
@@ -37,7 +41,11 @@ pub struct DictEntryWrite {
 	pub index_value: EncodedPodRow,
 }
 
-pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
+pub fn remove_dictionary_entries(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+	dictionary: DictionaryId,
+) -> Result<()> {
 	let lock_key = DictionaryKey::encoded(dictionary);
 	let full_scans = [
 		DictionaryEntryKey::full_scan(dictionary).encode(),
@@ -46,11 +54,11 @@ pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: Diction
 	for full_scan in &full_scans {
 		loop {
 			let store = single.read_store();
-			let batch = SingleVersionRange::range_batch(&store, full_scan.clone(), 1024)?;
+			let batch = SingleVersionRange::range_batch(&store, ctx, full_scan.clone(), 1024)?;
 			if batch.items.is_empty() {
 				break;
 			}
-			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
+			let mut tx = single.begin_command_ranged(ctx, [&lock_key], full_scans.to_vec())?;
 			for item in &batch.items {
 				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
@@ -64,13 +72,15 @@ pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: Diction
 }
 
 pub struct SingleDictionaryStore {
+	ctx: Arc<TransactionContext>,
 	single: SingleTransaction,
 	reads: AtomicU64,
 }
 
 impl SingleDictionaryStore {
-	pub fn new(single: SingleTransaction) -> Self {
+	pub fn new(ctx: Arc<TransactionContext>, single: SingleTransaction) -> Self {
 		Self {
+			ctx,
 			single,
 			reads: AtomicU64::new(0),
 		}
@@ -85,13 +95,17 @@ impl DictionaryStore for SingleDictionaryStore {
 	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.reads.fetch_add(1, Ordering::Relaxed);
 		let store = self.single.read_store();
-		Ok(SingleVersionGet::get(&store, slice::from_ref(key))?.pop().flatten().map(|bytes| bytes.bytes))
+		Ok(SingleVersionGet::get(&store, &self.ctx, slice::from_ref(key))?
+			.pop()
+			.flatten()
+			.map(|bytes| bytes.bytes))
 	}
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {
 		let store = self.single.read_store();
 		let batch = SingleVersionRange::range_batch(
 			&store,
+			&self.ctx,
 			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
 			1,
 		)?;
@@ -109,7 +123,7 @@ impl DictionaryStore for SingleDictionaryStore {
 			DictionaryEntryKey::full_scan(dictionary).encode(),
 			DictionaryEntryIndexKey::full_scan(dictionary).encode(),
 		];
-		let mut txn = self.single.begin_command_ranged([&lock_key], ranges)?;
+		let mut txn = self.single.begin_command_ranged(&self.ctx, [&lock_key], ranges)?;
 		for write in writes {
 			txn.set(vec![(write.index_key.clone(), write.index_value.clone())])?;
 			txn.set(vec![(write.entry_key.clone(), write.entry_value.clone())])?;
@@ -125,10 +139,15 @@ mod tests {
 
 	use postcard::to_stdvec;
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, value_type::ValueType};
 
 	use super::SingleDictionaryStore;
 	use crate::{dictionary::DictionaryAllocatorRegistry, single::SingleTransaction};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn mints() -> Dictionary {
 		Dictionary {
@@ -148,11 +167,17 @@ mod tests {
 		let dictionary = mints();
 		let value = Value::Utf8("GvUCjmWSXA5hrTh9smmNA1AU55YCtP9mDLQcrKA1pump".to_string());
 
-		let warm = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+		let warm = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			system_ctx(),
+			single.clone(),
+		)));
 		let first = warm.intern_batch(&dictionary, slice::from_ref(&value)).unwrap().remove(0);
 		assert!(first.created, "first intern must create a new entry");
 
-		let cold = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+		let cold = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			system_ctx(),
+			single.clone(),
+		)));
 		let second = cold.intern_batch(&dictionary, slice::from_ref(&value)).unwrap().remove(0);
 
 		assert_eq!(

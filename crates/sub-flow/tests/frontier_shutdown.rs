@@ -6,13 +6,20 @@
 //! running-flow observable - a hydrated entry resolves as withheld until its producer republishes - so
 //! this suite reads the persisted keys directly rather than through the query surface.
 
+use std::sync::Arc;
+
 use reifydb::{
 	SqliteConfig, WithSubsystem,
 	core::{common::CommitVersion, interface::store::SingleVersionRange, key::output_frontier::OutputFrontierKey},
 	embedded,
 	testing::db::{TempDbPath, TestDb},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_value::value::duration::Duration;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const TIMEOUT: Duration = Duration::from_seconds_const(10);
 const SCAN_BATCH: u64 = 1024;
@@ -36,8 +43,13 @@ fn declare(db: &TestDb) {
 /// here because the frontier instant says nothing about which sweep wrote it.
 fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 	let store = db.engine().single().read_store();
-	let batch = SingleVersionRange::range_batch(&store, OutputFrontierKey::full_scan().encode(), SCAN_BATCH)
-		.expect("scan the output frontier keyspace");
+	let batch = SingleVersionRange::range_batch(
+		&store,
+		&system_ctx(),
+		OutputFrontierKey::full_scan().encode(),
+		SCAN_BATCH,
+	)
+	.expect("scan the output frontier keyspace");
 	batch.items
 		.iter()
 		.filter_map(|row| {

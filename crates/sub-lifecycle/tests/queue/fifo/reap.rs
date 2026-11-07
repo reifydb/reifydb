@@ -29,10 +29,15 @@ use reifydb_core::{
 	lifecycle::{metrics::RetentionMetrics, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_sub_lifecycle::{plane::RetentionPlane, queue::reap::QueueLeaseReapTask};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId, row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }";
 
@@ -63,7 +68,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -77,7 +82,7 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, Queue::UNPARTITIONED)])
+	SingleVersionGet::get(&store, &system_ctx(), &[QueuePartitionKey::encoded(queue, Queue::UNPARTITIONED)])
 		.unwrap()
 		.pop()
 		.flatten()

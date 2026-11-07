@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -19,6 +19,7 @@ use reifydb_routine_abi::{
 	context::ProcedureContext,
 	error::{QueueError, RoutineError},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{
 	queue::scheduling::{ReplayOutcome, apply_replay_transition, queue_partition_counters},
 	single::SingleTransaction,
@@ -76,6 +77,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 		let queue = resolve_queue_by_name(ctx.catalog, &mut *ctx.tx, &queue_name, &ctx.fragment)?;
 
 		let single = ctx.tx.single().clone();
+		let context = ctx.tx.context().clone();
 
 		let fragment = ctx.fragment.clone();
 		let unknown = || -> RoutineError {
@@ -88,11 +90,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 			.into()
 		};
 
-		let Some((partition, key_hash)) = locate(&single, &queue, row)? else {
+		let Some((partition, key_hash)) = locate(&context, &single, &queue, row)? else {
 			return Err(unknown());
 		};
 
-		let state = match apply_replay_transition(&single, queue.id, partition, row, key_hash)? {
+		let state = match apply_replay_transition(&context, &single, queue.id, partition, row, key_hash)? {
 			ReplayOutcome::Ready => "ready",
 			ReplayOutcome::Parked => "parked",
 			ReplayOutcome::Unknown => return Err(unknown()),
@@ -153,17 +155,20 @@ fn row_number_arg(value: &Value, argument_index: usize) -> Result<RowNumber, Rou
 }
 
 fn locate(
+	context: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: &Queue,
 	row: RowNumber,
 ) -> Result<Option<(Partition, Option<u64>)>, RoutineError> {
 	let store = single.read_store();
-	for (partition, _) in queue_partition_counters(single, queue.id)? {
-		let Some(stored) =
-			SingleVersionGet::get(&store, &[QueueItemStateKey::encoded(queue.id, partition, row)])?
-				.pop()
-				.flatten()
-		else {
+	for (partition, _) in queue_partition_counters(context, single, queue.id)? {
+		let Some(stored) = SingleVersionGet::get(
+			&store,
+			context,
+			&[QueueItemStateKey::encoded(queue.id, partition, row)],
+		)?
+		.pop()
+		.flatten() else {
 			continue;
 		};
 		let key_hash = decode_queue_item_state(EncodedPodRow::view(&stored.bytes))

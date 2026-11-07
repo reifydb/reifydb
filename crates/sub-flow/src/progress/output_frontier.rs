@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
@@ -8,6 +10,7 @@ use reifydb_core::{
 	key::output_frontier::OutputFrontierKey,
 };
 use reifydb_flow_async::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -34,13 +37,13 @@ fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
 	})
 }
 
-pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<()> {
+pub fn persist(ctx: &Arc<TransactionContext>, single: &SingleTransaction, entries: &FrontierEntries) -> Result<()> {
 	if entries.is_empty() {
 		return Ok(());
 	}
 
 	let anchor = OutputFrontierKey::encoded(entries[0].output);
-	let mut txn = single.begin_command_ranged([&anchor], vec![OutputFrontierKey::full_scan().encode()])?;
+	let mut txn = single.begin_command_ranged(ctx, [&anchor], vec![OutputFrontierKey::full_scan().encode()])?;
 	for entry in entries {
 		txn.set(vec![(OutputFrontierKey::new(entry.output), encode(entry).into_bytes())])?;
 	}
@@ -48,24 +51,25 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 	Ok(())
 }
 
-pub fn sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) {
-	if let Err(e) = try_sweep(single, frontiers) {
+pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputFrontiers) {
+	if let Err(e) = try_sweep(ctx, single, frontiers) {
 		warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again");
 	}
 }
 
-pub fn try_sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) -> Result<()> {
+pub fn try_sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputFrontiers) -> Result<()> {
 	let Some((generation, entries)) = frontiers.unpersisted() else {
 		return Ok(());
 	};
-	persist(single, &entries)?;
+	persist(ctx, single, &entries)?;
 	frontiers.mark_persisted(generation);
 	Ok(())
 }
 
-pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {
+pub fn hydrate(ctx: &Arc<TransactionContext>, store: &SingleStore) -> Result<FrontierEntries> {
 	let mut out = Vec::new();
-	let batch = SingleVersionRange::range_batch(store, OutputFrontierKey::full_scan().encode(), HYDRATE_BATCH)?;
+	let batch =
+		SingleVersionRange::range_batch(store, ctx, OutputFrontierKey::full_scan().encode(), HYDRATE_BATCH)?;
 	for row in batch.items {
 		let Some(key) = OutputFrontierKey::decode(&row.key) else {
 			continue;
@@ -79,10 +83,17 @@ pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_core::interface::catalog::{id::ViewId, object::ObjectId};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
 
@@ -122,8 +133,8 @@ mod tests {
 			},
 		];
 
-		persist(&single, &written).unwrap();
-		let mut read = hydrate(&single.read_store()).unwrap();
+		persist(&system_ctx(), &single, &written).unwrap();
+		let mut read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		read.sort_by_key(|entry| entry.at);
 
 		assert_eq!(read, written);
@@ -135,6 +146,7 @@ mod tests {
 		let single = SingleTransaction::testing();
 
 		persist(
+			&system_ctx(),
 			&single,
 			&vec![FrontierEntry {
 				output: OUTPUT,
@@ -144,6 +156,7 @@ mod tests {
 		)
 		.unwrap();
 		persist(
+			&system_ctx(),
 			&single,
 			&vec![FrontierEntry {
 				output: OUTPUT,
@@ -153,7 +166,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let read = hydrate(&single.read_store()).unwrap();
+		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 
 		assert_eq!(read.len(), 1, "the object must hold exactly one frontier row");
 		assert_eq!(read[0].frontier, at_millis(9_000));
@@ -165,7 +178,7 @@ mod tests {
 		// A phantom entry would resolve as visible and advance every consumer to the epoch on a fresh database.
 		let single = SingleTransaction::testing();
 
-		assert!(hydrate(&single.read_store()).unwrap().is_empty());
+		assert!(hydrate(&system_ctx(), &single.read_store()).unwrap().is_empty());
 	}
 
 	#[test]
@@ -173,9 +186,9 @@ mod tests {
 		// A quiet interval must not open a commit, otherwise an idle server writes forever.
 		let single = SingleTransaction::testing();
 
-		persist(&single, &Vec::new()).unwrap();
+		persist(&system_ctx(), &single, &Vec::new()).unwrap();
 
-		assert!(hydrate(&single.read_store()).unwrap().is_empty());
+		assert!(hydrate(&system_ctx(), &single.read_store()).unwrap().is_empty());
 	}
 
 	#[test]
@@ -185,9 +198,9 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
-		let read = hydrate(&single.read_store()).unwrap();
+		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read.len(), 1);
 		assert_eq!(read[0].frontier, at_millis(9_000));
 	}
@@ -198,9 +211,10 @@ mod tests {
 		let single = SingleTransaction::testing();
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
 		persist(
+			&system_ctx(),
 			&single,
 			&vec![FrontierEntry {
 				output: OUTPUT,
@@ -209,10 +223,10 @@ mod tests {
 			}],
 		)
 		.unwrap();
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
 		assert_eq!(
-			hydrate(&single.read_store()).unwrap()[0].frontier,
+			hydrate(&system_ctx(), &single.read_store()).unwrap()[0].frontier,
 			at_millis(1),
 			"the second sweep rewrote a row nothing had republished"
 		);
@@ -244,12 +258,12 @@ mod tests {
 
 		let (generation, entries) = frontiers.unpersisted().unwrap();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
-		persist(&single, &entries).unwrap();
+		persist(&system_ctx(), &single, &entries).unwrap();
 		frontiers.mark_persisted(generation);
 
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
-		assert_eq!(hydrate(&single.read_store()).unwrap()[0].frontier, at_millis(9_000));
+		assert_eq!(hydrate(&system_ctx(), &single.read_store()).unwrap()[0].frontier, at_millis(9_000));
 	}
 
 	#[test]
@@ -263,9 +277,9 @@ mod tests {
 			frontier: at_millis(9_000),
 			at: CommitVersion(10),
 		}]);
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
-		assert!(hydrate(&single.read_store()).unwrap().is_empty());
+		assert!(hydrate(&system_ctx(), &single.read_store()).unwrap().is_empty());
 	}
 
 	#[test]
@@ -274,12 +288,12 @@ mod tests {
 		let single = SingleTransaction::testing();
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
-		sweep(&single, &frontiers);
+		sweep(&system_ctx(), &single, &frontiers);
 
-		let read = hydrate(&single.read_store()).unwrap();
+		let read = hydrate(&system_ctx(), &single.read_store()).unwrap();
 		assert_eq!(read[0].frontier, at_millis(9_000));
 		assert_eq!(read[0].at, CommitVersion(20));
 	}

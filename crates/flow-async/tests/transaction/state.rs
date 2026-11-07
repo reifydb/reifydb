@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::Bound, slice};
+use std::{collections::Bound, slice, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -34,7 +34,11 @@ use reifydb_flow_async::transaction::{
 	state::{StateExtension, StateRange},
 	substrate::{FlowSubstrate, operator_section},
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_runtime::context::{
+	RuntimeContext,
+	clock::{Clock, MockClock},
+	transaction::TransactionContext,
+};
 use reifydb_store_operator::types::{LayeredPre, OperatorWrite, classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{interceptor::interceptors::Interceptors, multi::RangeScope};
@@ -45,6 +49,10 @@ use reifydb_value::{
 };
 
 use crate::common::{create_test_transaction, next_lsn};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
@@ -94,6 +102,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
+		ctx: system_ctx(),
 		version,
 		pending: Pending::new(),
 		query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
@@ -403,6 +412,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 	assert!(low_version < committed_at);
 
 	let mut txn = DeferredTransaction::new(DeferredParams {
+		ctx: system_ctx(),
 		version: low_version,
 		pending: Pending::new(),
 		query: Some(engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap()),

@@ -22,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 };
 use reifydb_sqlite::SqliteConfig;
@@ -38,6 +38,10 @@ use reifydb_value::{
 };
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
@@ -122,23 +126,23 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	};
 
 	let all: Vec<_> = store
-		.range(PartitionedRowKey::full_scan(storage).encode(), scope, 1024)
+		.range(&system_ctx(), PartitionedRowKey::full_scan(storage).encode(), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
 	let us_rows: Vec<_> = store
-		.range(PartitionedRowKey::partition_range(storage, us).encode(), scope, 1024)
+		.range(&system_ctx(), PartitionedRowKey::partition_range(storage, us).encode(), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
 
 	assert!(
-		store.get(from_ref(&k_us1), CommitVersion(2)).unwrap().remove(0).is_some(),
+		store.get(&system_ctx(), from_ref(&k_us1), CommitVersion(2)).unwrap().remove(0).is_some(),
 		"flushed partitioned row readable via point get"
 	);
 	assert!(
-		store.get(from_ref(&k_us3), CommitVersion(2)).unwrap().remove(0).is_some(),
+		store.get(&system_ctx(), from_ref(&k_us3), CommitVersion(2)).unwrap().remove(0).is_some(),
 		"buffered partitioned row readable via point get"
 	);
 
@@ -146,6 +150,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	assert!(
 		persistent
 			.get(
+				&system_ctx(),
 				EntryKind::PartitionedSource(storage, EntryLayout::Row),
 				std::slice::from_ref(&k_us1.encode().as_ref()),
 				CommitVersion(2)
@@ -158,7 +163,12 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	);
 	assert!(
 		persistent
-			.get(EntryKind::Multi, std::slice::from_ref(&k_us1.encode().as_ref()), CommitVersion(2))
+			.get(
+				&system_ctx(),
+				EntryKind::Multi,
+				std::slice::from_ref(&k_us1.encode().as_ref()),
+				CommitVersion(2)
+			)
 			.unwrap()
 			.remove(0)
 			.value()

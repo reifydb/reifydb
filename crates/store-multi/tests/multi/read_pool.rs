@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{slice::from_ref, thread};
+use std::{slice::from_ref, sync::Arc, thread};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -13,8 +13,13 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
@@ -48,7 +53,10 @@ fn concurrent_reads_during_writes_no_deadlock() {
 			thread::spawn(move || {
 				for _ in 0..500 {
 					// v0 was committed before any reader started, so None is never correct here.
-					let got = store.get(from_ref(&key), CommitVersion(u64::MAX)).unwrap().remove(0);
+					let got = store
+						.get(&system_ctx(), from_ref(&key), CommitVersion(u64::MAX))
+						.unwrap()
+						.remove(0);
 					assert!(got.is_some());
 				}
 			})
@@ -72,6 +80,6 @@ fn concurrent_reads_during_writes_no_deadlock() {
 		reader.join().expect("reader thread panicked (deadlock or read error)");
 	}
 
-	let final_value = store.get(from_ref(&key), CommitVersion(u64::MAX)).unwrap().remove(0).unwrap();
+	let final_value = store.get(&system_ctx(), from_ref(&key), CommitVersion(u64::MAX)).unwrap().remove(0).unwrap();
 	assert_eq!(final_value.bytes.as_slice(), format!("v{last}").as_bytes());
 }

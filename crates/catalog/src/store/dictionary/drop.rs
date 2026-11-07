@@ -24,10 +24,11 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use std::slice::from_ref;
+	use std::{slice::from_ref, sync::Arc};
 
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
@@ -37,6 +38,10 @@ pub mod tests {
 	};
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	#[test]
 	fn test_drop_dictionary() {
@@ -101,23 +106,39 @@ pub mod tests {
 		let entry_key = entry.encode();
 		let index_key = index.encode();
 		txn.single
-			.with_command([&entry_key, &index_key], |tx| {
+			.with_command(&system_ctx(), [&entry_key, &index_key], |tx| {
 				tx.set(vec![(entry.clone(), EncodedBytes(CowVec::new(entry_value.clone())))])?;
 				tx.set(vec![(index.clone(), EncodedBytes(CowVec::new(dummy_value.clone())))])
 			})
 			.unwrap();
 
-		let found = txn.single.with_query([&entry_key], |tx| tx.get(from_ref(&entry_key))).unwrap().remove(0);
+		let found = txn
+			.single
+			.with_query(&system_ctx(), [&entry_key], |tx| tx.get(from_ref(&entry_key)))
+			.unwrap()
+			.remove(0);
 		assert!(found.is_some());
-		let found = txn.single.with_query([&index_key], |tx| tx.get(from_ref(&index_key))).unwrap().remove(0);
+		let found = txn
+			.single
+			.with_query(&system_ctx(), [&index_key], |tx| tx.get(from_ref(&index_key)))
+			.unwrap()
+			.remove(0);
 		assert!(found.is_some());
 
 		CatalogStore::drop_dictionary(&mut txn, dict_def.id).unwrap();
 
 		// Entries removed before the commit are lost for good if the drop rolls back.
-		let found = txn.single.with_query([&entry_key], |tx| tx.get(from_ref(&entry_key))).unwrap().remove(0);
+		let found = txn
+			.single
+			.with_query(&system_ctx(), [&entry_key], |tx| tx.get(from_ref(&entry_key)))
+			.unwrap()
+			.remove(0);
 		assert!(found.is_some());
-		let found = txn.single.with_query([&index_key], |tx| tx.get(from_ref(&index_key))).unwrap().remove(0);
+		let found = txn
+			.single
+			.with_query(&system_ctx(), [&index_key], |tx| tx.get(from_ref(&index_key)))
+			.unwrap()
+			.remove(0);
 		assert!(found.is_some());
 
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict_def.id).unwrap();

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
@@ -12,9 +14,14 @@ use reifydb_core::{
 	},
 	key::queue::QueueItemStateKey,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, datetime::DateTime, frame::frame::Frame};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }";
 
@@ -35,7 +42,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()

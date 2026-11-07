@@ -30,6 +30,7 @@ use reifydb_flow_async::{
 		DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction, frontier::Frontier,
 	},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
@@ -320,6 +321,7 @@ impl SliceComputer {
 		let interceptors = self.engine.create_interceptors();
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: state_version,
 			pending: Pending::new(),
 			query: None,
@@ -363,6 +365,7 @@ impl SliceComputer {
 		query.read_as_of_version_inclusive(state_version);
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: state_version,
 			pending: Pending::new(),
 			query: Some(query),
@@ -399,6 +402,7 @@ impl SliceComputer {
 			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &lease)?;
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: state_version,
 			pending: Pending::new(),
 			query: Some(query),
@@ -785,7 +789,12 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashSet, slice::from_ref, sync::mpsc, thread::sleep};
+	use std::{
+		collections::HashSet,
+		slice::from_ref,
+		sync::{Arc, mpsc},
+		thread::sleep,
+	};
 
 	use reifydb_core::{
 		actors::pending::PendingWrite,
@@ -818,7 +827,7 @@ mod integration {
 			watermark::SourceWatermarks,
 		},
 	};
-	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
 		commit::{CommitBegin, CommitHandle},
@@ -841,6 +850,10 @@ mod integration {
 		discovery::routing,
 		progress::tracker::FlowPositionTracker,
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn spawn_committer(engine: &StandardEngine) -> CommitterHandle {
 		let committer = Committer::new(
@@ -960,6 +973,7 @@ mod integration {
 		query.read_as_of_version_inclusive(version);
 
 		DeferredTransaction::new(DeferredParams {
+			ctx: system_ctx(),
 			version,
 			pending: Pending::new(),
 			query: Some(query),
@@ -1266,6 +1280,7 @@ mod integration {
 					);
 
 					let mut pinned = DeferredTransaction::new(DeferredParams {
+						ctx: system_ctx(),
 						version: advance_to,
 						pending: Pending::new(),
 						query: Some(engine
@@ -1390,6 +1405,7 @@ mod integration {
 					// Asserted for operator state as well as rows, since both must resolve from the
 					// store alone.
 					let mut pinned = DeferredTransaction::new(DeferredParams {
+						ctx: system_ctx(),
 						version: advance_to,
 						pending: Pending::new(),
 						query: Some(engine

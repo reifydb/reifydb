@@ -7,15 +7,20 @@ use std::sync::{
 };
 
 use reifydb_core::{common::CommitVersion, key::any::TaggedKey};
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
+
 const COUNTER: u64 = 1;
 
 fn read_counter(txn: &mut MultiWriteTransaction, key: &TaggedKey) -> u64 {
-	let sv = txn.get(&[key.clone()]).unwrap().pop().flatten().unwrap();
+	let sv = txn.get(&system_ctx(), &[key.clone()]).unwrap().pop().flatten().unwrap();
 	let row = sv.bytes();
 	from_bytes!(u64, row)
 }
@@ -28,7 +33,7 @@ fn test_self_cancelling_writer_still_takes_a_commit_version() {
 
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
-	txn.remove(vec![(key.clone(), None)]).unwrap();
+	txn.remove(&system_ctx(), vec![(key.clone(), None)]).unwrap();
 
 	let version = txn.commit().unwrap();
 	assert_ne!(
@@ -51,7 +56,7 @@ fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() 
 
 	winner.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
 	canceller.set(vec![(key.clone(), as_values!(2u64))]).unwrap();
-	canceller.remove(vec![(key.clone(), None)]).unwrap();
+	canceller.remove(&system_ctx(), vec![(key.clone(), None)]).unwrap();
 
 	winner.commit().unwrap();
 

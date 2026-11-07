@@ -18,6 +18,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::TierBatch;
 use reifydb_store_multi::{
 	store::StandardMultiStore,
@@ -26,6 +27,10 @@ use reifydb_store_multi::{
 use reifydb_value::{cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn row_key(n: u64) -> EncodedKey {
 	RowKey {
@@ -70,10 +75,14 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(from_ref(&TaggedKey::decode(k).expect("the test key must decode")), CommitVersion(version))
-		.unwrap()
-		.remove(0)
-		.map(|r| r.bytes.to_vec())
+	store.get(
+		&system_ctx(),
+		from_ref(&TaggedKey::decode(k).expect("the test key must decode")),
+		CommitVersion(version),
+	)
+	.unwrap()
+	.remove(0)
+	.map(|r| r.bytes.to_vec())
 }
 
 fn reads(store: &StandardMultiStore) -> MultiReadMetrics {

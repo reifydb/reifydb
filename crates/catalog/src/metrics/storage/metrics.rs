@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::interface::{
 	catalog::metrics::{MetricsId, storage::MultiStorageMetrics},
 	store::{SingleVersionStore, Tier},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::Result;
 
 use crate::metrics::storage::multi::StorageMetricsReader;
@@ -34,9 +37,9 @@ pub struct MetricsReader<S> {
 }
 
 impl<S: SingleVersionStore> MetricsReader<S> {
-	pub fn new(storage: S) -> Self {
+	pub fn new(ctx: Arc<TransactionContext>, storage: S) -> Self {
 		Self {
-			storage: StorageMetricsReader::new(storage),
+			storage: StorageMetricsReader::new(ctx, storage),
 		}
 	}
 

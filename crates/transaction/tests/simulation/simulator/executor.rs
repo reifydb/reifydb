@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use reifydb_codec::{
 	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
@@ -16,6 +19,7 @@ use reifydb_core::{
 	key::{bound::TaggedKeyBoundRange, catalog::IndexEntryKey},
 	value::index::encoded::EncodedIndexKey,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::{
 	RangeScope,
 	transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
@@ -23,6 +27,10 @@ use reifydb_transaction::multi::{
 use reifydb_value::util::cowvec::CowVec;
 
 use super::schedule::{Op, Schedule, Step, TxId};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[derive(Debug)]
 pub enum OpResult {
@@ -156,7 +164,7 @@ impl Executor {
 					key,
 				} => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => match tx
-						.get(&[encode_key(key).into()])
+						.get(&system_ctx(), &[encode_key(key).into()])
 						.map(|mut found| found.pop().flatten())
 					{
 						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
@@ -167,7 +175,7 @@ impl Executor {
 						}
 					},
 					Some(TxHandle::Read(rx)) => match rx
-						.get(&[encode_key(key).into()])
+						.get(&system_ctx(), &[encode_key(key).into()])
 						.map(|mut found| found.pop().flatten())
 					{
 						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
@@ -183,7 +191,7 @@ impl Executor {
 					key,
 				} => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => {
-						match tx.remove(vec![(encode_key(key).into(), None)]) {
+						match tx.remove(&system_ctx(), vec![(encode_key(key).into(), None)]) {
 							Ok(()) => OpResult::Ok,
 							Err(e) => {
 								handles.remove(&tx_id);
@@ -198,8 +206,13 @@ impl Executor {
 				},
 				Op::Scan => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => {
-						match tx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
-							.collect::<Result<Vec<_>, _>>()
+						match tx.range(
+							&system_ctx(),
+							TaggedKeyBoundRange::all(),
+							RangeScope::All,
+							1024,
+						)
+						.collect::<Result<Vec<_>, _>>()
 						{
 							Ok(items) => {
 								let pairs = items
@@ -222,8 +235,13 @@ impl Executor {
 						}
 					}
 					Some(TxHandle::Read(rx)) => {
-						match rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
-							.collect::<Result<Vec<_>, _>>()
+						match rx.range(
+							&system_ctx(),
+							TaggedKeyBoundRange::all(),
+							RangeScope::All,
+							1024,
+						)
+						.collect::<Result<Vec<_>, _>>()
 						{
 							Ok(items) => {
 								let pairs = items
@@ -294,7 +312,7 @@ impl Executor {
 	fn read_final_state(&self) -> BTreeMap<String, String> {
 		let rx = self.engine.begin_query(self.engine.generate_transaction_id()).unwrap();
 		let items: Vec<_> = rx
-			.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+			.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 

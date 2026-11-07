@@ -53,6 +53,7 @@ mod tests {
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
+		transaction::TransactionContext,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore};
@@ -72,6 +73,10 @@ mod tests {
 		deferred::{DeferredTransaction, StorageCounts},
 		mock::FlowTxn,
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -135,7 +140,7 @@ mod tests {
 		let query =
 			engine.inner().multi().begin_query(engine.inner().multi().generate_transaction_id()).unwrap();
 		EncodedTableRow::from(
-			query.get(&[key.clone().into()])
+			query.get(&system_ctx(), &[key.clone().into()])
 				.unwrap()
 				.pop()
 				.flatten()
@@ -251,6 +256,7 @@ mod tests {
 
 		let intern = |value: &str| -> u128 {
 			let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+				system_ctx(),
 				engine.single().clone(),
 			)));
 			registry.intern_batch(&dictionary, &[Value::Utf8(value.to_string())])
@@ -272,7 +278,7 @@ mod tests {
 		let decode = |id: u128| -> String {
 			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id);
 			let store = engine.single().read_store();
-			let row = SingleVersionGet::get(&store, slice::from_ref(&key))
+			let row = SingleVersionGet::get(&store, &system_ctx(), slice::from_ref(&key))
 				.unwrap()
 				.pop()
 				.flatten()

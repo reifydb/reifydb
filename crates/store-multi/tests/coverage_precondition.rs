@@ -22,11 +22,16 @@ use reifydb_core::{
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -77,6 +82,7 @@ fn flush(store: &StandardMultiStore, cutoff: u64) {
 
 fn scan(store: &StandardMultiStore, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
 	store.range(
+		&system_ctx(),
 		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(read),
@@ -94,6 +100,7 @@ fn complete_pages(store: &StandardMultiStore) -> usize {
 
 fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
 	store.range(
+		&system_ctx(),
 		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::Between {
 			after: CommitVersion(after),

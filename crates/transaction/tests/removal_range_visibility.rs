@@ -18,8 +18,10 @@ use reifydb_core::{
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
+		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	pool::Pools,
 	version_epoch::VersionEpoch,
@@ -33,6 +35,10 @@ use reifydb_transaction::{
 	wal::{memory_wal, replay},
 };
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn test_engine() -> MultiTransaction {
 	let multi_store = MultiStore::testing_memory();
@@ -62,7 +68,7 @@ fn coord_key(storage: u64, row: u64) -> RowKey {
 
 fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<TaggedKey> {
 	let query = MultiReadTransaction::new(engine.clone(), engine.generate_transaction_id(), None).unwrap();
-	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
+	query.range(&system_ctx(), RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
 		.collect()
 }

@@ -20,7 +20,7 @@ use reifydb_runtime::{
 		mailbox::ActorRef,
 		system::{ActorSpawner, ActorSystem},
 	},
-	context::clock::Clock,
+	context::{clock::Clock, transaction::TransactionContext},
 	shutdown::Shutdown,
 	sync::mutex::Mutex,
 };
@@ -239,14 +239,14 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionGet for StandardSingleStore {
-	#[instrument(name = "store::single::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	#[instrument(name = "store::single::get", level = "trace", skip(self, ctx, keys), fields(keys = keys.len()))]
+	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		let mut rows = Vec::with_capacity(keys.len());
 		let mut misses = Vec::new();
 		let mut buffered = match &self.commit {
 			Some(buffer) => {
 				let key_slices: Vec<&[u8]> = keys.iter().map(|key| key.as_ref()).collect();
-				buffer.get_with_tombstone(&key_slices)?
+				buffer.get_with_tombstone(ctx, &key_slices)?
 			}
 			None => vec![None; keys.len()],
 		};
@@ -268,7 +268,7 @@ impl SingleVersionGet for StandardSingleStore {
 		{
 			let probed: Vec<&[u8]> = misses.iter().map(|&index| keys[index].as_ref()).collect();
 			self.persistent_probes.fetch_add(misses.len() as u64, Ordering::Relaxed);
-			for (index, value) in misses.into_iter().zip(persistent.get(&probed)?) {
+			for (index, value) in misses.into_iter().zip(persistent.get(ctx, &probed)?) {
 				match value {
 					Some(value) => {
 						rows[index] = Some(SingleVersionRow {
@@ -334,22 +334,28 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionRange for StandardSingleStore {
-	#[instrument(name = "store::single::range_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
-	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		Ok(Self::materialize_batch(self.merge_tiers(&range, batch_size, Direction::Forward)?, batch_size))
+	#[instrument(name = "store::single::range_batch", level = "trace", skip(self, ctx), fields(batch_size = batch_size))]
+	fn range_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch> {
+		Ok(Self::materialize_batch(self.merge_tiers(ctx, &range, batch_size, Direction::Forward)?, batch_size))
 	}
 }
 
 impl StandardSingleStore {
 	fn merge_tiers(
 		&self,
+		ctx: &TransactionContext,
 		range: &EncodedKeyRange,
 		batch_size: u64,
 		direction: Direction,
 	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>> {
 		loop {
 			let evictions = self.tombstone_evictions.load(Ordering::SeqCst);
-			let entries = self.merge_tiers_once(range, batch_size, direction)?;
+			let entries = self.merge_tiers_once(ctx, range, batch_size, direction)?;
 			if self.tombstone_evictions.load(Ordering::SeqCst) == evictions {
 				return Ok(entries);
 			}
@@ -358,6 +364,7 @@ impl StandardSingleStore {
 
 	fn merge_tiers_once(
 		&self,
+		ctx: &TransactionContext,
 		range: &EncodedKeyRange,
 		batch_size: u64,
 		direction: Direction,
@@ -371,8 +378,15 @@ impl StandardSingleStore {
 		loop {
 			match &self.commit {
 				Some(buffer) => {
-					let batch =
-						read_page(buffer, &mut buffer_cursor, &start, &end, page, direction)?;
+					let batch = read_page(
+						ctx,
+						buffer,
+						&mut buffer_cursor,
+						&start,
+						&end,
+						page,
+						direction,
+					)?;
 					for entry in batch.entries {
 						entries.insert(entry.key, entry.value);
 					}
@@ -382,6 +396,7 @@ impl StandardSingleStore {
 			match &self.persistent {
 				Some(persistent) => {
 					let batch = read_page(
+						ctx,
 						persistent,
 						&mut persistent_cursor,
 						&start,
@@ -443,9 +458,17 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionRangeRev for StandardSingleStore {
-	#[instrument(name = "store::single::range_rev_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
-	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		Ok(Self::materialize_batch_rev(self.merge_tiers(&range, batch_size, Direction::Reverse)?, batch_size))
+	#[instrument(name = "store::single::range_rev_batch", level = "trace", skip(self, ctx), fields(batch_size = batch_size))]
+	fn range_rev_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch> {
+		Ok(Self::materialize_batch_rev(
+			self.merge_tiers(ctx, &range, batch_size, Direction::Reverse)?,
+			batch_size,
+		))
 	}
 }
 
@@ -488,6 +511,7 @@ impl StandardSingleStore {
 impl SingleVersionStore for StandardSingleStore {}
 
 fn read_page<T: TierStorage>(
+	ctx: &TransactionContext,
 	tier: &T,
 	cursor: &mut RangeCursor,
 	start: &Bound<Vec<u8>>,
@@ -499,8 +523,8 @@ fn read_page<T: TierStorage>(
 		return Ok(RangeBatch::empty());
 	}
 	match direction {
-		Direction::Forward => tier.range_next(cursor, bound_as_ref(start), bound_as_ref(end), page),
-		Direction::Reverse => tier.range_rev_next(cursor, bound_as_ref(start), bound_as_ref(end), page),
+		Direction::Forward => tier.range_next(ctx, cursor, bound_as_ref(start), bound_as_ref(end), page),
+		Direction::Reverse => tier.range_rev_next(ctx, cursor, bound_as_ref(start), bound_as_ref(end), page),
 	}
 }
 
@@ -564,7 +588,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
-	use std::{panic, thread};
+	use std::{panic, sync::Arc, thread};
 
 	use reifydb_core::{
 		delta::{RemoveAnnounce, SetPre},
@@ -574,10 +598,15 @@ mod tests {
 		},
 		key::{any::TaggedKey, queue::QueueDeduplicationKey},
 	};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_sqlite::SqliteTempPathGuard;
 
 	use super::*;
 	use crate::config::PersistentConfig;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	struct NoWal;
 
@@ -855,8 +884,16 @@ mod tests {
 			.unwrap();
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &[present.encode()]).unwrap().pop().flatten().is_some());
-		assert!(SingleVersionGet::get(&store, &[removed.encode()]).unwrap().pop().flatten().is_none());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[present.encode()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.is_some());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[removed.encode()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.is_none());
 
 		assert_eq!(
 			probes(&store),
@@ -873,7 +910,7 @@ mod tests {
 		seed_persistent(&store, &k, "9");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_some());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[k.encode()]).unwrap().pop().flatten().is_some());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1),
@@ -888,7 +925,7 @@ mod tests {
 		let k = key("never-written");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_none());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[k.encode()]).unwrap().pop().flatten().is_none());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -899,7 +936,11 @@ mod tests {
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
 		let store = StandardSingleStore::testing_memory();
-		assert!(SingleVersionGet::get(&store, &[key("anything").encode()]).unwrap().pop().flatten().is_none());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[key("anything").encode()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.is_none());
 		assert!(store.persistent_probe_metrics().is_none());
 	}
 
@@ -933,8 +974,13 @@ mod tests {
 	fn assert_scans_match(store: &StandardSingleStore, model: &BTreeMap<EncodedKey, Vec<u8>>, stage: &str) {
 		for batch_size in [0u64, 1, 2, 10, 63, 64, 65, 500, 4096, 100_000] {
 			let wanted = batch_size as usize;
-			let forward =
-				SingleVersionRange::range_batch(store, EncodedKeyRange::all(), batch_size).unwrap();
+			let forward = SingleVersionRange::range_batch(
+				store,
+				&system_ctx(),
+				EncodedKeyRange::all(),
+				batch_size,
+			)
+			.unwrap();
 			let expected: Vec<(&EncodedKey, &Vec<u8>)> = model.iter().take(wanted).collect();
 			let actual: Vec<(&EncodedKey, Vec<u8>)> =
 				forward.items.iter().map(|row| (&row.key, row.bytes.as_ref().to_vec())).collect();
@@ -952,8 +998,13 @@ mod tests {
 				"{stage}: forward has_more at {batch_size}"
 			);
 
-			let reverse = SingleVersionRangeRev::range_rev_batch(store, EncodedKeyRange::all(), batch_size)
-				.unwrap();
+			let reverse = SingleVersionRangeRev::range_rev_batch(
+				store,
+				&system_ctx(),
+				EncodedKeyRange::all(),
+				batch_size,
+			)
+			.unwrap();
 			let expected: Vec<(&EncodedKey, &Vec<u8>)> = model.iter().rev().take(wanted).collect();
 			let actual: Vec<(&EncodedKey, Vec<u8>)> =
 				reverse.items.iter().map(|row| (&row.key, row.bytes.as_ref().to_vec())).collect();
@@ -1020,9 +1071,9 @@ mod tests {
 		assert!(tiered.flush_pending_blocking());
 		let all = EncodedKeyRange::all();
 		for direction in [Direction::Forward, Direction::Reverse] {
-			let read = memory.merge_tiers(&all, 10, direction).unwrap().len() as u64;
+			let read = memory.merge_tiers(&system_ctx(), &all, 10, direction).unwrap().len() as u64;
 			assert!(read <= MIN_SCAN_PAGE, "a memory scan for 10 read {read} keys");
-			let read = tiered.merge_tiers(&all, 10, direction).unwrap().len() as u64;
+			let read = tiered.merge_tiers(&system_ctx(), &all, 10, direction).unwrap().len() as u64;
 			assert!(read <= MIN_SCAN_PAGE * 2, "a tiered scan for 10 read {read} keys");
 		}
 	}
@@ -1037,7 +1088,7 @@ mod tests {
 		}
 		assert!(store.flush_pending_blocking());
 		let all = EncodedKeyRange::all();
-		let first = SingleVersionRangeRev::range_rev_batch(&store, all.clone(), 5_000).unwrap();
+		let first = SingleVersionRangeRev::range_rev_batch(&store, &system_ctx(), all.clone(), 5_000).unwrap();
 		for row in &first.items[..4_000] {
 			SingleVersionCommit::commit(
 				&mut store,
@@ -1050,7 +1101,7 @@ mod tests {
 		}
 		assert!(store.flush_pending_blocking());
 
-		let read = store.merge_tiers(&all, 10, Direction::Reverse).unwrap().len() as u64;
+		let read = store.merge_tiers(&system_ctx(), &all, 10, Direction::Reverse).unwrap().len() as u64;
 		assert!(read <= MIN_SCAN_PAGE * 2, "a scan after a flush walked {read} keys, so tombstones survived");
 		let (resident, _) = store.commit.as_ref().unwrap().memory_usage();
 		assert_eq!(resident, 1_000, "flushed tombstones must leave the commit buffer");
@@ -1072,7 +1123,7 @@ mod tests {
 		write_value(&mut store, &back, b"2");
 
 		let read = |store: &StandardSingleStore, k: &TaggedKey| {
-			SingleVersionGet::get(store, &[k.encode()]).unwrap().pop().flatten()
+			SingleVersionGet::get(store, &system_ctx(), &[k.encode()]).unwrap().pop().flatten()
 		};
 		assert!(read(&store, &gone).is_none(), "a flushed delete must stay deleted");
 		assert_eq!(read(&store, &back).unwrap().bytes.as_ref(), b"2", "a rewrite after the delete must win");
@@ -1081,7 +1132,7 @@ mod tests {
 		assert_eq!(read(&store, &back).unwrap().bytes.as_ref(), b"2", "the rewrite must survive its own flush");
 		let persistent = store.persistent.as_ref().unwrap();
 		assert_eq!(
-			persistent.get_with_tombstone(&[gone.encode().as_ref()]).unwrap().remove(0),
+			persistent.get_with_tombstone(&system_ctx(), &[gone.encode().as_ref()]).unwrap().remove(0),
 			None,
 			"a delete must remove the row, otherwise every scan keeps walking it"
 		);
@@ -1096,7 +1147,7 @@ mod tests {
 		write_value(&mut store, &k, b"1");
 		remove_key(&mut store, &k);
 		assert_eq!(store.commit.as_ref().unwrap().memory_usage().0, 0);
-		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_none());
+		assert!(SingleVersionGet::get(&store, &system_ctx(), &[k.encode()]).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]
@@ -1108,8 +1159,13 @@ mod tests {
 			write_value(&mut store, &numbered(index), b"v");
 		}
 		assert!(store.flush_pending_blocking());
-		let ordered =
-			SingleVersionRangeRev::range_rev_batch(&store, EncodedKeyRange::all(), KEYS as u64).unwrap();
+		let ordered = SingleVersionRangeRev::range_rev_batch(
+			&store,
+			&system_ctx(),
+			EncodedKeyRange::all(),
+			KEYS as u64,
+		)
+		.unwrap();
 		let keys: Vec<EncodedKey> = ordered.items.iter().map(|row| row.key.clone()).collect();
 
 		let removed = AtomicUsize::new(0);
@@ -1127,8 +1183,13 @@ mod tests {
 			});
 			while removed.load(Ordering::SeqCst) < KEYS {
 				let floor = removed.load(Ordering::SeqCst);
-				let batch = SingleVersionRangeRev::range_rev_batch(&store, EncodedKeyRange::all(), 16)
-					.unwrap();
+				let batch = SingleVersionRangeRev::range_rev_batch(
+					&store,
+					&system_ctx(),
+					EncodedKeyRange::all(),
+					16,
+				)
+				.unwrap();
 				for row in &batch.items {
 					let position = keys.binary_search_by(|key| row.key.cmp(key)).unwrap();
 					assert!(
@@ -1181,9 +1242,14 @@ mod tests {
 		buffer.remove_tombstones(&[&live, &removed, &absent]);
 
 		assert_eq!(
-			buffer.get_with_tombstone(&[live.as_ref()]).unwrap().remove(0).flatten().unwrap().as_ref(),
+			buffer.get_with_tombstone(&system_ctx(), &[live.as_ref()])
+				.unwrap()
+				.remove(0)
+				.flatten()
+				.unwrap()
+				.as_ref(),
 			b"1"
 		);
-		assert_eq!(buffer.get_with_tombstone(&[removed.as_ref()]).unwrap().remove(0), None);
+		assert_eq!(buffer.get_with_tombstone(&system_ctx(), &[removed.as_ref()]).unwrap().remove(0), None);
 	}
 }

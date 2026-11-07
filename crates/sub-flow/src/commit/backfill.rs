@@ -5,6 +5,7 @@ use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	iter::once,
 	num::NonZeroU64,
+	sync::Arc,
 };
 
 use arrow_array::{Array, RecordBatch, TimestampNanosecondArray};
@@ -42,6 +43,7 @@ use reifydb_flow_async::{
 	operator::InputOrder,
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{
 	multi::{RangeScope, lease::VersionLeaseGuard},
 	transaction::Transaction,
@@ -224,6 +226,7 @@ pub(crate) fn compute_unit_backfill(
 	let batch_size = query_batch_size(engine)?;
 	let services = engine.services();
 	let mut txn = DeferredTransaction::new(DeferredParams {
+		ctx: Arc::new(TransactionContext::system(engine.runtime_context().clone())),
 		version,
 		pending: Pending::new(),
 		query: Some(engine
@@ -412,7 +415,7 @@ mod tests {
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{FlowTransaction, substrate::FlowSubstrate},
 	};
-	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::commit::{CommitBegin, CommitHandle};
 	use reifydb_value::{
@@ -428,6 +431,10 @@ mod tests {
 		},
 		progress::tracker::FlowPositionTracker,
 	};
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn backfill_and_commit(te: &TestEngine) -> (CommitVersion, FlowMaterialization) {
 		let engine = te.inner().clone();
@@ -530,6 +537,7 @@ mod tests {
 
 		let (version, lease) = engine.acquire_current_snapshot_lease().expect("snapshot lease");
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: system_ctx(),
 			version,
 			pending: Pending::new(),
 			query: Some(engine

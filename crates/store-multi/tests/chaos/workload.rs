@@ -3,7 +3,7 @@
 
 //! Seeded operation generator + the per-read differential checks against the oracle.
 
-use std::{collections::HashMap, ops::Bound, slice::from_ref};
+use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{
@@ -16,6 +16,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious},
 	key::{any::TaggedKey, row::RowKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
@@ -26,6 +27,10 @@ use crate::{
 	fixtures::{flush, sync_persistent_store, sync_persistent_store_with_tiers, tiny_tiers},
 	oracle::{Oracle, RangeFilter, Scope},
 };
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[derive(Clone, Debug)]
 pub struct Params {
@@ -62,7 +67,7 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 	);
 	for (name, store) in configs {
 		let got = store
-			.get(from_ref(&key), CommitVersion(read))
+			.get(&system_ctx(), from_ref(&key), CommitVersion(read))
 			.unwrap()
 			.remove(0)
 			.map(|r| (r.bytes.to_vec(), r.version.0));
@@ -92,7 +97,7 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 	}
 	for (name, store) in configs {
 		let found: HashMap<EncodedKey, (Vec<u8>, u64)> = store
-			.get_versioned(&keys, CommitVersion(read))
+			.get_versioned(&system_ctx(), &keys, CommitVersion(read))
 			.unwrap()
 			.into_iter()
 			.filter_map(|(key, result)| match result {
@@ -135,9 +140,9 @@ fn collect_range(
 	reverse: bool,
 ) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
 	let rows = if reverse {
-		store.range_rev(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(&system_ctx(), range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(&system_ctx(), range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter().map(|r| (r.key.encode().to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
@@ -244,7 +249,7 @@ pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: 
 	let expected = oracle.prev(row, before);
 	for (name, store) in configs {
 		let got = store
-			.get_previous(from_ref(&key), CommitVersion(before))
+			.get_previous(&system_ctx(), from_ref(&key), CommitVersion(before))
 			.unwrap()
 			.remove(0)
 			.map(|r| (r.bytes.to_vec(), r.version.0));

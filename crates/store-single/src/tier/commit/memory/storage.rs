@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::heap::HeapSize;
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{context::transaction::TransactionContext, sync::rwlock::RwLock};
 use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -74,14 +74,18 @@ impl MemoryRowStorage {
 }
 
 impl TierStorage for MemoryRowStorage {
-	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
+	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		let map = self.inner.data.read();
 		Ok(keys.iter().map(|key| map.get(*key).cloned().flatten()).collect())
 	}
 
-	#[instrument(name = "store::single::memory::get_with_tombstone", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	#[instrument(name = "store::single::memory::get_with_tombstone", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
+	fn get_with_tombstone(
+		&self,
+		_ctx: &TransactionContext,
+		keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		let map = self.inner.data.read();
 		Ok(keys.iter().map(|key| map.get(*key).cloned()).collect())
 	}
@@ -95,9 +99,10 @@ impl TierStorage for MemoryRowStorage {
 		Ok(())
 	}
 
-	#[instrument(name = "store::single::memory::range_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::memory::range_next", level = "trace", skip(self, _ctx, cursor))]
 	fn range_next(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -139,9 +144,10 @@ impl TierStorage for MemoryRowStorage {
 		})
 	}
 
-	#[instrument(name = "store::single::memory::range_rev_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::memory::range_rev_next", level = "trace", skip(self, _ctx, cursor))]
 	fn range_rev_next(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,

@@ -9,6 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
@@ -17,10 +19,15 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, catalog::IndexEntryKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_bound, as_key, as_values, from_bytes, multi::transaction::FromRow};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 // String tails encode inverted, so every key in the 'a' group shares the tail prefix !a, and the
 // group sorts in reverse of the plaintext.
@@ -40,15 +47,20 @@ fn test_range() {
 	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
 	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
-	let items: Vec<_> =
-		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), four_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.bytes, as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(four_to_one, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), four_to_one, RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.bytes, as_values!(expected));
@@ -66,16 +78,20 @@ fn test_range2() {
 
 	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
-	let items: Vec<_> =
-		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), four_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let items: Vec<_> =
-		txn.range_rev(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), four_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
@@ -91,16 +107,20 @@ fn test_range2() {
 
 	let seven_to_one = TaggedKeyBoundRange::start_end(as_bound!(7), as_bound!(1));
 
-	let items: Vec<_> =
-		txn.range(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), seven_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> =
-		txn.range_rev(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), seven_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
@@ -118,16 +138,20 @@ fn test_range3() {
 
 	let seven_to_four = TaggedKeyBoundRange::start_end(as_bound!(7), as_bound!(4));
 
-	let items: Vec<_> =
-		txn.range(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), seven_to_four.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (4..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let items: Vec<_> =
-		txn.range_rev(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), seven_to_four.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (4..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
@@ -143,16 +167,20 @@ fn test_range3() {
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
 
-	let items: Vec<_> =
-		txn.range(five_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), five_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=5).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> =
-		txn.range_rev(five_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), five_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	for (expected, v) in (1..=5).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.bytes, &as_values!(expected));
@@ -198,7 +226,7 @@ fn test_range_edge() {
 	// b4 (remove)
 	{
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.remove(vec![(as_key!(2), None)]).unwrap();
+		txn.remove(&system_ctx(), vec![(as_key!(2), None)]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
@@ -228,16 +256,22 @@ fn test_range_edge() {
 	let ten_to_one = TaggedKeyBoundRange::start_end(as_bound!(10), as_bound!(1));
 
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_iter(items, &[32, 13]);
-	let items: Vec<_> =
-		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_rev_iter(items, &[13, 32]);
 
 	txn.read_as_of_version_inclusive(CommitVersion(6)).unwrap();
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	let mut count = 2;
 	for v in items {
 		if v.key == as_key!(1) {
@@ -250,8 +284,10 @@ fn test_range_edge() {
 	}
 	assert_eq!(0, count);
 
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	let mut count = 2;
 	for v in items {
 		if v.key == as_key!(1) {
@@ -265,29 +301,41 @@ fn test_range_edge() {
 	assert_eq!(0, count);
 
 	txn.read_as_of_version_inclusive(CommitVersion(4)).unwrap();
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_iter(items, &[32, 23, 13]);
 
-	let items: Vec<_> =
-		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
 	txn.read_as_of_version_inclusive(CommitVersion(3)).unwrap();
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_iter(items, &[32, 12]);
 
-	let items: Vec<_> =
-		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_rev_iter(items, &[12, 32]);
 
 	txn.read_as_of_version_inclusive(CommitVersion(2)).unwrap();
-	let items: Vec<_> =
-		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_iter(items, &[31]);
-	let items: Vec<_> =
-		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range_rev(&system_ctx(), ten_to_one.clone(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 	check_rev_iter(items, &[31]);
 }
 
@@ -306,8 +354,10 @@ fn test_range_stream_returns_newest_version() {
 	}
 
 	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
-	let items: Vec<_> =
-		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 5)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 
 	assert_eq!(items.len(), 1);
 	let item = &items[0];
@@ -334,8 +384,10 @@ fn test_range_stream_multiple_keys_many_versions() {
 
 	// Query with streaming
 	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
-	let items: Vec<_> =
-		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn
+		.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 200)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 
 	// Should have all 5 keys, each with newest version
 	// Keys are returned in descending order (5, 4, 3, 2, 1)
@@ -362,7 +414,7 @@ fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
 	txn.set(vec![(as_key!("b1"), as_values!(3u64))]).unwrap();
 
 	let keys: Vec<TaggedKey> = txn
-		.range(prefix_range(b'a'), RangeScope::All, 1024)
+		.range(&system_ctx(), prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -383,7 +435,10 @@ fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(2u64))]).unwrap();
 
-	let rows: Vec<_> = txn.range(prefix_range(b'a'), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let rows: Vec<_> = txn
+		.range(&system_ctx(), prefix_range(b'a'), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap();
 
 	let keys: Vec<TaggedKey> = rows.iter().map(|row| row.key.clone()).collect();
 	assert_eq!(keys, vec![as_key!("a3"), as_key!("a2"), as_key!("a1")]);
@@ -401,10 +456,10 @@ fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
 	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	txn.remove(vec![(as_key!("a1"), None)]).unwrap();
+	txn.remove(&system_ctx(), vec![(as_key!("a1"), None)]).unwrap();
 
 	let keys: Vec<TaggedKey> = txn
-		.range(prefix_range(b'a'), RangeScope::All, 1024)
+		.range(&system_ctx(), prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -423,7 +478,7 @@ fn a_reverse_prefix_range_sees_uncommitted_writes_too() {
 	txn.set(vec![(as_key!("b1"), as_values!(3u64))]).unwrap();
 
 	let keys: Vec<TaggedKey> = txn
-		.range_rev(prefix_range(b'a'), RangeScope::All, 1024)
+		.range_rev(&system_ctx(), prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()

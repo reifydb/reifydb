@@ -30,7 +30,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 	sync::{condvar::Condvar, mutex::Mutex},
 };
@@ -52,6 +52,10 @@ use reifydb_testing::testscript::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 use test_each_file::test_each_path;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 test_each_path! { in "crates/sub-metrics/tests/scripts/storage" as metric_memory => test_memory }
 
@@ -139,6 +143,7 @@ impl Runner {
 		);
 
 		let actor = MetricsFlushActor::new(
+			system_ctx(),
 			Arc::new(StatementMetricsAccumulator::new()),
 			event_bus.clone(),
 			metrics_storage.clone(),
@@ -155,7 +160,7 @@ impl Runner {
 		let stats_waiter = StatsWaiter::new();
 		event_bus.register::<MetricsProcessedEvent, _>(stats_waiter.clone());
 
-		let storage_reader = StorageMetricsReader::new(metrics_storage);
+		let storage_reader = StorageMetricsReader::new(system_ctx(), metrics_storage);
 
 		Self {
 			multi_store,
@@ -179,7 +184,7 @@ impl TestRunner for Runner {
 
 				let value = self
 					.multi_store
-					.get(from_ref(&TaggedKey::from(script_key(&key))), version)?
+					.get(&system_ctx(), from_ref(&TaggedKey::from(script_key(&key))), version)?
 					.remove(0)
 					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
@@ -198,13 +203,13 @@ impl TestRunner for Runner {
 				if !reverse {
 					let items: Vec<_> = self
 						.multi_store
-						.range(EncodedKeyRange::all(), scope, 1024)
+						.range(&system_ctx(), EncodedKeyRange::all(), scope, 1024)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
 					let items: Vec<_> = self
 						.multi_store
-						.range_rev(EncodedKeyRange::all(), scope, 1024)
+						.range_rev(&system_ctx(), EncodedKeyRange::all(), scope, 1024)
 						.collect::<Result<Vec<_>, _>>()?;
 
 					print(&mut output, items.into_iter())
@@ -260,7 +265,7 @@ impl TestRunner for Runner {
 				let prev_version = CommitVersion(version.0.saturating_sub(1));
 				let current_values = self
 					.multi_store
-					.get(from_ref(&TaggedKey::from(script_key(&key))), prev_version)?
+					.get(&system_ctx(), from_ref(&TaggedKey::from(script_key(&key))), prev_version)?
 					.remove(0)
 					.map(|mv| mv.bytes)
 					.unwrap_or_else(|| EncodedBytes(cow_vec![]));

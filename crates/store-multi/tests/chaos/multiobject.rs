@@ -5,7 +5,7 @@
 //! must leave the others byte-for-byte intact, which is what guards the object scoping of range bounds.
 //! Reads are at the current version.
 
-use std::{collections::BTreeMap, slice::from_ref};
+use std::{collections::BTreeMap, slice::from_ref, sync::Arc};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -18,6 +18,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, row::RowKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::pick;
@@ -27,6 +28,10 @@ use crate::{
 	fixtures::{build_bytes, flush, sync_persistent_store, sync_persistent_store_with_tiers, tiny_tiers},
 	workload::distinct_rows,
 };
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGES: [StorageId; 3] =
 	[StorageId::Table(TableId(1)), StorageId::Table(TableId(2)), StorageId::Table(TableId(3))];
@@ -76,7 +81,7 @@ fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: us
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
 		let got = store
-			.get(from_ref(&key), CommitVersion(read))
+			.get(&system_ctx(), from_ref(&key), CommitVersion(read))
 			.unwrap()
 			.remove(0)
 			.map(|r| (r.bytes.to_vec(), r.version.0));
@@ -98,11 +103,11 @@ fn collect_range_ms(
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(storage(s)).encode(), scope, batch)
+		store.range_rev(&system_ctx(), RowKey::full_scan(storage(s)).encode(), scope, batch)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap()
 	} else {
-		store.range(RowKey::full_scan(storage(s)).encode(), scope, batch)
+		store.range(&system_ctx(), RowKey::full_scan(storage(s)).encode(), scope, batch)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap()
 	};

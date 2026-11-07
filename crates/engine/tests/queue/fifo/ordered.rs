@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
@@ -15,6 +17,7 @@ use reifydb_core::{
 	},
 	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::QueueAckTransition,
@@ -22,6 +25,10 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::value::{Value, frame::frame::Frame, partition::Partition, row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const KEYED: &str = "CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { ordered_by: tenant } }";
 
@@ -42,7 +49,7 @@ fn queue_id(t: &TestEngine, name: &str) -> QueueId {
 
 fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemState)> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueItemStateKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueItemStateKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -66,7 +73,7 @@ fn status_of(t: &TestEngine, queue: QueueId, row: u64) -> QueueItemStatus {
 
 fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueDueKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueDueKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -82,7 +89,7 @@ fn due_rows(t: &TestEngine, queue: QueueId) -> Vec<u64> {
 
 fn chains(t: &TestEngine, queue: QueueId) -> Vec<QueueKeyActiveKey> {
 	let store = t.inner().single().read_store();
-	SingleVersionRange::range_batch(&store, QueueKeyActiveKey::queue_scan(queue).encode(), 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), QueueKeyActiveKey::queue_scan(queue).encode(), 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -92,7 +99,7 @@ fn chains(t: &TestEngine, queue: QueueId) -> Vec<QueueKeyActiveKey> {
 
 fn counters(t: &TestEngine, queue: QueueId, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
+	SingleVersionGet::get(&store, &system_ctx(), &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
 		.pop()
 		.flatten()
@@ -162,7 +169,15 @@ fn reap(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition
 		key_hash: Some(state.key_hash),
 		lease_deadline: state.lease_deadline.expect("a reaped item must hold a lease"),
 	};
-	apply_reap_transitions(t.inner().single(), queue, Queue::UNPARTITIONED, &[(lease, transition)], now).unwrap()[0]
+	apply_reap_transitions(
+		&system_ctx(),
+		t.inner().single(),
+		queue,
+		Queue::UNPARTITIONED,
+		&[(lease, transition)],
+		now,
+	)
+	.unwrap()[0]
 }
 
 #[test]

@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn test_multi() -> MultiTransaction {
 	MultiTransaction::testing()
@@ -44,7 +51,7 @@ fn test_conflict_detection_between_transactions() {
 	let mut t2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	t1.set(vec![(key.clone().into(), make_bytes("v1"))]).unwrap();
-	t2.get(&[key.clone().into()]).unwrap().pop().flatten();
+	t2.get(&system_ctx(), &[key.clone().into()]).unwrap().pop().flatten();
 	t2.set(vec![(key.clone().into(), make_bytes("v2"))]).unwrap();
 
 	t1.commit().unwrap();
@@ -77,7 +84,7 @@ fn test_version_filtering_in_conflict_detection() {
 	t1.commit().unwrap();
 
 	let mut t2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	t2.get(&[key.clone().into()]).unwrap().pop().flatten();
+	t2.get(&system_ctx(), &[key.clone().into()]).unwrap().pop().flatten();
 	t2.set(vec![(key.clone().into(), make_bytes("v2"))]).unwrap();
 	t2.commit().unwrap();
 }
@@ -88,12 +95,12 @@ fn test_sequential_transactions_no_conflict() {
 	let key = make_key("shared");
 
 	let mut t1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	t1.get(&[key.clone().into()]).unwrap().pop().flatten();
+	t1.get(&system_ctx(), &[key.clone().into()]).unwrap().pop().flatten();
 	t1.set(vec![(key.clone().into(), make_bytes("v1"))]).unwrap();
 	t1.commit().unwrap();
 
 	let mut t2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	t2.get(&[key.clone().into()]).unwrap().pop().flatten();
+	t2.get(&system_ctx(), &[key.clone().into()]).unwrap().pop().flatten();
 	t2.set(vec![(key.clone().into(), make_bytes("v2"))]).unwrap();
 	t2.commit().unwrap();
 }
@@ -109,13 +116,13 @@ fn test_multi_key_chain_detects_dependency_conflict() {
 	let mut t2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let mut t3 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
-	t1.get(&[key_a.clone().into()]).unwrap().pop().flatten();
+	t1.get(&system_ctx(), &[key_a.clone().into()]).unwrap().pop().flatten();
 	t1.set(vec![(key_b.clone().into(), make_bytes("vb"))]).unwrap();
 
-	t2.get(&[key_b.clone().into()]).unwrap().pop().flatten();
+	t2.get(&system_ctx(), &[key_b.clone().into()]).unwrap().pop().flatten();
 	t2.set(vec![(key_c.clone().into(), make_bytes("vc"))]).unwrap();
 
-	t3.get(&[key_c.clone().into()]).unwrap().pop().flatten();
+	t3.get(&system_ctx(), &[key_c.clone().into()]).unwrap().pop().flatten();
 	t3.set(vec![(key_a.clone().into(), make_bytes("va"))]).unwrap();
 
 	t1.commit().unwrap();

@@ -620,6 +620,7 @@ mod commit_integration {
 		ops::RangeInclusive,
 		slice::from_ref,
 		sync::{
+			Arc,
 			atomic::{AtomicUsize, Ordering},
 			mpsc,
 		},
@@ -656,7 +657,10 @@ mod commit_integration {
 		value::index::encoded::EncodedIndexKey,
 		wal::{CommitRecord, WalRecord},
 	};
-	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
+	use reifydb_runtime::{
+		context::{RuntimeContext, transaction::TransactionContext},
+		sync::{mutex::Mutex, waiter::WaiterHandle},
+	};
 	use reifydb_store_operator::{
 		actor::resident_flush::flush_now,
 		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
@@ -679,6 +683,10 @@ mod commit_integration {
 
 	use super::*;
 	use crate::commit::next_lsn;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn checkpoint_at(version: u64) -> FlowCheckpoint {
 		FlowCheckpoint {
@@ -847,7 +855,7 @@ mod commit_integration {
 	}
 
 	fn depth(engine: &StandardEngine, queue: QueueId) -> Vec<(Partition, u64)> {
-		queue_partition_counters(engine.single(), queue)
+		queue_partition_counters(&system_ctx(), engine.single(), queue)
 			.unwrap()
 			.into_iter()
 			.map(|(partition, counters)| (partition, counters.depth))

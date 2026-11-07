@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, slice};
+use std::{collections::BTreeMap, slice, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
@@ -13,6 +13,7 @@ use reifydb_core::{
 	internal_error,
 	key::{any::TaggedKey, queue::QueueItemStateKey, row::RowKeyRange},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{
 	multi::RangeScope,
 	queue::scheduling::{QueueAdmission, admit_ready_items},
@@ -34,6 +35,7 @@ const HYDRATE_BATCH: usize = 1024;
 pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64> {
 	let catalog = engine.catalog();
 	let single = engine.single().clone();
+	let ctx = Arc::new(TransactionContext::system(engine.runtime_context().clone()));
 
 	let mut query = engine.begin_query(IdentityId::system())?;
 	let mut txn = Transaction::Query(&mut query);
@@ -42,7 +44,7 @@ pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64> {
 
 	let mut admitted = 0u64;
 	for queue in &queues {
-		admitted += hydrate_queue(&catalog, &single, &mut txn, queue)?;
+		admitted += hydrate_queue(&ctx, &catalog, &single, &mut txn, queue)?;
 	}
 
 	info!(queues = queues.len(), items = admitted, "queue scheduling state hydrated");
@@ -51,6 +53,7 @@ pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64> {
 }
 
 fn hydrate_queue(
+	ctx: &Arc<TransactionContext>,
 	catalog: &Catalog,
 	single: &SingleTransaction,
 	txn: &mut Transaction<'_>,
@@ -93,7 +96,10 @@ fn hydrate_queue(
 			for (row_number, encoded) in &batch {
 				let placement = placement_of(&shape, encoded, &partition_by, ordered_by);
 				let state_key = QueueItemStateKey::encoded(queue.id, placement.partition, *row_number);
-				if SingleVersionGet::get(&store, slice::from_ref(&state_key))?.pop().flatten().is_some()
+				if SingleVersionGet::get(&store, ctx, slice::from_ref(&state_key))?
+					.pop()
+					.flatten()
+					.is_some()
 				{
 					continue;
 				}
@@ -106,7 +112,7 @@ fn hydrate_queue(
 				});
 
 				if items.len() >= HYDRATE_BATCH {
-					admitted += flush(single, queue.id, placement.partition, items)?;
+					admitted += flush(ctx, single, queue.id, placement.partition, items)?;
 				}
 			}
 		}
@@ -117,19 +123,20 @@ fn hydrate_queue(
 	}
 
 	for (partition, items) in pending.iter_mut() {
-		admitted += flush(single, queue.id, *partition, items)?;
+		admitted += flush(ctx, single, queue.id, *partition, items)?;
 	}
 
 	Ok(admitted)
 }
 
 fn flush(
+	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: Partition,
 	items: &mut Vec<QueueAdmission>,
 ) -> Result<u64> {
-	let admitted = admit_ready_items(single, queue, partition, items)?;
+	let admitted = admit_ready_items(ctx, single, queue, partition, items)?;
 	items.clear();
 	Ok(admitted)
 }

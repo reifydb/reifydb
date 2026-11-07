@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -17,9 +17,14 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::TierBatch;
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn row(n: u64) -> TaggedKey {
 	RowKey {
@@ -58,7 +63,7 @@ fn seen(row: Option<MultiVersionRow<TaggedKey>>) -> Seen {
 }
 
 fn batched(store: &StandardMultiStore, keys: &[TaggedKey], before: u64) -> Vec<Seen> {
-	store.get_previous(keys, CommitVersion(before)).unwrap().into_iter().map(seen).collect()
+	store.get_previous(&system_ctx(), keys, CommitVersion(before)).unwrap().into_iter().map(seen).collect()
 }
 
 fn hit(key: &TaggedKey, bytes: &str, version: u64) -> Seen {

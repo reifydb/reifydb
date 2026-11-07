@@ -28,8 +28,10 @@ use reifydb_core::{
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{
+		RuntimeContext,
 		clock::{Clock, Instant},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	sync::rwlock::RwLock,
 	version_epoch::{EpochSeconds, VersionEpoch},
@@ -217,6 +219,7 @@ where
 	store: MultiStore,
 	clock: Clock,
 	version_epoch: VersionEpoch,
+	rng: Rng,
 	config: Arc<dyn GetConfig>,
 	queue: CommitQueue,
 	pub(crate) wal: CommitWal,
@@ -279,6 +282,7 @@ where
 			store,
 			clock,
 			version_epoch,
+			rng: rng.clone(),
 			config,
 			queue: CommitQueue::new(),
 			wal,
@@ -654,13 +658,21 @@ where
 		Ok((commit_version, lsn, at))
 	}
 
+	fn system_context(&self) -> TransactionContext {
+		TransactionContext::system(RuntimeContext::new(
+			self.clock.clone(),
+			self.rng.clone(),
+			self.version_epoch.clone(),
+		))
+	}
+
 	fn resolve_keys(&self, deltas: &mut CowVec<Delta>, keys: &[TaggedKey], version: CommitVersion) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());
 		}
 		let mut previous: HashMap<&TaggedKey, SetPre> = keys
 			.iter()
-			.zip(self.store.get_previous(keys, version)?)
+			.zip(self.store.get_previous(&self.system_context(), keys, version)?)
 			.map(|(key, row)| {
 				let pre = match row {
 					Some(row) => SetPre::Present(row.bytes),
@@ -697,7 +709,7 @@ where
 		if unknown.is_empty() {
 			return Ok(());
 		}
-		let mut previous = self.store.get_previous(&unknown, version)?.into_iter();
+		let mut previous = self.store.get_previous(&self.system_context(), &unknown, version)?.into_iter();
 		for delta in deltas.make_mut() {
 			if let Delta::Set {
 				pre,

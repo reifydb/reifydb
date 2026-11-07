@@ -457,8 +457,10 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	)
 	.unwrap();
 
-	let dictionary_allocators =
-		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+	let dictionary_allocators = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+		Arc::new(TransactionContext::system(multi.runtime_context())),
+		single.clone(),
+	)));
 
 	let runtime = multi.runtime_context();
 	let cmd = multi.begin_command(multi.generate_transaction_id()).unwrap();
@@ -500,8 +502,10 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		recovery,
 	)
 	.unwrap();
-	let dictionary_allocators =
-		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
+	let dictionary_allocators = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+		Arc::new(TransactionContext::system(multi.runtime_context())),
+		single.clone(),
+	)));
 
 	let runtime = multi.runtime_context();
 	let cmd = multi.begin_command(multi.generate_transaction_id()).unwrap();

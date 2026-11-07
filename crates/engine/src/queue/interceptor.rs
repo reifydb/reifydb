@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId};
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::{
 	change::{QueueAckTransition, QueueRowAck, RowChange},
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor},
@@ -17,14 +17,21 @@ use tracing::instrument;
 use crate::{Result, queue::wake::QueueWakeRegistry};
 
 pub struct QueueSchedulingInterceptor {
+	ctx: Arc<TransactionContext>,
 	single: SingleTransaction,
 	wake: QueueWakeRegistry,
 	clock: Clock,
 }
 
 impl QueueSchedulingInterceptor {
-	pub fn new(single: SingleTransaction, wake: QueueWakeRegistry, clock: Clock) -> Self {
+	pub fn new(
+		ctx: Arc<TransactionContext>,
+		single: SingleTransaction,
+		wake: QueueWakeRegistry,
+		clock: Clock,
+	) -> Self {
 		Self {
+			ctx,
 			single,
 			wake,
 			clock,
@@ -38,7 +45,7 @@ impl QueueSchedulingInterceptor {
 		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
 	fn admit(&self, queue: QueueId, partition: Partition, items: &[QueueAdmission]) -> Result<()> {
-		admit_ready_items(&self.single, queue, partition, items)?;
+		admit_ready_items(&self.ctx, &self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|item| is_due(item.not_before, now)).count());
 		Ok(())
@@ -51,7 +58,7 @@ impl QueueSchedulingInterceptor {
 		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
 	fn ack(&self, queue: QueueId, partition: Partition, items: &[QueueRowAck]) -> Result<()> {
-		apply_ack_transitions(&self.single, queue, partition, items)?;
+		apply_ack_transitions(&self.ctx, &self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|ack| releases_work(ack, now)).count());
 		Ok(())
@@ -79,7 +86,7 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 
 		for change in &ctx.changes.queue {
 			if let (Some(queue), None) = (&change.pre, &change.post)
-				&& let Err(err) = remove_queue_scheduling_state(&self.single, queue.id)
+				&& let Err(err) = remove_queue_scheduling_state(&self.ctx, &self.single, queue.id)
 			{
 				panic!(
 					"queue scheduling sweep failed after drop: queue {} version {}: {}",

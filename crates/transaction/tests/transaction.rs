@@ -43,8 +43,10 @@ use reifydb_core::{
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
+		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	pool::Pools,
 	version_epoch::VersionEpoch,
@@ -59,6 +61,10 @@ use reifydb_transaction::{
 	wal::{memory_wal, replay},
 };
 use reifydb_value::util::cowvec::CowVec;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 enum TransactionHandle {
 	Read(MultiReadTransaction),
@@ -196,7 +202,8 @@ impl Runner for MvccRunner {
 							unreachable!("can not call remove on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.remove(vec![(key.clone().into(), None)]).unwrap();
+							tx.remove(&system_ctx(), vec![(key.clone().into(), None)])
+								.unwrap();
 						}
 					}
 				}
@@ -245,11 +252,11 @@ impl Runner for MvccRunner {
 
 					let value = match &mut t {
 						TransactionHandle::Read(rx) => rx
-							.get(&[stored.clone().into()])
+							.get(&system_ctx(), &[stored.clone().into()])
 							.map(|mut found| found.pop().flatten())
 							.map(|r| r.map(|tv| tv.bytes().to_vec())),
 						TransactionHandle::Write(tx) => tx
-							.get(&[stored.clone().into()])
+							.get(&system_ctx(), &[stored.clone().into()])
 							.map(|mut found| found.pop().flatten())
 							.map(|r| r.map(|tv| tv.bytes().to_vec())),
 					}
@@ -277,7 +284,7 @@ impl Runner for MvccRunner {
 					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));
 					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
-						tx.remove(vec![(key.clone().into(), None)]).unwrap();
+						tx.remove(&system_ctx(), vec![(key.clone().into(), None)]).unwrap();
 					} else {
 						tx.set(vec![(key.clone().into(), row)]).unwrap();
 					}
@@ -314,7 +321,12 @@ impl Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Read(rx) => {
 						let items: Vec<_> = rx
-							.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+							.range(
+								&system_ctx(),
+								TaggedKeyBoundRange::all(),
+								RangeScope::All,
+								1024,
+							)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
@@ -323,7 +335,12 @@ impl Runner for MvccRunner {
 					}
 					TransactionHandle::Write(tx) => {
 						let items: Vec<_> = tx
-							.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+							.range(
+								&system_ctx(),
+								TaggedKeyBoundRange::all(),
+								RangeScope::All,
+								1024,
+							)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
@@ -355,13 +372,13 @@ impl Runner for MvccRunner {
 					TransactionHandle::Read(rx) => {
 						if !reverse {
 							let items: Vec<_> = rx
-								.range(range, RangeScope::All, 1024)
+								.range(&system_ctx(), range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
 							let items: Vec<_> = rx
-								.range_rev(range, RangeScope::All, 1024)
+								.range_rev(&system_ctx(), range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
@@ -370,13 +387,13 @@ impl Runner for MvccRunner {
 					TransactionHandle::Write(tx) => {
 						if !reverse {
 							let items: Vec<_> = tx
-								.range(range, RangeScope::All, 1024)
+								.range(&system_ctx(), range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
 							let items: Vec<_> = tx
-								.range_rev(range, RangeScope::All, 1024)
+								.range_rev(&system_ctx(), range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
@@ -399,17 +416,17 @@ impl Runner for MvccRunner {
 				args.reject_rest()?;
 
 				let items: Vec<MultiVersionRow<TaggedKey>> = match (&mut t, reverse) {
-					(TransactionHandle::Read(rx), false) => {
-						rx.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>()
-					}
-					(TransactionHandle::Read(rx), true) => rx
-						.range_rev(range, RangeScope::All, 1024)
+					(TransactionHandle::Read(rx), false) => rx
+						.range(&system_ctx(), range, RangeScope::All, 1024)
 						.collect::<Result<Vec<_>, _>>(),
-					(TransactionHandle::Write(tx), false) => {
-						tx.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>()
-					}
+					(TransactionHandle::Read(rx), true) => rx
+						.range_rev(&system_ctx(), range, RangeScope::All, 1024)
+						.collect::<Result<Vec<_>, _>>(),
+					(TransactionHandle::Write(tx), false) => tx
+						.range(&system_ctx(), range, RangeScope::All, 1024)
+						.collect::<Result<Vec<_>, _>>(),
 					(TransactionHandle::Write(tx), true) => tx
-						.range_rev(range, RangeScope::All, 1024)
+						.range_rev(&system_ctx(), range, RangeScope::All, 1024)
 						.collect::<Result<Vec<_>, _>>(),
 				}
 				.unwrap();

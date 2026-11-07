@@ -43,7 +43,7 @@ use reifydb_runtime::{
 		mailbox::ActorRef,
 		traits::{Actor, Directive},
 	},
-	context::clock::Clock,
+	context::{clock::Clock, transaction::TransactionContext},
 };
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
@@ -73,6 +73,7 @@ fn default_flush_interval() -> Duration {
 }
 
 pub struct MetricsFlushActor {
+	ctx: Arc<TransactionContext>,
 	accumulator: Arc<StatementMetricsAccumulator>,
 	event_bus: EventBus,
 	single_store: SingleStore,
@@ -86,12 +87,14 @@ pub struct MetricsFlushActor {
 
 impl MetricsFlushActor {
 	pub fn new(
+		ctx: Arc<TransactionContext>,
 		accumulator: Arc<StatementMetricsAccumulator>,
 		event_bus: EventBus,
 		single_store: SingleStore,
 		resolver: MultiStore,
 	) -> Self {
 		Self {
+			ctx,
 			accumulator,
 			event_bus,
 			single_store,
@@ -214,7 +217,9 @@ impl MetricsFlushActor {
 	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<HashMap<EncodedKey, u64>> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 && !keys.is_empty() {
-			for (key, result) in self.resolver.get_versioned(keys, CommitVersion(version.0 - 1))? {
+			for (key, result) in
+				self.resolver.get_versioned(&self.ctx, keys, CommitVersion(version.0 - 1))?
+			{
 				match result {
 					VersionedGetResult::Value {
 						value,
@@ -306,7 +311,7 @@ impl MetricsFlushActor {
 		let mut query =
 			engine.begin_query(IdentityId::system()).expect("metrics resolution transaction must begin");
 		let mut txn = Transaction::Query(&mut query);
-		let reader = MetricsReader::new(self.single_store.clone());
+		let reader = MetricsReader::new(self.ctx.clone(), self.single_store.clone());
 		let storage = storage_rows(&reader, &mut txn)
 			.expect("storage census must complete; a partial one evicts live rows");
 		let _ = sampler.send(SamplerMessage::Push {
@@ -338,7 +343,7 @@ impl Actor for MetricsFlushActor {
 		ctx.schedule_once(self.effective_interval(), || MetricsMessage::Tick(DateTime::from_nanos(0)));
 
 		MetricsFlushActorState {
-			storage_writer: StorageMetricsWriter::new(self.single_store.clone()),
+			storage_writer: StorageMetricsWriter::new(self.ctx.clone(), self.single_store.clone()),
 			max_version: CommitVersion(0),
 			pending: Vec::new(),
 		}

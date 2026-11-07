@@ -12,6 +12,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::internal_error;
 use reifydb_runtime::{
+	context::transaction::TransactionContext,
 	shutdown::{Shutdown, ShutdownErrors},
 	sync::mutex::{Mutex, MutexGuard},
 };
@@ -191,8 +192,8 @@ impl SqlitePersistentStorage {
 }
 
 impl TierStorage for SqlitePersistentStorage {
-	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
+	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(vec![None; keys.len()]);
@@ -213,8 +214,12 @@ impl TierStorage for SqlitePersistentStorage {
 			.collect()
 	}
 
-	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
+	fn get_with_tombstone(
+		&self,
+		_ctx: &TransactionContext,
+		keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(vec![None; keys.len()]);
@@ -251,9 +256,10 @@ impl TierStorage for SqlitePersistentStorage {
 		self.commit_tx(tx)
 	}
 
-	#[instrument(name = "store::single::persistent::range_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::persistent::range_next", level = "trace", skip(self, _ctx, cursor))]
 	fn range_next(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -281,9 +287,10 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(batch)
 	}
 
-	#[instrument(name = "store::single::persistent::range_rev_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::persistent::range_rev_next", level = "trace", skip(self, _ctx, cursor))]
 	fn range_rev_next(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,

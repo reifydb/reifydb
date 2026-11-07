@@ -40,7 +40,7 @@ use reifydb_core::{
 	metrics::collect::MetricsCollector,
 };
 use reifydb_filter::adaptive::FilterMetrics;
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdown};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
@@ -211,9 +211,14 @@ impl Shutdown for MultiStore {
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
-	fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+		version: CommitVersion,
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			MultiStore::Standard(store) => MultiVersionGet::get(store, keys, version),
+			MultiStore::Standard(store) => MultiVersionGet::get(store, ctx, keys, version),
 		}
 	}
 }
@@ -231,11 +236,12 @@ impl MultiVersionGetPrevious for MultiStore {
 	#[inline]
 	fn get_previous(
 		&self,
+		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
 	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			MultiStore::Standard(store) => store.get_previous(keys, before_version),
+			MultiStore::Standard(store) => store.get_previous(ctx, keys, before_version),
 		}
 	}
 }
@@ -249,17 +255,19 @@ pub type MultiVersionPartitionedRowRangeIterator<'a> =
 impl MultiStore {
 	pub fn range(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range(range, scope, batch_size)),
+			MultiStore::Standard(store) => Box::new(store.range(ctx, range, scope, batch_size)),
 		}
 	}
 
 	pub fn range_row(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StorageRowKey>,
 		end: Bound<StorageRowKey>,
@@ -268,13 +276,14 @@ impl MultiStore {
 	) -> MultiVersionRowRangeIterator<'_> {
 		match self {
 			MultiStore::Standard(store) => {
-				Box::new(store.range_row(storage, start, end, scope, batch_size))
+				Box::new(store.range_row(ctx, storage, start, end, scope, batch_size))
 			}
 		}
 	}
 
 	pub fn range_partitioned_row(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		storage: StorageId,
 		start: Bound<StoragePartitionedRowKey>,
 		end: Bound<StoragePartitionedRowKey>,
@@ -283,51 +292,57 @@ impl MultiStore {
 	) -> MultiVersionPartitionedRowRangeIterator<'_> {
 		match self {
 			MultiStore::Standard(store) => {
-				Box::new(store.range_partitioned_row(storage, start, end, scope, batch_size))
+				Box::new(store.range_partitioned_row(ctx, storage, start, end, scope, batch_size))
 			}
 		}
 	}
 
 	pub fn range_persistence(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range_persistence(range, scope, batch_size)),
+			MultiStore::Standard(store) => Box::new(store.range_persistence(ctx, range, scope, batch_size)),
 		}
 	}
 
 	pub fn range_rev(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range_rev(range, scope, batch_size)),
+			MultiStore::Standard(store) => Box::new(store.range_rev(ctx, range, scope, batch_size)),
 		}
 	}
 
 	pub fn range_rev_persistence(
 		&self,
+		ctx: &Arc<TransactionContext>,
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range_rev_persistence(range, scope, batch_size)),
+			MultiStore::Standard(store) => {
+				Box::new(store.range_rev_persistence(ctx, range, scope, batch_size))
+			}
 		}
 	}
 
 	pub fn get_versioned(
 		&self,
+		ctx: &TransactionContext,
 		keys: &[EncodedKey],
 		version: CommitVersion,
 	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
 		match self {
-			MultiStore::Standard(store) => store.get_versioned(keys, version),
+			MultiStore::Standard(store) => store.get_versioned(ctx, keys, version),
 		}
 	}
 }

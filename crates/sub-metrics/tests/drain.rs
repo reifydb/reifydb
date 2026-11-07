@@ -19,12 +19,19 @@ use reifydb_core::{
 	fingerprint::{RequestFingerprint, StatementFingerprint},
 	metrics::execution::StatementMetrics,
 };
-use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
+};
 use reifydb_sub_metrics::{
 	accumulator::StatementMetricsAccumulator, actor::MetricsFlushActor, listener::RequestMetricsEventListener,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[test]
 fn executed_requests_drain_into_both_ringbuffers() {
@@ -53,6 +60,7 @@ fn executed_requests_drain_into_both_ringbuffers() {
 	);
 
 	let actor = MetricsFlushActor::new(
+		system_ctx(),
 		Arc::clone(&accumulator),
 		eventbus.clone(),
 		single.read_store(),

@@ -22,7 +22,10 @@ use reifydb_core::{
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_runtime::{
+	context::{RuntimeContext, transaction::TransactionContext},
+	shutdown::Shutdown,
+};
 use reifydb_store_commit::{MultiVersionScope, RangeCursor};
 use reifydb_store_multi::{
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
@@ -31,6 +34,10 @@ use reifydb_store_multi::{
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 /// The store's own persistent chunk size, so a row count stated as a multiple of it lands a known number
 /// of chunks either side of the shutdown.
@@ -99,6 +106,7 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 
 fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_value::Result<usize> {
 	Ok(tier.range_next(
+		&system_ctx(),
 		EntryKind::Source(STORAGE, EntryLayout::Row),
 		cursor,
 		Bound::Unbounded,
@@ -164,7 +172,9 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 	flush(&store, 20);
 
 	let mut cursor = MultiVersionRangeCursor::new();
-	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK).unwrap();
+	let first = store
+		.range_next(&system_ctx(), &mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK)
+		.unwrap();
 	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
 	// Five chunks must remain, or the shutdown lands on an already finished scan and proves nothing.
 	assert!(first.has_more, "rows must remain behind the resume point");
@@ -174,7 +184,13 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 	let mut seen: Vec<(u64, String)> = first.items.iter().map(row_and_value).collect();
 	loop {
 		assert!(seen.len() as u64 <= CHUNK * 6, "the scan returned more rows than were ever written");
-		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK) {
+		match store.range_next(
+			&system_ctx(),
+			&mut cursor,
+			RowKey::full_scan(STORAGE).encode(),
+			as_of(30),
+			CHUNK,
+		) {
 			Err(error) => {
 				names_the_shutdown(&error);
 				break;
@@ -200,7 +216,7 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 	}
 	flush(&store, 20);
 
-	let mut rows = store.range(RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK as usize);
+	let mut rows = store.range(&system_ctx(), RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK as usize);
 	for _ in 0..CHUNK {
 		rows.next().expect("the first chunk must yield rows").expect("a live scan must not fail");
 	}
@@ -264,7 +280,9 @@ fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_
 	flush(&store, 20);
 
 	let mut cursor = MultiVersionRangeCursor::new();
-	let first = store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK).unwrap();
+	let first = store
+		.range_next(&system_ctx(), &mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK)
+		.unwrap();
 	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
 	assert!(first.has_more, "rows must remain behind the resume point");
 
@@ -275,7 +293,13 @@ fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_
 	loop {
 		calls += 1;
 		assert!(calls <= 64, "the scan neither ended nor failed after {calls} chunks over a drained pool");
-		match store.range_next(&mut cursor, RowKey::full_scan(STORAGE).encode(), as_of(30), CHUNK) {
+		match store.range_next(
+			&system_ctx(),
+			&mut cursor,
+			RowKey::full_scan(STORAGE).encode(),
+			as_of(30),
+			CHUNK,
+		) {
 			Err(error) => {
 				names_the_shutdown(&error);
 				break;

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{actors::pending::Pending, common::CommitVersion};
-use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_runtime::context::{
+	clock::{Clock, MockClock},
+	transaction::TransactionContext,
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::value::datetime::DateTime;
@@ -38,6 +43,7 @@ impl<'a> FlowTxnBuilder<'a> {
 	pub fn deferred(self) -> DeferredTransaction {
 		let version = self.version;
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version,
 			pending: Pending::new(),
 			query: Some(self

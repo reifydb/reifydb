@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::common::CommitVersion;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::types::TransactionValue;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[test]
 fn test_write() {
@@ -17,8 +24,10 @@ fn test_write() {
 		assert_eq!(tx.version(), 1);
 
 		tx.set(vec![(key.clone(), as_values!("foo1".to_string()))]).unwrap();
-		let value: String =
-			from_bytes!(String, *tx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
+		let value: String = from_bytes!(
+			String,
+			*tx.get(&system_ctx(), &[key.clone()]).unwrap().pop().flatten().unwrap().bytes()
+		);
 		assert_eq!(value.as_str(), "foo1");
 		tx.commit().unwrap();
 	}
@@ -26,8 +35,10 @@ fn test_write() {
 	{
 		let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 		assert_eq!(rx.version(), 2);
-		let value: String =
-			from_bytes!(String, rx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
+		let value: String = from_bytes!(
+			String,
+			rx.get(&system_ctx(), &[key.clone()]).unwrap().pop().flatten().unwrap().bytes()
+		);
 		assert_eq!(value.as_str(), "foo1");
 	}
 }
@@ -45,7 +56,7 @@ fn test_multiple_write() {
 		}
 
 		let key = as_key!(8);
-		let sv = txn.get(&[key.clone()]).unwrap().pop().flatten().unwrap();
+		let sv = txn.get(&system_ctx(), &[key.clone()]).unwrap().pop().flatten().unwrap();
 		assert!(
 			matches!(sv, TransactionValue::Pending(_)),
 			"a read inside the open transaction must come from its own pending write"
@@ -53,7 +64,7 @@ fn test_multiple_write() {
 		assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 		drop(sv);
 
-		assert!(txn.contains(&[as_key!(8)]).unwrap()[0]);
+		assert!(txn.contains(&system_ctx(), &[as_key!(8)]).unwrap()[0]);
 
 		txn.commit().unwrap();
 	}
@@ -61,8 +72,8 @@ fn test_multiple_write() {
 	let k = 8;
 	let v = 8;
 	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
-	assert!(txn.contains(&[as_key!(k)]).unwrap()[0]);
-	let sv = txn.get(&[as_key!(k)]).unwrap().pop().flatten().unwrap();
+	assert!(txn.contains(&system_ctx(), &[as_key!(k)]).unwrap()[0]);
+	let sv = txn.get(&system_ctx(), &[as_key!(k)]).unwrap().pop().flatten().unwrap();
 	assert_eq!(from_bytes!(i32, *sv.bytes()), v);
 }
 

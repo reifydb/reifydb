@@ -28,7 +28,7 @@ use reifydb_core::{
 		SingleVersionRow, SingleVersionStore,
 	},
 };
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdown};
 use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::lsn::Lsn;
 use store::{SingleCommitGuard, SinglePersistentProbeMetrics, StandardSingleStore};
@@ -138,9 +138,9 @@ impl Shutdown for SingleStore {
 
 impl SingleVersionGet for SingleStore {
 	#[inline]
-	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		match self {
-			SingleStore::Standard(store) => SingleVersionGet::get(store, keys),
+			SingleStore::Standard(store) => SingleVersionGet::get(store, ctx, keys),
 		}
 	}
 }
@@ -156,19 +156,29 @@ impl SingleVersionCommit for SingleStore {
 
 impl SingleVersionRange for SingleStore {
 	#[inline]
-	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
+	fn range_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch> {
 		match self {
-			SingleStore::Standard(store) => SingleVersionRange::range_batch(store, range, batch_size),
+			SingleStore::Standard(store) => SingleVersionRange::range_batch(store, ctx, range, batch_size),
 		}
 	}
 }
 
 impl SingleVersionRangeRev for SingleStore {
 	#[inline]
-	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
+	fn range_rev_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch> {
 		match self {
 			SingleStore::Standard(store) => {
-				SingleVersionRangeRev::range_rev_batch(store, range, batch_size)
+				SingleVersionRangeRev::range_rev_batch(store, ctx, range, batch_size)
 			}
 		}
 	}

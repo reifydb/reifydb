@@ -25,6 +25,7 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	version_epoch::VersionEpoch,
 };
@@ -436,10 +437,15 @@ impl MultiTransaction {
 }
 
 impl MultiTransaction {
-	#[instrument(name = "transaction::get", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
-	pub fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {
+	#[instrument(name = "transaction::get", level = "trace", skip(self, ctx, keys), fields(keys = keys.len(), version = version.0))]
+	pub fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+		version: CommitVersion,
+	) -> Result<Vec<Option<Committed>>> {
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
-		let found = self.store.get_versioned(&encoded, version)?;
+		let found = self.store.get_versioned(ctx, &encoded, version)?;
 		Ok(keys.iter()
 			.zip(&encoded)
 			.map(|(key, encoded)| match found.get(encoded) {

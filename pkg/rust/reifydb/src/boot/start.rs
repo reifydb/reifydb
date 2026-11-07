@@ -6,6 +6,7 @@ use std::{slice::from_ref, sync::Arc};
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::system::{SystemVersion, SystemVersionKey};
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -15,12 +16,12 @@ use crate::{MigrationStatement, Result};
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
+pub(crate) fn ensure_storage_version(ctx: &Arc<TransactionContext>, single: &SingleTransaction) -> Result<()> {
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	};
 
-	let mut tx = single.begin_command([&key.encode()])?;
+	let mut tx = single.begin_command(ctx, [&key.encode()])?;
 
 	match tx.get(from_ref(&key))?.remove(0) {
 		None => {

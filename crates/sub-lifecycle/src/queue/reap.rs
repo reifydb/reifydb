@@ -24,7 +24,7 @@ use reifydb_core::{
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::{
 	change::QueueAckTransition,
 	queue::scheduling::{ExpiredLease, apply_reap_transitions, queue_partition_counters},
@@ -90,7 +90,11 @@ impl QueueLeaseReapTask {
 	}
 
 	fn partitions(&self, queue: QueueId) -> Vec<Partition> {
-		match queue_partition_counters(&self.engine.single_owned(), queue) {
+		match queue_partition_counters(
+			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			&self.engine.single_owned(),
+			queue,
+		) {
 			Ok(counters) => counters.into_iter().map(|(partition, _)| partition).collect(),
 			Err(e) => panic!("queue reaper failed to list the partitions of queue {}: {}", queue.0, e),
 		}
@@ -109,7 +113,12 @@ impl QueueLeaseReapTask {
 		}
 
 		let store = self.engine.single_owned().read_store();
-		let batch = SingleVersionRange::range_batch(&store, range, limit as u64)?;
+		let batch = SingleVersionRange::range_batch(
+			&store,
+			&TransactionContext::system(self.engine.runtime_context().clone()),
+			range,
+			limit as u64,
+		)?;
 
 		Ok(batch.items
 			.iter()
@@ -222,6 +231,7 @@ impl QueueLeaseReapTask {
 		}
 
 		let applied = match apply_reap_transitions(
+			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			&self.engine.single_owned(),
 			queue.id,
 			partition,

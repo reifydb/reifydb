@@ -5,7 +5,7 @@
 //! scan-then-drop loop must remove versions strictly below the cutoff, keep those at or above it, and
 //! never touch the current version.
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -17,9 +17,14 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, row::RowKey},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn object() -> EntryKind {
 	EntryKind::Source(StorageId::Table(TableId(42)), EntryLayout::Row)
@@ -236,7 +241,10 @@ fn a_read_at_the_gc_cutoff_returns_the_buffered_version_not_an_older_persisted_r
 		.unwrap();
 	}
 	let read = |version: u64| {
-		store.get(from_ref(&k), CommitVersion(version)).unwrap().remove(0).map(|row| row.bytes.to_vec())
+		store.get(&system_ctx(), from_ref(&k), CommitVersion(version))
+			.unwrap()
+			.remove(0)
+			.map(|row| row.bytes.to_vec())
 	};
 
 	assert_eq!(sweep(store.commit(), object(), CommitVersion(25), 32), 1);

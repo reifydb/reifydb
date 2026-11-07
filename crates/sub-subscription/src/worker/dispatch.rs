@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow_async::engine::FlowEngineInner;
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
 use tracing::warn;
@@ -150,6 +151,7 @@ impl SubscriptionWorkerActor {
 		query.read_as_of_version_inclusive(change.version.commit);
 
 		let mut txn = EphemeralTransaction::new(
+			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			change.version.commit,
 			query,
 			self.catalog.clone(),

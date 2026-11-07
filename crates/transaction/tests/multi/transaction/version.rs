@@ -9,11 +9,18 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use std::sync::Arc;
+
 use reifydb_core::{common::CommitVersion, key::bound::TaggedKeyBoundRange};
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 #[test]
 fn test_versions() {
@@ -34,13 +41,13 @@ fn test_versions() {
 
 		let v = idx;
 		{
-			let tv = txn.get(&[k0.clone()]).unwrap().pop().flatten().unwrap();
+			let tv = txn.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().unwrap();
 			assert_eq!(v, from_bytes!(i32, tv.bytes()));
 		}
 
 		// A range at this read version must collapse to one row, not every historical version.
 		let items: Vec<_> = txn
-			.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+			.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		let mut count = 0;
@@ -53,7 +60,7 @@ fn test_versions() {
 		assert_eq!(1, count); // should only loop once.
 
 		let items: Vec<_> = txn
-			.range_rev(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+			.range_rev(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		let mut count = 0;
@@ -66,7 +73,7 @@ fn test_versions() {
 	}
 
 	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-	let sv = txn.get(&[k0.clone()]).unwrap().pop().flatten().unwrap();
+	let sv = txn.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().unwrap();
 	let val = from_bytes!(i32, sv.bytes());
 	assert_eq!(9, val)
 }
@@ -86,25 +93,25 @@ fn test_as_of_version_bounds() {
 
 	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_inclusive(committed_at);
-	assert_eq!(1, from_bytes!(i32, rx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
 	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_inclusive(CommitVersion(committed_at.0 - 1));
-	assert!(rx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
+	assert!(rx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().is_none());
 
 	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_exclusive(committed_at);
-	assert!(rx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
+	assert!(rx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().is_none());
 
 	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_exclusive(CommitVersion(committed_at.0 + 1));
-	assert_eq!(1, from_bytes!(i32, rx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
 	let mut wx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	wx.read_as_of_version_inclusive(committed_at).unwrap();
-	assert_eq!(1, from_bytes!(i32, wx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
+	assert_eq!(1, from_bytes!(i32, wx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
 	let mut wx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	wx.read_as_of_version_exclusive(committed_at);
-	assert!(wx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
+	assert!(wx.get(&system_ctx(), &[k0.clone()]).unwrap().pop().flatten().is_none());
 }

@@ -23,7 +23,7 @@ use reifydb_runtime::{
 		mailbox::ActorRef,
 		system::{ActorHandle, ActorSpawner},
 	},
-	context::clock::Clock,
+	context::{clock::Clock, transaction::TransactionContext},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
@@ -160,11 +160,17 @@ impl MetricsSubsystemFactory {
 		let multi_store = ioc.resolve::<MultiStore>()?;
 
 		let clock = ioc.resolve::<Clock>()?;
-		let actor = MetricsFlushActor::new(accumulator, event_bus.clone(), single_store, multi_store)
-			.with_drain(engine.clone(), clock)
-			.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>)
-			.with_epoch_gauge(epoch_gauge)
-			.with_sampler(sampler);
+		let actor = MetricsFlushActor::new(
+			Arc::new(TransactionContext::system(engine.runtime_context().clone())),
+			accumulator,
+			event_bus.clone(),
+			single_store,
+			multi_store,
+		)
+		.with_drain(engine.clone(), clock)
+		.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>)
+		.with_epoch_gauge(epoch_gauge)
+		.with_sampler(sampler);
 
 		let handle = spawner.spawn_coordination("metrics-flush", actor);
 		ioc.register_service(handle.actor_ref().clone());

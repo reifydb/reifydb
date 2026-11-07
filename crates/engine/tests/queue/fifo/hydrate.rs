@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, slice::from_ref};
+use std::{collections::BTreeMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -18,11 +18,16 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	queue::scheduling::queue_partition_counters, single::write::SingleWriteTransaction, transaction::Transaction,
 };
 use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -43,7 +48,7 @@ const SCAN_LIMIT: u64 = 8192;
 
 fn scan(t: &TestEngine, range: EncodedKeyRange) -> Vec<SingleVersionRow> {
 	let store = t.inner().single().read_store();
-	let batch = SingleVersionRange::range_batch(&store, range, SCAN_LIMIT).unwrap();
+	let batch = SingleVersionRange::range_batch(&store, &system_ctx(), range, SCAN_LIMIT).unwrap();
 	assert!(!batch.has_more, "the scan limit is too small to observe the whole keyspace under test");
 	batch.items
 }
@@ -69,7 +74,7 @@ fn dues(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueDueKey> {
 }
 
 fn partitions(t: &TestEngine, queue: &Queue) -> Vec<Partition> {
-	queue_partition_counters(t.inner().single(), queue.id)
+	queue_partition_counters(&system_ctx(), t.inner().single(), queue.id)
 		.unwrap()
 		.into_iter()
 		.map(|(partition, _)| partition)
@@ -78,7 +83,7 @@ fn partitions(t: &TestEngine, queue: &Queue) -> Vec<Partition> {
 
 fn counters(t: &TestEngine, queue: &Queue, partition: Partition) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue.id, partition)])
+	SingleVersionGet::get(&store, &system_ctx(), &[QueuePartitionKey::encoded(queue.id, partition)])
 		.unwrap()
 		.pop()
 		.flatten()
@@ -102,6 +107,7 @@ where
 	let lock_key = QueuePartitionKey::encoded(queue.id, partition);
 	let mut tx = single
 		.begin_command_ranged(
+			&system_ctx(),
 			[&lock_key],
 			vec![
 				QueueItemStateKey::partition_scan(queue.id, partition).encode(),

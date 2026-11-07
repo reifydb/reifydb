@@ -5,6 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{Result, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 
@@ -314,12 +315,18 @@ pub trait MultiVersionCommit: Send + Sync {
 }
 
 pub trait MultiVersionGet: Send + Sync {
-	fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+		version: CommitVersion,
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {
 	fn get_previous(
 		&self,
+		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
 	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
@@ -371,30 +378,40 @@ pub trait SingleVersionCommit: Send + Sync {
 }
 
 pub trait SingleVersionGet: Send + Sync {
-	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
+	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
 }
 
 pub trait SingleVersionRange: Send + Sync {
-	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
+	fn range_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch>;
 
-	fn range(&self, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
-		self.range_batch(range, 1024)
+	fn range(&self, ctx: &TransactionContext, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
+		self.range_batch(ctx, range, 1024)
 	}
 
-	fn prefix(&self, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
-		self.range(EncodedKeyRange::prefix(prefix))
+	fn prefix(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
+		self.range(ctx, EncodedKeyRange::prefix(prefix))
 	}
 }
 
 pub trait SingleVersionRangeRev: Send + Sync {
-	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
+	fn range_rev_batch(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<SingleVersionBatch>;
 
-	fn range_rev(&self, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
-		self.range_rev_batch(range, 1024)
+	fn range_rev(&self, ctx: &TransactionContext, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
+		self.range_rev_batch(ctx, range, 1024)
 	}
 
-	fn prefix_rev(&self, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
-		self.range_rev(EncodedKeyRange::prefix(prefix))
+	fn prefix_rev(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
+		self.range_rev(ctx, EncodedKeyRange::prefix(prefix))
 	}
 }
 

@@ -19,13 +19,18 @@ use std::sync::{
 };
 
 use reifydb_core::key::{any::TaggedKey, bound::TaggedKeyBoundRange};
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
+
 fn read_u64(txn: &mut MultiWriteTransaction, key: &TaggedKey) -> Option<u64> {
-	txn.get(&[key.clone()]).unwrap().pop().flatten().map(|sv| {
+	txn.get(&system_ctx(), &[key.clone()]).unwrap().pop().flatten().map(|sv| {
 		let row = sv.bytes();
 		from_bytes!(u64, row)
 	})
@@ -102,7 +107,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 				std::thread::spawn(move || {
 					let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 					let found = txn
-						.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+						.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 						.next()
 						.is_some();
 

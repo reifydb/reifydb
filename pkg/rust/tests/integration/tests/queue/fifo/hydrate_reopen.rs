@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice::from_ref;
+use std::{slice::from_ref, sync::Arc};
 
 use reifydb::{
 	core::{
@@ -17,11 +17,16 @@ use reifydb::{
 			queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		},
 	},
+	runtime::context::{RuntimeContext, transaction::TransactionContext},
 	testing::db::{TempDbPath, TestDb},
 	transaction::transaction::Transaction,
 };
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_value::value::{identity::IdentityId, partition::Partition};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn queue_id(db: &TestDb, name: &str) -> QueueId {
 	let engine = db.engine();
@@ -34,7 +39,7 @@ fn queue_id(db: &TestDb, name: &str) -> QueueId {
 
 fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<TaggedKey> {
 	let store = db.engine().single().read_store();
-	SingleVersionRange::range_batch(&store, range, 1024)
+	SingleVersionRange::range_batch(&store, &system_ctx(), range, 1024)
 		.unwrap()
 		.items
 		.iter()
@@ -44,7 +49,7 @@ fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<TaggedKey> {
 
 fn depth(db: &TestDb, queue: QueueId, partition: Partition) -> u64 {
 	let store = db.engine().single().read_store();
-	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
+	SingleVersionGet::get(&store, &system_ctx(), &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
 		.pop()
 		.flatten()
@@ -61,6 +66,7 @@ fn wipe_scheduling(db: &TestDb, queue: QueueId) {
 	let lock_key = lock.encode();
 	let mut tx = single
 		.begin_command_ranged(
+			&system_ctx(),
 			[&lock_key],
 			vec![
 				QueueItemStateKey::partition_scan(queue, Queue::UNPARTITIONED).encode(),

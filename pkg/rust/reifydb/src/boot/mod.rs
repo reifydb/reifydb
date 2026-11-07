@@ -3,7 +3,10 @@
 
 mod start;
 
+use std::sync::Arc;
+
 use reifydb_engine::{engine::StandardEngine, queue::hydrate::hydrate_queues};
+use reifydb_runtime::context::transaction::TransactionContext;
 
 use crate::{
 	MigrationStatement, Result,
@@ -24,7 +27,10 @@ impl Bootloader {
 
 impl Bootloader {
 	pub fn load(&self) -> Result<()> {
-		ensure_storage_version(&self.engine.single_owned())?;
+		ensure_storage_version(
+			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
+			&self.engine.single_owned(),
+		)?;
 		configure_store(&self.engine)?;
 		hydrate_queues(&self.engine)?;
 		Ok(())

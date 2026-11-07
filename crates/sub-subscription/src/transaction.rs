@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::HashMap, mem, ops::RangeBounds};
+use std::{cmp::Ordering, collections::HashMap, mem, ops::RangeBounds, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -38,7 +38,7 @@ use reifydb_flow_async::{
 		substrate::FlowSubstrate,
 	},
 };
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{
 	Result,
@@ -51,6 +51,7 @@ use reifydb_value::{
 };
 
 pub struct EphemeralTransaction {
+	pub ctx: Arc<TransactionContext>,
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub query: MultiReadTransaction,
@@ -67,6 +68,7 @@ pub struct EphemeralTransaction {
 
 impl EphemeralTransaction {
 	pub fn new(
+		ctx: Arc<TransactionContext>,
 		version: CommitVersion,
 		query: MultiReadTransaction,
 		catalog: Catalog,
@@ -78,6 +80,7 @@ impl EphemeralTransaction {
 		query.read_as_of_version_inclusive(version);
 
 		Self {
+			ctx,
 			version,
 			pending: Pending::new(),
 			query,
@@ -143,13 +146,14 @@ fn decoded(key: &EncodedKey) -> TaggedKey {
 }
 
 fn ephemeral_storage_get(
+	ctx: &TransactionContext,
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
 	key: &EncodedKey,
 ) -> Result<Option<EncodedBytes>> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(&[decoded(key)])?.pop().flatten() {
+		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(ctx, &[decoded(key)])?.pop().flatten() {
 			Some(multi) => Ok(Some(multi.bytes().clone())),
 			None => Ok(None),
 		},
@@ -157,17 +161,19 @@ fn ephemeral_storage_get(
 }
 
 fn ephemeral_storage_contains(
+	ctx: &TransactionContext,
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
 	key: &EncodedKey,
 ) -> Result<bool> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(&[decoded(key)]).map(|found| found[0]),
+		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(ctx, &[decoded(key)]).map(|found| found[0]),
 	}
 }
 
 fn ephemeral_storage_range<'a>(
+	ctx: &Arc<TransactionContext>,
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &'a MultiReadTransaction,
 	version: CommitVersion,
@@ -183,7 +189,7 @@ fn ephemeral_storage_range<'a>(
 		});
 		return Box::new(items.into_iter());
 	}
-	Box::new(query.range(range, scope, batch_size))
+	Box::new(query.range(ctx, range, scope, batch_size))
 }
 
 fn ephemeral_fetch_state(
@@ -270,6 +276,10 @@ impl FlowTransaction for EphemeralTransaction {
 		&self.catalog
 	}
 
+	fn context(&self) -> &Arc<TransactionContext> {
+		&self.ctx
+	}
+
 	fn query(&self) -> MultiReadTransaction {
 		self.query.clone()
 	}
@@ -331,11 +341,11 @@ impl FlowTransaction for EphemeralTransaction {
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		ephemeral_storage_get(&self.state, &self.query, key)
+		ephemeral_storage_get(&self.ctx, &self.state, &self.query, key)
 	}
 
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		ephemeral_storage_contains(&self.state, &self.query, key)
+		ephemeral_storage_contains(&self.ctx, &self.state, &self.query, key)
 	}
 
 	fn storage_range(
@@ -344,7 +354,7 @@ impl FlowTransaction for EphemeralTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		ephemeral_storage_range(&self.state, &self.query, self.version, range, scope, batch_size)
+		ephemeral_storage_range(&self.ctx, &self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
 	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {

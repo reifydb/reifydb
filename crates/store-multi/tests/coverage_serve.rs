@@ -28,6 +28,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
@@ -36,6 +37,10 @@ use reifydb_store_multi::{
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGES: [StorageId; 4] = [
 	StorageId::Table(TableId(1)),
@@ -147,6 +152,7 @@ fn batches(store: &StandardMultiStore, storage: StorageId, read: u64) -> Vec<(Ve
 	loop {
 		let batch = store
 			.range_next(
+				&system_ctx(),
 				&mut cursor,
 				RowKey::full_scan(storage).encode(),
 				MultiVersionScope::AsOf {

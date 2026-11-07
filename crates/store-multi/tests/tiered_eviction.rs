@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
-	context::clock::Clock,
+	context::{RuntimeContext, clock::Clock, transaction::TransactionContext},
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
@@ -34,6 +34,10 @@ use reifydb_store_multi::{
 use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
 use crate::common::without_wal;
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -102,11 +106,12 @@ fn stored_versions(
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
+	store.get(&system_ctx(), from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 	store.range(
+		&system_ctx(),
 		RowKey::full_scan(STORAGE).encode(),
 		MultiVersionScope::AsOf {
 			read: CommitVersion(version),
@@ -158,7 +163,7 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	assert!(
 		matches!(
 			persistent
-				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+				.get(&system_ctx(), kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
 				.unwrap()
 				.remove(0),
 			VersionedGetResult::Value { .. }
@@ -215,7 +220,7 @@ fn persistent_false_object_is_dropped_without_persisting() {
 	assert!(
 		matches!(
 			persistent
-				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+				.get(&system_ctx(), kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
 				.unwrap()
 				.remove(0),
 			VersionedGetResult::NotFound
@@ -286,7 +291,7 @@ fn versions_above_w_are_left_entirely_resident() {
 	assert!(
 		matches!(
 			persistent
-				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(5))
+				.get(&system_ctx(), kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(5))
 				.unwrap()
 				.remove(0),
 			VersionedGetResult::NotFound
@@ -355,7 +360,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let persistent = store.persistent().unwrap();
 	assert_eq!(
 		persistent
-			.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+			.get(&system_ctx(), kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
 			.unwrap()
 			.remove(0)
 			.value()
@@ -405,7 +410,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	let persistent = store.persistent().unwrap();
 	assert_eq!(
 		persistent
-			.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+			.get(&system_ctx(), kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
 			.unwrap()
 			.remove(0)
 			.value()

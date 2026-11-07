@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	slice,
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -22,7 +23,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
 use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Range, Resolve};
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
 	interceptor::{
@@ -108,6 +109,7 @@ use crate::{
 };
 
 pub struct DeferredTransaction {
+	pub ctx: Arc<TransactionContext>,
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub query: Option<MultiReadTransaction>,
@@ -153,6 +155,7 @@ impl DeferredTransaction {
 		}
 
 		Self {
+			ctx: params.ctx,
 			version: params.version,
 			pending: params.pending,
 			query,
@@ -193,6 +196,7 @@ const NO_READ_TRANSACTION: &str = "flow transaction was built without a read tra
 const UNDECODABLE_KEY: &str = "a key routed to the multi store must decode";
 
 pub(crate) fn deferred_storage_get(
+	ctx: &TransactionContext,
 	operators: Option<&OperatorStore>,
 	query: Option<&MultiReadTransaction>,
 	state_query: Option<&MultiReadTransaction>,
@@ -230,7 +234,7 @@ pub(crate) fn deferred_storage_get(
 		if tagged.is_empty() {
 			continue;
 		}
-		for (slot, value) in slots.into_iter().zip(read.expect(NO_READ_TRANSACTION).get(&tagged)?) {
+		for (slot, value) in slots.into_iter().zip(read.expect(NO_READ_TRANSACTION).get(ctx, &tagged)?) {
 			rows[slot] = value.map(|value| value.into_multi_version_row().bytes);
 		}
 	}
@@ -238,6 +242,7 @@ pub(crate) fn deferred_storage_get(
 }
 
 pub(crate) fn deferred_storage_contains(
+	ctx: &TransactionContext,
 	operators: Option<&OperatorStore>,
 	query: Option<&MultiReadTransaction>,
 	state_query: Option<&MultiReadTransaction>,
@@ -259,11 +264,12 @@ pub(crate) fn deferred_storage_contains(
 		ReadFrom::Query => query,
 	};
 	query.expect(NO_READ_TRANSACTION)
-		.contains(&[TaggedKey::decode(key).expect(UNDECODABLE_KEY)])
+		.contains(ctx, &[TaggedKey::decode(key).expect(UNDECODABLE_KEY)])
 		.map(|found| found[0])
 }
 
 pub(crate) fn deferred_storage_range<'a>(
+	ctx: &Arc<TransactionContext>,
 	operators: Option<&OperatorStore>,
 	query: Option<&'a MultiReadTransaction>,
 	state_query: Option<&'a MultiReadTransaction>,
@@ -284,7 +290,7 @@ pub(crate) fn deferred_storage_range<'a>(
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
 	};
-	Box::new(target.expect(NO_READ_TRANSACTION).range(range, scope, batch_size))
+	Box::new(target.expect(NO_READ_TRANSACTION).range(ctx, range, scope, batch_size))
 }
 
 pub(crate) fn deferred_fetch_state(
@@ -326,6 +332,10 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn catalog(&self) -> &Catalog {
 		&self.catalog
+	}
+
+	fn context(&self) -> &Arc<TransactionContext> {
+		&self.ctx
 	}
 
 	fn query(&self) -> MultiReadTransaction {
@@ -386,6 +396,7 @@ impl FlowTransaction for DeferredTransaction {
 			self.storage_counts.gets += 1;
 		}
 		Ok(deferred_storage_get(
+			&self.ctx,
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),
@@ -401,6 +412,7 @@ impl FlowTransaction for DeferredTransaction {
 			self.storage_counts.get_many_calls += 1;
 		}
 		deferred_storage_get(
+			&self.ctx,
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),
@@ -410,6 +422,7 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
 		deferred_storage_contains(
+			&self.ctx,
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),
@@ -428,6 +441,7 @@ impl FlowTransaction for DeferredTransaction {
 			self.storage_counts.ranges += 1;
 		}
 		deferred_storage_range(
+			&self.ctx,
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),

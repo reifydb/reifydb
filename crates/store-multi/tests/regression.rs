@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -13,9 +13,14 @@ use reifydb_core::{
 	},
 	key::row::RowKey,
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, store::CommitStore};
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+fn system_ctx() -> Arc<TransactionContext> {
+	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+}
 
 fn k(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
@@ -140,7 +145,7 @@ fn between_scan_keeps_commit_rows_above_a_fully_filtered_persistent_chunk() {
 	let (store, _guard) = store_with_two_stale_chunks(2, 1);
 
 	let scanned: Vec<(Vec<u8>, u64)> = store
-		.range(RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
+		.range(&system_ctx(), RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
@@ -162,7 +167,7 @@ fn between_rev_scan_keeps_commit_rows_below_a_fully_filtered_persistent_chunk() 
 	let (store, _guard) = store_with_two_stale_chunks(1, 2 * SCAN_CHUNK + 1);
 
 	let scanned: Vec<(Vec<u8>, u64)> = store
-		.range_rev(RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
+		.range_rev(&system_ctx(), RowKey::full_scan(STORAGE).encode(), STALE_SCOPE, 10)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()

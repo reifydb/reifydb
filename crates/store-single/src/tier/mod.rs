@@ -7,6 +7,7 @@ pub mod persistent;
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 #[derive(Debug, Clone)]
@@ -38,14 +39,19 @@ impl RangeBatch {
 pub type RangeCursor = reifydb_store::coverage::cursor::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>>;
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>>;
 
-	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>>;
+	fn get_with_tombstone(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[&[u8]],
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>>;
 
 	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()>;
 
 	fn range_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -54,6 +60,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	fn range_rev_next(
 		&self,
+		ctx: &TransactionContext,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,

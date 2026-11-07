@@ -30,6 +30,7 @@ use reifydb_core::{
 	metrics::scan::record_page,
 };
 use reifydb_runtime::{
+	context::transaction::TransactionContext,
 	shutdown::{Shutdown, ShutdownErrors},
 	sync::{
 		map::Map,
@@ -757,6 +758,7 @@ impl SqlitePersistentStorage {
 
 	pub(crate) fn range_chunk_row(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageRowKey>,
 		req: NarrowRangeRequest<'_, StorageRowKey>,
 	) -> Result<RangeBatch<StorageRowKey>> {
@@ -858,6 +860,7 @@ impl SqlitePersistentStorage {
 
 	pub(crate) fn range_chunk_partitioned(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
 		req: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
 	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
@@ -965,6 +968,7 @@ impl SqlitePersistentStorage {
 
 	pub(crate) fn range_chunk_series(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
 		req: NarrowRangeRequest<'_, StorageSeriesKey>,
 	) -> Result<RangeBatch<StorageSeriesKey>> {
@@ -1066,6 +1070,7 @@ impl SqlitePersistentStorage {
 
 	pub(crate) fn range_chunk_partitioned_series(
 		&self,
+		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
 		req: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
 	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
@@ -2187,7 +2192,13 @@ impl SqlitePersistentStorage {
 }
 
 impl TierStorage for SqlitePersistentStorage {
-	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
+	fn get(
+		&self,
+		_ctx: &TransactionContext,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
 		match table {
 			EntryKind::Source(_, _) => self.get_source(table, keys, version),
 			_ => self.get_multi(table, keys, version),
@@ -2199,9 +2210,10 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(())
 	}
 
-	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, _ctx, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range_next(
 		&self,
+		_ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
@@ -2222,9 +2234,10 @@ impl TierStorage for SqlitePersistentStorage {
 		)
 	}
 
-	#[instrument(name = "store::multi::persistent::sqlite::range_rev", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::multi::persistent::sqlite::range_rev", level = "trace", skip(self, _ctx, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range_rev_next(
 		&self,
+		_ctx: &TransactionContext,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
@@ -2272,7 +2285,7 @@ impl Shutdown for SqlitePersistentStorage {
 
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashMap, ptr::null_mut, slice::from_ref};
+	use std::{collections::HashMap, ptr::null_mut, slice::from_ref, sync::Arc};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
@@ -2288,12 +2301,17 @@ mod tests {
 			},
 		},
 	};
+	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 	use rusqlite::ffi::{
 		SQLITE_STMTSTATUS_REPREPARE, SQLITE_STMTSTATUS_VM_STEP, sqlite3_next_stmt, sqlite3_stmt_status,
 	};
 
 	use super::*;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	// `table()` backs the narrow row schema, so every key built against it must decode as a RowKey.
 	fn table() -> EntryKind {
@@ -2340,7 +2358,11 @@ mod tests {
 	}
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
-		s.get(table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX)).unwrap().remove(0).value().is_some()
+		s.get(&system_ctx(), table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX))
+			.unwrap()
+			.remove(0)
+			.value()
+			.is_some()
 	}
 
 	#[test]
@@ -2372,6 +2394,7 @@ mod tests {
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(
+				&system_ctx(),
 				table(),
 				&mut cursor,
 				Bound::Unbounded,
@@ -2421,7 +2444,15 @@ mod tests {
 		let mut seen: Vec<EncodedKey> = Vec::new();
 		loop {
 			let batch = s
-				.range_next(table(), &mut cursor, Bound::Unbounded, Bound::Unbounded, scope, 2)
+				.range_next(
+					&system_ctx(),
+					table(),
+					&mut cursor,
+					Bound::Unbounded,
+					Bound::Unbounded,
+					scope,
+					2,
+				)
 				.unwrap();
 			seen.extend(batch.entries.iter().map(|e| e.key.clone()));
 			if !batch.has_more {
@@ -2544,7 +2575,7 @@ mod tests {
 
 		for i in (0..170u64).step_by(2) {
 			let value = s
-				.get(table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
+				.get(&system_ctx(), table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
 				.unwrap()
 				.remove(0)
 				.value();
@@ -2556,7 +2587,7 @@ mod tests {
 		}
 		for i in (1..170u64).step_by(2) {
 			let value = s
-				.get(table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
+				.get(&system_ctx(), table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
 				.unwrap()
 				.remove(0)
 				.value();
@@ -2749,6 +2780,7 @@ mod tests {
 		};
 		let mut cursor = RangeCursor::default();
 		s.range_next(
+			&system_ctx(),
 			kind,
 			&mut cursor,
 			start,
@@ -2789,14 +2821,14 @@ mod tests {
 		assert_eq!(s.count_current(t).unwrap(), 3);
 
 		let got = s
-			.get(t, from_ref(&series_key(Some(3), 20, 0).as_slice()), CommitVersion(10))
+			.get(&system_ctx(), t, from_ref(&series_key(Some(3), 20, 0).as_slice()), CommitVersion(10))
 			.unwrap()
 			.remove(0);
 		assert!(matches!(got, VersionedGetResult::Value { .. }), "a narrow series row must be readable by key");
 
 		let keys = [series_key(Some(3), 10, 1), series_key(None, 10, 0), series_key(Some(9), 1, 1)];
 		let refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
-		let many = s.get(t, &refs, CommitVersion(10)).unwrap();
+		let many = s.get(&system_ctx(), t, &refs, CommitVersion(10)).unwrap();
 		assert!(matches!(many[0], VersionedGetResult::Value { .. }));
 		assert!(matches!(many[1], VersionedGetResult::Value { .. }));
 		assert!(
@@ -2829,9 +2861,14 @@ mod tests {
 		s.set(CommitVersion(3), HashMap::from([(t, vec![(series_key(None, 10, 0), None)])])).unwrap();
 		assert!(
 			matches!(
-				s.get(t, from_ref(&series_key(None, 10, 0).as_slice()), CommitVersion(10))
-					.unwrap()
-					.remove(0),
+				s.get(
+					&system_ctx(),
+					t,
+					from_ref(&series_key(None, 10, 0).as_slice()),
+					CommitVersion(10)
+				)
+				.unwrap()
+				.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"a removal must delete the row the narrow delete names"
@@ -3017,9 +3054,14 @@ mod tests {
 
 		assert!(
 			matches!(
-				s.get(t, from_ref(&partitioned_series_key(2, 10, 0).as_slice()), CommitVersion(10))
-					.unwrap()
-					.remove(0),
+				s.get(
+					&system_ctx(),
+					t,
+					from_ref(&partitioned_series_key(2, 10, 0).as_slice()),
+					CommitVersion(10)
+				)
+				.unwrap()
+				.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"a partitioned narrow get must find the row under its own partition"
@@ -3043,6 +3085,7 @@ mod tests {
 		let mut cursor: Cursor<RangeStop, StorageSeriesKey> = Cursor::default();
 		let typed = s
 			.range_chunk_series(
+				&system_ctx(),
 				&mut cursor,
 				NarrowRangeRequest {
 					table: t,
@@ -3082,6 +3125,7 @@ mod tests {
 		let mut cursor: Cursor<RangeStop, StoragePartitionedSeriesKey> = Cursor::default();
 		let typed = s
 			.range_chunk_partitioned_series(
+				&system_ctx(),
 				&mut cursor,
 				NarrowRangeRequest {
 					table: t,
@@ -3140,9 +3184,14 @@ mod tests {
 		assert_eq!(s.count_current(t).unwrap(), 2, "the write must land in the pre-existing blob table");
 		assert!(
 			matches!(
-				s.get(t, from_ref(&series_key(Some(3), 20, 0).as_slice()), CommitVersion(10))
-					.unwrap()
-					.remove(0),
+				s.get(
+					&system_ctx(),
+					t,
+					from_ref(&series_key(Some(3), 20, 0).as_slice()),
+					CommitVersion(10)
+				)
+				.unwrap()
+				.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"a blob series row must still be readable, not silently answered as absent"
@@ -3219,6 +3268,7 @@ mod tests {
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(
+				&system_ctx(),
 				t,
 				&mut cursor,
 				Bound::Included(start),
@@ -3239,6 +3289,7 @@ mod tests {
 		let mut cursor2 = RangeCursor::default();
 		let batch2 = s
 			.range_rev_next(
+				&system_ctx(),
 				t,
 				&mut cursor2,
 				Bound::Included(start),
@@ -3278,6 +3329,7 @@ mod tests {
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(
+				&system_ctx(),
 				t,
 				&mut cursor,
 				Bound::Excluded(start),
@@ -3335,8 +3387,10 @@ mod tests {
 		s.set(CommitVersion(1), HashMap::from([(partitioned_table(), vec![(k.clone(), Some(row(b"v")))])]))
 			.unwrap();
 
-		let got =
-			s.get(partitioned_table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX)).unwrap().remove(0);
+		let got = s
+			.get(&system_ctx(), partitioned_table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX))
+			.unwrap()
+			.remove(0);
 		assert_eq!(got.value().as_ref().map(|v| v.as_slice()), Some(&b"v"[..]));
 	}
 
@@ -3366,6 +3420,7 @@ mod tests {
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(
+				&system_ctx(),
 				t,
 				&mut cursor,
 				Bound::Included(start),
@@ -3410,6 +3465,7 @@ mod tests {
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(
+				&system_ctx(),
 				t,
 				&mut cursor,
 				Bound::Excluded(start),
@@ -3537,6 +3593,7 @@ mod tests {
 		loop {
 			let batch = s
 				.range_next(
+					&system_ctx(),
 					t,
 					&mut cursor,
 					Bound::Included(start),
@@ -3618,9 +3675,25 @@ mod tests {
 				read: CommitVersion(10),
 			};
 			let batch = if reverse {
-				s.range_rev_next(t, &mut cursor, Bound::Included(start), Bound::Excluded(end), scope, 2)
+				s.range_rev_next(
+					&system_ctx(),
+					t,
+					&mut cursor,
+					Bound::Included(start),
+					Bound::Excluded(end),
+					scope,
+					2,
+				)
 			} else {
-				s.range_next(t, &mut cursor, Bound::Included(start), Bound::Excluded(end), scope, 2)
+				s.range_next(
+					&system_ctx(),
+					t,
+					&mut cursor,
+					Bound::Included(start),
+					Bound::Excluded(end),
+					scope,
+					2,
+				)
 			}
 			.unwrap();
 			for entry in &batch.entries {
@@ -3691,9 +3764,9 @@ mod tests {
 				read: CommitVersion(10),
 			};
 			let batch = if reverse {
-				s.range_rev_next(t, &mut cursor, start, end, scope, 2)
+				s.range_rev_next(&system_ctx(), t, &mut cursor, start, end, scope, 2)
 			} else {
-				s.range_next(t, &mut cursor, start, end, scope, 2)
+				s.range_next(&system_ctx(), t, &mut cursor, start, end, scope, 2)
 			};
 			served += batch.unwrap().entries.len();
 		}
@@ -3778,10 +3851,17 @@ mod tests {
 			assert_eq!(drain(&s, *t, range, false), *rows, "{t:?} forward");
 			assert_eq!(drain(&s, *t, range, true), *rows, "{t:?} reverse");
 		}
-		assert_eq!(typed_pages(table(), |c, r| s.range_chunk_row(c, r)), 8);
-		assert_eq!(typed_pages(partitioned_table(), |c, r| s.range_chunk_partitioned(c, r)), 8);
-		assert_eq!(typed_pages(series_table(), |c, r| s.range_chunk_series(c, r)), 8);
-		assert_eq!(typed_pages(partitioned_series_table(), |c, r| s.range_chunk_partitioned_series(c, r)), 8);
+		assert_eq!(typed_pages(table(), |c, r| s.range_chunk_row(&system_ctx(), c, r)), 8);
+		assert_eq!(typed_pages(partitioned_table(), |c, r| s.range_chunk_partitioned(&system_ctx(), c, r)), 8);
+		assert_eq!(typed_pages(series_table(), |c, r| s.range_chunk_series(&system_ctx(), c, r)), 8);
+		assert_eq!(
+			typed_pages(partitioned_series_table(), |c, r| s.range_chunk_partitioned_series(
+				&system_ctx(),
+				c,
+				r
+			)),
+			8
+		);
 		for t in [table(), partitioned_table(), series_table(), partitioned_series_table()] {
 			assert_eq!(key_pages(&s, t), 4, "{t:?} current keys");
 		}
@@ -3840,9 +3920,9 @@ mod tests {
 				read: CommitVersion(10),
 			};
 			let batch = if reverse {
-				s.range_rev_next(t, &mut cursor, start, end, scope, 8)
+				s.range_rev_next(&system_ctx(), t, &mut cursor, start, end, scope, 8)
 			} else {
-				s.range_next(t, &mut cursor, start, end, scope, 8)
+				s.range_next(&system_ctx(), t, &mut cursor, start, end, scope, 8)
 			};
 			served.extend(batch.unwrap().entries.into_iter().map(|e| e.key));
 			steps.push(take_reader_vm_steps(s));

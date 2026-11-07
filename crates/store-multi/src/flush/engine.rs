@@ -434,7 +434,10 @@ mod tests {
 		hash::{Hash, Hasher},
 		panic::{AssertUnwindSafe, catch_unwind},
 		slice::from_ref,
-		sync::atomic::{AtomicU64, Ordering},
+		sync::{
+			Arc,
+			atomic::{AtomicU64, Ordering},
+		},
 	};
 
 	use reifydb_core::{
@@ -445,7 +448,11 @@ mod tests {
 		},
 		key::row::RowKey,
 	};
-	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
+	use reifydb_runtime::{
+		actor::system::ActorSystem,
+		context::{RuntimeContext, transaction::TransactionContext},
+		shutdown::Shutdown,
+	};
 	use reifydb_sqlite::{DbPath, SqliteConfig, SqliteTempPathGuard};
 	use reifydb_store_commit::VersionedGetResult;
 	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
@@ -453,6 +460,10 @@ mod tests {
 
 	use super::*;
 	use crate::tier::point::MultiPointConfig;
+
+	fn system_ctx() -> Arc<TransactionContext> {
+		Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
+	}
 
 	fn ek(s: &str) -> EncodedKey {
 		let mut hasher = DefaultHasher::new();
@@ -781,7 +792,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(2))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::Value { .. }
@@ -814,7 +825,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(2))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -845,7 +856,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(5))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(5))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -989,7 +1000,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(2))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -1048,7 +1059,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(2))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -1075,7 +1086,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&cold.as_ref()), CommitVersion(2))
+					.get(&system_ctx(), kind, from_ref(&cold.as_ref()), CommitVersion(2))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::Value { .. }
@@ -1090,7 +1101,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&hot.as_ref()), CommitVersion(4))
+					.get(&system_ctx(), kind, from_ref(&hot.as_ref()), CommitVersion(4))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -1112,7 +1123,7 @@ mod tests {
 
 		assert_eq!(
 			actor.persistent
-				.get(kind, from_ref(&cold.as_ref()), CommitVersion(u64::MAX))
+				.get(&system_ctx(), kind, from_ref(&cold.as_ref()), CommitVersion(u64::MAX))
 				.unwrap()
 				.remove(0)
 				.value()
@@ -1122,7 +1133,7 @@ mod tests {
 		);
 		assert_eq!(
 			actor.persistent
-				.get(kind, from_ref(&hot.as_ref()), CommitVersion(u64::MAX))
+				.get(&system_ctx(), kind, from_ref(&hot.as_ref()), CommitVersion(u64::MAX))
 				.unwrap()
 				.remove(0)
 				.value()
@@ -1171,7 +1182,7 @@ mod tests {
 
 		assert_eq!(
 			engine.persistent
-				.get(kind, from_ref(&durable.as_ref()), CommitVersion(u64::MAX))
+				.get(&system_ctx(), kind, from_ref(&durable.as_ref()), CommitVersion(u64::MAX))
 				.unwrap()
 				.remove(0)
 				.value()
@@ -1182,7 +1193,7 @@ mod tests {
 		assert!(
 			!matches!(
 				engine.persistent
-					.get(kind, from_ref(&ahead.as_ref()), CommitVersion(u64::MAX))
+					.get(&system_ctx(), kind, from_ref(&ahead.as_ref()), CommitVersion(u64::MAX))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::Value { .. }
@@ -1304,7 +1315,7 @@ mod tests {
 		for (kind, key) in rows {
 			let written = matches!(
 				engine.persistent
-					.get(kind, from_ref(&ek(key).as_ref()), CommitVersion(3))
+					.get(&system_ctx(), kind, from_ref(&ek(key).as_ref()), CommitVersion(3))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::Value { .. }
@@ -1331,7 +1342,7 @@ mod tests {
 
 		assert_eq!(
 			actor.persistent
-				.get(row_kind, from_ref(&row_key.as_ref()), CommitVersion(3))
+				.get(&system_ctx(), row_kind, from_ref(&row_key.as_ref()), CommitVersion(3))
 				.unwrap()
 				.remove(0)
 				.value()
@@ -1341,7 +1352,7 @@ mod tests {
 		);
 		assert_eq!(
 			actor.persistent
-				.get(dict_kind, from_ref(&dict_key.as_ref()), CommitVersion(3))
+				.get(&system_ctx(), dict_kind, from_ref(&dict_key.as_ref()), CommitVersion(3))
 				.unwrap()
 				.remove(0)
 				.value()
@@ -1381,7 +1392,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(u64::MAX))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(u64::MAX))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::NotFound
@@ -1402,7 +1413,7 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent
-					.get(kind, from_ref(&key.as_ref()), CommitVersion(10))
+					.get(&system_ctx(), kind, from_ref(&key.as_ref()), CommitVersion(10))
 					.unwrap()
 					.remove(0),
 				VersionedGetResult::Value { .. }
