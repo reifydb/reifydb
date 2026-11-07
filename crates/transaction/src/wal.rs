@@ -712,7 +712,8 @@ impl CommitLog for WalCommitLog {
 				commit: record.version,
 				source: record.source,
 			};
-			let entry = CommitEntry::build(version, replayed.lsn, replayed.at, record.deltas);
+			let entry =
+				CommitEntry::build(version, replayed.lsn, replayed.at, record.deltas, record.layers);
 			if entry.deltas.is_empty() {
 				continue;
 			}

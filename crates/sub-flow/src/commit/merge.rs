@@ -342,6 +342,7 @@ mod tests {
 				bytes: EncodedBytes(CowVec::new(vec![0u8; 4])),
 				pre: SetPre::Absent,
 			}],
+			Vec::new(),
 		))
 	}
 
@@ -569,6 +570,7 @@ mod tests {
 			Lsn::new(version),
 			DateTime::default(),
 			vec![set(StorageId::view(5)), set(StorageId::view(6))],
+			Vec::new(),
 		))
 	}
 

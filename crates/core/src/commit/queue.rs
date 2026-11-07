@@ -212,6 +212,7 @@ impl CommitQueue {
 			*event.lsn(),
 			*event.at(),
 			event.deltas().iter().cloned().collect(),
+			event.layers().iter().cloned().collect(),
 		);
 		let entry = (!entry.deltas.is_empty()).then(|| {
 			let entry = Arc::new(entry);

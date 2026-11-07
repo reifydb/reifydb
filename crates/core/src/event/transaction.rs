@@ -4,7 +4,7 @@
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 use reifydb_wal::lsn::Lsn;
 
-use crate::{common::ChangeVersion, delta::Delta};
+use crate::{common::ChangeVersion, delta::Delta, wal::CommitLayer};
 
 define_event! {
 	pub struct PostCommitEvent {
@@ -12,5 +12,6 @@ define_event! {
 		pub version: ChangeVersion,
 		pub lsn: Lsn,
 		pub at: DateTime,
+		pub layers: CowVec<CommitLayer>,
 	}
 }

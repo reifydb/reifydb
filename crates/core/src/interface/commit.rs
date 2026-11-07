@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	mem::size_of,
+	ops::Range,
 	sync::{Arc, OnceLock, Weak},
 };
 
@@ -17,10 +18,11 @@ use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	commit::queue::{CommitQueue, QueueShared},
-	common::{ChangeVersion, CommitVersion},
+	common::{ChangeVersion, CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{catalog::object::ObjectId, change::Change},
-	key::tag::KeyTag,
+	key::{any::TaggedKey, tag::KeyTag},
+	wal::CommitLayer,
 };
 
 pub fn flow_relevant(delta: &Delta) -> bool {
@@ -59,6 +61,7 @@ pub struct CommitEntry {
 	pub lsn: Lsn,
 	pub at: DateTime,
 	pub deltas: Vec<Delta>,
+	pub layers: Vec<(SourceVersion, Range<usize>)>,
 	changed_objects: OnceLock<BTreeSet<ObjectId>>,
 	lift: OnceLock<CommitLift>,
 	queue: OnceLock<Weak<QueueShared>>,
@@ -72,16 +75,24 @@ pub struct CommitLift {
 #[derive(Debug, Default)]
 pub struct CommitObjectLift {
 	pub rows: Vec<(usize, RowNumber)>,
-	pub change: OnceLock<Option<Change>>,
+	pub changes: OnceLock<Vec<Change>>,
 }
 
 impl CommitEntry {
-	pub fn build(version: ChangeVersion, lsn: Lsn, at: DateTime, deltas: Vec<Delta>) -> Self {
+	pub fn build(
+		version: ChangeVersion,
+		lsn: Lsn,
+		at: DateTime,
+		deltas: Vec<Delta>,
+		layers: Vec<CommitLayer>,
+	) -> Self {
+		let (deltas, layers) = layered_feed(deltas, layers);
 		Self {
 			version,
 			lsn,
 			at,
-			deltas: deltas.into_iter().filter(flow_relevant).collect(),
+			deltas,
+			layers,
 			changed_objects: OnceLock::new(),
 			lift: OnceLock::new(),
 			queue: OnceLock::new(),
@@ -107,6 +118,11 @@ impl CommitEntry {
 		self.lift.get_or_init(|| build(self))
 	}
 
+	pub fn source_at(&self, index: usize) -> SourceVersion {
+		let layer = self.layers.partition_point(|(_, range)| range.end <= index);
+		self.layers.get(layer).map_or(self.version.source, |(source, _)| *source)
+	}
+
 	pub fn bytes(&self) -> u64 {
 		let deltas: usize = self
 			.deltas
@@ -119,6 +135,28 @@ impl CommitEntry {
 			.sum();
 		(size_of::<Self>() + deltas) as u64
 	}
+}
+
+fn layered_feed(deltas: Vec<Delta>, layers: Vec<CommitLayer>) -> (Vec<Delta>, Vec<(SourceVersion, Range<usize>)>) {
+	let deltas = deltas.into_iter().filter(flow_relevant);
+	if layers.is_empty() {
+		return (deltas.collect(), Vec::new());
+	}
+	let covered: BTreeSet<TaggedKey> =
+		layers.iter().flat_map(|layer| layer.deltas.iter().map(|delta| delta.key().clone())).collect();
+	let leftover: Vec<Delta> = deltas.filter(|delta| !covered.contains(delta.key())).collect();
+	let last = layers.len() - 1;
+	let mut feed = Vec::new();
+	let mut ranges = Vec::with_capacity(layers.len());
+	for (index, layer) in layers.into_iter().enumerate() {
+		let start = feed.len();
+		feed.extend(layer.deltas.into_iter().filter(flow_relevant));
+		if index == last {
+			feed.extend(leftover.iter().cloned());
+		}
+		ranges.push((layer.source, start..feed.len()));
+	}
+	(feed, ranges)
 }
 
 fn delta_pre(delta: &Delta) -> Option<&EncodedBytes> {
@@ -623,5 +661,75 @@ mod exclusion_tests {
 	#[test]
 	fn test_exclude_version_epoch() {
 		assert!(is_commit_excluded(KeyTag::VersionEpoch));
+	}
+}
+
+#[cfg(test)]
+mod layer_tests {
+	use reifydb_value::util::cowvec::CowVec;
+
+	use super::*;
+	use crate::{
+		interface::catalog::{id::TableId, storage::StorageId},
+		key::row::RowKey,
+	};
+
+	fn key(row: u64) -> TaggedKey {
+		TaggedKey::from(RowKey {
+			storage: StorageId::table(TableId(1)),
+			row: RowNumber(row),
+		})
+	}
+
+	fn set(row: u64, byte: u8, pre: SetPre) -> Delta {
+		Delta::Set {
+			key: key(row),
+			bytes: EncodedBytes(CowVec::new(vec![byte])),
+			pre,
+		}
+	}
+
+	fn version() -> ChangeVersion {
+		ChangeVersion {
+			commit: CommitVersion(50),
+			source: SourceVersion(30),
+		}
+	}
+
+	#[test]
+	fn a_layered_entry_tags_each_delta_with_its_layer_source_and_puts_store_only_keys_in_the_last_layer() {
+		// A delta tagged with the wrong layer hands a reader the row at another source; a dropped store-only
+		// key loses a change.
+		let layers = vec![
+			CommitLayer {
+				source: SourceVersion(10),
+				deltas: vec![set(1, 1, SetPre::Absent)],
+			},
+			CommitLayer {
+				source: SourceVersion(30),
+				deltas: vec![set(1, 2, SetPre::Present(EncodedBytes(CowVec::new(vec![1]))))],
+			},
+		];
+		let store = vec![set(1, 2, SetPre::Absent), set(9, 7, SetPre::Absent)];
+
+		let entry = CommitEntry::build(version(), Lsn::new(1), DateTime::default(), store, layers);
+
+		assert_eq!(entry.deltas.len(), 3, "both layer writes of row 1 and the store-only row 9");
+		assert_eq!(entry.source_at(0), SourceVersion(10));
+		assert_eq!(entry.source_at(1), SourceVersion(30));
+		assert_eq!(entry.deltas[2].key(), &key(9), "a key no layer holds rides in the last layer");
+		assert_eq!(entry.source_at(2), SourceVersion(30));
+	}
+
+	#[test]
+	fn an_entry_without_layers_keeps_the_store_deltas_at_the_entry_source() {
+		// A plain commit must lift exactly as before layers existed.
+		let store = vec![set(1, 2, SetPre::Absent), set(9, 7, SetPre::Absent)];
+
+		let entry = CommitEntry::build(version(), Lsn::new(1), DateTime::default(), store.clone(), Vec::new());
+
+		assert_eq!(entry.deltas, store);
+		assert!(entry.layers.is_empty());
+		assert_eq!(entry.source_at(1), SourceVersion(30));
 	}
 }

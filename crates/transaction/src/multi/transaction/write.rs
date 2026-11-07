@@ -28,7 +28,7 @@ use reifydb_core::{
 		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey, StorageRowKey},
 		tag::KeyTag,
 	},
-	wal::CommitRecord,
+	wal::{CommitLayer, CommitRecord},
 };
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_commit::VersionedGetResult;
@@ -50,7 +50,7 @@ use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
 	commit::Committed,
-	delta::optimize_deltas,
+	delta::{finalize_layers, optimize_deltas, persistent_layers, raw_layers},
 	error::TransactionError,
 	multi::{
 		RangeScope,
@@ -74,6 +74,7 @@ pub struct WriteSavepoint {
 	pub(crate) count: u64,
 	pub(crate) size: ByteSize,
 	pub(crate) delta_log_len: usize,
+	pub(crate) layer_marks_len: usize,
 	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) rebases: BTreeMap<TaggedKey, (EncodedBytes, Vec<Rebase>)>,
@@ -94,6 +95,8 @@ pub struct MultiWriteTransaction {
 	pub(crate) version: CommitVersion,
 	pub(crate) read_version: Option<CommitVersion>,
 	source: Option<SourceVersion>,
+	layer_marks: Vec<(SourceVersion, usize)>,
+	layers: Vec<CommitLayer>,
 	operator: OperatorSection,
 	pub(crate) size: ByteSize,
 	pub(crate) count: u64,
@@ -133,6 +136,8 @@ impl MultiWriteTransaction {
 			version,
 			read_version: None,
 			source: None,
+			layer_marks: Vec::new(),
+			layers: Vec::new(),
 			operator: OperatorSection::default(),
 			size: ByteSize::ZERO,
 			count: 0,
@@ -190,6 +195,11 @@ impl MultiWriteTransaction {
 		self.source = Some(source);
 	}
 
+	pub fn begin_layer(&mut self, source: SourceVersion) {
+		self.layer_marks.push((source, self.delta_log.len()));
+		self.source = Some(source);
+	}
+
 	pub fn push_operator_slice(&mut self, slice: OperatorSlice) {
 		self.operator.slices.push(slice);
 	}
@@ -219,6 +229,7 @@ impl MultiWriteTransaction {
 			count: self.count,
 			size: self.size,
 			delta_log_len: self.delta_log.len(),
+			layer_marks_len: self.layer_marks.len(),
 			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
 			rebases: self.rebases.clone(),
@@ -231,6 +242,7 @@ impl MultiWriteTransaction {
 		self.count = sp.count;
 		self.size = sp.size;
 		self.delta_log.truncate(sp.delta_log_len);
+		self.layer_marks.truncate(sp.layer_marks_len);
 		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
 		self.rebases = sp.rebases;
@@ -537,6 +549,7 @@ impl MultiWriteTransaction {
 		self.pending_writes.rollback();
 		self.conflicts.rollback();
 		self.delta_log.clear();
+		self.layer_marks.clear();
 		self.removed_after_set.clear();
 		Ok(())
 	}
@@ -735,6 +748,7 @@ impl MultiWriteTransaction {
 				Some(prepared),
 				self.source,
 				self.operator.clone(),
+				self.layers.clone(),
 			),
 			Some(rebase) => self.oracle.new_commit_rebased(
 				base_version,
@@ -744,6 +758,7 @@ impl MultiWriteTransaction {
 				Some(prepared),
 				self.source,
 				self.operator.clone(),
+				self.layers.clone(),
 			),
 		};
 		self.release_read_snapshot(base_version);
@@ -782,8 +797,14 @@ impl MultiWriteTransaction {
 		let base_version = self.base_version();
 
 		let rebase = self.take_rebase();
-		let result =
-			self.oracle.advance_unchecked(base_version, deltas, rebase, self.source, self.operator.clone());
+		let result = self.oracle.advance_unchecked(
+			base_version,
+			deltas,
+			rebase,
+			self.source,
+			self.operator.clone(),
+			self.layers.clone(),
+		);
 		self.release_read_snapshot(base_version);
 		let (result, deltas) = result?;
 
@@ -835,12 +856,16 @@ impl MultiWriteTransaction {
 		} else {
 			let persistent: Vec<&Delta> =
 				deltas.iter().filter(|delta| self.engine.store.is_persistent(delta.key())).collect();
+			let layers = persistent_layers(&finalize_layers(&self.layers, deltas), |key| {
+				self.engine.store.is_persistent(key)
+			});
 			let mut buf = Vec::new();
 			CommitRecord::encode_refs(
 				CommitVersion(0),
 				SourceVersion(0),
 				&persistent,
 				&self.operator,
+				&layers,
 				&mut buf,
 			);
 			check_record_size(&buf)?;
@@ -972,6 +997,7 @@ impl MultiWriteTransaction {
 	fn clear_pending_state(&mut self) {
 		let _ = mem::take(&mut self.pending_writes);
 		let _ = mem::take(&mut self.delta_log);
+		let _ = mem::take(&mut self.layer_marks);
 		let _ = mem::take(&mut self.removed_after_set);
 		let _ = mem::take(&mut self.committed_pres);
 		let _ = mem::take(&mut self.operator);
@@ -996,7 +1022,13 @@ impl MultiWriteTransaction {
 
 	fn prepare_commit(&mut self) -> Result<CowVec<Delta>> {
 		self.resolve_removed_after_set()?;
+		self.layers = self.raw_layers();
 		Ok(self.build_deltas())
+	}
+
+	fn raw_layers(&self) -> Vec<CommitLayer> {
+		let skipped: BTreeSet<TaggedKey> = self.rebases.keys().chain(self.rewrites.keys()).cloned().collect();
+		raw_layers(&self.delta_log, &self.layer_marks, &skipped)
 	}
 
 	fn commit_prepared(
@@ -1027,6 +1059,7 @@ impl MultiWriteTransaction {
 		}
 		self.forget_present_tags();
 		self.resolve_removed_after_set()?;
+		self.layers = self.raw_layers();
 		let deltas = self.build_deltas();
 		let (commit_version, lsn, at, deltas) = self.commit_pending_unchecked(deltas)?;
 		let version = self.finalize_commit(commit_version, lsn, at, deltas, before_publish)?;
@@ -1086,7 +1119,8 @@ impl MultiWriteTransaction {
 			commit: commit_version,
 			source: self.source.unwrap_or(SourceVersion::from(commit_version)),
 		};
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, lsn, at));
+		let layers = CowVec::new(finalize_layers(&self.layers, &deltas));
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, lsn, at, layers));
 	}
 }
 
@@ -2110,6 +2144,71 @@ mod tests {
 				pre: SetPre::Present(test_bytes("v2")),
 			}]
 		);
+	}
+
+	struct PublishedLayers(Arc<Mutex<Vec<CommitLayer>>>);
+
+	impl EventListener<PostCommitEvent> for PublishedLayers {
+		fn on(&self, event: &PostCommitEvent) {
+			self.0.lock().extend(event.layers().iter().cloned());
+		}
+	}
+
+	#[test]
+	fn a_layered_commit_installs_the_last_write_and_publishes_each_layer_with_a_chained_pre() {
+		// Storage holding a middle layer's value, or a layer whose pre skips the one before, breaks every
+		// reader of the feed.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("k", "v0")]);
+		let published = Arc::new(Mutex::new(Vec::new()));
+		engine.event_bus.register::<PostCommitEvent, _>(PublishedLayers(published.clone()));
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.begin_layer(SourceVersion(10));
+		txn.set(vec![(test_key("k").into(), test_bytes("v1"))]).unwrap();
+		txn.begin_layer(SourceVersion(20));
+		txn.set(vec![(test_key("k").into(), test_bytes("v2"))]).unwrap();
+		txn.commit().unwrap();
+		engine.event_bus.wait_for_completion();
+
+		assert_eq!(stored(&engine, "k"), Some(test_bytes("v2")), "storage keeps only the last layer's write");
+		assert_eq!(
+			*published.lock(),
+			vec![
+				CommitLayer {
+					source: SourceVersion(10),
+					deltas: vec![Delta::Set {
+						key: test_key("k").into(),
+						bytes: test_bytes("v1"),
+						pre: SetPre::Present(test_bytes("v0")),
+					}],
+				},
+				CommitLayer {
+					source: SourceVersion(20),
+					deltas: vec![Delta::Set {
+						key: test_key("k").into(),
+						bytes: test_bytes("v2"),
+						pre: SetPre::Present(test_bytes("v1")),
+					}],
+				},
+			]
+		);
+	}
+
+	#[test]
+	fn a_commit_with_one_layer_publishes_no_layers() {
+		// A single layer is the plain commit, so publishing it would double every delta for nothing.
+		let engine = MultiTransaction::testing();
+		let published = Arc::new(Mutex::new(Vec::new()));
+		engine.event_bus.register::<PostCommitEvent, _>(PublishedLayers(published.clone()));
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.begin_layer(SourceVersion(10));
+		txn.set(vec![(test_key("k").into(), test_bytes("v1"))]).unwrap();
+		txn.commit().unwrap();
+		engine.event_bus.wait_for_completion();
+
+		assert!(published.lock().is_empty());
 	}
 
 	#[test]

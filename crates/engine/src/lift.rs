@@ -12,7 +12,7 @@ use reifydb_codec::row::{
 	shape::{RowShape, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
-	common::ChangeVersion,
+	common::{ChangeVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{
 		catalog::{object::ObjectId, view::View},
@@ -157,28 +157,23 @@ pub fn lift_entry_changes(
 	let index = entry_lift_index(entry);
 	let mut changes: Vec<Change> = Vec::new();
 	for (id, object) in index.objects.iter().filter(|(id, _)| accept(**id)) {
-		let lifted = match object.change.get() {
+		let lifted = match object.changes.get() {
 			Some(lifted) => lifted,
 			None => {
 				let lifted = lift_entry_object(entry, *id, &object.rows, catalog, txn)?;
-				let bytes = change_bytes(&lifted);
-				if object.change.set(lifted).is_ok() {
+				let bytes = lifted.iter().map(change_bytes).sum();
+				if object.changes.set(lifted).is_ok() {
 					entry.charge(bytes);
 				}
-				object.change.get().expect("the lifted change was stored by this or a racing lift")
+				object.changes.get().expect("the lifted changes were stored by this or a racing lift")
 			}
 		};
-		if let Some(change) = lifted {
-			changes.push(change.clone());
-		}
+		changes.extend(lifted.iter().cloned());
 	}
 	Ok(changes)
 }
 
-fn change_bytes(change: &Option<Change>) -> u64 {
-	let Some(change) = change else {
-		return 0;
-	};
+fn change_bytes(change: &Change) -> u64 {
 	let batches: usize = change
 		.diffs
 		.iter()
@@ -207,8 +202,8 @@ fn lift_entry_object(
 	indexed: &[(usize, RowNumber)],
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-) -> Result<Option<Change>> {
-	let mut rows: Vec<LiftedRow> = Vec::with_capacity(indexed.len());
+) -> Result<Vec<Change>> {
+	let mut layers: BTreeMap<SourceVersion, Vec<LiftedRow>> = BTreeMap::new();
 	for (index, row) in indexed {
 		let (pre, post) = match &entry.deltas[*index] {
 			Delta::Set {
@@ -243,7 +238,7 @@ fn lift_entry_object(
 				entry.version.commit.0, key
 			),
 		};
-		rows.push(LiftedRow {
+		layers.entry(entry.source_at(*index)).or_default().push(LiftedRow {
 			target: RowTarget {
 				object,
 				row: *row,
@@ -252,7 +247,15 @@ fn lift_entry_object(
 			post,
 		});
 	}
-	lift_rows(object, rows, entry.version, entry.at, catalog, txn)
+	let mut changes = Vec::with_capacity(layers.len());
+	for (source, rows) in layers {
+		let version = ChangeVersion {
+			commit: entry.version.commit,
+			source,
+		};
+		changes.extend(lift_rows(object, rows, version, entry.at, catalog, txn)?);
+	}
+	Ok(changes)
 }
 
 fn lift_rows(

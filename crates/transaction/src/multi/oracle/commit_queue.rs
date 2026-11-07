@@ -6,6 +6,7 @@
 use std::{
 	cell::UnsafeCell,
 	hint::spin_loop,
+	mem::take,
 	ptr::null_mut,
 	sync::atomic::{AtomicPtr, AtomicU32, Ordering},
 	thread::{Thread, current, park_timeout},
@@ -21,6 +22,7 @@ use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	delta::Delta,
 	interface::operator::OperatorSection,
+	wal::CommitLayer,
 };
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
@@ -41,6 +43,7 @@ struct CommitPayload {
 	prepared: Option<Prepared>,
 	source: Option<SourceVersion>,
 	section: Option<OperatorSection>,
+	layers: Vec<CommitLayer>,
 	result: Option<Result<CreateCommitResult>>,
 	evicted: Vec<CommittedWindow>,
 }
@@ -67,6 +70,7 @@ impl CommitRequest {
 		prepared: Option<Prepared>,
 		source: Option<SourceVersion>,
 		section: OperatorSection,
+		layers: Vec<CommitLayer>,
 	) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
@@ -78,6 +82,7 @@ impl CommitRequest {
 				prepared,
 				source,
 				section: Some(section),
+				layers,
 				result: None,
 				evicted: Vec::new(),
 			}),
@@ -239,10 +244,20 @@ where
 		prepared: Option<Prepared>,
 		source: Option<SourceVersion>,
 		section: OperatorSection,
+		layers: Vec<CommitLayer>,
 		window_size: u64,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
-		let request =
-			CommitRequest::new(version, window_size, conflicts, deltas, rebase, prepared, source, section);
+		let request = CommitRequest::new(
+			version,
+			window_size,
+			conflicts,
+			deltas,
+			rebase,
+			prepared,
+			source,
+			section,
+			layers,
+		);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -312,6 +327,7 @@ where
 					payload.prepared.take(),
 					payload.source,
 					section,
+					take(&mut payload.layers),
 					payload.window_size,
 					timing,
 					&mut payload.evicted,

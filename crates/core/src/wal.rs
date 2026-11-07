@@ -41,6 +41,13 @@ pub struct CommitRecord {
 	pub source: SourceVersion,
 	pub deltas: Vec<Delta>,
 	pub operator: OperatorSection,
+	pub layers: Vec<CommitLayer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitLayer {
+	pub source: SourceVersion,
+	pub deltas: Vec<Delta>,
 }
 
 impl CommitRecord {
@@ -56,56 +63,14 @@ impl CommitRecord {
 		source: SourceVersion,
 		deltas: &[&Delta],
 		section: &OperatorSection,
+		layers: &[CommitLayer],
 		out: &mut Vec<u8>,
 	) {
 		out.extend_from_slice(&version.0.to_le_bytes());
 		out.extend_from_slice(&source.0.to_le_bytes());
 		put_len(out, deltas.len());
 		for delta in deltas {
-			match delta {
-				Delta::Set {
-					key,
-					bytes,
-					pre,
-				} => {
-					out.push(OP_SET);
-					put_bytes(out, key.encode().as_bytes());
-					put_bytes(out, bytes.as_ref());
-					match pre {
-						SetPre::Absent => out.push(PRE_ABSENT),
-						SetPre::Present(pre) => {
-							out.push(PRE_PRESENT);
-							put_bytes(out, pre.as_ref());
-						}
-						SetPre::Unknown => panic!(
-							"commit {} has an unresolved pre for key {:?}",
-							version.0, key
-						),
-					}
-				}
-				Delta::Remove {
-					key,
-					announce,
-				} => {
-					out.push(OP_REMOVE);
-					put_bytes(out, key.encode().as_bytes());
-					match announce {
-						RemoveAnnounce::Silent => out.push(ANNOUNCE_SILENT),
-						RemoveAnnounce::Announced {
-							pre,
-						} => {
-							out.push(ANNOUNCE_ANNOUNCED);
-							put_bytes(out, pre.as_ref());
-						}
-						RemoveAnnounce::Unobserved {
-							pre,
-						} => {
-							out.push(ANNOUNCE_UNOBSERVED);
-							put_bytes(out, pre.as_ref());
-						}
-					}
-				}
-			}
+			put_delta(out, version, delta);
 		}
 		put_len(out, section.slices.len());
 		for slice in &section.slices {
@@ -132,6 +97,17 @@ impl CommitRecord {
 				out.extend_from_slice(&flow.0.to_le_bytes());
 			}
 		}
+		if layers.len() < 2 {
+			return;
+		}
+		put_len(out, layers.len());
+		for layer in layers {
+			out.extend_from_slice(&layer.source.0.to_le_bytes());
+			put_len(out, layer.deltas.len());
+			for delta in &layer.deltas {
+				put_delta(out, version, delta);
+			}
+		}
 	}
 }
 
@@ -146,6 +122,7 @@ impl Body for CommitRecord {
 			self.source,
 			&self.deltas.iter().collect::<Vec<_>>(),
 			&self.operator,
+			&self.layers,
 			out,
 		);
 	}
@@ -166,6 +143,25 @@ impl Body for CommitRecord {
 			deltas.push(reader.delta()?);
 		}
 		let operator = reader.section()?;
+		let layer_count = match bytes.get(reader.at..reader.at + 4) {
+			Some(count) if u32::from_le_bytes([count[0], count[1], count[2], count[3]]) >= 2 => {
+				reader.u32()?
+			}
+			_ => 0,
+		};
+		let mut layers = Vec::new();
+		for _ in 0..layer_count {
+			let source = SourceVersion(reader.u64()?);
+			let count = reader.u32()?;
+			let mut deltas = Vec::new();
+			for _ in 0..count {
+				deltas.push(reader.delta()?);
+			}
+			layers.push(CommitLayer {
+				source,
+				deltas,
+			});
+		}
 		if reader.at != bytes.len() {
 			return Err(WalError::Body(format!(
 				"{} trailing bytes after delta {count}",
@@ -177,6 +173,7 @@ impl Body for CommitRecord {
 			source,
 			deltas,
 			operator,
+			layers,
 		})
 	}
 }
@@ -274,6 +271,52 @@ impl Body for WalRecord {
 			CommitRecord::KIND => Ok(Self::Multi(CommitRecord::decode(kind, bytes)?)),
 			SingleRecord::KIND => Ok(Self::Single(SingleRecord::decode(kind, bytes)?)),
 			kind => Err(WalError::Body(format!("unknown wal record kind {kind}"))),
+		}
+	}
+}
+
+fn put_delta(out: &mut Vec<u8>, version: CommitVersion, delta: &Delta) {
+	match delta {
+		Delta::Set {
+			key,
+			bytes,
+			pre,
+		} => {
+			out.push(OP_SET);
+			put_bytes(out, key.encode().as_bytes());
+			put_bytes(out, bytes.as_ref());
+			match pre {
+				SetPre::Absent => out.push(PRE_ABSENT),
+				SetPre::Present(pre) => {
+					out.push(PRE_PRESENT);
+					put_bytes(out, pre.as_ref());
+				}
+				SetPre::Unknown => {
+					panic!("commit {} has an unresolved pre for key {:?}", version.0, key)
+				}
+			}
+		}
+		Delta::Remove {
+			key,
+			announce,
+		} => {
+			out.push(OP_REMOVE);
+			put_bytes(out, key.encode().as_bytes());
+			match announce {
+				RemoveAnnounce::Silent => out.push(ANNOUNCE_SILENT),
+				RemoveAnnounce::Announced {
+					pre,
+				} => {
+					out.push(ANNOUNCE_ANNOUNCED);
+					put_bytes(out, pre.as_ref());
+				}
+				RemoveAnnounce::Unobserved {
+					pre,
+				} => {
+					out.push(ANNOUNCE_UNOBSERVED);
+					put_bytes(out, pre.as_ref());
+				}
+			}
 		}
 	}
 }

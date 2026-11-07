@@ -8,9 +8,13 @@ use std::collections::{
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
+	common::SourceVersion,
 	delta::{Delta, RemoveAnnounce, SetPre},
 	key::any::TaggedKey,
+	wal::CommitLayer,
 };
+
+use crate::multi::types::DeltaEntry;
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
@@ -196,9 +200,124 @@ fn optimize_collided(deltas: Vec<Delta>, committed: &BTreeMap<TaggedKey, Encoded
 	result.into_iter().map(|(_, delta)| delta).collect()
 }
 
+pub fn raw_layers(
+	log: &[DeltaEntry],
+	marks: &[(SourceVersion, usize)],
+	skipped: &BTreeSet<TaggedKey>,
+) -> Vec<CommitLayer> {
+	if marks.len() < 2 {
+		return Vec::new();
+	}
+	marks.iter()
+		.enumerate()
+		.map(|(index, (source, start))| {
+			let start = if index == 0 {
+				0
+			} else {
+				*start
+			};
+			let end = marks.get(index + 1).map_or(log.len(), |(_, next)| *next);
+			let mut slot: BTreeMap<&TaggedKey, usize> = BTreeMap::new();
+			let mut deltas: Vec<Delta> = Vec::new();
+			for delta in log[start..end]
+				.iter()
+				.map(|entry| &entry.delta)
+				.filter(|delta| !skipped.contains(delta.key()))
+			{
+				match slot.get(delta.key()) {
+					Some(&at) => deltas[at] = delta.clone(),
+					None => {
+						slot.insert(delta.key(), deltas.len());
+						deltas.push(delta.clone());
+					}
+				}
+			}
+			CommitLayer {
+				source: *source,
+				deltas,
+			}
+		})
+		.collect()
+}
+
+pub fn finalize_layers(raw: &[CommitLayer], resolved: &[Delta]) -> Vec<CommitLayer> {
+	if raw.len() < 2 {
+		return Vec::new();
+	}
+	let mut current: BTreeMap<TaggedKey, Option<EncodedBytes>> =
+		resolved.iter().map(|delta| (delta.key().clone(), committed_pre(delta))).collect();
+	raw.iter()
+		.map(|layer| CommitLayer {
+			source: layer.source,
+			deltas: layer
+				.deltas
+				.iter()
+				.filter_map(|delta| {
+					let before = current.get(delta.key()).cloned().flatten();
+					match delta {
+						Delta::Set {
+							key,
+							bytes,
+							..
+						} => {
+							current.insert(key.clone(), Some(bytes.clone()));
+							Some(Delta::Set {
+								key: key.clone(),
+								bytes: bytes.clone(),
+								pre: before.map_or(SetPre::Absent, SetPre::Present),
+							})
+						}
+						Delta::Remove {
+							key,
+							announce,
+						} => {
+							current.insert(key.clone(), None);
+							before.map(|pre| Delta::Remove {
+								key: key.clone(),
+								announce: with_pre(announce.clone(), pre),
+							})
+						}
+					}
+				})
+				.collect(),
+		})
+		.collect()
+}
+
+pub fn persistent_layers(layers: &[CommitLayer], persistent: impl Fn(&TaggedKey) -> bool) -> Vec<CommitLayer> {
+	layers.iter()
+		.map(|layer| CommitLayer {
+			source: layer.source,
+			deltas: layer.deltas.iter().filter(|delta| persistent(delta.key())).cloned().collect(),
+		})
+		.collect()
+}
+
+fn committed_pre(delta: &Delta) -> Option<EncodedBytes> {
+	match delta {
+		Delta::Set {
+			pre: SetPre::Present(pre),
+			..
+		} => Some(pre.clone()),
+		Delta::Set {
+			pre: SetPre::Absent,
+			..
+		} => None,
+		Delta::Set {
+			key,
+			pre: SetPre::Unknown,
+			..
+		} => panic!("a layered commit met an unresolved pre for key {key:?}"),
+		Delta::Remove {
+			announce,
+			..
+		} => announce.pre().cloned(),
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+	use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
@@ -592,5 +711,139 @@ pub mod tests {
 		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		assert_eq!(optimized, vec![set("key_a", "a2", SetPre::Unknown)]);
+	}
+	fn entry(delta: Delta) -> DeltaEntry {
+		DeltaEntry {
+			delta,
+			version: CommitVersion(1),
+		}
+	}
+
+	fn unknown(key: &str, bytes: &str) -> Delta {
+		Delta::Set {
+			key: make_key(key),
+			bytes: make_bytes(bytes),
+			pre: SetPre::Unknown,
+		}
+	}
+
+	fn sources(layers: &[CommitLayer]) -> Vec<u64> {
+		layers.iter().map(|layer| layer.source.0).collect()
+	}
+
+	#[test]
+	fn raw_layers_split_the_log_at_each_mark_and_keep_the_last_write_of_a_key_per_layer() {
+		// A layer that kept an earlier write of its own key, or leaked a write into its neighbour, stamps a row
+		// with a value it never had at that source.
+		let log = vec![
+			entry(unknown("k", "v1")),
+			entry(unknown("a", "a1")),
+			entry(unknown("k", "v1b")),
+			entry(unknown("k", "v2")),
+			entry(unknown("b", "b3")),
+		];
+		let marks = [(SourceVersion(10), 0), (SourceVersion(20), 3), (SourceVersion(30), 4)];
+
+		let layers = raw_layers(&log, &marks, &BTreeSet::new());
+
+		assert_eq!(sources(&layers), vec![10, 20, 30]);
+		assert_eq!(layers[0].deltas, vec![unknown("k", "v1b"), unknown("a", "a1")]);
+		assert_eq!(layers[1].deltas, vec![unknown("k", "v2")]);
+		assert_eq!(layers[2].deltas, vec![unknown("b", "b3")]);
+	}
+
+	#[test]
+	fn raw_layers_are_empty_for_one_layer_and_skip_rebased_keys() {
+		// One layer needs no feed of its own, and a rebased key's layer copy holds bytes the commit rewrites.
+		let log = vec![entry(unknown("k", "v1")), entry(unknown("meta", "m1")), entry(unknown("k", "v2"))];
+
+		assert!(raw_layers(&log, &[(SourceVersion(10), 0)], &BTreeSet::new()).is_empty());
+		let skipped = BTreeSet::from([make_key("meta")]);
+		let layers = raw_layers(&log, &[(SourceVersion(10), 0), (SourceVersion(20), 2)], &skipped);
+		assert_eq!(layers[0].deltas, vec![unknown("k", "v1")], "the rebased key must stay out of every layer");
+	}
+
+	#[test]
+	fn finalize_layers_chain_each_pre_to_the_value_the_layer_before_left() {
+		// A later layer whose pre is the committed value turns an update into a lie about what the reader saw
+		// before.
+		let raw = vec![
+			CommitLayer {
+				source: SourceVersion(10),
+				deltas: vec![unknown("k", "v1"), unknown("n", "n1")],
+			},
+			CommitLayer {
+				source: SourceVersion(20),
+				deltas: vec![
+					unknown("k", "v2"),
+					Delta::remove_announced(make_key("n"), make_bytes("stale")),
+				],
+			},
+		];
+		let resolved = vec![
+			Delta::Set {
+				key: make_key("k"),
+				bytes: make_bytes("v2"),
+				pre: SetPre::Present(make_bytes("v0")),
+			},
+			Delta::Set {
+				key: make_key("n"),
+				bytes: make_bytes("n1"),
+				pre: SetPre::Absent,
+			},
+		];
+
+		let layers = finalize_layers(&raw, &resolved);
+
+		assert_eq!(
+			layers[0].deltas,
+			vec![
+				Delta::Set {
+					key: make_key("k"),
+					bytes: make_bytes("v1"),
+					pre: SetPre::Present(make_bytes("v0")),
+				},
+				Delta::Set {
+					key: make_key("n"),
+					bytes: make_bytes("n1"),
+					pre: SetPre::Absent,
+				},
+			]
+		);
+		assert_eq!(
+			layers[1].deltas,
+			vec![
+				Delta::Set {
+					key: make_key("k"),
+					bytes: make_bytes("v2"),
+					pre: SetPre::Present(make_bytes("v1")),
+				},
+				Delta::remove_announced(make_key("n"), make_bytes("n1")),
+			]
+		);
+	}
+
+	#[test]
+	fn finalize_layers_drop_a_remove_of_a_key_no_earlier_layer_or_commit_held() {
+		// A remove announced with an invented pre would retract a row no reader ever saw.
+		let raw = vec![
+			CommitLayer {
+				source: SourceVersion(10),
+				deltas: vec![unknown("k", "v1")],
+			},
+			CommitLayer {
+				source: SourceVersion(20),
+				deltas: vec![Delta::remove_announced(make_key("ghost"), make_bytes("x"))],
+			},
+		];
+		let resolved = vec![Delta::Set {
+			key: make_key("k"),
+			bytes: make_bytes("v1"),
+			pre: SetPre::Absent,
+		}];
+
+		let layers = finalize_layers(&raw, &resolved);
+
+		assert!(layers[1].deltas.is_empty(), "a remove of an absent key has nothing to retract");
 	}
 }
