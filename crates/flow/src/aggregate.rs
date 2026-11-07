@@ -350,6 +350,7 @@ fn percentile_read<T>(
 				func: IdentExpression(Fragment::internal(DIGEST_FUNCTION)),
 				args: once(input.clone()).chain(accuracy.cloned()).collect(),
 				fragment: call.fragment.clone(),
+				full_fragment: call.full_fragment.clone(),
 			});
 			let Some(slot) = classify(&digest, Some(call)) else {
 				return Ok(None);
@@ -367,6 +368,7 @@ fn percentile_read<T>(
 		func: call.func.clone(),
 		args: vec![synthetic_aggregate_column(idx), percentile.clone()],
 		fragment: call.fragment.clone(),
+		full_fragment: call.full_fragment.clone(),
 	})))
 }
 
@@ -425,6 +427,7 @@ mod tests {
 			func: IdentExpression(Fragment::internal(name)),
 			args,
 			fragment: Fragment::internal(name),
+			full_fragment: Fragment::internal(name),
 		})
 	}
 

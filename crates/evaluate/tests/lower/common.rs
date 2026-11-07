@@ -281,6 +281,7 @@ pub fn call(name: &str, args: Vec<Expression>) -> Expression {
 		func: IdentExpression(frag(name)),
 		args,
 		fragment: frag("call"),
+		full_fragment: frag("call"),
 	})
 }
 

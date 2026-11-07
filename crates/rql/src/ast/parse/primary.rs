@@ -43,6 +43,7 @@ impl<'bump> Parser<'bump> {
 				token: first_ident_token,
 				function,
 				arguments,
+				full_fragment: self.span_since(&first_ident_token.fragment),
 			}))
 		} else {
 			Ok(Ast::Identifier(self.parse_as_identifier()?))

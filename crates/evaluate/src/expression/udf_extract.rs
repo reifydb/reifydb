@@ -70,6 +70,7 @@ fn rewrite_expr(
 					func: call.func.clone(),
 					args: rewritten_args,
 					fragment: call.fragment.clone(),
+					full_fragment: call.full_fragment.clone(),
 				})
 			}
 		}

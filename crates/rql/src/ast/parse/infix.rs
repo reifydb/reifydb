@@ -7,7 +7,7 @@ use crate::{
 		ast::{Ast, AstInfix, InfixOperator},
 		parse::Parser,
 	},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	token::{operator::Operator, token::TokenKind},
 };
@@ -22,11 +22,17 @@ impl<'bump> Parser<'bump> {
 			_ => self.parse_node(precedence)?,
 		};
 
+		let token = *left.token();
+		let full_fragment = match operator {
+			InfixOperator::Call(_) | InfixOperator::AccessNamespace(_) => self.span_since(&token.fragment),
+			_ => BumpFragment::None,
+		};
 		Ok(AstInfix {
-			token: *left.token(),
+			token,
 			left: BumpBox::new_in(left, self.bump()),
 			operator,
 			right: BumpBox::new_in(right, self.bump()),
+			full_fragment,
 		})
 	}
 

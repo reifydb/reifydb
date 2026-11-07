@@ -144,6 +144,7 @@ impl<'bump> Parser<'bump> {
 				token: start_token,
 				function,
 				arguments,
+				full_fragment: self.span_since(&start_token.fragment),
 			});
 		}
 
@@ -168,6 +169,7 @@ impl<'bump> Parser<'bump> {
 					token: start_token,
 					function,
 					arguments,
+					full_fragment: self.span_since(&start_token.fragment),
 				});
 			} else {
 				current_ident_token = next_ident_token;

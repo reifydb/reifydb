@@ -651,6 +651,7 @@ impl<'bump> Compiler<'bump> {
 			left: BumpBox::new_in(left, self.bump),
 			operator,
 			right: BumpBox::new_in(right, self.bump),
+			full_fragment: BumpFragment::None,
 		};
 
 		Ok(Ast::Filter(AstFilter {
@@ -707,6 +708,7 @@ impl<'bump> Compiler<'bump> {
 			left: BumpBox::new_in(left, self.bump),
 			operator: InfixOperator::AccessTable(rql_token),
 			right: BumpBox::new_in(right, self.bump),
+			full_fragment: BumpFragment::None,
 		})
 	}
 
@@ -717,6 +719,7 @@ impl<'bump> Compiler<'bump> {
 			left: BumpBox::new_in(left, self.bump),
 			operator: InfixOperator::Equal(rql_token),
 			right: BumpBox::new_in(right, self.bump),
+			full_fragment: BumpFragment::None,
 		};
 		AstFilter {
 			token: rql_token,
@@ -732,6 +735,7 @@ impl<'bump> Compiler<'bump> {
 			left: BumpBox::new_in(left, self.bump),
 			operator: InfixOperator::In(rql_token),
 			right: BumpBox::new_in(right, self.bump),
+			full_fragment: BumpFragment::None,
 		};
 		AstFilter {
 			token: rql_token,

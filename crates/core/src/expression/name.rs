@@ -573,6 +573,7 @@ mod tests {
 			func: IdentExpression(frag("count")),
 			args: vec![col("price"), col("qty")],
 			fragment: frag("count()"),
+			full_fragment: frag("count()"),
 		});
 		assert_eq!(canonical_name(&e).text(), "count(price, qty)");
 	}
@@ -901,6 +902,7 @@ mod tests {
 			func: IdentExpression(frag("sum")),
 			args: vec![col("price"), col("qty")],
 			fragment: frag("sum()"),
+			full_fragment: frag("sum()"),
 		});
 		let result = collect(&expr);
 		assert_eq!(result, HashSet::from(["price".to_string(), "qty".to_string()]));

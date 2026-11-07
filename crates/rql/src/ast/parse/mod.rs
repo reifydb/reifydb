@@ -69,7 +69,7 @@ use crate::{
 		ast::{Ast, AstBetween, AstInfix, AstStatement, AstVariable, InfixOperator},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	error::{OperationKind, RqlError},
 	token::{
@@ -177,6 +177,17 @@ impl<'bump> Parser<'bump> {
 			start_offset
 		};
 		&self.source[start_offset..end]
+	}
+
+	pub(crate) fn span_since(&self, start: &BumpFragment<'bump>) -> BumpFragment<'bump> {
+		let text = self.source_since(start.offset());
+		BumpFragment::Statement {
+			text,
+			offset: start.offset(),
+			source_end: start.offset() + text.len(),
+			line: start.line(),
+			column: start.column(),
+		}
 	}
 
 	fn parse(&mut self) -> Result<Vec<AstStatement<'bump>>> {
@@ -586,6 +597,7 @@ impl<'bump> Parser<'bump> {
 			left: BumpBox::new_in(value, self.bump()),
 			operator,
 			right: BumpBox::new_in(right, self.bump()),
+			full_fragment: BumpFragment::None,
 		})
 	}
 
@@ -598,6 +610,7 @@ impl<'bump> Parser<'bump> {
 			left: BumpBox::new_in(value, self.bump()),
 			operator: InfixOperator::Contains(contains_token),
 			right: BumpBox::new_in(right, self.bump()),
+			full_fragment: BumpFragment::None,
 		})
 	}
 
@@ -742,6 +755,7 @@ impl<'bump> Parser<'bump> {
 			left: BumpBox::new_in(expression, self.bump()),
 			operator: InfixOperator::As(colon_token),
 			right: BumpBox::new_in(key, self.bump()),
+			full_fragment: BumpFragment::None,
 		}))
 	}
 }

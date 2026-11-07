@@ -176,10 +176,12 @@ impl TreeNode for Expression {
 				func,
 				args,
 				fragment,
+				full_fragment,
 			}) => Expression::Call(CallExpression {
 				func,
 				args: m.all(args)?,
 				fragment,
+				full_fragment,
 			}),
 			Expression::Tuple(e) => Expression::Tuple(TupleExpression {
 				expressions: m.all(e.expressions)?,

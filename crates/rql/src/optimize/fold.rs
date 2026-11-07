@@ -709,6 +709,7 @@ mod tests {
 			func: IdentExpression(frag("len")),
 			args: vec![num("1"), num("2")],
 			fragment: frag("len()"),
+			full_fragment: frag("len()"),
 		});
 		fold(&mut e);
 		assert!(matches!(e, Expression::Call(_)));

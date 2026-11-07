@@ -8,7 +8,6 @@ mod tree_node;
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
-	sync::Arc,
 };
 
 use reifydb_value::{
@@ -703,23 +702,12 @@ pub struct CallExpression {
 	pub func: IdentExpression,
 	pub args: Vec<Expression>,
 	pub fragment: Fragment,
+	pub full_fragment: Fragment,
 }
 
 impl CallExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		Fragment::Statement {
-			column: self.func.0.column(),
-			line: self.func.0.line(),
-			text: Arc::from(format!(
-				"{}({})",
-				self.func.0.text(),
-				self.args
-					.iter()
-					.map(|arg| arg.full_fragment_owned().text().to_string())
-					.collect::<Vec<_>>()
-					.join(",")
-			)),
-		}
+		self.full_fragment.clone()
 	}
 }
 

@@ -303,6 +303,7 @@ pub struct AstCallFunction<'bump> {
 	pub token: Token<'bump>,
 	pub function: MaybeQualifiedFunctionIdentifier<'bump>,
 	pub arguments: AstTuple<'bump>,
+	pub full_fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -1331,6 +1332,7 @@ pub struct AstInfix<'bump> {
 	pub left: BumpBox<'bump, Ast<'bump>>,
 	pub operator: InfixOperator<'bump>,
 	pub right: BumpBox<'bump, Ast<'bump>>,
+	pub full_fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]

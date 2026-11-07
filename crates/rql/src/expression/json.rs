@@ -206,6 +206,13 @@ fn extract_object(cp: &ColumnObject) -> (String, String) {
 	}
 }
 
+fn joined_call_fragment(func: &IdentExpression, args: &[Expression]) -> Fragment {
+	let args = args.iter().map(|arg| arg.full_fragment_owned().text().to_string()).collect::<Vec<_>>().join(",");
+	Fragment::Internal {
+		text: Arc::from(format!("{}({})", func.0.text(), args)),
+	}
+}
+
 fn internal_fragment(text: &str) -> Fragment {
 	Fragment::Internal {
 		text: Arc::from(text),
@@ -633,11 +640,17 @@ impl TryFrom<JsonExpression> for Expression {
 			JsonExpression::Call {
 				function,
 				args,
-			} => Expression::Call(CallExpression {
-				func: IdentExpression(internal_fragment(&function)),
-				args: args.into_iter().map(|a| a.try_into()).collect::<Result<Vec<_>>>()?,
-				fragment: Fragment::None,
-			}),
+			} => {
+				let func = IdentExpression(internal_fragment(&function));
+				let args = args.into_iter().map(|a| a.try_into()).collect::<Result<Vec<_>>>()?;
+				let full_fragment = joined_call_fragment(&func, &args);
+				Expression::Call(CallExpression {
+					func,
+					args,
+					fragment: Fragment::None,
+					full_fragment,
+				})
+			}
 			JsonExpression::Tuple {
 				expressions,
 			} => Expression::Tuple(TupleExpression {
@@ -1338,6 +1351,7 @@ pub mod tests {
 			func: IdentExpression(internal_fragment("math::avg")),
 			args: vec![column_expr("price")],
 			fragment: Fragment::None,
+			full_fragment: Fragment::None,
 		});
 
 		let json = to_json(&expr);

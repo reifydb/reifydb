@@ -628,6 +628,7 @@ mod tests {
 			func: IdentExpression(Fragment::internal("stats::digest")),
 			args,
 			fragment: Fragment::internal("stats::digest"),
+			full_fragment: Fragment::internal("stats::digest"),
 		}
 	}
 

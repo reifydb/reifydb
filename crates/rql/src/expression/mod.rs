@@ -121,6 +121,7 @@ impl ExpressionCompiler {
 					)),
 					args: arg_expressions,
 					fragment: call.token.fragment.to_owned(),
+					full_fragment: call.full_fragment.to_owned(),
 				}))
 			}
 			Ast::Infix(ast) => Self::infix(ast),
@@ -524,6 +525,7 @@ impl ExpressionCompiler {
 					func: IdentExpression(func_name),
 					args: tuple.expressions,
 					fragment: token.fragment.to_owned(),
+					full_fragment: ast.full_fragment.to_owned(),
 				}))
 			}
 			InfixOperator::GreaterThan(token) => {
@@ -720,7 +722,7 @@ impl ExpressionCompiler {
 				};
 
 				let right_ast = BumpBox::into_inner(ast.right);
-				Self::compile_namespace_right(&namespace, right_ast)
+				Self::compile_namespace_right(&namespace, right_ast, ast.full_fragment.to_owned())
 			}
 
 			InfixOperator::AccessTable(token) => {
@@ -737,7 +739,11 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn compile_namespace_right(namespace: &Fragment, right_ast: Ast<'_>) -> Result<Expression> {
+	fn compile_namespace_right(
+		namespace: &Fragment,
+		right_ast: Ast<'_>,
+		full_fragment: Fragment,
+	) -> Result<Expression> {
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
 			Some(ast.token().fragment.text().to_string())
 		}
@@ -761,6 +767,7 @@ impl ExpressionCompiler {
 					)),
 					args: tuple.expressions,
 					fragment: infix.token.fragment.to_owned(),
+					full_fragment,
 				}))
 			}
 			Ast::CallFunction(call) => {
@@ -791,6 +798,7 @@ impl ExpressionCompiler {
 					)),
 					args: arg_expressions,
 					fragment: call.token.fragment.to_owned(),
+					full_fragment,
 				}))
 			}
 			other => {
