@@ -387,9 +387,10 @@ fn assert_each_left_row_reads_its_own_price(db: &TestDb, written: &[CommitVersio
 	let rows: Vec<(Value, Option<Value>)> =
 		cost_rows(db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
 	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
-	assert!(
-		left_commits_after(db, written[0]) < ROUNDS,
-		"the left producer must fold at least two versions into one commit"
+	assert_eq!(
+		left_commits_after(db, written[0]),
+		ROUNDS,
+		"the left producer of an exact read must commit per version"
 	);
 }
 
@@ -559,4 +560,35 @@ fn a_lookup_reader_takes_a_layered_backlog_from_below_its_cursor_and_keeps_the_h
 		Some(vec![(Value::Int4(1), Some(Value::Int8(ROUNDS as i64 - 1)))]),
 		"the left row must end on the newest price once the folded backlog is read"
 	);
+}
+
+#[test]
+fn a_re_emitting_lookup_matches_every_left_row_when_its_right_view_folds_a_backlog() {
+	// A right layer read after the left row it should match must still re-emit that row, otherwise the row keeps
+	// none.
+	let db = memory_db();
+	let gate_name = "backlog_commit_r2";
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t1 { k: utf8, v: int8 }");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin("CREATE DEFERRED VIEW app::a { k: utf8, v: int8 } AS { FROM app::t1 }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::b {{ k: utf8, v: int8 }} WITH {{ partition: {{ by: {{ k }} }} }} AS {{ FROM app::src APPLY gated_pass_through {{ gate: '{gate_name}' }} }}"
+	));
+	db.admin("CREATE DEFERRED VIEW app::cost { id: int8, usd: Option(int8) } AS { \
+		 FROM app::a LEFT LOOKUP { FROM app::b } AS p USING (k, p.k) WITH { emit: true } MAP { id: v, usd: p_v } }");
+	settle(&db);
+
+	hold(&db, gate_name);
+	for round in 1..=ROUNDS as i64 {
+		let k = format!("k{round}");
+		write_table(&db, "app::src", &k, round * 10, true);
+		write_table(&db, "app::t1", &k, round, true);
+	}
+	set_gate(gate_name, true);
+	settle(&db);
+
+	let expected: Vec<(Value, Option<Value>)> =
+		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
+	assert_eq!(cost_rows(&db), expected, "every left row must end matched to the right row written before it");
 }

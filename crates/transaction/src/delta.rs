@@ -205,13 +205,6 @@ pub fn raw_layers(
 	marks: &[(SourceVersion, usize)],
 	skipped: &BTreeSet<TaggedKey>,
 ) -> Vec<CommitLayer> {
-	let mut distinct: Vec<(SourceVersion, usize)> = Vec::with_capacity(marks.len());
-	for mark in marks {
-		if distinct.last().is_none_or(|(source, _)| *source != mark.0) {
-			distinct.push(*mark);
-		}
-	}
-	let marks = distinct.as_slice();
 	if marks.len() < 2 {
 		return Vec::new();
 	}
@@ -768,20 +761,6 @@ pub mod tests {
 		let skipped = BTreeSet::from([make_key("meta")]);
 		let layers = raw_layers(&log, &[(SourceVersion(10), 0), (SourceVersion(20), 2)], &skipped);
 		assert_eq!(layers[0].deltas, vec![unknown("k", "v1")], "the rebased key must stay out of every layer");
-	}
-
-	#[test]
-	fn raw_layers_merge_neighbouring_marks_of_one_source() {
-		// Slices of one source batched into one commit are one layer; splitting them would publish a source
-		// twice.
-		let log = vec![entry(unknown("a", "a1")), entry(unknown("b", "b1")), entry(unknown("c", "c2"))];
-		let one_source = [(SourceVersion(10), 0), (SourceVersion(10), 1)];
-		let two_sources = [(SourceVersion(10), 0), (SourceVersion(10), 1), (SourceVersion(20), 2)];
-
-		assert!(raw_layers(&log, &one_source, &BTreeSet::new()).is_empty(), "one source is a plain commit");
-		let layers = raw_layers(&log, &two_sources, &BTreeSet::new());
-		assert_eq!(sources(&layers), vec![10, 20]);
-		assert_eq!(layers[0].deltas, vec![unknown("a", "a1"), unknown("b", "b1")]);
 	}
 
 	#[test]

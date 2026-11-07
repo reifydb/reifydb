@@ -249,21 +249,13 @@ pub fn backlog_commit(
 }
 
 fn versioned_views(graph: &FlowDependencyGraph, inside: &BTreeSet<FlowId>) -> BTreeSet<ViewId> {
-	let outside_read = |(view, readers): &(&ViewId, &Vec<FlowId>)| {
+	let exact = graph.source_exact_reads.iter().chain(graph.source_paced_reads.iter()).filter(|(view, readers)| {
 		let produced_inside = graph.sink_views.get(*view).is_some_and(|producer| inside.contains(producer));
 		!produced_inside || readers.iter().any(|reader| !inside.contains(reader))
-	};
-	let exact = graph.source_exact_reads.iter().filter(outside_read).map(|(view, _)| *view);
-	let paced_producers: BTreeSet<FlowId> = graph
-		.source_paced_reads
-		.iter()
-		.filter(outside_read)
-		.filter_map(|(view, _)| graph.sink_views.get(view).copied())
-		.collect();
+	});
 	let pairing: BTreeSet<FlowId> =
 		graph.pairs_by_source.iter().copied().filter(|flow| graph_source_count(graph, *flow) > 1).collect();
-	let mut pending: Vec<ViewId> =
-		exact.chain(read_by(graph, &paced_producers)).chain(read_by(graph, &pairing)).collect();
+	let mut pending: Vec<ViewId> = exact.map(|(view, _)| *view).chain(read_by(graph, &pairing)).collect();
 	let mut versioned = BTreeSet::new();
 	while let Some(view) = pending.pop() {
 		if !versioned.insert(view) {
@@ -660,27 +652,34 @@ mod tests {
 	}
 
 	#[test]
-	fn a_view_read_on_the_left_folds_but_every_view_above_it_commits_per_version() {
-		// The read view folds layered and stays exact; a folded view further up loses versions the chain below
-		// needs.
+	fn a_unit_commits_per_version_when_a_flow_outside_it_reads_a_member_view_on_the_left_of_an_exact_read() {
+		// A folded left view stamps a reader in another flow with one version; a member reads each version in
+		// the step.
+		let unit = [FlowId(10), FlowId(20), FlowId(30)];
 		let one = |_: FlowId| 1;
 
 		let mut graph = chain();
-		graph.source_paced_reads.insert(ViewId(7), vec![FlowId(40)]);
+		graph.source_paced_reads.insert(ViewId(6), vec![FlowId(40)]);
 		assert_eq!(
-			backlog_commit(&graph, &[FlowId(30)], &one),
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::PerVersion,
+			"an outside reader pacing on a member view must see every version"
+		);
+
+		let mut graph = chain();
+		graph.source_paced_reads.insert(ViewId(6), vec![FlowId(30)]);
+		assert_eq!(
+			backlog_commit(&graph, &unit, &one),
 			BacklogCommit::Fold,
-			"the producer of the left view folds its backlog into one layered commit"
+			"a member pacing on its parent gets each source version inside the folded step"
 		);
+
+		let mut graph = chain();
+		graph.source_paced_reads.insert(ViewId(99), vec![FlowId(40)]);
 		assert_eq!(
-			backlog_commit(&graph, &[FlowId(20)], &one),
-			BacklogCommit::PerVersion,
-			"the producer one view above the left view must commit every version"
-		);
-		assert_eq!(
-			backlog_commit(&graph, &[FlowId(10)], &one),
-			BacklogCommit::PerVersion,
-			"the producer two views above the left view must commit every version"
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::Fold,
+			"pacing on a view no member produces must not stop the unit folding"
 		);
 	}
 

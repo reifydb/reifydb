@@ -260,20 +260,10 @@ impl SliceComputer {
 		for change in changes {
 			groups.entry(change.version.source).or_default().push(change);
 		}
-		let sources: Vec<SourceVersion> = groups.keys().copied().collect();
-		let (computed, holds) =
+		let (layers, holds) =
 			self.compute_layers(flow_engine, cursor.flow_id, advance_to, groups.into_values().collect())?;
-		let emitted = computed.iter().any(|(_, emitted)| *emitted);
-		let mut layers: Vec<(SourceVersion, Pending)> = sources
-			.into_iter()
-			.zip(computed)
-			.filter(|(_, (pending, emitted))| produced_output(pending, *emitted))
-			.map(|(source, (pending, _))| (source, pending))
-			.collect();
-		let combined = Pending::merged(layers.iter().map(|(_, pending)| pending.clone()).collect());
-		if layers.len() < 2 {
-			layers.clear();
-		}
+		let emitted = layers.iter().any(|(_, emitted)| *emitted);
+		let combined = Pending::merged(layers.into_iter().map(|(pending, _)| pending).collect());
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
@@ -300,7 +290,6 @@ impl SliceComputer {
 				source,
 				written_views,
 				input_markers,
-				layers,
 			},
 			advance_to,
 			lsn,
@@ -391,7 +380,6 @@ impl SliceComputer {
 					source: Some(source),
 					written_views,
 					input_markers,
-					layers: Vec::new(),
 				},
 				advance_to: end,
 				lsn: checkpoint.lsn,

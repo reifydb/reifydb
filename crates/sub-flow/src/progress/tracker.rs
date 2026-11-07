@@ -72,6 +72,7 @@ pub enum BacklogCommit {
 struct Completion {
 	commit: CommitVersion,
 	position: CommitVersion,
+	first_source: SourceVersion,
 	source: SourceVersion,
 }
 
@@ -152,6 +153,7 @@ struct FlowProgress {
 	source_counts: HashMap<FlowId, usize>,
 	backlog_commits: HashMap<FlowId, BacklogCommit>,
 	sources: HashMap<FlowId, SourceVersion>,
+	first_sources: HashMap<FlowId, (CommitVersion, SourceVersion)>,
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 	units: HashMap<FlowId, FlowId>,
 	ticks: HashMap<FlowId, u64>,
@@ -212,6 +214,13 @@ impl FlowProgress {
 		let source = self.sources.get(&flow_id).copied().unwrap_or(SourceVersion(position.0));
 		let history = self.completions.entry(flow_id).or_default();
 		let source = history.back().map_or(source, |last| last.source.max(source));
+		let first_source = self
+			.first_sources
+			.get(&flow_id)
+			.filter(|(landed, _)| *landed == commit)
+			.map_or(source, |(_, first)| *first)
+			.min(source);
+		let first_source = history.back().map_or(first_source, |last| last.first_source.max(first_source));
 		match history.back_mut() {
 			Some(last) if commit < last.commit => return,
 			Some(last) if commit == last.commit => {
@@ -223,6 +232,7 @@ impl FlowProgress {
 		history.push_back(Completion {
 			commit,
 			position,
+			first_source,
 			source,
 		});
 		if history.len() > COMPLETION_HISTORY {
@@ -238,7 +248,7 @@ impl FlowProgress {
 
 	fn commit_through_source(&self, flow_id: FlowId, source: SourceVersion) -> Option<CommitVersion> {
 		let history = self.completions.get(&flow_id)?;
-		let above = history.partition_point(|entry| entry.source <= source);
+		let above = history.partition_point(|entry| entry.first_source <= source);
 		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
 	}
 
@@ -319,8 +329,20 @@ impl FlowPositionTracker {
 		commit: CommitVersion,
 		source: SourceVersion,
 	) {
+		self.update_committed_layers(flow_id, version, commit, source, source);
+	}
+
+	pub fn update_committed_layers(
+		&self,
+		flow_id: FlowId,
+		version: CommitVersion,
+		commit: CommitVersion,
+		first: SourceVersion,
+		source: SourceVersion,
+	) {
 		let readers = {
 			let mut progress = self.inner.write();
+			progress.first_sources.insert(flow_id, (commit, first));
 			progress.advance_last_commit(flow_id, commit);
 			progress.advance_source(flow_id, source);
 			if !progress.advance_position(flow_id, version) {
@@ -469,6 +491,7 @@ impl FlowPositionTracker {
 		progress.source_counts.remove(&flow_id);
 		progress.backlog_commits.remove(&flow_id);
 		progress.sources.remove(&flow_id);
+		progress.first_sources.remove(&flow_id);
 		progress.lookup_producers.remove(&flow_id);
 		progress.units.remove(&flow_id);
 		progress.ticks.remove(&flow_id);
@@ -676,6 +699,24 @@ mod tests {
 			progress.complete_through(PRODUCER, cv(19)),
 			None,
 			"a commit that went backwards must not lower the bound a reader already resolved"
+		);
+	}
+
+	#[test]
+	fn a_layered_commit_answers_every_source_from_its_first_layer_on() {
+		// A source inside a layered commit mapped to the commit before it reads a state without that layer's
+		// rows.
+		let tracker = FlowPositionTracker::new();
+		tracker.update_committed(PRODUCER, cv(10), cv(10), SourceVersion(10));
+		tracker.update_committed_layers(PRODUCER, cv(30), cv(31), SourceVersion(21), SourceVersion(30));
+
+		assert_eq!(tracker.commit_through_source(PRODUCER, SourceVersion(20)), Some(cv(10)));
+		assert_eq!(tracker.commit_through_source(PRODUCER, SourceVersion(21)), Some(cv(31)));
+		assert_eq!(tracker.commit_through_source(PRODUCER, SourceVersion(25)), Some(cv(31)));
+		assert_eq!(
+			tracker.source_through_commit(PRODUCER, cv(31)),
+			Some(SourceVersion(30)),
+			"completion still runs through the last layer"
 		);
 	}
 
