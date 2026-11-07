@@ -200,7 +200,11 @@ fn float(value: &Value) -> f64 {
 fn p50_and_p99_on_one_column_share_one_digest_slot_in_every_flow_operator() {
 	// A slot per percentile doubles the stored state of every group and changes no answer.
 	for (operator, mut core) in cores(&PERCENTILE_CALLS[..2]) {
-		assert_eq!(layout(&core), vec![digest_slot(Some(10_000), "latency")], "{operator}");
+		let mut want = vec![digest_slot(Some(10_000), "latency")];
+		if operator == "aggregate" {
+			want.push((SlotKind::WindowLast, "event time".to_string()));
+		}
+		assert_eq!(layout(&core), want, "{operator}");
 		let slot = single(10_000, 42.0);
 		let outputs = outputs(&mut core, vec![Value::Digest(Box::new(slot.clone()))]);
 		assert_eq!(outputs, vec![read(&slot, 0.5), read(&slot, 0.99)], "{operator}: both outputs read slot 0");
@@ -218,16 +222,16 @@ fn an_expression_input_and_another_accuracy_get_their_own_digest_slots_in_every_
 		PERCENTILE_CALLS[1],
 	];
 	for (operator, core) in cores(&calls) {
-		assert_eq!(
-			layout(&core),
-			vec![
-				digest_slot(Some(10_000), "latency"),
-				digest_slot(Some(50_000), "latency"),
-				digest_slot(Some(10_000), "expression 0"),
-				digest_slot(Some(10_000), "expression 1"),
-			],
-			"{operator}"
-		);
+		let mut want = vec![
+			digest_slot(Some(10_000), "latency"),
+			digest_slot(Some(50_000), "latency"),
+			digest_slot(Some(10_000), "expression 0"),
+			digest_slot(Some(10_000), "expression 1"),
+		];
+		if operator == "aggregate" {
+			want.push((SlotKind::WindowLast, "event time".to_string()));
+		}
+		assert_eq!(layout(&core), want, "{operator}");
 	}
 }
 
@@ -245,20 +249,20 @@ fn the_frozen_sharing_rule_maps_a_fixed_call_set_to_a_pinned_slot_layout_in_ever
 		single(10_000, 70_000_000.0),
 	];
 	for (operator, mut core) in cores(&FROZEN_CALLS) {
-		assert_eq!(
-			layout(&core),
-			vec![
-				digest_slot(Some(10_000), "latency"),
-				(SlotKind::Sum, "latency".to_string()),
-				digest_slot(Some(50_000), "latency"),
-				digest_slot(Some(10_000), "queue"),
-				digest_slot(None, "lat"),
-				digest_slot(Some(10_000), "expression 0"),
-				digest_slot(Some(10_000), "latency"),
-				digest_slot(Some(10_000), "expression 1"),
-			],
-			"{operator}"
-		);
+		let mut want = vec![
+			digest_slot(Some(10_000), "latency"),
+			(SlotKind::Sum, "latency".to_string()),
+			digest_slot(Some(50_000), "latency"),
+			digest_slot(Some(10_000), "queue"),
+			digest_slot(None, "lat"),
+			digest_slot(Some(10_000), "expression 0"),
+			digest_slot(Some(10_000), "latency"),
+			digest_slot(Some(10_000), "expression 1"),
+		];
+		if operator == "aggregate" {
+			want.push((SlotKind::WindowLast, "event time".to_string()));
+		}
+		assert_eq!(layout(&core), want, "{operator}");
 		let mut values: Vec<Value> = slots.iter().map(|slot| Value::Digest(Box::new(slot.clone()))).collect();
 		values[1] = Value::float8(7.0);
 		let outputs = outputs(&mut core, values);

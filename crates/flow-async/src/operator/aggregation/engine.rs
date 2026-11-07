@@ -124,7 +124,6 @@ impl Routing {
 
 pub(crate) enum Stamp<'a> {
 	SpanStart,
-	Latest,
 	Session(Duration, &'a SessionBounds, &'a GatedMeta),
 }
 
@@ -139,7 +138,7 @@ fn prior_engine_meta(
 			.get(window)
 			.cloned()
 			.expect("the seal gate reads the engine meta of every session window it admits")),
-		Stamp::SpanStart | Stamp::Latest => {
+		Stamp::SpanStart => {
 			Ok(get_classified::<_, EngineMeta>(store, from_ref(&EngineMetaKey(group)))?.remove(0))
 		}
 	}
@@ -260,7 +259,7 @@ pub(crate) fn finish_tumbling_engine(
 				(&SessionKey(group_of(groups, r.group, r.span.start.to_order()))).into_group_state_key()
 			})
 			.collect(),
-		Stamp::SpanStart | Stamp::Latest => arrival
+		Stamp::SpanStart => arrival
 			.iter()
 			.map(|(hash, span)| {
 				(&EngineMetaKey(group_of(groups, *hash, span.start.to_order()))).into_group_state_key()
@@ -269,7 +268,7 @@ pub(crate) fn finish_tumbling_engine(
 	};
 	let gone = |hash: Hash128, window_start: u64| match stamp {
 		Stamp::Session(_, bounds, _) => !bounds.contains_key(&(hash, window_start)),
-		Stamp::SpanStart | Stamp::Latest => false,
+		Stamp::SpanStart => false,
 	};
 	let mut store = Prefetched::read(host, keys)?;
 	let empty_key = store::empty_key();
@@ -281,7 +280,6 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_meta = prior_engine_meta(&mut store, &stamp, &(r.group, r.span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let latest = prior_last.max(window_max_coord.get(&(r.group, r.span)).map(|ts| ts.to_order()));
 		match r.kind {
 			EmitKind::Remove => {
 				if gone(r.group, window_start) {
@@ -315,20 +313,6 @@ pub(crate) fn finish_tumbling_engine(
 		}
 		spans.push(match stamp {
 			Stamp::SpanStart => (r.span, r.span),
-			Stamp::Latest => {
-				let at = |order: Option<u64>| {
-					let time = <DateTimeCoord as Coord>::from_order(order.unwrap_or_default());
-					WindowSpan {
-						start: time,
-						end: time,
-					}
-				};
-				match r.kind {
-					EmitKind::Insert => (at(latest), at(latest)),
-					EmitKind::Update => (at(prior_last), at(latest)),
-					EmitKind::Remove => (at(prior_last), at(prior_last)),
-				}
-			}
 			Stamp::Session(gap, bounds, _) => {
 				let stored =
 					get_classified::<_, SessionState>(&mut store, from_ref(&SessionKey(group)))?

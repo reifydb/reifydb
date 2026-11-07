@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_as_alias_is_refused_at_as() {
-		// `name: expr` is the only alias form; accepting `expr as name` again would bring back a second, half-supported one.
+		// `name: expr` is the only alias form; accepting `expr as name` revives a half-supported one.
 		let bump = Bump::new();
 		let source = "1 as one";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

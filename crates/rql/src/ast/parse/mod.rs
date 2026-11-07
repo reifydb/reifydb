@@ -644,7 +644,9 @@ impl<'bump> Parser<'bump> {
 			} else if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
 				self.advance()?;
 				break;
-			} else if has_braces && !break_on.is_some_and(|kw| self.current().is_ok_and(|t| t.is_keyword(kw))) {
+			} else if has_braces
+				&& !break_on.is_some_and(|kw| self.current().is_ok_and(|t| t.is_keyword(kw)))
+			{
 				return Err(AstError::UnexpectedToken {
 					expected: "`,` or `}`".to_string(),
 					fragment: self.current()?.fragment.to_owned(),
@@ -1154,7 +1156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_a_stray_token_in_braces_is_refused_where_it_stands() {
-		// A brace list must not end silently on a stray token, otherwise the next parser reports an unrelated error.
+		// A brace list must never end silently on a stray token, otherwise the next parser misreports it.
 		let bump = Bump::new();
 		let source = "MAP { 1 2 }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -1166,7 +1168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_an_aggregate_by_block_still_parses_after_the_projection_braces() {
-		// The stray-token check must stop at the closing brace, otherwise `AGGREGATE { .. } BY { .. }` is refused.
+		// The stray-token check must stop at `}`, otherwise `AGGREGATE { .. } BY { .. }` is refused.
 		let bump = Bump::new();
 		let source = "AGGREGATE { count(v) } BY { g }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

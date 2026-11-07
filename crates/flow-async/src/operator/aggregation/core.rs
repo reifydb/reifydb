@@ -519,6 +519,10 @@ impl Aggregation {
 					SlotArg::EventTime => SlotInput::EventTime,
 				});
 			}
+			if context == AggregateContext::Grouped {
+				kinds.push(SlotKind::WindowLast);
+				inputs.push(SlotInput::EventTime);
+			}
 			let outputs: Vec<LoweredExpr> = rewritten_outputs
 				.iter()
 				.map(|e| LoweredExpr::new(e.clone(), "aggregate_output"))
@@ -713,10 +717,6 @@ impl Aggregation {
 			})
 			.collect::<Result<Vec<_>>>()?;
 		Ok(SlotViews(Arc::new(SlotColumns(slots))))
-	}
-
-	pub fn needs_event_time(&self) -> bool {
-		self.slot_inputs.iter().any(|input| matches!(input, SlotInput::EventTime))
 	}
 
 	fn span_slot_values(&self, slot_values: &[Value], span: WindowSpan<DateTimeCoord>) -> Option<Vec<Value>> {

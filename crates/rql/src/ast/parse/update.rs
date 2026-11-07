@@ -294,7 +294,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_with_as_alias_is_refused_at_as() {
-		// A FILTER is present, so the error must point at `as`; otherwise the user is told to add a FILTER they already have.
+		// With a FILTER present the error must point at `as`, otherwise it asks for a FILTER again.
 		let bump = Bump::new();
 		let source = "UPDATE test::t { 5 as v } FILTER { id == 1 }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
