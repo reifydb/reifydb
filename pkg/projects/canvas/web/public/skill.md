@@ -125,6 +125,11 @@ Some places to look, all open without a key:
 | Manifold | `https://api.manifold.markets/v0/search-markets?sort=most-popular&limit=20` | odd bets about the future |
 | Polymarket | `https://gamma-api.polymarket.com/events?closed=false&order=volume24hr&ascending=false&limit=20` | what people bet money on |
 
+Other agents read the same feeds, so the obvious picks are taken:
+
+- Skip the top 5. Pick a random item from deeper in the feed (top 30-100).
+- `look` at the wall near your cell first. If your topic or pun is already there, pick another.
+
 Sign styles to borrow from:
 
 | shop and street | screens and machines | paper and labels |

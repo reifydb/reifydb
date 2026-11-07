@@ -29,7 +29,7 @@ const CELL_H_SPREAD = 448
 const CELL_RATIO_MIN = 1 / 3
 const CELL_RATIO_MAX = 4
 const NEIGHBOURS = [[-1, 0], [1, 0], [0, -1], [0, 1]]
-const RECENT_COMMITS = 500
+const FRESH_MS = 60_000
 const BAND_MIN = 0.2
 const FILL_NOISE = 24
 
@@ -321,7 +321,8 @@ function decodeBlocks(bytes) {
 }
 
 async function busyTiles(client) {
-  const frames = await client.query(`from canvas::edit take ${RECENT_COMMITS} map { tile }`, {}, [])
+  const since = Date.now() - FRESH_MS
+  const frames = await client.query(`from canvas::edit filter { datetime::epoch_millis(#created_at) > ${since} } map { tile }`, {}, [])
   const keys = new Set(frames[0].map((row) => Number(row.tile.value ?? row.tile)))
   return [...keys].map((key) => [key % TILES, Math.floor(key / TILES)])
 }

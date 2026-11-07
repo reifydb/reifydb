@@ -169,7 +169,7 @@ describe('paint helper against the canvas backend', () => {
     // A cell far from every sign scatters the mosaic; one fully inside a sign only ever overwrites.
     const old = { x: 2048, y: 2048, w: 1024, h: 1024 }
     await canvas.paint(old, () => PURPLE)
-    await canvas.paint({ x: 0, y: 6400, w: 8192, h: 320 }, (x, y) => (x % 64 === 0 && y % 64 === 0 ? [0, 0, 0] : null))
+    await db.commandRoot('delete canvas::edit filter { true }', {}, [])
     for (let i = 0; i < 20; i++) {
       const c = await canvas.cell()
       const ring = { x: c.x - 16, y: c.y - 16, w: c.w + 32, h: c.h + 32 }
@@ -179,10 +179,10 @@ describe('paint helper against the canvas backend', () => {
     }
   }, 15000)
 
-  it('keeps cells off tiles painted in the last 500 commits', async () => {
+  it('keeps cells off tiles painted in the last 60 seconds', async () => {
     // A sign covered while it is still being painted is never seen finished.
     await canvas.paint({ x: 2048, y: 2048, w: 1024, h: 1024 }, () => PURPLE)
-    await canvas.paint({ x: 0, y: 6400, w: 8192, h: 320 }, (x, y) => (x % 64 === 0 && y % 64 === 0 ? [0, 0, 0] : null))
+    await db.commandRoot('delete canvas::edit filter { true }', {}, [])
     const fresh = { x: 6016, y: 1024, w: 256, h: 256 }
     await canvas.paint(fresh, () => PURPLE)
     for (let i = 0; i < 20; i++) {
