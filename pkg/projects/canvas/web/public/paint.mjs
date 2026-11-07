@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { inflateRawSync, inflateSync } from 'node:zlib'
+import { Resvg } from '@resvg/resvg-js'
 import { Client } from '@reifydb/client'
 import { BlobValue, ListValue, Uint2Value } from '@reifydb/core'
 
@@ -30,6 +31,64 @@ const CELL_RATIO_MIN = 1 / 3
 const CELL_RATIO_MAX = 4
 const NEIGHBOURS = [[-1, 0], [1, 0], [0, -1], [0, 1]]
 const FRESH_MS = 60_000
+const FONT_LIST = 'https://api.fontsource.org/v1/fonts'
+const FONT_FILE = (id, weight) => `https://cdn.jsdelivr.net/fontsource/fonts/${id}@latest/latin-${weight}-normal.ttf`
+const FONT_DIR = 'fonts'
+const GENERIC_FONTS = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'inherit'])
+const ICON_FILE = (prefix, name) => `https://api.iconify.design/${prefix}/${name}.svg`
+const OPAQUE = 128
+const MIN_FONT = 16
+const DARK = 128
+const ERAS = [
+  '1950s diner',
+  '1970s roadside motel',
+  '1980s arcade',
+  '1990s web page',
+  'Soviet propaganda poster',
+  'Swiss modernist poster',
+  'Victorian playbill',
+  '1920s art deco',
+  'Y2K chrome',
+  'vaporwave',
+  'punk zine',
+  'Japanese shop sign',
+  'wild west saloon',
+  'space age 1960s',
+  'corporate 2010s flat design',
+  'medieval guild sign',
+]
+const SURFACES = [
+  'neon tubes on dark brick',
+  'chalkboard',
+  'LED dot matrix',
+  'rusty metal',
+  'torn paper',
+  'wood planks',
+  'CRT screen',
+  'enamel plate',
+  'cardboard',
+  'vinyl sticker',
+  'stained glass',
+  'brushed steel',
+  'risograph print',
+  'hand-painted wall',
+  'blueprint',
+  'velvet and gold leaf',
+]
+const SHAPES = [
+  'rectangle',
+  'rounded badge',
+  'ticket stub',
+  'arrow',
+  'circle seal',
+  'banner ribbon',
+  'speech bubble',
+  'shield',
+  'tag with a hole',
+  'window dialog',
+  'starburst',
+  'hanging sign on chains',
+]
 const BAND_MIN = 0.2
 const FILL_NOISE = 24
 
@@ -367,6 +426,108 @@ async function cell(client) {
   return last
 }
 
+const pick = (list) => list[Math.floor(Math.random() * list.length)]
+
+let fontList = null
+
+function fonts() {
+  fontList ??= fetch(FONT_LIST).then(async (r) => {
+    if (!r.ok) throw new Error(`font list ${FONT_LIST} failed with ${r.status}`)
+    return (await r.json()).filter((f) => f.subsets.includes('latin') && f.styles.includes('normal'))
+  })
+  return fontList
+}
+
+function weightOf(value) {
+  if (value === 'bold') return 700
+  if (value === 'normal') return 400
+  const n = Number(value)
+  if (!Number.isInteger(n)) throw new Error(`font-weight '${value}' must be normal, bold or a number like 700`)
+  return n
+}
+
+async function fontFiles(markup) {
+  const families = new Set()
+  for (const [, list] of markup.matchAll(/font-family\s*[:=]\s*(?:"([^"]*)"|'([^']*)'|([^;"'>]*))/g).map((m) => [m[0], m[1] ?? m[2] ?? m[3]]))
+    for (const name of list.split(',')) {
+      const family = name.trim().replace(/^['"]|['"]$/g, '')
+      if (family && !GENERIC_FONTS.has(family.toLowerCase())) families.add(family)
+    }
+  if (families.size === 0) return []
+  const weights = new Set([400])
+  for (const [, , v] of markup.matchAll(/font-weight\s*[:=]\s*(["']?)([a-z0-9]+)\1/g)) weights.add(weightOf(v))
+  const known = await fonts()
+  if (!existsSync(FONT_DIR)) mkdirSync(FONT_DIR, { recursive: true })
+  const files = []
+  for (const family of families) {
+    const font = known.find((f) => f.family.toLowerCase() === family.toLowerCase())
+    if (!font) throw new Error(`font '${family}' is not on Fontsource, pick a family from ${FONT_LIST}`)
+    for (const want of weights) {
+      const weight = font.weights.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a))
+      const file = `${FONT_DIR}/${font.id}-${weight}.ttf`
+      if (!existsSync(file)) {
+        const r = await fetch(FONT_FILE(font.id, weight))
+        if (!r.ok) throw new Error(`font '${family}' weight ${weight} download failed with ${r.status}`)
+        writeFileSync(file, Buffer.from(await r.arrayBuffer()))
+      }
+      files.push(file)
+    }
+  }
+  return files
+}
+
+async function inlineIcons(markup) {
+  const uses = [...markup.matchAll(/<use\b([^>]*?)\bhref="icon:([a-z0-9-]+):([a-z0-9-]+)"([^>]*?)\/>/g)]
+  let out = markup
+  for (const [use, before, prefix, name, after] of uses) {
+    const r = await fetch(ICON_FILE(prefix, name))
+    const icon = r.ok ? await r.text() : ''
+    const box = icon.match(/viewBox="([^"]*)"/)
+    const inner = icon.match(/<svg\b[^>]*>([\s\S]*)<\/svg>/)
+    if (!box || !inner) throw new Error(`icon '${prefix}:${name}' not found on Iconify (${r.status}), search https://api.iconify.design/search?query=<word>`)
+    out = out.replace(use, `<svg${before}${after} viewBox="${box[1]}">${inner[1]}</svg>`)
+  }
+  return out
+}
+
+function checkFontSizes(markup) {
+  if (!/<text\b/.test(markup)) return
+  const sizes = [...markup.matchAll(/font-size\s*[:=]\s*["']?([0-9.]+)([a-z%]*)/g)]
+  if (sizes.length === 0) throw new Error(`svg text has no font-size, set one of at least ${MIN_FONT} px`)
+  for (const [, value, unit] of sizes) {
+    if (unit !== '' && unit !== 'px') throw new Error(`font-size ${value}${unit} must be in px`)
+    if (Number(value) < MIN_FONT) throw new Error(`font-size ${value} below ${MIN_FONT} px: fewer words, bigger text`)
+  }
+}
+
+async function svg(client, area, markup) {
+  const inlined = await inlineIcons(markup)
+  const rendered = new Resvg(inlined, {
+    fitTo: { mode: 'width', value: area.w },
+    font: { loadSystemFonts: false, fontFiles: await fontFiles(inlined) },
+  })
+  checkFontSizes(inlined)
+  const image = rendered.render()
+  if (image.width !== area.w || image.height !== area.h)
+    throw new Error(`svg renders at ${image.width} x ${image.height}, the area is ${area.w} x ${area.h}: set width, height and viewBox to the area size`)
+  const rgba = image.pixels
+  return paint(client, area, (x, y) => {
+    const i = ((y - area.y) * area.w + (x - area.x)) * 4
+    return rgba[i + 3] >= OPAQUE ? [rgba[i], rgba[i + 1], rgba[i + 2]] : null
+  })
+}
+
+async function style() {
+  const all = (await fonts()).filter((f) => f.category !== 'icons' && f.category !== 'other')
+  const loud = all.filter((f) => f.category === 'display' || f.category === 'handwriting')
+  const count = 2 + Math.floor(Math.random() * 3)
+  let colors
+  do {
+    colors = [...new Set(Array.from({ length: count }, () => Math.floor(Math.random() * PALETTE.length)))]
+  } while (colors.length !== count || !colors.some((i) => (pal[i][0] * 299 + pal[i][1] * 587 + pal[i][2] * 114) / 1000 < DARK))
+  return { era: pick(ERAS), surface: pick(SURFACES), shape: pick(SHAPES), fonts: [pick(loud).family, pick(all).family], colors }
+}
+
 export async function connect({ url, name, password }) {
   const client = await Client.connectWs(url, { format: 'rbcf' })
   if (name !== undefined) await client.loginWithPassword(name, password)
@@ -379,6 +540,8 @@ export function attach(client) {
     look: (area, scale, file) => look(client, area, scale, file),
     read: (area) => read(client, area),
     cell: () => cell(client),
+    svg: (area, markup) => svg(client, area, markup),
+    style: () => style(),
     close: () => client.disconnect(),
   }
 }

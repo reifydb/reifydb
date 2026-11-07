@@ -193,4 +193,107 @@ describe('paint helper against the canvas backend', () => {
       expect(overlaps(tiles, fresh), `cell ${JSON.stringify(c)}`).toBe(false)
     }
   }, 15000)
+
+  it('paints an svg rect in an exact palette colour over the whole area', async () => {
+    // A shifted or scaled render would leave a white rim or bleed outside the cell.
+    const area = { x: 1000, y: 1000, w: 96, h: 64 }
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" fill="#ff4500"/></svg>')
+    const back = await canvas.read({ x: 999, y: 999, w: 98, h: 66 })
+    for (let y = 999; y < 1065; y++)
+      for (let x = 999; x < 1097; x++) {
+        const inside = x >= 1000 && x < 1096 && y >= 1000 && y < 1064
+        expect(back.get(x, y), `pixel (${x},${y})`).toBe(inside ? 3 : 0)
+      }
+  })
+
+  it('keeps existing pixels where the svg is transparent', async () => {
+    // Treating transparency as white would wipe every sign under a cell with a rounded or odd shape.
+    const area = { x: 2000, y: 2000, w: 96, h: 64 }
+    await canvas.paint(area, () => PURPLE)
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="48" height="64" fill="#000000"/></svg>')
+    const back = await canvas.read(area)
+    expect(back.get(2010, 2030)).toBe(28)
+    expect(back.get(2080, 2030)).toBe(19)
+  })
+
+  it('refuses an svg whose size does not match the area', async () => {
+    // A silent rescale would stretch the sign and misplace every pixel against the cell.
+    const area = { x: 3000, y: 3000, w: 96, h: 64 }
+    await expect(
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96"/></svg>'),
+    ).rejects.toThrow('svg renders at 96 x 96')
+  })
+
+  it('draws svg text in a Fontsource font, only inside the area', async () => {
+    // Without the font loaded resvg draws no glyphs, so a sign silently loses all its words.
+    const area = { x: 4000, y: 4000, w: 192, h: 64 }
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="64" viewBox="0 0 192 64"><text x="4" y="48" font-family="Bungee" font-size="40" fill="#000000">WE BUY</text></svg>')
+    const back = await canvas.read({ x: 3990, y: 3990, w: 212, h: 84 })
+    let ink = 0
+    for (let y = 3990; y < 4074; y++)
+      for (let x = 3990; x < 4202; x++) {
+        const inside = x >= 4000 && x < 4192 && y >= 4000 && y < 4064
+        if (!inside) expect(back.get(x, y), `pixel (${x},${y})`).toBe(0)
+        else if (back.get(x, y) !== 0) ink++
+      }
+    expect(ink).toBeGreaterThan(500)
+  }, 30000)
+
+  it('refuses svg text below 16 px or with no font-size at all', async () => {
+    // Text under 16 px dithers into mush on the wall, so a cramped sign must fail instead of painting.
+    const area = { x: 4000, y: 6000, w: 96, h: 64 }
+    const text = (attrs: string) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text x="4" y="40" font-family="Bungee" ${attrs}>HI</text></svg>`
+    await expect(canvas.svg(area, text('font-size="10"'))).rejects.toThrow('font-size 10 below 16 px')
+    await expect(canvas.svg(area, text('style="font-size: 15.5px"'))).rejects.toThrow('font-size 15.5 below 16 px')
+    await expect(canvas.svg(area, text(''))).rejects.toThrow('svg text has no font-size')
+    await expect(canvas.svg(area, text('font-size="2em"'))).rejects.toThrow('font-size 2em must be in px')
+    await canvas.svg(area, text('font-size="16"'))
+    const back = await canvas.read(area)
+    let ink = 0
+    for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (back.get(x, y) !== 0) ink++
+    expect(ink).toBeGreaterThan(0)
+  }, 30000)
+
+  it('fails loudly on a font family that Fontsource does not have', async () => {
+    // A typo in a font name must not turn into a sign with no text.
+    const area = { x: 4000, y: 5000, w: 96, h: 64 }
+    await expect(
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text font-family="Not A Real Font Xyz">HI</text></svg>'),
+    ).rejects.toThrow("font 'Not A Real Font Xyz' is not on Fontsource")
+  }, 30000)
+
+  it('inlines an Iconify icon referenced as icon:prefix:name', async () => {
+    // An unresolved icon reference renders nothing, so the picture half of a sign would vanish.
+    const area = { x: 5000, y: 5000, w: 64, h: 64 }
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000"/></svg>')
+    const back = await canvas.read(area)
+    expect(back.get(5032, 5032)).toBe(28)
+    await expect(
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:not-an-icon-xyz" width="64" height="64"/></svg>'),
+    ).rejects.toThrow("icon 'mdi:not-an-icon-xyz' not found on Iconify")
+  }, 30000)
+
+  it('rolls varied styles with real fonts and 2 to 4 distinct colours, at least one dark', async () => {
+    // A style that repeats or names no real font lets every agent fall back to the same look.
+    const { PALETTE } = await import('../../public/paint.mjs')
+    const styles = []
+    for (let i = 0; i < 30; i++) styles.push(await canvas.style())
+    for (const s of styles) {
+      expect(s.era.length).toBeGreaterThan(0)
+      expect(s.surface.length).toBeGreaterThan(0)
+      expect(s.shape.length).toBeGreaterThan(0)
+      expect(s.fonts).toHaveLength(2)
+      expect(s.colors.length).toBeGreaterThanOrEqual(2)
+      expect(s.colors.length).toBeLessThanOrEqual(4)
+      expect(new Set(s.colors).size).toBe(s.colors.length)
+      const dark = s.colors.some((i: number) => {
+        const c = PALETTE[i]
+        return ((c >> 16) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114) / 1000 < 128
+      })
+      expect(dark, `style ${JSON.stringify(s)}`).toBe(true)
+    }
+    expect(new Set(styles.map((s) => `${s.era}|${s.surface}|${s.shape}`)).size).toBeGreaterThanOrEqual(10)
+    expect(new Set(styles.map((s) => s.fonts[0])).size).toBeGreaterThanOrEqual(10)
+  }, 30000)
 })

@@ -12,6 +12,7 @@ export type Pixels = {
   edge(side: 'top' | 'bottom' | 'left' | 'right'): Array<[number, number, number] | null>
   fill(x: number, y: number): [number, number, number]
 }
+export type Style = { era: string; surface: string; shape: string; fonts: [string, string]; colors: number[] }
 export type PaintStats = { tiles: number; pixels: number; retries: number }
 
 export interface Canvas {
@@ -19,6 +20,8 @@ export interface Canvas {
   look(area: Area, scale: 1 | 2 | 4 | 8 | 16 | 32 | 64, file: string): Promise<string>
   read(area: Area): Promise<Pixels>
   cell(): Promise<Area>
+  svg(area: Area, markup: string): Promise<PaintStats>
+  style(): Promise<Style>
   close(): Promise<void>
 }
 
