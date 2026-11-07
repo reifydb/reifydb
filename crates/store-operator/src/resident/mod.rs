@@ -933,6 +933,8 @@ impl Resident {
 			..FlushBatch::default()
 		});
 		self.persist(&marker).expect("operator idle flush must persist its saved lsn marker");
+		let mut applied = self.shared.applied.lock();
+		*applied = (*applied).max(Some(head));
 	}
 
 	/// Arming publishes an empty filter as the authoritative one, which is only sound over a device
