@@ -291,6 +291,7 @@ pub fn apply_rolling_engine(
 	let applied = pane_engine(operator, &kinds).apply(
 		&mut state,
 		pane_groups,
+		&routing.touched,
 		cutoff,
 		&|| RowAccumulator::new(&kinds, None),
 		&RowPublisher {
@@ -820,10 +821,12 @@ mod tests {
 			}
 			frame.forget_empty();
 
+			let order: Vec<_> = groups.keys().cloned().collect();
 			let applied = engine
 				.apply(
 					&mut store,
 					groups,
+					&order,
 					cutoff.map(millis),
 					&new_accumulator,
 					&RowPublisher {

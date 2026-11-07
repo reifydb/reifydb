@@ -187,6 +187,7 @@ where
 		&mut self,
 		ctx: &mut impl GuestContext,
 		groups: RollingGroups<A>,
+		order: &[A::GroupKey],
 	) -> Result<Vec<TopKRow<Rw<A>>>> {
 		let mut store = GuestAsHost(ctx);
 		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
@@ -221,6 +222,7 @@ where
 		let applied = engine.apply(
 			&mut prefetched,
 			groups,
+			order,
 			cutoff,
 			&|| aggregator.new_accumulator(settings),
 			&publisher,
@@ -393,11 +395,11 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let groups = route_rolling(&self.aggregator, self.pane, ctx, &change)?;
+		let (groups, order) = route_rolling(&self.aggregator, self.pane, ctx, &change)?;
 		if groups.is_empty() {
 			return Ok(());
 		}
-		let rows = self.apply_rolling(ctx, groups)?;
+		let rows = self.apply_rolling(ctx, groups, &order)?;
 		Self::emit_rows(ctx, rows)
 	}
 }

@@ -364,6 +364,7 @@ where
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		groups: RollingGroups<A>,
+		order: &[A::GroupKey],
 	) -> Result<Emitted<A>> {
 		let mut store = GuestAsHost(ctx);
 		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
@@ -401,6 +402,7 @@ where
 		let applied = mode.engine.apply(
 			&mut prefetched,
 			groups,
+			order,
 			cutoff,
 			&|| aggregator.new_accumulator(settings),
 			&RowPublisher {
@@ -1345,7 +1347,7 @@ where
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		if let Some(pane) = self.rolling.as_ref().map(|mode| mode.pane) {
-			let groups = route_rolling(&self.aggregator, pane, ctx, &change)?;
+			let (groups, order) = route_rolling(&self.aggregator, pane, ctx, &change)?;
 			if groups.is_empty() {
 				return Ok(());
 			}
@@ -1360,7 +1362,7 @@ where
 				unreachable!("the rolling mode was present a line above")
 			};
 			let (inserts, updates, removes) =
-				Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, groups)?;
+				Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, groups, &order)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		let buckets = self.route(ctx, &change)?;

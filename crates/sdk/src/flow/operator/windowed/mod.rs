@@ -170,13 +170,17 @@ pub(crate) fn route_rolling<A>(
 	pane: <A::Coord as Coord>::Span,
 	ctx: &mut impl GuestContext,
 	change: &impl ChangeView,
-) -> error::Result<RollingGroups<A>>
+) -> error::Result<(RollingGroups<A>, Vec<A::GroupKey>)>
 where
 	A: WindowedOperator,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	let mut groups: RollingGroups<A> = BTreeMap::new();
+	let mut order: Vec<A::GroupKey> = Vec::new();
 	let mut push = |group: A::GroupKey, event: PaneEvent<A::Coord, Contribution<A>>| {
+		if !groups.contains_key(&group) {
+			order.push(group.clone());
+		}
 		groups.entry(group.clone()).or_insert_with(|| (partition_of(&group), Vec::new())).1.push(event);
 	};
 	for di in 0..change.diff_count() {
@@ -270,7 +274,7 @@ where
 			}
 		}
 	}
-	Ok(groups)
+	Ok((groups, order))
 }
 
 pub(crate) fn rolling_output<A: Emit>(

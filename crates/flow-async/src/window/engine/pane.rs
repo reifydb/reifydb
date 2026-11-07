@@ -25,7 +25,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -527,6 +527,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		groups: PaneGroups<G, C, A::Contribution>,
+		order: &[G],
 		cutoff: Option<C>,
 		new_accumulator: &dyn Fn() -> A,
 		publisher: &P,
@@ -535,13 +536,26 @@ where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
 	{
+		reifydb_assertions! {
+			let ordered = order.len();
+			let grouped = groups.len();
+			assert!(
+				ordered == grouped && order.iter().all(|group| groups.contains_key(group)),
+				"the arrival order must name every rolling group exactly once; a group missing from it \
+				 is never applied, while a duplicate or a stray key numbers groups out of arrival \
+				 order (order={ordered}, groups={grouped})"
+			);
+		}
 		let cutoff = cutoff.map(Coord::to_order);
 		let mut applied = PaneApplied::default();
-		let groups = self.resolve_moves::<P>(store, groups, cutoff)?;
-		for (group, (group_id, events)) in groups {
+		let mut groups = self.resolve_moves::<P>(store, groups, cutoff)?;
+		for group in order {
+			let Some((group_id, events)) = groups.remove(group) else {
+				continue;
+			};
 			self.apply_group(
 				store,
-				&group,
+				group,
 				group_id,
 				events,
 				cutoff,
@@ -1281,10 +1295,12 @@ mod tests {
 			for group in touched {
 				model.expire(shape, group, cutoff);
 			}
+			let order: Vec<_> = groups.keys().cloned().collect();
 			let applied = engine
 				.apply(
 					&mut store,
 					groups,
+					&order,
 					cutoff.map(ms),
 					&Bag::default,
 					&RowPublisher {
@@ -1402,9 +1418,11 @@ mod tests {
 				let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 				groups.insert(1, (group, vec![PaneEvent::Insert(ms(pane), pane, (pane, 1))]));
 				let before = store.rows_visited();
+				let order: Vec<_> = groups.keys().cloned().collect();
 				engine.apply(
 					&mut store,
 					groups,
+					&order,
 					None,
 					&Bag::default,
 					&RowPublisher {
@@ -1501,9 +1519,11 @@ mod tests {
 			}
 			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));
+			let order: Vec<_> = groups.keys().cloned().collect();
 			engine.apply(
 				&mut store,
 				groups,
+				&order,
 				None,
 				&Tally::default,
 				&RowPublisher {
@@ -1556,9 +1576,11 @@ mod tests {
 	) -> Emits {
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Insert(ms(pane), pane, (pane, value))]));
+		let order: Vec<_> = groups.keys().cloned().collect();
 		engine.apply(
 			store,
 			groups,
+			&order,
 			cutoff.map(ms),
 			&Tally::default,
 			&RowPublisher {
@@ -1637,10 +1659,12 @@ mod tests {
 		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Remove(ms(1_000), 1_000, (1_000, 5))]));
+		let order: Vec<_> = groups.keys().cloned().collect();
 		let retracted = engine
 			.apply(
 				&mut store,
 				groups,
+				&order,
 				None,
 				&Tally::default,
 				&RowPublisher {
@@ -1674,5 +1698,38 @@ mod tests {
 		let [reborn] =
 			tally_insert(&mut engine, &mut store, 1_300, 7, Some(1_240), None).try_into().ok().unwrap();
 		assert_eq!(reborn.kind(), Some(EmitKind::Insert), "a removed group must come back as an insert");
+	}
+
+	#[test]
+	fn fresh_groups_take_row_numbers_in_arrival_order_not_key_order() {
+		// Native keys groups by hash and guests by value, so numbering in key order gives the same group
+		// different row numbers on each side.
+		let mut engine = tally_engine();
+		let mut store = MockStore::default();
+		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Insert(ms(1_000), 1, (1_000, 5))]));
+		groups.insert(2, (GroupId::hashed(Hash128(2)), vec![PaneEvent::Insert(ms(1_000), 2, (1_000, 7))]));
+		let emits = engine
+			.apply(
+				&mut store,
+				groups,
+				&[2, 1],
+				None,
+				&Tally::default,
+				&RowPublisher {
+					key: Some(&|_: &u32| NoKey),
+					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					zero: None,
+				},
+			)
+			.unwrap()
+			.emits;
+		let mut numbered: Vec<(u64, u32)> = emits
+			.iter()
+			.map(|emit| (emit.post.as_ref().expect("a fresh group inserts").row_number, emit.group))
+			.collect();
+		numbered.sort();
+		let by_number: Vec<u32> = numbered.into_iter().map(|(_, group)| group).collect();
+		assert_eq!(by_number, vec![2, 1], "group 2 arrived first, so it must hold the lower row number");
 	}
 }
