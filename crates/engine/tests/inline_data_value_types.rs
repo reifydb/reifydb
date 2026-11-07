@@ -266,11 +266,11 @@ fn digest_rows_with_different_accuracy_are_an_error_with_the_second_fragment() {
 
 #[test]
 fn integer_rows_that_do_not_fit_a_narrow_type_keep_the_wide_type() {
-	// Narrowing picks the smallest type holding every row, so a large row must keep a wide type and its value.
+	// Mixed integer rows widen like +, so a large row must keep a type at least as wide as its own and its value.
 	let frames = query("from [{ v: 1 }, { v: 100000 }]", Params::None);
 	let (ty, values) = column(&frames, "v");
-	assert_eq!(ty, ValueType::Int4);
-	assert_eq!(values, vec![Value::Int4(1), Value::Int4(100_000)]);
+	assert_eq!(ty, ValueType::Int8);
+	assert_eq!(values, vec![Value::Int8(1), Value::Int8(100_000)]);
 
 	let params = Params::from(HashMap::from([
 		("a".to_string(), Value::Int1(1)),

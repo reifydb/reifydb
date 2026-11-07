@@ -9,7 +9,11 @@ use reifydb_core::{
 	internal_error,
 	value::{
 		batch::{append, batch, batch_with, is_scalar, single_row},
-		column::{builder::ColumnBuilder, factory},
+		column::{
+			builder::ColumnBuilder,
+			cast::{cast_column_data, convert::TargetConvert},
+			factory,
+		},
 	},
 };
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
@@ -19,6 +23,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
+		column_view::ColumnView,
 		frame::frame::Frame,
 		sumtype::SumTypeId,
 		system_columns::user_columns,
@@ -163,7 +168,7 @@ impl<'a> Vm<'a> {
 					}
 					.into());
 				}
-				let appended = append(existing, &columns)?;
+				let appended = append(&widened(existing, &columns)?, &widened(&columns, existing)?)?;
 				self.symbols.reassign(clean_name.to_string(), Variable::columns(appended))?;
 			}
 			None => {
@@ -294,4 +299,34 @@ fn enum_names(
 	});
 	let name = field.name().strip_suffix("_tag").unwrap_or(field.name());
 	Ok((Arc::new(to_field(name, &field_type)), Arc::new(LargeStringArray::from(names))))
+}
+
+fn widened(batch: &RecordBatch, other: &RecordBatch) -> Result<RecordBatch> {
+	let schema = batch.schema();
+	let other_schema = other.schema();
+	let mut columns = Vec::with_capacity(batch.num_columns());
+	for (field, array) in schema.fields().iter().zip(batch.columns()) {
+		let mine = ColumnView::try_from((array, field.as_ref()))?;
+		let theirs = match other_schema.index_of(field.name()) {
+			Ok(index) => Some(ColumnView::try_from((other.column(index), other_schema.field(index)))?),
+			Err(_) => None,
+		};
+		let mine_type = mine.get_type().inner_type().clone();
+		let target = theirs.map(|theirs| theirs.get_type().inner_type().clone()).and_then(|theirs_type| {
+			(mine_type != theirs_type && mine_type.is_number() && theirs_type.is_number())
+				.then(|| ValueType::promote(mine_type.clone(), theirs_type))
+		});
+		match target {
+			Some(target) if target != mine_type => columns.push(cast_column_data(
+				TargetConvert {
+					target: None,
+				},
+				&mine,
+				target,
+				Fragment::none,
+			)?),
+			_ => columns.push((field.clone(), array.clone())),
+		}
+	}
+	batch_with(&schema, columns, batch.num_rows())
 }

@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::{
-	factory::{int1, int8, uint1, uint4},
+	factory::{int8, int16, uint1, uint4},
 	view::group_by::GroupId,
 };
 use reifydb_routine::function::math::sum::Sum;
@@ -56,10 +56,10 @@ fn retracting_more_than_a_uint_sum_holds_is_an_error() {
 
 #[test]
 fn retracting_below_the_signed_minimum_is_an_error() {
-	// Unchecked, i8::MIN - 1 wraps to i8::MAX in release.
+	// Unchecked, i128::MIN - 1 wraps to i128::MAX in release; int16 is the widest sum, so nothing absorbs it.
 	let mut acc = accumulator();
-	acc.update(&columns(int1("v", [i8::MIN])), &rows(1)).unwrap();
-	assert_out_of_range(acc.retract(&columns(int1("v", [1])), &rows(1)));
+	acc.update(&columns(int16("v", [i128::MIN])), &rows(1)).unwrap();
+	assert_out_of_range(acc.retract(&columns(int16("v", [1])), &rows(1)));
 }
 
 #[test]
@@ -77,5 +77,5 @@ fn a_retract_within_range_still_subtracts() {
 	acc.update(&columns(int8("v", [i64::MAX, -5])), &rows(2)).unwrap();
 	acc.retract(&columns(int8("v", [-5])), &rows(1)).unwrap();
 	let (_, out) = acc.finalize().unwrap();
-	assert_eq!(ColumnView::try_from(&out).unwrap().get_value(0), Value::Int8(i64::MAX));
+	assert_eq!(ColumnView::try_from(&out).unwrap().get_value(0), Value::Int16(i64::MAX.into()));
 }

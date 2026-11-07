@@ -30,7 +30,7 @@ fn a_post_aggregate_projection_keeps_its_type_value_and_error() {
 
 	let frames = t.query("FROM test::t aggregate { v: math::sum(a) + 1 }");
 	let column = frames[0].column("v").unwrap().expect("column v");
-	assert_eq!(column.get_type().to_string(), "Int8");
+	assert_eq!(column.get_type().to_string(), "Int16");
 	assert_eq!(column.get_value(0).to_string(), "26");
 
 	let err = t.query_err("FROM test::t aggregate { v: math::sum(a) / 0 }");

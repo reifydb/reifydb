@@ -4,7 +4,7 @@
 use reifydb_value::{error::NumberOutOfRangeDescriptor, value::value_type::ValueType};
 
 use crate::interface::{
-	catalog::property::ColumnPropertyKind,
+	catalog::{column::Column, property::ColumnPropertyKind},
 	resolved::{ResolvedColumn, resolved_column_to_number_descriptor},
 };
 
@@ -21,6 +21,15 @@ pub enum TargetColumn {
 }
 
 impl TargetColumn {
+	pub fn of_column(source_name: Option<String>, column: &Column) -> Self {
+		Self::Partial {
+			source_name,
+			column_name: Some(column.name.clone()),
+			column_type: column.constraint.get_type(),
+			properties: column.properties.iter().map(|p| p.property.clone()).collect(),
+		}
+	}
+
 	pub fn column_type(&self) -> ValueType {
 		match self {
 			Self::Resolved(col) => col.column_type(),

@@ -7,7 +7,7 @@ use std::{
 	sync::Arc,
 };
 
-use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::{
@@ -697,41 +697,20 @@ impl QueryNode for InlineDataNode {
 type EvaluatedColumnValues = (Vec<(Value, ValueType, Fragment)>, Option<ValueType>);
 
 impl InlineDataNode {
-	fn find_optimal_integer_type(column: &ColumnView<'_>) -> ValueType {
-		let mut min_val = i128::MAX;
-		let mut max_val = i128::MIN;
-		let mut has_values = false;
-
-		for value in column.iter() {
-			match value {
-				Value::Int16(v) => {
-					has_values = true;
-					min_val = min_val.min(v);
-					max_val = max_val.max(v);
-				}
-				Value::None {
-					..
-				} => {}
-				_ => {
-					return ValueType::Int16;
-				}
-			}
-		}
-
-		if !has_values {
-			return ValueType::Int1;
-		}
-
-		if min_val >= i8::MIN as i128 && max_val <= i8::MAX as i128 {
-			ValueType::Int1
-		} else if min_val >= i16::MIN as i128 && max_val <= i16::MAX as i128 {
-			ValueType::Int2
-		} else if min_val >= i32::MIN as i128 && max_val <= i32::MAX as i128 {
-			ValueType::Int4
-		} else if min_val >= i64::MIN as i128 && max_val <= i64::MAX as i128 {
-			ValueType::Int8
-		} else {
-			ValueType::Int16
+	fn shared_integer_type(mut types: Vec<ValueType>) -> ValueType {
+		let rank = |ty: &ValueType| match ty {
+			ValueType::Int1 | ValueType::Uint1 => 0,
+			ValueType::Int2 | ValueType::Uint2 => 1,
+			ValueType::Int4 | ValueType::Uint4 => 2,
+			ValueType::Int8 | ValueType::Uint8 => 3,
+			_ => 4,
+		};
+		types.sort_by_key(|ty| (rank(ty), ty.is_unsigned_integer()));
+		types.dedup();
+		match types.as_slice() {
+			[only] => only.clone(),
+			[.., second, widest] => ValueType::promote(widest.clone(), second.clone()),
+			[] => ValueType::Int1,
 		}
 	}
 
@@ -820,30 +799,39 @@ impl InlineDataNode {
 		first_value_type: Option<ValueType>,
 		name: &str,
 	) -> Result<(FieldRef, ArrayRef)> {
-		let wide_type = first_value_type.map(|fvt| {
-			let first = match fvt {
-				_ if fvt.is_integer() => ValueType::Int16,
-				_ if fvt.is_floating_point() => ValueType::Float8,
-				_ => fvt,
-			};
-			all_values
-				.iter()
-				.filter(|(value, _, _)| !matches!(value, Value::None { .. }))
-				.map(|(_, ty, _)| ty.clone())
-				.filter(|ty| {
-					ty.is_floating_point()
-						|| ty.is_integer() || matches!(ty, ValueType::Decimal { .. })
-				})
-				.fold(first, |wide, ty| match wide {
-					ValueType::Decimal {
-						..
-					} => Self::widen_numeric(wide, ty),
-					_ if ty.is_integer() => wide,
-					_ => Self::widen_numeric(wide, ty),
-				})
-		});
+		let integers: Vec<ValueType> = all_values
+			.iter()
+			.filter(|(value, _, _)| !matches!(value, Value::None { .. }))
+			.map(|(_, ty, _)| ty.clone())
+			.collect();
+		let wide_type = if !integers.is_empty() && integers.iter().all(|ty| ty.is_integer()) {
+			Some(Self::shared_integer_type(integers))
+		} else {
+			first_value_type.map(|fvt| {
+				let first = match fvt {
+					_ if fvt.is_integer() => ValueType::Int16,
+					_ if fvt.is_floating_point() => ValueType::Float8,
+					_ => fvt,
+				};
+				all_values
+					.iter()
+					.filter(|(value, _, _)| !matches!(value, Value::None { .. }))
+					.map(|(_, ty, _)| ty.clone())
+					.filter(|ty| {
+						ty.is_floating_point()
+							|| ty.is_integer() || matches!(ty, ValueType::Decimal { .. })
+					})
+					.fold(first, |wide, ty| match wide {
+						ValueType::Decimal {
+							..
+						} => Self::widen_numeric(wide, ty),
+						_ if ty.is_integer() => wide,
+						_ => Self::widen_numeric(wide, ty),
+					})
+			})
+		};
 
-		let mut column_data = if wide_type.is_none() {
+		let column_data = if wide_type.is_none() {
 			let none_type = all_values.iter().find_map(|(value, _, _)| match value {
 				Value::None {
 					inner,
@@ -873,20 +861,6 @@ impl InlineDataNode {
 
 			data.finish(name)
 		};
-
-		if wide_type == Some(ValueType::Int16) {
-			let optimal_type = Self::find_optimal_integer_type(&ColumnView::try_from(&column_data)?);
-			if optimal_type != ValueType::Int16 {
-				let eval_ctx = session.with_eval(empty_batch(), column_data.1.len());
-				let casted = cast_column_data(
-					&eval_ctx,
-					&ColumnView::try_from(&column_data)?,
-					optimal_type,
-					Fragment::none,
-				)?;
-				column_data = casted;
-			}
-		}
 
 		Ok(column_data)
 	}
@@ -1069,11 +1043,8 @@ impl InlineDataNode {
 		for row_data in rows_data {
 			if let Some(alias_expr) = row_data.get(column_name.text()) {
 				let mut eval_ctx = session.with_eval_empty();
-				eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
-					source_name: Some(source.identifier().text().to_string()),
-					column_name: Some(tc.name.clone()),
-					column_type: tc.constraint.get_type(),
-					properties: tc.properties.iter().map(|cp| cp.property.clone()).collect(),
+				eval_ctx.target = table_column.map(|tc| {
+					TargetColumn::of_column(Some(source.identifier().text().to_string()), tc)
 				});
 
 				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;

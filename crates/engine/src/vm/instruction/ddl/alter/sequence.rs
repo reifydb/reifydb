@@ -54,12 +54,7 @@ pub(crate) fn alter_table_sequence(
 		take: None,
 	};
 	let mut eval_ctx = base.with_eval_empty();
-	eval_ctx.target = Some(TargetColumn::Partial {
-		source_name: None,
-		column_name: None,
-		column_type: column.constraint.get_type(),
-		properties: column.properties.into_iter().map(|p| p.property).collect(),
-	});
+	eval_ctx.target = Some(TargetColumn::of_column(None, &column));
 	let value = evaluate(&eval_ctx, &plan.value)?;
 
 	let data = ColumnView::try_from(&value)?;

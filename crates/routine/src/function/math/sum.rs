@@ -9,7 +9,6 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{
 		builder::ColumnBuilder,
-		factory::any_optional,
 		nulls::split_nulls,
 		view::group_by::{GroupId, GroupRows, GroupSlots},
 	},
@@ -67,19 +66,13 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
 		let row_count = ctx.row_count;
-		let mut results = Vec::with_capacity(row_count);
+		let mut results = ColumnBuilder::with_capacity(sum_type(bare_type(&data), iter::empty()), row_count);
 
 		for i in 0..row_count {
-			let val1 = data.get_value(row_of(data.len(), i));
-			results.push(match val1 {
-				Value::None {
-					..
-				} => None,
-				value => Some(value),
-			});
+			results.push_value(widen(data.get_value(row_of(data.len(), i))));
 		}
 
-		Ok(any_optional(ctx.fragment.text(), results))
+		Ok(results.finish(ctx.fragment.text()))
 	}
 }
 
@@ -119,6 +112,30 @@ fn sum_type<'a>(input: ValueType, sums: impl Iterator<Item = &'a Value>) -> Valu
 				.fold(scale.value(), u8::max);
 			ValueType::decimal(Precision::MAX, Scale::new(widest))
 		}
+		ValueType::Int1
+		| ValueType::Int2
+		| ValueType::Int4
+		| ValueType::Int8
+		| ValueType::Int16
+		| ValueType::Uint1
+		| ValueType::Uint2
+		| ValueType::Uint4
+		| ValueType::Uint8
+		| ValueType::Uint16 => ValueType::promote(input.clone(), input),
+		other => other,
+	}
+}
+
+fn widen(value: Value) -> Value {
+	match value {
+		Value::Int1(v) => Value::Int2(v.into()),
+		Value::Int2(v) => Value::Int4(v.into()),
+		Value::Int4(v) => Value::Int8(v.into()),
+		Value::Int8(v) => Value::Int16(v.into()),
+		Value::Uint1(v) => Value::Uint2(v.into()),
+		Value::Uint2(v) => Value::Uint4(v.into()),
+		Value::Uint4(v) => Value::Uint8(v.into()),
+		Value::Uint8(v) => Value::Uint16(v.into()),
 		other => other,
 	}
 }
@@ -156,7 +173,7 @@ macro_rules! sum_arm {
 			for &i in indices {
 				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
-						delta = delta.checked_add(val).ok_or_else(overflow)?;
+						delta = delta.checked_add(<$t>::from(val)).ok_or_else(overflow)?;
 						has_value = true;
 					}
 				}
@@ -191,7 +208,7 @@ macro_rules! sub_arm {
 			for &i in indices {
 				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
-						delta = delta.checked_add(val).ok_or_else(overflow)?;
+						delta = delta.checked_add(<$t>::from(val)).ok_or_else(overflow)?;
 						has_value = true;
 					}
 				}
@@ -333,19 +350,19 @@ impl Accumulator for SumAccumulator {
 
 		match &data.data {
 			ViewData::Int1(container) => {
-				sum_arm!(self, column, groups, container.values(), i8, Int1);
-				Ok(())
-			}
-			ViewData::Int2(container) => {
 				sum_arm!(self, column, groups, container.values(), i16, Int2);
 				Ok(())
 			}
-			ViewData::Int4(container) => {
+			ViewData::Int2(container) => {
 				sum_arm!(self, column, groups, container.values(), i32, Int4);
 				Ok(())
 			}
-			ViewData::Int8(container) => {
+			ViewData::Int4(container) => {
 				sum_arm!(self, column, groups, container.values(), i64, Int8);
+				Ok(())
+			}
+			ViewData::Int8(container) => {
+				sum_arm!(self, column, groups, container.values(), i128, Int16);
 				Ok(())
 			}
 			ViewData::Int16(container) => {
@@ -354,19 +371,19 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ViewData::Uint1(container) => {
-				sum_arm!(self, column, groups, container.values(), u8, Uint1);
-				Ok(())
-			}
-			ViewData::Uint2(container) => {
 				sum_arm!(self, column, groups, container.values(), u16, Uint2);
 				Ok(())
 			}
-			ViewData::Uint4(container) => {
+			ViewData::Uint2(container) => {
 				sum_arm!(self, column, groups, container.values(), u32, Uint4);
 				Ok(())
 			}
-			ViewData::Uint8(container) => {
+			ViewData::Uint4(container) => {
 				sum_arm!(self, column, groups, container.values(), u64, Uint8);
+				Ok(())
+			}
+			ViewData::Uint8(container) => {
+				sum_arm!(self, column, groups, container.values(), u128, Uint16);
 				Ok(())
 			}
 			ViewData::Uint16(container) => {
@@ -426,19 +443,19 @@ impl Accumulator for SumAccumulator {
 
 		match &data.data {
 			ViewData::Int1(container) => {
-				sub_arm!(self, column, groups, container.values(), i8, Int1);
-				Ok(())
-			}
-			ViewData::Int2(container) => {
 				sub_arm!(self, column, groups, container.values(), i16, Int2);
 				Ok(())
 			}
-			ViewData::Int4(container) => {
+			ViewData::Int2(container) => {
 				sub_arm!(self, column, groups, container.values(), i32, Int4);
 				Ok(())
 			}
-			ViewData::Int8(container) => {
+			ViewData::Int4(container) => {
 				sub_arm!(self, column, groups, container.values(), i64, Int8);
+				Ok(())
+			}
+			ViewData::Int8(container) => {
+				sub_arm!(self, column, groups, container.values(), i128, Int16);
 				Ok(())
 			}
 			ViewData::Int16(container) => {
@@ -447,19 +464,19 @@ impl Accumulator for SumAccumulator {
 				Ok(())
 			}
 			ViewData::Uint1(container) => {
-				sub_arm!(self, column, groups, container.values(), u8, Uint1);
-				Ok(())
-			}
-			ViewData::Uint2(container) => {
 				sub_arm!(self, column, groups, container.values(), u16, Uint2);
 				Ok(())
 			}
-			ViewData::Uint4(container) => {
+			ViewData::Uint2(container) => {
 				sub_arm!(self, column, groups, container.values(), u32, Uint4);
 				Ok(())
 			}
-			ViewData::Uint8(container) => {
+			ViewData::Uint4(container) => {
 				sub_arm!(self, column, groups, container.values(), u64, Uint8);
+				Ok(())
+			}
+			ViewData::Uint8(container) => {
+				sub_arm!(self, column, groups, container.values(), u128, Uint16);
 				Ok(())
 			}
 			ViewData::Uint16(container) => {

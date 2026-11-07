@@ -69,7 +69,7 @@ macro_rules! impl_scalar_op {
 				<L as Promote<R>>::Output: IsNumber,
 				<L as Promote<R>>::Output: $safe_trait,
 			{
-				let target = || <L as Promote<R>>::Output::get_type();
+				let target = || ValueType::promote(L::get_type(), R::get_type());
 				let mode = self.mode();
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return match mode {

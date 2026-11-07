@@ -17,13 +17,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	interface::{
-		catalog::{
-			column::Column as CatalogColumn,
-			property::{ColumnPropertyKind, ColumnSaturationStrategy},
-		},
-		evaluate::TargetColumn,
-	},
+	interface::{catalog::column::Column as CatalogColumn, evaluate::TargetColumn},
 	value::{
 		batch::empty_batch,
 		column::{cast::cast_column_data, factory::none_typed, write::check_digest_write},
@@ -85,7 +79,6 @@ pub fn coerce_columns(
 
 	let mut result_columns = Vec::with_capacity(target_columns.len());
 
-	// FIXME how to handle failing views ?!
 	let session = EvalContext {
 		params: &EMPTY_PARAMS,
 		symbols: &EMPTY_SYMBOL_TABLE,
@@ -102,12 +95,7 @@ pub fn coerce_columns(
 	for target_col in target_columns {
 		let target_type = target_col.constraint.get_type();
 
-		ctx.target = Some(TargetColumn::Partial {
-			source_name: None,
-			column_name: Some(target_col.name.clone()),
-			column_type: target_type.clone(),
-			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
-		});
+		ctx.target = Some(TargetColumn::of_column(None, target_col));
 
 		if let Some(source_col) = column_view(columns, &target_col.name)? {
 			check_digest_write(&source_col, &target_type, Fragment::internal(&target_col.name))?;
