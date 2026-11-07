@@ -238,7 +238,7 @@ where
 		}
 		emits.extend(applied.emits);
 		let after = engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
 		Ok(emits)
 	}
 
@@ -348,7 +348,7 @@ where
 		};
 		let spans = PaneSpans {
 			size: settings.fixed_size(),
-			lag: Default::default(),
+			lag: settings.lag.unwrap_or_default(),
 			lateness: settings.lateness,
 			retract: settings.immutable.unwrap_or(settings.lateness),
 		};
@@ -388,7 +388,7 @@ where
 				None => Vec::new(),
 			};
 			let after = engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
+			<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
 			rows
 		};
 		Self::emit_rows(ctx, rows)

@@ -286,7 +286,7 @@ pub(crate) fn rolling_output<A: Emit>(
 	accumulator: &A::Accumulator,
 ) -> Option<A::Output> {
 	let value = accumulator.finalize()?;
-	let end = newest.add_span(pane);
+	let end = newest.saturating_sub_span(settings.lag.unwrap_or_default()).add_span(pane);
 	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 	aggregator.build_output(group, span, &value)
 }
@@ -296,7 +296,9 @@ pub(crate) fn rolling_cutoff<A: WindowedOperator>(
 	pane: <A::Coord as Coord>::Span,
 	clock: A::Coord,
 ) -> Option<A::Coord> {
-	clock.checked_sub_span(settings.fixed_size()).map(|cutoff| bucket_of(cutoff, pane))
+	clock.checked_sub_span(settings.lag.unwrap_or_default())
+		.and_then(|end| end.checked_sub_span(settings.fixed_size()))
+		.map(|cutoff| bucket_of(cutoff, pane))
 }
 
 #[cfg(test)]

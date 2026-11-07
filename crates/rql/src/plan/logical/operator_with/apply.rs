@@ -272,7 +272,7 @@ fn window_reads(kind: AstWindowKind, key: &str) -> bool {
 	match kind {
 		AstWindowKind::Tumbling => matches!(key, "duration" | "slots"),
 		AstWindowKind::Sliding => matches!(key, "duration" | "slots" | "slide"),
-		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "pane" | "on"),
+		AstWindowKind::Rolling => matches!(key, "duration" | "slots" | "pane" | "lag" | "on"),
 		AstWindowKind::Session => matches!(key, "gap"),
 	}
 }
@@ -629,13 +629,20 @@ mod tests {
 	}
 
 	#[test]
-	fn lag_on_a_rolling_window_fails() {
-		// No rolling driver shifts its output by lag, so accepting it leaves a setting that silently does
-		// nothing.
-		let err = apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, lag: 30s }")
-			.expect_err("must be rejected")
-			.to_string();
-		assert!(err.contains("expected a key the rolling window reads, got lag"), "got: {err}");
+	fn lag_parses_on_a_rolling_window() {
+		// A lag dropped at parse would make a guest show the current window while the view declares the
+		// previous one.
+		assert_eq!(
+			apply_with("apply op { } with { window: rolling, duration: 1h, pane: 1s, lag: 30s }")
+				.unwrap()
+				.window,
+			Some(WindowKind::Rolling {
+				size: WindowSize::Duration(Duration::from_hours(1).unwrap()),
+				lag: Some(Duration::from_seconds(30).unwrap()),
+				pane: Some(Duration::from_seconds(1).unwrap()),
+				on_empty: OnEmpty::Remove,
+			})
+		);
 	}
 
 	#[test]

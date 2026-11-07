@@ -353,7 +353,7 @@ where
 			None => Vec::new(),
 		};
 		let after = mode.engine.earliest_expiry(store)?;
-		<A::Coord as SealDomain>::rearm_decay(store, settings.fixed_size(), before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(store, settings, before, after)?;
 		Ok(Self::rolling_emitted(emits))
 	}
 
@@ -422,7 +422,7 @@ where
 		}
 		emits.extend(applied.emits);
 		let after = mode.engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
 		Ok(Self::rolling_emitted(emits))
 	}
 
@@ -1235,7 +1235,7 @@ where
 			};
 			let spans = PaneSpans {
 				size: settings.fixed_size(),
-				lag: Default::default(),
+				lag: settings.lag.unwrap_or_default(),
 				lateness: settings.lateness,
 				retract: settings.immutable.unwrap_or(settings.lateness),
 			};
@@ -1410,7 +1410,7 @@ mod tests {
 		operator_with::WithSpan,
 	};
 	use reifydb_flow_async::window::{
-		accumulator::invertible::last_value::LastValue,
+		accumulator::{WindowAccumulator, invertible::last_value::LastValue},
 		coord::{DateTimeCoord, RowSpan, U8Coord},
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
@@ -1686,5 +1686,105 @@ mod tests {
 		// a wrong domain makes the create check read the window size in the wrong unit
 		assert_eq!(<PlainDriver<SlotProbe> as MountedOperator>::WINDOW.domain, WindowSizeDomain::Slots);
 		assert_eq!(<PlainDriver<TimeProbe> as MountedOperator>::WINDOW.domain, WindowSizeDomain::Time);
+	}
+
+	struct SpanProbe {
+		spans: Mutex<Vec<WindowSpan<DateTimeCoord>>>,
+	}
+
+	impl OperatorMetadata for SpanProbe {
+		const NAME: &'static str = "span_probe";
+		const VERSION: &'static str = "0";
+		const DESCRIPTION: &'static str = "span probe";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl WindowedOperator for SpanProbe {
+		type Coord = DateTimeCoord;
+		type GroupKey = u32;
+		type Accumulator = LastValue<i64>;
+		type Output = Out;
+
+		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+			Ok(Self {
+				spans: Mutex::new(Vec::new()),
+			})
+		}
+
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+			Ok(vec![None; rows.len()])
+		}
+
+		fn extract(
+			&self,
+			_: &mut impl GuestContext<Windowed>,
+			_: &impl ColumnsView,
+			rows: &[usize],
+		) -> Result<Vec<Option<(u32, i64)>>> {
+			Ok(vec![None; rows.len()])
+		}
+
+		fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> LastValue<i64> {
+			LastValue::default()
+		}
+	}
+
+	impl Emit for SpanProbe {
+		type Kinds = crate::flow::operator::windowed::operator::NoRolling;
+
+		fn build_output(&self, _: &u32, span: WindowSpan<DateTimeCoord>, _: &i64) -> Option<Out> {
+			self.spans.lock().push(span);
+			None
+		}
+	}
+
+	fn rolling_lagged(size: i64, pane: i64, lag: Option<i64>) -> WindowSettings<DateTimeCoord> {
+		let with = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(secs(size)),
+				lag: lag.map(secs),
+				pane: Some(secs(pane)),
+				on_empty: OnEmpty::Remove,
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		<DateTimeCoord as SealDomain>::window_settings_of(&with).unwrap()
+	}
+
+	fn at(seconds: i64) -> DateTimeCoord {
+		DateTimeCoord(DateTime::from_millis(seconds * 1_000))
+	}
+
+	#[test]
+	fn a_lagged_rolling_cutoff_reaches_back_size_plus_lag() {
+		// A guest cutoff of clock - size evicts panes a lagged native window still holds, so the two sums
+		// differ.
+		let lagged = rolling_lagged(5, 1, Some(2));
+		let unlagged = rolling_lagged(5, 1, None);
+
+		assert_eq!(rolling_cutoff::<TimeProbe>(&lagged, secs(1), at(20)), Some(at(13)));
+		assert_eq!(rolling_cutoff::<TimeProbe>(&unlagged, secs(1), at(20)), Some(at(15)));
+	}
+
+	#[test]
+	fn a_lagged_rolling_output_span_ends_lag_before_the_newest_pane() {
+		// A span ending at the newest pane would label the previous window as the current one.
+
+		let probe = SpanProbe::create(OperatorId(1), &params(), &ApplyWith::default()).unwrap();
+		let mut accumulator = LastValue::default();
+		accumulator.add(&7);
+
+		rolling_output(&probe, &rolling_lagged(5, 1, Some(2)), secs(1), &1, at(20), &accumulator);
+		rolling_output(&probe, &rolling_lagged(5, 1, None), secs(1), &1, at(20), &accumulator);
+
+		assert_eq!(
+			*probe.spans.lock(),
+			vec![WindowSpan::new(at(14), at(19)), WindowSpan::new(at(16), at(21))],
+			"the lagged span must end at newest - lag + pane, the unlagged one at newest + pane"
+		);
 	}
 }

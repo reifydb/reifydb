@@ -22,7 +22,7 @@ use crate::{
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
-	window::{coord::DateTimeCoord, settings::WindowSettings},
+	window::{coord::DateTimeCoord, kind::rolling::RollingOverTime, settings::WindowSettings},
 };
 
 pub trait SealDomain: Coord {
@@ -44,7 +44,7 @@ pub trait SealDomain: Coord {
 
 	fn rearm_decay(
 		store: &mut (impl StateStore + TimerStore),
-		size: Self::Span,
+		settings: &WindowSettings<Self>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()>;
@@ -94,17 +94,19 @@ impl SealDomain for DateTimeCoord {
 			None => (Some(with.window_duration()?), None),
 		};
 		let sealing = WindowSealing::from_operator_with(with)?;
-		let pane = match kind {
+		let (pane, lag) = match kind {
 			WindowKind::Rolling {
 				pane,
+				lag,
 				..
-			} => *pane,
-			_ => None,
+			} => (*pane, *lag),
+			_ => (None, None),
 		};
 		Ok(WindowSettings {
 			kind: kind.clone(),
 			size,
 			pane,
+			lag,
 			slide: with.window_slide_duration()?,
 			gap,
 			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
@@ -131,11 +133,12 @@ impl SealDomain for DateTimeCoord {
 
 	fn rearm_decay(
 		store: &mut (impl StateStore + TimerStore),
-		size: Duration,
+		settings: &WindowSettings<Self>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()> {
-		EvictionGate::new(size).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
+		let span = RollingOverTime::new(settings.fixed_size(), settings.lag.unwrap_or_default()).span();
+		EvictionGate::new(span).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
 	}
 }
 
@@ -168,6 +171,36 @@ mod tests {
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		}
+	}
+
+	fn decay_due(lag: Option<Duration>) -> DateTime {
+		let with = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(Duration::from_seconds(5).unwrap()),
+				lag,
+				pane: Some(Duration::from_seconds(1).unwrap()),
+				on_empty: OnEmpty::Remove,
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		let settings = DateTimeCoord::window_settings_of(&with).unwrap();
+		let mut store = MockStore::recording_timers();
+		let oldest = DateTimeCoord(at_millis(1_000)).to_order();
+		DateTimeCoord::rearm_decay(&mut store, &settings, None, Some(oldest)).unwrap();
+		match store.timers() {
+			[RecordedTimer::Armed(timer)] => timer.due,
+			other => panic!("expected one armed decay timer, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn a_lagged_rolling_decay_timer_fires_lag_later_than_an_unlagged_one() {
+		// A decay armed at size alone frees a lagged group while its lagged window still holds panes.
+		let lag = Duration::from_seconds(2).unwrap();
+
+		assert_eq!(decay_due(Some(lag)), decay_due(None).saturating_add(lag));
 	}
 
 	#[test]

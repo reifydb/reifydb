@@ -165,6 +165,7 @@ impl SealDomain for U8Coord {
 			kind: kind.clone(),
 			size: Some(RowSpan::of(with.window_slots()?)),
 			pane: None,
+			lag: None,
 			slide: with.window_slide_slots()?.map(RowSpan::of),
 			gap: None,
 			lateness: RowSpan::of(with.lateness_count()?.unwrap_or(0)),
@@ -187,7 +188,7 @@ impl SealDomain for U8Coord {
 
 	fn rearm_decay(
 		_store: &mut (impl StateStore + TimerStore),
-		_size: RowSpan,
+		_settings: &WindowSettings<Self>,
 		_before: Option<u64>,
 		_after: Option<u64>,
 	) -> Result<()> {
