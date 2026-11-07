@@ -18,8 +18,7 @@ export interface Canvas {
   paint(area: Area, shade: Shade, options?: { blend?: number }): Promise<PaintStats>
   look(area: Area, scale: 1 | 2 | 4 | 8 | 16 | 32 | 64, file: string): Promise<string>
   read(area: Area): Promise<Pixels>
-  spot(size: number, near?: 'edge' | 'art' | 'empty' | 'any' | 'scene'): Promise<Area & { crowded: boolean; seed?: boolean }>
-  scene(): Promise<string | null>
+  cell(): Promise<Area>
   close(): Promise<void>
 }
 

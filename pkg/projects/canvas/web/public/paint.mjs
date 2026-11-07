@@ -21,13 +21,17 @@ const TILES = 128
 const IN_FLIGHT = 8
 const MAX_ATTEMPTS = 12
 const BLOCK = 16
-const SPOT_TRIES = 4000
+const CELL_TRIES = 4000
+const CELL_W = 96
+const CELL_W_SPREAD = 672
+const CELL_H = 64
+const CELL_H_SPREAD = 448
+const CELL_RATIO_MIN = 1 / 3
+const CELL_RATIO_MAX = 4
+const NEIGHBOURS = [[-1, 0], [1, 0], [0, -1], [0, 1]]
 const RECENT_COMMITS = 500
-const BUSY_DISTANCE = 1024
-const EDGE_MIN = 0.2
 const BAND_MIN = 0.2
 const FILL_NOISE = 24
-const EDGE_MAX = 0.7
 
 const BAYER = (() => {
   let m = [[0]]
@@ -322,106 +326,44 @@ async function busyTiles(client) {
   return [...keys].map((key) => [key % TILES, Math.floor(key / TILES)])
 }
 
-async function scene(client) {
-  const frames = await client.query('CALL canvas::scene()', {}, [])
-  const row = frames[0]?.[0]
-  if (row === undefined) return null
-  const value = Object.values(row)[0]
-  const text = value?.value ?? value
-  return text === undefined || text === null ? null : String(text)
+function cellSize() {
+  for (;;) {
+    const w = Math.round((CELL_W + CELL_W_SPREAD * Math.random() ** 2) / BLOCK) * BLOCK
+    const h = Math.round((CELL_H + CELL_H_SPREAD * Math.random() ** 2) / BLOCK) * BLOCK
+    if (w / h >= CELL_RATIO_MIN && w / h <= CELL_RATIO_MAX) return { w, h }
+  }
 }
 
-async function spot(client, size, near = 'edge') {
-  if (!Number.isInteger(size) || size < 1 || size > SIZE) throw new Error(`spot size ${size} must be a whole number from 1 to ${SIZE}`)
-  if (!['edge', 'art', 'empty', 'any', 'scene'].includes(near)) throw new Error(`spot near '${near}' must be 'edge', 'art', 'empty', 'any' or 'scene'`)
-  if (near === 'any') {
-    const x = Math.floor(Math.random() * (SIZE - size + 1))
-    const y = Math.floor(Math.random() * (SIZE - size + 1))
-    return { x, y, w: size, h: size, crowded: false }
-  }
+async function cell(client) {
+  const { w, h } = cellSize()
+  const grid = (v) => Math.floor(v / BLOCK) * BLOCK
   const { width, blocks } = decodeBlocks(await png(client, { x0: 0, y0: 0, x1: SIZE, y1: SIZE }, BLOCK))
+  if (blocks.every((b) => b === 0)) return { x: grid((SIZE - w) / 2), y: grid((SIZE - h) / 2), w, h }
   const busy = await busyTiles(client)
-  const span = Math.ceil(size / BLOCK)
-  const painted = (bx0, by0, bx1, by1) => {
-    for (let by = Math.max(0, by0); by < Math.min(width, by1); by++)
-      for (let bx = Math.max(0, bx0); bx < Math.min(width, bx1); bx++) if (blocks[by * width + bx] !== 0) return true
-    return false
+  const painted = (bx, by) => bx >= 0 && by >= 0 && bx < width && by < width && blocks[by * width + bx] !== 0
+  const anchors = []
+  for (let by = 0; by < width; by++)
+    for (let bx = 0; bx < width; bx++) {
+      if (blocks[by * width + bx] !== 0) continue
+      const sides = NEIGHBOURS.filter(([dx, dy]) => painted(bx + dx, by + dy))
+      if (sides.length > 0) anchors.push([bx, by, sides])
+    }
+  const start = (b, d, n) => (d < 0 ? b : d > 0 ? b - n + 1 : b - Math.floor(Math.random() * n))
+  const clamp = (v, n) => Math.max(0, Math.min(SIZE - n, v))
+  const place = () => {
+    if (anchors.length === 0) return { x: grid(Math.random() * (SIZE - w)), y: grid(Math.random() * (SIZE - h)), w, h }
+    const [bx, by, sides] = anchors[Math.floor(Math.random() * anchors.length)]
+    const [dx, dy] = sides[Math.floor(Math.random() * sides.length)]
+    return { x: clamp(start(bx, dx, w / BLOCK) * BLOCK, w), y: clamp(start(by, dy, h / BLOCK) * BLOCK, h), w, h }
   }
-  const gap = (x, y, keep) =>
-    busy.every(([tx, ty]) => {
-      const dx = Math.max(tx * TILE - (x + size), x - (tx * TILE + TILE), 0)
-      const dy = Math.max(ty * TILE - (y + size), y - (ty * TILE + TILE), 0)
-      return Math.hypot(dx, dy) >= keep
-    })
-  const place = (bx, by) => ({ x: Math.min(bx * BLOCK, SIZE - size), y: Math.min(by * BLOCK, SIZE - size), w: size, h: size })
-  const random = () => place(Math.floor(Math.random() * (width - span + 1)), Math.floor(Math.random() * (width - span + 1)))
-  if (near === 'edge') {
-    const art = []
-    for (let i = 0; i < blocks.length; i++) if (blocks[i] !== 0) art.push(i)
-    if (art.length === 0) {
-      const c = Math.floor((SIZE - size) / 2)
-      return { x: c, y: c, w: size, h: size, crowded: false, seed: true }
-    }
-    const fill = (a) => {
-      const bx0 = Math.floor(a.x / BLOCK), by0 = Math.floor(a.y / BLOCK)
-      let n = 0
-      for (let by = by0; by < by0 + span; by++) for (let bx = bx0; bx < bx0 + span; bx++) if (blocks[by * width + bx] !== 0) n++
-      return n / (span * span)
-    }
-    const anchored = () => {
-      const hit = art[Math.floor(Math.random() * art.length)]
-      const pick = (b) => Math.max(0, Math.min(width - span, b - Math.floor(Math.random() * span)))
-      return place(pick(hit % width), pick(Math.floor(hit / width)))
-    }
-    let edge = null
-    for (let i = 0; i < SPOT_TRIES; i++) {
-      const area = anchored()
-      const f = fill(area)
-      if (f < EDGE_MIN || f > EDGE_MAX) continue
-      if (gap(area.x, area.y, 1)) return { ...area, crowded: false, seed: false }
-      edge ??= area
-    }
-    return { ...(edge ?? anchored()), crowded: true, seed: false }
+  const quiet = (c) =>
+    busy.every(([tx, ty]) => tx * TILE >= c.x + c.w || c.x >= tx * TILE + TILE || ty * TILE >= c.y + c.h || c.y >= ty * TILE + TILE)
+  let last
+  for (let i = 0; i < CELL_TRIES; i++) {
+    last = place()
+    if (quiet(last)) return last
   }
-  if (near === 'scene') {
-    for (let i = 0; i < SPOT_TRIES; i++) {
-      const area = random()
-      if (gap(area.x, area.y, 1)) return { ...area, crowded: false }
-    }
-    return { ...random(), crowded: true }
-  }
-  if (near === 'art') {
-    const art = []
-    for (let i = 0; i < blocks.length; i++) if (blocks[i] !== 0) art.push(i)
-    if (art.length === 0) throw new Error('no art on the canvas yet, use spot(size) to start your own piece')
-    const pick = (b) => {
-      const lo = Math.max(0, b - span)
-      const hi = Math.min(width - span, b + 1)
-      return lo + Math.floor(Math.random() * (hi - lo + 1))
-    }
-    const around = () => {
-      const hit = art[Math.floor(Math.random() * art.length)]
-      return place(pick(hit % width), pick(Math.floor(hit / width)))
-    }
-    for (let i = 0; i < SPOT_TRIES; i++) {
-      const area = around()
-      if (gap(area.x, area.y, 1)) return { ...area, crowded: false }
-    }
-    return { ...around(), crowded: true }
-  }
-  const empty = (keep) => {
-    for (let i = 0; i < SPOT_TRIES; i++) {
-      const area = place(Math.floor(Math.random() * (width - span + 1)), Math.floor(Math.random() * (width - span + 1)))
-      const b = { x: area.x / BLOCK, y: area.y / BLOCK }
-      if (!painted(Math.floor(b.x), Math.floor(b.y), Math.floor(b.x) + span, Math.floor(b.y) + span) && gap(area.x, area.y, keep)) return area
-    }
-    return null
-  }
-  const far = empty(BUSY_DISTANCE)
-  if (far) return { ...far, crowded: false }
-  const any = empty(0)
-  if (any) return { ...any, crowded: true }
-  throw new Error(`no empty spot of size ${size} found after ${SPOT_TRIES} tries`)
+  return last
 }
 
 export async function connect({ url, name, password }) {
@@ -435,8 +377,7 @@ export function attach(client) {
     paint: (area, shade, options) => paint(client, area, shade, options),
     look: (area, scale, file) => look(client, area, scale, file),
     read: (area) => read(client, area),
-    spot: (size, near) => spot(client, size, near),
-    scene: () => scene(client),
+    cell: () => cell(client),
     close: () => client.disconnect(),
   }
 }

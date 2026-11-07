@@ -67,12 +67,6 @@ describe('paint helper against the canvas backend', () => {
     expect(back.get(115, 105)).toBe(28)
   })
 
-  it('tells the current scene through canvas::scene', async () => {
-    // Agents read the shared brief through the helper, so it must come back as plain text.
-    const scene = await canvas.scene()
-    expect(scene).toContain('Deep space')
-  })
-
   it('fades a new paint into existing art over the border band and paints fully inside it', async () => {
     // Without the fade every 512 px visit leaves a hard square seam against its neighbours.
     await canvas.paint({ x: 0, y: 0, w: 512, h: 512 }, () => PURPLE)
@@ -143,90 +137,60 @@ describe('paint helper against the canvas backend', () => {
     expect(() => back.get(10, 0)).toThrow('outside the area read')
   })
 
-  it('finds empty spots away from art and art spots next to it', async () => {
-    // A misplaced spot sends trend-starters onto others' work or reactors into blank space.
-    const art = { x: 4096, y: 4096, w: 64, h: 64 }
-    await canvas.paint(art, () => PURPLE)
-    for (let i = 0; i < 20; i++) {
-      const empty = await canvas.spot(256, 'empty')
-      expect(overlaps(empty, art), `empty spot ${JSON.stringify(empty)}`).toBe(false)
-      const near = await canvas.spot(128, 'art')
-      const ring = { x: near.x - 16, y: near.y - 16, w: near.w + 32, h: near.h + 32 }
-      expect(overlaps(ring, art), `art spot ${JSON.stringify(near)}`).toBe(true)
-    }
-  }, 15000)
-
-  it('sends an empty spot at least 1024 px away from recent painting', async () => {
-    // Agents crowded one spot and overwrote each other; the default must push them apart.
-    const art = { x: 4096, y: 4096, w: 64, h: 64 }
-    await canvas.paint(art, () => PURPLE)
-    for (let i = 0; i < 20; i++) {
-      const s = await canvas.spot(256, 'empty')
-      const dx = Math.max(art.x - (s.x + s.w), s.x - (art.x + art.w), 0)
-      const dy = Math.max(art.y - (s.y + s.h), s.y - (art.y + art.h), 0)
-      expect(Math.hypot(dx, dy), `spot ${JSON.stringify(s)}`).toBeGreaterThanOrEqual(1024)
-      expect(s.crowded).toBe(false)
-    }
+  it('puts the first cell in the middle of an empty wall', async () => {
+    // With no signs to sit next to, the first agent must start the mosaic at the centre, not a corner.
+    const c = await canvas.cell()
+    expect(c.x).toBe(Math.floor((8192 - c.w) / 2 / 16) * 16)
+    expect(c.y).toBe(Math.floor((8192 - c.h) / 2 / 16) * 16)
   })
 
-  it('reports an art spot as crowded when every piece of art is fresh', async () => {
-    // Falling back silently would let an agent think it found a quiet neighbour.
-    await canvas.paint({ x: 4096, y: 4096, w: 64, h: 64 }, () => PURPLE)
-    expect((await canvas.spot(128, 'art')).crowded).toBe(true)
-  })
-
-  it('puts a scene spot only where nobody painted in the last 500 commits', async () => {
-    // Scene contributors must spread over the picture instead of piling onto the same fresh part.
-    const fresh = { x: 0, y: 0, w: 1536, h: 1280 }
-    await canvas.paint(fresh, (x, y) => (x % 64 === 0 && y % 64 === 0 ? [0, 0, 0] : null))
-    for (let i = 0; i < 40; i++) {
-      const s = await canvas.spot(2048, 'scene')
-      expect(overlaps(s, fresh), `scene spot ${JSON.stringify(s)}`).toBe(false)
-      expect(s.crowded).toBe(false)
+  it('spreads cell sizes over the whole range, favouring small, within the allowed shapes', async () => {
+    // A fixed or narrow size turns the mosaic back into a grid; slivers outside 1:3..4:1 cannot hold a sign.
+    await canvas.paint({ x: 2048, y: 2048, w: 1024, h: 1024 }, () => PURPLE)
+    const cells = []
+    for (let i = 0; i < 40; i++) cells.push(await canvas.cell())
+    for (const c of cells) {
+      expect(c.w % 16, `cell ${JSON.stringify(c)}`).toBe(0)
+      expect(c.h % 16, `cell ${JSON.stringify(c)}`).toBe(0)
+      expect(c.w).toBeGreaterThanOrEqual(96)
+      expect(c.w).toBeLessThanOrEqual(768)
+      expect(c.h).toBeGreaterThanOrEqual(64)
+      expect(c.h).toBeLessThanOrEqual(512)
+      expect(c.w / c.h).toBeGreaterThanOrEqual(1 / 3)
+      expect(c.w / c.h).toBeLessThanOrEqual(4)
+      expect(c.x >= 0 && c.y >= 0 && c.x + c.w <= 8192 && c.y + c.h <= 8192, `cell ${JSON.stringify(c)}`).toBe(true)
     }
-  }, 15000)
+    expect(new Set(cells.map((c) => `${c.w}x${c.h}`)).size).toBeGreaterThanOrEqual(15)
+    expect(cells.filter((c) => c.w < 432).length).toBeGreaterThan(20)
+    expect(cells.some((c) => c.w > 500)).toBe(true)
+  }, 30000)
 
-  it('seeds the picture in the middle when the wall is empty', async () => {
-    // The first co-op agent has no edge to extend, so it must be told to start the picture.
-    const s = await canvas.spot(512)
-    expect(s).toEqual({ x: 3840, y: 3840, w: 512, h: 512, crowded: false, seed: true })
-  })
-
-  it('puts a default spot on the edge of older painting, part painted and part white', async () => {
-    // Extending only works where there is something to continue and room to continue it into.
+  it('puts a cell next to older art, reaching out into white space', async () => {
+    // A cell far from every sign scatters the mosaic; one fully inside a sign only ever overwrites.
     const old = { x: 2048, y: 2048, w: 1024, h: 1024 }
     await canvas.paint(old, () => PURPLE)
     await canvas.paint({ x: 0, y: 6400, w: 8192, h: 320 }, (x, y) => (x % 64 === 0 && y % 64 === 0 ? [0, 0, 0] : null))
     for (let i = 0; i < 20; i++) {
-      const s = await canvas.spot(512)
-      const ix = Math.max(0, Math.min(s.x + s.w, old.x + old.w) - Math.max(s.x, old.x))
-      const iy = Math.max(0, Math.min(s.y + s.h, old.y + old.h) - Math.max(s.y, old.y))
-      const share = (ix * iy) / (s.w * s.h)
-      expect(share, `edge spot ${JSON.stringify(s)}`).toBeGreaterThanOrEqual(0.2)
-      expect(share, `edge spot ${JSON.stringify(s)}`).toBeLessThanOrEqual(0.7)
-      expect(s.crowded).toBe(false)
-      expect(s.seed).toBe(false)
+      const c = await canvas.cell()
+      const ring = { x: c.x - 16, y: c.y - 16, w: c.w + 32, h: c.h + 32 }
+      expect(overlaps(ring, old), `cell ${JSON.stringify(c)}`).toBe(true)
+      const inside = c.x >= old.x && c.y >= old.y && c.x + c.w <= old.x + old.w && c.y + c.h <= old.y + old.h
+      expect(inside, `cell ${JSON.stringify(c)}`).toBe(false)
     }
-  })
+  }, 15000)
 
-  it('reports an edge spot as crowded when the only edges are fresh', async () => {
-    // Extending fresh work means painting next to someone who may still be working there.
+  it('keeps cells off tiles painted in the last 500 commits', async () => {
+    // A sign covered while it is still being painted is never seen finished.
     await canvas.paint({ x: 2048, y: 2048, w: 1024, h: 1024 }, () => PURPLE)
-    const s = await canvas.spot(512)
-    expect(s.crowded).toBe(true)
-    expect(s.seed).toBe(false)
-  })
-
-  it('prefers art nobody touched in the last 500 commits', async () => {
-    // Old art is a quiet neighbour; fresh art means someone may still be working there.
-    const old = { x: 1024, y: 1024, w: 64, h: 64 }
-    await canvas.paint(old, () => PURPLE)
     await canvas.paint({ x: 0, y: 6400, w: 8192, h: 320 }, (x, y) => (x % 64 === 0 && y % 64 === 0 ? [0, 0, 0] : null))
-    for (let i = 0; i < 10; i++) {
-      const s = await canvas.spot(128, 'art')
-      const ring = { x: s.x - 16, y: s.y - 16, w: s.w + 32, h: s.h + 32 }
-      expect(overlaps(ring, old), `art spot ${JSON.stringify(s)}`).toBe(true)
-      expect(s.crowded).toBe(false)
+    const fresh = { x: 6016, y: 1024, w: 256, h: 256 }
+    await canvas.paint(fresh, () => PURPLE)
+    for (let i = 0; i < 20; i++) {
+      const c = await canvas.cell()
+      const tiles = { x: Math.floor(c.x / 64) * 64, y: Math.floor(c.y / 64) * 64, w: 0, h: 0 }
+      tiles.w = Math.ceil((c.x + c.w) / 64) * 64 - tiles.x
+      tiles.h = Math.ceil((c.y + c.h) / 64) * 64 - tiles.y
+      expect(overlaps(tiles, fresh), `cell ${JSON.stringify(c)}`).toBe(false)
     }
-  })
+  }, 15000)
 })
