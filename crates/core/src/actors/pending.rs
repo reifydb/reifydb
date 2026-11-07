@@ -70,6 +70,19 @@ impl Pending {
 		layers
 	}
 
+	pub fn merged(layers: Vec<Pending>) -> Pending {
+		let mut merged = Pending::new();
+		for layer in layers.into_iter().flat_map(Pending::into_layers) {
+			merged.state.extend(layer.state);
+			merged.put(layer.entries);
+			for (key, pre) in layer.pre {
+				merged.pre.entry(key).or_insert(pre);
+			}
+			merged.queue_items.extend(layer.queue_items);
+		}
+		merged
+	}
+
 	fn layers(&self) -> impl DoubleEndedIterator<Item = &Pending> + '_ {
 		self.below.iter().chain(once(self))
 	}
@@ -616,6 +629,45 @@ pub mod tests {
 			vec![make_key("k07"), make_key("k08"), make_key("k09")]
 		);
 		assert!(matches!(top[2].1, PendingWrite::Remove { .. }), "k09 was removed in layer 2");
+	}
+
+	#[test]
+	fn merged_keeps_the_last_write_of_each_key_and_the_first_pre() {
+		// A merge that kept an earlier layer's write or a later layer's pre would commit a value or size the
+		// fold never had.
+		let first = {
+			let mut layer = Pending::new();
+			layer.insert(vec![make_key("k"), make_key("a")], vec![make_value("v1"), make_value("a1")]);
+			layer.classify(make_key("k"), None);
+			layer
+		};
+		let second = {
+			let mut layer = Pending::new();
+			layer.insert(vec![make_key("k")], vec![make_value("v2")]);
+			layer.classify(make_key("k"), Some(ByteSize::from_bytes(9)));
+			layer
+		};
+
+		let merged = Pending::merged(vec![first, second]);
+
+		let rows: Vec<(EncodedKey, Option<EncodedBytes>)> = merged
+			.rows_ordered()
+			.map(|(key, write)| {
+				let value = match write {
+					PendingWrite::Set(value) => Some(value.clone()),
+					PendingWrite::Remove {
+						..
+					} => None,
+				};
+				(key.clone(), value)
+			})
+			.collect();
+		assert_eq!(
+			rows,
+			vec![(make_key("k"), Some(make_value("v2"))), (make_key("a"), Some(make_value("a1")))],
+			"the last layer's value must win and the first write keeps its place"
+		);
+		assert_eq!(merged.pre_at(&make_key("k")), Some(None), "the first layer saw the committed pre");
 	}
 
 	#[test]

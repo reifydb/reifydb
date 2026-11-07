@@ -256,7 +256,14 @@ impl SliceComputer {
 		}
 
 		let input_markers = self.markers.as_ref().and_then(|markers| markers.input_markers(&changes));
-		let (combined, emitted, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
+		let mut groups: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
+		for change in changes {
+			groups.entry(change.version.source).or_default().push(change);
+		}
+		let (layers, holds) =
+			self.compute_layers(flow_engine, cursor.flow_id, advance_to, groups.into_values().collect())?;
+		let emitted = layers.iter().any(|(_, emitted)| *emitted);
+		let combined = Pending::merged(layers.into_iter().map(|(pending, _)| pending).collect());
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
@@ -446,53 +453,6 @@ impl SliceComputer {
 		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
 		flow_engine.stage_watermarks(&txn);
 		Ok((holds, txn.take_pending()))
-	}
-
-	#[instrument(name = "flow::slice::compute", level = "trace", skip_all, fields(change_count = changes.len()))]
-	fn compute(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		flow_id: FlowId,
-		state_version: CommitVersion,
-		changes: Vec<Change>,
-	) -> Result<(Pending, bool, WatermarkHolds)> {
-		let catalog: Catalog = self.engine.catalog();
-		let interceptors = self.engine.create_interceptors();
-
-		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
-		let base_query = self
-			.engine
-			.multi()
-			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
-		let state_query = self
-			.engine
-			.multi()
-			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
-
-		let mut query = base_query;
-		query.read_as_of_version_inclusive(state_version);
-
-		let mut txn = DeferredTransaction::new(DeferredParams {
-			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
-			version: state_version,
-			pending: Pending::new(),
-			query: Some(query),
-			state_query: Some(state_query),
-			catalog,
-			interceptors,
-			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate().clone(),
-			lookup: self.lookup.clone(),
-		});
-
-		flow_engine.begin_watermarks(&mut txn)?;
-		process_unit(flow_engine, &mut txn, flow_id, &self.members, changes)?;
-		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
-		flow_engine.stage_watermarks(&txn);
-
-		let emitted = txn.emitted;
-		let pending = txn.take_pending();
-		Ok((pending, emitted, holds))
 	}
 
 	#[instrument(name = "flow::slice::compute_layers", level = "trace", skip_all, fields(source_count = groups.len()))]

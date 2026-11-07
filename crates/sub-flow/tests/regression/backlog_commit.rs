@@ -460,3 +460,74 @@ fn a_view_two_flows_above_the_right_of_an_emit_off_lookup_commits_per_version() 
 		"each left row must read the price as of its own source through the chain"
 	);
 }
+
+fn fused_member_of(db: &TestDb, member: &str, head: &str) -> bool {
+	let flow_id = |name: &str| -> u64 {
+		let ids: Vec<u64> = db
+			.query(&format!("FROM system::flow::flows FILTER {{ name == '{name}' }}"))
+			.iter()
+			.flat_map(|frame| frame.rows())
+			.map(|row| row.get::<u64>("id").expect("the id column reads").expect("an id"))
+			.collect();
+		assert_eq!(ids.len(), 1, "'{name}' must name exactly one flow: {ids:?}");
+		ids[0]
+	};
+	let (member, head) = (flow_id(member), flow_id(head));
+	poll_until(
+		|| {
+			db.query("FROM system::flow::units")
+				.iter()
+				.flat_map(|frame| frame.rows())
+				.any(|row| {
+					row.get::<u64>("flow_id").expect("flow_id reads") == Some(member)
+						&& row.get::<u64>("unit").expect("unit reads") == Some(head)
+				})
+				.then_some(())
+		},
+		SETTLE,
+	)
+	.is_some()
+}
+
+#[test]
+fn a_lookup_fused_under_its_left_view_reads_each_left_row_at_its_own_source() {
+	// A fold feeds a fused member one change at the last source, so every left row would read the last price.
+	let db = memory_db();
+	let gate_name = "backlog_commit_u1";
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin(
+		"CREATE DEFERRED VIEW app::price { k: utf8, v: int8 } WITH { partition: { by: { k } } } AS { FROM app::src }",
+	);
+	db.admin("CREATE TABLE app::lsrc { k: utf8, v: int8 }");
+	db.admin(&format!("CREATE DEFERRED VIEW app::left {{ k: utf8, v: int8 }} AS {{ \
+		 FROM app::lsrc APPLY gated_pass_through {{ gate: '{gate_name}' }} }}"));
+	db.admin("CREATE DEFERRED VIEW app::cost { id: int8, usd: Option(int8) } AS { FROM app::left \
+		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false } MAP { id: v, usd: p_v } }");
+	write_src(&db, "a", 0, true);
+	settle(&db);
+	assert!(fused_member_of(&db, "cost", "left"), "precondition: the lookup must run fused under its left view");
+
+	set_gate(gate_name, false);
+	write_table(&db, "app::lsrc", "z", 0, true);
+	assert!(
+		poll_until(|| gate(gate_name).entered.then_some(()), SETTLE).is_some(),
+		"the unit never started the step that holds the backlog"
+	);
+	let written: Vec<CommitVersion> = (1..=ROUNDS as i64)
+		.map(|round| {
+			write_src(&db, "a", round * 10, false);
+			write_table(&db, "app::lsrc", "a", round, true);
+			db.engine().current_version().expect("the current version after a left write")
+		})
+		.collect();
+	set_gate(gate_name, true);
+	settle(&db);
+
+	assert_backlog_formed(&written);
+	let expected: Vec<(Value, Option<Value>)> =
+		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
+	let rows: Vec<(Value, Option<Value>)> =
+		cost_rows(&db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
+	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
+}
