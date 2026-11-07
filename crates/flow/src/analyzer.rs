@@ -58,6 +58,7 @@ pub struct FlowDependencyGraph {
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 	pub lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
 	pub source_exact_reads: BTreeMap<ViewId, Vec<FlowId>>,
+	pub source_paced_reads: BTreeMap<ViewId, Vec<FlowId>>,
 	pub pairs_by_source: BTreeSet<FlowId>,
 }
 
@@ -136,6 +137,7 @@ impl FlowGraphAnalyzer {
 				sink_views: BTreeMap::new(),
 				lookup_views: BTreeMap::new(),
 				source_exact_reads: BTreeMap::new(),
+				source_paced_reads: BTreeMap::new(),
 				pairs_by_source: BTreeSet::new(),
 			},
 		}
@@ -292,6 +294,32 @@ impl FlowGraphAnalyzer {
 		views
 	}
 
+	fn get_source_paced_reads(flow: &FlowDag) -> BTreeSet<ViewId> {
+		let mut views = BTreeSet::new();
+
+		for node_id in flow.get_operator_ids() {
+			let Some(node) = flow.get_operator(&node_id) else {
+				continue;
+			};
+			let paces_left = match &node.ty {
+				OperatorDef::Lookup {
+					with,
+					..
+				} => with.emit == Emit::Off,
+				OperatorDef::Join {
+					with,
+					..
+				} => with.pick.is_some() && with.emit == Emit::Off,
+				_ => false,
+			};
+			if paces_left && let Some(left) = node.inputs.first() {
+				views.extend(Self::source_views_above(flow, *left));
+			}
+		}
+
+		views
+	}
+
 	fn source_views_above(flow: &FlowDag, input: OperatorId) -> BTreeSet<ViewId> {
 		let mut views = BTreeSet::new();
 		let mut seen = BTreeSet::new();
@@ -342,6 +370,7 @@ impl FlowGraphAnalyzer {
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 		let mut lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_exact_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
+		let mut source_paced_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 		let mut pairs_by_source: BTreeSet<FlowId> = BTreeSet::new();
 
 		for flow in &self.flows {
@@ -353,6 +382,10 @@ impl FlowGraphAnalyzer {
 
 			for view_id in Self::get_source_exact_reads(flow) {
 				source_exact_reads.entry(view_id).or_default().push(flow.id());
+			}
+
+			for view_id in Self::get_source_paced_reads(flow) {
+				source_paced_reads.entry(view_id).or_default().push(flow.id());
 			}
 
 			if Self::get_pairs_by_source(flow) {
@@ -399,6 +432,7 @@ impl FlowGraphAnalyzer {
 			sink_views,
 			lookup_views,
 			source_exact_reads,
+			source_paced_reads,
 			pairs_by_source,
 		}
 	}
@@ -459,6 +493,7 @@ impl FlowGraphAnalyzer {
 			sink_views: BTreeMap::new(),
 			lookup_views: BTreeMap::new(),
 			source_exact_reads: BTreeMap::new(),
+			source_paced_reads: BTreeMap::new(),
 			pairs_by_source: BTreeSet::new(),
 		};
 	}
@@ -1214,7 +1249,8 @@ pub mod tests {
 
 	#[test]
 	fn only_the_right_side_of_a_latest_emit_off_join_is_read_exactly() {
-		// The left side drives the join, so marking it exact would cut its producer for nothing.
+		// The left side is paced, not read exactly, so listing it here would hold its producer for an exact
+		// read it never gets.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(two_sided_join(30, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::Off)));
 		analyzer.add(two_sided_join(31, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
@@ -1223,6 +1259,58 @@ pub mod tests {
 			analyzer.get_dependency_graph().source_exact_reads,
 			BTreeMap::from([(ViewId(701), vec![FlowId(30)])]),
 			"the right side of the emit off join is exact, through the operator above it; emit on is not"
+		);
+	}
+
+	#[test]
+	fn the_left_side_of_an_emit_off_lookup_or_latest_join_is_paced_and_nothing_else_is() {
+		// A missing pace lets a folded left view hand early rows a later right value; an extra one costs the
+		// fold.
+		let lookup_flow = |id: u64, left: u64, emit: Emit| {
+			flow_with_edges(
+				id,
+				vec![
+					SourceView {
+						view: ViewId(left),
+					},
+					lookup_with(LookupObject::View(ViewId(left + 100)), emit),
+					SinkTableView {
+						view: ViewId(id + 800),
+					},
+				],
+				&[(1, 2), (2, 3)],
+			)
+		};
+		let join_flow = |id: u64, left: u64, join: OperatorDef| {
+			flow_with_edges(
+				id,
+				vec![
+					SourceView {
+						view: ViewId(left),
+					},
+					SourceView {
+						view: ViewId(left + 100),
+					},
+					join,
+					SinkTableView {
+						view: ViewId(id + 800),
+					},
+				],
+				&[(1, 3), (2, 3), (3, 4)],
+			)
+		};
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(lookup_flow(50, 710, Emit::Off));
+		analyzer.add(lookup_flow(51, 711, Emit::On));
+		analyzer.add(lookup_flow(52, 712, Emit::After(Duration::from_seconds_const(1))));
+		analyzer.add(join_flow(53, 713, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::Off)));
+		analyzer.add(join_flow(54, 714, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
+		analyzer.add(join_flow(55, 715, join_with(None, Emit::Off)));
+
+		assert_eq!(
+			analyzer.get_dependency_graph().source_paced_reads,
+			BTreeMap::from([(ViewId(710), vec![FlowId(50)]), (ViewId(713), vec![FlowId(53)])]),
+			"only the left view of an emit off lookup or an emit off latest join is paced"
 		);
 	}
 

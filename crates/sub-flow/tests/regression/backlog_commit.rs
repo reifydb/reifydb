@@ -324,3 +324,139 @@ fn a_two_source_hash_join_with_a_backlog_pairs_each_source_as_per_version_did() 
 	assert_eq!(cost_rows(&reference), expected, "precondition: the reference pairs each source with its own sum");
 	assert_eq!(cost_rows(&backlogged), expected, "the backlog must pair exactly as the reference");
 }
+
+fn paced_left_script(db: &TestDb, gate_name: &str, read: &str, chained: bool) -> Vec<CommitVersion> {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin(
+		"CREATE DEFERRED VIEW app::price { k: utf8, v: int8 } WITH { partition: { by: { k } } } AS { FROM app::src }",
+	);
+	db.admin("CREATE TABLE app::lsrc { k: utf8, v: int8 }");
+	let gated = if chained {
+		"app::left0"
+	} else {
+		"app::left"
+	};
+	db.admin(&format!("CREATE DEFERRED VIEW {gated} {{ k: utf8, v: int8 }} AS {{ \
+		 FROM app::lsrc APPLY gated_pass_through {{ gate: '{gate_name}' }} }}"));
+	if chained {
+		db.admin("CREATE DEFERRED VIEW app::left { k: utf8, v: int8 } AS { FROM app::left0 }");
+	}
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::cost {{ id: int8, usd: Option(int8) }} AS {{ FROM app::left {read} MAP {{ id: v, usd: p_v }} }}"
+	));
+	write_src(db, "a", 0, true);
+	settle(db);
+	set_gate(gate_name, false);
+	write_table(db, "app::lsrc", "z", 0, true);
+	assert!(
+		poll_until(|| gate(gate_name).entered.then_some(()), SETTLE).is_some(),
+		"the left producer never started the step that holds the backlog"
+	);
+	let written: Vec<CommitVersion> = (1..=ROUNDS as i64)
+		.map(|round| {
+			write_src(db, "a", round * 10, false);
+			write_table(db, "app::lsrc", "a", round, true);
+			db.engine().current_version().expect("the current version after a left write")
+		})
+		.collect();
+	set_gate(gate_name, true);
+	settle(db);
+	written
+}
+
+fn left_commits_after(db: &TestDb, from: CommitVersion) -> usize {
+	let frames = db.query("FROM system::views FILTER { name == 'left' }");
+	let frame = frames.first().expect("system catalog frame");
+	let ids = frame.column("id").expect("id reads").expect("system::views must expose an id column");
+	let left = match ids.get_value(0) {
+		Value::Uint8(id) => ObjectId::View(ViewId(id)),
+		other => panic!("'left' has no numeric id in system::views, got {other:?}"),
+	};
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&left))
+		.filter(|entry| entry.version.source >= SourceVersion::from(from))
+		.count()
+}
+
+fn assert_each_left_row_reads_its_own_price(db: &TestDb, written: &[CommitVersion]) {
+	assert_backlog_formed(written);
+	let expected: Vec<(Value, Option<Value>)> =
+		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
+	let rows: Vec<(Value, Option<Value>)> =
+		cost_rows(db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
+	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
+	assert_eq!(
+		left_commits_after(db, written[0]),
+		ROUNDS,
+		"the left producer of an exact read must commit per version"
+	);
+}
+
+#[test]
+fn a_view_on_the_left_of_an_emit_off_lookup_commits_per_version() {
+	// A folded left view stamps every row with the last version, so the lookup hands early rows a later price.
+	let db = memory_db();
+	let written = paced_left_script(
+		&db,
+		"backlog_commit_l1",
+		"LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false }",
+		false,
+	);
+	assert_each_left_row_reads_its_own_price(&db, &written);
+}
+
+#[test]
+fn a_view_on_the_left_of_a_latest_emit_off_join_commits_per_version() {
+	// An emit-off latest join reads the right as of the left row, so a folded left view joins a later price.
+	let db = memory_db();
+	let written = paced_left_script(
+		&db,
+		"backlog_commit_l2",
+		"LEFT JOIN { FROM app::price } AS p USING (k, p.k) WITH { emit: false, latest: true }",
+		false,
+	);
+	assert_each_left_row_reads_its_own_price(&db, &written);
+}
+
+#[test]
+fn a_view_two_flows_above_the_left_of_an_emit_off_lookup_commits_per_version() {
+	// A folded view above the left view hands it one change for the whole backlog, so every row reads the last
+	// price.
+	let db = memory_db();
+	let written = paced_left_script(
+		&db,
+		"backlog_commit_l3",
+		"LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: false }",
+		true,
+	);
+	assert_each_left_row_reads_its_own_price(&db, &written);
+}
+
+#[test]
+fn a_view_two_flows_above_the_right_of_an_emit_off_lookup_commits_per_version() {
+	// A folded view above the looked up view skips the versions in between, so an early row reads a stale price.
+	let db = memory_db();
+	create_price(&db, "app::src", "backlog_commit_r1");
+	db.admin(
+		"CREATE DEFERRED VIEW app::price2 { k: utf8, v: int8 } WITH { partition: { by: { k } } } AS { FROM app::price }",
+	);
+	create_cost(&db, "app::price2");
+	settle(&db);
+
+	hold(&db, "backlog_commit_r1");
+	let first = write_src(&db, "a", 10, true);
+	insert_level(&db, 1, "a");
+	let second = write_src(&db, "a", 20, false);
+	insert_level(&db, 2, "a");
+	set_gate("backlog_commit_r1", true);
+	settle(&db);
+
+	assert!(first < second, "precondition: each price is its own source commit");
+	assert_eq!(
+		cost_rows(&db),
+		vec![(Value::Int4(1), Some(Value::Int8(10))), (Value::Int4(2), Some(Value::Int8(20)))],
+		"each left row must read the price as of its own source through the chain"
+	);
+}
