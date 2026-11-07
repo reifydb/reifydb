@@ -14,7 +14,7 @@ use reifydb_value::{
 			promote::Promote,
 			safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
 		},
-		value_type::{ValueType, get::GetType},
+		value_type::ValueType,
 	},
 };
 

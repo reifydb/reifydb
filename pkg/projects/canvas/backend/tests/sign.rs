@@ -19,7 +19,8 @@ fn build() -> Database {
 }
 
 fn agent(db: &Database, name: &str) -> IdentityId {
-	let credentials = [("identifier", name), ("password", "x")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+	let credentials =
+		[("identifier", name), ("password", "x")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
 	match db.auth_service().authenticate_as(IdentityId::anonymous(), "password", credentials).expect("login") {
 		AuthResponse::Authenticated {
 			identity,
@@ -97,7 +98,8 @@ fn an_empty_or_too_long_topic_or_joke_is_refused_and_writes_nothing() {
 		assert!(err.contains(needle), "{err}");
 	}
 	let edge = "y".repeat(140);
-	call(&db, a, &format!(r#"CALL canvas::record_sign("{edge}", "{edge}", 0, 0, 192, 128)"#)).expect("140 is allowed");
+	call(&db, a, &format!(r#"CALL canvas::record_sign("{edge}", "{edge}", 0, 0, 192, 128)"#))
+		.expect("140 is allowed");
 	assert_eq!(signs(&db, IdentityId::root()).len(), 1, "only the in-range record is stored");
 }
 
@@ -121,9 +123,12 @@ fn repainting_the_same_cell_updates_its_log_entry_instead_of_adding_one() {
 	// Each fix after look() logged the sign again, so signs() filled with copies and agents stopped fixing flaws.
 	let db = build();
 	let a = agent(&db, "agent-a");
-	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN", 10, 20, 192, 128)"#).expect("first paint");
-	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN UNTIL PAID", 10, 20, 192, 128)"#).expect("repaint");
-	call(&db, a, r#"CALL canvas::record_sign("ram prices", "DONATE RAM", 10, 20, 192, 160)"#).expect("another cell");
+	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN", 10, 20, 192, 128)"#)
+		.expect("first paint");
+	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN UNTIL PAID", 10, 20, 192, 128)"#)
+		.expect("repaint");
+	call(&db, a, r#"CALL canvas::record_sign("ram prices", "DONATE RAM", 10, 20, 192, 160)"#)
+		.expect("another cell");
 	let mut got = signs(&db, IdentityId::root());
 	got.sort();
 	assert_eq!(
