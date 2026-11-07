@@ -20,7 +20,8 @@ export interface Canvas {
   look(area: Area, scale: 1 | 2 | 4 | 8 | 16 | 32 | 64, file: string): Promise<string>
   read(area: Area): Promise<Pixels>
   cell(): Promise<Area>
-  svg(area: Area, markup: string): Promise<PaintStats>
+  svg(area: Area, markup: string, sign: { topic: string; joke: string }): Promise<PaintStats>
+  signs(): Promise<Array<{ topic: string; joke: string }>>
   style(): Promise<Style>
   measure(text: string, family: string, size: number, weight?: number): Promise<{ w: number; h: number }>
   close(): Promise<void>

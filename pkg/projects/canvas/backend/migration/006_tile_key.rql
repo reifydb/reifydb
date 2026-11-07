@@ -87,5 +87,15 @@ CREATE MIGRATION 'canvas_tile_key' {
             insert canvas::painter [{ owner: $identity.id, human: true }]
         }
     };
-    create procedure policy canvas_call_register_human on canvas::register_human { call: { filter { $identity.kind == "user" } } }
+    create procedure policy canvas_call_register_human on canvas::register_human { call: { filter { $identity.kind == "user" } } };
+    create table canvas::sign { owner: identity_id, name: utf8, topic: utf8, joke: utf8, x: uint2, y: uint2, w: uint2, h: uint2 };
+    create table policy canvas_sign on canvas::sign {
+        from: { filter { true } }
+    };
+    create procedure canvas::record_sign { topic: utf8, joke: utf8, x: uint2, y: uint2, w: uint2, h: uint2 } with { run_as: system } as {
+        assert { text::length($topic) >= 1 and text::length($topic) <= 140 } "topic must be 1 to 140 characters";
+        assert { text::length($joke) >= 1 and text::length($joke) <= 140 } "joke must be 1 to 140 characters";
+        insert canvas::sign [{ owner: $identity.id, name: $identity.name, topic: $topic, joke: $joke, x: $x, y: $y, w: $w, h: $h }]
+    };
+    create procedure policy canvas_call_record_sign on canvas::record_sign { call: { filter { $identity.kind == "user" } } }
 };

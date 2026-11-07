@@ -10,6 +10,7 @@ import { loadBackend, userClient, type TestDb, type TestFactory } from '../suppo
 import { markReady } from '../support/seed'
 
 const PURPLE = [0x81, 0x1e, 0x9f] as const
+const SIGN = { topic: 'test topic', joke: 'test joke' }
 
 let create: TestFactory
 let db: TestDb
@@ -172,32 +173,16 @@ describe('paint helper against the canvas backend', () => {
     // Landing on a sign while most of the wall is blank buries it for no reason.
     const old = { x: 2048, y: 2048, w: 2048, h: 2048 }
     await canvas.paint(old, () => PURPLE)
-    await db.commandRoot('delete canvas::edit filter { true }', {}, [])
     for (let i = 0; i < 40; i++) {
       const c = await canvas.cell()
       expect(overlaps(c, old), `cell ${JSON.stringify(c)}`).toBe(false)
     }
   }, 30000)
 
-  it('keeps cells off tiles painted in the last 60 seconds', async () => {
-    // A sign covered while it is still being painted is never seen finished.
-    await canvas.paint({ x: 2048, y: 2048, w: 1024, h: 1024 }, () => PURPLE)
-    await db.commandRoot('delete canvas::edit filter { true }', {}, [])
-    const fresh = { x: 0, y: 0, w: 4096, h: 4096 }
-    await canvas.paint(fresh, (x, y) => (x % 16 === 0 && y % 16 === 0 ? [0, 0, 0] : null))
-    for (let i = 0; i < 20; i++) {
-      const c = await canvas.cell()
-      const tiles = { x: Math.floor(c.x / 64) * 64, y: Math.floor(c.y / 64) * 64, w: 0, h: 0 }
-      tiles.w = Math.ceil((c.x + c.w) / 64) * 64 - tiles.x
-      tiles.h = Math.ceil((c.y + c.h) / 64) * 64 - tiles.y
-      expect(overlaps(tiles, fresh), `cell ${JSON.stringify(c)}`).toBe(false)
-    }
-  }, 15000)
-
   it('paints an svg rect in an exact palette colour over the whole area', async () => {
     // A shifted or scaled render would leave a white rim or bleed outside the cell.
     const area = { x: 1000, y: 1000, w: 96, h: 64 }
-    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" fill="#ff4500"/></svg>')
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" fill="#ff4500"/></svg>', SIGN)
     const back = await canvas.read({ x: 999, y: 999, w: 98, h: 66 })
     for (let y = 999; y < 1065; y++)
       for (let x = 999; x < 1097; x++) {
@@ -210,7 +195,7 @@ describe('paint helper against the canvas backend', () => {
     // Treating transparency as white would wipe every sign under a cell with a rounded or odd shape.
     const area = { x: 2000, y: 2000, w: 96, h: 64 }
     await canvas.paint(area, () => PURPLE)
-    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="48" height="64" fill="#000000"/></svg>')
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="48" height="64" fill="#000000"/></svg>', SIGN)
     const back = await canvas.read(area)
     expect(back.get(2010, 2030)).toBe(28)
     expect(back.get(2080, 2030)).toBe(19)
@@ -220,14 +205,14 @@ describe('paint helper against the canvas backend', () => {
     // A silent rescale would stretch the sign and misplace every pixel against the cell.
     const area = { x: 3000, y: 3000, w: 96, h: 64 }
     await expect(
-      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96"/></svg>'),
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96"/></svg>', SIGN),
     ).rejects.toThrow('svg renders at 96 x 96')
   })
 
   it('draws svg text in a Fontsource font, only inside the area', async () => {
     // Without the font loaded resvg draws no glyphs, so a sign silently loses all its words.
     const area = { x: 4000, y: 4000, w: 192, h: 64 }
-    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="64" viewBox="0 0 192 64"><text x="4" y="48" font-family="Bungee" font-size="40" fill="#000000">WE BUY</text></svg>')
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="64" viewBox="0 0 192 64"><text x="4" y="48" font-family="Bungee" font-size="40" fill="#000000">WE BUY</text></svg>', SIGN)
     const back = await canvas.read({ x: 3990, y: 3990, w: 212, h: 84 })
     let ink = 0
     for (let y = 3990; y < 4074; y++)
@@ -244,11 +229,11 @@ describe('paint helper against the canvas backend', () => {
     const area = { x: 4000, y: 6000, w: 96, h: 64 }
     const text = (attrs: string) =>
       `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text x="4" y="40" font-family="Bungee" ${attrs}>HI</text></svg>`
-    await expect(canvas.svg(area, text('font-size="10"'))).rejects.toThrow('font-size 10 below 24 px')
-    await expect(canvas.svg(area, text('style="font-size: 23.5px"'))).rejects.toThrow('font-size 23.5 below 24 px')
-    await expect(canvas.svg(area, text(''))).rejects.toThrow('svg text has no font-size')
-    await expect(canvas.svg(area, text('font-size="2em"'))).rejects.toThrow('font-size 2em must be in px')
-    await canvas.svg(area, text('font-size="24"'))
+    await expect(canvas.svg(area, text('font-size="10"'), SIGN)).rejects.toThrow('font-size 10 below 24 px')
+    await expect(canvas.svg(area, text('style="font-size: 23.5px"'), SIGN)).rejects.toThrow('font-size 23.5 below 24 px')
+    await expect(canvas.svg(area, text(''), SIGN)).rejects.toThrow('svg text has no font-size')
+    await expect(canvas.svg(area, text('font-size="2em"'), SIGN)).rejects.toThrow('font-size 2em must be in px')
+    await canvas.svg(area, text('font-size="24"'), SIGN)
     const back = await canvas.read(area)
     let ink = 0
     for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (back.get(x, y) !== 0) ink++
@@ -259,18 +244,18 @@ describe('paint helper against the canvas backend', () => {
     // A typo in a font name must not turn into a sign with no text.
     const area = { x: 4000, y: 5000, w: 96, h: 64 }
     await expect(
-      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text font-family="Not A Real Font Xyz">HI</text></svg>'),
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text font-family="Not A Real Font Xyz">HI</text></svg>', SIGN),
     ).rejects.toThrow("font 'Not A Real Font Xyz' is not on Fontsource")
   }, 30000)
 
   it('inlines an Iconify icon referenced as icon:prefix:name', async () => {
     // An unresolved icon reference renders nothing, so the picture half of a sign would vanish.
     const area = { x: 5000, y: 5000, w: 64, h: 64 }
-    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000"/></svg>')
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000"/></svg>', SIGN)
     const back = await canvas.read(area)
     expect(back.get(5032, 5032)).toBe(28)
     await expect(
-      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:not-an-icon-xyz" width="64" height="64"/></svg>'),
+      canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><use href="icon:mdi:not-an-icon-xyz" width="64" height="64"/></svg>', SIGN),
     ).rejects.toThrow("icon 'mdi:not-an-icon-xyz' not found on Iconify")
   }, 30000)
 
@@ -289,11 +274,21 @@ describe('paint helper against the canvas backend', () => {
   it('applies a transform on an icon reference instead of dropping it', async () => {
     // A nested svg ignores transform, so a moved, flipped or rotated icon silently stayed where it was.
     const area = { x: 5200, y: 5000, w: 128, h: 64 }
-    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="64" viewBox="0 0 128 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000" transform="translate(64 0)"/></svg>')
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="64" viewBox="0 0 128 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000" transform="translate(64 0)"/></svg>', SIGN)
     const back = await canvas.read(area)
     expect(back.get(5232, 5032), 'left half stays white once the icon moved').toBe(0)
     expect(back.get(5296, 5032), 'right half holds the moved icon').toBe(28)
   }, 30000)
+
+  it('refuses an svg without topic and joke and paints nothing', async () => {
+    // A sign missing from the log lets the next agent paint the same joke again.
+    const area = { x: 6000, y: 6000, w: 96, h: 64 }
+    const rect = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><rect width="96" height="64" fill="#000000"/></svg>'
+    await expect(canvas.svg(area, rect, undefined as never)).rejects.toThrow('needs the topic')
+    await expect(canvas.svg(area, rect, { topic: 'only topic' } as never)).rejects.toThrow('needs the topic')
+    expect((await canvas.read(area)).get(6010, 6010)).toBe(0)
+    expect(await canvas.signs()).toEqual([])
+  })
 
   it('rolls varied styles with real fonts and 2 to 4 distinct colours, at least one dark', async () => {
     // A style that repeats or names no real font lets every agent fall back to the same look.

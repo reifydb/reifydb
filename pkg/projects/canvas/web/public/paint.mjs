@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { inflateRawSync, inflateSync } from 'node:zlib'
 import { Resvg } from '@resvg/resvg-js'
 import { Client } from '@reifydb/client'
-import { BlobValue, ListValue, Uint2Value } from '@reifydb/core'
+import { BlobValue, ListValue, Uint2Value, Utf8Value } from '@reifydb/core'
 
 export const PALETTE = [
   0xffffff, 0x6d001a, 0xbe0039, 0xff4500, 0xffa800, 0xffd635, 0xfff8b8, 0x00a368, 0x00cc78, 0x7eed56, 0x00756f,
@@ -29,7 +29,6 @@ const CELL_H = 128
 const CELL_H_SPREAD = 384
 const CELL_RATIO_MIN = 1 / 3
 const CELL_RATIO_MAX = 4
-const FRESH_MS = 60_000
 const FONT_LIST = 'https://api.fontsource.org/v1/fonts'
 const FONT_FILE = (id, weight) => `https://cdn.jsdelivr.net/fontsource/fonts/${id}@latest/latin-${weight}-normal.ttf`
 const FONT_DIR = 'fonts'
@@ -37,6 +36,7 @@ const GENERIC_FONTS = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'f
 const ICON_FILE = (prefix, name) => `https://api.iconify.design/${prefix}/${name}.svg`
 const OPAQUE = 128
 const MIN_FONT = 24
+const SIGN_LOG = 100
 const DARK = 128
 const UNREADABLE_FONTS = new Set(['Redacted', 'Redacted Script', 'Flow Block', 'Flow Circular', 'Flow Rounded'])
 const ERAS = [
@@ -379,13 +379,6 @@ function decodeBlocks(bytes) {
   return { width, blocks }
 }
 
-async function busyTiles(client) {
-  const since = Date.now() - FRESH_MS
-  const frames = await client.query(`from canvas::edit filter { datetime::epoch_millis(#created_at) > ${since} } map { tile }`, {}, [])
-  const keys = new Set(frames[0].map((row) => Number(row.tile.value ?? row.tile)))
-  return [...keys].map((key) => [key % TILES, Math.floor(key / TILES)])
-}
-
 function cellSize() {
   for (;;) {
     const w = Math.round((CELL_W + CELL_W_SPREAD * Math.random() ** 2) / BLOCK) * BLOCK
@@ -398,18 +391,15 @@ async function cell(client) {
   const { w, h } = cellSize()
   const grid = (v) => Math.floor(v / BLOCK) * BLOCK
   const { width, blocks } = decodeBlocks(await png(client, { x0: 0, y0: 0, x1: SIZE, y1: SIZE }, BLOCK))
-  const busy = await busyTiles(client)
   const blank = (c) => {
     for (let by = c.y / BLOCK; by < (c.y + c.h) / BLOCK; by++)
       for (let bx = c.x / BLOCK; bx < (c.x + c.w) / BLOCK; bx++) if (blocks[by * width + bx] !== 0) return false
     return true
   }
-  const quiet = (c) =>
-    busy.every(([tx, ty]) => tx * TILE >= c.x + c.w || c.x >= tx * TILE + TILE || ty * TILE >= c.y + c.h || c.y >= ty * TILE + TILE)
   let last
   for (let i = 0; i < CELL_TRIES; i++) {
     last = { x: grid(Math.random() * (SIZE - w)), y: grid(Math.random() * (SIZE - h)), w, h }
-    if (blank(last) && quiet(last)) return last
+    if (blank(last)) return last
   }
   return last
 }
@@ -491,7 +481,15 @@ function checkFontSizes(markup) {
   }
 }
 
-async function svg(client, area, markup) {
+async function signs(client) {
+  const frames = await client.query('from canvas::sign map { topic, joke }', {}, [])
+  const rows = (frames[0] ?? []).map((row) => ({ topic: String(row.topic.value ?? row.topic), joke: String(row.joke.value ?? row.joke) }))
+  return rows.slice(-SIGN_LOG).reverse()
+}
+
+async function svg(client, area, markup, sign) {
+  if (typeof sign?.topic !== 'string' || typeof sign?.joke !== 'string')
+    throw new Error('svg(area, markup, { topic, joke }) needs the topic you make fun of and the joke text on the sign')
   const inlined = await inlineIcons(markup)
   const rendered = new Resvg(inlined, {
     fitTo: { mode: 'width', value: area.w },
@@ -502,10 +500,23 @@ async function svg(client, area, markup) {
   if (image.width !== area.w || image.height !== area.h)
     throw new Error(`svg renders at ${image.width} x ${image.height}, the area is ${area.w} x ${area.h}: set width, height and viewBox to the area size`)
   const rgba = image.pixels
-  return paint(client, area, (x, y) => {
+  const stats = await paint(client, area, (x, y) => {
     const i = ((y - area.y) * area.w + (x - area.x)) * 4
     return rgba[i + 3] >= OPAQUE ? [rgba[i], rgba[i + 1], rgba[i + 2]] : null
   })
+  await client.command(
+    'CALL canvas::record_sign($topic, $joke, $x, $y, $w, $h)',
+    {
+      topic: new Utf8Value(sign.topic),
+      joke: new Utf8Value(sign.joke),
+      x: new Uint2Value(area.x),
+      y: new Uint2Value(area.y),
+      w: new Uint2Value(area.w),
+      h: new Uint2Value(area.h),
+    },
+    [],
+  )
+  return stats
 }
 
 async function measure(text, family, size, weight = 400) {
@@ -539,7 +550,8 @@ export function attach(client) {
     look: (area, scale, file) => look(client, area, scale, file),
     read: (area) => read(client, area),
     cell: () => cell(client),
-    svg: (area, markup) => svg(client, area, markup),
+    svg: (area, markup, sign) => svg(client, area, markup, sign),
+    signs: () => signs(client),
     style: () => style(),
     measure: (text, family, size, weight) => measure(text, family, size, weight),
     close: () => client.disconnect(),
