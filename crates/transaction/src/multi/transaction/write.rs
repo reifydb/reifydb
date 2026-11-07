@@ -2163,7 +2163,7 @@ mod tests {
 		let published = Arc::new(Mutex::new(Vec::new()));
 		engine.event_bus.register::<PostCommitEvent, _>(PublishedLayers(published.clone()));
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.begin_layer(SourceVersion(10));
 		txn.set(vec![(test_key("k").into(), test_bytes("v1"))]).unwrap();
 		txn.begin_layer(SourceVersion(20));
@@ -2202,7 +2202,7 @@ mod tests {
 		let published = Arc::new(Mutex::new(Vec::new()));
 		engine.event_bus.register::<PostCommitEvent, _>(PublishedLayers(published.clone()));
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.begin_layer(SourceVersion(10));
 		txn.set(vec![(test_key("k").into(), test_bytes("v1"))]).unwrap();
 		txn.commit().unwrap();

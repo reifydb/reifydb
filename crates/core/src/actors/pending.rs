@@ -44,6 +44,7 @@ pub struct Pending {
 	pre: BTreeMap<EncodedKey, Option<ByteSize>>,
 	queue_items: Vec<PendingQueueItem>,
 	below: Vec<Pending>,
+	below_index: BTreeMap<EncodedKey, usize>,
 }
 
 impl Pending {
@@ -55,17 +56,26 @@ impl Pending {
 			pre: BTreeMap::new(),
 			queue_items: Vec::new(),
 			below: Vec::new(),
+			below_index: BTreeMap::new(),
 		}
 	}
 
 	pub fn push_layer(&mut self) {
 		let mut below = take(&mut self.below);
-		below.push(take(self));
+		let mut below_index = take(&mut self.below_index);
+		let layer = take(self);
+		let at = below.len();
+		for key in layer.state.keys().chain(layer.index.keys()) {
+			below_index.insert(key.clone(), at);
+		}
+		below.push(layer);
 		self.below = below;
+		self.below_index = below_index;
 	}
 
 	pub fn into_layers(mut self) -> Vec<Pending> {
 		let mut layers = take(&mut self.below);
+		self.below_index.clear();
 		layers.push(self);
 		layers
 	}
@@ -119,7 +129,21 @@ impl Pending {
 	}
 
 	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
-		self.layers().rev().find_map(|layer| layer.own_write_at(key))
+		self.own_write_at(key).or_else(|| self.below_write_at(key))
+	}
+
+	fn below_write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
+		let at = *self.below_index.get(key)?;
+		self.below[at].own_write_at(key)
+	}
+
+	fn below_range<R>(&self, range: &R) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_
+	where
+		R: RangeBounds<EncodedKey>,
+	{
+		self.below_index
+			.range::<EncodedKey, _>((range.start_bound(), range.end_bound()))
+			.filter_map(|(key, at)| self.below[*at].own_write_at(key).map(|write| (key, write)))
 	}
 
 	fn own_write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
@@ -213,10 +237,9 @@ impl Pending {
 	where
 		R: RangeBounds<EncodedKey>,
 	{
-		for layer in self.layers() {
-			for (key, write) in layer.range((range.start_bound(), range.end_bound())) {
-				out.insert(key.clone(), write.clone());
-			}
+		for (key, write) in self.below_range(&range).chain(self.range((range.start_bound(), range.end_bound())))
+		{
+			out.insert(key.clone(), write.clone());
 		}
 	}
 
@@ -225,10 +248,11 @@ impl Pending {
 		R: RangeBounds<EncodedKey>,
 	{
 		let mut merged = BTreeMap::new();
-		for layer in self.layers() {
-			for (key, write) in layer.range((range.start_bound(), range.end_bound())).rev().take(limit) {
-				merged.insert(key.clone(), write.clone());
-			}
+		for (key, write) in self.below_range(&range).rev().take(limit) {
+			merged.insert(key.clone(), write.clone());
+		}
+		for (key, write) in self.range((range.start_bound(), range.end_bound())).rev().take(limit) {
+			merged.insert(key.clone(), write.clone());
 		}
 		out.extend(merged.into_iter().rev().take(limit));
 	}
@@ -687,5 +711,116 @@ pub mod tests {
 		assert_eq!(range_of(&layers[0]), vec![(make_key("k"), Some(make_value("v1")))]);
 		assert_eq!(range_of(&layers[1]), vec![(make_key("other"), Some(make_value("o2")))]);
 		assert_eq!(range_of(&layers[2]), vec![(make_key("k"), Some(make_value("v3")))]);
+	}
+
+	fn layered_key(n: usize) -> EncodedKey {
+		if n % 3 == 0 {
+			let mut bytes = vec![encode_u8(KeyTag::OperatorState as u8)];
+			bytes.extend(format!("s{n:02}").into_bytes());
+			EncodedKey::new(bytes)
+		} else {
+			make_key(&format!("r{n:02}"))
+		}
+	}
+
+	fn many_layers() -> (Pending, Vec<Vec<(EncodedKey, PendingWrite)>>) {
+		let mut pending = Pending::new();
+		let mut replay = Vec::new();
+		for layer in 0..9usize {
+			if layer > 0 {
+				pending.push_layer();
+			}
+			let mut writes = Vec::new();
+			for n in (layer % 4..12).step_by(layer % 3 + 1) {
+				let key = layered_key(n);
+				if (n + layer) % 5 == 0 {
+					pending.remove(vec![key.clone()]);
+					writes.push((
+						key,
+						PendingWrite::Remove {
+							announce: RemoveVisibility::Announced,
+						},
+					));
+				} else {
+					let value = make_value(&format!("v{layer}-{n}"));
+					pending.insert(vec![key.clone()], vec![value.clone()]);
+					writes.push((key, PendingWrite::Set(value)));
+				}
+			}
+			replay.push(writes);
+		}
+		(pending, replay)
+	}
+
+	fn shape(write: &PendingWrite) -> Option<Vec<u8>> {
+		match write {
+			PendingWrite::Set(value) => Some(value.as_slice().to_vec()),
+			PendingWrite::Remove {
+				..
+			} => None,
+		}
+	}
+
+	fn newest(replay: &[Vec<(EncodedKey, PendingWrite)>]) -> BTreeMap<EncodedKey, Option<Vec<u8>>> {
+		let mut out = BTreeMap::new();
+		for writes in replay {
+			for (key, write) in writes {
+				out.insert(key.clone(), shape(write));
+			}
+		}
+		out
+	}
+
+	#[test]
+	fn reads_across_many_layers_see_the_newest_write_of_each_key() {
+		// A read that stops at an older layer, or misses a key only a lower layer wrote, hands a step a value
+		// it overwrote or a row it never sees.
+		let (pending, replay) = many_layers();
+		let expected = newest(&replay);
+
+		for n in 0..14 {
+			let key = layered_key(n);
+			assert_eq!(
+				pending.write_at(&key).map(shape),
+				expected.get(&key).cloned(),
+				"point read of key {n}"
+			);
+		}
+
+		let mut all = BTreeMap::new();
+		pending.collect_range(.., &mut all);
+		let got: BTreeMap<EncodedKey, Option<Vec<u8>>> =
+			all.iter().map(|(k, w)| (k.clone(), shape(w))).collect();
+		assert_eq!(got, expected, "a full range must hold the newest write of every key from every layer");
+
+		let (low, high) = (make_key("r03"), make_key("r09"));
+		let mut part = BTreeMap::new();
+		pending.collect_range((Bound::Included(&low), Bound::Excluded(&high)), &mut part);
+		let want: BTreeMap<_, _> =
+			expected.range(low.clone()..high.clone()).map(|(k, v)| (k.clone(), v.clone())).collect();
+		let got: BTreeMap<_, _> = part.iter().map(|(k, w)| (k.clone(), shape(w))).collect();
+		assert_eq!(
+			got, want,
+			"a bounded range must not pull keys from outside its bounds out of a lower layer"
+		);
+
+		for limit in [1, 2, 5, 50] {
+			let got: Vec<(EncodedKey, Option<Vec<u8>>)> =
+				back_page(&pending, limit).into_iter().map(|(k, w)| (k, shape(&w))).collect();
+			let want: Vec<(EncodedKey, Option<Vec<u8>>)> = {
+				let mut tail: Vec<_> = expected
+					.iter()
+					.rev()
+					.take(limit)
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				tail.reverse();
+				tail
+			};
+			assert_eq!(
+				got, want,
+				"a back page of {limit} must be the greatest keys with their newest writes"
+			);
+		}
 	}
 }
