@@ -19,6 +19,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
+	internal_err,
 	key::{
 		operator::{keyspace::join::JoinRowMappingKey, state::GroupId},
 		typed::direction::{Asc, Desc},
@@ -973,7 +974,9 @@ impl HostOperator for JoinOperator {
 
 		let version = change.version;
 		let parent_origin = change.origin.clone();
-		for diff in change.diffs {
+		let coalesces = self.strategy.coalesces_right_replace(self.ignores_right_changes());
+		let mut diffs = change.diffs.into_iter().peekable();
+		while let Some(diff) = diffs.next() {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
 				Error::from(FlowGraphError::UnknownDiffOrigin {
@@ -981,6 +984,36 @@ impl HostOperator for JoinOperator {
 					origin: None,
 				})
 			})?;
+			let replaces = coalesces
+				&& side == JoinSide::Right && matches!(diff, Diff::Remove { .. })
+				&& diffs.peek().is_some_and(|next| {
+					matches!(next, Diff::Insert { .. })
+						&& self.determine_side_from_origin(
+							&next.origin()
+								.cloned()
+								.unwrap_or_else(|| parent_origin.clone()),
+						) == Some(JoinSide::Right)
+				});
+			if replaces {
+				let (
+					Diff::Remove {
+						pre,
+						..
+					},
+					Some(Diff::Insert {
+						post,
+						..
+					}),
+				) = (diff, diffs.next())
+				else {
+					return internal_err!("join right replace lost its remove and insert pair");
+				};
+				let pre = self.entry(host, side, pre)?;
+				let post = self.entry(host, side, post)?;
+				let (_, post) = self.drop_sealed(host, side, None, post)?;
+				self.apply_join_replace(host, &pre, &post, &mut state, &mut result)?;
+				continue;
+			}
 			match diff {
 				Diff::Insert {
 					post,
@@ -1077,6 +1110,97 @@ impl JoinOperator {
 		}
 
 		self.arm_batch(host, side, post, &keys)
+	}
+
+	#[instrument(name = "flow::operator::join::replace", level = "trace", skip_all, fields(rows = post.num_rows()))]
+	fn apply_join_replace(
+		&mut self,
+		host: &mut dyn HostContext,
+		pre: &RecordBatch,
+		post: &RecordBatch,
+		state: &mut JoinState,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let side = JoinSide::Right;
+		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
+		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
+		let (pre_order, pre_groups, pre_undefined) = group_by_key(&pre_keys);
+		let (post_order, post_groups, post_undefined) = group_by_key(&post_keys);
+		let mut pre_rows = JoinRows::new(pre, side, host.batch_time());
+		let mut post_rows = JoinRows::new(post, side, host.batch_time());
+
+		for key_hash in &pre_order {
+			let pre_indices = &pre_groups[key_hash];
+			match post_groups.get(key_hash) {
+				Some(indices) => {
+					let mut ctx = JoinContext {
+						side,
+						state,
+						operator: self,
+						rows: &mut post_rows,
+					};
+					result.extend(self.strategy.handle_right_replace(
+						host,
+						pre,
+						pre_indices,
+						indices,
+						key_hash,
+						&mut ctx,
+					)?);
+				}
+				None => {
+					let mut ctx = JoinContext {
+						side,
+						state,
+						operator: self,
+						rows: &mut pre_rows,
+					};
+					result.extend(self.strategy.handle_remove(
+						host,
+						pre,
+						pre_indices,
+						key_hash,
+						&mut ctx,
+					)?);
+				}
+			}
+		}
+		for row_idx in pre_undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				rows: &mut pre_rows,
+			};
+			result.extend(self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?);
+		}
+		self.clear_batch(host, side, pre, &pre_keys)?;
+
+		for key_hash in post_order.iter().filter(|key_hash| !pre_groups.contains_key(*key_hash)) {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				rows: &mut post_rows,
+			};
+			result.extend(self.strategy.handle_insert(
+				host,
+				post,
+				&post_groups[key_hash],
+				key_hash,
+				&mut ctx,
+			)?);
+		}
+		for row_idx in post_undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				rows: &mut post_rows,
+			};
+			result.extend(self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
+		}
+		self.arm_batch(host, side, post, &post_keys)
 	}
 
 	#[inline]

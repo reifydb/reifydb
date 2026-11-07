@@ -206,6 +206,41 @@ impl LatestLeftHashJoin {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::operator::join::latest_left::handle_right_replace", level = "trace", skip_all, fields(rows = indices.len()))]
+	pub(crate) fn handle_right_replace(
+		&self,
+		host: &mut dyn HostContext,
+		pre: &RecordBatch,
+		pre_indices: &[usize],
+		indices: &[usize],
+		key_hash: &Hash128,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let pre_numbers = require_row_numbers(pre)?;
+		let numbers: Vec<RowNumber> = pre_indices.iter().map(|&idx| pre_numbers[idx]).collect();
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
+		remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
+		let (_, new) =
+			overwrite_right_slot(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
+		let mut result = Vec::new();
+		if old.is_none() && new.is_none() {
+			return Ok(result);
+		}
+		let operator = ctx.operator;
+		for_each_left_block(host, &ctx.state.left, key_hash, |host, left| {
+			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
+			result.extend(republish(
+				host,
+				operator,
+				(left, old.as_ref()),
+				(left, new.as_ref()),
+				&left_indices,
+			)?);
+			Ok(())
+		})?;
+		Ok(result)
+	}
+
 	#[instrument(name = "flow::operator::join::latest_left::handle_remove", level = "trace", skip_all)]
 	pub(crate) fn handle_remove(
 		&self,

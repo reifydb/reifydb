@@ -24,6 +24,9 @@ mod flow_panic_health;
 #[path = "regression/flow_key_identity.rs"]
 mod flow_key_identity;
 
+#[path = "regression/latest_left_join_right_replace.rs"]
+mod latest_left_join_right_replace;
+
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 
