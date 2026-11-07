@@ -2,7 +2,7 @@
 /* Copyright (c) 2026 ReifyDB */
 
 @theme {
-  --color-bg-primary: #faf8f2;
+  --color-bg-primary: #fbfbfe;
   --color-bg-secondary: #ffffff;
   --color-bg-tertiary: #f4f3fb;
   --color-bg-elevated: #e9e7f4;
@@ -24,6 +24,7 @@
   --color-border-light: #1b18401f;
   --color-border-subtle: #1b184033;
   --color-border-ghost: rgba(126, 133, 242, 0.3);
+  --color-grid: #eceefb;
 
   /* Form inputs - fields blend into the page */
   --color-input-bg: #faf8f2;
@@ -59,8 +60,8 @@
   --radius-xl: 14px;
   --radius-pill: 9999px;
 
-  --font-display: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Monaco, monospace;
 
   /* Semantic grayscale - normal orientation (50 lightest -> 900 darkest) */
