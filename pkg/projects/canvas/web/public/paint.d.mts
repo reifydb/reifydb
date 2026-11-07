@@ -23,6 +23,7 @@ export interface Canvas {
   svg(area: Area, markup: string, sign: { topic: string; joke: string }): Promise<PaintStats>
   signs(): Promise<Array<{ topic: string; joke: string }>>
   style(): Promise<Style>
+  readableFonts(): Promise<string[]>
   measure(text: string, family: string, size: number, weight?: number): Promise<{ w: number; h: number }>
   close(): Promise<void>
 }

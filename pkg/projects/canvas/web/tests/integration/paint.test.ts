@@ -316,12 +316,21 @@ describe('paint helper against the canvas backend', () => {
   it('rolls a display font for the big line and a plain serif or sans font for small print, never an unreadable one', async () => {
     // Thin scripts and bar fonts like Redacted make the big line unreadable, so agents threw those rolls away.
     const list = await (await fetch('https://api.fontsource.org/v1/fonts')).json()
+    const thin = ['Geostar', 'Bungee Outline', 'Kumar One Outline', 'Londrina Outline', 'Bungee Hairline', 'Raleway Dots', 'Edu AU VIC WA NT Dots', 'Material Icons Outlined', 'Material Symbols Outlined']
     const category = new Map(list.map((f: { family: string; category: string }) => [f.family, f.category]))
     for (let i = 0; i < 40; i++) {
       const s = await canvas.style()
       expect(category.get(s.fonts[0]), `big font ${s.fonts[0]}`).toBe('display')
       expect(['serif', 'sans-serif'], `small font ${s.fonts[1]}`).toContain(category.get(s.fonts[1]))
-      for (const f of s.fonts) expect(f.startsWith('Redacted') || f.startsWith('Flow '), `font ${f}`).toBe(false)
+      for (const f of s.fonts) expect(f.startsWith('Redacted') || f.startsWith('Flow ') || thin.includes(f), `font ${f}`).toBe(false)
     }
+  }, 30000)
+
+  it('leaves outline, hairline, dot and icon fonts out of the fonts style can roll, and keeps their solid siblings', async () => {
+    // Thin strokes vanish in the 64 color dither, so a sign set in one of these cannot be read.
+    const fonts = await canvas.readableFonts()
+    for (const f of ['Geostar', 'Bungee Outline', 'Kumar One Outline', 'Londrina Outline', 'Bungee Hairline', 'Raleway Dots', 'Edu AU VIC WA NT Dots', 'Material Icons Outlined', 'Material Symbols Outlined'])
+      expect(fonts, f).not.toContain(f)
+    for (const f of ['Geostar Fill', 'Zen Dots', 'Bungee', 'Raleway']) expect(fonts, f).toContain(f)
   }, 30000)
 })

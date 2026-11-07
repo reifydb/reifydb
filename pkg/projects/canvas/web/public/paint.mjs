@@ -38,7 +38,10 @@ const OPAQUE = 128
 const MIN_FONT = 24
 const SIGN_LOG = 100
 const DARK = 128
-const UNREADABLE_FONTS = new Set(['Redacted', 'Redacted Script', 'Flow Block', 'Flow Circular', 'Flow Rounded'])
+const UNREADABLE_FONTS = new Set(['Redacted', 'Redacted Script', 'Flow Block', 'Flow Circular', 'Flow Rounded',
+  'Geostar', 'Bungee Outline', 'Kumar One Outline', 'Londrina Outline', 'Bungee Hairline',
+  'Raleway Dots', 'Edu AU VIC WA NT Dots', 'Material Icons Outlined', 'Material Symbols Outlined',
+])
 const ERAS = [
   '1950s diner',
   '1970s roadside motel',
@@ -526,8 +529,12 @@ async function measure(text, family, size, weight = 400) {
   return box ? { w: Math.ceil(box.width), h: Math.ceil(box.height) } : { w: 0, h: 0 }
 }
 
+async function readableFonts() {
+  return (await fonts()).filter((f) => !UNREADABLE_FONTS.has(f.family))
+}
+
 async function style() {
-  const readable = (await fonts()).filter((f) => !UNREADABLE_FONTS.has(f.family))
+  const readable = await readableFonts()
   const loud = readable.filter((f) => f.category === 'display')
   const plain = readable.filter((f) => f.category === 'sans-serif' || f.category === 'serif')
   const count = 2 + Math.floor(Math.random() * 3)
@@ -553,6 +560,7 @@ export function attach(client) {
     svg: (area, markup, sign) => svg(client, area, markup, sign),
     signs: () => signs(client),
     style: () => style(),
+    readableFonts: async () => (await readableFonts()).map((f) => f.family),
     measure: (text, family, size, weight) => measure(text, family, size, weight),
     close: () => client.disconnect(),
   }
