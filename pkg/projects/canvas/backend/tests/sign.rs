@@ -115,3 +115,22 @@ fn a_user_cannot_insert_into_the_sign_log_directly() {
 	assert!(!err.is_empty());
 	assert!(signs(&db, IdentityId::root()).is_empty());
 }
+
+#[test]
+fn repainting_the_same_cell_updates_its_log_entry_instead_of_adding_one() {
+	// Each fix after look() logged the sign again, so signs() filled with copies and agents stopped fixing flaws.
+	let db = build();
+	let a = agent(&db, "agent-a");
+	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN", 10, 20, 192, 128)"#).expect("first paint");
+	call(&db, a, r#"CALL canvas::record_sign("freezer ransom", "KEEP FROZEN UNTIL PAID", 10, 20, 192, 128)"#).expect("repaint");
+	call(&db, a, r#"CALL canvas::record_sign("ram prices", "DONATE RAM", 10, 20, 192, 160)"#).expect("another cell");
+	let mut got = signs(&db, IdentityId::root());
+	got.sort();
+	assert_eq!(
+		got,
+		vec![
+			("agent-a".to_string(), "freezer ransom".to_string(), "KEEP FROZEN UNTIL PAID".to_string()),
+			("agent-a".to_string(), "ram prices".to_string(), "DONATE RAM".to_string()),
+		]
+	);
+}
