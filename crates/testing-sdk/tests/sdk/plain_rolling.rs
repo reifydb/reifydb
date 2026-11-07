@@ -525,3 +525,23 @@ fn a_quiet_stream_frees_every_dead_group() {
 	let trace: Vec<(DiffType, f64)> = render(&out).into_iter().map(|(kind, sum, _, _)| (kind, sum)).collect();
 	assert_eq!(trace, vec![(DiffType::Insert, 7.0)]);
 }
+
+#[test]
+fn a_rolling_update_carries_the_last_emitted_value_as_its_pre() {
+	// A downstream sum subtracts pre and adds post, so a pre that is not the last emitted value leaves a stale
+	// total.
+	let mut h = harness!(SumAnyKind, rolling(3, Some(1), 3_600_000)).expect("harness");
+	let mut updates = Vec::new();
+	for (i, (ts, value)) in [(0u64, 1.0), (1, 2.0), (2, 4.0)].into_iter().enumerate() {
+		let out = h
+			.apply(TestChangeBuilder::new().insert(input_row(i as u64 + 1, "BTC", ts, value)).build())
+			.expect("apply");
+		for diff in out.diffs.iter().filter(|diff| diff.kind() == DiffType::Update) {
+			let pre = read::<f64>((diff.pre().expect("update pre"), 0), "sum").expect("pre sum");
+			let post = read::<f64>((diff.post().expect("update post"), 0), "sum").expect("post sum");
+			updates.push((pre, post));
+		}
+	}
+
+	assert_eq!(updates, vec![(1.0, 3.0), (3.0, 7.0)], "each pre must be the sum emitted just before it");
+}
