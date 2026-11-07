@@ -222,7 +222,7 @@ impl Runner for MvccRunner {
 							unreachable!("can not call unset on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.remove_with_pre(&key, row).unwrap();
+							tx.remove_with_pre(vec![(key.into(), row)]).unwrap();
 						}
 					}
 				}

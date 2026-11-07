@@ -12,6 +12,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			id::{RingBufferId, SeriesId, ViewId},
 			ringbuffer::EvictionVisibility,
+			series::SeriesPartitionMetadata,
 			storage::StorageId,
 			view::ViewStorageKind,
 		},
@@ -584,9 +585,15 @@ impl Evictor {
 
 		let mut ring = Ring::new(ringbuffer.capacity);
 		let mut evicted = 0u64;
-		for (partition, rows) in groups {
-			let mut tx = Transaction::Command(&mut txn);
-			let removed = release_ring_rows(&catalog, &mut tx, &ringbuffer, &mut ring, partition, &rows)?;
+		let groups: Vec<(Option<Partition>, Vec<RowNumber>)> = groups.into_iter().collect();
+		let released = release_ring_rows(
+			&catalog,
+			&mut Transaction::Command(&mut txn),
+			&ringbuffer,
+			&mut ring,
+			&groups,
+		)?;
+		for ((partition, rows), removed) in groups.into_iter().zip(released) {
 			let keys: Vec<TaggedKey> = rows
 				.iter()
 				.zip(removed)
@@ -680,27 +687,25 @@ impl Evictor {
 			deleted_by_partition.entry(partition).or_default().record(key_value);
 		}
 		remove_expired(&mut txn, &expired, eviction)?;
-		for (partition, tally) in deleted_by_partition {
-			let Some(mut metadata) = catalog.find_series_metadata(
-				&mut Transaction::Command(&mut txn),
-				series.id,
-				partition,
-			)?
-			else {
-				continue;
-			};
-			apply_series_metadata_after_delete(&mut metadata, &tally);
-			catalog.update_series_metadata_rebased_txn(
-				&mut Transaction::Command(&mut txn),
-				series.id,
-				partition,
-				metadata,
-				move |latest| {
+		let (partitions, tallies): (Vec<Partition>, Vec<SeriesDeleteTally>) =
+			deleted_by_partition.into_iter().unzip();
+		let found =
+			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id, &partitions)?;
+		let updates: Vec<_> = partitions
+			.into_iter()
+			.zip(tallies)
+			.zip(found)
+			.filter_map(|((partition, tally), metadata)| {
+				let mut metadata = metadata?;
+				apply_series_metadata_after_delete(&mut metadata, &tally);
+				let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
 					apply_series_metadata_after_delete(latest, &tally);
 					Ok(())
-				},
-			)?;
-		}
+				};
+				Some((partition, metadata, change))
+			})
+			.collect();
+		catalog.update_series_metadata_rebased_txn(&mut Transaction::Command(&mut txn), series.id, updates)?;
 		txn.commit()?;
 		Ok((deleted, drained))
 	}
@@ -709,12 +714,7 @@ impl Evictor {
 fn remove_expired(txn: &mut CommandTransaction, expired: &[TaggedKey], eviction: EvictionVisibility) -> Result<()> {
 	match eviction {
 		EvictionVisibility::Visible => txn.remove(expired.iter().map(|key| (key.clone(), None)).collect()),
-		EvictionVisibility::Silent => {
-			for key in expired {
-				txn.remove_silent(key)?;
-			}
-			Ok(())
-		}
+		EvictionVisibility::Silent => txn.remove_silent(expired.to_vec()),
 	}
 }
 
@@ -858,8 +858,10 @@ mod tests {
 			.unwrap()
 			.unwrap();
 		let metadata = catalog
-			.find_series_metadata(&mut Transaction::Command(&mut txn), series.id, Partition::default())
+			.find_series_metadata(&mut Transaction::Command(&mut txn), series.id, &[Partition::default()])
 			.unwrap()
+			.pop()
+			.flatten()
 			.unwrap();
 		txn.rollback().unwrap();
 		metadata

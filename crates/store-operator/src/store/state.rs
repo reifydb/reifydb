@@ -285,29 +285,6 @@ impl StandardOperatorStore {
 		Ok(self.persistent.get(operator, &[GroupStateKey::bound_unchecked(key.clone())])?.pop().flatten())
 	}
 
-	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.as_slice().len()), ret)]
-	pub fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		let key = key.as_encoded();
-		match self.resident.lookup_state(operator, key) {
-			BufferedState::Row(_) => Ok(true),
-			BufferedState::Tombstone | BufferedState::Dropped => Ok(false),
-			BufferedState::Absent => self.persistent_contains(operator, key),
-		}
-	}
-
-	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> Result<bool> {
-		if self.persistent.is_absent() {
-			return Ok(false);
-		}
-		if let Some(authoritative) = self.range.lookup(operator, key) {
-			return Ok(authoritative.is_some());
-		}
-		if self.resident.never_persisted(operator, key) {
-			return Ok(false);
-		}
-		self.persistent.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
-	}
-
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = Empty, batch_size = batch_size))]
 	pub fn range_batch(&self, range: TaggedKeyBoundRange, batch_size: u64) -> Result<OperatorBatch> {
 		let (operator, range) =
@@ -691,12 +668,6 @@ impl OperatorStore {
 	pub fn filter_metrics(&self) -> FilterMetrics {
 		match self {
 			Self::Standard(store) => store.filter_metrics(),
-		}
-	}
-
-	pub fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		match self {
-			Self::Standard(store) => store.contains(operator, key),
 		}
 	}
 

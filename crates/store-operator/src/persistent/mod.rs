@@ -144,8 +144,6 @@ pub trait Persistent: Clone + Send + Sync + 'static {
 pub trait Fetch: Persistent {
 	fn get<Q: Borrow<GroupStateKey>>(&self, operator: OperatorId, keys: &[Q])
 	-> Result<Vec<Option<EncodedPodRow>>>;
-
-	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool>;
 }
 
 pub trait Page: Persistent {
@@ -243,16 +241,6 @@ impl Fetch for PersistentTier {
 				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
 				storage.get(operator, &refs)
 			}
-		}
-	}
-
-	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		match self {
-			Self::Absent => Ok(false),
-			Self::Memory(memory) => Fetch::contains(memory, operator, key),
-			Self::Testing(testing) => Fetch::contains(testing, operator, key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.contains(operator, key.as_encoded()),
 		}
 	}
 }

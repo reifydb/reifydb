@@ -96,11 +96,6 @@ impl Fetch for MemoryPersistent {
 		};
 		Ok(keys.iter().map(|key| rows.get(key.borrow()).cloned()).collect())
 	}
-
-	#[instrument(name = "store::operator::persistent::memory::contains", level = "trace", skip_all)]
-	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		Ok(self.0.rows.lock().get(&operator).is_some_and(|rows| rows.contains_key(key)))
-	}
 }
 
 impl Page for MemoryPersistent {

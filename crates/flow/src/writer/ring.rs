@@ -49,14 +49,13 @@ pub fn ring_row_tagged(storage: StorageId, partition: Option<Partition>, row: Ro
 }
 
 pub trait RingCounters<T> {
-	fn metadata(&self, txn: &mut T, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>>;
+	fn metadata(&self, txn: &mut T, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>>;
 
 	fn reserve(&self, txn: &mut T, capacity: u64) -> Result<u64>;
 
-	fn save_metadata(&self, txn: &mut T, partition: Option<Partition>, metadata: &RingBufferMetadata)
-	-> Result<()>;
+	fn save_metadata(&self, txn: &mut T, entries: &[(Option<Partition>, RingBufferMetadata)]) -> Result<()>;
 
-	fn remove_metadata(&self, txn: &mut T, partition: Option<Partition>) -> Result<()>;
+	fn remove_metadata(&self, txn: &mut T, partitions: &[Option<Partition>]) -> Result<()>;
 }
 
 pub struct RingAdapter<'a, T, C> {
@@ -66,17 +65,37 @@ pub struct RingAdapter<'a, T, C> {
 }
 
 impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter<'_, T, C> {
-	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
-		self.counters.metadata(self.txn, partition)
+	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
+		self.counters.metadata(self.txn, partitions)
 	}
 
-	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn slots(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
 		if rows.is_empty() {
 			return Ok(Vec::new());
 		}
 		let keys: Vec<TaggedKey> =
-			rows.iter().map(|&row| ring_row_tagged(self.storage, partition, row)).collect();
+			rows.iter().map(|&(partition, row)| ring_row_tagged(self.storage, partition, row)).collect();
 		self.txn.get_tagged(&keys)
+	}
+
+	fn order_at(&mut self, entries: &[(Option<Partition>, u64)]) -> Result<Vec<Option<RowNumber>>> {
+		if entries.is_empty() {
+			return Ok(Vec::new());
+		}
+		let keys: Vec<TaggedKey> = entries
+			.iter()
+			.map(|&(partition, sequence)| ring_order_key(self.storage, partition, sequence))
+			.collect();
+		let rows = self.txn.get_tagged(&keys)?;
+		keys.iter()
+			.zip(rows)
+			.map(|(key, row)| {
+				row.map(|row| {
+					decode_ringbuffer_order(key, EncodedPodRow::view(&row)).map(|(_, row)| row)
+				})
+				.transpose()
+			})
+			.collect()
 	}
 
 	fn order(
@@ -139,53 +158,58 @@ impl<'a, T: StorageTransaction + Range> RingMetadata<'a, T> {
 		&mut self,
 		counters: &C,
 		ring: &mut Ring,
-		partition: Option<Partition>,
-		count: usize,
-	) -> Result<Vec<Placement>> {
-		ring.place(&mut self.adapter(counters), partition, count)
+		requests: &[(Option<Partition>, usize)],
+	) -> Result<Vec<Vec<Placement>>> {
+		ring.place(&mut self.adapter(counters), requests)
 	}
 
 	pub fn release<C: RingCounters<T>>(
 		&mut self,
 		counters: &C,
 		ring: &mut Ring,
-		partition: Option<Partition>,
-		rows: &[RowNumber],
-	) -> Result<Vec<Option<EncodedBytes>>> {
-		ring.remove(&mut self.adapter(counters), partition, rows)
+		requests: &[(Option<Partition>, Vec<RowNumber>)],
+	) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
+		ring.remove(&mut self.adapter(counters), requests)
 	}
 
 	pub fn save<C: RingCounters<T>>(&mut self, counters: &C, ring: &Ring) -> Result<()> {
+		let mut saved = Vec::new();
+		let mut dropped = Vec::new();
+		let mut sets = Vec::new();
+		let mut removes = Vec::new();
 		for write in ring.writes() {
 			match write {
-				MetadataWrite::Save(partition, metadata) => {
-					counters.save_metadata(self.txn, partition, &metadata)?
-				}
-				MetadataWrite::Remove(partition) => counters.remove_metadata(self.txn, partition)?,
-				MetadataWrite::Order(partition, sequence, Some(row)) => {
-					self.txn.set_with_pre(vec![(
-						ring_order_key(self.storage, partition, sequence),
-						encode_ringbuffer_order(row).into_bytes(),
-						SetPre::Unknown,
-					)])?
-				}
+				MetadataWrite::Save(partition, metadata) => saved.push((partition, metadata)),
+				MetadataWrite::Remove(partition) => dropped.push(partition),
+				MetadataWrite::Order(partition, sequence, Some(row)) => sets.push((
+					ring_order_key(self.storage, partition, sequence),
+					encode_ringbuffer_order(row).into_bytes(),
+					SetPre::Unknown,
+				)),
 				MetadataWrite::Order(partition, sequence, None) => {
-					self.txn.remove_tagged(vec![ring_order_key(self.storage, partition, sequence)])?
+					removes.push(ring_order_key(self.storage, partition, sequence))
 				}
 				MetadataWrite::Free(partition, page, None) => {
-					self.txn.remove_tagged(vec![RingBufferFreeKey::of(
-						self.storage,
-						partition,
-						page,
-					)
-					.into()])?
+					removes.push(RingBufferFreeKey::of(self.storage, partition, page).into())
 				}
-				MetadataWrite::Free(partition, page, Some(slots)) => self.txn.set_with_pre(vec![(
+				MetadataWrite::Free(partition, page, Some(slots)) => sets.push((
 					RingBufferFreeKey::of(self.storage, partition, page).into(),
 					encode_ringbuffer_free_page(&slots).into_bytes(),
 					SetPre::Unknown,
-				)])?,
+				)),
 			}
+		}
+		if !saved.is_empty() {
+			counters.save_metadata(self.txn, &saved)?;
+		}
+		if !dropped.is_empty() {
+			counters.remove_metadata(self.txn, &dropped)?;
+		}
+		if !removes.is_empty() {
+			self.txn.remove_tagged(removes)?;
+		}
+		if !sets.is_empty() {
+			self.txn.set_with_pre(sets)?;
 		}
 		Ok(())
 	}
@@ -379,15 +403,18 @@ mod tests {
 		metadata: RefCell<HashMap<Option<Partition>, RingBufferMetadata>>,
 		next_base: Cell<u64>,
 		removed: RefCell<Vec<Option<Partition>>>,
+		saves: Cell<usize>,
+		removes: Cell<usize>,
 	}
 
 	impl RingCounters<Memory> for Counters {
 		fn metadata(
 			&self,
 			_txn: &mut Memory,
-			partition: Option<Partition>,
-		) -> Result<Option<RingBufferMetadata>> {
-			Ok(self.metadata.borrow().get(&partition).copied())
+			partitions: &[Option<Partition>],
+		) -> Result<Vec<Option<RingBufferMetadata>>> {
+			let metadata = self.metadata.borrow();
+			Ok(partitions.iter().map(|partition| metadata.get(partition).copied()).collect())
 		}
 
 		fn reserve(&self, _txn: &mut Memory, capacity: u64) -> Result<u64> {
@@ -399,16 +426,21 @@ mod tests {
 		fn save_metadata(
 			&self,
 			_txn: &mut Memory,
-			partition: Option<Partition>,
-			metadata: &RingBufferMetadata,
+			entries: &[(Option<Partition>, RingBufferMetadata)],
 		) -> Result<()> {
-			self.metadata.borrow_mut().insert(partition, *metadata);
+			self.saves.set(self.saves.get() + 1);
+			for (partition, metadata) in entries {
+				self.metadata.borrow_mut().insert(*partition, *metadata);
+			}
 			Ok(())
 		}
 
-		fn remove_metadata(&self, _txn: &mut Memory, partition: Option<Partition>) -> Result<()> {
-			self.metadata.borrow_mut().remove(&partition);
-			self.removed.borrow_mut().push(partition);
+		fn remove_metadata(&self, _txn: &mut Memory, partitions: &[Option<Partition>]) -> Result<()> {
+			self.removes.set(self.removes.get() + 1);
+			for partition in partitions {
+				self.metadata.borrow_mut().remove(partition);
+				self.removed.borrow_mut().push(*partition);
+			}
 			Ok(())
 		}
 	}
@@ -442,8 +474,9 @@ mod tests {
 		fn insert(&mut self, partition: Option<Partition>, count: usize) -> Vec<Placement> {
 			let mut ring = Ring::new(self.capacity);
 			let placements = RingMetadata::new(&mut self.txn, storage())
-				.place(&self.counters, &mut ring, partition, count)
-				.unwrap();
+				.place(&self.counters, &mut ring, &[(partition, count)])
+				.unwrap()
+				.remove(0);
 			let rows = placements
 				.iter()
 				.map(|p| (ring_row_tagged(storage(), partition, p.row), row(p.sequence)))
@@ -456,8 +489,9 @@ mod tests {
 		fn remove(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Vec<Option<EncodedBytes>> {
 			let mut ring = Ring::new(self.capacity);
 			let removed = RingMetadata::new(&mut self.txn, storage())
-				.release(&self.counters, &mut ring, partition, rows)
-				.unwrap();
+				.release(&self.counters, &mut ring, &[(partition, rows.to_vec())])
+				.unwrap()
+				.remove(0);
 			let held = rows
 				.iter()
 				.zip(&removed)
@@ -632,6 +666,49 @@ mod tests {
 				Seam::SetWithPre(vec![(free, free_row, SetPre::Unknown)]),
 			]
 		);
+	}
+
+	#[test]
+	fn save_writes_every_order_entry_and_the_metadata_in_one_call_each() {
+		// One call per entry would scale store round trips with every row a batch places.
+		let mut fixture = Fixture::new(4);
+		let placed = fixture.insert(None, 3);
+		let orders: Vec<(TaggedKey, EncodedBytes, SetPre)> = placed
+			.iter()
+			.map(|p| {
+				(
+					ring_order_key(storage(), None, p.sequence),
+					encode_ringbuffer_order(p.row).into_bytes(),
+					SetPre::Unknown,
+				)
+			})
+			.collect();
+		let rows = placed
+			.iter()
+			.map(|p| (ring_row_tagged(storage(), None, p.row), row(p.sequence), SetPre::Unknown))
+			.collect();
+		assert_eq!(fixture.txn.seam, vec![Seam::SetWithPre(rows), Seam::SetWithPre(orders)]);
+		assert_eq!(fixture.counters.saves.get(), 1);
+	}
+
+	#[test]
+	fn an_emptied_partition_drops_all_its_order_entries_and_metadata_in_one_call_each() {
+		// A remove per entry would leave a half-dropped partition visible if a later call failed.
+		let partition = Some(Partition(5));
+		let mut fixture = Fixture::new(3);
+		let placed = fixture.insert(partition, 3);
+		fixture.txn.seam.clear();
+		let rows: Vec<RowNumber> = placed.iter().map(|p| p.row).collect();
+		fixture.remove(partition, &rows);
+		let held = placed
+			.iter()
+			.map(|p| (ring_row_tagged(storage(), partition, p.row), row(p.sequence)))
+			.collect();
+		let orders = placed.iter().map(|p| ring_order_key(storage(), partition, p.sequence)).collect();
+		assert_eq!(fixture.txn.seam, vec![Seam::RemoveWithPre(held), Seam::RemoveTagged(orders)]);
+		assert_eq!(fixture.counters.removes.get(), 1);
+		assert_eq!(*fixture.counters.removed.borrow(), vec![partition]);
+		assert!(fixture.txn.rows.is_empty(), "no row, order or free entry may survive");
 	}
 
 	#[test]

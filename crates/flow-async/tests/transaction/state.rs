@@ -428,7 +428,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 		Some(row_value.clone()),
 		"a deferred txn pinned below the flow's own commit must read its rows at the state version"
 	);
-	assert!(txn.contains_key(&row_key_encoded).unwrap());
+	assert!(txn.get(slice::from_ref(&row_key_encoded)).unwrap()[0].is_some());
 }
 
 #[test]

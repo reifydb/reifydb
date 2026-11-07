@@ -161,14 +161,15 @@ fn locate(
 	row: RowNumber,
 ) -> Result<Option<(Partition, Option<u64>)>, RoutineError> {
 	let store = single.read_store();
-	for (partition, _) in queue_partition_counters(context, single, queue.id)? {
-		let Some(stored) = SingleVersionGet::get(
-			&store,
-			context,
-			&[QueueItemStateKey::encoded(queue.id, partition, row)],
-		)?
-		.pop()
-		.flatten() else {
+	let partitions: Vec<Partition> = queue_partition_counters(context, single, queue.id)?
+		.into_iter()
+		.map(|(partition, _)| partition)
+		.collect();
+	let keys: Vec<_> =
+		partitions.iter().map(|partition| QueueItemStateKey::encoded(queue.id, *partition, row)).collect();
+	let states = SingleVersionGet::get(&store, context, &keys)?;
+	for (partition, stored) in partitions.into_iter().zip(states) {
+		let Some(stored) = stored else {
 			continue;
 		};
 		let key_hash = decode_queue_item_state(EncodedPodRow::view(&stored.bytes))

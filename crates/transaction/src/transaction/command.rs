@@ -482,9 +482,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set_rebased(key, bytes, rebase)
+		self.cmd.as_mut().unwrap().set_rebased(entries)
 	}
 
 	#[inline]
@@ -526,9 +526,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
+		self.cmd.as_mut().unwrap().remove_with_pre(entries)
 	}
 
 	#[inline]
@@ -544,19 +544,15 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
-		&mut self,
-		key: &K,
-		pre: EncodedBytes,
-	) -> Result<()> {
+	pub fn remove_unobserved_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove_unobserved_with_pre(key, pre)
+		self.cmd.as_mut().unwrap().remove_unobserved_with_pre(entries)
 	}
 
 	#[inline]
-	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove_silent(key)
+		self.cmd.as_mut().unwrap().remove_silent(keys)
 	}
 
 	#[inline]
@@ -666,8 +662,8 @@ impl Read for CommandTransaction {
 
 impl Write for CommandTransaction {
 	#[inline]
-	fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
-		CommandTransaction::set_rebased(self, key, bytes, rebase)
+	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+		CommandTransaction::set_rebased(self, entries)
 	}
 	#[inline]
 	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
@@ -680,10 +676,6 @@ impl Write for CommandTransaction {
 	#[inline]
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		CommandTransaction::remove(self, entries)
-	}
-	#[inline]
-	fn remove_unobserved_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
-		CommandTransaction::remove_unobserved_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn track_row_change(&mut self, changes: &[RowChange]) {

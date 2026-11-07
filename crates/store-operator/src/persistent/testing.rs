@@ -185,10 +185,6 @@ impl Fetch for TestingPersistent {
 			})
 			.collect()
 	}
-
-	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		Ok(self.get(operator, slice::from_ref(key))?.pop().flatten().is_some())
-	}
 }
 
 impl Page for TestingPersistent {

@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, ops::Bound};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow};
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -17,9 +17,11 @@ const ORDER_PAGE: usize = 64;
 pub const FREE_PAGE_SLOTS: u64 = 512;
 
 pub trait RingRead {
-	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>>;
+	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>>;
 
-	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>>;
+	fn slots(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>>;
+
+	fn order_at(&mut self, entries: &[(Option<Partition>, u64)]) -> Result<Vec<Option<RowNumber>>>;
 
 	fn order(
 		&mut self,
@@ -82,26 +84,40 @@ impl Ring {
 		}
 	}
 
+	pub fn preload(&mut self, store: &mut impl RingStore, partitions: &[Option<Partition>]) -> Result<()> {
+		let missing: Vec<Option<Partition>> = partitions
+			.iter()
+			.copied()
+			.filter(|partition| !self.tracked.contains_key(partition))
+			.collect::<IndexSet<_>>()
+			.into_iter()
+			.collect();
+		if missing.is_empty() {
+			return Ok(());
+		}
+		let loaded = store.metadata(&missing)?;
+		for (partition, loaded) in missing.into_iter().zip(loaded) {
+			self.tracked.insert(
+				partition,
+				Tracked {
+					loaded,
+					current: loaded,
+					order: BTreeMap::new(),
+					free_len: loaded.map_or(0, |metadata| metadata.filled - metadata.count),
+					free_pages: BTreeMap::new(),
+				},
+			);
+		}
+		Ok(())
+	}
+
 	pub fn metadata(
 		&mut self,
 		store: &mut impl RingStore,
 		partition: Option<Partition>,
 	) -> Result<Option<RingBufferMetadata>> {
-		if let Some(tracked) = self.tracked.get(&partition) {
-			return Ok(tracked.current);
-		}
-		let loaded = store.metadata(partition)?;
-		self.tracked.insert(
-			partition,
-			Tracked {
-				loaded,
-				current: loaded,
-				order: BTreeMap::new(),
-				free_len: loaded.map_or(0, |metadata| metadata.filled - metadata.count),
-				free_pages: BTreeMap::new(),
-			},
-		);
-		Ok(loaded)
+		self.preload(store, &[partition])?;
+		Ok(self.tracked(partition).current)
 	}
 
 	fn tracked(&mut self, partition: Option<Partition>) -> &mut Tracked {
@@ -220,9 +236,57 @@ impl Ring {
 	pub fn place(
 		&mut self,
 		store: &mut impl RingStore,
+		requests: &[(Option<Partition>, usize)],
+	) -> Result<Vec<Vec<Placement>>> {
+		let partitions: Vec<Option<Partition>> = requests.iter().map(|&(partition, _)| partition).collect();
+		assert!(
+			distinct(&partitions),
+			"one placement call must name each partition once, or a later request would read an evicted slot the earlier one already took"
+		);
+		self.preload(store, &partitions)?;
+		let mut staged = Vec::with_capacity(requests.len());
+		let mut evicted_rows: Vec<(Option<Partition>, RowNumber)> = Vec::new();
+		for &(partition, count) in requests {
+			let placed = self.stage(store, partition, count)?;
+			evicted_rows.extend(placed
+				.iter()
+				.filter(|(_, _, evicts)| *evicts)
+				.map(|&(row, _, _)| (partition, row)));
+			staged.push((partition, placed));
+		}
+		let mut evicted = store.slots(&evicted_rows)?.into_iter();
+		let mut placements = Vec::with_capacity(staged.len());
+		for (partition, placed) in staged {
+			let mut partition_placements = Vec::with_capacity(placed.len());
+			for (row, sequence, evicts) in placed {
+				let evicted = match evicts {
+					false => None,
+					true => match evicted.next().flatten() {
+						Some(bytes) => Some(bytes),
+						None => return_internal_error!(
+							"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
+							partition,
+							row
+						),
+					},
+				};
+				partition_placements.push(Placement {
+					row,
+					sequence,
+					evicted,
+				});
+			}
+			placements.push(partition_placements);
+		}
+		Ok(placements)
+	}
+
+	fn stage(
+		&mut self,
+		store: &mut impl RingStore,
 		partition: Option<Partition>,
 		count: usize,
-	) -> Result<Vec<Placement>> {
+	) -> Result<Vec<(RowNumber, u64, bool)>> {
 		assert!(
 			count as u64 <= self.capacity,
 			"one placement call must not lap the ring, or two rows of the call would share a slot"
@@ -294,64 +358,62 @@ impl Ring {
 			}
 			placed.push((row, sequence, evicts));
 		}
-		let evicted_rows: Vec<RowNumber> =
-			placed.iter().filter(|(_, _, evicts)| *evicts).map(|(row, _, _)| *row).collect();
-		let mut evicted = store.slots(partition, &evicted_rows)?.into_iter();
 		self.assert_free_len(partition, metadata);
 		self.set(partition, metadata);
-		let mut placements = Vec::with_capacity(count);
-		for (row, sequence, evicts) in placed {
-			let evicted = match evicts {
-				false => None,
-				true => match evicted.next().flatten() {
-					Some(bytes) => Some(bytes),
-					None => return_internal_error!(
-						"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
-						partition,
-						row
-					),
-				},
-			};
-			placements.push(Placement {
-				row,
-				sequence,
-				evicted,
-			});
-		}
-		Ok(placements)
+		Ok(placed)
 	}
 
 	pub fn remove(
 		&mut self,
 		store: &mut impl RingStore,
-		partition: Option<Partition>,
-		rows: &[RowNumber],
-	) -> Result<Vec<Option<EncodedBytes>>> {
-		let Some(mut metadata) = self.metadata(store, partition)? else {
-			return Ok(vec![None; rows.len()]);
-		};
-		let held: Vec<RowNumber> =
-			rows.iter().copied().filter(|&row| metadata.holds(row, self.capacity)).collect();
-		let mut stored = store.slots(partition, &held)?.into_iter();
-		let removed: Vec<Option<EncodedBytes>> = rows
-			.iter()
-			.map(|&row| match metadata.holds(row, self.capacity) {
-				true => stored.next().flatten(),
-				false => None,
-			})
-			.collect();
-		if removed.iter().any(Option::is_some) {
-			self.load_top_free_page(store, partition)?;
-		}
-		for (&row, bytes) in rows.iter().zip(&removed) {
-			if let Some(bytes) = bytes {
-				self.release(partition, EncodedRingBufferRow::view(bytes).sequence(), row);
-				metadata.count -= 1;
+		requests: &[(Option<Partition>, Vec<RowNumber>)],
+	) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
+		let partitions: Vec<Option<Partition>> = requests.iter().map(|(partition, _)| *partition).collect();
+		assert!(
+			distinct(&partitions),
+			"one removal call must name each partition once, or a row would be read and released twice"
+		);
+		self.preload(store, &partitions)?;
+		let capacity = self.capacity;
+		let mut held: Vec<(Option<Partition>, RowNumber)> = Vec::new();
+		for (partition, rows) in requests {
+			if let Some(metadata) = self.tracked(*partition).current {
+				held.extend(rows
+					.iter()
+					.copied()
+					.filter(|&row| metadata.holds(row, capacity))
+					.map(|row| (*partition, row)));
 			}
 		}
-		self.assert_free_len(partition, metadata);
-		self.set(partition, metadata);
-		Ok(removed)
+		let mut stored = store.slots(&held)?.into_iter();
+		let mut removals = Vec::with_capacity(requests.len());
+		for (partition, rows) in requests {
+			let partition = *partition;
+			let Some(mut metadata) = self.tracked(partition).current else {
+				removals.push(vec![None; rows.len()]);
+				continue;
+			};
+			let removed: Vec<Option<EncodedBytes>> = rows
+				.iter()
+				.map(|&row| match metadata.holds(row, capacity) {
+					true => stored.next().flatten(),
+					false => None,
+				})
+				.collect();
+			if removed.iter().any(Option::is_some) {
+				self.load_top_free_page(store, partition)?;
+			}
+			for (&row, bytes) in rows.iter().zip(&removed) {
+				if let Some(bytes) = bytes {
+					self.release(partition, EncodedRingBufferRow::view(bytes).sequence(), row);
+					metadata.count -= 1;
+				}
+			}
+			self.assert_free_len(partition, metadata);
+			self.set(partition, metadata);
+			removals.push(removed);
+		}
+		Ok(removals)
 	}
 
 	pub fn expire(
@@ -373,8 +435,9 @@ impl Ring {
 				break;
 			};
 			after = Some(last);
-			let rows: Vec<RowNumber> = window.iter().map(|&(_, row)| row).collect();
-			for ((sequence, row), stored) in window.into_iter().zip(store.slots(partition, &rows)?) {
+			let rows: Vec<(Option<Partition>, RowNumber)> =
+				window.iter().map(|&(_, row)| (partition, row)).collect();
+			for ((sequence, row), stored) in window.into_iter().zip(store.slots(&rows)?) {
 				let Some(bytes) = stored else {
 					return_internal_error!(
 						"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
@@ -442,19 +505,44 @@ impl Ring {
 	}
 }
 
-pub fn newest(store: &mut impl RingNewest, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
-	match store.newest_order(partition)? {
-		None => Ok(None),
-		Some((_, row)) => live_slot(store, partition, row).map(Some),
+pub fn newest(
+	store: &mut impl RingNewest,
+	partitions: &[Option<Partition>],
+) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	let metadata = store.metadata(partitions)?;
+	let guesses: Vec<(usize, Option<Partition>, u64)> = partitions
+		.iter()
+		.zip(metadata)
+		.enumerate()
+		.filter_map(|(index, (&partition, metadata))| {
+			metadata.filter(|metadata| metadata.count > 0 && metadata.next_sequence > 0)
+				.map(|metadata| (index, partition, metadata.next_sequence - 1))
+		})
+		.collect();
+	let entries: Vec<(Option<Partition>, u64)> =
+		guesses.iter().map(|&(_, partition, sequence)| (partition, sequence)).collect();
+	let guessed = store.order_at(&entries)?;
+	let mut rows: Vec<Option<RowNumber>> = vec![None; partitions.len()];
+	for ((index, partition, _), row) in guesses.into_iter().zip(guessed) {
+		rows[index] = match row {
+			Some(row) => Some(row),
+			None => store.newest_order(partition)?.map(|(_, row)| row),
+		};
 	}
+	live_slots(store, partitions, &rows)
 }
 
-pub fn oldest(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Option<(RowNumber, EncodedBytes)>> {
-	let after = head_cursor(store, partition)?;
-	match store.order(partition, after, 1)?.pop() {
-		None => Ok(None),
-		Some((_, row)) => live_slot(store, partition, row).map(Some),
+pub fn oldest(
+	store: &mut impl RingRead,
+	partitions: &[Option<Partition>],
+) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	let metadata = store.metadata(partitions)?;
+	let mut rows = Vec::with_capacity(partitions.len());
+	for (&partition, metadata) in partitions.iter().zip(metadata) {
+		let after = metadata.and_then(|metadata| metadata.head.checked_sub(1));
+		rows.push(store.order(partition, after, 1)?.pop().map(|(_, row)| row));
 	}
+	live_slots(store, partitions, &rows)
 }
 
 pub fn oldest_first(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
@@ -471,23 +559,38 @@ pub fn oldest_first(store: &mut impl RingRead, partition: Option<Partition>) -> 
 	}
 }
 
-fn head_cursor(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Option<u64>> {
-	Ok(store.metadata(partition)?.and_then(|metadata| metadata.head.checked_sub(1)))
+fn distinct(partitions: &[Option<Partition>]) -> bool {
+	partitions.iter().collect::<IndexSet<_>>().len() == partitions.len()
 }
 
-fn live_slot(
+fn head_cursor(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Option<u64>> {
+	Ok(store.metadata(&[partition])?.pop().flatten().and_then(|metadata| metadata.head.checked_sub(1)))
+}
+
+fn live_slots(
 	store: &mut impl RingRead,
-	partition: Option<Partition>,
-	row: RowNumber,
-) -> Result<(RowNumber, EncodedBytes)> {
-	match store.slots(partition, &[row])?.pop().flatten() {
-		Some(bytes) => Ok((row, bytes)),
-		None => return_internal_error!(
-			"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
-			partition,
-			row
-		),
+	partitions: &[Option<Partition>],
+	rows: &[Option<RowNumber>],
+) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	let wanted: Vec<(Option<Partition>, RowNumber)> =
+		partitions.iter().zip(rows).filter_map(|(&partition, row)| row.map(|row| (partition, row))).collect();
+	let mut stored = store.slots(&wanted)?.into_iter();
+	let mut live = Vec::with_capacity(rows.len());
+	for (&partition, row) in partitions.iter().zip(rows) {
+		let Some(row) = *row else {
+			live.push(None);
+			continue;
+		};
+		match stored.next().flatten() {
+			Some(bytes) => live.push(Some((row, bytes))),
+			None => return_internal_error!(
+				"Ring buffer partition {:?} order index names slot {:?} as live but the slot is empty. This indicates a corrupt ring index.",
+				partition,
+				row
+			),
+		}
 	}
+	Ok(live)
 }
 
 #[cfg(test)]
@@ -512,20 +615,27 @@ mod tests {
 		reads: Vec<(Option<Partition>, RowNumber)>,
 		free_reads: usize,
 		pages_read: Vec<(Option<Partition>, u64)>,
+		metadata_calls: usize,
+		slot_calls: usize,
+		order_at_calls: usize,
+		newest_order_calls: usize,
 	}
 
 	impl RingRead for MemoryStore {
-		fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
-			Ok(self.metadata.get(&partition).copied())
+		fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
+			self.metadata_calls += 1;
+			Ok(partitions.iter().map(|partition| self.metadata.get(partition).copied()).collect())
 		}
 
-		fn slots(
-			&mut self,
-			partition: Option<Partition>,
-			rows: &[RowNumber],
-		) -> Result<Vec<Option<EncodedBytes>>> {
-			self.reads.extend(rows.iter().map(|&row| (partition, row)));
-			Ok(rows.iter().map(|&row| self.rows.get(&(partition, row)).cloned()).collect())
+		fn slots(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.slot_calls += 1;
+			self.reads.extend_from_slice(rows);
+			Ok(rows.iter().map(|key| self.rows.get(key).cloned()).collect())
+		}
+
+		fn order_at(&mut self, entries: &[(Option<Partition>, u64)]) -> Result<Vec<Option<RowNumber>>> {
+			self.order_at_calls += 1;
+			Ok(entries.iter().map(|key| self.order.get(key).copied()).collect())
 		}
 
 		fn order(
@@ -559,6 +669,7 @@ mod tests {
 
 	impl RingNewest for MemoryStore {
 		fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>> {
+			self.newest_order_calls += 1;
 			Ok(self.entries(partition).last())
 		}
 	}
@@ -596,7 +707,7 @@ mod tests {
 		times: &[i64],
 	) -> Vec<Placement> {
 		let mut ring = Ring::new(capacity);
-		let placed = ring.place(store, partition, times.len()).unwrap();
+		let placed = ring.place(store, &[(partition, times.len())]).unwrap().remove(0);
 		for (placement, &time) in placed.iter().zip(times) {
 			store.rows.insert((partition, placement.row), row(placement.sequence, Some(time)));
 		}
@@ -631,7 +742,7 @@ mod tests {
 
 	fn delete(store: &mut MemoryStore, capacity: u64, partition: Option<Partition>, rows: &[RowNumber]) {
 		let mut ring = Ring::new(capacity);
-		ring.remove(store, partition, rows).unwrap();
+		ring.remove(store, &[(partition, rows.to_vec())]).unwrap();
 		for row in rows {
 			store.rows.remove(&(partition, *row));
 		}
@@ -684,7 +795,7 @@ mod tests {
 		insert(&mut store, 2, Some(Partition(1)), &[1, 2]);
 		store.reads.clear();
 		let mut ring = Ring::new(2);
-		let removed = ring.remove(&mut store, Some(Partition(1)), &[RowNumber(1)]).unwrap();
+		let removed = ring.remove(&mut store, &[(Some(Partition(1)), vec![RowNumber(1)])]).unwrap().remove(0);
 		assert_eq!(removed, vec![None]);
 		assert!(store.reads.is_empty());
 		assert!(ring.writes().is_empty(), "nothing removed, nothing to write");
@@ -757,7 +868,7 @@ mod tests {
 		let mut store = MemoryStore::default();
 		insert(&mut store, 2, Some(Partition(1)), &[10, 20]);
 		let wrapped = insert(&mut store, 2, Some(Partition(1)), &[30]);
-		let (row, bytes) = newest(&mut store, Some(Partition(1))).unwrap().unwrap();
+		let (row, bytes) = newest(&mut store, &[Some(Partition(1))]).unwrap()[0].clone().unwrap();
 		assert_eq!(row, wrapped[0].row);
 		assert_eq!(sequence_of(&bytes), wrapped[0].sequence);
 	}
@@ -768,7 +879,7 @@ mod tests {
 		let mut store = MemoryStore::default();
 		let placed = insert(&mut store, 3, None, &[10, 20]);
 		delete(&mut store, 3, None, &[placed[1].row]);
-		let (row, _) = newest(&mut store, None).unwrap().unwrap();
+		let (row, _) = newest(&mut store, &[None]).unwrap()[0].clone().unwrap();
 		assert_eq!(row, placed[0].row);
 	}
 
@@ -779,7 +890,7 @@ mod tests {
 		let placed = insert(&mut store, 3, None, &[10, 20, 30]);
 		insert(&mut store, 3, None, &[40]);
 		delete(&mut store, 3, None, &[placed[1].row]);
-		let (row, bytes) = oldest(&mut store, None).unwrap().unwrap();
+		let (row, bytes) = oldest(&mut store, &[None]).unwrap()[0].clone().unwrap();
 		assert_eq!(row, placed[2].row, "slot 0 now holds the newest row and slot 1 is a hole");
 		assert_eq!(sequence_of(&bytes), placed[2].sequence);
 	}
@@ -879,7 +990,7 @@ mod tests {
 		let head = store.metadata[&None].head;
 		delete(&mut store, 3, None, &[placed[1].row]);
 		assert_eq!(store.metadata[&None].head, head, "a delete never moves the head");
-		let (row, _) = oldest(&mut store, None).unwrap().unwrap();
+		let (row, _) = oldest(&mut store, &[None]).unwrap()[0].clone().unwrap();
 		assert_eq!(row, placed[2].row, "the oldest live row is still found from the head");
 		let next = insert(&mut store, 3, None, &[5]);
 		assert!(next[0].evicted.is_none(), "the freed slot is used first");
@@ -987,8 +1098,8 @@ mod tests {
 		// A leak here grows storage on a slot that is immediately busy again.
 		let (mut store, placed) = full(4, None);
 		let mut ring = Ring::new(4);
-		ring.remove(&mut store, None, &[placed[1].row]).unwrap();
-		let again = ring.place(&mut store, None, 1).unwrap();
+		ring.remove(&mut store, &[(None, vec![placed[1].row])]).unwrap();
+		let again = ring.place(&mut store, &[(None, 1)]).unwrap().remove(0);
 		assert_eq!(again[0].row, placed[1].row);
 		assert!(writes_of(&ring).is_empty(), "the stack is back where it started");
 		assert_eq!(store.free_reads, 0, "a top page starting at its first index needs no read");
@@ -1001,8 +1112,8 @@ mod tests {
 		delete(&mut store, 4, None, &[placed[0].row]);
 		store.pages_read.clear();
 		let mut ring = Ring::new(4);
-		ring.remove(&mut store, None, &[placed[1].row]).unwrap();
-		ring.place(&mut store, None, 1).unwrap();
+		ring.remove(&mut store, &[(None, vec![placed[1].row])]).unwrap();
+		ring.place(&mut store, &[(None, 1)]).unwrap();
 		assert!(writes_of(&ring).is_empty());
 		assert_eq!(
 			store.pages_read,
@@ -1031,13 +1142,13 @@ mod tests {
 		store.pages_read.clear();
 
 		let mut ring = Ring::new(capacity);
-		ring.place(&mut store, None, 3).unwrap();
+		ring.place(&mut store, &[(None, 3)]).unwrap();
 		assert_eq!(store.pages_read, vec![(None, 2)], "only the top page is read");
 		assert_eq!(writes_of(&ring), vec![(2, Some(7))], "only the top page is written");
 
 		store.pages_read.clear();
 		let mut ring = Ring::new(capacity);
-		ring.remove(&mut store, None, &[rows[FREE_PAGE_SLOTS as usize * 2 + 20]]).unwrap();
+		ring.remove(&mut store, &[(None, vec![rows[FREE_PAGE_SLOTS as usize * 2 + 20]])]).unwrap();
 		assert_eq!(store.pages_read, vec![(None, 2)]);
 		assert_eq!(writes_of(&ring), vec![(2, Some(11))]);
 	}
@@ -1053,7 +1164,7 @@ mod tests {
 		store.pages_read.clear();
 
 		let mut ring = Ring::new(capacity);
-		ring.place(&mut store, None, FREE_PAGE_SLOTS as usize + 20).unwrap();
+		ring.place(&mut store, &[(None, FREE_PAGE_SLOTS as usize + 20)]).unwrap();
 		assert_eq!(store.free_reads, 1);
 		assert_eq!(store.pages_read, vec![(None, 0), (None, 1), (None, 2)]);
 		assert_eq!(writes_of(&ring), vec![(0, Some(502)), (1, None), (2, None)]);
@@ -1070,10 +1181,10 @@ mod tests {
 
 		let mut ring = Ring::new(capacity);
 		for _ in 0..4 {
-			ring.place(&mut store, None, 2).unwrap();
+			ring.place(&mut store, &[(None, 2)]).unwrap();
 		}
-		ring.remove(&mut store, None, &[rows[FREE_PAGE_SLOTS as usize + 6]]).unwrap();
-		ring.place(&mut store, None, 2).unwrap();
+		ring.remove(&mut store, &[(None, vec![rows[FREE_PAGE_SLOTS as usize + 6]])]).unwrap();
+		ring.place(&mut store, &[(None, 2)]).unwrap();
 		let mut read = store.pages_read.clone();
 		read.sort();
 		read.dedup();
@@ -1175,7 +1286,7 @@ mod tests {
 			vec![RowNumber(100); ((capacity - 1) % FREE_PAGE_SLOTS) as usize],
 		);
 		let mut ring = Ring::new(capacity);
-		ring.remove(&mut store, partition, &[row_number]).unwrap();
+		ring.remove(&mut store, &[(partition, vec![row_number])]).unwrap();
 		let writes = ring.writes();
 		let pages = writes.iter().filter(|write| matches!(write, MetadataWrite::Free(_, _, None))).count();
 		assert_eq!(pages as u64, (capacity - 1).div_ceil(FREE_PAGE_SLOTS));
@@ -1189,7 +1300,7 @@ mod tests {
 		let (mut store, placed) = full(4, None);
 		delete(&mut store, 4, None, &[placed[0].row]);
 		let mut ring = Ring::new(4);
-		ring.place(&mut store, None, 1).unwrap();
+		ring.place(&mut store, &[(None, 1)]).unwrap();
 		assert_eq!(writes_of(&ring), vec![(0, None)]);
 	}
 
@@ -1200,7 +1311,227 @@ mod tests {
 		delete(&mut store, 4, None, &[placed[0].row]);
 		store.free.remove(&(None, 0));
 		let mut ring = Ring::new(4);
-		let result = catch_unwind(AssertUnwindSafe(|| ring.place(&mut store, None, 1)));
+		let result = catch_unwind(AssertUnwindSafe(|| ring.place(&mut store, &[(None, 1)])));
 		assert!(!matches!(result, Ok(Ok(_))), "a corrupt free stack must not place a row");
+	}
+
+	#[test]
+	fn a_place_across_partitions_reads_metadata_once_and_evicted_slots_once() {
+		// A read per partition makes an insert over many partitions pay one round trip each.
+		let (a, b, fresh) = (Some(Partition(1)), Some(Partition(2)), Some(Partition(3)));
+		let mut store = MemoryStore::default();
+		let in_a = insert(&mut store, 2, a, &[1, 2]);
+		let in_b = insert(&mut store, 2, b, &[1, 2]);
+		store.metadata_calls = 0;
+		store.slot_calls = 0;
+		let mut ring = Ring::new(2);
+		let placed = ring.place(&mut store, &[(a, 1), (fresh, 2), (b, 1)]).unwrap();
+		assert_eq!(store.metadata_calls, 1);
+		assert_eq!(store.slot_calls, 1);
+		assert_eq!(placed.len(), 3, "one answer per request, in request order");
+		assert_eq!(placed[0][0].row, in_a[0].row);
+		assert_eq!(sequence_of(placed[0][0].evicted.as_ref().unwrap()), in_a[0].sequence);
+		assert_eq!(placed[1].len(), 2);
+		assert!(
+			placed[1].iter().all(|placement| placement.evicted.is_none()),
+			"a fresh partition evicts nothing"
+		);
+		assert_eq!(placed[2][0].row, in_b[0].row);
+		assert_eq!(sequence_of(placed[2][0].evicted.as_ref().unwrap()), in_b[0].sequence);
+	}
+
+	#[test]
+	fn a_batched_place_matches_one_place_per_partition() {
+		// The batch must leave the same rows and index behind as separate calls, or row numbers drift.
+		let (a, b) = (Some(Partition(1)), Some(Partition(2)));
+		let mut batched = MemoryStore::default();
+		insert(&mut batched, 3, a, &[1, 2, 3]);
+		insert(&mut batched, 3, b, &[1]);
+		let mut single = MemoryStore::default();
+		insert(&mut single, 3, a, &[1, 2, 3]);
+		insert(&mut single, 3, b, &[1]);
+
+		let mut ring = Ring::new(3);
+		let together = ring.place(&mut batched, &[(a, 2), (b, 2)]).unwrap();
+		apply(&mut batched, &ring);
+		let mut apart = Vec::new();
+		for (partition, count) in [(a, 2), (b, 2)] {
+			let mut ring = Ring::new(3);
+			apart.push(ring.place(&mut single, &[(partition, count)]).unwrap().remove(0));
+			apply(&mut single, &ring);
+		}
+		assert_eq!(together, apart);
+		assert_eq!(batched.metadata, single.metadata);
+		assert_eq!(batched.order, single.order);
+		assert_eq!(batched.free, single.free);
+	}
+
+	#[test]
+	fn a_remove_across_partitions_reads_metadata_once_and_slots_once() {
+		// A read per partition makes a delete over many partitions pay one round trip each.
+		let (a, b, missing) = (Some(Partition(1)), Some(Partition(2)), Some(Partition(3)));
+		let mut store = MemoryStore::default();
+		let in_a = insert(&mut store, 3, a, &[1, 2, 3]);
+		let in_b = insert(&mut store, 3, b, &[1, 2]);
+		store.metadata_calls = 0;
+		store.slot_calls = 0;
+		let mut ring = Ring::new(3);
+		let removed = ring
+			.remove(
+				&mut store,
+				&[
+					(a, vec![in_a[1].row, in_b[0].row]),
+					(missing, vec![in_a[0].row]),
+					(b, vec![in_b[1].row]),
+				],
+			)
+			.unwrap();
+		assert_eq!(store.metadata_calls, 1);
+		assert_eq!(store.slot_calls, 1);
+		assert_eq!(sequence_of(removed[0][0].as_ref().unwrap()), in_a[1].sequence);
+		assert!(removed[0][1].is_none(), "a row of another partition is never removed from this one");
+		assert_eq!(removed[1], vec![None], "a partition with no metadata holds nothing");
+		assert_eq!(sequence_of(removed[2][0].as_ref().unwrap()), in_b[1].sequence);
+		for (partition, row) in [(a, in_a[1].row), (b, in_b[1].row)] {
+			store.rows.remove(&(partition, row));
+		}
+		apply(&mut store, &ring);
+		assert_eq!(store.metadata[&a].count, 2);
+		assert_eq!(store.metadata[&b].count, 1);
+		assert_eq!(store.free[&(a, 0)], vec![in_a[1].row]);
+		assert_eq!(store.free[&(b, 0)], vec![in_b[1].row]);
+	}
+
+	#[test]
+	fn a_place_naming_one_partition_twice_is_refused() {
+		// The second request would read an evicted slot before the first request's row is written.
+		let (mut store, _) = full(2, None);
+		let mut ring = Ring::new(2);
+		let result = catch_unwind(AssertUnwindSafe(|| ring.place(&mut store, &[(None, 1), (None, 1)])));
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn a_remove_naming_one_partition_twice_is_refused() {
+		// A row named in both requests would be released twice and corrupt the free stack.
+		let (mut store, placed) = full(2, None);
+		let mut ring = Ring::new(2);
+		let rows = vec![placed[0].row];
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			ring.remove(&mut store, &[(None, rows.clone()), (None, rows.clone())])
+		}));
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn a_preload_reads_every_partition_in_one_call_and_expiry_reads_no_more_metadata() {
+		// An expiry pass over many partitions must not pay one metadata read each.
+		let (a, b) = (Some(Partition(1)), Some(Partition(2)));
+		let mut store = MemoryStore::default();
+		insert(&mut store, 2, a, &[10, 20]);
+		insert(&mut store, 2, b, &[10, 20]);
+		store.metadata_calls = 0;
+		let mut ring = Ring::new(2);
+		ring.preload(&mut store, &[a, b, a]).unwrap();
+		assert_eq!(store.metadata_calls, 1);
+		for partition in [a, b] {
+			assert_eq!(ring.expire(&mut store, partition, DateTime::from_millis(15), 8).unwrap().len(), 1);
+		}
+		ring.preload(&mut store, &[a, b]).unwrap();
+		assert_eq!(store.metadata_calls, 1, "tracked partitions are never read again");
+	}
+
+	#[test]
+	fn a_batched_newest_equals_newest_per_partition() {
+		// Each slot of a batched answer must match the one-partition answer, or a lookup joins the wrong row.
+		let mut store = MemoryStore::default();
+		let (inserted, updated, deleted, expired, evicted, emptied, missing) = (
+			Some(Partition(1)),
+			Some(Partition(2)),
+			Some(Partition(3)),
+			Some(Partition(4)),
+			Some(Partition(5)),
+			Some(Partition(6)),
+			Some(Partition(7)),
+		);
+		let in_inserted = insert(&mut store, 3, inserted, &[1, 2]);
+		let in_updated = insert(&mut store, 3, updated, &[1, 2]);
+		let changed = row(in_updated[1].sequence, Some(99));
+		store.rows.insert((updated, in_updated[1].row), changed.clone());
+		let in_deleted = insert(&mut store, 3, deleted, &[1, 2]);
+		delete(&mut store, 3, deleted, &[in_deleted[1].row]);
+		let in_expired = insert(&mut store, 3, expired, &[10, 20, 30]);
+		let mut ring = Ring::new(3);
+		for (row, _) in ring.expire(&mut store, expired, DateTime::from_millis(25), 8).unwrap() {
+			store.rows.remove(&(expired, row));
+		}
+		apply(&mut store, &ring);
+		insert(&mut store, 2, evicted, &[1, 2]);
+		let in_evicted = insert(&mut store, 2, evicted, &[3]);
+		let in_emptied = insert(&mut store, 2, emptied, &[1]);
+		delete(&mut store, 2, emptied, &[in_emptied[0].row]);
+		let in_unpartitioned = insert(&mut store, 2, None, &[1, 2]);
+
+		let partitions = [inserted, updated, deleted, expired, evicted, emptied, missing, None, inserted];
+		let batched = newest(&mut store, &partitions).unwrap();
+		let single: Vec<Option<(RowNumber, EncodedBytes)>> = partitions
+			.iter()
+			.map(|&partition| newest(&mut store, &[partition]).unwrap()[0].clone())
+			.collect();
+		assert_eq!(batched, single);
+		let rows: Vec<Option<RowNumber>> =
+			batched.iter().map(|found| found.as_ref().map(|(row, _)| *row)).collect();
+		assert_eq!(
+			rows,
+			vec![
+				Some(in_inserted[1].row),
+				Some(in_updated[1].row),
+				Some(in_deleted[0].row),
+				Some(in_expired[2].row),
+				Some(in_evicted[0].row),
+				None,
+				None,
+				Some(in_unpartitioned[1].row),
+				Some(in_inserted[1].row),
+			]
+		);
+		assert_eq!(batched[1].as_ref().unwrap().1, changed, "an update is read back with its new bytes");
+	}
+
+	#[test]
+	fn the_newest_of_a_partition_whose_newest_row_was_deleted_falls_back_to_the_order_scan() {
+		// Without the fallback a deleted newest row hides the older live rows of its partition.
+		let mut store = MemoryStore::default();
+		let (deleted, kept) = (Some(Partition(1)), Some(Partition(2)));
+		let placed = insert(&mut store, 3, deleted, &[10, 20]);
+		delete(&mut store, 3, deleted, &[placed[1].row]);
+		let in_kept = insert(&mut store, 3, kept, &[10, 20]);
+		store.newest_order_calls = 0;
+		let found = newest(&mut store, &[deleted, kept]).unwrap();
+		assert_eq!(found[0].as_ref().unwrap().0, placed[0].row);
+		assert_eq!(found[1].as_ref().unwrap().0, in_kept[1].row);
+		assert_eq!(store.newest_order_calls, 1, "only the partition whose guessed order key is gone scans");
+	}
+
+	#[test]
+	fn a_batched_newest_reads_every_partition_in_one_metadata_and_one_slot_read() {
+		// A read per partition makes a lookup over many partitions pay one round trip each.
+		let mut store = MemoryStore::default();
+		insert(&mut store, 3, Some(Partition(1)), &[1, 2]);
+		insert(&mut store, 3, Some(Partition(2)), &[1]);
+		insert(&mut store, 3, None, &[1, 2, 3]);
+		store.metadata_calls = 0;
+		store.slot_calls = 0;
+		store.order_at_calls = 0;
+		store.newest_order_calls = 0;
+		store.reads.clear();
+		let found = newest(&mut store, &[Some(Partition(1)), Some(Partition(2)), None, Some(Partition(9))])
+			.unwrap();
+		assert_eq!(found.iter().filter(|found| found.is_some()).count(), 3);
+		assert_eq!(store.metadata_calls, 1);
+		assert_eq!(store.order_at_calls, 1);
+		assert_eq!(store.slot_calls, 1);
+		assert_eq!(store.newest_order_calls, 0, "every guessed order key exists, so nothing scans");
+		assert_eq!(store.reads.len(), 3, "a partition with no metadata reads no slot");
 	}
 }

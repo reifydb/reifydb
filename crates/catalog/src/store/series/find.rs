@@ -8,6 +8,7 @@ use reifydb_core::{
 		series::{Series, SeriesKey, SeriesPartitionMetadata, decode_series_partition_metadata},
 	},
 	key::{
+		any::TaggedKey,
 		namespace::NamespaceSeriesKey,
 		series::{SeriesKey as SeriesStorageKey, SeriesPartitionMetadataKey},
 	},
@@ -66,15 +67,22 @@ impl CatalogStore {
 	pub(crate) fn find_series_metadata(
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
-		partition: Partition,
-	) -> Result<Option<SeriesPartitionMetadata>> {
-		let Some(multi) =
-			rx.get(&[SeriesPartitionMetadataKey::new(series_id, partition).into()])?.pop().flatten()
-		else {
-			return Ok(None);
-		};
-
-		Ok(Some(decode_series_partition_metadata(EncodedPodRow::view(&multi.bytes))?))
+		partitions: &[Partition],
+	) -> Result<Vec<Option<SeriesPartitionMetadata>>> {
+		let keys: Vec<TaggedKey> = partitions
+			.iter()
+			.map(|&partition| SeriesPartitionMetadataKey::new(series_id, partition).into())
+			.collect();
+		let mut found = Vec::with_capacity(keys.len());
+		for multi in rx.get(&keys)? {
+			found.push(match multi {
+				Some(multi) => {
+					Some(decode_series_partition_metadata(EncodedPodRow::view(&multi.bytes))?)
+				}
+				None => None,
+			});
+		}
+		Ok(found)
 	}
 
 	pub(crate) fn find_series_by_name(

@@ -13,7 +13,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
-			series::Series,
+			series::{Series, SeriesPartitionMetadata},
 			storage::StorageId,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
@@ -104,22 +104,23 @@ pub(crate) fn delete_series(
 	)?;
 
 	let deleted_count: u64 = deleted_by_partition.values().map(|tally| tally.count).sum();
-	for (partition, tally) in deleted_by_partition {
-		let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id, partition)? else {
-			continue;
-		};
-		apply_series_metadata_after_delete(&mut metadata, &tally);
-		services.catalog.update_series_metadata_rebased_txn(
-			txn,
-			series.id,
-			partition,
-			metadata,
-			move |latest| {
+	let (partitions, tallies): (Vec<Partition>, Vec<SeriesDeleteTally>) = deleted_by_partition.into_iter().unzip();
+	let found = services.catalog.find_series_metadata(txn, series.id, &partitions)?;
+	let updates: Vec<_> = partitions
+		.into_iter()
+		.zip(tallies)
+		.zip(found)
+		.filter_map(|((partition, tally), metadata)| {
+			let mut metadata = metadata?;
+			apply_series_metadata_after_delete(&mut metadata, &tally);
+			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
 				apply_series_metadata_after_delete(latest, &tally);
 				Ok(())
-			},
-		)?;
-	}
+			};
+			Some((partition, metadata, change))
+		})
+		.collect();
+	services.catalog.update_series_metadata_rebased_txn(txn, series.id, updates)?;
 
 	if let Some(returning_exprs) = &returning {
 		let shape = services.catalog.get_or_create_series_shape(txn, &series)?;

@@ -12,11 +12,10 @@ use reifydb_value::Result;
 use crate::{change::RowChange, multi::transaction::write::Rebase};
 
 pub trait Write {
-	fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()>;
+	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()>;
 	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
 	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()>;
-	fn remove_unobserved_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()>;
 
 	fn track_row_change(&mut self, changes: &[RowChange]);
 

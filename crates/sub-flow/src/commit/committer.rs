@@ -586,16 +586,18 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 		.map(|(key, _)| key.clone())
 		.collect();
 	let mut pres = transaction.get(&observed)?.into_iter();
-	let mut sets: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
+	let mut run = WriteRun::default();
 	for (key, pw) in writes {
 		match pw {
-			PendingWrite::Set(value) => sets.push((key, value.clone())),
+			PendingWrite::Set(value) => {
+				if run.sets.is_empty() {
+					run.flush(transaction)?;
+				}
+				run.sets.push((key, value.clone()));
+			}
 			PendingWrite::Remove {
 				announce,
 			} => {
-				if !sets.is_empty() {
-					transaction.set(take(&mut sets))?;
-				}
 				let pre = match announce {
 					RemoveVisibility::Silent => None,
 					RemoveVisibility::Announced | RemoveVisibility::Unobserved => {
@@ -604,21 +606,56 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 				};
 				match (announce, pre) {
 					(RemoveVisibility::Announced, Some(existing)) => {
-						transaction.remove_with_pre(&key, existing.bytes)?
+						if run.announced.is_empty() {
+							run.flush(transaction)?;
+						}
+						run.announced.push((key, existing.bytes));
 					}
 					(RemoveVisibility::Unobserved, Some(existing)) => {
-						transaction.remove_unobserved_with_pre(&key, existing.bytes)?
+						if run.unobserved.is_empty() {
+							run.flush(transaction)?;
+						}
+						run.unobserved.push((key, existing.bytes));
 					}
-					_ => transaction.remove_silent(&key)?,
+					_ => {
+						if run.silent.is_empty() {
+							run.flush(transaction)?;
+						}
+						run.silent.push(key);
+					}
 				}
 			}
 		}
 	}
-	if !sets.is_empty() {
-		transaction.set(sets)?;
-	}
+	run.flush(transaction)?;
 	transaction.track_row_change(&queue_row_changes(combined, &dropped));
 	Ok(())
+}
+
+#[derive(Default)]
+struct WriteRun {
+	sets: Vec<(TaggedKey, EncodedBytes)>,
+	announced: Vec<(TaggedKey, EncodedBytes)>,
+	unobserved: Vec<(TaggedKey, EncodedBytes)>,
+	silent: Vec<TaggedKey>,
+}
+
+impl WriteRun {
+	fn flush(&mut self, transaction: &mut CommandTransaction) -> Result<()> {
+		if !self.sets.is_empty() {
+			transaction.set(take(&mut self.sets))?;
+		}
+		if !self.announced.is_empty() {
+			transaction.remove_with_pre(take(&mut self.announced))?;
+		}
+		if !self.unobserved.is_empty() {
+			transaction.remove_unobserved_with_pre(take(&mut self.unobserved))?;
+		}
+		if !self.silent.is_empty() {
+			transaction.remove_silent(take(&mut self.silent))?;
+		}
+		Ok(())
+	}
 }
 
 fn dropped_queues(transaction: &mut CommandTransaction, combined: &Pending) -> Result<BTreeSet<QueueId>> {

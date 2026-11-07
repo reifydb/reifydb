@@ -426,9 +426,10 @@ pub mod tests {
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		let metadata = CatalogStore::find_partition_metadata(&mut Transaction::Admin(&mut txn), &result, None)
-			.unwrap()
-			.expect("Metadata should exist");
+		let metadata =
+			CatalogStore::find_partition_metadata(&mut Transaction::Admin(&mut txn), &result, &[None])
+				.unwrap()[0]
+				.expect("Metadata should exist");
 
 		assert_eq!(metadata, RingBufferMetadata::unpartitioned());
 	}

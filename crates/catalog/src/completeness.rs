@@ -17,7 +17,7 @@ pub enum Advanced {
 }
 
 pub trait CompletenessWriter: Send + Sync {
-	fn advance(&self, tx: &mut Transaction<'_>, object: ObjectId, at: DateTime) -> Result<Advanced>;
+	fn advance(&self, tx: &mut Transaction<'_>, advances: &[(ObjectId, DateTime)]) -> Result<Vec<Advanced>>;
 }
 
 pub type CompletenessWriterRef = Arc<dyn CompletenessWriter>;

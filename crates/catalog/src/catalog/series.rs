@@ -315,31 +315,21 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		id: SeriesId,
-		partition: Partition,
-	) -> Result<Option<SeriesPartitionMetadata>> {
-		CatalogStore::find_series_metadata(txn, id, partition)
+		partitions: &[Partition],
+	) -> Result<Vec<Option<SeriesPartitionMetadata>>> {
+		CatalogStore::find_series_metadata(txn, id, partitions)
 	}
 
-	#[instrument(name = "catalog::series::update_metadata_txn", level = "debug", skip(self, txn))]
-	pub fn update_series_metadata_txn(
+	#[instrument(name = "catalog::series::update_metadata_rebased_txn", level = "debug", skip(self, txn, updates))]
+	pub fn update_series_metadata_rebased_txn<F>(
 		&self,
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
-		partition: Partition,
-		metadata: SeriesPartitionMetadata,
-	) -> Result<()> {
-		CatalogStore::update_series_metadata_txn(txn, series_id, partition, metadata)
-	}
-
-	#[instrument(name = "catalog::series::update_metadata_rebased_txn", level = "debug", skip(self, txn, change))]
-	pub fn update_series_metadata_rebased_txn(
-		&self,
-		txn: &mut Transaction<'_>,
-		series_id: SeriesId,
-		partition: Partition,
-		metadata: SeriesPartitionMetadata,
-		change: impl Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
-	) -> Result<()> {
-		CatalogStore::update_series_metadata_rebased_txn(txn, series_id, partition, metadata, change)
+		updates: Vec<(Partition, SeriesPartitionMetadata, F)>,
+	) -> Result<()>
+	where
+		F: Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
+	{
+		CatalogStore::update_series_metadata_rebased_txn(txn, series_id, updates)
 	}
 }

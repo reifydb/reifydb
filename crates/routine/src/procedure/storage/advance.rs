@@ -82,13 +82,9 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for StorageAdvanceProcedure {
 		let names = identifiers(&objects)?;
 		let resolved = resolve_all(ctx.catalog, ctx.tx, &names)?;
 
-		let mut asserted = Vec::with_capacity(resolved.len());
-		for (name, object) in resolved {
-			assert_one(ctx, object, at)?;
-			asserted.push((name, object));
-		}
+		assert_all(ctx, &resolved, at)?;
 
-		output(&asserted, at)
+		output(&resolved, at)
 	}
 }
 
@@ -241,16 +237,23 @@ fn expand_namespace(
 	Ok(objects)
 }
 
-fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime) -> Result<(), RoutineError> {
+fn assert_all(
+	ctx: &mut ProcedureContext<'_, '_>,
+	resolved: &[(String, ObjectId)],
+	at: DateTime,
+) -> Result<(), RoutineError> {
 	let writer = ctx.ioc.resolve::<CompletenessWriterRef>().expect("CompletenessWriter not registered in IoC");
-	if let Advanced::Backwards(previous) = writer.advance(ctx.tx, object, at)? {
-		warn!(
-			object = object.to_u64(),
-			previous = %previous,
-			at = %at,
-			"a completeness assertion went backwards; the recorded instant stands and rows \
-			 landing before it fall behind an already sealed window"
-		);
+	let advances: Vec<(ObjectId, DateTime)> = resolved.iter().map(|&(_, object)| (object, at)).collect();
+	for (&(object, _), advanced) in advances.iter().zip(writer.advance(ctx.tx, &advances)?) {
+		if let Advanced::Backwards(previous) = advanced {
+			warn!(
+				object = object.to_u64(),
+				previous = %previous,
+				at = %at,
+				"a completeness assertion went backwards; the recorded instant stands and rows \
+				 landing before it fall behind an already sealed window"
+			);
+		}
 	}
 	Ok(())
 }

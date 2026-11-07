@@ -159,12 +159,8 @@ impl FlowTransaction for TestFlowTransaction {
 		panic!("not supported by the test transaction: run_durable_sink_timer")
 	}
 
-	fn storage_get(&mut self, _key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		Ok(None)
-	}
-
-	fn storage_contains(&mut self, _key: &EncodedKey) -> Result<bool> {
-		Ok(false)
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		Ok(vec![None; keys.len()])
 	}
 
 	fn storage_range(

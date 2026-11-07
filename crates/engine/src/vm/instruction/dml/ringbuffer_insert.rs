@@ -249,8 +249,10 @@ pub(crate) fn insert_ringbuffer_chunks(
 		let mut ids = vec![RowNumber(0); count];
 		let mut evicted = vec![None; count];
 		let mut stamped: Vec<EncodedBytes> = rows[start..end].to_vec();
-		for (partition, members) in &held {
-			let placements = place_ring_rows(catalog, txn, ringbuffer, ring, *partition, members.len())?;
+		let requests: Vec<(Option<Partition>, usize)> =
+			held.iter().map(|(partition, members)| (*partition, members.len())).collect();
+		let placed = place_ring_rows(catalog, txn, ringbuffer, ring, &requests)?;
+		for ((_, members), placements) in held.iter().zip(placed) {
 			for (&offset, placement) in members.iter().zip(placements) {
 				ids[offset] = placement.row;
 				evicted[offset] = placement.evicted;

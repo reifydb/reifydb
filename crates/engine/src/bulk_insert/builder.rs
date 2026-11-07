@@ -777,19 +777,24 @@ fn execute_series_insert<V: ValidationMode>(
 		)?
 	};
 	let now = writer.now;
-	for (partition, metadata) in metadata_by_partition {
-		let keys = inserted_keys.remove(&partition).unwrap_or_default();
-		write_inserted_series_metadata(
-			catalog,
-			&mut Transaction::Command(txn),
-			&series,
-			partition,
-			metadata,
-			keys,
-			now,
-			V::VALIDATED && series.partition_by.is_empty(),
-		)?;
-		if !V::VALIDATED && series.partition_by.is_empty() {
+	let updates: Vec<(Partition, SeriesPartitionMetadata, Vec<u64>)> = metadata_by_partition
+		.into_iter()
+		.map(|(partition, metadata)| {
+			let keys = inserted_keys.remove(&partition).unwrap_or_default();
+			(partition, metadata, keys)
+		})
+		.collect();
+	let partitions: Vec<Partition> = updates.iter().map(|(partition, _, _)| *partition).collect();
+	write_inserted_series_metadata(
+		catalog,
+		&mut Transaction::Command(txn),
+		&series,
+		updates,
+		now,
+		V::VALIDATED && series.partition_by.is_empty(),
+	)?;
+	if !V::VALIDATED && series.partition_by.is_empty() {
+		for partition in partitions {
 			txn.rewrite_on(
 				&SeriesPartitionMetadataKey::new(series.id, partition).into(),
 				renumber_series_rows(StorageId::series(series.id), partition),

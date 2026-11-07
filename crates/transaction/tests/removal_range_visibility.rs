@@ -95,7 +95,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	);
 
 	let mut tx = MultiWriteTransaction::new(engine.clone(), engine.generate_transaction_id()).unwrap();
-	tx.remove_silent(&key_a).unwrap();
+	tx.remove_silent(vec![key_a.clone().into()]).unwrap();
 	tx.commit().unwrap();
 
 	assert_eq!(

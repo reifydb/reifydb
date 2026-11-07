@@ -614,12 +614,14 @@ pub fn remove_queue_scheduling_state(
 			}
 
 			let mut tx = single.begin_command_ranged(ctx, lock_keys.iter(), ranges.clone())?;
+			let mut keys = Vec::with_capacity(batch.items.len());
 			for item in &batch.items {
 				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
 				};
-				tx.remove(from_ref(&key))?;
+				keys.push(key);
 			}
+			tx.remove(&keys)?;
 			tx.commit()?;
 		}
 	}

@@ -265,47 +265,34 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::set", level = "trace", skip(self, bytes), fields(
-		txn_id = %self.id,
-		key = ?key
-	))]
-	fn set_any(&mut self, key: TaggedKey, bytes: EncodedBytes) -> Result<()> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).sets += 1;
-		}
-		self.modify(DeltaEntry {
-			delta: Delta::Set {
-				key,
-				bytes,
-				pre: SetPre::Unknown,
-			},
-			version: self.base_version(),
-		})
-	}
-
 	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) {
 		self.rewrites.entry(key.clone()).or_insert(rewrite);
 	}
 
-	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
-		let pending = self.pending_writes.get(key).map(|entry| entry.bytes().cloned());
-		match (pending, self.rebases.get_mut(key)) {
-			(None, _) => {
-				self.rebases.insert(key.clone(), (bytes.clone(), vec![rebase]));
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+		let mut batched: BTreeMap<TaggedKey, EncodedBytes> = BTreeMap::new();
+		let mut writes = Vec::with_capacity(entries.len());
+		for (key, bytes, rebase) in entries {
+			let pending = match batched.get(&key) {
+				Some(earlier) => Some(Some(earlier.clone())),
+				None => self.pending_writes.get(&key).map(|entry| entry.bytes().cloned()),
+			};
+			match (pending, self.rebases.get_mut(&key)) {
+				(None, _) => {
+					self.rebases.insert(key.clone(), (bytes.clone(), vec![rebase]));
+				}
+				(Some(Some(pending)), Some((written, steps))) if pending == *written => {
+					*written = bytes.clone();
+					steps.push(rebase);
+				}
+				_ => {
+					self.rebases.remove(&key);
+				}
 			}
-			(Some(Some(pending)), Some((written, steps))) if pending == *written => {
-				*written = bytes.clone();
-				steps.push(rebase);
-			}
-			_ => {
-				self.rebases.remove(key);
-			}
+			batched.insert(key.clone(), bytes.clone());
+			writes.push((key, bytes, SetPre::Unknown));
 		}
-		self.set_any(key.clone(), bytes)
+		self.set_with_pre(writes)
 	}
 
 	#[instrument(name = "transaction::command::set", level = "trace", skip_all, fields(
@@ -367,27 +354,12 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
+	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, entries), fields(
 		txn_id = %self.id,
-		key = ?key,
-		value_len = pre.len()
+		keys = entries.len()
 	))]
-	fn remove_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).removes += 1;
-		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_announced(key, pre),
-			version: self.base_version(),
-		})
-	}
-
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
-		self.remove_with_pre_any(key.clone().into(), pre)
+	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		self.remove_deltas(entries.into_iter().map(|(key, pre)| Delta::remove_announced(key, pre)))
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self, ctx, entries), fields(
@@ -498,53 +470,62 @@ impl MultiWriteTransaction {
 		self.remove_unobserved_any(ctx, key.clone().into())
 	}
 
-	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, pre), fields(
+	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, entries), fields(
 		txn_id = %self.id,
-		key = ?key,
-		value_len = pre.len()
+		keys = entries.len()
 	))]
-	fn remove_unobserved_with_pre_any(&mut self, key: TaggedKey, pre: EncodedBytes) -> Result<()> {
+	pub fn remove_unobserved_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		self.remove_deltas(entries.into_iter().map(|(key, pre)| Delta::remove_unobserved(key, pre)))
+	}
+
+	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self, keys), fields(
+		txn_id = %self.id,
+		keys = keys.len()
+	))]
+	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+		self.remove_deltas(keys.into_iter().map(Delta::remove_silent))
+	}
+
+	fn remove_deltas(&mut self, deltas: impl ExactSizeIterator<Item = Delta>) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		if deltas.len() == 0 {
+			return Ok(());
+		}
+		let version = self.base_version();
+		let pending: Vec<DeltaEntry> = deltas
+			.map(|delta| DeltaEntry {
+				delta,
+				version,
+			})
+			.collect();
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.key(key.kind()).removes += 1;
+			for entry in &pending {
+				self.op_counts.key(entry.key().kind()).removes += 1;
+			}
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_unobserved(key, pre),
-			version: self.base_version(),
-		})
-	}
-
-	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
-		&mut self,
-		key: &K,
-		pre: EncodedBytes,
-	) -> Result<()> {
-		self.remove_unobserved_with_pre_any(key.clone().into(), pre)
-	}
-
-	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key = ?key
-	))]
-	fn remove_silent_any(&mut self, key: TaggedKey) -> Result<()> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
+		reifydb_assertions! {
+			for entry in &pending {
+				assert!(
+					!matches!(entry.key(), TaggedKey::OperatorState(_)),
+					"operator state must reach the operator store through the committer split, never \
+					 the multi store: {}",
+					hex_display(entry.key().encode().as_ref())
+				);
+			}
 		}
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).removes += 1;
+		let size = pending
+			.iter()
+			.fold(ByteSize::ZERO, |total, entry| total + self.pending_writes.estimate_size(entry));
+		self.admit(pending.len() as u64, size)?;
+		self.conflicts.reserve_writes(pending.len());
+		self.delta_log.reserve(pending.len());
+		for entry in pending {
+			self.apply(entry);
 		}
-		self.modify(DeltaEntry {
-			delta: Delta::remove_silent(key),
-			version: self.base_version(),
-		})
-	}
-
-	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		self.remove_silent_any(key.clone().into())
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::multi::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
@@ -1867,7 +1848,8 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1883,7 +1865,7 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("v1"), "+d");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+d"))]).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();
 
@@ -1905,8 +1887,46 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
-		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), first.clone(), appending("+a"))]).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&first, "+b"), appending("+b"))]).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(appended(&appended(&test_bytes("v2"), "+a"), "+b")));
+	}
+
+	#[test]
+	fn every_key_of_one_rebased_batch_is_replayed() {
+		// A batch that kept only its first or last rebase would erase the unchecked commit on the other key.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("left", "l1"), ("right", "r1")]);
+
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
+		txn.set_rebased(vec![
+			(test_key("left").into(), appended(&test_bytes("l1"), "+a"), appending("+a")),
+			(test_key("right").into(), appended(&test_bytes("r1"), "+b"), appending("+b")),
+		])
+		.unwrap();
+		unchecked_with(&engine, &[("left", "l2"), ("right", "r2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "left"), Some(appended(&test_bytes("l2"), "+a")));
+		assert_eq!(stored(&engine, "right"), Some(appended(&test_bytes("r2"), "+b")));
+	}
+
+	#[test]
+	fn one_key_twice_in_a_rebased_batch_replays_both_in_order() {
+		// The second entry must chain onto the first exactly as two separate calls would, never replace it.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
+		let first = appended(&test_bytes("v1"), "+a");
+		txn.set_rebased(vec![
+			(test_key("meta").into(), first.clone(), appending("+a")),
+			(test_key("meta").into(), appended(&first, "+b"), appending("+b")),
+		])
+		.unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1920,7 +1940,8 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
@@ -1938,7 +1959,7 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+d");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+d"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1953,10 +1974,11 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+a"), appending("+a")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+a"), appending("+a"))])
+			.unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+b");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+b")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+b"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1972,13 +1994,13 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
-		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), first.clone(), appending("+a"))]).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("plain"), "+b"), appending("+b"))
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("plain"), "+b"), appending("+b"))])
 			.unwrap();
 		txn.set(vec![(test_key("meta").into(), first.clone())]).unwrap();
 		let written = appended(&first, "+c");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+c")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+c"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1994,9 +2016,9 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
-		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), first.clone(), appending("+a"))]).unwrap();
 		let savepoint = txn.savepoint();
-		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&first, "+b"), appending("+b"))]).unwrap();
 		txn.restore_savepoint(savepoint);
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
@@ -2011,7 +2033,7 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("fresh"), "+d");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+d"))]).unwrap();
 		txn.commit().unwrap();
 
 		assert_eq!(stored(&engine, "meta"), Some(written));
@@ -2025,7 +2047,8 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit_prepared(deltas, |_| {}).unwrap();
@@ -2040,7 +2063,8 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();
@@ -2070,7 +2094,8 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		let published = Arc::new(Mutex::new(Vec::new()));
 		engine.event_bus.register::<PostCommitEvent, _>(Published(published.clone()));
@@ -2095,7 +2120,8 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -2111,7 +2137,8 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.get(&system_ctx(), &[test_key("meta").into()]).unwrap().pop().flatten();
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d"))])
+			.unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
 		assert!(txn.commit().is_err(), "the checked write after the read must conflict");
@@ -2128,7 +2155,7 @@ mod tests {
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.get(&system_ctx(), &[test_key("meta").into()]).unwrap().pop().flatten();
 		let failing: Rebase = Arc::new(|_: &EncodedBytes| Err(TransactionError::RolledBack.into()));
-		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing)]).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
 		assert_eq!(txn.commit().unwrap_err().0.code, "TXN_001");
@@ -2142,7 +2169,7 @@ mod tests {
 
 		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("v1"), "+d");
-		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		txn.set_rebased(vec![(test_key("meta").into(), written.clone(), appending("+d"))]).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		let input = deltas.as_slice().as_ptr();
 		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();

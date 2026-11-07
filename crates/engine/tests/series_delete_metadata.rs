@@ -29,7 +29,7 @@ fn metadata(t: &TestEngine) -> SeriesPartitionMetadata {
 	let mut txn = Transaction::Query(&mut query_txn);
 	let namespace = catalog.find_namespace_by_name(&mut txn, "test").unwrap().unwrap();
 	let series = catalog.find_series_by_name(&mut txn, namespace.id(), "s").unwrap().unwrap();
-	catalog.find_series_metadata(&mut txn, series.id, Partition::default()).unwrap().unwrap()
+	catalog.find_series_metadata(&mut txn, series.id, &[Partition::default()]).unwrap().pop().flatten().unwrap()
 }
 
 fn open(t: &TestEngine, rql: &[&str]) -> CommandTransaction {
@@ -189,8 +189,9 @@ fn a_rebased_write_on_a_finished_transaction_is_refused() {
 	admin.commit().expect("the empty admin commits");
 
 	let refused = [
-		command.set_rebased(&key, bytes.clone(), rebase.clone()).expect_err("the command refuses"),
-		admin.set_rebased(&key, bytes, rebase).expect_err("the admin refuses"),
+		command.set_rebased(vec![(key.clone(), bytes.clone(), rebase.clone())])
+			.expect_err("the command refuses"),
+		admin.set_rebased(vec![(key, bytes, rebase)]).expect_err("the admin refuses"),
 	];
 
 	assert_eq!(refused.map(|error| error.0.code), ["TXN_008".to_string(), "TXN_008".to_string()]);

@@ -15,6 +15,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::{CommitVersion, SourceVersion},
+	delta::RemoveVisibility,
 	interface::{
 		catalog::{flow::OperatorId, id::ViewId},
 		change::Change,
@@ -152,13 +153,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 
 	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<TimedOutput>>;
 
-	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
-
-	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-		keys.iter().map(|key| self.storage_get(key)).collect()
-	}
-
-	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool>;
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>>;
 
 	fn storage_range(
 		&mut self,
@@ -193,20 +188,6 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		take(self.armed_mut())
 	}
 
-	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		let pending = match self.pending().write_at(key) {
-			Some(PendingWrite::Remove {
-				..
-			}) => Some(false),
-			Some(PendingWrite::Set(_)) => Some(true),
-			None => None,
-		};
-		if let Some(result) = pending {
-			return Ok(result);
-		}
-		self.storage_contains(key)
-	}
-
 	fn range(
 		&mut self,
 		range: TaggedKeyBoundRange,
@@ -222,23 +203,18 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
 	}
 
-	fn set_one(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert(vec![key.clone()], vec![value.into()]);
-		Ok(())
-	}
-
-	fn remove_one(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove(vec![key.clone()]);
-		Ok(())
-	}
-
-	fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove_unobserved(key.clone());
-		Ok(())
-	}
-
-	fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove_silent(key.clone());
+	fn remove_unobserved(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		self.pending_mut().put(keys
+			.into_iter()
+			.map(|key| {
+				(
+					key,
+					PendingWrite::Remove {
+						announce: RemoveVisibility::Unobserved,
+					},
+				)
+			})
+			.collect());
 		Ok(())
 	}
 

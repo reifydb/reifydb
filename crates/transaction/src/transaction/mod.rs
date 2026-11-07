@@ -601,13 +601,8 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set_rebased<K: Into<TaggedKey> + Clone>(
-		&mut self,
-		key: &K,
-		bytes: impl Into<EncodedBytes>,
-		rebase: Rebase,
-	) -> Result<()> {
-		Write::set_rebased(self.write_ops(), &key.clone().into(), bytes.into(), rebase)
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+		Write::set_rebased(self.write_ops(), entries)
 	}
 
 	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {

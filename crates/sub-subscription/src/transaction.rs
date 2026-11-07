@@ -149,27 +149,25 @@ fn ephemeral_storage_get(
 	ctx: &TransactionContext,
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
-	key: &EncodedKey,
-) -> Result<Option<EncodedBytes>> {
-	match read_from(key) {
-		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(ctx, &[decoded(key)])?.pop().flatten() {
-			Some(multi) => Ok(Some(multi.bytes().clone())),
-			None => Ok(None),
-		},
+	keys: &[EncodedKey],
+) -> Result<Vec<Option<EncodedBytes>>> {
+	let mut rows = vec![None; keys.len()];
+	let (mut query_slots, mut query_keys) = (Vec::new(), Vec::new());
+	for (slot, key) in keys.iter().enumerate() {
+		match read_from(key) {
+			ReadFrom::OperatorState | ReadFrom::StateQuery => rows[slot] = state.get(key).cloned(),
+			ReadFrom::Query | ReadFrom::OwnedRow => {
+				query_slots.push(slot);
+				query_keys.push(decoded(key));
+			}
+		}
 	}
-}
-
-fn ephemeral_storage_contains(
-	ctx: &TransactionContext,
-	state: &HashMap<EncodedKey, EncodedBytes>,
-	query: &MultiReadTransaction,
-	key: &EncodedKey,
-) -> Result<bool> {
-	match read_from(key) {
-		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(ctx, &[decoded(key)]).map(|found| found[0]),
+	if !query_keys.is_empty() {
+		for (slot, multi) in query_slots.into_iter().zip(query.get(ctx, &query_keys)?) {
+			rows[slot] = multi.map(|multi| multi.bytes().clone());
+		}
 	}
+	Ok(rows)
 }
 
 fn ephemeral_storage_range<'a>(
@@ -340,12 +338,8 @@ impl FlowTransaction for EphemeralTransaction {
 		}))
 	}
 
-	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		ephemeral_storage_get(&self.ctx, &self.state, &self.query, key)
-	}
-
-	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		ephemeral_storage_contains(&self.ctx, &self.state, &self.query, key)
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		ephemeral_storage_get(&self.ctx, &self.state, &self.query, keys)
 	}
 
 	fn storage_range(

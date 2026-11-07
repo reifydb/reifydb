@@ -314,9 +314,6 @@ impl<'a> PrimaryKeyIndex<'a> {
 	}
 
 	pub fn write_silent(self, txn: &mut CommandTransaction) -> Result<()> {
-		for (key, _) in &self.removes {
-			txn.remove_silent(key)?;
-		}
-		Ok(())
+		txn.remove_silent(self.removes.into_iter().map(|(key, _)| key).collect())
 	}
 }

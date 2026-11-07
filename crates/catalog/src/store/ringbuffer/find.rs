@@ -62,13 +62,19 @@ impl CatalogStore {
 	pub(crate) fn find_partition_metadata(
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
-	) -> Result<Option<RingBufferMetadata>> {
-		let key = RingBufferMetadataKey::of(ringbuffer.id, partition);
-		let Some(multi) = rx.get(&[key.into()])?.pop().flatten() else {
-			return Ok(None);
-		};
-		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
+		partitions: &[Option<Partition>],
+	) -> Result<Vec<Option<RingBufferMetadata>>> {
+		let keys: Vec<TaggedKey> = partitions
+			.iter()
+			.map(|&partition| RingBufferMetadataKey::of(ringbuffer.id, partition).into())
+			.collect();
+		rx.get(&keys)?
+			.into_iter()
+			.map(|multi| {
+				multi.map(|multi| decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes)))
+					.transpose()
+			})
+			.collect()
 	}
 
 	pub(crate) fn list_ringbuffer_partitions(

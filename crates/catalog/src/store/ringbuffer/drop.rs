@@ -30,13 +30,12 @@ impl CatalogStore {
 				&mut Transaction::Admin(&mut *txn),
 				ringbuffer_def.id.into(),
 			)?;
-			for partition in partitions {
-				Self::remove_partition_metadata(
-					&mut Transaction::Admin(&mut *txn),
-					&ringbuffer_def,
-					partition.partition,
-				)?;
-			}
+			let partitions: Vec<_> = partitions.into_iter().map(|partition| partition.partition).collect();
+			Self::remove_partition_metadata(
+				&mut Transaction::Admin(&mut *txn),
+				&ringbuffer_def,
+				&partitions,
+			)?;
 
 			Self::drop_ring_index(txn, ringbuffer_def.id.into())?;
 
@@ -197,8 +196,7 @@ pub mod tests {
 			CatalogStore::save_partition_metadata(
 				&mut Transaction::Admin(&mut txn),
 				&rb,
-				Some(partition),
-				&metadata,
+				&[(Some(partition), metadata)],
 			)
 			.unwrap();
 		}

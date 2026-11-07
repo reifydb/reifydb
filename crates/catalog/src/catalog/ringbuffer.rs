@@ -314,9 +314,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
-	) -> Result<Option<RingBufferMetadata>> {
-		CatalogStore::find_partition_metadata(txn, ringbuffer, partition)
+		partitions: &[Option<Partition>],
+	) -> Result<Vec<Option<RingBufferMetadata>>> {
+		CatalogStore::find_partition_metadata(txn, ringbuffer, partitions)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::save_partition_metadata", level = "debug", skip(self, txn))]
@@ -324,10 +324,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
-		metadata: &RingBufferMetadata,
+		entries: &[(Option<Partition>, RingBufferMetadata)],
 	) -> Result<()> {
-		CatalogStore::save_partition_metadata(txn, ringbuffer, partition, metadata)
+		CatalogStore::save_partition_metadata(txn, ringbuffer, entries)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::remove_partition_metadata", level = "debug", skip(self, txn))]
@@ -335,9 +334,9 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
+		partitions: &[Option<Partition>],
 	) -> Result<()> {
-		CatalogStore::remove_partition_metadata(txn, ringbuffer, partition)
+		CatalogStore::remove_partition_metadata(txn, ringbuffer, partitions)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]

@@ -14,20 +14,35 @@ impl CatalogStore {
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
-		metadata: &RingBufferMetadata,
+		entries: &[(Option<Partition>, RingBufferMetadata)],
 	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(vec![(RingBufferMetadataKey::of(ringbuffer.id, partition).into(), row.into_bytes())])?;
+		if entries.is_empty() {
+			return Ok(());
+		}
+		txn.set(entries
+			.iter()
+			.map(|(partition, metadata)| {
+				(
+					RingBufferMetadataKey::of(ringbuffer.id, *partition).into(),
+					encode_ringbuffer_metadata(metadata).into_bytes(),
+				)
+			})
+			.collect())?;
 		Ok(())
 	}
 
 	pub(crate) fn remove_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-		partition: Option<Partition>,
+		partitions: &[Option<Partition>],
 	) -> Result<()> {
-		txn.remove(vec![(RingBufferMetadataKey::of(ringbuffer.id, partition).into(), None)])
+		if partitions.is_empty() {
+			return Ok(());
+		}
+		txn.remove(partitions
+			.iter()
+			.map(|partition| (RingBufferMetadataKey::of(ringbuffer.id, *partition).into(), None))
+			.collect())
 	}
 }
 
@@ -52,14 +67,14 @@ pub mod tests {
 			head: 2,
 		};
 		let mut tx = Transaction::Admin(&mut txn);
-		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, Some(Partition(9)), &metadata).unwrap();
+		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, &[(Some(Partition(9)), metadata)]).unwrap();
 
 		assert_eq!(
-			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, Some(Partition(9))).unwrap(),
+			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, &[Some(Partition(9))]).unwrap()[0],
 			Some(metadata)
 		);
 		assert_eq!(
-			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, Some(Partition(8))).unwrap(),
+			CatalogStore::find_partition_metadata(&mut tx, &ringbuffer, &[Some(Partition(8))]).unwrap()[0],
 			None
 		);
 	}
@@ -71,8 +86,8 @@ pub mod tests {
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 		let mut tx = Transaction::Admin(&mut txn);
 		let metadata = RingBufferMetadata::reserved(10);
-		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, Some(Partition(1)), &metadata).unwrap();
-		CatalogStore::remove_partition_metadata(&mut tx, &ringbuffer, Some(Partition(1))).unwrap();
+		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, &[(Some(Partition(1)), metadata)]).unwrap();
+		CatalogStore::remove_partition_metadata(&mut tx, &ringbuffer, &[Some(Partition(1))]).unwrap();
 
 		let listed = CatalogStore::list_ringbuffer_partitions(&mut tx, ringbuffer.id.into()).unwrap();
 		assert!(listed.iter().all(|entry| entry.partition != Some(Partition(1))));

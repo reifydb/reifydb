@@ -99,15 +99,8 @@ impl ColumnSeriesScanNode {
 			None if def.partition_by.is_empty() => vec![Partition::default()],
 			None => self.registered_partitions(rx, def)?,
 		};
-		for partition in partitions {
-			let Some(metadata) = catalog.find_series_metadata(rx, def.id, partition)? else {
-				continue;
-			};
-			if metadata.row_count > 0 {
-				return Ok(false);
-			}
-		}
-		Ok(true)
+		let found = catalog.find_series_metadata(rx, def.id, &partitions)?;
+		Ok(!found.iter().flatten().any(|metadata| metadata.row_count > 0))
 	}
 
 	fn registered_partitions(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<Vec<Partition>> {

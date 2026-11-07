@@ -184,13 +184,10 @@ impl SeriesMaterializationActor {
 		now_wall: DateTime,
 	) -> Result<()> {
 		let partitions = self.partitions_of(state, query_txn, series)?;
-		for (partition, partition_values) in partitions {
-			let Some(metadata) = catalog.find_series_metadata(
-				&mut Transaction::Query(&mut *query_txn),
-				series.id,
-				partition,
-			)?
-			else {
+		let ids: Vec<Partition> = partitions.iter().map(|(partition, _)| *partition).collect();
+		let found = catalog.find_series_metadata(&mut Transaction::Query(&mut *query_txn), series.id, &ids)?;
+		for ((partition, partition_values), metadata) in partitions.into_iter().zip(found) {
+			let Some(metadata) = metadata else {
 				continue;
 			};
 			if metadata.row_count == 0 {
@@ -279,7 +276,9 @@ impl SeriesMaterializationActor {
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let mut tx = Transaction::Admin(&mut admin);
-		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
+		let Some(mut metadata) =
+			catalog.find_series_metadata(&mut tx, series.id, &[partition])?.pop().flatten()
+		else {
 			return Ok(());
 		};
 		if metadata.dirty_from_key == u64::MAX && metadata.dirty_to_key == 0 {
@@ -287,11 +286,12 @@ impl SeriesMaterializationActor {
 		}
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
-		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, partition, metadata, |latest| {
+		let change = |latest: &mut SeriesPartitionMetadata| -> Result<()> {
 			latest.dirty_from_key = u64::MAX;
 			latest.dirty_to_key = 0;
 			Ok(())
-		})?;
+		};
+		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, vec![(partition, metadata, change)])?;
 		commit_admin(admin)
 	}
 
@@ -307,7 +307,9 @@ impl SeriesMaterializationActor {
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let mut tx = Transaction::Admin(&mut admin);
-		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
+		let Some(mut metadata) =
+			catalog.find_series_metadata(&mut tx, series.id, &[partition])?.pop().flatten()
+		else {
 			return Ok(());
 		};
 		if !unchanged_since_scan(&metadata, observed) {
@@ -316,13 +318,14 @@ impl SeriesMaterializationActor {
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
 		let observed = observed.clone();
-		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, partition, metadata, move |latest| {
+		let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
 			if unchanged_since_scan(latest, &observed) {
 				latest.dirty_from_key = u64::MAX;
 				latest.dirty_to_key = 0;
 			}
 			Ok(())
-		})?;
+		};
+		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, vec![(partition, metadata, change)])?;
 		commit_admin(admin)
 	}
 
@@ -714,9 +717,7 @@ impl SeriesMaterializationActor {
 				stats: stats.to_vec(),
 			},
 		)?;
-		for key in keys {
-			admin.remove_silent(key)?;
-		}
+		admin.remove_silent(keys.to_vec())?;
 		self.block_store.write(&BlockFileKey::of(&block), data.as_ref())
 	}
 }
@@ -852,7 +853,12 @@ mod tests {
 		let mut tx = Transaction::Command(&mut txn);
 		let namespace = catalog.find_namespace_by_name(&mut tx, "test").unwrap().unwrap();
 		let series = catalog.find_series_by_name(&mut tx, namespace.id(), "s").unwrap().unwrap();
-		let metadata = catalog.find_series_metadata(&mut tx, series.id, Partition::default()).unwrap().unwrap();
+		let metadata = catalog
+			.find_series_metadata(&mut tx, series.id, &[Partition::default()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.unwrap();
 		txn.rollback().unwrap();
 		metadata
 	}

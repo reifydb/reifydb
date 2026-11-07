@@ -58,9 +58,9 @@ impl RingCounters<DmlTransaction<'_>> for CatalogRing<'_> {
 	fn metadata(
 		&self,
 		txn: &mut DmlTransaction<'_>,
-		partition: Option<Partition>,
-	) -> Result<Option<RingBufferMetadata>> {
-		self.catalog.find_partition_metadata(&mut txn.tx, self.ringbuffer, partition)
+		partitions: &[Option<Partition>],
+	) -> Result<Vec<Option<RingBufferMetadata>>> {
+		self.catalog.find_partition_metadata(&mut txn.tx, self.ringbuffer, partitions)
 	}
 
 	fn reserve(&self, txn: &mut DmlTransaction<'_>, capacity: u64) -> Result<u64> {
@@ -70,14 +70,13 @@ impl RingCounters<DmlTransaction<'_>> for CatalogRing<'_> {
 	fn save_metadata(
 		&self,
 		txn: &mut DmlTransaction<'_>,
-		partition: Option<Partition>,
-		metadata: &RingBufferMetadata,
+		entries: &[(Option<Partition>, RingBufferMetadata)],
 	) -> Result<()> {
-		self.catalog.save_partition_metadata(&mut txn.tx, self.ringbuffer, partition, metadata)
+		self.catalog.save_partition_metadata(&mut txn.tx, self.ringbuffer, entries)
 	}
 
-	fn remove_metadata(&self, txn: &mut DmlTransaction<'_>, partition: Option<Partition>) -> Result<()> {
-		self.catalog.remove_partition_metadata(&mut txn.tx, self.ringbuffer, partition)
+	fn remove_metadata(&self, txn: &mut DmlTransaction<'_>, partitions: &[Option<Partition>]) -> Result<()> {
+		self.catalog.remove_partition_metadata(&mut txn.tx, self.ringbuffer, partitions)
 	}
 }
 
@@ -86,15 +85,14 @@ pub fn place_ring_rows(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	ring: &mut Ring,
-	partition: Option<Partition>,
-	count: usize,
-) -> Result<Vec<Placement>> {
+	requests: &[(Option<Partition>, usize)],
+) -> Result<Vec<Vec<Placement>>> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
 	};
 	RingMetadata::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
-		.place(&counters, ring, partition, count)
+		.place(&counters, ring, requests)
 }
 
 pub fn release_ring_rows(
@@ -102,15 +100,14 @@ pub fn release_ring_rows(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	ring: &mut Ring,
-	partition: Option<Partition>,
-	rows: &[RowNumber],
-) -> Result<Vec<Option<EncodedBytes>>> {
+	requests: &[(Option<Partition>, Vec<RowNumber>)],
+) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
 	};
 	RingMetadata::new(&mut DmlTransaction::over(txn.reborrow()), ringbuffer.id.into())
-		.release(&counters, ring, partition, rows)
+		.release(&counters, ring, requests)
 }
 
 pub fn ring_rows_oldest_first(
@@ -734,14 +731,16 @@ mod free_stack_tests {
 			.save_partition_metadata(
 				&mut txn,
 				&ringbuffer,
-				partition,
-				&RingBufferMetadata {
-					base_rn: BASE,
-					next_sequence: CAPACITY,
-					count: 1,
-					filled: CAPACITY,
-					head: sequence,
-				},
+				&[(
+					partition,
+					RingBufferMetadata {
+						base_rn: BASE,
+						next_sequence: CAPACITY,
+						count: 1,
+						filled: CAPACITY,
+						head: sequence,
+					},
+				)],
 			)
 			.unwrap();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
@@ -765,9 +764,15 @@ mod free_stack_tests {
 		}
 
 		let mut ring = Ring::new(CAPACITY);
-		let removed =
-			release_ring_rows(&executor.catalog, &mut txn, &ringbuffer, &mut ring, partition, &[last_row])
-				.unwrap();
+		let removed = release_ring_rows(
+			&executor.catalog,
+			&mut txn,
+			&ringbuffer,
+			&mut ring,
+			&[(partition, vec![last_row])],
+		)
+		.unwrap()
+		.remove(0);
 		assert!(removed[0].is_some());
 		save_ring(&executor.catalog, &mut txn, &ringbuffer, &ring).unwrap();
 
@@ -776,7 +781,10 @@ mod free_stack_tests {
 			.unwrap()
 			.count();
 		assert_eq!(left, 0, "every free page of the emptied partition must go");
-		assert_eq!(executor.catalog.find_partition_metadata(&mut txn, &ringbuffer, partition).unwrap(), None);
+		assert_eq!(
+			executor.catalog.find_partition_metadata(&mut txn, &ringbuffer, &[partition]).unwrap()[0],
+			None
+		);
 		assert_eq!(pages, 1954);
 		assert!(
 			admin.cmd.as_ref().unwrap().pending_writes().len() < 2_000,
@@ -805,8 +813,9 @@ mod free_stack_tests {
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 
 		let mut ring = Ring::new(capacity);
-		let placed =
-			place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, None, capacity as usize).unwrap();
+		let placed = place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, &[(None, capacity as usize)])
+			.unwrap()
+			.remove(0);
 		for placement in &placed {
 			let mut row = shape.allocate_ringbuffer();
 			row.set_sequence(placement.sequence);
@@ -821,8 +830,7 @@ mod free_stack_tests {
 			&mut txn,
 			&ringbuffer,
 			&mut ring,
-			None,
-			&rows[..FREE_PAGE_SLOTS as usize + 2],
+			&[(None, rows[..FREE_PAGE_SLOTS as usize + 2].to_vec())],
 		)
 		.unwrap();
 		save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();
@@ -833,7 +841,9 @@ mod free_stack_tests {
 			rows[FREE_PAGE_SLOTS as usize - 1],
 		] {
 			let mut ring = Ring::new(capacity);
-			let reused = place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, None, 1).unwrap();
+			let reused = place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, &[(None, 1)])
+				.unwrap()
+				.remove(0);
 			assert_eq!(reused[0].row, expected);
 			assert_eq!(reused[0].evicted, None);
 			save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();

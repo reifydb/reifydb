@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, slice, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
@@ -93,14 +93,21 @@ fn hydrate_queue(
 			let shape = load_shape(catalog, txn, queue, &batch[0].1)?;
 			let store = single.read_store();
 
-			for (row_number, encoded) in &batch {
-				let placement = placement_of(&shape, encoded, &partition_by, ordered_by);
-				let state_key = QueueItemStateKey::encoded(queue.id, placement.partition, *row_number);
-				if SingleVersionGet::get(&store, ctx, slice::from_ref(&state_key))?
-					.pop()
-					.flatten()
-					.is_some()
-				{
+			let placements: Vec<_> = batch
+				.iter()
+				.map(|(_, encoded)| placement_of(&shape, encoded, &partition_by, ordered_by))
+				.collect();
+			let state_keys: Vec<_> = batch
+				.iter()
+				.zip(&placements)
+				.map(|((row_number, _), placement)| {
+					QueueItemStateKey::encoded(queue.id, placement.partition, *row_number)
+				})
+				.collect();
+			let states = SingleVersionGet::get(&store, ctx, &state_keys)?;
+
+			for (((row_number, encoded), placement), state) in batch.iter().zip(placements).zip(states) {
+				if state.is_some() {
 					continue;
 				}
 

@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	value::index::encoded::EncodedIndexKey,
 };
-use reifydb_flow::txn::FlowGet;
+use reifydb_flow::txn::{FlowBatch, FlowGet};
 use reifydb_flow_async::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -89,7 +89,7 @@ fn test_get_from_pending() {
 	let key = make_key("key1");
 	let value = make_value("value1");
 
-	txn.set_one(&key, value.clone()).unwrap();
+	txn.set(vec![key.clone()], vec![value.clone()]).unwrap();
 
 	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(value));
@@ -142,7 +142,7 @@ fn test_get_pending_shadows_committed() {
 	));
 
 	let new_value = make_value("new");
-	txn.set_one(&key, new_value.clone()).unwrap();
+	txn.set(vec![key.clone()], vec![new_value.clone()]).unwrap();
 
 	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(new_value));
@@ -165,7 +165,7 @@ fn test_get_removed_returns_none() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.remove_one(&key).unwrap();
+	txn.remove(vec![key.clone()]).unwrap();
 
 	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, None);
@@ -200,9 +200,9 @@ fn test_contains_key_pending() {
 	));
 
 	let key = make_key("key1");
-	txn.set_one(&key, make_value("value1")).unwrap();
+	txn.set(vec![key.clone()], vec![make_value("value1")]).unwrap();
 
-	assert!(txn.contains_key(&key).unwrap());
+	assert!(txn.get(slice::from_ref(&key)).unwrap()[0].is_some());
 }
 
 #[test]
@@ -228,7 +228,7 @@ fn test_contains_key_committed() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	assert!(txn.contains_key(&key).unwrap());
+	assert!(txn.get(slice::from_ref(&key)).unwrap()[0].is_some());
 }
 
 #[test]
@@ -247,9 +247,9 @@ fn test_contains_key_removed_returns_false() {
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
-	txn.remove_one(&key).unwrap();
+	txn.remove(vec![key.clone()]).unwrap();
 
-	assert!(!txn.contains_key(&key).unwrap());
+	assert!(!txn.get(slice::from_ref(&key)).unwrap()[0].is_some());
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn test_contains_key_nonexistent() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	assert!(!txn.contains_key(&make_key("missing")).unwrap());
+	assert!(!txn.get(&[make_key("missing")]).unwrap()[0].is_some());
 }
 
 #[test]
@@ -295,9 +295,9 @@ fn test_scan_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set_one(&make_key("b"), make_value("2")).unwrap();
-	txn.set_one(&make_key("a"), make_value("1")).unwrap();
-	txn.set_one(&make_key("c"), make_value("3")).unwrap();
+	txn.set(vec![make_key("b")], vec![make_value("2")]).unwrap();
+	txn.set(vec![make_key("a")], vec![make_value("1")]).unwrap();
+	txn.set(vec![make_key("c")], vec![make_value("3")]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -320,9 +320,9 @@ fn test_scan_filters_removes() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set_one(&make_key("a"), make_value("1")).unwrap();
-	txn.remove_one(&make_key("b")).unwrap();
-	txn.set_one(&make_key("c"), make_value("3")).unwrap();
+	txn.set(vec![make_key("a")], vec![make_value("1")]).unwrap();
+	txn.remove(vec![make_key("b")]).unwrap();
+	txn.set(vec![make_key("c")], vec![make_value("3")]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -364,10 +364,10 @@ fn test_range_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set_one(&make_key("a"), make_value("1")).unwrap();
-	txn.set_one(&make_key("b"), make_value("2")).unwrap();
-	txn.set_one(&make_key("c"), make_value("3")).unwrap();
-	txn.set_one(&make_key("d"), make_value("4")).unwrap();
+	txn.set(vec![make_key("a")], vec![make_value("1")]).unwrap();
+	txn.set(vec![make_key("b")], vec![make_value("2")]).unwrap();
+	txn.set(vec![make_key("c")], vec![make_value("3")]).unwrap();
+	txn.set(vec![make_key("d")], vec![make_value("4")]).unwrap();
 
 	let range = TaggedKeyBoundRange {
 		start: Included(key_bound("b")),
@@ -408,9 +408,9 @@ fn test_prefix_only_pending() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	txn.set_one(&make_key("test_a"), make_value("1")).unwrap();
-	txn.set_one(&make_key("test_b"), make_value("2")).unwrap();
-	txn.set_one(&make_key("other_c"), make_value("3")).unwrap();
+	txn.set(vec![make_key("test_a")], vec![make_value("1")]).unwrap();
+	txn.set(vec![make_key("test_b")], vec![make_value("2")]).unwrap();
+	txn.set(vec![make_key("other_c")], vec![make_value("3")]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(prefix_range("test_"), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
@@ -435,7 +435,7 @@ fn test_writes_not_visible_to_parent() {
 	let key = make_key("key1");
 	let value = make_value("value1");
 
-	txn.set_one(&key, value.clone()).unwrap();
+	txn.set(vec![key.clone()], vec![value.clone()]).unwrap();
 
 	assert_eq!(get_row(&mut parent, &key), None);
 }
@@ -458,7 +458,7 @@ fn test_removes_not_visible_to_parent() {
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
-	txn.remove_one(&key).unwrap();
+	txn.remove(vec![key.clone()]).unwrap();
 
 	assert_eq!(get_row(&mut parent, &key), Some(value));
 }

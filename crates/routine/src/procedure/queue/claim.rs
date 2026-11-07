@@ -22,9 +22,10 @@ use reifydb_core::{
 				encode_queue_item_state, encode_queue_partition_counters,
 			},
 		},
-		store::SingleVersionRangeRev,
+		store::{MultiVersionRow, SingleVersionRangeRev},
 	},
 	key::{
+		any::TaggedKey,
 		queue::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 		row::RowKey,
 	},
@@ -266,9 +267,11 @@ fn readable_candidates(
 	queue: &Queue,
 	candidates: &[RowNumber],
 ) -> Result<Vec<RowNumber>, RoutineError> {
+	let keys: Vec<TaggedKey> = candidates.iter().map(|row| RowKey::new(queue.id, *row).into()).collect();
+	let stored = ctx.tx.get(&keys)?;
 	let mut readable = Vec::with_capacity(candidates.len());
-	for row in candidates {
-		if ctx.tx.get(&[RowKey::new(queue.id, *row).into()])?.pop().flatten().is_some() {
+	for (row, stored) in candidates.iter().zip(stored) {
+		if stored.is_some() {
 			readable.push(*row);
 		} else {
 			debug!(
@@ -325,6 +328,11 @@ fn lease_candidates(
 			QueueDueKey::partition_scan(queue.id, partition).encode(),
 		],
 	)?;
+
+	let mut keys: Vec<TaggedKey> =
+		candidates.iter().map(|row| QueueItemStateKey::new(queue.id, partition, *row).into()).collect();
+	keys.push(lock_key.clone().into());
+	tx.get(&keys)?;
 
 	let mut leases = Vec::new();
 	for row in candidates {
@@ -403,7 +411,10 @@ fn claimed_columns(
 		})
 		.collect();
 
-	for lease in leases {
+	let keys: Vec<TaggedKey> = leases.iter().map(|lease| RowKey::new(queue.id, lease.row).into()).collect();
+	let rows = ctx.tx.get(&keys)?;
+
+	for (lease, stored) in leases.iter().zip(rows) {
 		tokens.push(ClaimToken {
 			queue: queue.id,
 			partition: lease.partition,
@@ -416,7 +427,7 @@ fn claimed_columns(
 		attempts.push(lease.attempt);
 		deadlines.push(lease.deadline);
 
-		push_payload(ctx, queue, lease.row, &mut payloads)?;
+		push_payload(ctx, queue, stored, &mut payloads)?;
 	}
 
 	let mut columns = vec![
@@ -446,11 +457,9 @@ fn claimed_columns(
 fn push_payload(
 	ctx: &mut ProcedureContext<'_, '_>,
 	queue: &Queue,
-	row: RowNumber,
+	stored: Option<MultiVersionRow<TaggedKey>>,
 	payloads: &mut [ColumnBuilder],
 ) -> Result<(), RoutineError> {
-	let stored = ctx.tx.get(&[RowKey::new(queue.id, row).into()])?.pop().flatten();
-
 	let Some(stored) = stored else {
 		for buffer in payloads.iter_mut() {
 			buffer.push_value(Value::None {

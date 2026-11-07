@@ -247,8 +247,8 @@ fn delete_ringbuffer_rows(
 
 	let mut deleted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
-	for (partition, rows) in grouped {
-		let removed = release_ring_rows(catalog, txn, ringbuffer, &mut ring, partition, &rows)?;
+	let released = release_ring_rows(catalog, txn, ringbuffer, &mut ring, &grouped)?;
+	for ((partition, rows), removed) in grouped.into_iter().zip(released) {
 		let (doomed, doomed_rows): (Vec<RowNumber>, Vec<EncodedBytes>) = rows
 			.into_iter()
 			.zip(removed)

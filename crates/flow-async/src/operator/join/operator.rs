@@ -1648,12 +1648,8 @@ mod seal_tests {
 			self.inner.run_durable_sink_timer(sink, timer)
 		}
 
-		fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-			self.inner.storage_get(key)
-		}
-
-		fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-			self.inner.storage_contains(key)
+		fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.inner.storage_get_many(keys)
 		}
 
 		fn storage_range(

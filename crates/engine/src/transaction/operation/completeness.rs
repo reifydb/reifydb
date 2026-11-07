@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice::from_ref;
-
 use reifydb_catalog::{
 	catalog::Catalog,
 	completeness::{Advanced, CompletenessWriter},
@@ -43,7 +41,7 @@ impl CompletenessWriterImpl {
 }
 
 impl CompletenessWriter for CompletenessWriterImpl {
-	fn advance(&self, tx: &mut Transaction<'_>, object: ObjectId, at: DateTime) -> Result<Advanced> {
+	fn advance(&self, tx: &mut Transaction<'_>, advances: &[(ObjectId, DateTime)]) -> Result<Vec<Advanced>> {
 		let table = self.catalog.get_table(tx, TableId::SOURCE_COMPLETENESS)?;
 		let Some(pk) = get_primary_key(&self.catalog, tx, &table)? else {
 			return Err(internal_error!("{} has no primary key", table.name));
@@ -52,63 +50,121 @@ impl CompletenessWriter for CompletenessWriterImpl {
 		let encoder = PrimaryKeyEncoder::new(&pk, &table)?;
 		let key_columns = encoder.key_columns();
 		let through = column_index(&table, ColumnId::SOURCE_COMPLETENESS_COMPLETE_THROUGH)?;
+		let object_column = column_index(&table, ColumnId::SOURCE_COMPLETENESS_OBJECT_ID)?;
 
-		let mut row = shape.allocate_table();
-		shape.set_value(
-			&mut row,
-			column_index(&table, ColumnId::SOURCE_COMPLETENESS_OBJECT_ID)?,
-			&Value::Uint8(object.to_u64()),
-		);
-		shape.set_value(&mut row, through, &Value::DateTime(at));
-
-		let index_key = encoder.encode(&shape, &row);
-		let entry: TaggedKey = IndexEntryKey::new(table.id, IndexId::primary(pk.id), index_key.clone()).into();
+		let mut rows = Vec::with_capacity(advances.len());
+		let mut index_keys = Vec::with_capacity(advances.len());
+		let mut entries: Vec<TaggedKey> = Vec::with_capacity(advances.len());
+		for (position, &(object, at)) in advances.iter().enumerate() {
+			if advances[..position].iter().any(|&(seen, _)| seen == object) {
+				return Err(internal_error!("{} advances {:?} twice in one batch", table.name, object));
+			}
+			let mut row = shape.allocate_table();
+			shape.set_value(&mut row, object_column, &Value::Uint8(object.to_u64()));
+			shape.set_value(&mut row, through, &Value::DateTime(at));
+			let index_key = encoder.encode(&shape, &row);
+			entries.push(IndexEntryKey::new(table.id, IndexId::primary(pk.id), index_key.clone()).into());
+			index_keys.push(index_key);
+			rows.push(row);
+		}
 		let now = self.clock.now();
 
-		let Some(indexed) = tx.get(from_ref(&entry))?.pop().flatten() else {
-			let ids = self.catalog.next_row_number_batch(tx, table.id, 1)?;
-			row.set_timestamps(now, now);
+		let mut existing = Vec::new();
+		for (position, indexed) in tx.get(&entries)?.into_iter().enumerate() {
+			if let Some(indexed) = indexed {
+				let row_number =
+					indexed_row_number(&table, EncodedPodRow::view(&indexed.bytes).body())?;
+				existing.push((position, row_number));
+			}
+		}
+
+		let mut outcomes = vec![Advanced::Inserted; advances.len()];
+		let mut update_ids = Vec::with_capacity(existing.len());
+		let mut update_pres = Vec::with_capacity(existing.len());
+		if !existing.is_empty() {
+			let row_keys: Vec<TaggedKey> = existing
+				.iter()
+				.map(|&(_, row_number)| row_key_from_partition(table.id, None, row_number))
+				.collect();
+			for (&(position, row_number), pre) in existing.iter().zip(tx.get(&row_keys)?) {
+				let Some(pre) = pre else {
+					return Err(internal_error!(
+						"{} indexes row {:?} that does not exist",
+						table.name,
+						row_number
+					));
+				};
+				let pre = pre.bytes;
+				let pre_view = EncodedTableRow::view(&pre);
+				let loaded: RowShape;
+				let pre_shape = if pre_view.fingerprint() == shape.fingerprint() {
+					&shape
+				} else {
+					loaded = load_stored_shape(&self.catalog, tx, &table, pre_view.fingerprint())?;
+					&loaded
+				};
+				let previous = match pre_shape.get_value(&pre, through) {
+					Value::DateTime(previous) => previous,
+					other => {
+						return Err(internal_error!(
+							"{} holds {:?} as complete_through",
+							table.name,
+							other
+						));
+					}
+				};
+				if advances[position].1 < previous {
+					outcomes[position] = Advanced::Backwards(previous);
+					continue;
+				}
+				outcomes[position] = Advanced::Forward;
+				rows[position].set_timestamps(pre_view.created_at(), now);
+				update_ids.push(row_number);
+				update_pres.push(pre);
+			}
+		}
+
+		let mut insert_rows = Vec::new();
+		let mut insert_keys = Vec::new();
+		let mut update_rows = Vec::with_capacity(update_ids.len());
+		for ((mut row, index_key), outcome) in rows.into_iter().zip(index_keys).zip(&outcomes) {
+			match outcome {
+				Advanced::Inserted => {
+					row.set_timestamps(now, now);
+					insert_rows.push(row);
+					insert_keys.push(index_key);
+				}
+				Advanced::Forward => update_rows.push(row),
+				Advanced::Backwards(_) => {}
+			}
+		}
+
+		if !insert_rows.is_empty() {
+			let ids = self.catalog.next_row_number_batch(tx, table.id, insert_rows.len() as u64)?;
 			tx.insert_table(
 				&table,
 				&shape,
 				TableInsert {
 					ids: &ids,
 					partitions: &[],
-					rows: &mut [row],
-					index: primary_key_index(&table, &pk, vec![index_key], &ids),
+					rows: &mut insert_rows,
+					index: primary_key_index(&table, &pk, insert_keys, &ids),
 					key_columns: &key_columns,
 				},
 			)?;
-			return Ok(Advanced::Inserted);
-		};
-
-		let row_number = indexed_row_number(&table, EncodedPodRow::view(&indexed.bytes).body())?;
-		let row_key = row_key_from_partition(table.id, None, row_number);
-		let Some(pre) = tx.get(from_ref(&row_key))?.pop().flatten() else {
-			return Err(internal_error!("{} indexes row {:?} that does not exist", table.name, row_number));
-		};
-		let pre = pre.bytes;
-		let pre_view = EncodedTableRow::view(&pre);
-		let loaded: RowShape;
-		let pre_shape = if pre_view.fingerprint() == shape.fingerprint() {
-			&shape
-		} else {
-			loaded = load_stored_shape(&self.catalog, tx, &table, pre_view.fingerprint())?;
-			&loaded
-		};
-		let previous = match pre_shape.get_value(&pre, through) {
-			Value::DateTime(previous) => previous,
-			other => {
-				return Err(internal_error!("{} holds {:?} as complete_through", table.name, other));
-			}
-		};
-		if at < previous {
-			return Ok(Advanced::Backwards(previous));
 		}
-
-		row.set_timestamps(pre_view.created_at(), now);
-		tx.update_table(&table, &[row_number], &[], &mut [row], &key_columns, from_ref(&pre), &self.catalog)?;
-		Ok(Advanced::Forward)
+		if !update_ids.is_empty() {
+			tx.update_table(
+				&table,
+				&update_ids,
+				&[],
+				&mut update_rows,
+				&key_columns,
+				&update_pres,
+				&self.catalog,
+			)?;
+		}
+		Ok(outcomes)
 	}
 }
 

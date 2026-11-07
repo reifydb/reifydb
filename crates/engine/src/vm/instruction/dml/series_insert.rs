@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, hash_map::Entry},
-	sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -359,20 +356,15 @@ fn finalize_series_insert(
 	caller: IdentityId,
 ) -> Result<RecordBatch> {
 	let now = services.runtime_context.clock.now();
-	for (partition, metadata) in metadata_by_partition {
-		let keys = inserted_keys.remove(&partition).unwrap_or_default();
-		let numbered_by_partition = series.partition_by.is_empty();
-		write_inserted_series_metadata(
-			&services.catalog,
-			txn,
-			series,
-			partition,
-			metadata,
-			keys,
-			now,
-			numbered_by_partition,
-		)?;
-	}
+	let updates: Vec<(Partition, SeriesPartitionMetadata, Vec<u64>)> = metadata_by_partition
+		.into_iter()
+		.map(|(partition, metadata)| {
+			let keys = inserted_keys.remove(&partition).unwrap_or_default();
+			(partition, metadata, keys)
+		})
+		.collect();
+	let numbered_by_partition = series.partition_by.is_empty();
+	write_inserted_series_metadata(&services.catalog, txn, series, updates, now, numbered_by_partition)?;
 
 	if let Some(returning_exprs) = returning {
 		let columns = decode_rows_to_columns(shape, returned_rows)?;
@@ -501,16 +493,21 @@ pub(crate) fn assign_series_keys(
 		storage: Vec::with_capacity(keys.len()),
 		row_numbers: Vec::with_capacity(keys.len()),
 	};
+	let mut missing: Vec<Partition> = (0..keys.len())
+		.map(|row| partitions.get(row).copied().unwrap_or_default())
+		.filter(|partition| !metadata.contains_key(partition))
+		.collect();
+	missing.sort_unstable();
+	missing.dedup();
+	if !missing.is_empty() {
+		let loaded = catalog.find_series_metadata(txn, series.id, &missing)?;
+		for (partition, found) in missing.into_iter().zip(loaded) {
+			metadata.insert(partition, found.unwrap_or_default());
+		}
+	}
 	for (row, (given, &variant_tag)) in keys.into_iter().zip(tags).enumerate() {
 		let partition = partitions.get(row).copied().unwrap_or_default();
-		let partition_metadata = match metadata.entry(partition) {
-			Entry::Occupied(entry) => entry.into_mut(),
-			Entry::Vacant(entry) => {
-				let loaded =
-					catalog.find_series_metadata(txn, series.id, partition)?.unwrap_or_default();
-				entry.insert(loaded)
-			}
-		};
+		let partition_metadata = metadata.entry(partition).or_default();
 		let key_value = match given {
 			Some(key_value) => key_value,
 			None => generate(partition_metadata)?,
@@ -689,25 +686,30 @@ pub(crate) fn write_inserted_series_metadata(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	partition: Partition,
-	mut metadata: SeriesPartitionMetadata,
-	keys: Vec<u64>,
+	partitions: Vec<(Partition, SeriesPartitionMetadata, Vec<u64>)>,
 	now: DateTime,
 	refuse_moved_counter: bool,
 ) -> Result<()> {
-	metadata.last_write_at = now;
-	let numbered_from = metadata.sequence_counter - keys.len() as u64;
-	catalog.update_series_metadata_rebased_txn(txn, series.id, partition, metadata, move |latest| {
-		if refuse_moved_counter && latest.sequence_counter != numbered_from {
-			return Err(TransactionError::Conflict.into());
-		}
-		for &key in &keys {
-			latest.sequence_counter += 1;
-			update_series_metadata_for_insert(latest, key);
-		}
-		latest.last_write_at = now;
-		Ok(())
-	})
+	let updates: Vec<_> = partitions
+		.into_iter()
+		.map(|(partition, mut metadata, keys)| {
+			metadata.last_write_at = now;
+			let numbered_from = metadata.sequence_counter - keys.len() as u64;
+			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+				if refuse_moved_counter && latest.sequence_counter != numbered_from {
+					return Err(TransactionError::Conflict.into());
+				}
+				for &key in &keys {
+					latest.sequence_counter += 1;
+					update_series_metadata_for_insert(latest, key);
+				}
+				latest.last_write_at = now;
+				Ok(())
+			};
+			(partition, metadata, change)
+		})
+		.collect();
+	catalog.update_series_metadata_rebased_txn(txn, series.id, updates)
 }
 
 #[inline]

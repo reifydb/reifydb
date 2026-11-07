@@ -163,20 +163,24 @@ struct QueryRing<'a> {
 }
 
 impl RingRead for QueryRing<'_> {
-	fn metadata(&mut self, partition: Option<Partition>) -> Result<Option<RingBufferMetadata>> {
-		let key = RingBufferMetadataKey::of(self.storage, partition).into();
+	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
+		let keys: Vec<TaggedKey> = partitions
+			.iter()
+			.map(|&partition| RingBufferMetadataKey::of(self.storage, partition).into())
+			.collect();
 		self.query
-			.get(&self.ctx, &[key])?
-			.pop()
-			.flatten()
-			.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes())))
-			.transpose()
+			.get(&self.ctx, &keys)?
+			.into_iter()
+			.map(|row| {
+				row.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes()))).transpose()
+			})
+			.collect()
 	}
 
-	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn slots(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
 		let keys: Vec<TaggedKey> = rows
 			.iter()
-			.map(|&row| match partition {
+			.map(|&(partition, row)| match partition {
 				Some(partition) => PartitionedRowKey::new(self.storage, partition, row).into(),
 				None => RowKey::new(self.storage, row).into(),
 			})
@@ -186,6 +190,24 @@ impl RingRead for QueryRing<'_> {
 			.into_iter()
 			.map(|row| row.map(|row| row.bytes().clone()))
 			.collect())
+	}
+
+	fn order_at(&mut self, entries: &[(Option<Partition>, u64)]) -> Result<Vec<Option<RowNumber>>> {
+		let keys: Vec<TaggedKey> = entries
+			.iter()
+			.map(|&(partition, sequence)| ring_order_key(self.storage, partition, sequence))
+			.collect();
+		let rows = self.query.get(&self.ctx, &keys)?;
+		keys.iter()
+			.zip(rows)
+			.map(|(key, row)| {
+				row.map(|row| {
+					decode_ringbuffer_order(key, EncodedPodRow::view(row.bytes()))
+						.map(|(_, row)| row)
+				})
+				.transpose()
+			})
+			.collect()
 	}
 
 	fn order(
@@ -459,7 +481,8 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 				query: &query,
 				storage,
 			};
-			return partitions.iter().map(|&partition| newest(&mut store, Some(partition))).collect();
+			let partitions: Vec<Option<Partition>> = partitions.iter().copied().map(Some).collect();
+			return newest(&mut store, &partitions);
 		}
 		partitions
 			.iter()

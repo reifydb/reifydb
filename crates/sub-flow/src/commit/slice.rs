@@ -507,13 +507,20 @@ impl SliceComputer {
 		let interceptors = self.engine.create_interceptors();
 
 		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
-		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-		let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+		let base_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
+		let state_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
 
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			version: state_version,
 			pending: Pending::new(),
 			query: Some(query),

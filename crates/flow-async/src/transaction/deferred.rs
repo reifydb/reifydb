@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet},
-	slice,
+	collections::{BTreeMap, HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -140,7 +139,6 @@ pub struct DeferredTransaction {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageCounts {
-	pub gets: usize,
 	pub get_many_calls: usize,
 	pub state_fetch_calls: usize,
 	pub ranges: usize,
@@ -203,6 +201,7 @@ pub(crate) fn deferred_storage_get(
 	keys: &[EncodedKey],
 ) -> Result<Vec<Option<EncodedBytes>>> {
 	let mut rows = vec![None; keys.len()];
+	let mut operator_state: BTreeMap<OperatorId, (Vec<usize>, Vec<GroupStateKey>)> = BTreeMap::new();
 	let (mut state_slots, mut state_keys) = (Vec::new(), Vec::new());
 	let (mut query_slots, mut query_keys) = (Vec::new(), Vec::new());
 	for (slot, key) in keys.iter().enumerate() {
@@ -213,12 +212,9 @@ pub(crate) fn deferred_storage_get(
 					inner,
 				} = operator_state_coordinates(key)
 					.expect("an OperatorState-routed key must carry an operator id");
-				rows[slot] = operators
-					.expect(NO_OPERATOR_STORE)
-					.state_get(operator, &[GroupStateKey::bound_unchecked(inner)])?
-					.pop()
-					.flatten()
-					.map(EncodedPodRow::into_bytes)
+				let (slots, grouped) = operator_state.entry(operator).or_default();
+				slots.push(slot);
+				grouped.push(GroupStateKey::bound_unchecked(inner));
 			}
 			ReadFrom::StateQuery | ReadFrom::OwnedRow => {
 				state_slots.push(slot);
@@ -230,6 +226,12 @@ pub(crate) fn deferred_storage_get(
 			}
 		}
 	}
+	for (operator, (slots, grouped)) in operator_state {
+		let found = operators.expect(NO_OPERATOR_STORE).state_get(operator, &grouped)?;
+		for (slot, row) in slots.into_iter().zip(found) {
+			rows[slot] = row.map(EncodedPodRow::into_bytes);
+		}
+	}
 	for (read, slots, tagged) in [(state_query, state_slots, state_keys), (query, query_slots, query_keys)] {
 		if tagged.is_empty() {
 			continue;
@@ -239,33 +241,6 @@ pub(crate) fn deferred_storage_get(
 		}
 	}
 	Ok(rows)
-}
-
-pub(crate) fn deferred_storage_contains(
-	ctx: &TransactionContext,
-	operators: Option<&OperatorStore>,
-	query: Option<&MultiReadTransaction>,
-	state_query: Option<&MultiReadTransaction>,
-	key: &EncodedKey,
-) -> Result<bool> {
-	let query = match read_from(key) {
-		ReadFrom::OperatorState => {
-			let OperatorScope {
-				operator,
-				inner,
-			} = operator_state_coordinates(key)
-				.expect("an OperatorState-routed key must carry an operator id");
-			return operators
-				.expect(NO_OPERATOR_STORE)
-				.contains(operator, &GroupStateKey::bound_unchecked(inner))
-				.map_err(Into::into);
-		}
-		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
-		ReadFrom::Query => query,
-	};
-	query.expect(NO_READ_TRANSACTION)
-		.contains(ctx, &[TaggedKey::decode(key).expect(UNDECODABLE_KEY)])
-		.map(|found| found[0])
 }
 
 pub(crate) fn deferred_storage_range<'a>(
@@ -390,22 +365,6 @@ impl FlowTransaction for DeferredTransaction {
 		sink.on_timer(self, timer)
 	}
 
-	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		#[cfg(test)]
-		{
-			self.storage_counts.gets += 1;
-		}
-		Ok(deferred_storage_get(
-			&self.ctx,
-			self.substrate.operators.as_ref(),
-			self.query.as_ref(),
-			self.state_query.as_ref(),
-			slice::from_ref(key),
-		)?
-		.pop()
-		.flatten())
-	}
-
 	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		#[cfg(test)]
 		{
@@ -417,16 +376,6 @@ impl FlowTransaction for DeferredTransaction {
 			self.query.as_ref(),
 			self.state_query.as_ref(),
 			keys,
-		)
-	}
-
-	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		deferred_storage_contains(
-			&self.ctx,
-			self.substrate.operators.as_ref(),
-			self.query.as_ref(),
-			self.state_query.as_ref(),
-			key,
 		)
 	}
 
