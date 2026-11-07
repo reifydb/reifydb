@@ -22,6 +22,7 @@ export interface Canvas {
   cell(): Promise<Area>
   svg(area: Area, markup: string): Promise<PaintStats>
   style(): Promise<Style>
+  measure(text: string, family: string, size: number, weight?: number): Promise<{ w: number; h: number }>
   close(): Promise<void>
 }
 

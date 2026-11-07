@@ -23,13 +23,12 @@ const IN_FLIGHT = 8
 const MAX_ATTEMPTS = 12
 const BLOCK = 16
 const CELL_TRIES = 4000
-const CELL_W = 96
-const CELL_W_SPREAD = 672
-const CELL_H = 64
-const CELL_H_SPREAD = 448
+const CELL_W = 192
+const CELL_W_SPREAD = 576
+const CELL_H = 128
+const CELL_H_SPREAD = 384
 const CELL_RATIO_MIN = 1 / 3
 const CELL_RATIO_MAX = 4
-const NEIGHBOURS = [[-1, 0], [1, 0], [0, -1], [0, 1]]
 const FRESH_MS = 60_000
 const FONT_LIST = 'https://api.fontsource.org/v1/fonts'
 const FONT_FILE = (id, weight) => `https://cdn.jsdelivr.net/fontsource/fonts/${id}@latest/latin-${weight}-normal.ttf`
@@ -37,8 +36,9 @@ const FONT_DIR = 'fonts'
 const GENERIC_FONTS = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'inherit'])
 const ICON_FILE = (prefix, name) => `https://api.iconify.design/${prefix}/${name}.svg`
 const OPAQUE = 128
-const MIN_FONT = 16
+const MIN_FONT = 24
 const DARK = 128
+const UNREADABLE_FONTS = new Set(['Redacted', 'Redacted Script', 'Flow Block', 'Flow Circular', 'Flow Rounded'])
 const ERAS = [
   '1950s diner',
   '1970s roadside motel',
@@ -398,30 +398,18 @@ async function cell(client) {
   const { w, h } = cellSize()
   const grid = (v) => Math.floor(v / BLOCK) * BLOCK
   const { width, blocks } = decodeBlocks(await png(client, { x0: 0, y0: 0, x1: SIZE, y1: SIZE }, BLOCK))
-  if (blocks.every((b) => b === 0)) return { x: grid((SIZE - w) / 2), y: grid((SIZE - h) / 2), w, h }
   const busy = await busyTiles(client)
-  const painted = (bx, by) => bx >= 0 && by >= 0 && bx < width && by < width && blocks[by * width + bx] !== 0
-  const anchors = []
-  for (let by = 0; by < width; by++)
-    for (let bx = 0; bx < width; bx++) {
-      if (blocks[by * width + bx] !== 0) continue
-      const sides = NEIGHBOURS.filter(([dx, dy]) => painted(bx + dx, by + dy))
-      if (sides.length > 0) anchors.push([bx, by, sides])
-    }
-  const start = (b, d, n) => (d < 0 ? b : d > 0 ? b - n + 1 : b - Math.floor(Math.random() * n))
-  const clamp = (v, n) => Math.max(0, Math.min(SIZE - n, v))
-  const place = () => {
-    if (anchors.length === 0) return { x: grid(Math.random() * (SIZE - w)), y: grid(Math.random() * (SIZE - h)), w, h }
-    const [bx, by, sides] = anchors[Math.floor(Math.random() * anchors.length)]
-    const [dx, dy] = sides[Math.floor(Math.random() * sides.length)]
-    return { x: clamp(start(bx, dx, w / BLOCK) * BLOCK, w), y: clamp(start(by, dy, h / BLOCK) * BLOCK, h), w, h }
+  const blank = (c) => {
+    for (let by = c.y / BLOCK; by < (c.y + c.h) / BLOCK; by++)
+      for (let bx = c.x / BLOCK; bx < (c.x + c.w) / BLOCK; bx++) if (blocks[by * width + bx] !== 0) return false
+    return true
   }
   const quiet = (c) =>
     busy.every(([tx, ty]) => tx * TILE >= c.x + c.w || c.x >= tx * TILE + TILE || ty * TILE >= c.y + c.h || c.y >= ty * TILE + TILE)
   let last
   for (let i = 0; i < CELL_TRIES; i++) {
-    last = place()
-    if (quiet(last)) return last
+    last = { x: grid(Math.random() * (SIZE - w)), y: grid(Math.random() * (SIZE - h)), w, h }
+    if (blank(last) && quiet(last)) return last
   }
   return last
 }
@@ -485,7 +473,10 @@ async function inlineIcons(markup) {
     const box = icon.match(/viewBox="([^"]*)"/)
     const inner = icon.match(/<svg\b[^>]*>([\s\S]*)<\/svg>/)
     if (!box || !inner) throw new Error(`icon '${prefix}:${name}' not found on Iconify (${r.status}), search https://api.iconify.design/search?query=<word>`)
-    out = out.replace(use, `<svg${before}${after} viewBox="${box[1]}">${inner[1]}</svg>`)
+    const attrs = `${before}${after}`
+    const transform = attrs.match(/\stransform="([^"]*)"/)
+    const nested = `<svg${attrs.replace(/\stransform="[^"]*"/, '')} viewBox="${box[1]}">${inner[1]}</svg>`
+    out = out.replace(use, transform ? `<g transform="${transform[1]}">${nested}</g>` : nested)
   }
   return out
 }
@@ -517,15 +508,23 @@ async function svg(client, area, markup) {
   })
 }
 
+async function measure(text, family, size, weight = 400) {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const markup = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${size * 3}"><text x="0" y="${size * 2}" font-family="${family}" font-size="${size}" font-weight="${weight}">${escaped}</text></svg>`
+  const box = new Resvg(markup, { font: { loadSystemFonts: false, fontFiles: await fontFiles(markup) } }).getBBox()
+  return box ? { w: Math.ceil(box.width), h: Math.ceil(box.height) } : { w: 0, h: 0 }
+}
+
 async function style() {
-  const all = (await fonts()).filter((f) => f.category !== 'icons' && f.category !== 'other')
-  const loud = all.filter((f) => f.category === 'display' || f.category === 'handwriting')
+  const readable = (await fonts()).filter((f) => !UNREADABLE_FONTS.has(f.family))
+  const loud = readable.filter((f) => f.category === 'display')
+  const plain = readable.filter((f) => f.category === 'sans-serif' || f.category === 'serif')
   const count = 2 + Math.floor(Math.random() * 3)
   let colors
   do {
     colors = [...new Set(Array.from({ length: count }, () => Math.floor(Math.random() * PALETTE.length)))]
   } while (colors.length !== count || !colors.some((i) => (pal[i][0] * 299 + pal[i][1] * 587 + pal[i][2] * 114) / 1000 < DARK))
-  return { era: pick(ERAS), surface: pick(SURFACES), shape: pick(SHAPES), fonts: [pick(loud).family, pick(all).family], colors }
+  return { era: pick(ERAS), surface: pick(SURFACES), shape: pick(SHAPES), fonts: [pick(loud).family, pick(plain).family], colors }
 }
 
 export async function connect({ url, name, password }) {
@@ -542,6 +541,7 @@ export function attach(client) {
     cell: () => cell(client),
     svg: (area, markup) => svg(client, area, markup),
     style: () => style(),
+    measure: (text, family, size, weight) => measure(text, family, size, weight),
     close: () => client.disconnect(),
   }
 }

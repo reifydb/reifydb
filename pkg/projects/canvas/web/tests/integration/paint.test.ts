@@ -137,12 +137,15 @@ describe('paint helper against the canvas backend', () => {
     expect(() => back.get(10, 0)).toThrow('outside the area read')
   })
 
-  it('puts the first cell in the middle of an empty wall', async () => {
-    // With no signs to sit next to, the first agent must start the mosaic at the centre, not a corner.
-    const c = await canvas.cell()
-    expect(c.x).toBe(Math.floor((8192 - c.w) / 2 / 16) * 16)
-    expect(c.y).toBe(Math.floor((8192 - c.h) / 2 / 16) * 16)
-  })
+  it('spreads cells over all four quarters of an empty wall', async () => {
+    // Starting every cell at the centre piled signs on top of each other while the rest of the wall stayed blank.
+    const quarters = new Set<string>()
+    for (let i = 0; i < 30; i++) {
+      const c = await canvas.cell()
+      quarters.add(`${c.x + c.w / 2 < 4096 ? 'w' : 'e'}${c.y + c.h / 2 < 4096 ? 'n' : 's'}`)
+    }
+    expect([...quarters].sort()).toEqual(['en', 'es', 'wn', 'ws'])
+  }, 30000)
 
   it('spreads cell sizes over the whole range, favouring small, within the allowed shapes', async () => {
     // A fixed or narrow size turns the mosaic back into a grid; slivers outside 1:3..4:1 cannot hold a sign.
@@ -152,39 +155,36 @@ describe('paint helper against the canvas backend', () => {
     for (const c of cells) {
       expect(c.w % 16, `cell ${JSON.stringify(c)}`).toBe(0)
       expect(c.h % 16, `cell ${JSON.stringify(c)}`).toBe(0)
-      expect(c.w).toBeGreaterThanOrEqual(96)
+      expect(c.w).toBeGreaterThanOrEqual(192)
       expect(c.w).toBeLessThanOrEqual(768)
-      expect(c.h).toBeGreaterThanOrEqual(64)
+      expect(c.h).toBeGreaterThanOrEqual(128)
       expect(c.h).toBeLessThanOrEqual(512)
       expect(c.w / c.h).toBeGreaterThanOrEqual(1 / 3)
       expect(c.w / c.h).toBeLessThanOrEqual(4)
       expect(c.x >= 0 && c.y >= 0 && c.x + c.w <= 8192 && c.y + c.h <= 8192, `cell ${JSON.stringify(c)}`).toBe(true)
     }
     expect(new Set(cells.map((c) => `${c.w}x${c.h}`)).size).toBeGreaterThanOrEqual(15)
-    expect(cells.filter((c) => c.w < 432).length).toBeGreaterThan(20)
+    expect(cells.filter((c) => c.w < 480).length).toBeGreaterThan(20)
     expect(cells.some((c) => c.w > 500)).toBe(true)
   }, 30000)
 
-  it('puts a cell next to older art, reaching out into white space', async () => {
-    // A cell far from every sign scatters the mosaic; one fully inside a sign only ever overwrites.
-    const old = { x: 2048, y: 2048, w: 1024, h: 1024 }
+  it('puts a cell on blank wall, never on older art, while blank space is left', async () => {
+    // Landing on a sign while most of the wall is blank buries it for no reason.
+    const old = { x: 2048, y: 2048, w: 2048, h: 2048 }
     await canvas.paint(old, () => PURPLE)
     await db.commandRoot('delete canvas::edit filter { true }', {}, [])
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const c = await canvas.cell()
-      const ring = { x: c.x - 16, y: c.y - 16, w: c.w + 32, h: c.h + 32 }
-      expect(overlaps(ring, old), `cell ${JSON.stringify(c)}`).toBe(true)
-      const inside = c.x >= old.x && c.y >= old.y && c.x + c.w <= old.x + old.w && c.y + c.h <= old.y + old.h
-      expect(inside, `cell ${JSON.stringify(c)}`).toBe(false)
+      expect(overlaps(c, old), `cell ${JSON.stringify(c)}`).toBe(false)
     }
-  }, 15000)
+  }, 30000)
 
   it('keeps cells off tiles painted in the last 60 seconds', async () => {
     // A sign covered while it is still being painted is never seen finished.
     await canvas.paint({ x: 2048, y: 2048, w: 1024, h: 1024 }, () => PURPLE)
     await db.commandRoot('delete canvas::edit filter { true }', {}, [])
-    const fresh = { x: 6016, y: 1024, w: 256, h: 256 }
-    await canvas.paint(fresh, () => PURPLE)
+    const fresh = { x: 0, y: 0, w: 4096, h: 4096 }
+    await canvas.paint(fresh, (x, y) => (x % 16 === 0 && y % 16 === 0 ? [0, 0, 0] : null))
     for (let i = 0; i < 20; i++) {
       const c = await canvas.cell()
       const tiles = { x: Math.floor(c.x / 64) * 64, y: Math.floor(c.y / 64) * 64, w: 0, h: 0 }
@@ -239,16 +239,16 @@ describe('paint helper against the canvas backend', () => {
     expect(ink).toBeGreaterThan(500)
   }, 30000)
 
-  it('refuses svg text below 16 px or with no font-size at all', async () => {
-    // Text under 16 px dithers into mush on the wall, so a cramped sign must fail instead of painting.
+  it('refuses svg text below 24 px or with no font-size at all', async () => {
+    // Text under 24 px dithers into mush on the wall, so a cramped sign must fail instead of painting.
     const area = { x: 4000, y: 6000, w: 96, h: 64 }
     const text = (attrs: string) =>
       `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64"><text x="4" y="40" font-family="Bungee" ${attrs}>HI</text></svg>`
-    await expect(canvas.svg(area, text('font-size="10"'))).rejects.toThrow('font-size 10 below 16 px')
-    await expect(canvas.svg(area, text('style="font-size: 15.5px"'))).rejects.toThrow('font-size 15.5 below 16 px')
+    await expect(canvas.svg(area, text('font-size="10"'))).rejects.toThrow('font-size 10 below 24 px')
+    await expect(canvas.svg(area, text('style="font-size: 23.5px"'))).rejects.toThrow('font-size 23.5 below 24 px')
     await expect(canvas.svg(area, text(''))).rejects.toThrow('svg text has no font-size')
     await expect(canvas.svg(area, text('font-size="2em"'))).rejects.toThrow('font-size 2em must be in px')
-    await canvas.svg(area, text('font-size="16"'))
+    await canvas.svg(area, text('font-size="24"'))
     const back = await canvas.read(area)
     let ink = 0
     for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) if (back.get(x, y) !== 0) ink++
@@ -274,6 +274,27 @@ describe('paint helper against the canvas backend', () => {
     ).rejects.toThrow("icon 'mdi:not-an-icon-xyz' not found on Iconify")
   }, 30000)
 
+  it('measures text so a wider string comes out wider and an unknown font throws', async () => {
+    // Without a measure, agents guessed widths and their big lines ran past the cell.
+    const one = await canvas.measure('W', 'Bungee', 40)
+    const three = await canvas.measure('WWW', 'Bungee', 40)
+    expect(one.w).toBeGreaterThan(10)
+    expect(three.w).toBeGreaterThan(one.w * 2.5)
+    expect(three.w).toBeLessThan(one.w * 3.5)
+    expect(one.h).toBeGreaterThan(20)
+    expect(one.h).toBeLessThanOrEqual(40)
+    await expect(canvas.measure('W', 'Not A Real Font Xyz', 40)).rejects.toThrow('is not on Fontsource')
+  }, 30000)
+
+  it('applies a transform on an icon reference instead of dropping it', async () => {
+    // A nested svg ignores transform, so a moved, flipped or rotated icon silently stayed where it was.
+    const area = { x: 5200, y: 5000, w: 128, h: 64 }
+    await canvas.svg(area, '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="64" viewBox="0 0 128 64"><use href="icon:mdi:square" x="0" y="0" width="64" height="64" color="#000000" transform="translate(64 0)"/></svg>')
+    const back = await canvas.read(area)
+    expect(back.get(5232, 5032), 'left half stays white once the icon moved').toBe(0)
+    expect(back.get(5296, 5032), 'right half holds the moved icon').toBe(28)
+  }, 30000)
+
   it('rolls varied styles with real fonts and 2 to 4 distinct colours, at least one dark', async () => {
     // A style that repeats or names no real font lets every agent fall back to the same look.
     const { PALETTE } = await import('../../public/paint.mjs')
@@ -295,5 +316,17 @@ describe('paint helper against the canvas backend', () => {
     }
     expect(new Set(styles.map((s) => `${s.era}|${s.surface}|${s.shape}`)).size).toBeGreaterThanOrEqual(10)
     expect(new Set(styles.map((s) => s.fonts[0])).size).toBeGreaterThanOrEqual(10)
+  }, 30000)
+
+  it('rolls a display font for the big line and a plain serif or sans font for small print, never an unreadable one', async () => {
+    // Thin scripts and bar fonts like Redacted make the big line unreadable, so agents threw those rolls away.
+    const list = await (await fetch('https://api.fontsource.org/v1/fonts')).json()
+    const category = new Map(list.map((f: { family: string; category: string }) => [f.family, f.category]))
+    for (let i = 0; i < 40; i++) {
+      const s = await canvas.style()
+      expect(category.get(s.fonts[0]), `big font ${s.fonts[0]}`).toBe('display')
+      expect(['serif', 'sans-serif'], `small font ${s.fonts[1]}`).toContain(category.get(s.fonts[1]))
+      for (const f of s.fonts) expect(f.startsWith('Redacted') || f.startsWith('Flow '), `font ${f}`).toBe(false)
+    }
   }, 30000)
 })
