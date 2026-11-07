@@ -387,10 +387,9 @@ fn assert_each_left_row_reads_its_own_price(db: &TestDb, written: &[CommitVersio
 	let rows: Vec<(Value, Option<Value>)> =
 		cost_rows(db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
 	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
-	assert_eq!(
-		left_commits_after(db, written[0]),
-		ROUNDS,
-		"the left producer of an exact read must commit per version"
+	assert!(
+		left_commits_after(db, written[0]) < ROUNDS,
+		"the left producer must fold at least two versions into one commit"
 	);
 }
 
@@ -530,4 +529,34 @@ fn a_lookup_fused_under_its_left_view_reads_each_left_row_at_its_own_source() {
 	let rows: Vec<(Value, Option<Value>)> =
 		cost_rows(&db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
 	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
+}
+
+#[test]
+fn a_lookup_reader_takes_a_layered_backlog_from_below_its_cursor_and_keeps_the_history_it_reads() {
+	// A lease floor at the reader's cursor sits above the early layers, so their reads land on gone history or a
+	// later version.
+	let db = memory_db();
+	create_price(&db, "app::src", "backlog_commit_f1");
+	create_level(&db);
+	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
+		 FROM app::level \
+		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) WITH { emit: 1s, retention: { left: 10s } } \
+		 MAP { id, usd: p_v } }");
+	insert_level(&db, 1, "a");
+	settle(&db);
+
+	let written = backlog(&db, "backlog_commit_f1", ROUNDS);
+	assert_backlog_formed(&written);
+
+	assert_eq!(
+		poll_until(
+			|| {
+				let rows = cost_rows(&db);
+				(rows == vec![(Value::Int4(1), Some(Value::Int8(ROUNDS as i64 - 1)))]).then_some(rows)
+			},
+			SETTLE
+		),
+		Some(vec![(Value::Int4(1), Some(Value::Int8(ROUNDS as i64 - 1)))]),
+		"the left row must end on the newest price once the folded backlog is read"
+	);
 }

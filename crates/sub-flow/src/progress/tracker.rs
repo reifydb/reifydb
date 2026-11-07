@@ -248,6 +248,12 @@ impl FlowProgress {
 		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
 	}
 
+	fn source_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<SourceVersion> {
+		let history = self.completions.get(&flow_id)?;
+		let above = history.partition_point(|entry| entry.commit <= commit);
+		history.get(above.checked_sub(1)?).map(|entry| entry.source)
+	}
+
 	fn backlog_commit(&self, flow_id: FlowId) -> BacklogCommit {
 		self.backlog_commits.get(&flow_id).copied().unwrap_or(BacklogCommit::PerVersion)
 	}
@@ -352,6 +358,10 @@ impl FlowPositionTracker {
 
 	pub fn commit_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<CommitVersion> {
 		self.inner.read().commit_through_commit(flow_id, commit)
+	}
+
+	pub fn source_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<SourceVersion> {
+		self.inner.read().source_through_commit(flow_id, commit)
 	}
 
 	pub fn restore_completion(&self, flow_id: FlowId, commit: CommitVersion, source: SourceVersion) {

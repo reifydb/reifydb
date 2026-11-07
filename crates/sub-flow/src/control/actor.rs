@@ -324,7 +324,9 @@ impl FlowActor {
 		let Some(held) = state.lookup_lease.as_ref().map(VersionLeaseGuard::version) else {
 			return;
 		};
-		let target = state.cursor;
+		let Some(target) = self.lookup_lease_target(state.cursor) else {
+			return;
+		};
 		if target <= held {
 			return;
 		}
@@ -336,6 +338,21 @@ impl FlowActor {
 			),
 		};
 		state.lookup_lease = Some(lease);
+	}
+
+	fn lookup_lease_target(&self, cursor: CommitVersion) -> Option<CommitVersion> {
+		let unit: BTreeSet<FlowId> = self.unit_ids().into_iter().collect();
+		let mut producers: BTreeSet<FlowId> = BTreeSet::new();
+		for flow_id in &unit {
+			producers.extend(self.flow_tracker.upstreams(*flow_id).keys().copied());
+			producers.extend(self.flow_tracker.lookup_producers_of(*flow_id).into_values());
+		}
+		let mut target = cursor;
+		for producer in producers.into_iter().filter(|producer| !unit.contains(producer)) {
+			let source = self.flow_tracker.source_through_commit(producer, cursor)?;
+			target = target.min(CommitVersion(source.0 + 1));
+		}
+		Some(target)
 	}
 
 	fn retry_or_poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {

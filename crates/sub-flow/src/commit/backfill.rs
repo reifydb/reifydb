@@ -296,6 +296,7 @@ pub(crate) fn compute_unit_backfill(
 		source: Some(SourceVersion(version.0)),
 		written_views: Vec::new(),
 		input_markers: None,
+		layers: Vec::new(),
 	};
 	Ok((slice, holds))
 }

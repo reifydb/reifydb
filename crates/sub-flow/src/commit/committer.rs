@@ -289,6 +289,8 @@ pub struct FlowSlice {
 	pub written_views: Vec<WrittenView>,
 
 	pub input_markers: Option<InputMarkers>,
+
+	pub layers: Vec<(SourceVersion, Pending)>,
 }
 
 impl FlowSlice {
@@ -301,6 +303,7 @@ impl FlowSlice {
 			source: None,
 			written_views: Vec::new(),
 			input_markers: None,
+			layers: Vec::new(),
 		}
 	}
 
@@ -447,11 +450,18 @@ impl Committer {
 		operator: OperatorSlice,
 	) -> Result<()> {
 		self.operators.check_checkpoints(&operator.checkpoints)?;
-		if let Some(source) = slice.source {
-			transaction.stamp_source(source)?;
-		}
 		push_if_not_empty(transaction, operator)?;
-		apply_pending_writes(transaction, &slice.combined)?;
+		if slice.layers.is_empty() {
+			if let Some(source) = slice.source {
+				transaction.begin_layer(source)?;
+			}
+			apply_pending_writes(transaction, &slice.combined)?;
+		} else {
+			for (source, layer) in &slice.layers {
+				transaction.begin_layer(*source)?;
+				apply_pending_writes(transaction, layer)?;
+			}
+		}
 		if let Some(input) = &slice.input_markers {
 			for written in &slice.written_views {
 				transaction.attach_view_markers(written.view, input.markers())?;
