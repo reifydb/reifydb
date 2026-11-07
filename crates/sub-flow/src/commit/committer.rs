@@ -289,6 +289,8 @@ pub struct FlowSlice {
 	pub written_views: Vec<WrittenView>,
 
 	pub input_markers: Option<InputMarkers>,
+
+	pub layers: Vec<(SourceVersion, Pending)>,
 }
 
 impl FlowSlice {
@@ -301,6 +303,7 @@ impl FlowSlice {
 			source: None,
 			written_views: Vec::new(),
 			input_markers: None,
+			layers: Vec::new(),
 		}
 	}
 
@@ -447,11 +450,18 @@ impl Committer {
 		operator: OperatorSlice,
 	) -> Result<()> {
 		self.operators.check_checkpoints(&operator.checkpoints)?;
-		if let Some(source) = slice.source {
-			transaction.stamp_source(source)?;
-		}
 		push_if_not_empty(transaction, operator)?;
-		apply_pending_writes(transaction, &slice.combined)?;
+		if slice.layers.is_empty() {
+			if let Some(source) = slice.source {
+				transaction.begin_layer(source)?;
+			}
+			apply_pending_writes(transaction, &slice.combined)?;
+		} else {
+			for (source, layer) in &slice.layers {
+				transaction.begin_layer(*source)?;
+				apply_pending_writes(transaction, layer)?;
+			}
+		}
 		if let Some(input) = &slice.input_markers {
 			for written in &slice.written_views {
 				transaction.attach_view_markers(written.view, input.markers())?;
@@ -479,7 +489,8 @@ impl Committer {
 		if slice.produced_output() {
 			self.materialization.record_output(version);
 		}
-		self.post_commit_slice(version, slice.source, &slice.checkpoints, &slice.checkpoint_deletes);
+		let first = slice.layers.first().map(|(first, _)| *first);
+		self.post_commit_slice(version, first, slice.source, &slice.checkpoints, &slice.checkpoint_deletes);
 		version
 	}
 
@@ -513,6 +524,7 @@ impl Committer {
 	fn post_commit_slice(
 		&self,
 		commit: CommitVersion,
+		first: Option<SourceVersion>,
 		source: Option<SourceVersion>,
 		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
@@ -520,7 +532,13 @@ impl Committer {
 		for (flow_id, checkpoint) in checkpoints {
 			let version = checkpoint.version;
 			let source = source.unwrap_or(SourceVersion(version.0));
-			self.flow_tracker.update_committed(*flow_id, version, commit, source);
+			self.flow_tracker.update_committed_layers(
+				*flow_id,
+				version,
+				commit,
+				first.unwrap_or(source),
+				source,
+			);
 		}
 
 		for flow_id in checkpoint_deletes {

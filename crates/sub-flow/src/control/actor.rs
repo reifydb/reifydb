@@ -644,8 +644,9 @@ impl FlowActor {
 			upstream_reads.reads.insert(*producer, upstream);
 		}
 		state.held_reads.clear();
+		let source_objects = Arc::clone(&state.source_objects);
 		let scope = StepScope {
-			source_objects: &state.source_objects,
+			source_objects: &source_objects,
 		};
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
 		if merged.target <= cursor {

@@ -59,7 +59,6 @@ pub struct FlowDependencyGraph {
 	pub lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
 	pub source_exact_reads: BTreeMap<ViewId, Vec<FlowId>>,
 	pub source_paced_reads: BTreeMap<ViewId, Vec<FlowId>>,
-	pub pairs_by_source: BTreeSet<FlowId>,
 }
 
 impl FlowDependencyGraph {
@@ -138,7 +137,6 @@ impl FlowGraphAnalyzer {
 				lookup_views: BTreeMap::new(),
 				source_exact_reads: BTreeMap::new(),
 				source_paced_reads: BTreeMap::new(),
-				pairs_by_source: BTreeSet::new(),
 			},
 		}
 	}
@@ -280,13 +278,6 @@ impl FlowGraphAnalyzer {
 				} if with.emit == Emit::Off => {
 					views.insert(*view);
 				}
-				OperatorDef::Join {
-					with,
-					..
-				} if with.pick.is_some() && with.emit == Emit::Off => {
-					let right = *node.inputs.get(1).expect("a join has a right input");
-					views.extend(Self::source_views_above(flow, right));
-				}
 				_ => {}
 			}
 		}
@@ -306,10 +297,6 @@ impl FlowGraphAnalyzer {
 					with,
 					..
 				} => with.emit == Emit::Off,
-				OperatorDef::Join {
-					with,
-					..
-				} => with.pick.is_some() && with.emit == Emit::Off,
 				_ => false,
 			};
 			if paces_left && let Some(left) = node.inputs.first() {
@@ -345,18 +332,6 @@ impl FlowGraphAnalyzer {
 		views
 	}
 
-	fn get_pairs_by_source(flow: &FlowDag) -> bool {
-		flow.get_operator_ids().filter_map(|node_id| flow.get_operator(&node_id)).any(|node| {
-			matches!(
-				&node.ty,
-				OperatorDef::Join {
-					with,
-					..
-				} if with.pick.is_none()
-			)
-		})
-	}
-
 	pub fn get_dependency_graph(&self) -> &FlowDependencyGraph {
 		&self.dependency_graph
 	}
@@ -371,7 +346,6 @@ impl FlowGraphAnalyzer {
 		let mut lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_exact_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_paced_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
-		let mut pairs_by_source: BTreeSet<FlowId> = BTreeSet::new();
 
 		for flow in &self.flows {
 			let summary = Self::analyze_flow(flow);
@@ -386,10 +360,6 @@ impl FlowGraphAnalyzer {
 
 			for view_id in Self::get_source_paced_reads(flow) {
 				source_paced_reads.entry(view_id).or_default().push(flow.id());
-			}
-
-			if Self::get_pairs_by_source(flow) {
-				pairs_by_source.insert(flow.id());
 			}
 
 			for source in &summary.sources {
@@ -433,7 +403,6 @@ impl FlowGraphAnalyzer {
 			lookup_views,
 			source_exact_reads,
 			source_paced_reads,
-			pairs_by_source,
 		}
 	}
 
@@ -494,7 +463,6 @@ impl FlowGraphAnalyzer {
 			lookup_views: BTreeMap::new(),
 			source_exact_reads: BTreeMap::new(),
 			source_paced_reads: BTreeMap::new(),
-			pairs_by_source: BTreeSet::new(),
 		};
 	}
 }
@@ -1248,22 +1216,18 @@ pub mod tests {
 	}
 
 	#[test]
-	fn only_the_right_side_of_a_latest_emit_off_join_is_read_exactly() {
-		// The left side is paced, not read exactly, so listing it here would hold its producer for an exact
-		// read it never gets.
+	fn a_join_never_reads_its_right_side_exactly() {
+		// A join keeps its right side in its own state, so marking it exact would hold its producer per version
+		// for nothing.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(two_sided_join(30, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::Off)));
 		analyzer.add(two_sided_join(31, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
 
-		assert_eq!(
-			analyzer.get_dependency_graph().source_exact_reads,
-			BTreeMap::from([(ViewId(701), vec![FlowId(30)])]),
-			"the right side of the emit off join is exact, through the operator above it; emit on is not"
-		);
+		assert_eq!(analyzer.get_dependency_graph().source_exact_reads, BTreeMap::new());
 	}
 
 	#[test]
-	fn the_left_side_of_an_emit_off_lookup_or_latest_join_is_paced_and_nothing_else_is() {
+	fn the_left_side_of_an_emit_off_lookup_is_paced_and_no_join_is() {
 		// A missing pace lets a folded left view hand early rows a later right value; an extra one costs the
 		// fold.
 		let lookup_flow = |id: u64, left: u64, emit: Emit| {
@@ -1309,34 +1273,8 @@ pub mod tests {
 
 		assert_eq!(
 			analyzer.get_dependency_graph().source_paced_reads,
-			BTreeMap::from([(ViewId(710), vec![FlowId(50)]), (ViewId(713), vec![FlowId(53)])]),
-			"only the left view of an emit off lookup or an emit off latest join is paced"
-		);
-	}
-
-	#[test]
-	fn a_hash_join_pairs_its_inputs_exactly() {
-		// A hash join pairs rows of the same source version, so its own flow must cut when fed by two sources.
-		let mut analyzer = FlowGraphAnalyzer::new();
-		analyzer.add(two_sided_join(40, join_with(None, Emit::On)));
-		analyzer.add(two_sided_join(41, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
-		analyzer.add(create_test_flow_with_nodes(
-			42,
-			vec![
-				SourceTable {
-					table: TableId(100),
-					time_domain: TimeDomain::None,
-				},
-				SinkTableView {
-					view: ViewId(900),
-				},
-			],
-		));
-
-		assert_eq!(
-			analyzer.get_dependency_graph().pairs_by_source,
-			BTreeSet::from([FlowId(40)]),
-			"only the flow with a join that picks no row pairs by source"
+			BTreeMap::from([(ViewId(710), vec![FlowId(50)])]),
+			"only the left view of an emit off lookup is paced"
 		);
 	}
 }

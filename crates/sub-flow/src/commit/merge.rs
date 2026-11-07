@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
 		commit::CommitEntry,
@@ -187,7 +187,7 @@ impl UpstreamRead {
 			through = through.max(position);
 		}
 		if let Some(last) = self.view_items().next_back() {
-			through = through.max(CommitVersion(last.version.source.0.saturating_sub(1)));
+			through = through.max(CommitVersion(last.first_source().0.saturating_sub(1)));
 		}
 		through
 	}
@@ -246,6 +246,14 @@ pub fn merge(
 		.values()
 		.map(|upstream| upstream.complete_through(cursor))
 		.fold(tables.read_to, CommitVersion::min);
+	let after = SourceVersion(cursor.0);
+	let through = SourceVersion(target.0);
+	let view_rows: Vec<Vec<Arc<CommitEntry>>> = upstreams
+		.values()
+		.map(|upstream| {
+			upstream.view_items().filter_map(|entry| entry.layers_between(after, through)).collect()
+		})
+		.collect();
 	let streams = || {
 		let table_rows = tables
 			.items
@@ -257,14 +265,10 @@ pub fn merge(
 			})
 			.map(|entry| (true, entry));
 		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
-		for upstream in upstreams.values() {
-			let view_rows = upstream
-				.view_items()
-				.filter(move |entry| {
-					entry.version.source.0 > cursor.0 && entry.version.source.0 <= target.0
-				})
-				.map(|entry| (false, entry));
-			streams.push((Box::new(view_rows) as Box<dyn Iterator<Item = _>>).peekable());
+		for rows in &view_rows {
+			streams.push((Box::new(rows.iter().map(|entry| (false, entry)))
+				as Box<dyn Iterator<Item = _>>)
+				.peekable());
 		}
 		streams
 	};
@@ -309,6 +313,7 @@ mod tests {
 			storage::StorageId,
 		},
 		key::row::RowKey,
+		wal::CommitLayer,
 	};
 	use reifydb_value::{
 		util::cowvec::CowVec,
@@ -401,6 +406,144 @@ mod tests {
 			.iter()
 			.map(|commit_log| (commit_log.version.commit.0, commit_log.version.source.0))
 			.collect()
+	}
+
+	fn layered_view_row(version: u64, layers: &[u64]) -> Arc<CommitEntry> {
+		let set = |row: u64| Delta::Set {
+			key: RowKey {
+				storage: StorageId::view(5),
+				row: RowNumber(row),
+			}
+			.into(),
+			bytes: EncodedBytes(CowVec::new(vec![0u8; 4])),
+			pre: SetPre::Absent,
+		};
+		Arc::new(CommitEntry::build(
+			ChangeVersion {
+				commit: cv(version),
+				source: SourceVersion(*layers.last().expect("a layered row has layers")),
+			},
+			Lsn::new(version),
+			DateTime::default(),
+			Vec::new(),
+			layers.iter()
+				.map(|source| CommitLayer {
+					source: SourceVersion(*source),
+					deltas: vec![set(*source)],
+				})
+				.collect(),
+		))
+	}
+
+	#[test]
+	fn a_target_inside_a_layered_row_takes_only_its_layers_up_to_the_target() {
+		// Taking a layered row whole past the target applies a later left value before right rows it should
+		// follow, and refusing it stalls the reader behind a quiet upstream.
+		let merged = merge(
+			cv(5),
+			&read(vec![], 100, false),
+			&two(
+				upstream(Some(40), read(vec![layered_view_row(40, &[15, 25, 35])], 100, false)),
+				upstream_of(
+					ViewId(6),
+					Some(32),
+					read(
+						vec![
+							other_view_row(11, 10),
+							other_view_row(21, 20),
+							other_view_row(31, 30),
+						],
+						100,
+						false,
+					),
+				),
+			),
+			&fold(&sources()),
+		);
+
+		assert_eq!(
+			merged.target,
+			cv(32),
+			"a layered row never holds the target below what the other streams allow"
+		);
+		assert_eq!(versions(&merged), vec![(11, 10), (21, 20), (40, 25), (31, 30)]);
+		let layered =
+			merged.items.iter().find(|entry| entry.version.commit == cv(40)).expect("the layered row runs");
+		let sources: Vec<u64> = layered.layers.iter().map(|(source, _)| source.0).collect();
+		assert_eq!(sources, vec![15, 25], "a layer past the target must wait for a later step");
+		assert_eq!(layered.deltas.len(), 2, "a cut row carries only the writes of the layers it keeps");
+	}
+
+	#[test]
+	fn a_target_past_the_last_layer_takes_the_layered_row_with_everything_it_interleaves() {
+		// Once the target covers every layer, the layered row and the rows between its layers run in one step.
+		let merged = merge(
+			cv(5),
+			&read(vec![], 100, false),
+			&two(
+				upstream(Some(40), read(vec![layered_view_row(40, &[15, 25, 35])], 100, false)),
+				upstream_of(
+					ViewId(6),
+					Some(40),
+					read(
+						vec![
+							other_view_row(11, 10),
+							other_view_row(21, 20),
+							other_view_row(31, 30),
+						],
+						100,
+						false,
+					),
+				),
+			),
+			&fold(&sources()),
+		);
+
+		assert_eq!(versions(&merged), vec![(11, 10), (21, 20), (31, 30), (40, 35)]);
+		assert_eq!(merged.items[3].layers.len(), 3, "a row taken whole keeps every layer");
+	}
+
+	#[test]
+	fn a_layered_row_the_tracker_has_not_recorded_waits_below_its_first_layer() {
+		// A lookup in this step resolves the view through the tracker, so a layer taken before the tracker
+		// records its commit reads the view too early and loses its match.
+		let unrecorded = merge(
+			cv(86),
+			&read(vec![], 100, false),
+			&one(upstream(Some(85), read(vec![layered_view_row(93, &[89, 91])], 100, false))),
+			&fold(&sources()),
+		);
+
+		assert_eq!(unrecorded.target, cv(88), "the change feed alone never vouches for a layer past the first");
+		assert!(unrecorded.items.is_empty(), "no layer of an unrecorded commit may run");
+
+		let recorded = merge(
+			cv(86),
+			&read(vec![], 100, false),
+			&one(upstream(Some(91), read(vec![layered_view_row(93, &[89, 91])], 100, false))),
+			&fold(&sources()),
+		);
+
+		assert_eq!(versions(&recorded), vec![(93, 91)], "once recorded the commit runs with every layer");
+	}
+
+	#[test]
+	fn a_layered_row_partly_behind_the_cursor_gives_only_its_layers_past_the_cursor() {
+		// A layer at or below the cursor was applied by an earlier step, so running it again doubles its rows.
+		let merged = merge(
+			cv(20),
+			&read(vec![], 100, false),
+			&two(
+				upstream(Some(40), read(vec![layered_view_row(40, &[15, 25, 35])], 100, false)),
+				upstream_of(ViewId(6), Some(30), read(vec![other_view_row(31, 30)], 100, false)),
+			),
+			&fold(&sources()),
+		);
+
+		assert_eq!(merged.target, cv(30), "the target stays where the streams allow");
+		assert_eq!(versions(&merged), vec![(40, 25), (31, 30)]);
+		let sources: Vec<u64> = merged.items[0].layers.iter().map(|(source, _)| source.0).collect();
+		assert_eq!(sources, vec![25]);
 	}
 
 	#[test]

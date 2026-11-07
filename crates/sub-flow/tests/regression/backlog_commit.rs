@@ -387,10 +387,12 @@ fn assert_each_left_row_reads_its_own_price(db: &TestDb, written: &[CommitVersio
 	let rows: Vec<(Value, Option<Value>)> =
 		cost_rows(db).into_iter().filter(|(id, _)| *id != Value::Int8(0)).collect();
 	assert_eq!(rows, expected, "each left row must read the price written just before it, never a later one");
-	assert_eq!(
-		left_commits_after(db, written[0]),
-		ROUNDS,
-		"the left producer of an exact read must commit per version"
+}
+
+fn assert_the_left_producer_folded(db: &TestDb, written: &[CommitVersion]) {
+	assert!(
+		left_commits_after(db, written[0]) < ROUNDS,
+		"the left producer must fold at least two versions into one commit"
 	);
 }
 
@@ -405,6 +407,7 @@ fn a_view_on_the_left_of_an_emit_off_lookup_commits_per_version() {
 		false,
 	);
 	assert_each_left_row_reads_its_own_price(&db, &written);
+	assert_the_left_producer_folded(&db, &written);
 }
 
 #[test]
@@ -418,6 +421,7 @@ fn a_view_on_the_left_of_a_latest_emit_off_join_commits_per_version() {
 		false,
 	);
 	assert_each_left_row_reads_its_own_price(&db, &written);
+	assert_the_left_producer_folded(&db, &written);
 }
 
 #[test]
@@ -591,4 +595,52 @@ fn a_re_emitting_lookup_matches_every_left_row_when_its_right_view_folds_a_backl
 	let expected: Vec<(Value, Option<Value>)> =
 		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
 	assert_eq!(cost_rows(&db), expected, "every left row must end matched to the right row written before it");
+}
+
+fn view_commits_after(db: &TestDb, name: &str, from: CommitVersion) -> usize {
+	let frames = db.query(&format!("FROM system::views FILTER {{ name == '{name}' }}"));
+	let frame = frames.first().expect("system catalog frame");
+	let ids = frame.column("id").expect("id reads").expect("system::views must expose an id column");
+	let view = match ids.get_value(0) {
+		Value::Uint8(id) => ObjectId::View(ViewId(id)),
+		other => panic!("'{name}' has no numeric id in system::views, got {other:?}"),
+	};
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&view))
+		.filter(|entry| entry.version.source >= SourceVersion::from(from))
+		.count()
+}
+
+#[test]
+fn a_latest_emit_off_join_matches_every_left_row_when_its_right_view_folds_a_backlog() {
+	// A folded right view must still hand the join each source in order, otherwise an early left row joins a later
+	// right value or none.
+	let db = memory_db();
+	let gate_name = "backlog_commit_j2";
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t1 { k: utf8, v: int8 }");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin("CREATE DEFERRED VIEW app::a { k: utf8, v: int8 } AS { FROM app::t1 }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::b {{ k: utf8, v: int8 }} WITH {{ partition: {{ by: {{ k }} }} }} AS {{ FROM app::src APPLY gated_pass_through {{ gate: '{gate_name}' }} }}"
+	));
+	db.admin("CREATE DEFERRED VIEW app::cost { id: int8, usd: Option(int8) } AS { \
+		 FROM app::a LEFT JOIN { FROM app::b } AS p USING (k, p.k) WITH { emit: false, latest: true } MAP { id: v, usd: p_v } }");
+	settle(&db);
+
+	hold(&db, gate_name);
+	let from = db.engine().current_version().expect("the current version before the backlog");
+	for round in 1..=ROUNDS as i64 {
+		let k = format!("k{round}");
+		write_table(&db, "app::src", &k, round * 10, true);
+		write_table(&db, "app::t1", &k, round, true);
+	}
+	set_gate(gate_name, true);
+	settle(&db);
+
+	let expected: Vec<(Value, Option<Value>)> =
+		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
+	assert_eq!(cost_rows(&db), expected, "every left row must end matched to the right row written before it");
+	assert!(view_commits_after(&db, "b", from) < ROUNDS, "the right producer of a join must fold its backlog");
 }

@@ -496,7 +496,7 @@ fn a_view_over_a_view_keeps_the_original_table_version() {
 }
 
 #[test]
-fn a_view_with_downstream_readers_commits_once_per_source_version() {
+fn a_view_with_downstream_readers_keeps_each_source_version() {
 	// A reader of curve joins by source version, so a live backlog of two rungs merged into one commit hides one.
 	let (config, _guard) = SqliteConfig::test();
 	{
@@ -530,13 +530,26 @@ fn a_view_with_downstream_readers_commits_once_per_source_version() {
 		vec![SourceVersion::from(level[1].commit)],
 		"precondition: the rungs must reach the flows as one backlog, which a view with no readers folds"
 	);
-	let sources: Vec<SourceVersion> =
-		stamps(&db, view(&db, "curve")).iter().map(|version| version.source).collect();
+	let sources = layer_sources(&db, view(&db, "curve"));
 	assert_eq!(
 		sources,
 		vec![SourceVersion::from(level[0].commit), SourceVersion::from(level[1].commit)],
-		"curve must commit once per rung commit, each stamped with that rung's version"
+		"curve must keep each rung's source, one layer per rung, so its join reader pairs each"
 	);
+}
+
+fn layer_sources(db: &TestDb, object: ObjectId) -> Vec<SourceVersion> {
+	db.commit_history()
+		.iter()
+		.filter(|entry| entry_changed_objects(entry).contains(&object))
+		.flat_map(|entry| {
+			if entry.layers.is_empty() {
+				vec![entry.version.source]
+			} else {
+				entry.layers.iter().map(|(source, _)| *source).collect()
+			}
+		})
+		.collect()
 }
 
 #[test]

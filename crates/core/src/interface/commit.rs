@@ -118,6 +118,43 @@ impl CommitEntry {
 		self.lift.get_or_init(|| build(self))
 	}
 
+	pub fn first_source(&self) -> SourceVersion {
+		self.layers.first().map_or(self.version.source, |(source, _)| *source)
+	}
+
+	pub fn layers_between(self: &Arc<Self>, after: SourceVersion, through: SourceVersion) -> Option<Arc<Self>> {
+		if self.layers.is_empty() {
+			return (after < self.version.source && self.version.source <= through)
+				.then(|| Arc::clone(self));
+		}
+		let kept: Vec<&(SourceVersion, Range<usize>)> =
+			self.layers.iter().filter(|(source, _)| after < *source && *source <= through).collect();
+		let last = kept.last()?.0;
+		if kept.len() == self.layers.len() {
+			return Some(Arc::clone(self));
+		}
+		let mut deltas = Vec::new();
+		let mut layers = Vec::with_capacity(kept.len());
+		for (source, range) in kept {
+			let start = deltas.len();
+			deltas.extend(self.deltas[range.clone()].iter().cloned());
+			layers.push((*source, start..deltas.len()));
+		}
+		Some(Arc::new(Self {
+			version: ChangeVersion {
+				commit: self.version.commit,
+				source: last,
+			},
+			lsn: self.lsn,
+			at: self.at,
+			deltas,
+			layers,
+			changed_objects: OnceLock::new(),
+			lift: OnceLock::new(),
+			queue: OnceLock::new(),
+		}))
+	}
+
 	pub fn source_at(&self, index: usize) -> SourceVersion {
 		let layer = self.layers.partition_point(|(_, range)| range.end <= index);
 		self.layers.get(layer).map_or(self.version.source, |(source, _)| *source)

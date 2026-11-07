@@ -475,6 +475,12 @@ impl CommandTransaction {
 		Ok(())
 	}
 
+	pub fn begin_layer(&mut self, source: SourceVersion) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().begin_layer(source);
+		Ok(())
+	}
+
 	pub fn push_operator_slice(&mut self, slice: OperatorSlice) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().push_operator_slice(slice);
