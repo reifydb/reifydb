@@ -32,8 +32,8 @@ fn a_caller_must_not_choose_the_identity_of_its_own_transaction() {
 	let r = Transaction::Command(&mut txn).rql(&format!("CALL identity::inject({})", root_literal()), Params::None);
 	assert!(r.error.is_some(), "identity::inject must be rejected outside a test transaction");
 
-	assert_eq!(txn.identity, alice, "a call must never rewrite the transaction identity");
-	assert!(!txn.identity.is_privileged(), "alice escalated herself to a privileged identity");
+	assert_eq!(txn.context().identity.current, alice, "a call must never rewrite the transaction identity");
+	assert!(!txn.context().identity.current.is_privileged(), "alice escalated herself to a privileged identity");
 }
 
 #[test]
@@ -67,5 +67,8 @@ fn an_anonymous_caller_must_not_inject_root() {
 	let mut txn = t.inner().begin_command(IdentityId::anonymous()).unwrap();
 	let _ = Transaction::Command(&mut txn).rql(&format!("CALL identity::inject({})", root_literal()), Params::None);
 
-	assert!(!txn.identity.is_privileged(), "an unauthenticated caller escalated to a privileged identity");
+	assert!(
+		!txn.context().identity.current.is_privileged(),
+		"an unauthenticated caller escalated to a privileged identity"
+	);
 }

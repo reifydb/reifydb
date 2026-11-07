@@ -24,7 +24,7 @@ use reifydb_flow::{
 	operator::sink::{SourceRowEncoder, shape_field_columns},
 };
 #[cfg(feature = "testing")]
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{context::transaction::TransactionContext, sync::mutex::Mutex};
 use reifydb_test_harness::engine::create_test_admin_transaction;
 use reifydb_transaction::{
 	dictionary::DictionaryAllocatorRegistry,
@@ -42,7 +42,6 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		dictionary::DictionaryId,
-		identity::IdentityId,
 		row_number::RowNumber,
 		system_columns::{
 			SystemColumn, require_created_at, require_row_numbers, require_time, require_updated_at,
@@ -101,30 +100,32 @@ impl Db {
 
 	fn admin(&self) -> AdminTransaction {
 		let mut txn = AdminTransaction::new(
-			self.multi.clone(),
+			self.multi.begin_command(self.multi.generate_transaction_id()).unwrap(),
 			self.single.clone(),
 			self.event_bus.clone(),
 			self.interceptors(),
-			IdentityId::system(),
-		)
-		.unwrap();
+			Arc::new(TransactionContext::system(self.executor.runtime_context.clone())),
+		);
 		txn.set_dictionary_allocators(self.allocators.clone());
 		txn
 	}
 
 	fn command(&self) -> CommandTransaction {
 		CommandTransaction::new(
-			self.multi.clone(),
+			self.multi.begin_command(self.multi.generate_transaction_id()).unwrap(),
 			self.single.clone(),
 			self.event_bus.clone(),
 			self.interceptors(),
-			IdentityId::system(),
+			Arc::new(TransactionContext::system(self.executor.runtime_context.clone())),
 		)
-		.unwrap()
 	}
 
 	fn query(&self) -> QueryTransaction {
-		QueryTransaction::new(self.multi.begin_query().unwrap(), self.single.clone(), IdentityId::system())
+		QueryTransaction::new(
+			self.multi.begin_query(self.multi.generate_transaction_id()).unwrap(),
+			self.single.clone(),
+			Arc::new(TransactionContext::system(self.executor.runtime_context.clone())),
+		)
 	}
 
 	fn exec(&self, txn: &mut AdminTransaction, rql: &str) {
@@ -871,9 +872,9 @@ fn a_query_txn_at_an_older_leased_version_does_not_see_later_commits() {
 	]);
 	assert!(later > leased);
 	let mut old = QueryTransaction::new(
-		db.multi.begin_query_at_version(&lease).unwrap(),
+		db.multi.begin_query_at_version(db.multi.generate_transaction_id(), &lease).unwrap(),
 		db.single.clone(),
-		IdentityId::system(),
+		Arc::new(TransactionContext::system(db.executor.runtime_context.clone())),
 	);
 	let t = db.id(&mut Transaction::Query(&mut old), Kind::Table, "t");
 	let (v, changes) = db.snapshot(Transaction::Query(&mut old), &[t], 2);

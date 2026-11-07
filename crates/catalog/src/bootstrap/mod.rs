@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -12,6 +15,7 @@ use reifydb_core::{
 		system::{SystemVersion, SystemVersionKey},
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{store::multi::scan_tiers_latest, tier::persistent::MultiPersistentTier};
 use reifydb_transaction::{
@@ -22,7 +26,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 use tracing::{info, warn};
 
@@ -57,24 +61,25 @@ pub fn bootstrap_system_objects(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
-	bootstrap_root_namespaces(multi, single, catalog, eventbus)?;
-	identity::bootstrap_identities(multi, single, catalog, eventbus)?;
-	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
-	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
-	authentication::bootstrap_system_authentication(multi, single, catalog, eventbus)?;
-	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
-	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
-	runtime::bootstrap_runtime(multi, single, catalog, eventbus)?;
-	proc::bootstrap_proc(multi, single, catalog, eventbus)?;
-	store::bootstrap_store(multi, single, catalog, eventbus)?;
-	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
-	epoch::bootstrap_epoch(multi, single, catalog, eventbus)?;
-	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;
-	flow::bootstrap_flow(multi, single, catalog, eventbus)?;
-	completeness::bootstrap_completeness(multi, single, catalog, eventbus)?;
-	policy::bootstrap_call_policies(multi, single, eventbus)?;
-	load_catalog_cache(multi, single, catalog)?;
+	bootstrap_root_namespaces(multi, single, catalog, eventbus, runtime)?;
+	identity::bootstrap_identities(multi, single, catalog, eventbus, runtime)?;
+	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus, runtime)?;
+	binding::bootstrap_system_bindings(multi, single, catalog, eventbus, runtime)?;
+	authentication::bootstrap_system_authentication(multi, single, catalog, eventbus, runtime)?;
+	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus, runtime)?;
+	profiler::bootstrap_profiler(multi, single, catalog, eventbus, runtime)?;
+	runtime::bootstrap_runtime(multi, single, catalog, eventbus, runtime)?;
+	proc::bootstrap_proc(multi, single, catalog, eventbus, runtime)?;
+	store::bootstrap_store(multi, single, catalog, eventbus, runtime)?;
+	instruments::bootstrap_instruments(multi, single, catalog, eventbus, runtime)?;
+	epoch::bootstrap_epoch(multi, single, catalog, eventbus, runtime)?;
+	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus, runtime)?;
+	flow::bootstrap_flow(multi, single, catalog, eventbus, runtime)?;
+	completeness::bootstrap_completeness(multi, single, catalog, eventbus, runtime)?;
+	policy::bootstrap_call_policies(multi, single, eventbus, runtime)?;
+	load_catalog_cache(multi, single, catalog, runtime)?;
 	Ok(())
 }
 
@@ -83,6 +88,7 @@ pub fn bootstrap_root_namespaces(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	let version_key = SystemVersionKey {
 		version: SystemVersion::Storage,
@@ -97,12 +103,12 @@ pub fn bootstrap_root_namespaces(
 
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 	for namespace in [Namespace::system(), Namespace::default_namespace()] {
 		catalog_api.create_namespace_with_id(
 			&mut admin,
@@ -167,6 +173,7 @@ pub fn apply_bootstrap_configs(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	configs: &[(ConfigKey, Value)],
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	reject_duplicate_configs(configs);
 	if configs.is_empty() {
@@ -174,12 +181,12 @@ pub fn apply_bootstrap_configs(
 	}
 
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	let catalog_api = Catalog::new(catalog.clone());
 	for (key, value) in configs {
@@ -187,14 +194,27 @@ pub fn apply_bootstrap_configs(
 	}
 	admin.commit()?;
 
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	let mut qt = QueryTransaction::new(
+		multi.begin_query(multi.generate_transaction_id())?,
+		single.clone(),
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 	load_configs(&mut Transaction::Query(&mut qt), catalog)?;
 
 	Ok(())
 }
 
-pub fn load_catalog_cache(multi: &MultiTransaction, single: &SingleTransaction, catalog: &CatalogCache) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+pub fn load_catalog_cache(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &CatalogCache,
+	runtime: &RuntimeContext,
+) -> Result<()> {
+	let mut qt = QueryTransaction::new(
+		multi.begin_query(multi.generate_transaction_id())?,
+		single.clone(),
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 	CatalogCacheLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 	Ok(())
 }

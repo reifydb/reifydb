@@ -49,7 +49,10 @@ impl SubscriptionWorkerActor {
 		};
 		match self.engine.multi().acquire_version_lease(to_version) {
 			Ok(lease) if protect.is_some() => {
-				let base_query = self.engine.multi().begin_query_at_version(&lease)?;
+				let base_query = self.engine.multi().begin_query_at_version(
+					self.engine.multi().generate_transaction_id(),
+					&lease,
+				)?;
 				state.carry_lease = Some(lease);
 				self.evaluate_batch(state, &base_query, changes);
 				drop(base_query);

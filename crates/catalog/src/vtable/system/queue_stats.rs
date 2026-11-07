@@ -19,10 +19,8 @@ pub(crate) struct PartitionStats {
 	pub oldest_due_at: Option<DateTime>,
 }
 
-pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Result<Option<Vec<PartitionStats>>> {
-	let Some(single) = txn.single() else {
-		return Ok(None);
-	};
+pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Result<Vec<PartitionStats>> {
+	let single = txn.single();
 
 	let store = single.read_store();
 	let partitions = queue_partition_counters(single, queue.id)?;
@@ -44,7 +42,7 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 		});
 	}
 
-	Ok(Some(stats))
+	Ok(stats)
 }
 
 pub(crate) fn earliest(left: Option<DateTime>, right: Option<DateTime>) -> Option<DateTime> {

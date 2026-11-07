@@ -133,8 +133,9 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		load_catalog_cache(&multi, &single, &catalog_cache)?;
-		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)?;
+		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		load_catalog_cache(&multi, &single, &catalog_cache, &runtime_context)?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &runtime_context)?;
 
 		let commit_queue = CommitQueue::new(
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
@@ -158,7 +159,7 @@ impl Bridge {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
+				runtime_context,
 				routines,
 				transforms: Transforms::empty(),
 				block_encodings: BlockEncodings::empty(),

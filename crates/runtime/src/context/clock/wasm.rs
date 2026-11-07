@@ -26,7 +26,7 @@ fn performance_now_ms() -> f64 {
 	window().and_then(|w| w.performance()).map(|p| p.now()).unwrap_or_else(|| Date::now())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Clock {
 	Real,
 
@@ -71,11 +71,12 @@ impl Default for Clock {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MockClock {
 	inner: Arc<MockClockInner>,
 }
 
+#[derive(Debug)]
 struct MockClockInner {
 	time_nanos: AtomicU64,
 }

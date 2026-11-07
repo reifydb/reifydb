@@ -85,7 +85,8 @@ fn restart_recovery_repopulates_materialized_catalog() {
 	txn.commit().unwrap();
 
 	let fresh = CatalogCache::new();
-	load_catalog_cache(t.inner().multi(), t.inner().single(), &fresh).unwrap();
+	load_catalog_cache(t.inner().multi(), t.inner().single(), &fresh, &t.inner().services().runtime_context)
+		.unwrap();
 
 	let reloaded =
 		fresh.find_windowed_view_group_by_name(namespace, "ohlcv").expect("group missing in rebuilt cache");

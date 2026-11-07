@@ -100,8 +100,8 @@ impl DeferredParams {
 		Self {
 			version,
 			pending: Pending::new(),
-			query: Some(parent.multi.begin_query().unwrap()),
-			state_query: Some(parent.multi.begin_query().unwrap()),
+			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+			state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
 			catalog,
 			interceptors,
 			clock,

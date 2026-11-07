@@ -26,8 +26,8 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: Pending::new(),
-		query: Some(parent.multi.begin_query().unwrap()),
-		state_query: Some(parent.multi.begin_query().unwrap()),
+		query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+		state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(clock),

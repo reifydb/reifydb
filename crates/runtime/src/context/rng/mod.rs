@@ -6,10 +6,11 @@ use std::sync::Arc;
 use getrandom::fill as getrandom_fill;
 use rand::{Rng as RandRng, RngExt, SeedableRng, rngs::StdRng};
 use reifydb_value::clock::RandomBytes;
+use xxhash_rust::xxh3::xxh3_64_with_seed;
 
 use crate::sync::mutex::Mutex;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum Rng {
 	#[default]
 	Os,
@@ -26,6 +27,13 @@ impl RandomBytes for Rng {
 impl Rng {
 	pub fn seeded(seed: u64) -> Self {
 		Rng::Seeded(SeededRng::new(seed))
+	}
+
+	pub fn fork(&self, key: &[u8]) -> Rng {
+		match self {
+			Rng::Os => Rng::Os,
+			Rng::Seeded(seeded) => Rng::Seeded(SeededRng::new(xxh3_64_with_seed(key, seeded.seed))),
+		}
 	}
 
 	pub fn bytes_16(&self) -> [u8; 16] {
@@ -131,8 +139,10 @@ impl Rng {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SeededRng {
+	seed: u64,
+
 	inner: Arc<Mutex<StdRng>>,
 
 	infra: Arc<Mutex<StdRng>>,
@@ -141,6 +151,7 @@ pub struct SeededRng {
 impl SeededRng {
 	pub fn new(seed: u64) -> Self {
 		Self {
+			seed,
 			inner: Arc::new(Mutex::new(StdRng::seed_from_u64(seed))),
 			infra: Arc::new(Mutex::new(StdRng::seed_from_u64(seed ^ 0x5A5A5A5A5A5A5A5A))),
 		}

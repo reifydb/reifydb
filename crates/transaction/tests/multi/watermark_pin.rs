@@ -8,11 +8,11 @@ use crate::{as_key, as_values};
 fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
 	let engine = test_multi();
 
-	let long_running = engine.begin_command().unwrap();
+	let long_running = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let base = long_running.version();
 
 	for i in 0..5u64 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(as_key!(i), as_values!(i))]).unwrap();
 		txn.commit().unwrap();
 	}
@@ -34,15 +34,15 @@ fn a_live_transaction_keeps_the_query_watermark_from_passing_its_snapshot() {
 fn transactions_sharing_a_snapshot_each_hold_the_pin_independently() {
 	let engine = test_multi();
 
-	let first = engine.begin_command().unwrap();
-	let second = engine.begin_command().unwrap();
+	let first = engine.begin_command(engine.generate_transaction_id()).unwrap();
+	let second = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let base = first.version();
 	assert_eq!(second.version(), base, "both transactions begin before any commit, so they share a snapshot");
 
 	drop(first);
 
 	for i in 0..5u64 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(as_key!(i), as_values!(i))]).unwrap();
 		txn.commit().unwrap();
 	}

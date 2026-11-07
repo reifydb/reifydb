@@ -24,13 +24,15 @@ use reifydb_core::{
 	marker::{Marker, MarkerSink},
 	util::ioc::IocContainer,
 };
-use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_runtime::context::{
+	clock::{Clock, Instant},
+	transaction::TransactionContext,
+};
 use reifydb_value::{
 	Result,
 	error::{Diagnostic, Error},
 	params::Params,
 	reifydb_assertions,
-	value::identity::IdentityId,
 };
 use tracing::instrument;
 
@@ -125,7 +127,7 @@ pub struct CommandTransaction {
 
 	pub(crate) accumulator: ChangeAccumulator,
 
-	pub identity: IdentityId,
+	context: Arc<TransactionContext>,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
@@ -152,14 +154,14 @@ enum TransactionState {
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip_all)]
 	pub fn new(
-		multi: MultiTransaction,
+		cmd: MultiWriteTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
-		identity: IdentityId,
-	) -> Result<Self> {
-		let cmd = multi.begin_command()?;
-		Ok(Self {
+		context: Arc<TransactionContext>,
+	) -> Self {
+		let multi = cmd.engine.clone();
+		Self {
 			cmd: Some(cmd),
 			multi,
 			single,
@@ -168,7 +170,7 @@ impl CommandTransaction {
 			interceptors,
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
-			identity,
+			context,
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
@@ -176,7 +178,15 @@ impl CommandTransaction {
 			pending_markers: None,
 			#[cfg(feature = "testing")]
 			committed_op_counts: OpCounts::default(),
-		})
+		}
+	}
+
+	pub fn context(&self) -> &Arc<TransactionContext> {
+		&self.context
+	}
+
+	pub(crate) fn set_context(&mut self, context: Arc<TransactionContext>) {
+		self.context = context;
 	}
 
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {

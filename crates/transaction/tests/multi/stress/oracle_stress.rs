@@ -15,7 +15,7 @@ fn test_oracle_committed_txns_cleanup() {
 	const NUM_TXNS: usize = 20_000;
 
 	for i in 0..NUM_TXNS {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 		let key = as_key!(format!("key_{}", i));
 		let value = as_values!(format!("value_{}", i));
@@ -29,7 +29,7 @@ fn test_oracle_committed_txns_cleanup() {
 		}
 	}
 
-	let mut final_tx = engine.begin_command().unwrap();
+	let mut final_tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
 	final_tx.set(vec![(final_key.clone(), final_value)]).unwrap();
@@ -50,7 +50,8 @@ fn test_oracle_high_concurrency() {
 		let engine_clone = engine.clone();
 		let handle = std::thread::spawn(move || {
 			for i in 0..TXN_PER_THREAD {
-				let mut tx = engine_clone.begin_command().unwrap();
+				let mut tx =
+					engine_clone.begin_command(engine_clone.generate_transaction_id()).unwrap();
 
 				let key = as_key!(format!("t{}_{}", thread_id, i));
 				let value = as_values!(format!("v{}_{}", thread_id, i));
@@ -70,7 +71,7 @@ fn test_oracle_high_concurrency() {
 		handle.join().unwrap();
 	}
 
-	let mut final_tx = engine.begin_command().unwrap();
+	let mut final_tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let final_key = as_key!("concurrent_test");
 	let final_value = as_values!("passed".to_string());
 	final_tx.set(vec![(final_key.clone(), final_value)]).unwrap();
@@ -83,7 +84,7 @@ fn test_oracle_version_boundaries() {
 	let engine = test_multi();
 
 	for i in 0..10_000 {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let key = as_key!(format!("boundary_{}", i));
 		let value = as_values!("test".to_string());
 		tx.set(vec![(key.clone(), value)]).unwrap();

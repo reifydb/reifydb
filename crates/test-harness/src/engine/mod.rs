@@ -39,6 +39,7 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	pool::PoolConfig,
 	shutdown::Shutdown,
@@ -340,7 +341,8 @@ impl TestEngineBuilder {
 		ioc = ioc.register(operator_store.clone());
 		ioc = ioc.register(eventbus.clone());
 
-		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus)
+		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus, &runtime_context)
 			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
 		let ioc_for_queue = ioc.clone();
@@ -458,8 +460,15 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
-	let mut txn =
-		AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap();
+	let runtime = multi.runtime_context();
+	let cmd = multi.begin_command(multi.generate_transaction_id()).unwrap();
+	let mut txn = AdminTransaction::new(
+		cmd,
+		single,
+		event_bus,
+		Interceptors::new(),
+		Arc::new(TransactionContext::system(runtime)),
+	);
 	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
@@ -494,14 +503,15 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
+	let runtime = multi.runtime_context();
+	let cmd = multi.begin_command(multi.generate_transaction_id()).unwrap();
 	let mut result = AdminTransaction::new(
-		multi,
+		cmd,
 		single.clone(),
 		event_bus.clone(),
 		Interceptors::new(),
-		IdentityId::system(),
-	)
-	.unwrap();
+		Arc::new(TransactionContext::system(runtime)),
+	);
 	result.set_dictionary_allocators(dictionary_allocators);
 
 	let catalog_cache = CatalogCache::new();

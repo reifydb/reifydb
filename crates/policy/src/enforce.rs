@@ -96,7 +96,8 @@ pub fn compile_write_policies(
 	if tx.identity().is_privileged() {
 		return Ok(None);
 	}
-	let policies = resolve_target_policies(catalog, tx, target)?;
+	let identity = tx.identity();
+	let policies = resolve_target_policies(catalog, tx, identity, target)?;
 	if policies.is_empty() {
 		return Err(no_policy_error(target));
 	}
@@ -187,11 +188,11 @@ pub fn enforce_session_policy(
 	if tx.identity().is_privileged() {
 		return Ok(());
 	}
-	let policies = resolve_write_policies(catalog, tx, "", "", session_type, PolicyTargetType::Session)?;
+	let identity = tx.identity();
+	let policies = resolve_write_policies(catalog, tx, identity, "", "", session_type, PolicyTargetType::Session)?;
 	if policies.is_empty() {
 		return session_empty_outcome(session_type, default_deny);
 	}
-	let identity = tx.identity();
 	evaluate_session_policies(&policies, session_type, identity, evaluator)
 }
 
@@ -240,17 +241,17 @@ fn evaluate_session_policies(
 pub fn enforce_identity_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
+	identity: IdentityId,
 	target: &PolicyTarget<'_>,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
-	if tx.identity().is_privileged() {
+	if identity.is_privileged() {
 		return Ok(());
 	}
-	let policies = resolve_target_policies(catalog, tx, target)?;
+	let policies = resolve_target_policies(catalog, tx, identity, target)?;
 	if policies.is_empty() {
 		return Err(no_policy_error(target));
 	}
-	let identity = tx.identity();
 	evaluate_identity_policies(&policies, target, identity, evaluator)
 }
 
@@ -291,9 +292,18 @@ fn evaluate_identity_policies(
 fn resolve_target_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
+	identity: IdentityId,
 	target: &PolicyTarget<'_>,
 ) -> Result<Vec<(Policy, PolicyOperation)>> {
-	resolve_write_policies(catalog, tx, target.namespace, target.object, target.operation, target.target_type)
+	resolve_write_policies(
+		catalog,
+		tx,
+		identity,
+		target.namespace,
+		target.object,
+		target.operation,
+		target.target_type,
+	)
 }
 
 #[inline]

@@ -28,7 +28,7 @@ use reifydb_rql::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::{Result, fragment::Fragment, value::identity::IdentityId};
 use tracing::instrument;
 
 #[instrument(name = "policy::inject", level = "debug", skip_all)]
@@ -324,12 +324,12 @@ fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
 pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
+	identity: IdentityId,
 	target_namespace: &str,
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
 ) -> Result<Vec<(Policy, PolicyOperation)>> {
-	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(vec![]);
 	}

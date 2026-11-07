@@ -17,11 +17,11 @@ fn test_read_after_write() {
 				let k = as_key!(i);
 				let v = as_values!(i);
 
-				let mut txn = db.begin_command().unwrap();
+				let mut txn = db.begin_command(db.generate_transaction_id()).unwrap();
 				txn.set(vec![(k.clone(), v.clone())]).unwrap();
 				txn.commit().unwrap();
 
-				let txn = db.begin_query().unwrap();
+				let txn = db.begin_query(db.generate_transaction_id()).unwrap();
 				let sv = txn.get(&[k.clone()]).unwrap().pop().flatten().unwrap();
 				assert_eq!(*sv.bytes(), v);
 			})

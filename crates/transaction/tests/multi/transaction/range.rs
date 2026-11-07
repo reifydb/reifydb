@@ -31,7 +31,7 @@ fn prefix_range(prefix: u8) -> TaggedKeyBoundRange {
 #[test]
 fn test_range() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
@@ -39,7 +39,7 @@ fn test_range() {
 
 	let four_to_one = TaggedKeyBoundRange::start_end(as_bound!(4), as_bound!(1));
 
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let items: Vec<_> =
 		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
@@ -59,7 +59,7 @@ fn test_range() {
 #[test]
 fn test_range2() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
@@ -84,7 +84,7 @@ fn test_range2() {
 
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(4), as_values!(4))]).unwrap();
 	txn.set(vec![(as_key!(5), as_values!(5))]).unwrap();
 	txn.set(vec![(as_key!(6), as_values!(6))]).unwrap();
@@ -111,7 +111,7 @@ fn test_range2() {
 #[test]
 fn test_range3() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(4), as_values!(4))]).unwrap();
 	txn.set(vec![(as_key!(5), as_values!(5))]).unwrap();
 	txn.set(vec![(as_key!(6), as_values!(6))]).unwrap();
@@ -138,7 +138,7 @@ fn test_range3() {
 
 	let five_to_one = TaggedKeyBoundRange::start_end(as_bound!(5), as_bound!(1));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
@@ -167,7 +167,7 @@ fn test_range_edge() {
 
 	// c1
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 		txn.set(vec![(as_key!(0), as_values!(0u64))]).unwrap();
 		txn.set(vec![(as_key!(u64::MAX), as_values!(u64::MAX))]).unwrap();
@@ -179,7 +179,7 @@ fn test_range_edge() {
 
 	// a2, c2
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(as_key!(1), as_values!(12u64))]).unwrap();
 		txn.set(vec![(as_key!(3), as_values!(32u64))]).unwrap();
 		txn.commit().unwrap();
@@ -188,7 +188,7 @@ fn test_range_edge() {
 
 	// b3
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(as_key!(1), as_values!(13u64))]).unwrap();
 		txn.set(vec![(as_key!(2), as_values!(23u64))]).unwrap();
 		txn.commit().unwrap();
@@ -197,7 +197,7 @@ fn test_range_edge() {
 
 	// b4 (remove)
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.remove(vec![(as_key!(2), None)]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
@@ -227,7 +227,7 @@ fn test_range_edge() {
 
 	let ten_to_one = TaggedKeyBoundRange::start_end(as_bound!(10), as_bound!(1));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let items: Vec<_> =
 		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 13]);
@@ -300,12 +300,12 @@ fn test_range_stream_returns_newest_version() {
 	const NUM_VERSIONS: u64 = 50;
 
 	for i in 1..=NUM_VERSIONS {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(as_key!(1), as_values!(i))]).unwrap();
 		txn.commit().unwrap();
 	}
 
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
 
@@ -324,7 +324,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 
 	// Create many versions for each key
 	for version in 1..=VERSIONS_PER_KEY {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for key in 1..=NUM_KEYS {
 			// Value encodes both key and version for verification
 			txn.set(vec![(as_key!(key), as_values!(key * 1000 + version))]).unwrap();
@@ -333,7 +333,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 	}
 
 	// Query with streaming
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
 
@@ -356,7 +356,7 @@ fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
 	// differently from its encoded form makes a transaction stop seeing its own writes while
 	// committed rows keep arriving, which reads as data loss rather than as an error.
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(1u64))]).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(2u64))]).unwrap();
 	txn.set(vec![(as_key!("b1"), as_values!(3u64))]).unwrap();
@@ -375,12 +375,12 @@ fn a_prefix_range_sees_writes_the_transaction_has_not_committed_yet() {
 #[test]
 fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(1u64))]).unwrap();
 	txn.set(vec![(as_key!("a3"), as_values!(3u64))]).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(2u64))]).unwrap();
 
 	let rows: Vec<_> = txn.range(prefix_range(b'a'), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -395,12 +395,12 @@ fn a_prefix_range_merges_uncommitted_writes_with_committed_rows() {
 #[test]
 fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(1u64))]).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(2u64))]).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.remove(vec![(as_key!("a1"), None)]).unwrap();
 
 	let keys: Vec<TaggedKey> = txn
@@ -417,7 +417,7 @@ fn a_prefix_range_hides_a_row_the_transaction_has_removed() {
 #[test]
 fn a_reverse_prefix_range_sees_uncommitted_writes_too() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(1u64))]).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(2u64))]).unwrap();
 	txn.set(vec![(as_key!("b1"), as_values!(3u64))]).unwrap();

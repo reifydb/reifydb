@@ -50,6 +50,7 @@ use reifydb_core::{
 	},
 	row::RowSettings,
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
 	Result,
 	params::Params,
@@ -81,9 +82,9 @@ use crate::{
 
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
-	pub(crate) single: Option<SingleTransaction>,
+	pub(crate) single: SingleTransaction,
 
-	pub identity: IdentityId,
+	context: Arc<TransactionContext>,
 	pub layout: ScanLayout,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
@@ -91,25 +92,22 @@ pub struct QueryTransaction {
 
 impl QueryTransaction {
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
-	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
+	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, context: Arc<TransactionContext>) -> Self {
 		Self {
 			multi,
-			single: Some(single),
-			identity,
+			single,
+			context,
 			layout: ScanLayout::Row,
 			executor: None,
 		}
 	}
 
-	#[instrument(name = "transaction::query::read_only", level = "debug", skip_all)]
-	pub fn read_only(multi: MultiReadTransaction, identity: IdentityId) -> Self {
-		Self {
-			multi,
-			single: None,
-			identity,
-			layout: ScanLayout::Row,
-			executor: None,
-		}
+	pub fn context(&self) -> &Arc<TransactionContext> {
+		&self.context
+	}
+
+	pub(crate) fn set_context(&mut self, context: Arc<TransactionContext>) {
+		self.context = context;
 	}
 
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
@@ -200,7 +198,7 @@ impl QueryTransaction {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.as_ref().expect("single not available in read-only query context").begin_query(keys)
+		self.single.begin_query(keys)
 	}
 }
 

@@ -22,7 +22,10 @@ use reifydb_value::Result;
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 #[cfg(feature = "testing")]
 use crate::counting::OpCounts;
-use crate::multi::{RangeScope, lease::VersionLeaseGuard, types::TransactionValue};
+use crate::{
+	TransactionId,
+	multi::{RangeScope, lease::VersionLeaseGuard, types::TransactionValue},
+};
 
 pub struct MultiReadTransaction {
 	pub(crate) engine: MultiTransaction,
@@ -34,8 +37,8 @@ pub struct MultiReadTransaction {
 }
 
 impl MultiReadTransaction {
-	pub fn new(engine: MultiTransaction, version: Option<CommitVersion>) -> Result<Self> {
-		let tm = engine.tm.query(version)?;
+	pub fn new(engine: MultiTransaction, id: TransactionId, version: Option<CommitVersion>) -> Result<Self> {
+		let tm = engine.tm.query(id, version)?;
 		Ok(Self {
 			engine,
 			tm,
@@ -45,9 +48,9 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn new_with_lease(engine: MultiTransaction, lease: VersionLeaseGuard) -> Result<Self> {
+	pub fn new_with_lease(engine: MultiTransaction, id: TransactionId, lease: VersionLeaseGuard) -> Result<Self> {
 		let version = lease.version();
-		let tm = engine.tm.query(Some(version))?;
+		let tm = engine.tm.query(id, Some(version))?;
 		Ok(Self {
 			engine,
 			tm,

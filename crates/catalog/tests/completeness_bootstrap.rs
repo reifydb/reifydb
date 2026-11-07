@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_catalog::{
 	bootstrap::bootstrap_system_objects,
 	catalog::{
@@ -14,11 +16,12 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, TableId},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 
 fn column(name: &str, ty: ValueType) -> TableColumnToCreate {
@@ -46,13 +49,12 @@ fn a_store_whose_completeness_table_predates_the_primary_key_refuses_to_start() 
 
 	let catalog_api = Catalog::new(catalog_cache.clone());
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id()).expect("admin transaction"),
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)
-	.expect("admin transaction");
+		Arc::new(TransactionContext::system(services.runtime_context.clone())),
+	);
 	let namespace = catalog_api
 		.create_namespace_with_id(
 			&mut admin,
@@ -87,5 +89,5 @@ fn a_store_whose_completeness_table_predates_the_primary_key_refuses_to_start() 
 		.expect("pre-primary-key completeness table");
 	admin.commit().expect("commit old layout");
 
-	let _ = bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus);
+	let _ = bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &services.runtime_context);
 }

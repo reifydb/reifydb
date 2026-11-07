@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::policy::{CallableOp, PolicyOpToCreate, PolicyTargetType, PolicyToCreate},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_value::value::identity::IdentityId;
 
 use crate::{CatalogStore, Result};
 
@@ -29,10 +31,15 @@ pub fn bootstrap_call_policies(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	let mut missing = Vec::new();
 	{
-		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+		let mut qt = QueryTransaction::new(
+			multi.begin_query(multi.generate_transaction_id())?,
+			single.clone(),
+			Arc::new(TransactionContext::system(runtime.clone())),
+		);
 		let mut rx = Transaction::Query(&mut qt);
 		for (name, namespace, object) in OPEN_CALL_POLICIES {
 			if CatalogStore::find_policy_by_name(&mut rx, name)?.is_none() {
@@ -46,12 +53,12 @@ pub fn bootstrap_call_policies(
 	}
 
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	for (name, namespace, object) in missing {
 		CatalogStore::create_policy(

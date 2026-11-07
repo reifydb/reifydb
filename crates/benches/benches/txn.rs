@@ -127,7 +127,9 @@ fn spawn_stall_writer(multi: &MultiTransaction, stall_keys: u64, running: &Arc<A
 	thread::spawn(move || {
 		let mut round = 0u64;
 		while running.load(Ordering::Relaxed) {
-			let mut txn = multi.begin_command().expect("begin_command must succeed");
+			let mut txn = multi
+				.begin_command(multi.generate_transaction_id())
+				.expect("begin_command must succeed");
 			for index in 0..stall_keys {
 				txn.set(vec![(
 					encoded_key(
@@ -160,7 +162,9 @@ fn spawn_readers(
 				let mut ops = 0u64;
 				while running.load(Ordering::Relaxed) {
 					let begin_start = Clock::Real.instant();
-					let txn = multi.begin_query().expect("begin_query must succeed");
+					let txn = multi
+						.begin_query(multi.generate_transaction_id())
+						.expect("begin_query must succeed");
 					histogram
 						.record(begin_start.elapsed().as_nanos() as u64)
 						.expect("latency within bounds");
@@ -197,7 +201,9 @@ fn run_once(
 			let mut commit_histogram = latency_histogram();
 			for index in 0..iterations {
 				let begin_start = Clock::Real.instant();
-				let mut txn = multi.begin_command().expect("begin_command must succeed");
+				let mut txn = multi
+					.begin_command(multi.generate_transaction_id())
+					.expect("begin_command must succeed");
 				begin_histogram
 					.record(begin_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");

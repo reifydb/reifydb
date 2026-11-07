@@ -117,7 +117,8 @@ fn restart_recovery_repopulates_materialized_catalog() {
 
 	// Simulate a restart: fresh CatalogCache, run loader against the same stores.
 	let fresh = CatalogCache::new();
-	load_catalog_cache(t.inner().multi(), t.inner().single(), &fresh).unwrap();
+	load_catalog_cache(t.inner().multi(), t.inner().single(), &fresh, &t.inner().services().runtime_context)
+		.unwrap();
 
 	let by_name = fresh
 		.find_relationship_by_name(f.namespace, f.source_table, "owns")

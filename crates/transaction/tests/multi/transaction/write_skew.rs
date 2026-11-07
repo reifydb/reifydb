@@ -38,7 +38,7 @@ fn test_write_skew() {
 
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(a999.clone(), as_values!(100u64))]).unwrap();
 	txn.set(vec![(a888.clone(), as_values!(100u64))]).unwrap();
 	txn.commit().unwrap();
@@ -50,7 +50,7 @@ fn test_write_skew() {
 		from_bytes!(u64, val)
 	}
 
-	let mut txn1 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	let mut sum = get_bal(&mut txn1, &a999);
 	sum += get_bal(&mut txn1, &a888);
@@ -63,7 +63,7 @@ fn test_write_skew() {
 	assert_eq!(100, sum);
 
 	// txn1 stays uncommitted so txn2 begins on the same snapshot.
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	let mut sum = get_bal(&mut txn2, &a999);
 	sum += get_bal(&mut txn2, &a888);
@@ -87,7 +87,7 @@ fn test_black_white() {
 	// https://wiki.postgresql.org/wiki/SSI#Black_and_White
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	for i in 1..=10 {
 		if i % 2 == 1 {
 			txn.set(vec![(as_key!(i), as_values!("black".to_string()))]).unwrap();
@@ -97,7 +97,7 @@ fn test_black_white() {
 	}
 	txn.commit().unwrap();
 
-	let mut white = engine.begin_command().unwrap();
+	let mut white = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let indices = white
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -116,7 +116,7 @@ fn test_black_white() {
 		white.set(vec![(i.clone(), as_values!("white".to_string()))]).unwrap();
 	}
 
-	let mut black = engine.begin_command().unwrap();
+	let mut black = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let indices = black
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -139,7 +139,7 @@ fn test_black_white() {
 	let err = white.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let rx = engine.begin_query().unwrap();
+	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let result: Vec<_> =
 		rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 10);
@@ -156,15 +156,15 @@ fn test_overdraft_protection() {
 
 	let key = as_key!("karen");
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(key.clone(), as_values!(1000))]).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn1 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let money = from_bytes!(i32, *txn1.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
 	txn1.set(vec![(key.clone(), as_values!(money - 500))]).unwrap();
 
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let money = from_bytes!(i32, *txn2.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
 	txn2.set(vec![(key.clone(), as_values!(money - 500))]).unwrap();
 
@@ -172,7 +172,7 @@ fn test_overdraft_protection() {
 	let err = txn2.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let rx = engine.begin_query().unwrap();
+	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let money = from_bytes!(i32, *rx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
 	assert_eq!(money, 500);
 }
@@ -182,7 +182,7 @@ fn test_primary_colors() {
 	// https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	for i in 1..=9000 {
 		if i % 3 == 1 {
 			txn.set(vec![(as_key!(i), as_values!("red".to_string()))]).unwrap();
@@ -194,7 +194,7 @@ fn test_primary_colors() {
 	}
 	txn.commit().unwrap();
 
-	let mut red = engine.begin_command().unwrap();
+	let mut red = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let indices: Vec<_> = red
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
@@ -212,7 +212,7 @@ fn test_primary_colors() {
 		red.set(vec![(i.clone(), as_values!("red".to_string()))]).unwrap();
 	}
 
-	let mut yellow = engine.begin_command().unwrap();
+	let mut yellow = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let indices: Vec<_> = yellow
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
@@ -230,7 +230,7 @@ fn test_primary_colors() {
 		yellow.set(vec![(i.clone(), as_values!("yellow".to_string()))]).unwrap();
 	}
 
-	let mut red_two = engine.begin_command().unwrap();
+	let mut red_two = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let indices: Vec<_> = red_two
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000)
 		.collect::<Result<Vec<_>, _>>()
@@ -255,7 +255,7 @@ fn test_primary_colors() {
 	let err = yellow.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let rx = engine.begin_query().unwrap();
+	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	let result: Vec<_> =
 		rx.range(TaggedKeyBoundRange::all(), RangeScope::All, 15000).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(result.len(), 9000);
@@ -284,7 +284,7 @@ fn test_intersecting_data() {
 	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(10u64))]).unwrap();
 	txn.set(vec![(as_key!("a2"), as_values!(20u64))]).unwrap();
 	txn.set(vec![(as_key!("b1"), as_values!(100u64))]).unwrap();
@@ -292,7 +292,7 @@ fn test_intersecting_data() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let mut txn1 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn1
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -312,7 +312,7 @@ fn test_intersecting_data() {
 	txn1.set(vec![(as_key!("b3"), as_values!(30))]).unwrap();
 	assert_eq!(30, val);
 
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn2
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -336,7 +336,7 @@ fn test_intersecting_data() {
 	let err = txn1.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let mut txn3 = engine.begin_command().unwrap();
+	let mut txn3 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn3
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -361,14 +361,14 @@ fn test_intersecting_data2() {
 	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("a1"), as_values!(10u64))]).unwrap();
 	txn.set(vec![(as_key!("b1"), as_values!(100u64))]).unwrap();
 	txn.set(vec![(as_key!("b2"), as_values!(200u64))]).unwrap();
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let mut txn1 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn1
 		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -380,7 +380,7 @@ fn test_intersecting_data2() {
 	txn1.set(vec![(as_key!("b3"), as_values!(10))]).unwrap();
 	assert_eq!(10, val);
 
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn2
 		.range(prefix_range(b'b'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -396,7 +396,7 @@ fn test_intersecting_data2() {
 	let err = txn1.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let mut txn3 = engine.begin_command().unwrap();
+	let mut txn3 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn3
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -420,13 +420,13 @@ fn test_intersecting_data3() {
 	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("b1"), as_values!(100u64))]).unwrap();
 	txn.set(vec![(as_key!("b2"), as_values!(200u64))]).unwrap();
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let mut txn1 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn1
 		.range(prefix_range(b'a'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -437,7 +437,7 @@ fn test_intersecting_data3() {
 	txn1.set(vec![(as_key!("b3"), as_values!(0u64))]).unwrap();
 	assert_eq!(0, val);
 
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn2
 		.range(prefix_range(b'b'), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()
@@ -452,7 +452,7 @@ fn test_intersecting_data3() {
 	let err = txn1.commit().unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let mut txn3 = engine.begin_command().unwrap();
+	let mut txn3 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let val = txn3
 		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 		.collect::<Result<Vec<_>, _>>()

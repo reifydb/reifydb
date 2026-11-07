@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::event::EventBus;
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -20,8 +23,13 @@ pub fn bootstrap_identities(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	let mut qt = QueryTransaction::new(
+		multi.begin_query(multi.generate_transaction_id())?,
+		single.clone(),
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 	let mut missing = Vec::new();
 	for (name, id, kind) in [
 		("root", IdentityId::root(), IdentityKind::Root),
@@ -37,19 +45,23 @@ pub fn bootstrap_identities(
 	}
 
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	for (name, id, kind) in missing {
 		CatalogStore::create_identity_with_id(&mut admin, name, id, kind)?;
 	}
 	admin.commit()?;
 
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	let mut qt = QueryTransaction::new(
+		multi.begin_query(multi.generate_transaction_id())?,
+		single.clone(),
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
 
 	Ok(())

@@ -9,7 +9,7 @@ fn wide_rows_trip_too_large_via_modify() {
 	// Size is measured from real row bytes, so 2 MiB rows hit the 1 GiB byte cap around 512 entries,
 	// far short of the 1M-entry cap; a constant per-entry estimate would never trip it here.
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	let big_value = "x".repeat(2 * 1024 * 1024);
 	let mut result = Ok(());

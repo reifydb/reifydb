@@ -22,6 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::{
+		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
@@ -131,7 +132,7 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
-	pub fn query(&self, version: Option<CommitVersion>) -> Result<TransactionManagerQuery<L>> {
+	pub fn query(&self, id: TransactionId, version: Option<CommitVersion>) -> Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			let safe_version = self.inner.version()?;
 			if version > safe_version {
@@ -141,18 +142,10 @@ where
 				}
 				.into());
 			}
-			TransactionManagerQuery::new_time_travel(
-				TransactionId::generate(self.inner.clock(), self.inner.rng()),
-				self.clone(),
-				version,
-			)
+			TransactionManagerQuery::new_time_travel(id, self.clone(), version)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
-			TransactionManagerQuery::new_current(
-				TransactionId::generate(self.inner.clock(), self.inner.rng()),
-				self.clone(),
-				safe_version,
-			)
+			TransactionManagerQuery::new_current(id, self.clone(), safe_version)
 		})
 	}
 
@@ -385,19 +378,33 @@ impl MultiTransaction {
 }
 
 impl MultiTransaction {
+	pub fn runtime_context(&self) -> RuntimeContext {
+		let oracle = self.0.tm.oracle();
+		RuntimeContext::new(oracle.clock().clone(), oracle.rng().clone(), VersionEpoch::new())
+	}
+
+	pub fn generate_transaction_id(&self) -> TransactionId {
+		let oracle = self.0.tm.oracle();
+		TransactionId::generate(oracle.clock(), oracle.rng())
+	}
+
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
 	pub fn version(&self) -> Result<CommitVersion> {
 		self.0.version()
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "trace", skip(self))]
-	pub fn begin_query(&self) -> Result<MultiReadTransaction> {
-		MultiReadTransaction::new(self.clone(), None)
+	pub fn begin_query(&self, id: TransactionId) -> Result<MultiReadTransaction> {
+		MultiReadTransaction::new(self.clone(), id, None)
 	}
 
 	#[instrument(name = "transaction::begin_query_at_version", level = "trace", skip(self, lease), fields(version = %lease.version().0))]
-	pub fn begin_query_at_version(&self, lease: &VersionLeaseGuard) -> Result<MultiReadTransaction> {
-		MultiReadTransaction::new_with_lease(self.clone(), lease.clone())
+	pub fn begin_query_at_version(
+		&self,
+		id: TransactionId,
+		lease: &VersionLeaseGuard,
+	) -> Result<MultiReadTransaction> {
+		MultiReadTransaction::new_with_lease(self.clone(), id, lease.clone())
 	}
 
 	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
@@ -423,8 +430,8 @@ impl MultiTransaction {
 
 impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
-		MultiWriteTransaction::new(self.clone())
+	pub fn begin_command(&self, id: TransactionId) -> Result<MultiWriteTransaction> {
+		MultiWriteTransaction::new(self.clone(), id)
 	}
 }
 

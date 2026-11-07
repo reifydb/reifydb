@@ -115,7 +115,7 @@ impl SubscriptionServiceImpl {
 		ctx: SubscriptionContext,
 		held: MutexGuard<'_, ()>,
 	) -> Result<()> {
-		let current = self.state.multi.begin_query()?.version();
+		let current = self.state.multi.begin_query(self.state.multi.generate_transaction_id())?.version();
 		self.state.position_tracker.update(ctx.id, current);
 
 		let id = ctx.id;

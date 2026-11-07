@@ -22,14 +22,14 @@ fn test_versions() {
 	let k0 = as_key!(0);
 
 	for i in 1..10 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(k0.clone(), as_values!(i))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
 	for idx in 1i32..10 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.read_as_of_version_inclusive(CommitVersion(idx as u64 + 1)).unwrap(); // Read the write committed at version idx + 1.
 
 		let v = idx;
@@ -65,7 +65,7 @@ fn test_versions() {
 		assert_eq!(1, count); // should only loop once.
 	}
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	let sv = txn.get(&[k0.clone()]).unwrap().pop().flatten().unwrap();
 	let val = from_bytes!(i32, sv.bytes());
 	assert_eq!(9, val)
@@ -78,33 +78,33 @@ fn test_as_of_version_bounds() {
 	let engine = test_multi();
 	let k0 = as_key!(0);
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(k0.clone(), as_values!(1))]).unwrap();
 	txn.commit().unwrap();
 	let committed_at = engine.version().unwrap();
 	assert_eq!(CommitVersion(2), committed_at);
 
-	let mut rx = engine.begin_query().unwrap();
+	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_inclusive(committed_at);
 	assert_eq!(1, from_bytes!(i32, rx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
-	let mut rx = engine.begin_query().unwrap();
+	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_inclusive(CommitVersion(committed_at.0 - 1));
 	assert!(rx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
 
-	let mut rx = engine.begin_query().unwrap();
+	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_exclusive(committed_at);
 	assert!(rx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
 
-	let mut rx = engine.begin_query().unwrap();
+	let mut rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	rx.read_as_of_version_exclusive(CommitVersion(committed_at.0 + 1));
 	assert_eq!(1, from_bytes!(i32, rx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
-	let mut wx = engine.begin_command().unwrap();
+	let mut wx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	wx.read_as_of_version_inclusive(committed_at).unwrap();
 	assert_eq!(1, from_bytes!(i32, wx.get(&[k0.clone()]).unwrap().pop().flatten().unwrap().bytes()));
 
-	let mut wx = engine.begin_command().unwrap();
+	let mut wx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	wx.read_as_of_version_exclusive(committed_at);
 	assert!(wx.get(&[k0.clone()]).unwrap().pop().flatten().is_none());
 }

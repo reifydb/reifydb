@@ -100,33 +100,22 @@ impl BaseVTable for SystemQueueQueues {
 				None => timestamps.push_none(),
 			}
 
-			match partition_stats(txn, &queue)? {
-				Some(stats) => {
-					let mut depth = 0u64;
-					let mut in_flight = 0u64;
-					let mut blocked = 0u64;
-					let mut oldest = None;
-					for partition in stats {
-						depth += partition.counters.depth;
-						in_flight += partition.counters.in_flight;
-						blocked += partition.counters.blocked_keys;
-						oldest = earliest(oldest, partition.oldest_due_at);
-					}
-					depths.push_value(Value::Uint8(depth));
-					in_flights.push_value(Value::Uint8(in_flight));
-					blocked_keys.push_value(Value::Uint8(blocked));
-					oldest_due_at.push_value(
-						oldest.map(Value::DateTime)
-							.unwrap_or(Value::none_of(ValueType::DateTime)),
-					);
-				}
-				None => {
-					depths.push_value(Value::none_of(ValueType::Uint8));
-					in_flights.push_value(Value::none_of(ValueType::Uint8));
-					blocked_keys.push_value(Value::none_of(ValueType::Uint8));
-					oldest_due_at.push_value(Value::none_of(ValueType::DateTime));
-				}
+			let stats = partition_stats(txn, &queue)?;
+			let mut depth = 0u64;
+			let mut in_flight = 0u64;
+			let mut blocked = 0u64;
+			let mut oldest = None;
+			for partition in stats {
+				depth += partition.counters.depth;
+				in_flight += partition.counters.in_flight;
+				blocked += partition.counters.blocked_keys;
+				oldest = earliest(oldest, partition.oldest_due_at);
 			}
+			depths.push_value(Value::Uint8(depth));
+			in_flights.push_value(Value::Uint8(in_flight));
+			blocked_keys.push_value(Value::Uint8(blocked));
+			oldest_due_at
+				.push_value(oldest.map(Value::DateTime).unwrap_or(Value::none_of(ValueType::DateTime)));
 		}
 
 		let columns = vec![

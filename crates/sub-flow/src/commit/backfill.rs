@@ -226,8 +226,12 @@ pub(crate) fn compute_unit_backfill(
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version,
 		pending: Pending::new(),
-		query: Some(engine.multi().begin_query_at_version(&snapshot.lease)?),
-		state_query: Some(engine.multi().begin_query_at_version(&snapshot.lease)?),
+		query: Some(engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &snapshot.lease)?),
+		state_query: Some(engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &snapshot.lease)?),
 		catalog: engine.catalog(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
@@ -528,8 +532,14 @@ mod tests {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
 			pending: Pending::new(),
-			query: Some(engine.multi().begin_query_at_version(&lease).expect("query")),
-			state_query: Some(engine.multi().begin_query_at_version(&lease).expect("query")),
+			query: Some(engine
+				.multi()
+				.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+				.expect("query")),
+			state_query: Some(engine
+				.multi()
+				.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+				.expect("query")),
 			catalog: engine.catalog(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),

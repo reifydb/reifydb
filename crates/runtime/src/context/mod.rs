@@ -3,13 +3,14 @@
 
 pub mod clock;
 pub mod rng;
+pub mod transaction;
 
 use clock::{Clock, MockClock};
 use rng::Rng;
 
 use crate::version_epoch::VersionEpoch;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RuntimeContext {
 	pub clock: Clock,
 	pub rng: Rng,

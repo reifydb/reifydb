@@ -5,6 +5,8 @@
 //! from the shared `SOURCE_KEY`/`COLUMN_KEY` counters; otherwise adding a system series shifts every user
 //! source and column ID upward.
 
+use std::sync::Arc;
+
 use reifydb_catalog::{
 	bootstrap::bootstrap_system_objects,
 	catalog::{
@@ -18,6 +20,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId, TableId},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -25,7 +28,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 
 #[test]
@@ -39,17 +42,17 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 	let catalog_cache = services.catalog.cache().clone();
 	let eventbus: EventBus = services.ioc.resolve::<EventBus>().expect("EventBus must be in TestEngine IoC");
 
-	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus).expect("bootstrap must succeed");
+	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &services.runtime_context)
+		.expect("bootstrap must succeed");
 
 	let catalog_api = Catalog::new(catalog_cache);
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id()).expect("admin transaction"),
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)
-	.expect("admin transaction");
+		Arc::new(TransactionContext::system(services.runtime_context.clone())),
+	);
 
 	let profiler_spans = catalog_api
 		.find_series_by_name(

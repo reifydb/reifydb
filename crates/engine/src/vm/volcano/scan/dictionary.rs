@@ -66,9 +66,7 @@ impl DictionaryScanNode {
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
 
-		let single = rx
-			.single()
-			.ok_or_else(|| internal_error!("single-version store is not available for dictionary scans"))?;
+		let single = rx.single();
 		let store = single.read_store();
 		let batch = SingleVersionRange::range_batch(&store, range.encode(), batch_size)?;
 

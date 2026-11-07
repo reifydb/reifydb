@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::TimeSource,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, TableId},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{
-	fragment::Fragment,
-	value::{identity::IdentityId, value_type::ValueType},
-};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 use tracing::info;
 
 use super::{ensure_namespace, table_col};
@@ -30,15 +30,16 @@ pub fn bootstrap_completeness(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	let ns = ensure_namespace(
 		&catalog_api,

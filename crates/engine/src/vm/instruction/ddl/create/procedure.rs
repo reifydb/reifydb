@@ -19,7 +19,7 @@ pub(crate) fn create_procedure(
 	txn: &mut AdminTransaction,
 	plan: CreateProcedureNode,
 ) -> Result<RecordBatch> {
-	if plan.run_as == RunAs::System && !txn.identity.is_privileged() {
+	if plan.run_as == RunAs::System && !txn.context().identity.current.is_privileged() {
 		return Err(PolicyError::RunAsSystemDenied {
 			procedure: format!("{}::{}", plan.namespace.name(), plan.name.text()),
 			fragment: plan.name.clone(),

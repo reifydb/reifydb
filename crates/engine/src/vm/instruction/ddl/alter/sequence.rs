@@ -47,7 +47,7 @@ pub(crate) fn alter_table_sequence(
 		symbols: &EMPTY_SYMBOL_TABLE,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		identity: txn.identity,
+		identity: txn.context().identity.current,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,

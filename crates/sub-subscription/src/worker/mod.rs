@@ -248,7 +248,11 @@ impl SubscriptionWorkerActor {
 						}
 					}
 				}
-				let gate = match self.engine.multi().begin_query() {
+				let gate = match self
+					.engine
+					.multi()
+					.begin_query(self.engine.multi().generate_transaction_id())
+				{
 					Ok(query) => query.version(),
 					Err(e) => {
 						state.flow_engine.remove_flow(flow_id);

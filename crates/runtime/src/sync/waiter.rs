@@ -15,6 +15,7 @@ use crate::{
 #[cfg(not(reifydb_single_threaded))]
 const MOCK_PARK_BACKSTOP: Duration = Duration::from_seconds_const(30);
 
+#[derive(Debug)]
 struct Signal {
 	notified: Mutex<bool>,
 	condvar: Condvar,

@@ -37,11 +37,8 @@ pub(crate) fn invoke_procedure_routine(
 	call: ProcedureCall<'_>,
 	site: CallSite<'_>,
 ) -> Result<RecordBatch> {
-	let prev = tx.identity();
-	tx.set_identity(caller);
-	let checked = enforce_call_policy(services, symbols, tx, call.target, site);
-	tx.set_identity(prev);
-	checked?;
+	let session = tx.context().identity.session;
+	enforce_call_policy(services, symbols, tx, session, call.target, site)?;
 
 	let mut ctx = ProcedureContext {
 		fragment: call.fragment.clone(),
@@ -61,6 +58,7 @@ pub(crate) fn enforce_call_policy(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,
 	tx: &mut Transaction<'_>,
+	identity: IdentityId,
 	target: &str,
 	site: CallSite<'_>,
 ) -> Result<()> {
@@ -69,7 +67,14 @@ pub(crate) fn enforce_call_policy(
 		None => ("default".to_string(), target.to_string()),
 	};
 	PolicyEvaluator::new(services, symbols)
-		.enforce_identity_policy(tx, &namespace, &object, CallableOp::Call, PolicyTargetType::Procedure)
+		.enforce_identity_policy(
+			tx,
+			identity,
+			&namespace,
+			&object,
+			CallableOp::Call,
+			PolicyTargetType::Procedure,
+		)
 		.map_err(|denial| match site {
 			CallSite::Named => denial,
 			CallSite::EventHandler {

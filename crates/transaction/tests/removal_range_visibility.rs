@@ -61,7 +61,7 @@ fn coord_key(storage: u64, row: u64) -> RowKey {
 }
 
 fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<TaggedKey> {
-	let query = MultiReadTransaction::new(engine.clone(), None).unwrap();
+	let query = MultiReadTransaction::new(engine.clone(), engine.generate_transaction_id(), None).unwrap();
 	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
 		.collect()
@@ -76,7 +76,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	let key_a = coord_key(node, 1);
 	let key_b = coord_key(node, 2);
 
-	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
+	let mut tx = MultiWriteTransaction::new(engine.clone(), engine.generate_transaction_id()).unwrap();
 	tx.set(vec![(key_a.clone().into(), EncodedBytes(CowVec::new(b"one".to_vec())))]).unwrap();
 	tx.set(vec![(key_b.clone().into(), EncodedBytes(CowVec::new(b"two".to_vec())))]).unwrap();
 	tx.commit().unwrap();
@@ -88,7 +88,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 		"both entries visible before drop"
 	);
 
-	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
+	let mut tx = MultiWriteTransaction::new(engine.clone(), engine.generate_transaction_id()).unwrap();
 	tx.remove_silent(&key_a).unwrap();
 	tx.commit().unwrap();
 

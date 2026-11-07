@@ -82,8 +82,8 @@ mod tests {
 		DeferredTransaction::new(DeferredParams {
 			version,
 			pending: Pending::new(),
-			query: Some(parent.multi.begin_query().unwrap()),
-			state_query: Some(parent.multi.begin_query().unwrap()),
+			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+			state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
 			catalog: engine.inner().catalog().clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),

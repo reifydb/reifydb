@@ -1724,8 +1724,16 @@ mod pull_protocol {
 			let mut txn = DeferredTransaction::new(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
 				pending: Pending::new(),
-				query: Some(self.engine.multi().begin_query().expect("query")),
-				state_query: Some(self.engine.multi().begin_query().expect("state query")),
+				query: Some(self
+					.engine
+					.multi()
+					.begin_query(self.engine.multi().generate_transaction_id())
+					.expect("query")),
+				state_query: Some(self
+					.engine
+					.multi()
+					.begin_query(self.engine.multi().generate_transaction_id())
+					.expect("state query")),
 				catalog: self.engine.catalog(),
 				interceptors: self.engine.create_interceptors(),
 				clock: self.engine.clock().clone(),
@@ -2664,7 +2672,7 @@ mod pull_protocol {
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
-		let query = h.engine.multi().begin_query().expect("query");
+		let query = h.engine.multi().begin_query(h.engine.multi().generate_transaction_id()).expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
 				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
@@ -2808,7 +2816,10 @@ mod pull_protocol {
 		assert_eq!(h.view_rows(), 3, "precondition: the ring must be at capacity, so head has moved");
 
 		let stored = {
-			let query = h.engine.multi().begin_query().expect("query");
+			let query =
+				h.engine.multi()
+					.begin_query(h.engine.multi().generate_transaction_id())
+					.expect("query");
 			let rows: Vec<_> = query
 				.range(TaggedKeyBoundRange::all(), RangeScope::All, 100_000)
 				.collect::<Result<Vec<_>>>()
@@ -3378,8 +3389,14 @@ mod tick_failures {
 
 	fn arm_due_timer(engine: &StandardEngine, substrate: &FlowSubstrate) {
 		let (version, lease) = engine.acquire_current_snapshot_lease().expect("lease");
-		let query = engine.multi().begin_query_at_version(&lease).expect("query");
-		let state_query = engine.multi().begin_query_at_version(&lease).expect("state query");
+		let query = engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+			.expect("query");
+		let state_query = engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+			.expect("state query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
 			pending: Pending::new(),

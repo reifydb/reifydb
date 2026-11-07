@@ -75,7 +75,10 @@ impl SubscriptionWorkerActor {
 			.collect();
 		let batch_size = row_batch_size(&self.catalog)?;
 		let version = lease.version();
-		let base_query = self.engine.multi().begin_query_at_version(&lease)?;
+		let base_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &lease)?;
 		let mut scan = self.engine.begin_query_at_version(&lease, identity)?;
 		let newest_first = !sorted_view_source(&self.catalog, &mut Transaction::Query(&mut scan), &sources)?;
 

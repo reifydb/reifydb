@@ -116,20 +116,24 @@ impl Executor {
 			let tx_id = *tx_id;
 
 			let result = match op {
-				Op::BeginCommand => match self.engine.begin_command() {
-					Ok(tx) => {
-						handles.insert(tx_id, TxHandle::Write(Box::new(tx)));
-						OpResult::Ok
+				Op::BeginCommand => {
+					match self.engine.begin_command(self.engine.generate_transaction_id()) {
+						Ok(tx) => {
+							handles.insert(tx_id, TxHandle::Write(Box::new(tx)));
+							OpResult::Ok
+						}
+						Err(e) => OpResult::Error(format!("{}", e)),
 					}
-					Err(e) => OpResult::Error(format!("{}", e)),
-				},
-				Op::BeginQuery => match self.engine.begin_query() {
-					Ok(rx) => {
-						handles.insert(tx_id, TxHandle::Read(rx));
-						OpResult::Ok
+				}
+				Op::BeginQuery => {
+					match self.engine.begin_query(self.engine.generate_transaction_id()) {
+						Ok(rx) => {
+							handles.insert(tx_id, TxHandle::Read(rx));
+							OpResult::Ok
+						}
+						Err(e) => OpResult::Error(format!("{}", e)),
 					}
-					Err(e) => OpResult::Error(format!("{}", e)),
-				},
+				}
 				Op::Set {
 					key,
 					value,
@@ -288,7 +292,7 @@ impl Executor {
 	}
 
 	fn read_final_state(&self) -> BTreeMap<String, String> {
-		let rx = self.engine.begin_query().unwrap();
+		let rx = self.engine.begin_query(self.engine.generate_transaction_id()).unwrap();
 		let items: Vec<_> = rx
 			.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()

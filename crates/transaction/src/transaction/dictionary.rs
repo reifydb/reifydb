@@ -36,9 +36,7 @@ impl Transaction<'_> {
 	}
 
 	fn get_from_single_store(&self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let single = self
-			.single()
-			.ok_or_else(|| internal_error!("single-version store is not available for dictionary reads"))?;
+		let single = self.single();
 		let store = single.read_store();
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
 		match SingleVersionGet::get(&store, slice::from_ref(&index_key))?.pop().flatten() {

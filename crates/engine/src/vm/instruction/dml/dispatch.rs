@@ -44,10 +44,10 @@ pub(crate) fn dispatch(
 	params: &Params,
 	dispatch_depth: u8,
 ) -> Result<RecordBatch> {
-	let prev = tx.identity();
-	tx.set_identity(vm.identity);
+	let prev = tx.context().clone();
+	tx.set_context(prev.with_current(vm.identity));
 	let result = fire_handlers(vm, services, tx, plan, params, dispatch_depth);
-	tx.set_identity(prev);
+	tx.set_context(prev);
 	result
 }
 
@@ -127,10 +127,12 @@ fn fire_handlers(
 			services.catalog.get_namespace(&mut tx_tmp, procedure.namespace())?.name().to_string()
 		};
 		let handler_name = format!("{}::{}", handler_namespace, procedure.name());
+		let session = tx.context().identity.session;
 		enforce_call_policy(
 			services,
 			&vm.symbols,
 			tx,
+			session,
 			&handler_name,
 			CallSite::EventHandler {
 				event: &sumtype.name,

@@ -13,7 +13,7 @@ fn test_write() {
 
 	let engine = test_multi();
 	{
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		assert_eq!(tx.version(), 1);
 
 		tx.set(vec![(key.clone(), as_values!("foo1".to_string()))]).unwrap();
@@ -24,7 +24,7 @@ fn test_write() {
 	}
 
 	{
-		let rx = engine.begin_query().unwrap();
+		let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 		assert_eq!(rx.version(), 2);
 		let value: String =
 			from_bytes!(String, rx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
@@ -37,7 +37,7 @@ fn test_multiple_write() {
 	let engine = test_multi();
 
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for i in 0..10 {
 			if let Err(e) = txn.set(vec![(as_key!(i), as_values!(i))]) {
 				panic!("{e}");
@@ -60,7 +60,7 @@ fn test_multiple_write() {
 
 	let k = 8;
 	let v = 8;
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	assert!(txn.contains(&[as_key!(k)]).unwrap()[0]);
 	let sv = txn.get(&[as_key!(k)]).unwrap().pop().flatten().unwrap();
 	assert_eq!(from_bytes!(i32, *sv.bytes()), v);
@@ -72,7 +72,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	// version until it drops; otherwise an advancing GC cutoff evicts it mid-post-commit.
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!("k"), as_values!("v".to_string()))]).unwrap();
 	let version = txn.commit().unwrap();
 

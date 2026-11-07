@@ -102,8 +102,16 @@ impl<O> Harness<O> {
 	}
 
 	fn begin(&mut self, at: DateTime) -> DeferredTransaction {
-		let query = self.engine.multi().begin_query().expect("begin_query");
-		let state_query = self.engine.multi().begin_query().expect("begin_query");
+		let query = self
+			.engine
+			.multi()
+			.begin_query(self.engine.multi().generate_transaction_id())
+			.expect("begin_query");
+		let state_query = self
+			.engine
+			.multi()
+			.begin_query(self.engine.multi().generate_transaction_id())
+			.expect("begin_query");
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),

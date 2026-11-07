@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -11,11 +11,12 @@ use reifydb_core::{
 		procedure::{ExternWasmModuleId, Procedure, ProcedureParam},
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ensure_namespace;
 use crate::{Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
@@ -176,16 +177,17 @@ pub fn bootstrap_system_procedures(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());
 
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	ensure_namespace(
 		&catalog_api,

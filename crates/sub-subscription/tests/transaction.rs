@@ -29,7 +29,7 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 	let version = CommitVersion(1);
 	let mut txn = EphemeralTransaction::new(
 		version,
-		engine.multi().begin_query().unwrap(),
+		engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap(),
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),
@@ -85,7 +85,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 
 	let mut txn = EphemeralTransaction::new(
 		low_version,
-		engine.multi().begin_query().unwrap(),
+		engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap(),
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),

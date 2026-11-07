@@ -15,7 +15,7 @@ use crate::{as_key, as_values};
 #[test]
 fn test_rollback_same_tx() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.rollback().unwrap();
 	assert!(txn.get(&[as_key!(1)]).unwrap().pop().flatten().is_none());
@@ -24,18 +24,18 @@ fn test_rollback_same_tx() {
 #[test]
 fn test_rollback_different_tx() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.rollback().unwrap();
 
-	let rx = engine.begin_query().unwrap();
+	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	assert!(rx.get(&[as_key!(1)]).unwrap().pop().flatten().is_none());
 }
 
 #[test]
 fn test_savepoint_restore_drops_post_savepoint_writes() {
 	let engine = test_multi();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	// Key 1 is written before the savepoint and must survive the restore.
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
@@ -48,7 +48,7 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	let v = txn.commit().unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
-	let rx = engine.begin_query().unwrap();
+	let rx = engine.begin_query(engine.generate_transaction_id()).unwrap();
 	assert!(
 		rx.get(&[as_key!(1)]).unwrap().pop().flatten().is_some(),
 		"key 1 was written before the savepoint and must be committed"

@@ -26,7 +26,7 @@ fn test_self_cancelling_writer_still_takes_a_commit_version() {
 	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	txn.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
 	txn.remove(vec![(key.clone(), None)]).unwrap();
 
@@ -46,8 +46,8 @@ fn test_self_cancelling_writer_is_still_validated_against_a_concurrent_writer() 
 	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
-	let mut winner = engine.begin_command().unwrap();
-	let mut canceller = engine.begin_command().unwrap();
+	let mut winner = engine.begin_command(engine.generate_transaction_id()).unwrap();
+	let mut canceller = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	winner.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
 	canceller.set(vec![(key.clone(), as_values!(2u64))]).unwrap();
@@ -68,12 +68,12 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 	let key = as_key!(COUNTER);
 	let engine = test_multi();
 
-	let mut seed = engine.begin_command().unwrap();
+	let mut seed = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	seed.set(vec![(key.clone(), as_values!(0u64))]).unwrap();
 	seed.commit().unwrap();
 
-	let mut txn1 = engine.begin_command().unwrap();
-	let mut txn2 = engine.begin_command().unwrap();
+	let mut txn1 = engine.begin_command(engine.generate_transaction_id()).unwrap();
+	let mut txn2 = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 	let read1 = read_counter(&mut txn1, &key);
 	let read2 = read_counter(&mut txn2, &key);
@@ -92,7 +92,7 @@ fn test_lost_update_rejected_when_commits_are_serialized() {
 		 increment. The oracle must abort txn2, but it returned: {err}"
 	);
 
-	let mut verify = engine.begin_command().unwrap();
+	let mut verify = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	assert_eq!(
 		read_counter(&mut verify, &key),
 		1,
@@ -113,7 +113,7 @@ fn test_lost_update_rejected_when_commits_race() {
 	for round in 0..ROUNDS {
 		let engine = Arc::new(test_multi());
 
-		let mut seed = engine.begin_command().unwrap();
+		let mut seed = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		seed.set(vec![(key.clone(), as_values!(0u64))]).unwrap();
 		seed.commit().unwrap();
 
@@ -128,7 +128,7 @@ fn test_lost_update_rejected_when_commits_race() {
 				let key = key.clone();
 
 				std::thread::spawn(move || {
-					let mut txn = engine.begin_command().unwrap();
+					let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 					let current = read_counter(&mut txn, &key);
 
 					barrier.wait();
@@ -145,7 +145,7 @@ fn test_lost_update_rejected_when_commits_race() {
 			handle.join().unwrap();
 		}
 
-		let mut verify = engine.begin_command().unwrap();
+		let mut verify = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let observed = read_counter(&mut verify, &key);
 		let succeeded = committed.load(Ordering::SeqCst);
 

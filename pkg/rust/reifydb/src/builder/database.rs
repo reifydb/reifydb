@@ -379,7 +379,10 @@ impl DatabaseBuilder {
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		load_catalog_cache(&multi, &single, &catalog)?;
+		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
+		let runtime_context =
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone(), self.version_epoch.clone());
+		load_catalog_cache(&multi, &single, &catalog, &runtime_context)?;
 
 		seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
 
@@ -388,7 +391,6 @@ impl DatabaseBuilder {
 			.sync()
 			.unwrap_or_else(|err| panic!("bootstrap commits failed to flush the commit log: {err}"));
 
-		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
 		let spawner = runtime.spawner();
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
@@ -508,11 +510,7 @@ impl DatabaseBuilder {
 			self.interceptors.build(),
 			Catalog::new(catalog.clone()),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(
-					clock.clone(),
-					rng.clone(),
-					self.version_epoch.clone(),
-				),
+				runtime_context: runtime_context.clone(),
 				routines,
 				transforms,
 				block_encodings,
@@ -538,8 +536,15 @@ impl DatabaseBuilder {
 
 		eventbus.register::<PostCommitEvent, _>(commit_queue);
 
-		bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
-		apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
+		bootstrap_system_objects(&multi, &single, &catalog, &eventbus, &runtime_context)?;
+		apply_bootstrap_configs(
+			&multi,
+			&single,
+			&catalog,
+			&eventbus,
+			&self.bootstrap_configs,
+			&runtime_context,
+		)?;
 
 		let bootloader = Bootloader::new(engine.clone());
 		bootloader.load()?;

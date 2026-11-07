@@ -26,7 +26,7 @@ fn platform_now_nanos() -> u64 {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos() as u64
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Clock {
 	Real,
 
@@ -78,17 +78,19 @@ impl Clock {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MockClock {
 	inner: Arc<MockClockInner>,
 }
 
+#[derive(Debug)]
 struct MockClockInner {
 	time_nanos: AtomicU64,
 	timers: Mutex<Vec<Timer>>,
 	next_timer_id: AtomicU64,
 }
 
+#[derive(Debug)]
 struct Timer {
 	id: u64,
 	deadline_nanos: u64,

@@ -50,7 +50,7 @@ pub fn oracle_performance_benchmark() {
 		let start = Clock::Real.instant();
 
 		for i in 0..num_txns {
-			let mut tx = engine.begin_command().unwrap();
+			let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 			let key = as_key!(format!("key_{}", i));
 			let value = as_values!(format!("value_{}", i));
@@ -90,7 +90,9 @@ pub fn concurrent_oracle_benchmark() {
 			let handle = spawn(move || {
 				let base_key = thread_id * txns_per_thread;
 				for i in 0..txns_per_thread {
-					let mut tx = engine_clone.begin_command().unwrap();
+					let mut tx = engine_clone
+						.begin_command(engine_clone.generate_transaction_id())
+						.unwrap();
 
 					let key = as_key!(base_key + i);
 					let value = as_values!(i);
@@ -121,7 +123,7 @@ pub fn conflict_detection_benchmark() {
 	let engine = MultiTransaction::testing();
 
 	for i in 0..1000 {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
 		tx.set(vec![(key.clone().into(), value)]).unwrap();
@@ -135,7 +137,7 @@ pub fn conflict_detection_benchmark() {
 	let mut conflicts = 0;
 
 	for i in 0..num_conflict_txns {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command(engine.generate_transaction_id()).unwrap();
 
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i + 1000);

@@ -75,13 +75,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 
 		let queue = resolve_queue_by_name(ctx.catalog, &mut *ctx.tx, &queue_name, &ctx.fragment)?;
 
-		let single =
-			ctx.tx.single()
-				.ok_or_else(|| RoutineError::ProcedureExecutionFailed {
-					procedure: Fragment::internal(PROCEDURE),
-					reason: "must run in a command transaction".to_string(),
-				})?
-				.clone();
+		let single = ctx.tx.single().clone();
 
 		let fragment = ctx.fragment.clone();
 		let unknown = || -> RoutineError {

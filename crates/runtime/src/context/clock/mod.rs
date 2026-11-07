@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::fmt::Debug;
+
 #[cfg(any(reifydb_target = "host", reifydb_dst))]
 mod host;
 #[cfg(reifydb_target = "wasi")]
@@ -22,7 +24,7 @@ impl ClockNow for Clock {
 	}
 }
 
-pub trait TimerWake: Send + Sync {
+pub trait TimerWake: Debug + Send + Sync {
 	fn wake(&self);
 }
 

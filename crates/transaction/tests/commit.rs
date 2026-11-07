@@ -16,6 +16,7 @@ use reifydb_runtime::{
 	context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
+		transaction::TransactionContext,
 	},
 	pool::Pools,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
@@ -31,12 +32,7 @@ use reifydb_transaction::{
 	transaction::command::CommandTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{
-	Result,
-	error::Error,
-	util::cowvec::CowVec,
-	value::{duration::Duration, identity::IdentityId},
-};
+use reifydb_value::{Result, error::Error, util::cowvec::CowVec, value::duration::Duration};
 
 struct Harness {
 	_actor_system: ActorSystem,
@@ -70,13 +66,14 @@ fn harness() -> Harness {
 	);
 
 	let begin: CommitBegin = Arc::new(move || {
-		CommandTransaction::new(
-			multi.clone(),
+		let runtime = multi.runtime_context();
+		Ok(CommandTransaction::new(
+			multi.begin_command(multi.generate_transaction_id())?,
 			single.clone(),
 			bus.clone(),
 			Interceptors::new(),
-			IdentityId::system(),
-		)
+			Arc::new(TransactionContext::system(runtime)),
+		))
 	});
 
 	Harness {

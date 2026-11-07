@@ -70,6 +70,9 @@ pub(crate) fn create_remote_namespace(
 
 #[cfg(test)]
 pub mod tests {
+	use std::sync::Arc;
+
+	use reifydb_runtime::context::transaction::TransactionContext;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::query::QueryTransaction;
 	use reifydb_value::{
@@ -154,8 +157,11 @@ pub mod tests {
 		txn.commit().unwrap();
 
 		// A missing registry must degrade to empty rather than panic or dial the endpoint.
-		let mut qt =
-			QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone(), identity);
+		let mut qt = QueryTransaction::new(
+			txn.multi.begin_query(txn.multi.generate_transaction_id()).unwrap(),
+			txn.single.clone(),
+			Arc::new(TransactionContext::new(identity, txn.context().runtime.clone())),
+		);
 		let r = instance.query(
 			&mut qt,
 			Query {

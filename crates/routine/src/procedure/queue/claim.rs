@@ -117,13 +117,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 		let now = ctx.runtime_context.clock.now();
 		let queue = resolve_queue_by_name(ctx.catalog, &mut *ctx.tx, &queue_name, &ctx.fragment)?;
 
-		let single =
-			ctx.tx.single()
-				.ok_or_else(|| RoutineError::ProcedureExecutionFailed {
-					procedure: Fragment::internal(PROCEDURE),
-					reason: "must run in a command transaction".to_string(),
-				})?
-				.clone();
+		let single = ctx.tx.single().clone();
 
 		let leases = lease_due_items(ctx, &single, &queue, &worker, max_n, lease_ttl, now)?;
 		span.record("claimed", leases.len());

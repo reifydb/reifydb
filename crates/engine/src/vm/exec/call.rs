@@ -745,17 +745,15 @@ impl<'a> Vm<'a> {
 		} else {
 			("default".to_string(), func_name.to_string())
 		};
-		let prev = ctx.tx.identity();
-		ctx.tx.set_identity(self.identity);
-		let checked = PolicyEvaluator::new(ctx.services, &self.symbols).enforce_identity_policy(
+		let session = ctx.tx.context().identity.session;
+		PolicyEvaluator::new(ctx.services, &self.symbols).enforce_identity_policy(
 			ctx.tx,
+			session,
 			&pol_ns,
 			&pol_name,
 			CallableOp::Call,
 			PolicyTargetType::Procedure,
-		);
-		ctx.tx.set_identity(prev);
-		checked?;
+		)?;
 
 		match proc_def {
 			Procedure::InProcess {
@@ -869,8 +867,8 @@ impl<'a> Vm<'a> {
 			RunAs::System => IdentityId::system(),
 			RunAs::Caller => self.identity,
 		};
-		let prev = ctx.tx.identity();
-		ctx.tx.set_identity(target);
+		let prev = ctx.tx.context().clone();
+		ctx.tx.set_context(prev.with_current(target));
 		let result = self.compile_and_execute_body(
 			CallContext {
 				services: ctx.services,
@@ -881,7 +879,7 @@ impl<'a> Vm<'a> {
 			args,
 			name,
 		);
-		ctx.tx.set_identity(prev);
+		ctx.tx.set_context(prev);
 		result
 	}
 
@@ -1074,7 +1072,8 @@ impl<'a> Vm<'a> {
 			&& let Some((field, array)) = user_columns(&columns).next()
 			&& let Value::IdentityId(id) = ColumnView::try_from((array, field.as_ref()))?.get_value(0)
 		{
-			ctx.tx.set_identity(id);
+			let swapped = ctx.tx.context().with_current(id);
+			ctx.tx.set_context(swapped);
 		}
 
 		self.stack.push(Variable::columns(columns));

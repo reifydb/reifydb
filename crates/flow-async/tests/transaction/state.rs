@@ -96,8 +96,8 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: Pending::new(),
-		query: Some(parent.multi.begin_query().unwrap()),
-		state_query: Some(parent.multi.begin_query().unwrap()),
+		query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+		state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
@@ -405,8 +405,8 @@ fn deferred_reads_owned_rows_at_state_version() {
 	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
 		pending: Pending::new(),
-		query: Some(engine.multi().begin_query().unwrap()),
-		state_query: Some(engine.multi().begin_query().unwrap()),
+		query: Some(engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap()),
+		state_query: Some(engine.multi().begin_query(engine.multi().generate_transaction_id()).unwrap()),
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),

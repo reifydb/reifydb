@@ -87,7 +87,7 @@ pub(crate) enum Lifecycle {
 }
 
 pub struct MultiWriteTransaction {
-	engine: MultiTransaction,
+	pub(crate) engine: MultiTransaction,
 
 	pub(crate) id: TransactionId,
 	pub(crate) version: CommitVersion,
@@ -122,11 +122,10 @@ pub struct MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::new", level = "debug", skip(engine))]
-	pub fn new(engine: MultiTransaction) -> Result<Self> {
+	pub fn new(engine: MultiTransaction, id: TransactionId) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
-		let id = TransactionId::generate(oracle.clock(), oracle.rng());
 		Ok(Self {
 			engine,
 			id,
@@ -1494,7 +1493,7 @@ mod tests {
 		// racing higher version can advance done_until past it, the historical-GC cutoff crosses
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("race-key").into(), test_bytes("race-value"))]).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
@@ -1613,7 +1612,7 @@ mod tests {
 	}
 
 	fn committed_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for (key, bytes) in writes {
 			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
@@ -1621,7 +1620,7 @@ mod tests {
 	}
 
 	fn stored(engine: &MultiTransaction, key: &str) -> Option<EncodedBytes> {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.get(&[test_key(key).into()]).unwrap().pop().flatten().map(|found| found.bytes().clone())
 	}
 
@@ -1637,7 +1636,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("committed", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
 		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
@@ -1654,7 +1653,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("committed", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
 		txn.commit_unchecked().unwrap();
@@ -1669,7 +1668,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("committed", "v1"), ("again", "a1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
 		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
@@ -1694,7 +1693,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("known", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_with_pre(vec![(test_key("known").into(), test_bytes("v2"), SetPre::Present(test_bytes("v1")))])
 			.unwrap();
 		txn.remove(vec![(test_key("known").into(), None)]).unwrap();
@@ -1715,7 +1714,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("tagged", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_with_pre(vec![(
 			test_key("tagged").into(),
 			test_bytes("v2"),
@@ -1736,7 +1735,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("a", "a1"), ("b", "b1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for key in ["a", "b", "c"] {
 			txn.set(vec![(test_key(key).into(), test_bytes("new"))]).unwrap();
 			txn.remove(vec![(test_key(key).into(), None)]).unwrap();
@@ -1746,7 +1745,7 @@ mod tests {
 		resolved_deltas(&mut txn);
 		assert_eq!(txn.op_counts.get_committed_calls(), 1);
 
-		let mut plain = engine.begin_command().unwrap();
+		let mut plain = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		plain.set(vec![(test_key("d").into(), test_bytes("d1"))]).unwrap();
 		plain.remove(vec![(test_key("a").into(), None)]).unwrap();
 		resolved_deltas(&mut plain);
@@ -1760,7 +1759,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("kept", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("kept").into(), test_bytes("v2"))]).unwrap();
 		let savepoint = txn.savepoint();
 		txn.remove(vec![(test_key("kept").into(), None)]).unwrap();
@@ -1777,7 +1776,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("contested", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("contested").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("contested").into(), None)]).unwrap();
 		txn.resolve_removed_after_set().unwrap();
@@ -1794,7 +1793,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("rolled_back", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let savepoint = txn.savepoint();
 		txn.set(vec![(test_key("rolled_back").into(), test_bytes("v2"))]).unwrap();
 		txn.remove(vec![(test_key("rolled_back").into(), None)]).unwrap();
@@ -1809,7 +1808,7 @@ mod tests {
 	}
 
 	fn unchecked_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		for (key, bytes) in writes {
 			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
@@ -1833,7 +1832,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
@@ -1848,7 +1847,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("v1"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
@@ -1870,7 +1869,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
 		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
@@ -1886,7 +1885,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -1902,7 +1901,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
@@ -1919,7 +1918,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+a"), appending("+a")).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+b");
@@ -1937,7 +1936,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
 		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
 		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
@@ -1959,7 +1958,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
 		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
 		let savepoint = txn.savepoint();
@@ -1976,7 +1975,7 @@ mod tests {
 		// There is no stored value to replay on, so the written bytes are the only truth.
 		let engine = MultiTransaction::testing();
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("fresh"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		txn.commit().unwrap();
@@ -1991,7 +1990,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -2006,7 +2005,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -2036,7 +2035,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		let published = Arc::new(Mutex::new(Vec::new()));
@@ -2060,7 +2059,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -2076,7 +2075,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
@@ -2092,7 +2091,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
 		let failing: Rebase = Arc::new(|_: &EncodedBytes| Err(TransactionError::RolledBack.into()));
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
@@ -2107,7 +2106,7 @@ mod tests {
 		let engine = MultiTransaction::testing();
 		committed_with(&engine, &[("meta", "v1")]);
 
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 		let written = appended(&test_bytes("v1"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();

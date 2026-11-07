@@ -350,8 +350,14 @@ impl SliceComputer {
 		let interceptors = self.engine.create_interceptors();
 
 		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
-		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-		let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+		let base_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
+		let state_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &state_lease)?;
 
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
@@ -383,8 +389,14 @@ impl SliceComputer {
 		cursor: CommitVersion,
 	) -> Result<(Pending, bool)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
-		let query = self.engine.multi().begin_query_at_version(&lease)?;
-		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
+		let query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &lease)?;
+		let state_query = self
+			.engine
+			.multi()
+			.begin_query_at_version(self.engine.multi().generate_transaction_id(), &lease)?;
 
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
@@ -937,8 +949,14 @@ mod integration {
 		version: CommitVersion,
 	) -> DeferredTransaction {
 		let (_current, lease) = engine.acquire_current_snapshot_lease().unwrap();
-		let mut query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
+		let mut query = engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+			.unwrap();
+		let state_query = engine
+			.multi()
+			.begin_query_at_version(engine.multi().generate_transaction_id(), &lease)
+			.unwrap();
 		query.read_as_of_version_inclusive(version);
 
 		DeferredTransaction::new(DeferredParams {
@@ -1250,8 +1268,14 @@ mod integration {
 					let mut pinned = DeferredTransaction::new(DeferredParams {
 						version: advance_to,
 						pending: Pending::new(),
-						query: Some(engine.multi().begin_query().unwrap()),
-						state_query: Some(engine.multi().begin_query().unwrap()),
+						query: Some(engine
+							.multi()
+							.begin_query(engine.multi().generate_transaction_id())
+							.unwrap()),
+						state_query: Some(engine
+							.multi()
+							.begin_query(engine.multi().generate_transaction_id())
+							.unwrap()),
 						catalog: engine.catalog(),
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),
@@ -1368,8 +1392,14 @@ mod integration {
 					let mut pinned = DeferredTransaction::new(DeferredParams {
 						version: advance_to,
 						pending: Pending::new(),
-						query: Some(engine.multi().begin_query().unwrap()),
-						state_query: Some(engine.multi().begin_query().unwrap()),
+						query: Some(engine
+							.multi()
+							.begin_query(engine.multi().generate_transaction_id())
+							.unwrap()),
+						state_query: Some(engine
+							.multi()
+							.begin_query(engine.multi().generate_transaction_id())
+							.unwrap()),
 						catalog: engine.catalog(),
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),

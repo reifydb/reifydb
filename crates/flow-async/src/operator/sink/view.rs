@@ -132,7 +132,8 @@ mod tests {
 
 	fn stored_view_bytes(engine: &TestEngine, rn: u64) -> EncodedTableRow {
 		let key = RowKey::new(test_view_def().storage_id(), RowNumber(rn));
-		let query = engine.inner().multi().begin_query().unwrap();
+		let query =
+			engine.inner().multi().begin_query(engine.inner().multi().generate_transaction_id()).unwrap();
 		EncodedTableRow::from(
 			query.get(&[key.clone().into()])
 				.unwrap()

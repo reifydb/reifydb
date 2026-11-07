@@ -69,13 +69,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		let token = ClaimToken::parse(PROCEDURE, &ctx.fragment, &raw_token)?;
 		let now = ctx.runtime_context.clock.now();
 
-		let single =
-			ctx.tx.single()
-				.ok_or_else(|| RoutineError::ProcedureExecutionFailed {
-					procedure: Fragment::internal(PROCEDURE),
-					reason: "must run in a command transaction".to_string(),
-				})?
-				.clone();
+		let single = ctx.tx.single().clone();
 
 		let fragment = ctx.fragment.clone();
 		let stale = |reason: &str| -> RoutineError {

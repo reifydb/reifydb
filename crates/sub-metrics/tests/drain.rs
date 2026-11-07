@@ -39,7 +39,8 @@ fn executed_requests_drain_into_both_ringbuffers() {
 	let spawner: ActorSpawner =
 		services.ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be in TestEngine IoC");
 
-	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus).expect("bootstrap must succeed");
+	bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &services.runtime_context)
+		.expect("bootstrap must succeed");
 
 	let accumulator = Arc::new(StatementMetricsAccumulator::new());
 	accumulator.record(

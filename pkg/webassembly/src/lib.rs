@@ -262,8 +262,10 @@ impl WasmDB {
 
 		let ioc_ref = ioc.clone();
 
-		load_catalog_cache(&multi, &single, &catalog_cache).map_err(|e| JsError::from_error(&e))?;
-		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)
+		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		load_catalog_cache(&multi, &single, &catalog_cache, &runtime_context)
+			.map_err(|e| JsError::from_error(&e))?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &runtime_context)
 			.map_err(|e| JsError::from_error(&e))?;
 
 		let commit_queue = CommitQueue::new(
@@ -290,7 +292,7 @@ impl WasmDB {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
+				runtime_context,
 				routines,
 				transforms: Transforms::empty(),
 				block_encodings: BlockEncodings::empty(),

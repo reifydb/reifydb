@@ -169,9 +169,7 @@ pub(crate) fn record_outcome(
 }
 
 fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Option<QueueItemState>, RoutineError> {
-	let Some(single) = ctx.tx.single() else {
-		return Ok(None);
-	};
+	let single = ctx.tx.single();
 	let store = single.read_store();
 	let key = QueueItemStateKey::encoded(token.queue, token.partition, token.row);
 

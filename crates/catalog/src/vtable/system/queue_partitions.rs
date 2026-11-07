@@ -57,9 +57,7 @@ impl BaseVTable for SystemQueuePartitions {
 		let mut oldest_due_at = ColumnBuilder::with_capacity(ValueType::DateTime, queues.len());
 
 		for queue in queues {
-			let Some(stats) = partition_stats(txn, &queue)? else {
-				continue;
-			};
+			let stats = partition_stats(txn, &queue)?;
 
 			for partition in stats {
 				queue_ids.push(queue.id.0);

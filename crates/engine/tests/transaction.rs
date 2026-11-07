@@ -30,21 +30,21 @@ fn test_identity_propagates_to_all_transaction_types() {
 	let identity = IdentityId::system();
 
 	let txn = t.begin_admin(identity).unwrap();
-	assert_eq!(txn.identity, identity);
+	assert_eq!(txn.context().identity.current, identity);
 	let mut txn = txn;
 	let tx = Transaction::Admin(&mut txn);
 	assert_eq!(tx.identity(), identity);
 	drop(txn);
 
 	let txn = t.begin_command(identity).unwrap();
-	assert_eq!(txn.identity, identity);
+	assert_eq!(txn.context().identity.current, identity);
 	let mut txn = txn;
 	let tx = Transaction::Command(&mut txn);
 	assert_eq!(tx.identity(), identity);
 	drop(txn);
 
 	let txn = t.begin_query(identity).unwrap();
-	assert_eq!(txn.identity, identity);
+	assert_eq!(txn.context().identity.current, identity);
 	let mut txn = txn;
 	let tx = Transaction::Query(&mut txn);
 	assert_eq!(tx.identity(), identity);

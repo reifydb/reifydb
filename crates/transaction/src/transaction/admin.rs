@@ -21,7 +21,8 @@ use reifydb_core::{
 		row::{StoragePartitionedRowKey, StorageRowKey},
 	},
 };
-use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
+use reifydb_runtime::context::transaction::TransactionContext;
+use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions};
 use tracing::instrument;
 
 #[cfg(feature = "testing")]
@@ -113,7 +114,7 @@ pub struct AdminTransaction {
 
 	pub(crate) accumulator: ChangeAccumulator,
 
-	pub identity: IdentityId,
+	context: Arc<TransactionContext>,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
@@ -133,15 +134,15 @@ enum TransactionState {
 impl AdminTransaction {
 	#[instrument(name = "transaction::admin::new", level = "debug", skip_all)]
 	pub fn new(
-		multi: MultiTransaction,
+		cmd: MultiWriteTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
-		identity: IdentityId,
-	) -> Result<Self> {
-		let cmd = multi.begin_command()?;
+		context: Arc<TransactionContext>,
+	) -> Self {
+		let multi = cmd.engine.clone();
 		let txn_id = cmd.id();
-		Ok(Self {
+		Self {
 			cmd: Some(cmd),
 			multi,
 			single,
@@ -151,11 +152,19 @@ impl AdminTransaction {
 			changes: TransactionalCatalogChanges::new(txn_id),
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
-			identity,
+			context,
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
-		})
+		}
+	}
+
+	pub fn context(&self) -> &Arc<TransactionContext> {
+		&self.context
+	}
+
+	pub(crate) fn set_context(&mut self, context: Arc<TransactionContext>) {
+		self.context = context;
 	}
 
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {

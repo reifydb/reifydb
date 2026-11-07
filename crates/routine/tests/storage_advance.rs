@@ -20,8 +20,14 @@ fn bootstrapped() -> TestEngine {
 	let t = TestEngine::new();
 	let services = t.inner().services();
 	let eventbus: EventBus = services.ioc.resolve::<EventBus>().expect("EventBus must be in TestEngine IoC");
-	bootstrap_system_objects(t.inner().multi(), t.inner().single(), services.catalog.cache(), &eventbus)
-		.expect("bootstrap must succeed");
+	bootstrap_system_objects(
+		t.inner().multi(),
+		t.inner().single(),
+		services.catalog.cache(),
+		&eventbus,
+		&services.runtime_context,
+	)
+	.expect("bootstrap must succeed");
 	t
 }
 

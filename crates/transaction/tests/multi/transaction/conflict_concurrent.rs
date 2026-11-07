@@ -51,7 +51,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 				let key = key.clone();
 
 				std::thread::spawn(move || {
-					let mut txn = engine.begin_command().unwrap();
+					let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 					let absent = read_u64(&mut txn, &key).is_none();
 
 					barrier.wait();
@@ -100,7 +100,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 				let key = key.clone();
 
 				std::thread::spawn(move || {
-					let mut txn = engine.begin_command().unwrap();
+					let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 					let found = txn
 						.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
 						.next()
@@ -143,11 +143,11 @@ fn test_read_after_write_is_visible_to_a_later_transaction() {
 			std::thread::spawn(move || {
 				let key = as_key!(i);
 
-				let mut writer = engine.begin_command().unwrap();
+				let mut writer = engine.begin_command(engine.generate_transaction_id()).unwrap();
 				writer.set(vec![(key.clone(), as_values!(i))]).unwrap();
 				writer.commit().unwrap();
 
-				let mut reader = engine.begin_command().unwrap();
+				let mut reader = engine.begin_command(engine.generate_transaction_id()).unwrap();
 				assert_eq!(
 					read_u64(&mut reader, &key),
 					Some(i),
@@ -173,7 +173,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 
 	let engine = Arc::new(test_multi());
 
-	let mut seed = engine.begin_command().unwrap();
+	let mut seed = engine.begin_command(engine.generate_transaction_id()).unwrap();
 	for i in 0..ACCOUNTS {
 		seed.set(vec![(as_key!(i), as_values!(OPENING))]).unwrap();
 	}
@@ -188,7 +188,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 		let observations = Arc::clone(&observations);
 		std::thread::spawn(move || {
 			while !stop.load(Ordering::Relaxed) {
-				let mut txn = engine.begin_command().unwrap();
+				let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 				let mut total = 0u64;
 				for i in 0..ACCOUNTS {
 					total += read_u64(&mut txn, &as_key!(i))
@@ -214,7 +214,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 			std::thread::spawn(move || {
 				let delta = (w as u64 % OPENING) / 2;
 				loop {
-					let mut txn = engine.begin_command().unwrap();
+					let mut txn = engine.begin_command(engine.generate_transaction_id()).unwrap();
 					for i in 0..ACCOUNTS / 2 {
 						txn.set(vec![(as_key!(i), as_values!(OPENING - delta))]).unwrap();
 					}

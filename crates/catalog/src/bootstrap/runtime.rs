@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::TimeSource,
 	event::EventBus,
@@ -9,6 +11,7 @@ use reifydb_core::{
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
+use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -17,7 +20,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use tracing::info;
 
@@ -36,15 +39,16 @@ pub fn bootstrap_runtime(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
+	runtime: &RuntimeContext,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
-		multi.clone(),
+		multi.begin_command(multi.generate_transaction_id())?,
 		single.clone(),
 		eventbus.clone(),
 		Interceptors::default(),
-		IdentityId::system(),
-	)?;
+		Arc::new(TransactionContext::system(runtime.clone())),
+	);
 
 	ensure_namespace(
 		&catalog_api,

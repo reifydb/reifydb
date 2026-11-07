@@ -1229,7 +1229,8 @@ mod tests {
 	}
 
 	fn stored_partitions(engine: &TestEngine, storage: StorageId) -> Vec<(Partition, EncodedBytes)> {
-		let query = engine.inner().multi().begin_query().unwrap();
+		let query =
+			engine.inner().multi().begin_query(engine.inner().multi().generate_transaction_id()).unwrap();
 		query.range_partitioned_row(storage, Bound::Unbounded, Bound::Unbounded, RangeScope::All, 16)
 			.map(|row| {
 				let row = row.unwrap();

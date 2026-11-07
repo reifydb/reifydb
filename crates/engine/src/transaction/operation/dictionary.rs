@@ -163,15 +163,15 @@ impl DictionaryOperations for Transaction<'_> {
 
 #[cfg(test)]
 pub mod tests {
-	use std::slice;
+	use std::{slice, sync::Arc};
 
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
+	use reifydb_runtime::context::transaction::TransactionContext;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 	use reifydb_value::value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
-		identity::IdentityId,
 		value_type::ValueType,
 	};
 
@@ -329,9 +329,9 @@ pub mod tests {
 		let value = Value::Utf8("a".to_string());
 		txn.intern_values(&dict, vec![value.clone()]).unwrap();
 		let mut query = QueryTransaction::new(
-			txn.multi.begin_query().unwrap(),
+			txn.multi.begin_query(txn.multi.generate_transaction_id()).unwrap(),
 			txn.single.clone(),
-			IdentityId::system(),
+			Arc::new(TransactionContext::system(txn.context().runtime.clone())),
 		);
 
 		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, slice::from_ref(&value)).is_err());
@@ -350,9 +350,9 @@ pub mod tests {
 		let probe = [ids[1], ids[0], ids[1], DictionaryEntryId::U8(99)];
 		let expected = Transaction::Admin(&mut txn).get_from_dictionary(&dict, &probe).unwrap();
 		let mut query = QueryTransaction::new(
-			txn.multi.begin_query().unwrap(),
+			txn.multi.begin_query(txn.multi.generate_transaction_id()).unwrap(),
 			txn.single.clone(),
-			IdentityId::system(),
+			Arc::new(TransactionContext::system(txn.context().runtime.clone())),
 		);
 
 		let answered = Transaction::Query(&mut query).get_from_dictionary(&dict, &probe).unwrap();

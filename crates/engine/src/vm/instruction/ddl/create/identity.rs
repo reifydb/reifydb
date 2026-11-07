@@ -77,7 +77,13 @@ pub(crate) fn resolve_attribute_assignments(
 			}
 			.into());
 		};
-		let value = evaluate_attribute_value(services, &attribute, assignment, params, txn.identity)?;
+		let value = evaluate_attribute_value(
+			services,
+			&attribute,
+			assignment,
+			params,
+			txn.context().identity.current,
+		)?;
 		resolved.push((attribute, value));
 	}
 	Ok(resolved)

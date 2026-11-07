@@ -100,7 +100,7 @@ impl BucketIndex {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct EpochRetention {
 	pub fine_samples: usize,
 	pub coarse_bucket: EpochSpan,
@@ -126,11 +126,12 @@ impl EpochRetention {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VersionEpoch {
 	inner: Arc<Inner>,
 }
 
+#[derive(Debug)]
 struct Inner {
 	sealed: RwLock<BTreeMap<EpochSeconds, u64>>,
 	retention: RwLock<EpochRetention>,
@@ -138,7 +139,7 @@ struct Inner {
 	floor_none_returns: AtomicU64,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 struct OpenBucket {
 	bucket: BucketIndex,
 	max: u64,

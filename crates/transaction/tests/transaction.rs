@@ -149,10 +149,19 @@ impl Runner for MvccRunner {
 				args.reject_rest()?;
 				let t = match readonly {
 					true => TransactionHandle::Read(
-						MultiReadTransaction::new(self.engine.clone(), version).unwrap(),
+						MultiReadTransaction::new(
+							self.engine.clone(),
+							self.engine.generate_transaction_id(),
+							version,
+						)
+						.unwrap(),
 					),
 					false => TransactionHandle::Write(Box::new(
-						MultiWriteTransaction::new(self.engine.clone()).unwrap(),
+						MultiWriteTransaction::new(
+							self.engine.clone(),
+							self.engine.generate_transaction_id(),
+						)
+						.unwrap(),
 					)),
 				};
 
@@ -258,7 +267,11 @@ impl Runner for MvccRunner {
 				Self::no_tx(command)?;
 				let mut args = command.consume_args();
 
-				let mut tx = MultiWriteTransaction::new(self.engine.clone()).unwrap();
+				let mut tx = MultiWriteTransaction::new(
+					self.engine.clone(),
+					self.engine.generate_transaction_id(),
+				)
+				.unwrap();
 
 				for kv in args.rest_key() {
 					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));

@@ -107,6 +107,7 @@ impl<'a> PolicyEvaluator<'a> {
 	pub fn enforce_identity_policy(
 		&self,
 		tx: &mut Transaction<'_>,
+		identity: IdentityId,
 		target_namespace: &str,
 		target_object: &str,
 		operation: CallableOp,
@@ -118,7 +119,7 @@ impl<'a> PolicyEvaluator<'a> {
 			operation: operation.as_str(),
 			target_type,
 		};
-		enforce_identity_policy(&self.services.catalog, tx, &target, self)
+		enforce_identity_policy(&self.services.catalog, tx, identity, &target, self)
 	}
 }
 

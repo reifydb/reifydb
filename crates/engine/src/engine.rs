@@ -47,7 +47,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
-	context::{clock::Clock, rng::Rng},
+	context::{RuntimeContext, clock::Clock, rng::Rng, transaction::TransactionContext},
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
@@ -56,6 +56,7 @@ use reifydb_store_single::SingleStore;
 #[cfg(feature = "column")]
 use reifydb_transaction::transaction::ScanLayout;
 use reifydb_transaction::{
+	TransactionId,
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -118,14 +119,16 @@ impl StandardEngine {
 				identity
 			);
 		}
+		let id = self.generate_transaction_id();
+		let context = self.transaction_context(id, identity);
 		let interceptors = self.interceptors.create();
 		let mut txn = CommandTransaction::new(
-			self.multi.clone(),
+			self.multi.begin_command(id)?,
 			self.single.clone(),
 			self.event_bus.clone(),
 			interceptors,
-			identity,
-		)?;
+			context,
+		);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		txn.set_marker_source(self.executor.ioc.clone(), self.clock().clone());
@@ -134,14 +137,16 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
 	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
+		let id = self.generate_transaction_id();
+		let context = self.transaction_context(id, identity);
 		let interceptors = self.interceptors.create();
 		let mut txn = AdminTransaction::new(
-			self.multi.clone(),
+			self.multi.begin_command(id)?,
 			self.single.clone(),
 			self.event_bus.clone(),
 			interceptors,
-			identity,
-		)?;
+			context,
+		);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		Ok(txn)
@@ -149,9 +154,27 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::transaction::begin_query", level = "trace", skip(self))]
 	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction> {
-		let mut txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), identity);
+		let id = self.generate_transaction_id();
+		let context = self.transaction_context(id, identity);
+		let mut txn = QueryTransaction::new(self.multi.begin_query(id)?, self.single.clone(), context);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
+	}
+
+	fn transaction_context(&self, id: TransactionId, identity: IdentityId) -> Arc<TransactionContext> {
+		let runtime = &self.executor.runtime_context;
+		Arc::new(TransactionContext::new(
+			identity,
+			RuntimeContext::new(
+				runtime.clock.clone(),
+				runtime.rng.fork(id.as_bytes()),
+				runtime.version_epoch.clone(),
+			),
+		))
+	}
+
+	pub fn generate_transaction_id(&self) -> TransactionId {
+		TransactionId::generate(self.clock(), self.rng())
 	}
 
 	pub fn clock(&self) -> &Clock {
@@ -492,8 +515,13 @@ impl StandardEngine {
 		lease: &VersionLeaseGuard,
 		identity: IdentityId,
 	) -> Result<QueryTransaction> {
-		let mut txn =
-			QueryTransaction::new(self.multi.begin_query_at_version(lease)?, self.single.clone(), identity);
+		let id = self.generate_transaction_id();
+		let context = self.transaction_context(id, identity);
+		let mut txn = QueryTransaction::new(
+			self.multi.begin_query_at_version(id, lease)?,
+			self.single.clone(),
+			context,
+		);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
 	}

@@ -21,6 +21,7 @@ use reifydb_core::{
 	},
 	testing::{CapturedEvent, CapturedInvocation},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
 	Result,
 	error::Diagnostic,
@@ -451,11 +452,24 @@ impl<'a> From<&'a mut QueryTransaction> for Transaction<'a> {
 
 impl<'a> Transaction<'a> {
 	pub fn identity(&self) -> IdentityId {
+		self.context().identity.current
+	}
+
+	pub fn context(&self) -> &Arc<TransactionContext> {
 		match self {
-			Self::Command(txn) => txn.identity,
-			Self::Admin(txn) => txn.identity,
-			Self::Query(txn) => txn.identity,
-			Self::Test(t) => t.inner.identity,
+			Self::Command(txn) => txn.context(),
+			Self::Admin(txn) => txn.context(),
+			Self::Query(txn) => txn.context(),
+			Self::Test(t) => t.inner.context(),
+		}
+	}
+
+	pub fn set_context(&mut self, context: Arc<TransactionContext>) {
+		match self {
+			Self::Command(txn) => txn.set_context(context),
+			Self::Admin(txn) => txn.set_context(context),
+			Self::Query(txn) => txn.set_context(context),
+			Self::Test(t) => t.inner.set_context(context),
 		}
 	}
 
@@ -465,15 +479,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(_) => ScanLayout::Row,
 			Self::Query(txn) => txn.layout,
 			Self::Test(_) => ScanLayout::Row,
-		}
-	}
-
-	pub fn set_identity(&mut self, identity: IdentityId) {
-		match self {
-			Self::Command(txn) => txn.identity = identity,
-			Self::Admin(txn) => txn.identity = identity,
-			Self::Query(txn) => txn.identity = identity,
-			Self::Test(t) => t.inner.identity = identity,
 		}
 	}
 
@@ -578,12 +583,12 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn single(&self) -> Option<&SingleTransaction> {
+	pub fn single(&self) -> &SingleTransaction {
 		match self {
-			Transaction::Command(txn) => Some(&txn.single),
-			Transaction::Admin(txn) => Some(&txn.single),
-			Transaction::Query(txn) => txn.single.as_ref(),
-			Transaction::Test(t) => Some(&t.inner.single),
+			Transaction::Command(txn) => &txn.single,
+			Transaction::Admin(txn) => &txn.single,
+			Transaction::Query(txn) => &txn.single,
+			Transaction::Test(t) => &t.inner.single,
 		}
 	}
 
