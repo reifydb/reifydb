@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, fmt::Debug};
+use std::fmt::Debug;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -55,7 +55,7 @@ use crate::{
 			intern_window_groups, observe_batch,
 			operator::{Emit, Extracted, WindowedOperator, extract_rows},
 			publish::{Emitted, UpdateRow, publish_row},
-			seal_frontier, straddling, timer_frontier, update_horizon, window_engine_config,
+			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
 };
@@ -107,7 +107,6 @@ where
 
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A, K, V>> {
 		let mut buckets: Buckets<A, K, V> = Routing::default();
-		let horizon = update_horizon::<A::Coord>(&mut GuestAsHost(ctx), change, self.seal_span)?;
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -125,11 +124,8 @@ where
 							extract_rows(&self.aggregator, ctx, &pre, &all_rows(&pre))?;
 						let after =
 							extract_rows(&self.aggregator, ctx, &post, &all_rows(&post))?;
-						let straddled = straddling::<A>(&before, &after, horizon, |coord| {
-							self.window_span(coord).start
-						});
-						self.push_extracted(before, &straddled, &mut buckets, false);
-						self.push_extracted(after, &straddled, &mut buckets, true);
+						self.push_extracted(before, &mut buckets, false);
+						self.push_extracted(after, &mut buckets, true);
 					}
 				}
 				DiffType::Remove => {
@@ -150,20 +146,12 @@ where
 		is_add: bool,
 	) -> Result<()> {
 		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
-		self.push_extracted(extracted, &BTreeSet::new(), buckets, is_add);
+		self.push_extracted(extracted, buckets, is_add);
 		Ok(())
 	}
 
-	fn push_extracted(
-		&self,
-		extracted: Vec<Extracted<A>>,
-		straddled: &BTreeSet<usize>,
-		buckets: &mut Buckets<A, K, V>,
-		is_add: bool,
-	) {
-		for (_, coord, group, contribution) in
-			extracted.into_iter().filter(|(row, ..)| !straddled.contains(row))
-		{
+	fn push_extracted(&self, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A, K, V>, is_add: bool) {
+		for (_, coord, group, contribution) in extracted {
 			let span = self.window_span(coord);
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)

@@ -49,6 +49,7 @@ use super::{
 	coerce::InputFragments,
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::RingBufferTarget,
+	event_time::reject_event_time_assignment,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	table_insert::cast_partitions,
 };
@@ -80,6 +81,7 @@ pub(crate) fn update_ringbuffer(
 		returning,
 	} = plan;
 	let (namespace, ringbuffer) = resolve_update_ringbuffer_target(services, txn, &target)?;
+	reject_event_time_assignment("ring buffer", &namespace, &ringbuffer.name, &ringbuffer.time, &input)?;
 	let shape = services.catalog.get_or_create_ringbuffer_shape(txn, &ringbuffer)?;
 	let target_data = RingBufferTarget {
 		namespace: &namespace,

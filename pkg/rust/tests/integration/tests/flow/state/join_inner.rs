@@ -281,7 +281,7 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 	advance_past_the_seal(&db);
 	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
-	db.command(r#"UPDATE app::lhs { lv: 99, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
+	db.command(r#"UPDATE app::lhs { lv: 99 } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 99 }"), 0, "a sealed row must not accept a later value");
@@ -338,7 +338,7 @@ fn an_inner_join_without_a_seal_keeps_every_row_addressable_forever() {
 	fill_one_pair(&db);
 
 	advance_past_the_seal(&db);
-	db.command(r#"UPDATE app::lhs { lv: 50, ts: "2026-01-01T00:02:00Z" } FILTER { id == 1 }"#);
+	db.command(r#"UPDATE app::lhs { lv: 50 } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(

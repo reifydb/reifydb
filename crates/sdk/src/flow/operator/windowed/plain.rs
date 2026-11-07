@@ -65,8 +65,8 @@ use crate::{
 			operator::{Contribution, Emit, Extracted, KindSet, WindowedOperator, batch_len, extract_rows},
 			partition_of,
 			publish::{Emitted, UpdateRow, publish_row},
-			rolling_cutoff, rolling_output, route_rolling, seal_frontier, straddling, timer_frontier,
-			update_horizon, window_engine_config,
+			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
+			window_engine_config,
 		},
 	},
 };
@@ -174,10 +174,6 @@ where
 
 	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
 		let mut buckets: Buckets<A> = Routing::default();
-		let horizon = match self.sliding.is_some() || self.rolling.is_some() {
-			true => None,
-			false => update_horizon::<A::Coord>(&mut GuestAsHost(ctx), change, self.seal_span)?,
-		};
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -195,11 +191,8 @@ where
 							extract_rows(&self.aggregator, ctx, &pre, &all_rows(&pre))?;
 						let after =
 							extract_rows(&self.aggregator, ctx, &post, &all_rows(&post))?;
-						let straddled = straddling::<A>(&before, &after, horizon, |coord| {
-							self.window_span(coord).start
-						});
-						self.push_extracted(before, &straddled, &mut buckets, false);
-						self.push_extracted(after, &straddled, &mut buckets, true);
+						self.push_extracted(before, &mut buckets, false);
+						self.push_extracted(after, &mut buckets, true);
 					}
 				}
 				DiffType::Remove => {
@@ -220,20 +213,12 @@ where
 		is_add: bool,
 	) -> Result<()> {
 		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
-		self.push_extracted(extracted, &BTreeSet::new(), buckets, is_add);
+		self.push_extracted(extracted, buckets, is_add);
 		Ok(())
 	}
 
-	fn push_extracted(
-		&self,
-		extracted: Vec<Extracted<A>>,
-		straddled: &BTreeSet<usize>,
-		buckets: &mut Buckets<A>,
-		is_add: bool,
-	) {
-		for (_, coord, group, contribution) in
-			extracted.into_iter().filter(|(row, ..)| !straddled.contains(row))
-		{
+	fn push_extracted(&self, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A>, is_add: bool) {
+		for (_, coord, group, contribution) in extracted {
 			match &self.sliding {
 				Some(mode) => {
 					for span in mode.engine.spans(coord) {

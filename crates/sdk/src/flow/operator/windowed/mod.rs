@@ -10,7 +10,7 @@ pub mod retained;
 pub mod top_k;
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry},
+	collections::{BTreeMap, HashMap, btree_map::Entry},
 	hash::Hash,
 };
 
@@ -24,7 +24,6 @@ use reifydb_flow_async::{
 		coord::Coord,
 		domain::SealDomain,
 		ledger::{FiredAt, SealLedger},
-		rule::is_sealed,
 	},
 	timer::Timer as FlowTimer,
 	window::{
@@ -65,41 +64,6 @@ pub(crate) fn observe_batch<C: SealDomain>(
 
 pub(crate) fn all_rows(cols: &impl ColumnsView) -> Vec<usize> {
 	(0..cols.row_count()).collect()
-}
-
-pub(crate) fn update_horizon<C: SealDomain>(
-	store: &mut (impl StateStore + TimerStore),
-	change: &impl ChangeView,
-	seal_span: Option<C::SealSpan>,
-) -> Result<Option<C>> {
-	let Some(seal_span) = seal_span else {
-		return Ok(None);
-	};
-	let updates = (0..change.diff_count())
-		.filter_map(|di| change.diff(di))
-		.any(|diff| matches!(diff.kind(), DiffType::Update));
-	if !updates {
-		return Ok(None);
-	}
-	Ok(Some(C::horizon(seal_frontier::<C>(store)?, seal_span)))
-}
-
-pub(crate) fn straddling<T: WindowedOperator>(
-	pre: &[Extracted<T>],
-	post: &[Extracted<T>],
-	horizon: Option<T::Coord>,
-	start: impl Fn(T::Coord) -> T::Coord,
-) -> BTreeSet<usize> {
-	let Some(horizon) = horizon else {
-		return BTreeSet::new();
-	};
-	let after: BTreeMap<usize, T::Coord> = post.iter().map(|(row, coord, ..)| (*row, *coord)).collect();
-	pre.iter()
-		.filter_map(|(row, coord, ..)| {
-			let after = after.get(row)?;
-			(is_sealed(start(*coord), horizon) != is_sealed(start(*after), horizon)).then_some(*row)
-		})
-		.collect()
 }
 
 pub(crate) fn timer_frontier<C: SealDomain>(

@@ -123,7 +123,7 @@ fn a_mutation_lands_however_late_it_arrives() {
 	fill_both_inputs(&db);
 	advance_far_past_every_input(&db);
 
-	db.command(r#"UPDATE app::a { v: 99, ts: "2026-06-02T00:00:00Z" } FILTER { id == 1 }"#);
+	db.command(r#"UPDATE app::a { v: 99 } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::u FILTER { v == 99 }"), 1, "a late update must reach the view");
@@ -153,10 +153,8 @@ fn a_source_row_keeps_one_output_row_across_repeated_updates() {
 	db.command(r#"INSERT app::a [{ id: 1, v: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.await_row_count("FROM app::u", 1, TIMEOUT);
 
-	for (minute, v) in [(1, 10), (2, 20), (3, 30)] {
-		db.command(&format!(
-			r#"UPDATE app::a {{ v: {v}, ts: "2026-01-01T00:0{minute}:00Z" }} FILTER {{ id == 1 }}"#
-		));
+	for v in [10, 20, 30] {
+		db.command(&format!("UPDATE app::a {{ v: {v} }} FILTER {{ id == 1 }}"));
 		db.await_all_flows(TIMEOUT);
 	}
 

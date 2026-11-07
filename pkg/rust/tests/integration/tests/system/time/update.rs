@@ -46,22 +46,6 @@ fn an_update_on_a_processing_time_object_carries_time_forward() {
 }
 
 #[test]
-fn an_update_that_moves_the_populator_moves_time_with_it() {
-	let db = db();
-	db.admin("CREATE TABLE st::e { id: int4, at: datetime } with { time: event(at) }");
-	db.command(r#"INSERT st::e [{ id: 1, at: "2026-01-01T00:00:01Z" }]"#);
-
-	db.command(r#"UPDATE st::e { at: "2026-01-01T00:00:09Z" } FILTER { id == 1 }"#);
-
-	let at = single(&db, "FROM st::e | MAP { at }", "at");
-	assert_eq!(
-		single(&db, "FROM st::e | MAP { #time }", "time"),
-		at,
-		"an event-time object re-reads its populator, so correcting the column corrects #time"
-	);
-}
-
-#[test]
 fn an_update_that_leaves_the_populator_alone_leaves_time_alone() {
 	let db = db();
 	db.admin("CREATE TABLE st::e { id: int4, at: datetime, n: int4 } with { time: event(at) }");

@@ -6,6 +6,7 @@ pub(crate) mod columns;
 pub(crate) mod context;
 pub mod dictionary_insert;
 pub mod dispatch;
+pub(crate) mod event_time;
 pub(crate) mod partition;
 pub mod primary_key;
 pub mod queue_insert;

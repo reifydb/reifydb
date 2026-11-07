@@ -12,14 +12,9 @@ use reifydb_value::{
 };
 
 const BLOCK_TIME: &str = "@2020-01-01T00:00:00Z";
-const CORRECTED_TIME: &str = "@2019-06-01T00:00:00Z";
 
 fn block_time() -> DateTime {
 	DateTime::from_ymd_hms(2020, 1, 1, 0, 0, 0).unwrap()
-}
-
-fn corrected_time() -> DateTime {
-	DateTime::from_ymd_hms(2019, 6, 1, 0, 0, 0).unwrap()
 }
 
 fn engine() -> TestEngine {
@@ -72,26 +67,6 @@ fn a_processing_time_update_keeps_the_arrival_time_while_updated_at_moves() {
 }
 
 #[test]
-fn an_event_time_update_re_reads_the_populator_rather_than_the_clock() {
-	// The correction points backwards, an instant neither the arrival clock nor the previous
-	// #time can produce, so only a genuine re-read of the row satisfies this.
-	let t = engine();
-	t.admin("CREATE TABLE test::trades { id: int4, at: datetime } WITH { time: event(at) }");
-	t.command(&format!(r#"INSERT test::trades [{{ id: 1, at: {BLOCK_TIME} }}]"#));
-
-	assert_eq!(only_time(&t, "FROM test::trades"), block_time());
-
-	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
-	t.command(&format!(r#"UPDATE test::trades {{ at: {CORRECTED_TIME} }} FILTER {{ id == 1 }}"#));
-
-	assert_eq!(
-		only_time(&t, "FROM test::trades"),
-		corrected_time(),
-		"#time must follow the corrected populator, backwards and all"
-	);
-}
-
-#[test]
 fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
 	// A re-stamp on every update breaks only here: where the populator is edited, the populator
 	// and the new #time agree by construction and hide it.
@@ -111,8 +86,7 @@ fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
 
 #[test]
 fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
-	// The ringbuffer is wired to the resolver separately, so the semantics can be honoured for
-	// tables and dropped here. Both domains are checked because the two arms fail independently.
+	// The ringbuffer must keep #time on a processing-time update, otherwise it re-dates rows to the clock.
 	let t = engine();
 	t.admin("CREATE RINGBUFFER test::recent { id: int4, note: utf8 } WITH { capacity: 8, time: processing }");
 	t.command(r#"INSERT test::recent [{ id: 1, note: "before" }]"#);
@@ -121,20 +95,11 @@ fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
 	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
 	t.command(r#"UPDATE test::recent { note: "after" } FILTER { id == 1 }"#);
 	assert_eq!(only_time(&t, "FROM test::recent"), inserted_time, "processing-time ringbuffer");
-
-	let t = engine();
-	t.admin("CREATE RINGBUFFER test::events { id: int4, at: datetime } WITH { capacity: 8, time: event(at) }");
-	t.command(&format!(r#"INSERT test::events [{{ id: 1, at: {BLOCK_TIME} }}]"#));
-
-	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
-	t.command(&format!(r#"UPDATE test::events {{ at: {CORRECTED_TIME} }} FILTER {{ id == 1 }}"#));
-	assert_eq!(only_time(&t, "FROM test::events"), corrected_time(), "event-time ringbuffer");
 }
 
 #[test]
 fn a_series_update_follows_the_same_lifecycle_as_a_table() {
-	// A series carries a temporal key of its own, a different declaration from the #time
-	// populator, so an update must move #time with the populator and not with the key.
+	// An update must keep #time from the populator, never from the series key or the clock.
 	let t = engine();
 	t.admin("CREATE SERIES test::metrics { ts: int8, note: utf8 } WITH { key: ts, time: processing }");
 	t.command(r#"INSERT test::metrics [{ ts: 1000, note: "before" }]"#);
@@ -145,10 +110,10 @@ fn a_series_update_follows_the_same_lifecycle_as_a_table() {
 	assert_eq!(only_time(&t, "FROM test::metrics"), inserted_time, "processing-time series");
 
 	let t = engine();
-	t.admin("CREATE SERIES test::readings { ts: int8, at: datetime } WITH { key: ts, time: event(at) }");
-	t.command(&format!(r#"INSERT test::readings [{{ ts: 1000, at: {BLOCK_TIME} }}]"#));
+	t.admin("CREATE SERIES test::readings { ts: int8, at: datetime, v: int4 } WITH { key: ts, time: event(at) }");
+	t.command(&format!(r#"INSERT test::readings [{{ ts: 1000, at: {BLOCK_TIME}, v: 1 }}]"#));
 
 	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
-	t.command(&format!(r#"UPDATE test::readings {{ at: {CORRECTED_TIME} }} FILTER {{ ts == 1000 }}"#));
-	assert_eq!(only_time(&t, "FROM test::readings"), corrected_time(), "event-time series");
+	t.command("UPDATE test::readings { v: 2 } FILTER { ts == 1000 }");
+	assert_eq!(only_time(&t, "FROM test::readings"), block_time(), "event-time series");
 }

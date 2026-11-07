@@ -94,6 +94,14 @@ pub enum EngineError {
 		fragment: Fragment,
 	},
 
+	#[error("cannot update the event-time column `{column}` of {kind} `{object}`: event time is immutable")]
+	EventTimeImmutable {
+		kind: &'static str,
+		object: String,
+		column: String,
+		fragment: Fragment,
+	},
+
 	#[error("series key column `{column}` cannot store {value}")]
 	SeriesKeyOutOfRange {
 		column: String,
@@ -375,6 +383,27 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 				label: Some(format!("`{}` cannot be updated", column)),
 				help: Some("delete the row and insert it again with the new key".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::EventTimeImmutable {
+				kind,
+				object,
+				column,
+				fragment,
+			} => Diagnostic {
+				code: "UPDATE_006".to_string(),
+				rql: None,
+				message: format!(
+					"cannot update the event-time column `{}` of {} `{}`: event time is immutable",
+					column, kind, object
+				),
+				column: None,
+				fragment,
+				label: Some(format!("`{}` cannot be updated", column)),
+				help: Some("delete the row and insert it again with the new time".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

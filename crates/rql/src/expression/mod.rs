@@ -112,8 +112,13 @@ impl ExpressionCompiler {
 					arg_expressions.push(Self::compile(arg_ast)?);
 				}
 
+				let start = call.function.namespaces.first().unwrap_or(&call.function.name);
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(Fragment::testing(&full_name)),
+					func: IdentExpression(Fragment::statement(
+						&full_name,
+						start.line().0,
+						start.column().0,
+					)),
 					args: arg_expressions,
 					fragment: call.token.fragment.to_owned(),
 				}))
@@ -710,7 +715,7 @@ impl ExpressionCompiler {
 			InfixOperator::AccessNamespace(_token) => {
 				let left = Self::compile(BumpBox::into_inner(ast.left))?;
 				let namespace = match &left {
-					Expression::Column(ColumnExpression(col)) => col.name.text().to_string(),
+					Expression::Column(ColumnExpression(col)) => col.name.clone(),
 					other => unimplemented!("unsupported namespace expression: {other:?}"),
 				};
 
@@ -732,7 +737,7 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> Result<Expression> {
+	fn compile_namespace_right(namespace: &Fragment, right_ast: Ast<'_>) -> Result<Expression> {
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
 			Some(ast.token().fragment.text().to_string())
 		}
@@ -749,7 +754,11 @@ impl ExpressionCompiler {
 				};
 
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(Fragment::testing(&full_name)),
+					func: IdentExpression(Fragment::statement(
+						&full_name,
+						namespace.line().0,
+						namespace.column().0,
+					)),
 					args: tuple.expressions,
 					fragment: infix.token.fragment.to_owned(),
 				}))
@@ -775,7 +784,11 @@ impl ExpressionCompiler {
 				}
 
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(Fragment::testing(&full_name)),
+					func: IdentExpression(Fragment::statement(
+						&full_name,
+						namespace.line().0,
+						namespace.column().0,
+					)),
 					args: arg_expressions,
 					fragment: call.token.fragment.to_owned(),
 				}))
@@ -792,7 +805,11 @@ impl ExpressionCompiler {
 								text: Arc::from("_context"),
 							},
 						},
-						name: Fragment::testing(&full_name),
+						name: Fragment::statement(
+							&full_name,
+							namespace.line().0,
+							namespace.column().0,
+						),
 					})))
 				} else {
 					let compiled = Self::compile(other)?;
@@ -801,7 +818,11 @@ impl ExpressionCompiler {
 							let full_name = format!("{}::{}", namespace, col.name.text());
 							Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
 								object: col.object,
-								name: Fragment::testing(&full_name),
+								name: Fragment::statement(
+									&full_name,
+									namespace.line().0,
+									namespace.column().0,
+								),
 							})))
 						}
 						other => unimplemented!(

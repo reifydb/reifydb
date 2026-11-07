@@ -155,7 +155,7 @@ fn changing_a_right_row_after_publication_leaves_the_published_row_alone() {
 	insert_left(&db);
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
 
-	db.command(r#"UPDATE app::rhs { rv: 70, ts: "2026-01-01T00:00:00.300Z" } FILTER { id == 2 }"#);
+	db.command(r#"UPDATE app::rhs { rv: 70 } FILTER { id == 2 }"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::rhs FILTER { rv == 70 }"), 1, "precondition: the source row did change");
@@ -180,7 +180,7 @@ fn withdrawing_a_left_row_retracts_what_it_published_not_what_the_right_side_hol
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
 	assert_eq!(await_state_keys(&db, PUBLISHED, 1, TIMEOUT), 1, "precondition: the live pair must be recorded");
 
-	db.command(r#"UPDATE app::rhs { rv: 70, ts: "2026-01-01T00:00:00.300Z" } FILTER { id == 2 }"#);
+	db.command(r#"UPDATE app::rhs { rv: 70 } FILTER { id == 2 }"#);
 	db.await_all_flows(TIMEOUT);
 	db.command("DELETE app::lhs FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);

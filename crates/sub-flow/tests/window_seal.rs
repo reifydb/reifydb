@@ -398,12 +398,15 @@ fn a_delete_of_a_row_in_a_sealed_window_keeps_its_published_total() {
 }
 
 #[test]
-fn an_update_moving_a_row_out_of_a_sealed_window_is_dropped_whole() {
-	// Applying only the new side would count the row in the sealed window and again in the open one.
+fn an_update_moving_a_row_out_of_a_sealed_window_is_refused() {
+	// A time move out of a sealed window must be refused, otherwise the row is counted again in the open window.
 	let db = setup();
 	sealed_window_source(&db);
 
-	db.command(r#"UPDATE app::t { ts: "1970-01-01T00:00:30Z" } FILTER { id == 1 }"#);
+	let err = db
+		.try_command(r#"UPDATE app::t { ts: "1970-01-01T00:00:30Z" } FILTER { id == 1 }"#)
+		.expect_err("a time move out of a sealed window must be refused");
+	assert_eq!(err.0.code, "UPDATE_006", "{err:?}");
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
@@ -425,12 +428,16 @@ fn an_update_moving_a_row_out_of_a_sealed_window_is_dropped_whole() {
 }
 
 #[test]
-fn an_update_moving_a_row_into_a_sealed_window_is_dropped_whole() {
-	// Applying only the old side would take the row out of the open window while the sealed one never gains it.
+fn an_update_moving_a_row_into_a_sealed_window_is_refused() {
+	// A time move into a sealed window must be refused, otherwise the open window loses the row while the sealed
+	// one never gains it.
 	let db = setup();
 	sealed_window_source(&db);
 
-	db.command(r#"UPDATE app::t { ts: "1970-01-01T00:00:20Z" } FILTER { id == 2 }"#);
+	let err = db
+		.try_command(r#"UPDATE app::t { ts: "1970-01-01T00:00:20Z" } FILTER { id == 2 }"#)
+		.expect_err("a time move into a sealed window must be refused");
+	assert_eq!(err.0.code, "UPDATE_006", "{err:?}");
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
@@ -447,6 +454,57 @@ fn an_update_moving_a_row_into_a_sealed_window_is_dropped_whole() {
 		),
 		1,
 		"the open 30s window must keep 20; view now: {:?}",
+		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+	);
+}
+
+#[test]
+fn an_update_from_a_sealed_window_into_an_open_one_applies_only_its_open_side() {
+	// An aggregate row moving out of sealed 20s must leave 20s as published and still reach open 31s, otherwise
+	// g1's new state is lost.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(
+		"CREATE DEFERRED VIEW app::agg { g: int4, n: int8, top: int4 } AS { FROM app::t | aggregate { n: math::count(), top: math::max(v) } by { g } }",
+	);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, s: datetime, n: int8, top: int4 } AS {
+			FROM app::agg
+				| window tumbling { s: window::start(), n: math::count(), top: math::max(top) }
+					with { duration: 1s, lateness: 0s }
+					by { g }
+		}"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "1970-01-01T00:00:20Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, v: 7, ts: "1970-01-01T00:00:30Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 9, ts: "1970-01-01T00:00:31Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+
+	let expected = [
+		(
+			"sealed 20s keeps its published row",
+			"g == 1 and n == 1 and top == 5 and s == cast('1970-01-01T00:00:20Z', datetime)",
+		),
+		("30s is untouched", "g == 2 and n == 1 and top == 7 and s == cast('1970-01-01T00:00:30Z', datetime)"),
+		(
+			"open 31s takes the moved row",
+			"g == 1 and n == 1 and top == 9 and s == cast('1970-01-01T00:00:31Z', datetime)",
+		),
+	];
+	for (why, filter) in expected {
+		assert_eq!(
+			db.await_exact_row_count(&format!("FROM app::w FILTER {{ {filter} }}"), 1, TIMEOUT),
+			1,
+			"{why}; view now: {:?}",
+			timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
+		);
+	}
+	assert_eq!(
+		db.await_exact_row_count("FROM app::w", 3, TIMEOUT),
+		3,
+		"no other window may appear; view now: {:?}",
 		timed_rows(&db.query_as_root("FROM app::w", ()).expect("query view"))
 	);
 }

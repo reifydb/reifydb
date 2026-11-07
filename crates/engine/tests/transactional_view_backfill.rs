@@ -38,7 +38,6 @@ fn engine() -> TestEngine {
 	t.admin(&format!("CREATE TABLE bf::src2 {{ {COLUMNS} }}"));
 	t.admin(&format!("CREATE TABLE bf::dsrc {{ {DICTIONARY_COLUMNS} }}"));
 	t.admin(&format!("CREATE TABLE bf::psrc {{ {COLUMNS} }} WITH {{ time: processing }}"));
-	t.admin(&format!("CREATE TABLE bf::esrc {{ {COLUMNS} }} WITH {{ time: event(at) }}"));
 	t
 }
 
@@ -421,12 +420,6 @@ fn a_late_view_over_a_table_without_time_keeps_the_row_stamps() {
 fn a_late_view_over_a_processing_time_table_keeps_the_row_stamps() {
 	// The stored #time is the arrival time; a backfill that re-stamps it with the create time must fail here.
 	keeps_the_row_stamps("bf::psrc");
-}
-
-#[test]
-fn a_late_view_over_an_event_time_table_keeps_the_row_stamps() {
-	// #time follows the at column through updates; the backfill must carry the stored value, not recompute it.
-	keeps_the_row_stamps("bf::esrc");
 }
 
 fn create_chain(t: &TestEngine, first: &str, second: &str, upstream: &str) {

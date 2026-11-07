@@ -6,19 +6,15 @@ use std::{
 };
 
 use arrow_array::RecordBatch;
-use arrow_ord::cmp::eq;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
 	interface::change::{Change, Diff},
-	internal,
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::{StateStore, TimerKind},
-	value::batch::filter,
 };
 use reifydb_value::{
 	Result,
-	error::Error,
 	util::hash::Hash128,
 	value::{Value, duration::Duration, row_number::RowNumber},
 };
@@ -51,7 +47,6 @@ use crate::{
 			},
 		},
 		state_access::get_classified,
-		time_at_or_after,
 	},
 	timer::Timer,
 	window::{
@@ -86,28 +81,6 @@ fn route_engine_columns(
 		},
 		routing,
 	)
-}
-
-fn first_open_window(gate: &SealGate, window_size: Duration) -> DateTimeCoord {
-	let floor = WindowSpan::for_coord(gate.horizon(), window_size).start;
-	match gate.admits(floor.to_order()) {
-		true => floor,
-		false => floor.add_span(window_size),
-	}
-}
-
-fn drop_straddling(
-	pre: &RecordBatch,
-	post: &RecordBatch,
-	open_from: DateTimeCoord,
-) -> Result<(RecordBatch, RecordBatch, usize)> {
-	let kept = eq(&time_at_or_after(pre, open_from.0)?, &time_at_or_after(post, open_from.0)?)
-		.map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
-	let dropped = kept.false_count();
-	if dropped == 0 {
-		return Ok((pre.clone(), post.clone(), 0));
-	}
-	Ok((filter(pre, kept.values())?, filter(post, kept.values())?, dropped))
 }
 
 fn push_count_event(
@@ -178,11 +151,6 @@ pub fn apply_tumbling_engine(
 
 	let mut routing = Routing::default();
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-	let open_from = match change.diffs.iter().any(|diff| matches!(diff, Diff::Update { .. })) {
-		true => Some(first_open_window(&operator.seal_gate(host, rule)?, window_size)),
-		false => None,
-	};
-	let mut straddled = 0u64;
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -199,21 +167,13 @@ pub fn apply_tumbling_engine(
 				post,
 				..
 			} => {
-				let open_from =
-					open_from.expect("the seal gate is read for every change that holds an update");
 				for (pre, post) in distinct_row_runs(pre, post)? {
-					let (pre, post, dropped) = drop_straddling(&pre, &post, open_from)?;
-					straddled += dropped as u64;
 					route_engine_columns(operator, &pre, false, window_size, &mut routing)?;
 					route_engine_columns(operator, &post, true, window_size, &mut routing)?;
 				}
 			}
 		}
 	}
-	if straddled > 0 {
-		operator.note_sealed_drops(straddled * 2);
-	}
-
 	let Routed {
 		mut buckets,
 		group_values,

@@ -345,12 +345,45 @@ fn an_update_moving_time_back_inside_a_sliding_window_takes_back_the_old_time() 
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
-	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:15Z" } FILTER { id == 2 }"#);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 4, "2026-01-01T00:01:15Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { x == 4 }", 2, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
 	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:15.000000000Z".to_string(); 2]);
 	assert_eq!(text(&column_values(&frames[0], "x")), vec!["4".to_string(); 2]);
+}
+
+#[test]
+fn an_aggregate_moving_time_inside_a_sliding_window_takes_back_the_old_time() {
+	// The aggregate row moves from 01:15 to 01:20, so its entry at 01:15 must be taken back, otherwise n counts it
+	// twice.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin(
+		"CREATE TABLE app::raw { id: int4, g: int4, k: int4, v: int4, ts: datetime } with { time: event(ts) }",
+	);
+	db.admin(
+		"CREATE DEFERRED VIEW app::a { g: int4, k: int4, v: int4 } AS { FROM app::raw | aggregate { v: math::max(v) } by { g, k } }",
+	);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
+			FROM app::a
+				| window sliding { n: math::count(), l: window::last(), x: math::last(v) }
+					by { g } with { duration: 60s, slide: 30s, lateness: 0s }
+		}"#);
+
+	db.command(r#"INSERT app::raw [{ id: 1, g: 1, k: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
+	db.command(r#"INSERT app::raw [{ id: 3, g: 1, k: 2, v: 4, ts: "2026-01-01T00:01:15Z" }]"#);
+	db.await_row_count("FROM app::w | filter { x == 4 }", 2, TIMEOUT);
+	db.command(r#"INSERT app::raw [{ id: 2, g: 1, k: 2, v: 9, ts: "2026-01-01T00:01:20Z" }]"#);
+	db.await_row_count("FROM app::w | filter { x == 9 }", 2, TIMEOUT);
+	db.await_all_flows(TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "n")), vec!["2".to_string(); 2]);
+	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:20.000000000Z".to_string(); 2]);
+	assert_eq!(text(&column_values(&frames[0], "x")), vec!["9".to_string(); 2]);
 }
 
 #[test]
@@ -367,7 +400,9 @@ fn an_update_moving_time_out_of_a_sliding_window_leaves_it_and_joins_the_new_one
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
-	db.command(r#"UPDATE app::t { ts: "2026-01-01T00:02:40Z" } FILTER { id == 2 }"#);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 9, "2026-01-01T00:02:40Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_exact_row_count("FROM app::w", 4, TIMEOUT);
 
 	let windows = |db: &TestDb| {
@@ -402,12 +437,45 @@ fn an_update_moving_time_back_inside_a_session_takes_back_the_old_time() {
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
-	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:15Z" } FILTER { id == 2 }"#);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 4, "2026-01-01T00:01:15Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
 	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:15.000000000Z".to_string()]);
 	assert_eq!(text(&column_values(&frames[0], "x")), vec!["4".to_string()]);
+}
+
+#[test]
+fn an_aggregate_moving_time_inside_a_session_takes_back_the_old_time() {
+	// The aggregate row moves from 01:15 to 01:20, so its entry at 01:15 must be taken back, otherwise n counts it
+	// twice.
+	let db = setup();
+	db.admin("CREATE NAMESPACE app");
+	db.admin(
+		"CREATE TABLE app::raw { id: int4, g: int4, k: int4, v: int4, ts: datetime } with { time: event(ts) }",
+	);
+	db.admin(
+		"CREATE DEFERRED VIEW app::a { g: int4, k: int4, v: int4 } AS { FROM app::raw | aggregate { v: math::max(v) } by { g, k } }",
+	);
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, n: int8, l: datetime, x: int4 } AS {
+			FROM app::a
+				| window session { n: math::count(), l: window::last(), x: math::last(v) }
+					by { g } with { gap: 30s, lateness: 0s }
+		}"#);
+
+	db.command(r#"INSERT app::raw [{ id: 1, g: 1, k: 1, v: 5, ts: "2026-01-01T00:01:10Z" }]"#);
+	db.command(r#"INSERT app::raw [{ id: 3, g: 1, k: 2, v: 4, ts: "2026-01-01T00:01:15Z" }]"#);
+	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
+	db.command(r#"INSERT app::raw [{ id: 2, g: 1, k: 2, v: 9, ts: "2026-01-01T00:01:20Z" }]"#);
+	db.await_row_count("FROM app::w | filter { x == 9 }", 1, TIMEOUT);
+	db.await_all_flows(TIMEOUT);
+
+	let frames = db.query("FROM app::w");
+	assert_eq!(text(&column_values(&frames[0], "n")), vec!["2".to_string(); 1]);
+	assert_eq!(text(&column_values(&frames[0], "l")), vec!["2026-01-01T00:01:20.000000000Z".to_string(); 1]);
+	assert_eq!(text(&column_values(&frames[0], "x")), vec!["9".to_string(); 1]);
 }
 
 #[test]
@@ -424,7 +492,9 @@ fn an_update_moving_time_out_of_a_session_leaves_it_and_opens_a_new_one() {
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
-	db.command(r#"UPDATE app::t { ts: "2026-01-01T00:03:00Z" } FILTER { id == 2 }"#);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 9, "2026-01-01T00:03:00Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
 
 	let sessions = |db: &TestDb| {
@@ -463,7 +533,9 @@ fn an_update_moving_time_forward_past_the_gap_from_the_remaining_row_splits_off_
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 9, "2026-01-01T00:01:20Z");
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
-	db.command(r#"UPDATE app::t { v: 4, ts: "2026-01-01T00:01:45Z" } FILTER { id == 2 }"#);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 4, "2026-01-01T00:01:45Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { x == 4 }", 1, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
@@ -497,7 +569,9 @@ fn an_update_moving_a_row_alone_in_its_session_moves_that_session_to_the_new_tim
 	insert(&db, 1, 1, 5, "2026-01-01T00:01:10Z");
 	insert(&db, 2, 1, 7, "2026-01-01T00:01:40Z");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
-	db.command(r#"UPDATE app::t { v: 8, ts: "2026-01-01T00:01:15Z" } FILTER { id == 1 }"#);
+	db.command("DELETE app::t FILTER { id == 1 }");
+	insert(&db, 1, 1, 8, "2026-01-01T00:01:15Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { x == 8 }", 1, TIMEOUT);
 
 	let frames = db.query("FROM app::w");
@@ -642,7 +716,10 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_sliding_windows() {
 	db.await_row_count("FROM app::w | filter { n == 2 }", 2, TIMEOUT);
 	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
 	db.await_row_count("FROM app::w | filter { g == 2 }", 2, TIMEOUT);
-	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:02:40Z" } FILTER { id == 2 }"#);
+	db.command("UPDATE app::t { g: 1 } FILTER { id == 2 }");
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 9, "2026-01-01T00:02:40Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { g == 1 }", 4, TIMEOUT);
 	db.command("DELETE app::t FILTER { id == 2 }");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
@@ -675,7 +752,10 @@ fn a_row_moved_to_another_group_and_back_leaves_no_stale_session() {
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 	db.command("UPDATE app::t { g: 2 } FILTER { id == 2 }");
 	db.await_row_count("FROM app::w | filter { g == 2 }", 1, TIMEOUT);
-	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:03:00Z" } FILTER { id == 2 }"#);
+	db.command("UPDATE app::t { g: 1 } FILTER { id == 2 }");
+	db.command("DELETE app::t FILTER { id == 2 }");
+	insert(&db, 2, 1, 9, "2026-01-01T00:03:00Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_row_count("FROM app::w | filter { g == 1 }", 2, TIMEOUT);
 	db.command("DELETE app::t FILTER { id == 2 }");
 	db.await_exact_row_count("FROM app::w", 1, TIMEOUT);
@@ -703,10 +783,14 @@ fn a_row_moved_to_another_group_and_back_then_deleted_leaves_no_stale_session() 
 	db.await_row_count("FROM app::w | filter { n == 2 }", 1, TIMEOUT);
 	db.command("UPDATE app::t { g: 2 } FILTER { id == 1 }");
 	db.await_row_count("FROM app::w | filter { n == 1 }", 2, TIMEOUT);
-	db.command(r#"UPDATE app::t { g: 1, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
+	db.command("UPDATE app::t { g: 1 } FILTER { id == 1 }");
+	db.command("DELETE app::t FILTER { id == 1 }");
+	insert(&db, 1, 1, 5, "2026-01-01T00:03:00Z");
+	db.await_all_flows(TIMEOUT);
 	db.await_exact_row_count("FROM app::w", 3, TIMEOUT);
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_exact_row_count("FROM app::w", 2, TIMEOUT);
+	db.await_all_flows(TIMEOUT);
 
 	let frames = db.query("FROM app::w");
 	let mut rows: Vec<(String, String, String)> = text(&column_values(&frames[0], "g"))

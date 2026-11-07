@@ -65,6 +65,7 @@ use tracing::instrument;
 use super::{
 	columns::{ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::SeriesTarget,
+	event_time::reject_event_time_assignment,
 	returning::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image,
 		with_series_stamps,
@@ -104,6 +105,7 @@ pub(crate) fn update_series(
 	} = plan;
 	let (namespace, series) = resolve_update_series_target(services, txn, &target)?;
 	reject_series_row_key_assignment(&namespace, &series, &input)?;
+	reject_event_time_assignment("series", &namespace, &series.name, &series.time, &input)?;
 	let target_data = SeriesTarget {
 		namespace: &namespace,
 		series: &series,

@@ -73,6 +73,34 @@ fn advance_past_the_seal(db: &TestDb) {
 	advance_to(db, "2026-01-01T00:01:00Z");
 }
 
+fn aggregate_fed_left_join(db: &TestDb) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::lraw { id: int4, k: int4, lv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin("CREATE DEFERRED VIEW app::lhs { k: int4, lv: int4 } AS { FROM app::lraw | aggregate { lv: math::max(lv) } by { k } }");
+	db.admin("CREATE TABLE app::rhs { id: int4, k: int4, rv: int4, ts: datetime } with { time: event(ts) }");
+	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
+			FROM app::lhs
+				| left join { from app::rhs } as r using (k, r.k)
+					with { retention: { left: 1s, right: 1s } }
+				| map { k: k, lv: lv, rv: r_rv }
+		}"#);
+}
+
+fn fill_one_aggregate_pair(db: &TestDb) {
+	db.command(r#"INSERT app::lraw [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
+	db.command(r#"INSERT app::rhs [{ id: 2, k: 1, rv: 7, ts: "2026-01-01T00:00:00.500Z" }]"#);
+	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
+	await_state_keys(db, LEFT_ROWS, 1, TIMEOUT);
+	await_state_keys(db, RIGHT_ROWS, 1, TIMEOUT);
+	await_state_keys(db, ANCHORED_KEYS, 2, TIMEOUT);
+}
+
+fn advance_aggregate_past_the_seal(db: &TestDb) {
+	db.admin("call storage::advance(app::lraw, cast('2026-01-01T00:01:00Z', datetime))");
+	db.admin("call storage::advance(app::rhs, cast('2026-01-01T00:01:00Z', datetime))");
+	db.await_all_flows(TIMEOUT);
+}
+
 fn join_operator(db: &TestDb) -> u64 {
 	let rql = "FROM system::flow::operators FILTER { kind == 'Join' } MAP { id }";
 	let frames = db.query(rql);
@@ -203,11 +231,11 @@ fn a_row_still_inside_its_seal_keeps_its_state_through_a_reap() {
 fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its_partner() {
 	// The anchor must follow the row's newest event time, or an actively updated row is reaped mid-life.
 	let db = setup();
-	sealing_left_join(&db);
-	fill_one_pair(&db);
+	aggregate_fed_left_join(&db);
+	fill_one_aggregate_pair(&db);
 
-	db.command(r#"UPDATE app::lhs { lv: 50, ts: "2026-01-01T00:02:00Z" } FILTER { id == 1 }"#);
-	advance_past_the_seal(&db);
+	db.command(r#"INSERT app::lraw [{ id: 3, k: 1, lv: 50, ts: "2026-01-01T00:02:00Z" }]"#);
+	advance_aggregate_past_the_seal(&db);
 
 	assert_eq!(
 		await_state_keys(&db, RIGHT_ROWS, 0, TIMEOUT),
@@ -234,12 +262,12 @@ fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its
 fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() {
 	// A sealed row's mapping is gone, so the post must land as a fresh row and never overwrite the frozen one.
 	let db = setup();
-	sealing_left_join(&db);
-	fill_one_pair(&db);
-	advance_past_the_seal(&db);
+	aggregate_fed_left_join(&db);
+	fill_one_aggregate_pair(&db);
+	advance_aggregate_past_the_seal(&db);
 	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
-	db.command(r#"UPDATE app::lhs { lv: 99, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
+	db.command(r#"INSERT app::lraw [{ id: 3, k: 1, lv: 99, ts: "2026-01-01T00:03:00Z" }]"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 99 }"), 1, "the post of a sealed row lands as a fresh row");
@@ -427,7 +455,7 @@ fn a_left_join_without_a_seal_keeps_every_row_addressable_forever() {
 	db.admin("call storage::advance(keep::lhs, cast('2026-01-01T00:01:00Z', datetime))");
 	db.admin("call storage::advance(keep::rhs, cast('2026-01-01T00:01:00Z', datetime))");
 	db.await_all_flows(TIMEOUT);
-	db.command(r#"UPDATE keep::lhs { lv: 50, ts: "2026-01-01T00:02:00Z" } FILTER { id == 1 }"#);
+	db.command(r#"UPDATE keep::lhs { lv: 50 } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
