@@ -5,6 +5,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_runtime::actor::system::ActorHandle;
 use reifydb_value::Result;
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	common::CommitVersion,
@@ -40,6 +41,13 @@ pub enum FlowActorMessage {
 		more: bool,
 		result: Result<()>,
 		committed: Option<CommitVersion>,
+	},
+
+	SlicesCommitted {
+		ends: Vec<(CommitVersion, Lsn)>,
+		more: bool,
+		landed: usize,
+		result: Result<CommitVersion>,
 	},
 
 	TickCommitted {

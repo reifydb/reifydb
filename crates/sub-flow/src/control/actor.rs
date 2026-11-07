@@ -65,9 +65,12 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_unit_backfill, upstream_write_after},
-		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply, produced_output},
+		committer::{
+			CommitterMessage, FlowSlice, SliceCommitReply, SlicesCommitReply, TickCommitReply,
+			produced_output,
+		},
 		merge::{HeldReads, ReadCache, ReadStream, StepScope, StreamRead, UpstreamRead, UpstreamReads, merge},
-		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep},
+		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, SourceSlice},
 	},
 	control::{health::FlowHealthRegistry, supervisor::FlowSupervisorMessage},
 	marker::MarkerMap,
@@ -626,7 +629,6 @@ impl FlowActor {
 		state.held_reads.clear();
 		let scope = StepScope {
 			source_objects: &state.source_objects,
-			backlog_commit: self.flow_tracker.backlog_commit(self.flow_id),
 		};
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
 		if merged.target <= cursor {
@@ -809,6 +811,17 @@ impl FlowActor {
 					reads.map(|reads| reads.cursors_after(advance_to)).unwrap_or_default();
 				self.dispatch_commit(state, ctx, slice, advance_to, lsn, more, holds);
 			}
+			Ok(SliceStep::Commits {
+				slices,
+				more,
+				holds,
+			}) => {
+				let advance_to =
+					slices.last().expect("a per-source step carries at least one slice").advance_to;
+				state.pending_view_cursors =
+					reads.map(|reads| reads.cursors_after(advance_to)).unwrap_or_default();
+				self.dispatch_commits(state, ctx, slices, more, holds);
+			}
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow step failed: {e}"));
 			}
@@ -923,6 +936,123 @@ impl FlowActor {
 			state.committing = false;
 			if !ctx.is_cancelled() {
 				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
+			}
+		}
+	}
+
+	fn dispatch_commits(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		slices: Vec<SourceSlice>,
+		more: bool,
+		holds: WatermarkHolds,
+	) {
+		reifydb_assertions! {
+			for source in &slices {
+				assert!(
+					!source.slice.checkpoints.is_empty(),
+					"a per-source slice must carry a checkpoint for {:?}; without it a crash after this slice \
+					 resumes from before a source that already landed",
+					source.advance_to
+				);
+				for (key, _) in source.slice.combined.iter_sorted() {
+					assert!(
+						reifydb_flow_async::transaction::read::read_from(key)
+							!= reifydb_flow_async::transaction::read::ReadFrom::Query,
+						"flow {:?} committed {:?}, a key it reads back through the query pinned at its cursor, which never sees this commit",
+						self.flow_id,
+						reifydb_core::key::tag::KeyTag::of(key)
+					);
+				}
+			}
+		}
+		state.hold_cache = None;
+		state.committing = true;
+		state.pending_holds = holds;
+		let ends: Vec<(CommitVersion, Lsn)> =
+			slices.iter().map(|source| (source.advance_to, source.lsn)).collect();
+		let self_ref = ctx.self_ref().clone();
+		let reply: SlicesCommitReply = Box::new(move |landed, result| {
+			let _ = self_ref.send(FlowActorMessage::SlicesCommitted {
+				ends,
+				more,
+				landed,
+				result,
+			});
+		});
+		if self.commit_target()
+			.send(CommitterMessage::Slices {
+				slices: slices.into_iter().map(|source| source.slice).collect(),
+				reply,
+			})
+			.is_err()
+		{
+			state.committing = false;
+			if !ctx.is_cancelled() {
+				panic!("flow {} committer stopped outside shutdown", self.flow_id.0);
+			}
+		}
+	}
+
+	fn on_slices_committed(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		ends: Vec<(CommitVersion, Lsn)>,
+		more: bool,
+		landed: usize,
+		result: Result<CommitVersion>,
+	) {
+		state.committing = false;
+		let holds = take(&mut state.pending_holds);
+		if let Ok(version) = &result {
+			let advance_to = ends.last().expect("a per-source commit carries at least one slice").0;
+			let at = if *version > CommitVersion(0) {
+				*version
+			} else {
+				advance_to
+			};
+			for hold in holds {
+				self.substrate.frontiers.publish(hold.object, hold.frontier, at);
+			}
+			state.retry_count = 0;
+			state.flow_engine.accept_watermarks(true);
+			for (producer, cursor) in take(&mut state.pending_view_cursors) {
+				let current = state.view_cursors.entry(producer).or_insert(cursor);
+				if cursor > *current {
+					*current = cursor;
+				}
+			}
+		}
+		if let Some((advance_to, lsn)) = landed.checked_sub(1).map(|last| ends[last]) {
+			state.backfilling = false;
+			*self.create_snapshot.lock() = None;
+			state.cursor = advance_to;
+			state.cursor_lsn = lsn;
+			state.durable_cursor = advance_to;
+			state.last_checkpoint_at = self.clock.now();
+			self.move_lookup_lease(state);
+			self.publish_position(advance_to);
+		}
+		match result {
+			Ok(_) => {
+				for reply in take(&mut state.checkpoint_replies) {
+					reply();
+				}
+				self.resume_after_commit(state, ctx, more);
+			}
+			Err(e) => {
+				state.pending_view_cursors.clear();
+				state.checkpoint_replies.clear();
+				self.retry_or_poison(
+					state,
+					ctx,
+					format!(
+						"per-source commit failed after {landed} of {} slices: {e}",
+						ends.len()
+					),
+				);
 			}
 		}
 	}
@@ -1283,6 +1413,15 @@ impl Actor for FlowActor {
 				committed,
 			} => {
 				self.on_slice_committed(state, ctx, advance_to, more, result, committed);
+				self.stop_if_pending(state)
+			}
+			FlowActorMessage::SlicesCommitted {
+				ends,
+				more,
+				landed,
+				result,
+			} => {
+				self.on_slices_committed(state, ctx, ends, more, landed, result);
 				self.stop_if_pending(state)
 			}
 			FlowActorMessage::TickCommitted {
@@ -3770,6 +3909,36 @@ mod tick_failures {
 		});
 		assert_eq!(harness.process_one(), Some(Directive::Stop), "the supervisor's stop must still land");
 		assert!(replied.load(Ordering::SeqCst), "the supervisor waits on this reply");
+	}
+
+	#[test]
+	fn a_failed_slice_leaves_the_flow_at_the_last_landed_source() {
+		// Slice 1 landed and slice 2 failed: resuming from the step start re-commits slice 1 below its stored
+		// checkpoint and poisons the flow, and resuming from the step target skips the sources that never
+		// landed.
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::SlicesCommitted {
+			ends: vec![
+				(CommitVersion(10), Lsn::new(1_010)),
+				(CommitVersion(20), Lsn::new(1_020)),
+				(CommitVersion(30), Lsn::new(1_030)),
+			],
+			more: false,
+			landed: 1,
+			result: Err(internal_error!("slice 2 lost its commit")),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "a part failure must not stop the actor");
+
+		let state = harness.state();
+		assert_eq!(state.cursor, CommitVersion(10), "the cursor must stop at the last landed slice");
+		assert_eq!(state.durable_cursor, CommitVersion(10), "only the landed checkpoint is durable");
+		assert_eq!(state.cursor_lsn, Lsn::new(1_010), "the lsn must match the landed slice");
+		assert!(!state.committing, "the commit is over, so a retry must be able to step");
+		assert_eq!(state.retry_count, 1, "the failure must go through the retry path");
+		assert!(!state.poisoned, "a passing commit error must be retried, not poison the flow");
 	}
 
 	#[test]

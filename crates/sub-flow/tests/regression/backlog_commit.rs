@@ -208,3 +208,119 @@ fn a_producer_starts_committing_per_version_once_an_exact_reader_is_created() {
 		"each left row must pair with the price committed at or below its own source"
 	);
 }
+
+fn create_cost(db: &TestDb, view: &str) {
+	create_level(db);
+	db.admin(&format!("CREATE DEFERRED VIEW app::cost {{ id: int4, usd: Option(int8) }} AS {{ \
+		 FROM app::level \
+		 LEFT LOOKUP {{ FROM {view} }} AS p USING (k, p.k) WITH {{ emit: false, retention: {{ left: 10s }} }} \
+		 MAP {{ id, usd: p_v }} }}"));
+}
+
+fn cost_rows(db: &TestDb) -> Vec<(Value, Option<Value>)> {
+	let frames = db.query("FROM app::cost SORT { id: asc }");
+	let frame = frames.first().expect("cost frame");
+	let ids = frame.column("id").expect("id reads").expect("cost has id");
+	let usd = frame.column("usd").expect("usd reads").expect("cost has usd");
+	(0..ids.len())
+		.map(|row| match usd.get_value(row) {
+			Value::None {
+				..
+			} => (ids.get_value(row), None),
+			value => (ids.get_value(row), Some(value)),
+		})
+		.collect()
+}
+
+fn write_table(db: &TestDb, table: &str, k: &str, v: i64, insert: bool) {
+	if insert {
+		db.command(&format!("INSERT {table} [{{ k: '{k}', v: {v} }}]"));
+	} else {
+		db.command(&format!("UPDATE {table} {{ v: {v} }} FILTER {{ k == '{k}' }}"));
+	}
+}
+
+#[test]
+fn an_aggregate_behind_a_backlog_is_read_at_each_source() {
+	// A later source in one step must build on the state an earlier source wrote and land in its own commit;
+	// otherwise the reader at the first source sees the final total, or the second total misses the first row.
+	let db = memory_db();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin("CREATE DEFERRED VIEW app::price { k: utf8, v: int8 } WITH { partition: { by: { k } } } AS { \
+		 FROM app::src APPLY gated_pass_through { gate: 'backlog_commit_b1_3' } \
+		 AGGREGATE { v: math::sum(v) } BY { k } }");
+	create_cost(&db, "app::price");
+	settle(&db);
+
+	hold(&db, "backlog_commit_b1_3");
+	let first = write_src(&db, "a", 10, true);
+	insert_level(&db, 1, "a");
+	let second = write_src(&db, "a", 5, true);
+	insert_level(&db, 2, "a");
+	set_gate("backlog_commit_b1_3", true);
+	settle(&db);
+
+	assert!(first < second, "precondition: each row is its own source commit");
+	assert_eq!(price_commits_after(&db, first), 2, "each source of the backlog must land in its own commit");
+	assert_eq!(
+		cost_rows(&db),
+		vec![(Value::Int4(1), Some(Value::Int8(10))), (Value::Int4(2), Some(Value::Int8(15)))],
+		"each left row must read the total as of its own source"
+	);
+}
+
+fn pair_script(db: &TestDb, gate_name: &str, held: bool) {
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin("CREATE TABLE app::src2 { k: utf8, v: int8 }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::pair {{ k: utf8, v: int8 }} WITH {{ partition: {{ by: {{ k }} }} }} AS {{ \
+		 FROM app::src APPLY gated_pass_through {{ gate: '{gate_name}' }} \
+		 INNER JOIN {{ FROM app::src2 }} AS y USING (k, y.k) \
+		 MAP {{ k, v: v + y_v }} }}"
+	));
+	create_cost(db, "app::pair");
+	settle(db);
+	if held {
+		hold(db, gate_name);
+	} else {
+		set_gate(gate_name, true);
+		write_src(db, "z", 0, true);
+		settle(db);
+	}
+	let steps: [(&str, &str, i64, bool); 4] = [
+		("app::src2", "a", 100, true),
+		("app::src", "a", 1, true),
+		("app::src2", "a", 200, false),
+		("app::src", "a", 2, false),
+	];
+	for (id, (table, k, v, insert)) in steps.into_iter().enumerate() {
+		write_table(db, table, k, v, insert);
+		insert_level(db, id as i32 + 1, k);
+		if !held {
+			settle(db);
+		}
+	}
+	set_gate(gate_name, true);
+	settle(db);
+}
+
+#[test]
+fn a_two_source_hash_join_with_a_backlog_pairs_each_source_as_per_version_did() {
+	// The join keeps both sides in its own state, so one step over the backlog must pair each source as
+	// separate steps did; a join run against the final state pairs the first rows with the last values.
+	let backlogged = memory_db();
+	pair_script(&backlogged, "backlog_commit_b1_4", true);
+	let reference = memory_db();
+	pair_script(&reference, "backlog_commit_b1_4_ref", false);
+
+	let expected = vec![
+		(Value::Int4(1), None),
+		(Value::Int4(2), Some(Value::Int8(101))),
+		(Value::Int4(3), Some(Value::Int8(201))),
+		(Value::Int4(4), Some(Value::Int8(202))),
+	];
+	assert_eq!(cost_rows(&reference), expected, "precondition: the reference pairs each source with its own sum");
+	assert_eq!(cost_rows(&backlogged), expected, "the backlog must pair exactly as the reference");
+}

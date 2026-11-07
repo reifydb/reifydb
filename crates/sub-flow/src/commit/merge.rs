@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::{CommitVersion, SourceVersion},
+	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
 		commit::CommitEntry,
@@ -19,7 +19,7 @@ use reifydb_engine::lift::entry_changed_objects;
 use reifydb_value::reifydb_assertions;
 use rustc_hash::FxHashSet;
 
-use crate::{commit::slice::accepts, progress::tracker::BacklogCommit};
+use crate::commit::slice::accepts;
 
 #[derive(Clone)]
 pub struct ReadWindow {
@@ -230,7 +230,6 @@ pub struct Merged {
 
 pub struct StepScope<'a> {
 	pub source_objects: &'a BTreeSet<ObjectId>,
-	pub backlog_commit: BacklogCommit,
 }
 
 type Rows<'a> = Peekable<Box<dyn Iterator<Item = (bool, &'a Arc<CommitEntry>)> + 'a>>;
@@ -272,7 +271,7 @@ pub fn merge(
 
 	reifydb_assertions! {
 		for rows in streams() {
-			let sources: Vec<SourceVersion> = rows.map(|(_, entry)| entry.version.source).collect();
+			let sources: Vec<_> = rows.map(|(_, entry)| entry.version.source).collect();
 			assert!(
 				sources.is_sorted(),
 				"source versions went down within one stream {sources:?}; a per-source step would stop \
@@ -282,29 +281,9 @@ pub fn merge(
 	}
 
 	let mut ordered: Vec<(bool, CommitVersion, Arc<CommitEntry>)> = Vec::new();
-	let mut next: Option<SourceVersion> = None;
-	let mut streams = streams();
-	if scope.backlog_commit == BacklogCommit::PerVersion {
-		let first =
-			streams.iter_mut().filter_map(|rows| rows.peek().map(|(_, entry)| entry.version.source)).min();
-		if let Some(first) = first {
-			for rows in &mut streams {
-				while let Some((table, entry)) =
-					rows.next_if(|(_, entry)| entry.version.source == first)
-				{
-					ordered.push((table, entry.version.commit, entry.clone()));
-				}
-				if let Some((_, entry)) = rows.peek() {
-					next = Some(next
-						.map_or(entry.version.source, |next| next.min(entry.version.source)));
-				}
-			}
-		}
-	} else {
-		for rows in streams {
-			for (table, entry) in rows {
-				ordered.push((table, entry.version.commit, entry.clone()));
-			}
+	for rows in streams() {
+		for (table, entry) in rows {
+			ordered.push((table, entry.version.commit, entry.clone()));
 		}
 	}
 	ordered.sort_by_key(|(table, version, entry)| (entry.version.source, *table, *version));
@@ -312,8 +291,8 @@ pub fn merge(
 
 	Merged {
 		items: ordered.into_iter().map(|(_, _, entry)| entry).collect(),
-		target: next.map_or(target, |next| CommitVersion(next.0 - 1)),
-		more: next.is_some() || tables.more || upstreams.values().any(|upstream| upstream.read.more),
+		target,
+		more: tables.more || upstreams.values().any(|upstream| upstream.read.more),
 	}
 }
 
@@ -413,7 +392,6 @@ mod tests {
 	fn fold(source_objects: &BTreeSet<ObjectId>) -> StepScope<'_> {
 		StepScope {
 			source_objects,
-			backlog_commit: BacklogCommit::Fold,
 		}
 	}
 
@@ -573,13 +551,6 @@ mod tests {
 		);
 	}
 
-	fn per_version(source_objects: &BTreeSet<ObjectId>) -> StepScope<'_> {
-		StepScope {
-			source_objects,
-			backlog_commit: BacklogCommit::PerVersion,
-		}
-	}
-
 	fn row_of_both_views(version: u64, source: u64) -> Arc<CommitEntry> {
 		let set = |storage: StorageId| Delta::Set {
 			key: RowKey {
@@ -619,24 +590,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_commit_holding_both_producers_rows_merges_once_in_a_per_version_step() {
-		// A per-source step collects from every stream before it sorts, so the same commit must not survive
-		// twice there either.
-		let objects = sources();
-		let shared = row_of_both_views(7, 5);
-		let merged = merge(
-			cv(0),
-			&read(vec![], 20, false),
-			&two(
-				upstream(Some(7), read(vec![shared.clone()], 20, false)),
-				upstream_of(ViewId(6), Some(7), read(vec![shared], 20, false)),
-			),
-			&per_version(&objects),
-		);
-		assert_eq!(versions(&merged), vec![(7, 5)], "one commit must reach the reader exactly once");
-	}
-
-	#[test]
 	fn a_shared_commit_keeps_the_commits_around_it_in_order() {
 		// Removing the repeat must drop only that commit, otherwise a neighbour at the same source is lost.
 		let shared = row_of_both_views(7, 5);
@@ -660,74 +613,47 @@ mod tests {
 	}
 
 	#[test]
-	fn a_per_version_step_hands_out_one_source_and_stops_below_the_next() {
-		// Handing out the whole tail makes every drain rework rows the step drops at its first source change.
-		let objects = sources();
-		let merged = merge(
-			cv(0),
-			&read(vec![table_row(5), table_row(6), table_row(7)], 20, false),
-			&one(upstream(Some(10), read(vec![view_row(8, 5), view_row(9, 7)], 20, false))),
-			&per_version(&objects),
-		);
-		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
-		assert_eq!(merged.target, cv(5), "the step must stop just below source 6, the lowest one left");
-		assert!(merged.more, "sources 6 and 7 are still unhandled");
-	}
-
-	#[test]
 	fn the_lowest_source_of_any_stream_runs_first() {
-		// Taking the table stream's first source would run the header at 5 before the view row made from 3.
+		// A step runs its sources in item order, one layer each; the table row at 5 ahead of the view row made
+		// from 3 would run the header before its source and stamp the commits out of source order.
 		let objects = sources();
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(10), read(vec![view_row(8, 3)], 20, false))),
-			&per_version(&objects),
+			&fold(&objects),
 		);
-		assert_eq!(versions(&merged), vec![(8, 3)]);
-		assert_eq!(merged.target, cv(4));
+		assert_eq!(versions(&merged), vec![(8, 3), (5, 5)]);
+		assert_eq!(merged.target, cv(10));
 	}
 
 	#[test]
 	fn a_row_the_flow_does_not_read_neither_runs_nor_cuts_the_step() {
-		// Cutting at an unread source turns every foreign commit into a step of its own.
+		// An unread commit that reached the step would become a layer and a commit of its own for a source the
+		// flow never read.
 		let objects = sources();
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5), row(StorageId::table(2), 6, 6), table_row(7)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&per_version(&objects),
+			&fold(&objects),
 		);
-		assert_eq!(versions(&merged), vec![(5, 5)]);
-		assert_eq!(merged.target, cv(6), "the unread commit 6 must be passed together with source 5");
-	}
-
-	#[test]
-	fn a_per_version_step_with_one_source_left_runs_to_the_target() {
-		// Stopping below a source that does not exist would never let the reader reach the gate.
-		let objects = sources();
-		let merged = merge(
-			cv(0),
-			&read(vec![table_row(5)], 20, false),
-			&one(upstream(Some(20), read(vec![view_row(8, 5)], 20, false))),
-			&per_version(&objects),
-		);
-		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
-		assert_eq!(merged.target, cv(20));
-		assert!(!merged.more, "nothing is left beyond the target");
+		assert_eq!(versions(&merged), vec![(5, 5), (7, 7)]);
+		assert_eq!(merged.target, cv(10), "the unread commit 6 must be passed within the same step");
 	}
 
 	#[cfg(reifydb_assertions)]
 	#[test]
 	#[should_panic(expected = "source versions went down")]
 	fn a_stream_whose_sources_go_down_is_rejected() {
-		// A per-source step stops before the lower source, so its rows would never run.
+		// A step cuts one layer per source in item order, so a lower source after a higher one is stamped out
+		// of order.
 		let objects = sources();
 		merge(
 			cv(0),
 			&read(vec![row(StorageId::table(1), 5, 5), row(StorageId::table(1), 6, 3)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&per_version(&objects),
+			&fold(&objects),
 		);
 	}
 

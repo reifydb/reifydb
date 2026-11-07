@@ -22,10 +22,13 @@ use reifydb_core::{
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::transaction::substrate::operator_section;
-use reifydb_runtime::actor::{
-	context::Context,
-	system::{ActorConfig, ActorHandle},
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::{ActorConfig, ActorHandle},
+		traits::{Actor, Directive},
+	},
+	sync::mutex::Mutex,
 };
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_transaction::{
@@ -50,11 +53,17 @@ const COMMITTER_BATCH_SIZE: usize = 1024;
 
 pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
 pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<()>) + Send>;
+pub(crate) type SlicesCommitReply = Box<dyn FnOnce(usize, Result<CommitVersion>) + Send>;
 
 pub enum CommitterMessage {
 	Slice {
 		slice: FlowSlice,
 		reply: SliceCommitReply,
+	},
+
+	Slices {
+		slices: Vec<FlowSlice>,
+		reply: SlicesCommitReply,
 	},
 
 	Tick {
@@ -136,6 +145,32 @@ impl CommitterActor {
 		}
 	}
 
+	#[instrument(name = "flow::committer::commit_in_order", level = "debug", skip_all, fields(committer = self.name, slices = slices.len()))]
+	fn commit_in_order(&self, slices: Vec<FlowSlice>, reply: SlicesCommitReply) {
+		let slices = Arc::new(slices);
+		let mut landed = 0;
+		let mut last = CommitVersion(0);
+		for index in 0..slices.len() {
+			let outcome: Arc<Mutex<Option<Result<CommitVersion>>>> = Arc::new(Mutex::new(None));
+			let record = Arc::clone(&outcome);
+			self.committer.commit_slices(
+				self.name,
+				&self.commit,
+				Arc::clone(&slices),
+				vec![(index, Box::new(move |result| *record.lock() = Some(result)))],
+			);
+			let result = outcome.lock().take().expect("a slice commit completes inside its submit");
+			match result {
+				Ok(version) => {
+					landed += 1;
+					last = version;
+				}
+				Err(e) => return reply(landed, Err(e)),
+			}
+		}
+		reply(landed, Ok(last))
+	}
+
 	#[instrument(name = "flow::committer::submit_tick", level = "debug", skip_all, fields(committer = self.name))]
 	fn submit_tick(
 		&self,
@@ -210,6 +245,13 @@ impl Actor for CommitterActor {
 					);
 				}
 			},
+			CommitterMessage::Slices {
+				slices,
+				reply,
+			} => {
+				self.flush(state);
+				self.commit_in_order(slices, reply);
+			}
 			CommitterMessage::Tick {
 				flow_id,
 				members,
@@ -1891,5 +1933,93 @@ mod commit_integration {
 			heads[0],
 			records[0].0
 		);
+	}
+
+	fn ordered_slice(index: u64) -> FlowSlice {
+		// Every slice belongs to one flow, as the slices of one per-source step do.
+		let mut slice = synthetic_slice(index);
+		slice.source = Some(SourceVersion(index));
+		slice.checkpoints = vec![(FlowId(7), checkpoint_at(100 + index))];
+		slice
+	}
+
+	fn send_in_order(handle: &CommitterHandle, slices: Vec<FlowSlice>) -> (usize, Result<CommitVersion>) {
+		let (sender, receiver) = mpsc::channel();
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Slices {
+				slices,
+				reply: Box::new(move |landed, result| {
+					let _ = sender.send((landed, result));
+				}),
+			})
+			.is_ok());
+		receiver.recv_timeout(StdDuration::from_secs(10)).expect("slices reply timed out")
+	}
+
+	#[test]
+	fn slices_stop_at_the_first_failure_and_report_how_many_landed() {
+		// A slice landing after a failed one leaves a hole: its higher checkpoint passes the range check, so
+		// the flow skips the failed source forever and an exact reader pairs rows with the wrong value.
+		let te = TestEngine::builder().with_commit_queue().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		let mut bad = ordered_slice(2);
+		bad.combined.insert(vec![EncodedKey::new([])], vec![EncodedBytes(CowVec::new(vec![1u8; 4]))]);
+		let (landed, result) = send_in_order(&handle, vec![ordered_slice(1), bad, ordered_slice(3)]);
+
+		assert_eq!(landed, 1, "only the slice before the failure may land");
+		assert!(result.is_err(), "the reply must carry the failure");
+		assert_eq!(
+			committer.flow_tracker.all().get(&FlowId(7)).copied(),
+			Some(CommitVersion(101)),
+			"the flow must stop at the last landed slice, not at the one after the failure"
+		);
+	}
+
+	#[test]
+	fn each_slice_probes_sizes_after_the_one_before_landed() {
+		// A later slice rewriting a key leaves its size to the store; sized before the earlier slice landed,
+		// the rewrite counts as a fresh insert and the state byte total grows by a row that does not exist.
+		let operator = OperatorId(9);
+		let inner = state_inner(b"k");
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+			.expect("test fixture group-state key must decode");
+		let key = OperatorStateKey::encoded(operator, group, keyspace, suffix);
+		let state = |classify: bool, width: usize, index: u64| {
+			let mut combined = Pending::new();
+			if classify {
+				combined.classify(key.clone(), None);
+			}
+			combined.insert(
+				vec![key.clone()],
+				vec![EncodedPodRow::new(&vec![index as u8; width]).into_bytes()],
+			);
+			let mut slice = FlowSlice::empty();
+			slice.combined = combined;
+			slice.source = Some(SourceVersion(index));
+			slice.checkpoints = vec![(FlowId(7), checkpoint_at(100 + index))];
+			slice
+		};
+		let committed_bytes = |slices: Vec<FlowSlice>| {
+			let te = TestEngine::builder().with_commit_queue().build();
+			let engine = te.inner().clone();
+			let begin_engine = engine.clone();
+			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+			let count = slices.len();
+			let (landed, result) = send_in_order(&handle, slices);
+			assert_eq!(landed, count);
+			result.expect("every slice commits");
+			committer.operators.total_bytes().unwrap()
+		};
+
+		let rewritten = committed_bytes(vec![state(true, 4, 1), state(false, 8, 2)]);
+		let only_last = committed_bytes(vec![state(true, 8, 2)]);
+
+		assert_eq!(rewritten, only_last, "the rewrite must replace the first row's bytes, not add to them");
 	}
 }

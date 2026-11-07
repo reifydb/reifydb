@@ -3,6 +3,8 @@
 
 use std::{
 	collections::{BTreeMap, btree_map},
+	iter::once,
+	mem::take,
 	ops::{Bound, RangeBounds},
 };
 
@@ -41,6 +43,7 @@ pub struct Pending {
 	index: BTreeMap<EncodedKey, usize>,
 	pre: BTreeMap<EncodedKey, Option<ByteSize>>,
 	queue_items: Vec<PendingQueueItem>,
+	below: Vec<Pending>,
 }
 
 impl Pending {
@@ -51,7 +54,24 @@ impl Pending {
 			index: BTreeMap::new(),
 			pre: BTreeMap::new(),
 			queue_items: Vec::new(),
+			below: Vec::new(),
 		}
+	}
+
+	pub fn push_layer(&mut self) {
+		let mut below = take(&mut self.below);
+		below.push(take(self));
+		self.below = below;
+	}
+
+	pub fn into_layers(mut self) -> Vec<Pending> {
+		let mut layers = take(&mut self.below);
+		layers.push(self);
+		layers
+	}
+
+	fn layers(&self) -> impl DoubleEndedIterator<Item = &Pending> + '_ {
+		self.below.iter().chain(once(self))
 	}
 
 	pub fn admit_queue_items(&mut self, items: impl IntoIterator<Item = PendingQueueItem>) {
@@ -86,6 +106,10 @@ impl Pending {
 	}
 
 	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
+		self.layers().rev().find_map(|layer| layer.own_write_at(key))
+	}
+
+	fn own_write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
 		if is_state_key(key) {
 			self.state.get(key)
 		} else {
@@ -135,11 +159,11 @@ impl Pending {
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.state.is_empty() && self.entries.is_empty()
+		self.layers().all(|layer| layer.state.is_empty() && layer.entries.is_empty())
 	}
 
 	pub fn len(&self) -> usize {
-		self.state.len() + self.entries.len()
+		self.layers().map(|layer| layer.state.len() + layer.entries.len()).sum()
 	}
 
 	pub fn rows_ordered(&self) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_ {
@@ -176,8 +200,10 @@ impl Pending {
 	where
 		R: RangeBounds<EncodedKey>,
 	{
-		for (key, write) in self.range(range) {
-			out.insert(key.clone(), write.clone());
+		for layer in self.layers() {
+			for (key, write) in layer.range((range.start_bound(), range.end_bound())) {
+				out.insert(key.clone(), write.clone());
+			}
 		}
 	}
 
@@ -185,9 +211,13 @@ impl Pending {
 	where
 		R: RangeBounds<EncodedKey>,
 	{
-		for (key, write) in self.range(range).rev().take(limit) {
-			out.insert(key.clone(), write.clone());
+		let mut merged = BTreeMap::new();
+		for layer in self.layers() {
+			for (key, write) in layer.range((range.start_bound(), range.end_bound())).rev().take(limit) {
+				merged.insert(key.clone(), write.clone());
+			}
 		}
+		out.extend(merged.into_iter().rev().take(limit));
 	}
 
 	fn row_segment(
@@ -499,5 +529,111 @@ pub mod tests {
 
 		assert_eq!(items[2].0, &make_key("c"));
 		assert!(matches!(items[2].1, PendingWrite::Set(_)));
+	}
+
+	fn range_of(pending: &Pending) -> Vec<(EncodedKey, Option<EncodedBytes>)> {
+		// Removes show as none so a test can tell a hidden key from a key that was never written.
+		let mut out = BTreeMap::new();
+		pending.collect_range(.., &mut out);
+		out.into_iter()
+			.map(|(key, write)| match write {
+				PendingWrite::Set(value) => (key, Some(value)),
+				PendingWrite::Remove {
+					..
+				} => (key, None),
+			})
+			.collect()
+	}
+
+	#[test]
+	fn a_read_sees_every_layer_and_the_newest_layer_wins() {
+		// A later source in one step must read what an earlier source wrote, and its own newer write over it;
+		// otherwise an operator recomputes from stale state and its output for that source is wrong.
+		let mut pending = Pending::new();
+		pending.insert(vec![make_key("a"), make_key("b")], vec![make_value("a1"), make_value("b1")]);
+		pending.push_layer();
+		pending.insert(vec![make_key("a")], vec![make_value("a2")]);
+		pending.remove(vec![make_key("b")]);
+		pending.push_layer();
+		pending.insert(vec![make_key("c")], vec![make_value("c3")]);
+
+		assert_eq!(set_value(&pending, &make_key("a")), Some(&make_value("a2")));
+		assert!(removed(&pending, &make_key("b")), "a remove in a newer layer must hide the older set");
+		assert_eq!(set_value(&pending, &make_key("c")), Some(&make_value("c3")));
+		assert!(pending.contains_key(&make_key("a")));
+		assert!(!pending.is_empty());
+		assert_eq!(
+			range_of(&pending),
+			vec![
+				(make_key("a"), Some(make_value("a2"))),
+				(make_key("b"), None),
+				(make_key("c"), Some(make_value("c3"))),
+			]
+		);
+	}
+
+	#[test]
+	fn a_back_page_across_layers_returns_the_greatest_keys_once() {
+		// The last-row walk pages down from the greatest key; a layered page must equal the page of the same
+		// writes made in one layer, otherwise the walk skips a key or sees a shadowed write as live.
+		let writes: Vec<Vec<(&str, Option<&str>)>> = vec![
+			vec![("k01", Some("1")), ("k05", Some("1")), ("k09", Some("1"))],
+			vec![("k02", Some("2")), ("k09", None), ("k07", Some("2"))],
+			vec![("k08", Some("3")), ("k05", Some("3"))],
+		];
+		let mut layered = Pending::new();
+		let mut flat = Pending::new();
+		for (index, layer) in writes.iter().enumerate() {
+			if index > 0 {
+				layered.push_layer();
+			}
+			for (key, value) in layer {
+				for pending in [&mut layered, &mut flat] {
+					match value {
+						Some(value) => {
+							pending.insert(vec![make_key(key)], vec![make_value(value)])
+						}
+						None => pending.remove(vec![make_key(key)]),
+					}
+				}
+			}
+		}
+
+		for limit in [1, 2, 3, 4, 99] {
+			let layered_page: Vec<(EncodedKey, bool)> = back_page(&layered, limit)
+				.into_iter()
+				.map(|(key, write)| (key, matches!(write, PendingWrite::Set(_))))
+				.collect();
+			let flat_page: Vec<(EncodedKey, bool)> = back_page(&flat, limit)
+				.into_iter()
+				.map(|(key, write)| (key, matches!(write, PendingWrite::Set(_))))
+				.collect();
+			assert_eq!(layered_page, flat_page, "limit {limit}");
+		}
+		let top: Vec<(EncodedKey, PendingWrite)> = back_page(&layered, 3);
+		assert_eq!(
+			top.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>(),
+			vec![make_key("k07"), make_key("k08"), make_key("k09")]
+		);
+		assert!(matches!(top[2].1, PendingWrite::Remove { .. }), "k09 was removed in layer 2");
+	}
+
+	#[test]
+	fn into_layers_gives_each_layer_only_its_own_writes() {
+		// Each layer becomes one commit stamped with its own source; a write leaking into a neighbour layer
+		// lands at the wrong source and an exact reader pairs a row with a value it never had.
+		let mut pending = Pending::new();
+		pending.insert(vec![make_key("k")], vec![make_value("v1")]);
+		pending.push_layer();
+		pending.insert(vec![make_key("other")], vec![make_value("o2")]);
+		pending.push_layer();
+		pending.insert(vec![make_key("k")], vec![make_value("v3")]);
+
+		let layers = pending.into_layers();
+
+		assert_eq!(layers.len(), 3);
+		assert_eq!(range_of(&layers[0]), vec![(make_key("k"), Some(make_value("v1")))]);
+		assert_eq!(range_of(&layers[1]), vec![(make_key("other"), Some(make_value("o2")))]);
+		assert_eq!(range_of(&layers[2]), vec![(make_key("k"), Some(make_value("v3")))]);
 	}
 }
