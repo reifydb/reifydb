@@ -19,6 +19,8 @@ use reifydb_runtime::context::RuntimeContext;
 #[cfg(test)]
 use reifydb_runtime::context::clock::Clock;
 #[cfg(test)]
+use reifydb_runtime::context::spawner::Spawner;
+#[cfg(test)]
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
@@ -101,7 +103,7 @@ impl Services {
 		let services = Self::new(
 			Catalog::testing(),
 			EngineConfig {
-				runtime_context: RuntimeContext::with_clock(Clock::Real),
+				runtime_context: RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
 				routines,
 				transforms: Transforms::empty(),
 				block_encodings: BlockEncodings::empty(),
@@ -112,7 +114,9 @@ impl Services {
 			},
 			OperatorLibrary::new(),
 			MetricsReader::new(
-				Arc::new(TransactionContext::system(RuntimeContext::with_clock(Clock::Real))),
+				Arc::new(TransactionContext::system(
+					RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
+				)),
 				store,
 			),
 		);

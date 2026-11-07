@@ -12,6 +12,7 @@ doctest = false
 
 [features]
 default = []
+testing = ["reifydb-runtime/testing"]
 
 [dependencies]
 arrow-arith = { workspace = true }
@@ -32,6 +33,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-evaluate = { workspace = true, features = ["testing"] }
 reifydb-routine = { workspace = true }
 
 [build-dependencies]

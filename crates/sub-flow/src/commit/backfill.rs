@@ -415,7 +415,7 @@ mod tests {
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{FlowTransaction, substrate::FlowSubstrate},
 	};
-	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
+	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::commit::{CommitBegin, CommitHandle};
 	use reifydb_value::{
@@ -451,7 +451,7 @@ mod tests {
 		let mut flow_engine = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 			OperatorSampleRegistry::new(),

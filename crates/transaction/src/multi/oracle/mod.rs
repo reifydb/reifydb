@@ -31,6 +31,7 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, Instant},
 		rng::Rng,
+		spawner::Spawner,
 		transaction::TransactionContext,
 	},
 	sync::rwlock::RwLock,
@@ -659,11 +660,13 @@ where
 	}
 
 	fn system_context(&self) -> TransactionContext {
-		TransactionContext::system(RuntimeContext::new(
-			self.clock.clone(),
-			self.rng.clone(),
-			self.version_epoch.clone(),
-		))
+		TransactionContext::system(
+			RuntimeContext::builder(Spawner::inline())
+				.clock(self.clock.clone())
+				.rng(self.rng.clone())
+				.version_epoch(self.version_epoch.clone())
+				.build(),
+		)
 	}
 
 	fn resolve_keys(&self, deltas: &mut CowVec<Delta>, keys: &[TaggedKey], version: CommitVersion) -> Result<()> {

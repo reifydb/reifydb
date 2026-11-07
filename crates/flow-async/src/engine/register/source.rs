@@ -94,7 +94,7 @@ mod tests {
 		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::flow::FlowId,
 	};
-	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::identity::IdentityId;
 
@@ -115,7 +115,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),

@@ -16,7 +16,7 @@ use reifydb_core::{
 	operator_with::{AggregateWith, Emit, LookupWith},
 };
 use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
@@ -73,7 +73,7 @@ fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_err
 	let mut inner = FlowEngineInner::new(
 		engine.catalog(),
 		engine.executor().routines.clone(),
-		RuntimeContext::with_clock(engine.clock().clone()),
+		RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 		Arc::new(EmptyOperatorProvider),
 		FlowSubstrate::with_dictionary(engine.inner().dictionary_allocators(), engine.inner().operator_state()),
 		OperatorSampleRegistry::new(),
@@ -101,7 +101,7 @@ fn lookup_engine_inner(engine: &TestEngine) -> FlowEngineInner {
 	FlowEngineInner::new(
 		engine.catalog(),
 		engine.executor().routines.clone(),
-		RuntimeContext::with_clock(engine.clock().clone()),
+		RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 		Arc::new(EmptyOperatorProvider),
 		FlowSubstrate::with_dictionary(engine.inner().dictionary_allocators(), engine.inner().operator_state()),
 		OperatorSampleRegistry::new(),

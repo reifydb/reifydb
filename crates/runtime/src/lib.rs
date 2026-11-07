@@ -174,6 +174,16 @@ impl Runtime {
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	pub fn task_spawner(&self) -> context::spawner::Spawner {
+		context::spawner::Spawner::host(self.pools.handle())
+	}
+
+	#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
+	pub fn task_spawner(&self) -> context::spawner::Spawner {
+		context::spawner::Spawner::inline()
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn tokio(&self) -> tokio_runtime::Handle {
 		self.pools.handle()
 	}
@@ -277,6 +287,16 @@ impl RuntimeHandle {
 
 	pub fn rng(&self) -> &context::rng::Rng {
 		&self.rng
+	}
+
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+	pub fn task_spawner(&self) -> context::spawner::Spawner {
+		context::spawner::Spawner::host(self.pools.handle())
+	}
+
+	#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
+	pub fn task_spawner(&self) -> context::spawner::Spawner {
+		context::spawner::Spawner::inline()
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]

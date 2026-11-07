@@ -165,11 +165,11 @@ impl StandardEngine {
 		let runtime = &self.executor.runtime_context;
 		Arc::new(TransactionContext::new(
 			identity,
-			RuntimeContext::new(
-				runtime.clock.clone(),
-				runtime.rng.fork(id.as_bytes()),
-				runtime.version_epoch.clone(),
-			),
+			RuntimeContext::builder(runtime.spawner.clone())
+				.clock(runtime.clock.clone())
+				.rng(runtime.rng.fork(id.as_bytes()))
+				.version_epoch(runtime.version_epoch.clone())
+				.build(),
 		))
 	}
 

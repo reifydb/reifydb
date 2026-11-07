@@ -383,7 +383,10 @@ mod tests {
 		value::{batch::batch, column::factory::int4_optional},
 	};
 	use reifydb_flow::txn::FlowGet;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		spawner::Spawner,
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		fragment::Fragment,
@@ -436,7 +439,9 @@ mod tests {
 			resolved,
 			key,
 			vec![],
-			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+			RuntimeContext::builder(Spawner::inline())
+				.clock(Clock::Mock(MockClock::from_millis(0)))
+				.build(),
 		)
 	}
 

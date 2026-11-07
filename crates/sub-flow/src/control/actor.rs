@@ -380,7 +380,10 @@ impl FlowActor {
 		FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),
-			RuntimeContext::with_clock(self.clock.clone()),
+			RuntimeContext::builder(self.engine.runtime_context().spawner.clone())
+				.clock(self.engine.runtime_context().clock.clone())
+				.rng(self.engine.runtime_context().rng.fork(b"sub-flow/build-flow-engine"))
+				.build(),
 			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone())),
 			self.substrate.clone(),
 			self.operator_samples.clone(),
@@ -1346,7 +1349,7 @@ mod pull_protocol {
 		},
 	};
 	use reifydb_runtime::{
-		context::{RuntimeContext, transaction::TransactionContext},
+		context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext},
 		sync::waiter::WaiterHandle,
 	};
 	use reifydb_store_operator::store::OperatorStore;
@@ -1428,7 +1431,7 @@ mod pull_protocol {
 		let mut probe = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			substrate.clone(),
 			OperatorSampleRegistry::new(),
@@ -1798,7 +1801,7 @@ mod pull_protocol {
 			let mut probe = FlowEngineInner::new(
 				self.engine.catalog(),
 				self.engine.executor().routines.clone(),
-				RuntimeContext::with_clock(self.engine.clock().clone()),
+				RuntimeContext::builder(Spawner::inline()).clock(self.engine.clock().clone()).build(),
 				Arc::new(EmptyOperatorProvider),
 				self.substrate.clone(),
 				OperatorSampleRegistry::new(),

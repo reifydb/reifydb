@@ -45,7 +45,10 @@ use reifydb_routine::{function::default_in_process_functions, procedure::default
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, context::clock::Clock, pool::PoolConfig, shutdown::Shutdown,
+	Runtime, RuntimeConfig,
+	context::{clock::Clock, spawner::Spawner},
+	pool::PoolConfig,
+	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_commit::store::CommitStore;
@@ -262,7 +265,11 @@ impl WasmDB {
 
 		let ioc_ref = ioc.clone();
 
-		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		let runtime_context = RuntimeContext::builder(Spawner::inline())
+			.clock(clock.clone())
+			.rng(rng.clone())
+			.version_epoch(version_epoch.clone())
+			.build();
 		load_catalog_cache(&multi, &single, &catalog_cache, &runtime_context)
 			.map_err(|e| JsError::from_error(&e))?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &runtime_context)

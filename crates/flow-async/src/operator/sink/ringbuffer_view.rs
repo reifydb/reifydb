@@ -1032,7 +1032,10 @@ mod tests {
 			column::factory::{int4, utf8},
 		},
 	};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		spawner::Spawner,
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
@@ -1124,7 +1127,9 @@ mod tests {
 			100,
 			ttl,
 			partition_by,
-			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+			RuntimeContext::builder(Spawner::inline())
+				.clock(Clock::Mock(MockClock::from_millis(0)))
+				.build(),
 		)
 	}
 
@@ -1830,7 +1835,9 @@ mod tests {
 			capacity,
 			None,
 			Vec::new(),
-			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+			RuntimeContext::builder(Spawner::inline())
+				.clock(Clock::Mock(MockClock::from_millis(0)))
+				.build(),
 		)
 	}
 

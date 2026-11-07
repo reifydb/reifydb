@@ -42,7 +42,7 @@ use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	actor::timers::drain_expired_timers,
-	context::{RuntimeContext, clock::Clock},
+	context::{RuntimeContext, clock::Clock, spawner::Spawner},
 	pool::PoolConfig,
 	shutdown::{Shutdown, ShutdownErrors},
 	version_epoch::VersionEpoch,
@@ -133,7 +133,11 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		let runtime_context = RuntimeContext::builder(Spawner::inline())
+			.clock(clock.clone())
+			.rng(rng.clone())
+			.version_epoch(version_epoch.clone())
+			.build();
 		load_catalog_cache(&multi, &single, &catalog_cache, &runtime_context)?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus, &runtime_context)?;
 

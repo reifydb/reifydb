@@ -13,7 +13,7 @@ use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
-	context::{RuntimeContext, clock::Clock, rng::Rng, transaction::TransactionContext},
+	context::{RuntimeContext, clock::Clock, rng::Rng, spawner::Spawner, transaction::TransactionContext},
 	fatal::install as install_fatal,
 	io::fs::Fs,
 	pool::PoolConfig,
@@ -280,11 +280,13 @@ impl EmbeddedBuilder {
 
 	pub fn build(self) -> Result<Database> {
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
-		let boot_ctx = TransactionContext::system(RuntimeContext::new(
-			boot_clock.clone(),
-			self.runtime_config.as_ref().map_or(Rng::Os, |config| config.rng.fork(b"startup")),
-			VersionEpoch::new(),
-		));
+		let boot_ctx = TransactionContext::system(
+			RuntimeContext::builder(Spawner::inline())
+				.clock(boot_clock.clone())
+				.rng(self.runtime_config.as_ref().map_or(Rng::Os, |config| config.rng.fork(b"startup")))
+				.version_epoch(VersionEpoch::new())
+				.build(),
+		);
 		let wal_mode = self
 			.wal_configurator
 			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))

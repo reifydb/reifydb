@@ -223,7 +223,6 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_ringbuffers = &self.pending_ringbuffers;
 		let pending_series = &self.pending_series;
 		let pending_markers = &self.pending_markers;
-		let identity = self.identity;
 		let checked_commit =
 			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, pending_tables)?;
 
@@ -235,7 +234,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				catalog: &catalog,
 				services: &services,
 				now: clock.now(),
-				coercer: RowCoercer::new(identity),
+				coercer: RowCoercer::new(txn.context().clone()),
 			};
 			load_flow_diff_need(writer.catalog, &mut Transaction::Command(txn))?;
 			let result = run_all_pending::<V>(

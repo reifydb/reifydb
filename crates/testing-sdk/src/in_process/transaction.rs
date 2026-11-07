@@ -27,7 +27,7 @@ use reifydb_flow_async::{
 		substrate::FlowSubstrate,
 	},
 };
-use reifydb_runtime::context::{RuntimeContext, clock::Clock, transaction::TransactionContext};
+use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner, transaction::TransactionContext};
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -59,7 +59,9 @@ pub struct TestFlowTransaction {
 
 impl TestFlowTransaction {
 	pub fn new(version: CommitVersion, clock: Clock) -> Self {
-		let ctx = Arc::new(TransactionContext::system(RuntimeContext::with_clock(clock.clone())));
+		let ctx = Arc::new(TransactionContext::system(
+			RuntimeContext::builder(Spawner::inline()).clock(clock.clone()).build(),
+		));
 		let dictionary = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
 			ctx.clone(),
 			SingleTransaction::testing(),

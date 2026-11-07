@@ -8,7 +8,7 @@ use reifydb_engine::{engine::StandardEngine, flow_check::FlowRegistrationCheck};
 use reifydb_flow_async::{
 	engine::FlowEngineInner, operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate,
 };
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::Result;
 
@@ -16,7 +16,6 @@ use crate::{builder::CustomOperators, operator::provider::StandardOperatorProvid
 
 pub(crate) struct FlowRegistrationProbe {
 	pub(crate) engine: StandardEngine,
-	pub(crate) clock: Clock,
 	pub(crate) custom_operators: CustomOperators,
 	pub(crate) substrate: FlowSubstrate,
 }
@@ -26,7 +25,10 @@ impl FlowRegistrationCheck for FlowRegistrationProbe {
 		let mut probe = FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),
-			RuntimeContext::with_clock(self.clock.clone()),
+			RuntimeContext::builder(self.engine.runtime_context().spawner.clone())
+				.clock(self.engine.runtime_context().clock.clone())
+				.rng(self.engine.runtime_context().rng.fork(b"sub-flow/check"))
+				.build(),
 			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone())),
 			self.substrate.clone(),
 			OperatorSampleRegistry::new(),

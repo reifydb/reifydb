@@ -19,6 +19,7 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
+	spawner::Spawner,
 };
 use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 use reifydb_value::{
@@ -34,7 +35,7 @@ fn gate(condition: &str) -> GateOperator {
 		GATE,
 		parse_expression(condition).unwrap(),
 		Routines::empty(),
-		RuntimeContext::with_clock(Clock::Real),
+		RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
 		Arc::new(FlowContext::default()),
 	)
 	.unwrap()

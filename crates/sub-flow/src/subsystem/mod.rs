@@ -220,7 +220,6 @@ impl FlowSubsystem {
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 		ioc.register_service::<FlowRegistrationCheckRef>(Arc::new(FlowRegistrationProbe {
 			engine: engine.clone(),
-			clock: clock.clone(),
 			custom_operators: custom_operators.clone(),
 			substrate: substrate.clone(),
 		}));

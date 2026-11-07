@@ -220,6 +220,7 @@ mod tests {
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
+		spawner::Spawner,
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
@@ -311,7 +312,7 @@ mod tests {
 	}
 
 	fn runtime_context() -> RuntimeContext {
-		RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0)))
+		RuntimeContext::builder(Spawner::inline()).clock(Clock::Mock(MockClock::from_millis(0))).build()
 	}
 
 	fn source_table() -> OperatorDef {

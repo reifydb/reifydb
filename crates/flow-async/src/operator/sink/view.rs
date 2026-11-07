@@ -53,6 +53,7 @@ mod tests {
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
+		spawner::Spawner,
 		transaction::TransactionContext,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -103,7 +104,9 @@ mod tests {
 		TableSink::new(
 			OperatorId(1),
 			test_view_def(),
-			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+			RuntimeContext::builder(Spawner::inline())
+				.clock(Clock::Mock(MockClock::from_millis(0)))
+				.build(),
 		)
 	}
 

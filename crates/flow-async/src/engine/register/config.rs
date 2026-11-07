@@ -60,7 +60,7 @@ pub fn evaluate_operator_params(
 pub mod tests {
 	use reifydb_core::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_routine_abi::registry::Routines;
-	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+	use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 	use reifydb_value::{fragment::Fragment, value::Value};
 
 	use super::evaluate_operator_params;
@@ -100,7 +100,7 @@ pub mod tests {
 	#[test]
 	fn test_empty_expressions() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions: Vec<Expression> = vec![];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
@@ -111,7 +111,7 @@ pub mod tests {
 	#[test]
 	fn test_single_alias_string() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
@@ -123,7 +123,7 @@ pub mod tests {
 	#[test]
 	fn test_single_alias_number() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
@@ -135,7 +135,7 @@ pub mod tests {
 	#[test]
 	fn test_single_alias_bool() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
@@ -147,7 +147,7 @@ pub mod tests {
 	#[test]
 	fn test_single_alias_undefined() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context).unwrap();
@@ -159,7 +159,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_aliases() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
 			create_alias_expression("key2", create_constant_number(100)),
@@ -177,7 +177,7 @@ pub mod tests {
 	#[test]
 	fn test_non_alias_expressions_skipped() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
 			create_constant_text("standalone"),
@@ -193,7 +193,7 @@ pub mod tests {
 	#[test]
 	fn test_only_non_alias_expressions() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![
 			create_constant_text("standalone"),
 			create_constant_number(999),
@@ -208,7 +208,7 @@ pub mod tests {
 	#[test]
 	fn test_unknown_function_returns_error() {
 		let routines = Routines::empty();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
+		let runtime_context = RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build();
 		let expressions = vec![create_alias_expression("custom_function", create_constant_text("data"))];
 
 		let result = evaluate_operator_params(&expressions, &routines, &runtime_context);

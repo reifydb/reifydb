@@ -52,6 +52,7 @@ mod tests {
 	use reifydb_runtime::context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
+		spawner::Spawner,
 		transaction::TransactionContext,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -239,7 +240,13 @@ mod tests {
 			partition_by: vec![],
 			sort: vec![],
 		});
-		TableSink::new(OperatorId(1), view, RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))))
+		TableSink::new(
+			OperatorId(1),
+			view,
+			RuntimeContext::builder(Spawner::inline())
+				.clock(Clock::Mock(MockClock::from_millis(0)))
+				.build(),
+		)
 	}
 
 	fn insert(columns: RecordBatch) -> Change {

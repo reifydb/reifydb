@@ -827,7 +827,7 @@ mod integration {
 			watermark::SourceWatermarks,
 		},
 	};
-	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
+	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner, transaction::TransactionContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
 		commit::{CommitBegin, CommitHandle},
@@ -949,7 +949,7 @@ mod integration {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 			OperatorSampleRegistry::new(),

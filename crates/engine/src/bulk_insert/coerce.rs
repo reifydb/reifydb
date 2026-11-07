@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{
@@ -16,30 +18,28 @@ use reifydb_core::{
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, column_view::ColumnView, identity::IdentityId},
+	value::{Value, column_view::ColumnView},
 };
 
 use crate::Result;
 
 pub(super) struct RowCoercer {
-	runtime_context: RuntimeContext,
+	ctx: Arc<TransactionContext>,
 	routines: Routines,
 	symbols: SymbolTable,
-	identity: IdentityId,
 }
 
 impl RowCoercer {
-	pub(super) fn new(identity: IdentityId) -> Self {
+	pub(super) fn new(ctx: Arc<TransactionContext>) -> Self {
 		Self {
-			runtime_context: RuntimeContext::with_clock(Clock::Real),
+			ctx,
 			routines: Routines::empty(),
 			symbols: SymbolTable::new(),
-			identity,
 		}
 	}
 
@@ -76,8 +76,8 @@ impl RowCoercer {
 			params: &Params::None,
 			symbols: &self.symbols,
 			routines: &self.routines,
-			runtime_context: &self.runtime_context,
-			identity: self.identity,
+			runtime_context: &self.ctx.runtime,
+			identity: self.ctx.identity.current,
 			batch: empty_batch(),
 			row_count,
 			target: None,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
-
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::evaluate::TargetColumn,
@@ -12,7 +10,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::stack::SymbolTable;
@@ -30,12 +28,15 @@ pub struct EvalContext<'a> {
 }
 
 impl<'a> EvalContext<'a> {
+	#[cfg(any(test, feature = "testing"))]
 	pub fn testing() -> EvalContext<'static> {
+		use std::sync::LazyLock;
+
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 		static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> =
-			LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
+			LazyLock::new(|| RuntimeContext::testing(0, 0));
 
 		EvalContext {
 			target: None,

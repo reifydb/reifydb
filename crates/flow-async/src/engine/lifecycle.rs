@@ -153,7 +153,7 @@ mod tests {
 		},
 	};
 	use reifydb_flow::operator::source::SourceOperator;
-	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 	use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
@@ -191,7 +191,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::new(engine.inner().dictionary_allocators()),
 			OperatorSampleRegistry::new(),
@@ -212,7 +212,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
@@ -277,7 +277,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
@@ -359,7 +359,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::new(engine.inner().dictionary_allocators()),
 			OperatorSampleRegistry::new(),
@@ -420,7 +420,7 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
+			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::new(engine.inner().dictionary_allocators()),
 			OperatorSampleRegistry::new(),

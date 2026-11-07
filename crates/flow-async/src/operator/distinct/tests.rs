@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::{batch::batch, column::factory::int8},
 };
 use reifydb_flow::context::FlowContext;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{
 	container::temporal_array::datetime_array,
@@ -40,7 +40,7 @@ use crate::{
 
 fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let routines = engine.executor().routines.clone();
-	let rc = RuntimeContext::with_clock(engine.clock().clone());
+	let rc = RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build();
 	DistinctOperator::new(None, OperatorId(operator_id), Vec::new(), routines, rc, Arc::new(FlowContext::default()))
 		.expect("the distinct operator must build")
 }

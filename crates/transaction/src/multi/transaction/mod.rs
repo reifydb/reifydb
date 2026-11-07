@@ -25,6 +25,7 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		spawner::Spawner,
 		transaction::TransactionContext,
 	},
 	version_epoch::VersionEpoch,
@@ -381,7 +382,11 @@ impl MultiTransaction {
 impl MultiTransaction {
 	pub fn runtime_context(&self) -> RuntimeContext {
 		let oracle = self.0.tm.oracle();
-		RuntimeContext::new(oracle.clock().clone(), oracle.rng().clone(), VersionEpoch::new())
+		RuntimeContext::builder(Spawner::inline())
+			.clock(oracle.clock().clone())
+			.rng(oracle.rng().clone())
+			.version_epoch(VersionEpoch::new())
+			.build()
 	}
 
 	pub fn generate_transaction_id(&self) -> TransactionId {

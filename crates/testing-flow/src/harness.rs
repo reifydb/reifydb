@@ -77,11 +77,11 @@ impl<O> Harness<O> {
 	pub fn with_engine(build: impl FnOnce(&TestEngine, RuntimeContext) -> O) -> Self {
 		let engine = TestEngine::new();
 		let clock = engine.mock_clock();
-		let runtime = RuntimeContext::new(
-			Clock::Mock(clock.clone()),
-			engine.inner().rng().clone(),
-			engine.inner().version_epoch().clone(),
-		);
+		let runtime = RuntimeContext::builder(engine.inner().runtime_context().spawner.clone())
+			.clock(Clock::Mock(clock.clone()))
+			.rng(engine.inner().rng().clone())
+			.version_epoch(engine.inner().version_epoch().clone())
+			.build();
 		let operator = build(&engine, runtime);
 		let substrate = FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),

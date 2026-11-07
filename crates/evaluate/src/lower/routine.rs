@@ -278,7 +278,7 @@ mod tests {
 
 	use reifydb_routine::function::default_in_process_functions;
 	use reifydb_routine_abi::{Function, registry::Routines};
-	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+	use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 	use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 
 	use super::RoutineUdf;
@@ -293,7 +293,7 @@ mod tests {
 			function: function.clone(),
 			fragment: Fragment::statement("math::abs", 1, column),
 			identity: IdentityId::system(),
-			runtime_context: RuntimeContext::with_clock(Clock::Real),
+			runtime_context: RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
 			signature: volatile(),
 			prepared: OnceLock::new(),
 		}

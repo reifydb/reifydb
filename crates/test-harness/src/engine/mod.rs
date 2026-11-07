@@ -39,6 +39,7 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
+		spawner::Spawner,
 		transaction::TransactionContext,
 	},
 	pool::PoolConfig,
@@ -341,7 +342,11 @@ impl TestEngineBuilder {
 		ioc = ioc.register(operator_store.clone());
 		ioc = ioc.register(eventbus.clone());
 
-		let runtime_context = RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone());
+		let runtime_context = RuntimeContext::builder(Spawner::inline())
+			.clock(clock.clone())
+			.rng(rng.clone())
+			.version_epoch(version_epoch.clone())
+			.build();
 		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus, &runtime_context)
 			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
@@ -354,7 +359,11 @@ impl TestEngineBuilder {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
+				runtime_context: RuntimeContext::builder(Spawner::inline())
+					.clock(clock.clone())
+					.rng(rng.clone())
+					.version_epoch(version_epoch.clone())
+					.build(),
 				routines: {
 					let b = Routines::builder();
 					let b = default_in_process_functions(b);

@@ -26,7 +26,7 @@ use reifydb_evaluate::{
 use reifydb_routine::function::default_in_process_functions;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::CompiledClosure;
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -51,7 +51,7 @@ impl Env {
 			params: Params::None,
 			symbols,
 			routines: Routines::empty(),
-			runtime_context: RuntimeContext::with_clock(Clock::Real),
+			runtime_context: RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
 		}
 	}
 

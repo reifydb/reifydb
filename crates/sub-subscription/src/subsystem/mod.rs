@@ -210,7 +210,10 @@ impl SubscriptionSubsystem {
 		for i in 0..num_workers {
 			let cat = catalog.clone();
 			let routines = engine.executor().routines.clone();
-			let rc = RuntimeContext::with_clock(clock.clone());
+			let rc = RuntimeContext::builder(engine.runtime_context().spawner.clone())
+				.clock(clock.clone())
+				.rng(engine.runtime_context().rng.fork(b"sub-subscription/worker-pool"))
+				.build();
 			let provider = Arc::new(EmptyOperatorProvider);
 			let substrate = FlowSubstrate::new(engine.dictionary_allocators());
 			let factory = move || {
@@ -302,7 +305,10 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let floor = ioc.resolve::<SubscriptionQueueFloor>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
-		let runtime_context = RuntimeContext::with_clock(clock);
+		let runtime_context = RuntimeContext::builder(engine.runtime_context().spawner.clone())
+			.clock(clock)
+			.rng(engine.runtime_context().rng.fork(b"sub-subscription/create"))
+			.build();
 		let store = Arc::new(SubscriptionStore::new(1024));
 
 		let consumer_watermark = ReaderWatermark::new();

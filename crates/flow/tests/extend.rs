@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_flow::{context::FlowContext, operator::extend::ExtendOperator};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	Result,
@@ -40,7 +40,7 @@ fn extend(expressions: &[&str]) -> Result<ExtendOperator> {
 		OperatorId(1),
 		expressions.iter().flat_map(|expression| parse_expression(expression).unwrap()).collect(),
 		Routines::empty(),
-		RuntimeContext::with_clock(Clock::Real),
+		RuntimeContext::builder(Spawner::inline()).clock(Clock::Real).build(),
 		Arc::new(FlowContext::default()),
 	)
 }

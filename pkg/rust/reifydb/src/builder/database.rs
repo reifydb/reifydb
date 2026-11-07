@@ -380,8 +380,11 @@ impl DatabaseBuilder {
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
-		let runtime_context =
-			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone(), self.version_epoch.clone());
+		let runtime_context = RuntimeContext::builder(runtime.task_spawner())
+			.clock(runtime.clock().clone())
+			.rng(runtime.rng().clone())
+			.version_epoch(self.version_epoch.clone())
+			.build();
 		load_catalog_cache(&multi, &single, &catalog, &runtime_context)?;
 
 		seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
