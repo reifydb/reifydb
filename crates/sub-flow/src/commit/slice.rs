@@ -52,8 +52,7 @@ use tracing::instrument;
 
 use crate::{
 	commit::committer::{FlowSlice, produced_output},
-	marker::{InputMarkers, MarkerMap, written_views},
-	progress::tracker::BacklogCommit,
+	marker::{MarkerMap, written_views},
 };
 
 pub struct SliceConfig {
@@ -73,13 +72,6 @@ pub struct SliceCursor<'a> {
 	pub lsn: Lsn,
 	pub frontier: (CommitVersion, Lsn),
 	pub durable_cursor: CommitVersion,
-	pub backlog_commit: BacklogCommit,
-}
-
-pub struct SourceSlice {
-	pub slice: FlowSlice,
-	pub advance_to: CommitVersion,
-	pub lsn: Lsn,
 }
 
 pub enum SliceStep {
@@ -87,12 +79,6 @@ pub enum SliceStep {
 		slice: FlowSlice,
 		advance_to: CommitVersion,
 		lsn: Lsn,
-		more: bool,
-		holds: WatermarkHolds,
-	},
-
-	Commits {
-		slices: Vec<SourceSlice>,
 		more: bool,
 		holds: WatermarkHolds,
 	},
@@ -242,18 +228,11 @@ impl SliceComputer {
 				}),
 				SliceStep::Commit {
 					..
-				}
-				| SliceStep::Commits {
-					..
 				} => None,
 			};
 			return Ok(step);
 		}
 		*hold_cache = None;
-
-		if cursor.backlog_commit == BacklogCommit::PerVersion {
-			return self.per_source_step(flow_engine, &cursor, items, advance_to, more, changes, config);
-		}
 
 		let input_markers = self.markers.as_ref().and_then(|markers| markers.input_markers(&changes));
 		let mut groups: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
@@ -264,16 +243,13 @@ impl SliceComputer {
 		let (computed, holds) =
 			self.compute_layers(flow_engine, cursor.flow_id, advance_to, groups.into_values().collect())?;
 		let emitted = computed.iter().any(|(_, emitted)| *emitted);
-		let mut layers: Vec<(SourceVersion, Pending)> = sources
+		let layers: Vec<(SourceVersion, Pending)> = sources
 			.into_iter()
 			.zip(computed)
 			.filter(|(_, (pending, emitted))| produced_output(pending, *emitted))
 			.map(|(source, (pending, _))| (source, pending))
 			.collect();
 		let combined = Pending::merged(layers.iter().map(|(_, pending)| pending.clone()).collect());
-		if layers.len() < 2 {
-			layers.clear();
-		}
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
@@ -310,100 +286,6 @@ impl SliceComputer {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn per_source_step(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		cursor: &SliceCursor,
-		items: &[Arc<CommitEntry>],
-		advance_to: CommitVersion,
-		more: bool,
-		changes: Vec<Change>,
-		config: &SliceConfig,
-	) -> Result<SliceStep> {
-		let mut groups: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
-		for change in changes {
-			groups.entry(change.version.source).or_default().push(change);
-		}
-		let sources: Vec<SourceVersion> = groups.keys().copied().collect();
-		let markers: Vec<Option<InputMarkers>> = groups
-			.values()
-			.map(|changes| self.markers.as_ref().and_then(|markers| markers.input_markers(changes)))
-			.collect();
-		let (layers, holds) =
-			self.compute_layers(flow_engine, cursor.flow_id, advance_to, groups.into_values().collect())?;
-		let kept: Vec<(SourceVersion, Pending, bool, Option<InputMarkers>)> = sources
-			.into_iter()
-			.zip(layers)
-			.zip(markers)
-			.map(|((source, (pending, emitted)), markers)| (source, pending, emitted, markers))
-			.filter(|(_, pending, emitted, _)| produced_output(pending, *emitted))
-			.collect();
-		let lsn = |through: CommitVersion| lsn_through(items, through, cursor.lsn, cursor.frontier);
-
-		if kept.is_empty() {
-			if !checkpoint_due(advance_to, cursor.durable_cursor, config) {
-				return Ok(SliceStep::Skip {
-					advance_to,
-					lsn: lsn(advance_to),
-					more,
-					holds,
-				});
-			}
-			let mut slice = FlowSlice::empty();
-			slice.checkpoints = self.unit_checkpoints(
-				cursor.flow_id,
-				FlowCheckpoint {
-					version: advance_to,
-					lsn: lsn(advance_to),
-				},
-			)?;
-			return Ok(SliceStep::Commit {
-				slice,
-				advance_to,
-				lsn: lsn(advance_to),
-				more,
-				holds,
-			});
-		}
-
-		let ends: Vec<CommitVersion> = kept
-			.iter()
-			.skip(1)
-			.map(|(source, ..)| CommitVersion(source.0 - 1))
-			.chain(once(advance_to))
-			.collect();
-		let mut slices = Vec::with_capacity(kept.len());
-		for ((source, combined, emitted, input_markers), end) in kept.into_iter().zip(ends) {
-			let written_views = match &input_markers {
-				Some(_) => written_views(&combined, &self.members)?,
-				None => Vec::new(),
-			};
-			let checkpoint = FlowCheckpoint {
-				version: end,
-				lsn: lsn(end),
-			};
-			slices.push(SourceSlice {
-				slice: FlowSlice {
-					combined,
-					checkpoints: self.unit_checkpoints(cursor.flow_id, checkpoint)?,
-					checkpoint_deletes: Vec::new(),
-					emitted,
-					source: Some(source),
-					written_views,
-					input_markers,
-					layers: Vec::new(),
-				},
-				advance_to: end,
-				lsn: checkpoint.lsn,
-			});
-		}
-		Ok(SliceStep::Commits {
-			slices,
-			more,
-			holds,
-		})
-	}
-
 	fn skip_or_checkpoint(
 		&self,
 		flow_engine: &mut FlowEngineInner,
@@ -1291,13 +1173,9 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
-					backlog_commit: BacklogCommit::Fold,
 				},
 				&config,
 			) {
-				Some(SliceStep::Commits {
-					..
-				}) => panic!("a folding step never cuts per source"),
 				Some(SliceStep::Commit {
 					slice,
 					advance_to,
@@ -1387,13 +1265,9 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: cursor,
-					backlog_commit: BacklogCommit::Fold,
 				},
 				&config,
 			) {
-				Some(SliceStep::Commits {
-					..
-				}) => panic!("a folding step never cuts per source"),
 				Some(SliceStep::Commit {
 					slice,
 					advance_to,
@@ -1522,13 +1396,9 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
-					backlog_commit: BacklogCommit::Fold,
 				},
 				&config,
 			) {
-				Some(SliceStep::Commits {
-					..
-				}) => panic!("a folding step never cuts per source"),
 				Some(SliceStep::Commit {
 					slice,
 					advance_to,
@@ -1668,13 +1538,9 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: CommitVersion(0),
-					backlog_commit: BacklogCommit::Fold,
 				},
 				&far,
 			) {
-				Some(SliceStep::Commits {
-					..
-				}) => panic!("a folding step never cuts per source"),
 				Some(SliceStep::Commit {
 					slice,
 					..
@@ -1708,13 +1574,9 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				backlog_commit: BacklogCommit::Fold,
 			},
 			&due,
 		) {
-			Some(SliceStep::Commits {
-				..
-			}) => panic!("a folding step never cuts per source"),
 			Some(SliceStep::Commit {
 				slice,
 				advance_to,
@@ -1779,148 +1641,6 @@ mod integration {
 		panic!("the commit log producer never caught up to {inserted:?}");
 	}
 
-	fn inserts_at_versions(te: &TestEngine, filter: &str) -> Vec<CommitVersion> {
-		// Each insert is its own commit, so each is its own source version; the filter lets a test make one
-		// of them produce no view rows.
-		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
-		te.admin(&format!(
-			"CREATE DEFERRED VIEW app::v {{ id: int4, val: int4 }} AS {{ FROM app::t {filter} MAP {{ id, val }} }}"
-		));
-		let mut versions = Vec::new();
-		for (id, val) in [(1, 10), (2, 20), (3, 30)] {
-			te.command(&format!("INSERT app::t [{{id: {id}, val: {val}}}]"));
-			versions.push(te.inner().current_version().expect("current version"));
-		}
-		let inserted = *versions.last().expect("three inserts");
-		for _ in 0..400 {
-			let safe = commit_queue(te.inner()).released_through().min(te.inner().done_until());
-			if safe >= inserted {
-				return versions;
-			}
-			sleep(Duration::from_milliseconds_const(5).to_std());
-		}
-		panic!("the commit log producer never caught up to {inserted:?}");
-	}
-
-	fn per_version_step(te: &TestEngine) -> (Vec<SourceSlice>, CommitterHandle) {
-		let engine = te.inner().clone();
-		let (flow_id, mut flow_engine, source_objects) = one_view_flow(te);
-		let computer = SliceComputer::new(engine.clone());
-		let committer = spawn_committer(&engine);
-		let step = pull_step(
-			&engine,
-			&computer,
-			&mut flow_engine,
-			SliceCursor {
-				flow_id,
-				source_objects: &source_objects,
-				completeness_objects: None,
-				cursor: CommitVersion(0),
-				lsn: Lsn::new(0),
-				frontier: (CommitVersion(0), Lsn::new(0)),
-				durable_cursor: CommitVersion(0),
-				backlog_commit: BacklogCommit::PerVersion,
-			},
-			&SliceConfig {
-				checkpoint_lag: 10_000,
-			},
-		)
-		.expect("the inserts are visible, so the flow must step");
-		match step {
-			SliceStep::Commits {
-				slices,
-				more,
-				..
-			} => {
-				assert!(!more, "the whole backlog fits in one pull, so nothing may be left");
-				(slices, committer)
-			}
-			SliceStep::Commit {
-				advance_to,
-				..
-			} => panic!(
-				"a per-version step with output must cut per source, not one slice to {advance_to:?}"
-			),
-			SliceStep::Skip {
-				advance_to,
-				..
-			} => panic!("the inserts must produce view rows, not a skip to {advance_to:?}"),
-		}
-	}
-
-	fn commit_slices(committer: &CommitterHandle, slices: Vec<FlowSlice>) -> (usize, Result<CommitVersion>) {
-		let (sender, receiver) = mpsc::channel();
-		let sent = committer
-			.actor_ref()
-			.send(CommitterMessage::Slices {
-				slices,
-				reply: Box::new(move |landed, result| {
-					let _ = sender.send((landed, result));
-				}),
-			})
-			.is_ok();
-		assert!(sent, "the committer must accept the slices");
-		receiver.recv_timeout(Duration::from_seconds_const(10).to_std()).expect("slices reply timed out")
-	}
-
-	#[test]
-	fn a_per_version_step_cuts_one_slice_per_source_with_its_own_checkpoint() {
-		// An exact reader finds each source through its own commit; one slice for the backlog, or a slice
-		// stamped or checkpointed at the step target, pairs a reader at S1 with the S3 view.
-		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
-		let versions = inserts_at_versions(&te, "");
-		let (slices, committer) = per_version_step(&te);
-
-		assert_eq!(
-			slices.iter().map(|source| source.slice.source).collect::<Vec<_>>(),
-			versions.iter().map(|version| Some(SourceVersion(version.0))).collect::<Vec<_>>(),
-			"one slice per source, each stamped with its own source"
-		);
-		let ends: Vec<CommitVersion> = slices.iter().map(|source| source.advance_to).collect();
-		assert_eq!(ends[0], CommitVersion(versions[1].0 - 1));
-		assert_eq!(ends[1], CommitVersion(versions[2].0 - 1));
-		assert!(ends[2] >= versions[2], "the last slice runs to the step target");
-		for source in &slices {
-			assert!(
-				source.slice
-					.checkpoints
-					.iter()
-					.all(|(_, checkpoint)| checkpoint.version == source.advance_to),
-				"a checkpoint past its own slice skips sources after a crash"
-			);
-			assert_eq!(source.slice.checkpoints[0].1.lsn, source.lsn);
-		}
-
-		let mut slices = slices.into_iter().map(|source| source.slice);
-		let first = slices.next().expect("three slices");
-		assert_eq!(commit_slices(&committer, vec![first]).0, 1);
-		assert_eq!(view_row_count(&te, "FROM app::v"), 1, "the first slice must carry only the first source");
-		let (landed, result) = commit_slices(&committer, slices.collect());
-		assert_eq!(landed, 2);
-		result.expect("the remaining slices commit");
-		assert_eq!(view_row_count(&te, "FROM app::v"), 3);
-	}
-
-	#[test]
-	fn a_source_without_output_leaves_no_slice() {
-		// A source that writes nothing gains nothing from a commit; an exact reader at it finds the source
-		// before, whose view is the same, so the next slice's checkpoint must cover it instead.
-		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
-		let versions = inserts_at_versions(&te, "FILTER { val != 20 }");
-		let (slices, _committer) = per_version_step(&te);
-
-		assert_eq!(
-			slices.iter().map(|source| source.slice.source).collect::<Vec<_>>(),
-			vec![Some(SourceVersion(versions[0].0)), Some(SourceVersion(versions[2].0))]
-		);
-		assert_eq!(
-			slices[0].advance_to,
-			CommitVersion(versions[2].0 - 1),
-			"the first slice must stretch over the dropped source"
-		);
-	}
-
 	#[test]
 	fn a_folding_flow_folds_every_pending_source_version_into_one_step() {
 		// A folding flow that fell behind must catch up in one step, or it stays one commit per version behind.
@@ -1947,7 +1667,6 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				backlog_commit: BacklogCommit::Fold,
 			},
 			&config,
 		)
@@ -1972,9 +1691,6 @@ mod integration {
 					"all three source versions must materialize in the single folded step"
 				);
 			}
-			SliceStep::Commits {
-				..
-			} => panic!("a folding step never cuts per source"),
 			SliceStep::Skip {
 				advance_to,
 				..
@@ -2014,7 +1730,6 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				backlog_commit: BacklogCommit::Fold,
 			},
 			&config,
 		)
@@ -2025,9 +1740,6 @@ mod integration {
 				more,
 				..
 			} => assert!(!more, "a folding flow must take the whole batch even with two sources"),
-			SliceStep::Commits {
-				..
-			} => panic!("a folding step never cuts per source"),
 			SliceStep::Skip {
 				advance_to,
 				..
@@ -2074,7 +1786,6 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				backlog_commit: BacklogCommit::Fold,
 			},
 			&SliceConfig {
 				checkpoint_lag: 10_000,
@@ -2268,7 +1979,6 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(4),
-				backlog_commit: BacklogCommit::Fold,
 			},
 			advance_to,
 			false,
@@ -2329,9 +2039,6 @@ mod integration {
 			&mut hold_cache,
 		);
 		match third {
-			SliceStep::Commits {
-				..
-			} => panic!("a folding step never cuts per source"),
 			SliceStep::Commit {
 				slice,
 				..
@@ -2378,9 +2085,6 @@ mod integration {
 			&config,
 			&mut hold_cache,
 		) {
-			SliceStep::Commits {
-				..
-			} => panic!("a folding step never cuts per source"),
 			SliceStep::Commit {
 				slice,
 				..
@@ -2423,9 +2127,6 @@ mod integration {
 				holds,
 				..
 			} => assert_eq!(holds, vec![sentinel], "unchanged frontiers must reuse the cached holds"),
-			SliceStep::Commits {
-				..
-			} => panic!("a folding step never cuts per source"),
 			SliceStep::Commit {
 				..
 			} => panic!("an empty pull with unchanged frontiers and no checkpoint due must not commit"),

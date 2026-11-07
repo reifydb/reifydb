@@ -27,7 +27,7 @@ use reifydb_flow_async::{
 	},
 	timer::TimerMove,
 	transaction::{
-		FlowTransaction,
+		FlowTransaction, LookupAt,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
 	},
 };
@@ -339,8 +339,19 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.lookup_read(storage, ring, version, partitions)
 	}
 
-	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {
-		self.inner.lookup_view_version(view, source)
+	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt {
+		self.inner.lookup_view_read(view, source)
+	}
+
+	fn lookup_read_at(
+		&mut self,
+		storage: StorageId,
+		ring: bool,
+		at: LookupAt,
+		partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+		self.record("lookup_read", partitions.len());
+		self.inner.lookup_read_at(storage, ring, at, partitions)
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {

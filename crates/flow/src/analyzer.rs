@@ -13,7 +13,6 @@ use reifydb_core::{
 		id::{RingBufferId, SeriesId, TableId, ViewId},
 		object::ObjectId,
 	},
-	operator_with::Emit,
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,8 +56,6 @@ pub struct FlowDependencyGraph {
 	pub source_series: BTreeMap<SeriesId, Vec<FlowId>>,
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 	pub lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
-	pub source_exact_reads: BTreeMap<ViewId, Vec<FlowId>>,
-	pub source_paced_reads: BTreeMap<ViewId, Vec<FlowId>>,
 }
 
 impl FlowDependencyGraph {
@@ -135,8 +132,6 @@ impl FlowGraphAnalyzer {
 				source_series: BTreeMap::new(),
 				sink_views: BTreeMap::new(),
 				lookup_views: BTreeMap::new(),
-				source_exact_reads: BTreeMap::new(),
-				source_paced_reads: BTreeMap::new(),
 			},
 		}
 	}
@@ -263,75 +258,6 @@ impl FlowGraphAnalyzer {
 		views
 	}
 
-	fn get_source_exact_reads(flow: &FlowDag) -> BTreeSet<ViewId> {
-		let mut views = BTreeSet::new();
-
-		for node_id in flow.get_operator_ids() {
-			let Some(node) = flow.get_operator(&node_id) else {
-				continue;
-			};
-			match &node.ty {
-				OperatorDef::Lookup {
-					right: LookupObject::View(view),
-					with,
-					..
-				} if with.emit == Emit::Off => {
-					views.insert(*view);
-				}
-				_ => {}
-			}
-		}
-
-		views
-	}
-
-	fn get_source_paced_reads(flow: &FlowDag) -> BTreeSet<ViewId> {
-		let mut views = BTreeSet::new();
-
-		for node_id in flow.get_operator_ids() {
-			let Some(node) = flow.get_operator(&node_id) else {
-				continue;
-			};
-			let paces_left = match &node.ty {
-				OperatorDef::Lookup {
-					with,
-					..
-				} => with.emit == Emit::Off,
-				_ => false,
-			};
-			if paces_left && let Some(left) = node.inputs.first() {
-				views.extend(Self::source_views_above(flow, *left));
-			}
-		}
-
-		views
-	}
-
-	fn source_views_above(flow: &FlowDag, input: OperatorId) -> BTreeSet<ViewId> {
-		let mut views = BTreeSet::new();
-		let mut seen = BTreeSet::new();
-		let mut pending = vec![input];
-
-		while let Some(operator_id) = pending.pop() {
-			if !seen.insert(operator_id) {
-				continue;
-			}
-			let operator =
-				flow.get_operator(&operator_id).expect("a join input is an operator of its flow");
-			match &operator.ty {
-				OperatorDef::SourceView {
-					view,
-				} => {
-					views.insert(*view);
-				}
-				ty if !ty.is_source() => pending.extend(operator.inputs.iter().copied()),
-				_ => {}
-			}
-		}
-
-		views
-	}
-
 	pub fn get_dependency_graph(&self) -> &FlowDependencyGraph {
 		&self.dependency_graph
 	}
@@ -344,22 +270,12 @@ impl FlowGraphAnalyzer {
 		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 		let mut lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
-		let mut source_exact_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
-		let mut source_paced_reads: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 
 		for flow in &self.flows {
 			let summary = Self::analyze_flow(flow);
 
 			for view_id in Self::get_lookup_views(flow) {
 				lookup_views.entry(view_id).or_default().push(flow.id());
-			}
-
-			for view_id in Self::get_source_exact_reads(flow) {
-				source_exact_reads.entry(view_id).or_default().push(flow.id());
-			}
-
-			for view_id in Self::get_source_paced_reads(flow) {
-				source_paced_reads.entry(view_id).or_default().push(flow.id());
 			}
 
 			for source in &summary.sources {
@@ -401,8 +317,6 @@ impl FlowGraphAnalyzer {
 			source_series,
 			sink_views,
 			lookup_views,
-			source_exact_reads,
-			source_paced_reads,
 		}
 	}
 
@@ -461,8 +375,6 @@ impl FlowGraphAnalyzer {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 			lookup_views: BTreeMap::new(),
-			source_exact_reads: BTreeMap::new(),
-			source_paced_reads: BTreeMap::new(),
 		};
 	}
 }
@@ -483,14 +395,11 @@ pub mod tests {
 			operator::{FlowNode, OperatorDef},
 		},
 		interface::catalog::{
-			flow::{FlowEdge, FlowId, OperatorId},
+			flow::{FlowId, OperatorId},
 			id::{TableId, ViewId},
 		},
 		operator_with::{JoinWith, LookupWith},
-		row::JoinPick,
-		sort::SortDirection,
 	};
-	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 
@@ -1121,160 +1030,5 @@ pub mod tests {
 
 		assert!(analyzer.get_dependency_graph().lookup_views.is_empty());
 		assert!(analyzer.get_dependency_graph().dependencies.is_empty());
-	}
-
-	fn flow_with_edges(id: u64, node_types: Vec<OperatorDef>, edges: &[(u64, u64)]) -> FlowDag {
-		let mut builder = FlowDag::builder(FlowId(id));
-		for (i, node_type) in node_types.into_iter().enumerate() {
-			builder.add_node(FlowNode::new(OperatorId(i as u64 + 1), node_type));
-		}
-		for (i, (from, to)) in edges.iter().enumerate() {
-			builder.add_edge(FlowEdge::new(i as u64 + 1, FlowId(id), OperatorId(*from), OperatorId(*to)))
-				.expect("a test edge joins two nodes of its flow");
-		}
-		builder.build()
-	}
-
-	fn lookup_with(right: LookupObject, emit: Emit) -> OperatorDef {
-		OperatorDef::Lookup {
-			join_type: JoinType::Inner,
-			right,
-			left: vec![],
-			alias: None,
-			with: LookupWith {
-				retention: None,
-				emit,
-			},
-		}
-	}
-
-	fn join_with(pick: Option<JoinPick>, emit: Emit) -> OperatorDef {
-		OperatorDef::Join {
-			join_type: JoinType::Inner,
-			left: vec![],
-			right: vec![],
-			alias: None,
-			natural: false,
-			with: JoinWith {
-				retention: None,
-				emit,
-				pick,
-			},
-		}
-	}
-
-	fn two_sided_join(id: u64, join: OperatorDef) -> FlowDag {
-		flow_with_edges(
-			id,
-			vec![
-				SourceView {
-					view: ViewId(700),
-				},
-				SourceView {
-					view: ViewId(701),
-				},
-				lookup(LookupObject::Table(TableId(300))),
-				join,
-				SinkTableView {
-					view: ViewId(id + 800),
-				},
-			],
-			&[(1, 4), (2, 3), (3, 4), (4, 5)],
-		)
-	}
-
-	#[test]
-	fn an_emit_off_view_lookup_is_an_exact_read_and_emit_on_or_after_is_not() {
-		// A producer cuts per source only for exact readers, so an emit on or after reader listed here costs
-		// the fold.
-		let mut analyzer = FlowGraphAnalyzer::new();
-		analyzer.add(create_test_flow_with_nodes(
-			20,
-			vec![
-				SourceTable {
-					table: TableId(200),
-					time_domain: TimeDomain::None,
-				},
-				lookup_with(LookupObject::View(ViewId(500)), Emit::Off),
-				lookup_with(LookupObject::View(ViewId(501)), Emit::On),
-				lookup_with(
-					LookupObject::View(ViewId(502)),
-					Emit::After(Duration::from_seconds_const(1)),
-				),
-				lookup_with(LookupObject::Table(TableId(300)), Emit::Off),
-				SinkTableView {
-					view: ViewId(600),
-				},
-			],
-		));
-
-		assert_eq!(
-			analyzer.get_dependency_graph().source_exact_reads,
-			BTreeMap::from([(ViewId(500), vec![FlowId(20)])]),
-			"only the emit off lookup on a view is an exact read"
-		);
-	}
-
-	#[test]
-	fn a_join_never_reads_its_right_side_exactly() {
-		// A join keeps its right side in its own state, so marking it exact would hold its producer per version
-		// for nothing.
-		let mut analyzer = FlowGraphAnalyzer::new();
-		analyzer.add(two_sided_join(30, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::Off)));
-		analyzer.add(two_sided_join(31, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
-
-		assert_eq!(analyzer.get_dependency_graph().source_exact_reads, BTreeMap::new());
-	}
-
-	#[test]
-	fn the_left_side_of_an_emit_off_lookup_is_paced_and_no_join_is() {
-		// A missing pace lets a folded left view hand early rows a later right value; an extra one costs the
-		// fold.
-		let lookup_flow = |id: u64, left: u64, emit: Emit| {
-			flow_with_edges(
-				id,
-				vec![
-					SourceView {
-						view: ViewId(left),
-					},
-					lookup_with(LookupObject::View(ViewId(left + 100)), emit),
-					SinkTableView {
-						view: ViewId(id + 800),
-					},
-				],
-				&[(1, 2), (2, 3)],
-			)
-		};
-		let join_flow = |id: u64, left: u64, join: OperatorDef| {
-			flow_with_edges(
-				id,
-				vec![
-					SourceView {
-						view: ViewId(left),
-					},
-					SourceView {
-						view: ViewId(left + 100),
-					},
-					join,
-					SinkTableView {
-						view: ViewId(id + 800),
-					},
-				],
-				&[(1, 3), (2, 3), (3, 4)],
-			)
-		};
-		let mut analyzer = FlowGraphAnalyzer::new();
-		analyzer.add(lookup_flow(50, 710, Emit::Off));
-		analyzer.add(lookup_flow(51, 711, Emit::On));
-		analyzer.add(lookup_flow(52, 712, Emit::After(Duration::from_seconds_const(1))));
-		analyzer.add(join_flow(53, 713, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::Off)));
-		analyzer.add(join_flow(54, 714, join_with(Some(JoinPick::by_time(SortDirection::Desc)), Emit::On)));
-		analyzer.add(join_flow(55, 715, join_with(None, Emit::Off)));
-
-		assert_eq!(
-			analyzer.get_dependency_graph().source_paced_reads,
-			BTreeMap::from([(ViewId(710), vec![FlowId(50)])]),
-			"only the left view of an emit off lookup is paced"
-		);
 	}
 }

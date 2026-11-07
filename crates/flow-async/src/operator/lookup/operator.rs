@@ -71,6 +71,7 @@ use crate::{
 		state_access::{RowNumberReserve, mint_row_numbers},
 	},
 	timer::Timer,
+	transaction::LookupAt,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -127,9 +128,9 @@ pub struct LookupOperator {
 
 #[derive(Default)]
 struct ChangeReads {
-	version: Option<CommitVersion>,
+	version: Option<LookupAt>,
 	dictionary: DictionaryMemo,
-	rows: HashMap<(Partition, CommitVersion), Option<(RowNumber, EncodedBytes)>>,
+	rows: HashMap<(Partition, LookupAt), Option<(RowNumber, EncodedBytes)>>,
 }
 
 struct Resolved {
@@ -353,17 +354,12 @@ impl LookupOperator {
 		partitions.keys(host, &mut reads.dictionary, &key_columns, row_count)
 	}
 
-	fn read_version(
-		&self,
-		host: &dyn HostContext,
-		source: SourceVersion,
-		reads: &mut ChangeReads,
-	) -> CommitVersion {
+	fn read_version(&self, host: &dyn HostContext, source: SourceVersion, reads: &mut ChangeReads) -> LookupAt {
 		*reads.version.get_or_insert_with(|| match self.config.right {
-			LookupObject::View(view) if self.config.deferred => host.lookup_view_version(view, source),
+			LookupObject::View(view) if self.config.deferred => host.lookup_view_read(view, source),
 			LookupObject::Table(_) | LookupObject::RingBuffer(_) | LookupObject::View(_) => {
 				let at = CommitVersion(source.0).min(host.version());
-				host.lookup_floor().map_or(at, |floor| at.max(floor))
+				LookupAt::Commit(host.lookup_floor().map_or(at, |floor| at.max(floor)))
 			}
 		})
 	}
@@ -374,7 +370,7 @@ impl LookupOperator {
 		partitions: &PartitionLookup,
 		reads: &mut ChangeReads,
 		key: &RowKey,
-		version: CommitVersion,
+		version: LookupAt,
 	) -> Result<Option<(RowNumber, EncodedBytes)>> {
 		let Some(partition) = key_partition(host, partitions, reads, key)? else {
 			return Ok(None);
@@ -383,7 +379,7 @@ impl LookupOperator {
 			Entry::Occupied(read) => Ok(read.get().clone()),
 			Entry::Vacant(slot) => {
 				let read = host
-					.lookup_read(self.config.storage, self.config.ring, version, &[partition])?
+					.lookup_read_at(self.config.storage, self.config.ring, version, &[partition])?
 					.pop()
 					.flatten();
 				Ok(slot.insert(read).clone())
@@ -395,10 +391,10 @@ impl LookupOperator {
 		&self,
 		host: &mut dyn HostContext,
 		reads: &mut ChangeReads,
-		wanted: Vec<(Partition, CommitVersion)>,
+		wanted: Vec<(Partition, LookupAt)>,
 	) -> Result<()> {
 		let mut queued = HashSet::new();
-		let mut groups: Vec<(CommitVersion, Vec<Partition>)> = Vec::new();
+		let mut groups: Vec<(LookupAt, Vec<Partition>)> = Vec::new();
 		for (partition, version) in wanted {
 			if reads.rows.contains_key(&(partition, version)) || !queued.insert((partition, version)) {
 				continue;
@@ -409,7 +405,7 @@ impl LookupOperator {
 			}
 		}
 		for (version, partitions) in groups {
-			let rows = host.lookup_read(self.config.storage, self.config.ring, version, &partitions)?;
+			let rows = host.lookup_read_at(self.config.storage, self.config.ring, version, &partitions)?;
 			reads.rows.extend(partitions.into_iter().map(|partition| (partition, version)).zip(rows));
 		}
 		Ok(())
@@ -421,10 +417,10 @@ impl LookupOperator {
 		source: SourceVersion,
 		reads: &mut ChangeReads,
 		key: &RowKey,
-	) -> CommitVersion {
+	) -> LookupAt {
 		match key {
 			RowKey::Found(partition) if self.waiting.contains_key(partition) => {
-				host.version().max(self.read_version(host, source, reads))
+				LookupAt::Commit(host.version().max(self.read_version(host, source, reads).commit()))
 			}
 			_ => self.read_version(host, source, reads),
 		}
@@ -436,7 +432,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		keys: &[RowKey],
 		source: SourceVersion,
-	) -> Vec<(Partition, CommitVersion)> {
+	) -> Vec<(Partition, LookupAt)> {
 		keys.iter()
 			.filter_map(|key| match key {
 				RowKey::Found(partition) => {
@@ -1054,8 +1050,8 @@ mod tests {
 		},
 		timer::extension::TimerExtension,
 		transaction::{
-			FlowTransaction, LookupContext, LookupVersions, deferred::DeferredTransaction, mock::FlowTxn,
-			substrate::persist,
+			FlowTransaction, LookupAt, LookupContext, LookupVersions, deferred::DeferredTransaction,
+			mock::FlowTxn, substrate::persist,
 		},
 	};
 
@@ -2396,7 +2392,7 @@ mod tests {
 			floor: CommitVersion(9),
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		host.lookup_view_version(ViewId(1), SourceVersion(8));
+		host.lookup_view_read(ViewId(1), SourceVersion(8));
 	}
 
 	#[test]
@@ -2410,7 +2406,7 @@ mod tests {
 			floor: CommitVersion(3),
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		host.lookup_view_version(ViewId(1), SourceVersion(8));
+		host.lookup_view_read(ViewId(1), SourceVersion(8));
 	}
 
 	struct Producer {
@@ -2443,7 +2439,7 @@ mod tests {
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
 
-		assert_eq!(host.lookup_view_version(ViewId(1), SourceVersion(31)), CommitVersion(32));
+		assert_eq!(host.lookup_view_read(ViewId(1), SourceVersion(31)), LookupAt::Commit(CommitVersion(32)));
 	}
 
 	#[test]
@@ -2460,7 +2456,7 @@ mod tests {
 			floor: CommitVersion(32),
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
-		host.lookup_view_version(ViewId(1), SourceVersion(31));
+		host.lookup_view_read(ViewId(1), SourceVersion(31));
 	}
 
 	#[test]

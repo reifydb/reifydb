@@ -3,7 +3,7 @@
 
 use std::{
 	borrow::Cow,
-	collections::{BTreeSet, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	ops::Bound,
 	sync::Arc,
 };
@@ -66,7 +66,7 @@ use crate::{
 	},
 	timer::{Timer, TimerMove, extension::TimerExtension},
 	transaction::{
-		FlowTransaction,
+		FlowTransaction, LookupAt,
 		dictionary::DictionaryExtension,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension},
 		reclaim::ReclaimExtension,
@@ -151,7 +151,22 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
 
-	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion;
+	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt;
+
+	fn lookup_read_at(
+		&mut self,
+		storage: StorageId,
+		ring: bool,
+		at: LookupAt,
+		partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+		match at {
+			LookupAt::Commit(version) => self.lookup_read(storage, ring, version, partitions),
+			LookupAt::Layered {
+				..
+			} => panic!("lookup at {at:?} reads inside a layered commit, which this host cannot read"),
+		}
+	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion>;
 }
@@ -503,11 +518,12 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			.collect()
 	}
 
-	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {
+	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt {
 		let Some(floor) = self.txn.lookup_floor() else {
-			return CommitVersion(source.0).min(self.version());
+			return LookupAt::Commit(CommitVersion(source.0).min(self.version()));
 		};
-		let commit = self.txn.lookup_view_version(view, source);
+		let read = self.txn.lookup_view_read(view, source);
+		let commit = read.map(LookupAt::commit);
 		if floor.0 > source.0
 			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
 		{
@@ -516,13 +532,97 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 				 producer committed after {commit:?}: the producer commit it needs may be collected"
 			);
 		}
-		let Some(commit) = commit else {
+		let Some(read) = read else {
 			panic!(
 				"lookup of view {view:?} found no completion of its producer flow with a source at or below \
 				 {source:?}: the tracker history no longer covers it"
 			);
 		};
-		commit.max(floor)
+		match read {
+			LookupAt::Commit(commit) => LookupAt::Commit(commit.max(floor)),
+			LookupAt::Layered {
+				..
+			} => read,
+		}
+	}
+
+	fn lookup_read_at(
+		&mut self,
+		storage: StorageId,
+		ring: bool,
+		at: LookupAt,
+		partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+		let LookupAt::Layered {
+			view,
+			base,
+			commit,
+			through,
+		} = at
+		else {
+			return self.lookup_read(storage, ring, at.commit(), partitions);
+		};
+		assert!(!ring, "lookup of ring storage {storage:?} must never read inside layered commit {commit:?}");
+		let Some(layers) = self.txn.lookup_view_layers(view, commit) else {
+			panic!(
+				"lookup of view {view:?} reads inside commit {commit:?}, but the tracker holds no layers for it"
+			);
+		};
+		let mut written: HashMap<Partition, BTreeMap<RowNumber, Option<EncodedBytes>>> = HashMap::new();
+		for (key, row) in layers.rows_through(through) {
+			if key.storage != storage || !partitions.contains(&key.partition) {
+				continue;
+			}
+			written.entry(key.partition).or_default().insert(key.row, row.clone());
+		}
+		if let Some(floor) = self.txn.lookup_floor()
+			&& base < floor
+		{
+			panic!(
+				"lookup of view {view:?} must read below commit {commit:?} at {base:?}, below the held lease \
+				 floor {floor:?}: that version may be collected, so the read could return a different row"
+			);
+		}
+		let ctx = self.txn.context().clone();
+		let mut query = self.txn.query();
+		query.read_as_of_version_inclusive(base);
+		partitions
+			.iter()
+			.map(|&partition| {
+				let layered = written.get(&partition);
+				let skip = layered.map_or(0, BTreeMap::len);
+				let key = |row: u64| StoragePartitionedRowKey::new(partition, RowNumber(row));
+				let mut newest_base = None;
+				for row in query.range_partitioned_row(
+					&ctx,
+					storage,
+					Bound::Included(key(u64::MAX)),
+					Bound::Included(key(0)),
+					RangeScope::All,
+					skip + 1,
+				) {
+					let row = row?;
+					if layered.is_some_and(|layered| layered.contains_key(&row.key.row.0)) {
+						continue;
+					}
+					newest_base = Some((row.key.row.0, row.bytes));
+					break;
+				}
+				let newest_layered = layered.and_then(|layered| {
+					layered.iter()
+						.rev()
+						.find_map(|(row, bytes)| bytes.clone().map(|bytes| (*row, bytes)))
+				});
+				Ok(match (newest_layered, newest_base) {
+					(Some(layered), Some(base)) => Some(if layered.0 >= base.0 {
+						layered
+					} else {
+						base
+					}),
+					(layered, base) => layered.or(base),
+				})
+			})
+			.collect()
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {

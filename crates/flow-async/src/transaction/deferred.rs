@@ -98,7 +98,7 @@ use crate::{
 	operator::{TimedOutput, sink::DurableSink},
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
+		ChangeCoordinate, DeferredParams, FlowTransaction, LookupAt, LookupContext, ViewLayers,
 		dictionary::DictionaryExtension,
 		pending_get,
 		read::{OperatorStateRangeIter, ReadFrom, range_read_from, read_from},
@@ -293,12 +293,16 @@ impl FlowTransaction for DeferredTransaction {
 		self.lookup.as_ref().map(|lookup| lookup.floor)
 	}
 
-	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> Option<CommitVersion> {
-		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_version(view, source))
-	}
-
 	fn lookup_view_commit_through(&self, view: ViewId, commit: CommitVersion) -> Option<CommitVersion> {
 		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_commit_through(view, commit))
+	}
+
+	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> Option<LookupAt> {
+		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_read(view, source))
+	}
+
+	fn lookup_view_layers(&self, view: ViewId, commit: CommitVersion) -> Option<Arc<ViewLayers>> {
+		self.lookup.as_ref().and_then(|lookup| lookup.versions.view_layers(view, commit))
 	}
 
 	fn clock(&self) -> &Clock {

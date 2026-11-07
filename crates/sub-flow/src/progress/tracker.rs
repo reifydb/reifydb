@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, HashMap, HashSet, VecDeque},
+	mem::take,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicI64, Ordering},
@@ -12,10 +13,13 @@ use std::{
 use reifydb_core::{
 	actors::flow::FlowActorMessage,
 	common::{CommitVersion, SourceVersion},
-	interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId},
+	interface::{
+		catalog::{flow::FlowId, id::ViewId, object::ObjectId},
+		commit::CommitEntry,
+	},
 	lifecycle::watermark::ConsumerPositions,
 };
-use reifydb_flow_async::transaction::LookupVersions;
+use reifydb_flow_async::transaction::{LookupAt, LookupVersions, ViewLayers};
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_value::value::duration::Duration;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -62,21 +66,100 @@ impl Default for ObjectVersionTracker {
 
 pub type FlowUpstreams = FxHashMap<FlowId, FxHashSet<ObjectId>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BacklogCommit {
-	Fold,
-	PerVersion,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct Completion {
 	commit: CommitVersion,
 	position: CommitVersion,
 	first_source: SourceVersion,
 	source: SourceVersion,
+	output: CommitOutput,
 }
 
 const COMPLETION_HISTORY: usize = 65_536;
+
+#[derive(Clone, Debug, Default)]
+pub enum CommitOutput {
+	#[default]
+	OneSource,
+	PerSource(Arc<ViewLayers>),
+	PerSourceUntracked,
+	PerSourceWithoutViewRows,
+}
+
+impl CommitOutput {
+	fn reads_inside(&self) -> bool {
+		matches!(self, Self::PerSource(_) | Self::PerSourceUntracked)
+	}
+
+	fn view_layers(&self) -> Option<Arc<ViewLayers>> {
+		match self {
+			Self::PerSource(layers) => Some(Arc::clone(layers)),
+			Self::OneSource | Self::PerSourceUntracked | Self::PerSourceWithoutViewRows => None,
+		}
+	}
+
+	pub fn of_layers(layers: ViewLayers) -> Self {
+		match layers.is_empty() {
+			true => Self::PerSourceWithoutViewRows,
+			false => Self::PerSource(Arc::new(layers)),
+		}
+	}
+
+	fn of(entry: &CommitEntry) -> Self {
+		match entry.layers.len() > 1 {
+			true => Self::of_layers(ViewLayers::from_entry(entry)),
+			false => Self::OneSource,
+		}
+	}
+
+	fn or(self, landed: Self) -> Self {
+		match self {
+			Self::OneSource => landed,
+			kept => kept,
+		}
+	}
+}
+
+#[derive(Clone)]
+struct Landed {
+	commit: CommitVersion,
+	first: SourceVersion,
+	output: CommitOutput,
+}
+
+#[derive(Default)]
+struct FlowSource {
+	source: Option<SourceVersion>,
+	landed: Option<Landed>,
+}
+
+#[derive(Default)]
+struct FlowSources {
+	by_flow: HashMap<FlowId, FlowSource>,
+}
+
+impl FlowSources {
+	fn advance(&mut self, flow_id: FlowId, source: SourceVersion) {
+		let current = &mut self.by_flow.entry(flow_id).or_default().source;
+		*current = Some(current.map_or(source, |current| current.max(source)));
+	}
+
+	fn land(&mut self, flow_id: FlowId, landed: Landed) {
+		self.by_flow.entry(flow_id).or_default().landed = Some(landed);
+	}
+
+	fn source(&self, flow_id: FlowId) -> Option<SourceVersion> {
+		self.by_flow.get(&flow_id).and_then(|flow| flow.source)
+	}
+
+	fn landed(&self, flow_id: FlowId, commit: CommitVersion) -> Option<Landed> {
+		self.by_flow.get(&flow_id).and_then(|flow| flow.landed.clone()).filter(|landed| landed.commit == commit)
+	}
+
+	fn remove(&mut self, flow_id: FlowId) {
+		self.by_flow.remove(&flow_id);
+	}
+}
 
 pub(crate) const FLOW_WAKE_COALESCE_NANOS: i64 = 20_000_000;
 
@@ -151,9 +234,7 @@ struct FlowProgress {
 	readers: HashMap<FlowId, HashSet<FlowId>>,
 	wakers: HashMap<FlowId, FlowWaker>,
 	source_counts: HashMap<FlowId, usize>,
-	backlog_commits: HashMap<FlowId, BacklogCommit>,
-	sources: HashMap<FlowId, SourceVersion>,
-	first_sources: HashMap<FlowId, (CommitVersion, SourceVersion)>,
+	sources: FlowSources,
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 	units: HashMap<FlowId, FlowId>,
 	ticks: HashMap<FlowId, u64>,
@@ -182,10 +263,7 @@ impl FlowProgress {
 	}
 
 	fn advance_source(&mut self, flow_id: FlowId, source: SourceVersion) {
-		let current = self.sources.entry(flow_id).or_insert(source);
-		if source > *current {
-			*current = source;
-		}
+		self.sources.advance(flow_id, source);
 	}
 
 	fn record_landed(&mut self, flow_id: FlowId, position: CommitVersion) {
@@ -211,20 +289,18 @@ impl FlowProgress {
 	}
 
 	fn record_completion(&mut self, flow_id: FlowId, commit: CommitVersion, position: CommitVersion) {
-		let source = self.sources.get(&flow_id).copied().unwrap_or(SourceVersion(position.0));
+		let source = self.sources.source(flow_id).unwrap_or(SourceVersion(position.0));
+		let landed = self.sources.landed(flow_id, commit);
 		let history = self.completions.entry(flow_id).or_default();
 		let source = history.back().map_or(source, |last| last.source.max(source));
-		let first_source = self
-			.first_sources
-			.get(&flow_id)
-			.filter(|(landed, _)| *landed == commit)
-			.map_or(source, |(_, first)| *first)
-			.min(source);
+		let first_source = landed.as_ref().map_or(source, |landed| landed.first).min(source);
 		let first_source = history.back().map_or(first_source, |last| last.first_source.max(first_source));
+		let output = landed.map_or(CommitOutput::OneSource, |landed| landed.output);
 		match history.back_mut() {
 			Some(last) if commit < last.commit => return,
 			Some(last) if commit == last.commit => {
 				last.position = last.position.max(position);
+				last.output = take(&mut last.output).or(output);
 				return;
 			}
 			_ => {}
@@ -234,6 +310,7 @@ impl FlowProgress {
 			position,
 			first_source,
 			source,
+			output,
 		});
 		if history.len() > COMPLETION_HISTORY {
 			history.pop_front();
@@ -247,9 +324,23 @@ impl FlowProgress {
 	}
 
 	fn commit_through_source(&self, flow_id: FlowId, source: SourceVersion) -> Option<CommitVersion> {
+		self.completion_through_source(flow_id, source).map(|entry| entry.commit)
+	}
+
+	fn completion_through_source(&self, flow_id: FlowId, source: SourceVersion) -> Option<Completion> {
 		let history = self.completions.get(&flow_id)?;
 		let above = history.partition_point(|entry| entry.first_source <= source);
-		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
+		history.get(above.checked_sub(1)?).cloned()
+	}
+
+	fn completion_layers(&self, flow_id: FlowId, commit: CommitVersion) -> Option<Arc<ViewLayers>> {
+		let history = self.completions.get(&flow_id)?;
+		let at = history.partition_point(|entry| entry.commit < commit);
+		history.get(at).filter(|entry| entry.commit == commit).and_then(|entry| entry.output.view_layers())
+	}
+
+	fn produces_for_lookup(&self, flow_id: FlowId) -> bool {
+		self.lookup_producers.values().any(|views| views.values().any(|producer| *producer == flow_id))
 	}
 
 	fn commit_through_commit(&self, flow_id: FlowId, commit: CommitVersion) -> Option<CommitVersion> {
@@ -264,21 +355,11 @@ impl FlowProgress {
 		history.get(above.checked_sub(1)?).map(|entry| entry.source)
 	}
 
-	fn backlog_commit(&self, flow_id: FlowId) -> BacklogCommit {
-		self.backlog_commits.get(&flow_id).copied().unwrap_or(BacklogCommit::PerVersion)
-	}
-
-	fn folds(&self, flow_id: FlowId) -> bool {
-		self.backlog_commit(flow_id) == BacklogCommit::Fold
-	}
-
-	fn readers_of(&self, producer: FlowId) -> Vec<(FlowWaker, bool)> {
+	fn readers_of(&self, producer: FlowId) -> Vec<FlowWaker> {
 		let Some(readers) = self.readers.get(&producer) else {
 			return Vec::new();
 		};
-		readers.iter()
-			.filter_map(|reader| self.wakers.get(reader).map(|waker| (waker.clone(), self.folds(*reader))))
-			.collect()
+		readers.iter().filter_map(|reader| self.wakers.get(reader).cloned()).collect()
 	}
 
 	fn link_reader(&mut self, reader: FlowId, upstreams: FlowUpstreams) {
@@ -340,9 +421,38 @@ impl FlowPositionTracker {
 		first: SourceVersion,
 		source: SourceVersion,
 	) {
+		let output = match first < source {
+			true => CommitOutput::PerSourceUntracked,
+			false => CommitOutput::OneSource,
+		};
+		self.update_committed_at(flow_id, version, commit, first, source, output);
+	}
+
+	pub fn update_committed_at(
+		&self,
+		flow_id: FlowId,
+		version: CommitVersion,
+		commit: CommitVersion,
+		first: SourceVersion,
+		source: SourceVersion,
+		output: CommitOutput,
+	) {
 		let readers = {
 			let mut progress = self.inner.write();
-			progress.first_sources.insert(flow_id, (commit, first));
+			let output = match output {
+				CommitOutput::PerSource(_) if !progress.produces_for_lookup(flow_id) => {
+					CommitOutput::PerSourceUntracked
+				}
+				output => output,
+			};
+			progress.sources.land(
+				flow_id,
+				Landed {
+					commit,
+					first,
+					output,
+				},
+			);
 			progress.advance_last_commit(flow_id, commit);
 			progress.advance_source(flow_id, source);
 			if !progress.advance_position(flow_id, version) {
@@ -392,6 +502,29 @@ impl FlowPositionTracker {
 		progress.record_completion(flow_id, commit, CommitVersion(source.0.saturating_sub(1)));
 	}
 
+	pub fn is_lookup_producer(&self, flow_id: FlowId) -> bool {
+		self.inner.read().produces_for_lookup(flow_id)
+	}
+
+	pub fn restore_completion_at(&self, producer: FlowId, entry: &CommitEntry) {
+		let output = CommitOutput::of(entry);
+		let mut progress = self.inner.write();
+		progress.sources.land(
+			producer,
+			Landed {
+				commit: entry.version.commit,
+				first: entry.first_source(),
+				output,
+			},
+		);
+		progress.advance_source(producer, entry.version.source);
+		progress.record_completion(
+			producer,
+			entry.version.commit,
+			CommitVersion(entry.version.source.0.saturating_sub(1)),
+		);
+	}
+
 	pub fn lookup_producers_of(&self, flow_id: FlowId) -> BTreeMap<ViewId, FlowId> {
 		self.inner.read().lookup_producers.get(&flow_id).cloned().unwrap_or_default()
 	}
@@ -438,10 +571,6 @@ impl FlowPositionTracker {
 		self.inner.read().readers.contains_key(&flow_id)
 	}
 
-	pub fn backlog_commit(&self, flow_id: FlowId) -> BacklogCommit {
-		self.inner.read().backlog_commit(flow_id)
-	}
-
 	pub fn set_waker(&self, flow_id: FlowId, waker: FlowWaker) {
 		self.inner.write().wakers.insert(flow_id, waker);
 	}
@@ -451,7 +580,7 @@ impl FlowPositionTracker {
 	}
 
 	pub fn wake_flows_now(&self, flow_ids: impl IntoIterator<Item = FlowId>) {
-		for (waker, _) in self.wakers_of(flow_ids) {
+		for waker in self.wakers_of(flow_ids) {
 			waker.wake_now();
 		}
 	}
@@ -460,26 +589,15 @@ impl FlowPositionTracker {
 		self.inner.write().source_counts.insert(flow_id, count);
 	}
 
-	pub fn set_backlog_commit(&self, flow_ids: impl IntoIterator<Item = FlowId>, backlog_commit: BacklogCommit) {
-		let mut progress = self.inner.write();
-		for flow_id in flow_ids {
-			progress.backlog_commits.insert(flow_id, backlog_commit);
-		}
-	}
-
 	pub fn registered_flows(&self) -> Vec<FlowId> {
 		let mut flows: Vec<FlowId> = self.inner.read().source_counts.keys().copied().collect();
 		flows.sort();
 		flows
 	}
 
-	fn wakers_of(&self, flow_ids: impl IntoIterator<Item = FlowId>) -> Vec<(FlowWaker, bool)> {
+	fn wakers_of(&self, flow_ids: impl IntoIterator<Item = FlowId>) -> Vec<FlowWaker> {
 		let progress = self.inner.read();
-		flow_ids.into_iter()
-			.filter_map(|flow_id| {
-				progress.wakers.get(&flow_id).map(|waker| (waker.clone(), progress.folds(flow_id)))
-			})
-			.collect()
+		flow_ids.into_iter().filter_map(|flow_id| progress.wakers.get(&flow_id).cloned()).collect()
 	}
 
 	pub fn remove(&self, flow_id: FlowId) {
@@ -489,9 +607,7 @@ impl FlowPositionTracker {
 		progress.unlink_reader(flow_id);
 		progress.wakers.remove(&flow_id);
 		progress.source_counts.remove(&flow_id);
-		progress.backlog_commits.remove(&flow_id);
-		progress.sources.remove(&flow_id);
-		progress.first_sources.remove(&flow_id);
+		progress.sources.remove(flow_id);
 		progress.lookup_producers.remove(&flow_id);
 		progress.units.remove(&flow_id);
 		progress.ticks.remove(&flow_id);
@@ -517,15 +633,32 @@ impl LookupVersions for FlowLookupVersions {
 		let producer = *self.tracker.inner.read().lookup_producers.get(&self.flow_id)?.get(&view)?;
 		self.tracker.commit_through_commit(producer, commit)
 	}
+
+	fn view_read(&self, view: ViewId, source: SourceVersion) -> Option<LookupAt> {
+		let progress = self.tracker.inner.read();
+		let producer = *progress.lookup_producers.get(&self.flow_id)?.get(&view)?;
+		let entry = progress.completion_through_source(producer, source)?;
+		if entry.output.reads_inside() && entry.first_source < entry.source && source < entry.source {
+			return Some(LookupAt::Layered {
+				view,
+				base: CommitVersion(entry.commit.0 - 1),
+				commit: entry.commit,
+				through: source,
+			});
+		}
+		Some(LookupAt::Commit(entry.commit))
+	}
+
+	fn view_layers(&self, view: ViewId, commit: CommitVersion) -> Option<Arc<ViewLayers>> {
+		let progress = self.tracker.inner.read();
+		let producer = *progress.lookup_producers.get(&self.flow_id)?.get(&view)?;
+		progress.completion_layers(producer, commit)
+	}
 }
 
-fn wake(readers: Vec<(FlowWaker, bool)>) {
-	for (reader, folds) in readers {
-		if folds {
-			reader.wake();
-		} else {
-			reader.wake_now();
-		}
+fn wake(readers: Vec<FlowWaker>) {
+	for reader in readers {
+		reader.wake();
 	}
 }
 
@@ -569,7 +702,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
-	use super::{BacklogCommit, COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
+	use super::{COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
 
 	const PRODUCER: FlowId = FlowId(1);
 	const READER: FlowId = FlowId(2);
@@ -826,9 +959,8 @@ mod tests {
 		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the cleared flag");
 	}
 
-	fn coalescing_harness(
-		backlog_commit: BacklogCommit,
-	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
+	fn coalescing_harness()
+	-> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
 		let clock = Clock::Mock(MockClock::from_millis(0));
 		let actor_system = ActorSystem::testing(Clock::testing());
 		let (sender, received) = mpsc::channel();
@@ -846,7 +978,6 @@ mod tests {
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
 		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
-		tracker.set_backlog_commit([READER], backlog_commit);
 		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock.clone()));
 		(clock, tracker, reader, pending, received)
 	}
@@ -854,7 +985,7 @@ mod tests {
 	#[test]
 	fn a_folding_reader_merges_wakes_while_pending_and_is_woken_after_every_drain() {
 		// a wake dropped after the reader cleared pending leaves it stranded until an unrelated drain.
-		let (clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::Fold);
+		let (clock, tracker, reader, pending, received) = coalescing_harness();
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
@@ -884,54 +1015,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_reader_that_commits_per_version_is_woken_on_every_upstream_step() {
-		// Delaying a reader that commits per version buys no folding, so coalescing it only adds latency.
-		let (_clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::PerVersion);
-
-		tracker.update(PRODUCER, CommitVersion(1));
-		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a cutting reader");
-
-		pending.store(false, Ordering::SeqCst);
-		tracker.update(PRODUCER, CommitVersion(2));
-		send_marker(&reader, FlowActorMessage::Sample);
-		assert_eq!(
-			next_message(&received),
-			"wake",
-			"a cutting reader must be woken inside the window too, or it lags for no gain"
-		);
-		assert_eq!(next_message(&received), "sample", "exactly one wake must follow the second step");
-	}
-
-	#[test]
-	fn a_flow_without_a_backlog_commit_is_woken_now() {
-		// A flow read as Fold before routing publishes it would coalesce a reader that needs every version.
-		assert!(!FlowPositionTracker::new().inner.read().folds(READER), "an unpublished flow must not fold");
-
-		let (clock, tracker, reader, pending, _received) = coalescing_harness(BacklogCommit::Fold);
-		assert!(tracker.inner.read().folds(READER), "the harness reader must start folding");
-		tracker.remove(READER);
-		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
-		tracker.set_waker(READER, FlowWaker::new(reader, pending, clock));
-		assert!(!tracker.inner.read().folds(READER), "a re-registered flow must not inherit a stale Fold");
-	}
-
-	#[test]
-	fn every_flow_given_a_backlog_commit_folds_on_the_shared_waker() {
-		// Every unit member must hold the head's value, or its outside reader wakes it as PerVersion.
-		const MEMBER: FlowId = FlowId(3);
-		let (clock, tracker, reader, pending, _received) = coalescing_harness(BacklogCommit::PerVersion);
-		tracker.set_waker(MEMBER, FlowWaker::new(reader, pending, clock));
-		tracker.set_backlog_commit([READER, MEMBER], BacklogCommit::Fold);
-		let progress = tracker.inner.read();
-		assert!(progress.folds(READER), "the first flow given Fold must fold");
-		assert!(progress.folds(MEMBER), "every later flow given Fold must fold too");
-	}
-
-	#[test]
 	fn the_full_wake_ignores_the_coalesce_window() {
 		// The periodic full wake is the liveness backstop that makes dropping a wake safe, so it must never
 		// itself be dropped.
-		let (_clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::Fold);
+		let (_clock, tracker, reader, pending, received) = coalescing_harness();
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");

@@ -297,7 +297,7 @@ fn a_lagging_producer_holds_the_lookup_then_the_price_its_commit_made_comes_out(
 }
 
 #[test]
-fn a_looked_up_view_with_a_backlog_commits_each_price_so_each_left_row_pairs_with_its_own() {
+fn a_looked_up_view_with_a_backlog_pairs_each_left_row_with_its_own_price() {
 	// A producer that folds prices 10 and 20 into one commit leaves no commit for level 1's source, so it misses
 	// 10.
 	let db = memory_db();

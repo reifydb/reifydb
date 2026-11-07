@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	Value, WithSubsystem, embedded,
+	Value, WalMode, WithSubsystem, embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::{
@@ -30,6 +30,19 @@ fn memory_db() -> TestDb {
 			.with_flow(|f| f.register_unmanaged_operator::<GatedPassThrough>())
 			.build()
 			.expect("build memory db with flow"),
+	);
+	db.hold_commits();
+	db
+}
+
+fn memory_db_without_commit_log() -> TestDb {
+	let mut db = TestDb::from(
+		embedded::memory()
+			.with_runtime_config(disarmed())
+			.with_wal(|wal| wal.mode(WalMode::Off))
+			.with_flow(|f| f.register_unmanaged_operator::<GatedPassThrough>())
+			.build()
+			.expect("build memory db with flow and no commit log"),
 	);
 	db.hold_commits();
 	db
@@ -175,8 +188,8 @@ fn an_append_of_two_tables_folds_its_backlog() {
 }
 
 #[test]
-fn a_producer_starts_committing_per_version_once_an_exact_reader_is_created() {
-	// A producer left folding after an exact reader appears pairs that reader's rows with a later price.
+fn a_producer_stays_exact_after_an_exact_reader_is_created() {
+	// A fold read past its layers after an exact reader appears pairs that reader's rows with a later price.
 	let db = memory_db();
 	create_price(&db, "app::src", "backlog_commit_e5");
 	create_level(&db);
@@ -196,7 +209,7 @@ fn a_producer_starts_committing_per_version_once_an_exact_reader_is_created() {
 	settle(&db);
 
 	assert!(first < second, "precondition: each price is its own source commit");
-	assert_eq!(price_commits_after(&db, first), 2, "a producer with a new exact reader must commit each price");
+	assert!(price_commits_after(&db, first) < 2, "a producer with a new exact reader must still fold its backlog");
 	let frames = db.query("FROM app::cost SORT { id: asc }");
 	let frame = frames.first().expect("cost frame");
 	let ids = frame.column("id").expect("id reads").expect("cost has id");
@@ -242,7 +255,7 @@ fn write_table(db: &TestDb, table: &str, k: &str, v: i64, insert: bool) {
 
 #[test]
 fn an_aggregate_behind_a_backlog_is_read_at_each_source() {
-	// A later source in one step must build on the state an earlier source wrote and land in its own commit;
+	// A later source in one step must build on the state an earlier source wrote and keep its own layer;
 	// otherwise the reader at the first source sees the final total, or the second total misses the first row.
 	let db = memory_db();
 	db.admin("CREATE NAMESPACE app");
@@ -262,7 +275,7 @@ fn an_aggregate_behind_a_backlog_is_read_at_each_source() {
 	settle(&db);
 
 	assert!(first < second, "precondition: each row is its own source commit");
-	assert_eq!(price_commits_after(&db, first), 2, "each source of the backlog must land in its own commit");
+	assert!(price_commits_after(&db, first) < 2, "the producer must fold its backlog behind the lookup");
 	assert_eq!(
 		cost_rows(&db),
 		vec![(Value::Int4(1), Some(Value::Int8(10))), (Value::Int4(2), Some(Value::Int8(15)))],
@@ -397,7 +410,7 @@ fn assert_the_left_producer_folded(db: &TestDb, written: &[CommitVersion]) {
 }
 
 #[test]
-fn a_view_on_the_left_of_an_emit_off_lookup_commits_per_version() {
+fn a_view_on_the_left_of_an_emit_off_lookup_reads_each_left_row_at_its_own_source() {
 	// A folded left view stamps every row with the last version, so the lookup hands early rows a later price.
 	let db = memory_db();
 	let written = paced_left_script(
@@ -411,7 +424,7 @@ fn a_view_on_the_left_of_an_emit_off_lookup_commits_per_version() {
 }
 
 #[test]
-fn a_view_on_the_left_of_a_latest_emit_off_join_commits_per_version() {
+fn a_view_on_the_left_of_a_latest_emit_off_join_reads_each_left_row_at_its_own_source() {
 	// An emit-off latest join reads the right as of the left row, so a folded left view joins a later price.
 	let db = memory_db();
 	let written = paced_left_script(
@@ -425,7 +438,7 @@ fn a_view_on_the_left_of_a_latest_emit_off_join_commits_per_version() {
 }
 
 #[test]
-fn a_view_two_flows_above_the_left_of_an_emit_off_lookup_commits_per_version() {
+fn a_view_two_flows_above_the_left_of_an_emit_off_lookup_reads_each_left_row_at_its_own_source() {
 	// A folded view above the left view hands it one change for the whole backlog, so every row reads the last
 	// price.
 	let db = memory_db();
@@ -439,7 +452,7 @@ fn a_view_two_flows_above_the_left_of_an_emit_off_lookup_commits_per_version() {
 }
 
 #[test]
-fn a_view_two_flows_above_the_right_of_an_emit_off_lookup_commits_per_version() {
+fn a_view_two_flows_above_the_right_of_an_emit_off_lookup_reads_each_left_row_at_its_own_source() {
 	// A folded view above the looked up view skips the versions in between, so an early row reads a stale price.
 	let db = memory_db();
 	create_price(&db, "app::src", "backlog_commit_r1");
@@ -643,4 +656,103 @@ fn a_latest_emit_off_join_matches_every_left_row_when_its_right_view_folds_a_bac
 		(1..=ROUNDS as i64).map(|id| (Value::Int8(id), Some(Value::Int8(id * 10)))).collect();
 	assert_eq!(cost_rows(&db), expected, "every left row must end matched to the right row written before it");
 	assert!(view_commits_after(&db, "b", from) < ROUNDS, "the right producer of a join must fold its backlog");
+}
+
+#[test]
+fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view() {
+	// A lookup that reads the folded commit's end state pairs early left rows with a later price; one that refuses
+	// the fold keeps its producer per version.
+	let db = memory_db();
+	let gate_name = "backlog_commit_x1";
+	create_price(&db, "app::src", gate_name);
+	create_cost(&db, "app::price");
+	settle(&db);
+
+	hold(&db, gate_name);
+	let from = write_src(&db, "a", 10, true);
+	insert_level(&db, 1, "a");
+	write_src(&db, "a", 20, false);
+	insert_level(&db, 2, "a");
+	write_src(&db, "a", 30, false);
+	insert_level(&db, 3, "a");
+	db.command("DELETE app::src FILTER { k == 'a' }");
+	insert_level(&db, 4, "a");
+	set_gate(gate_name, true);
+	settle(&db);
+
+	assert_eq!(
+		cost_rows(&db),
+		vec![
+			(Value::Int4(1), Some(Value::Int8(10))),
+			(Value::Int4(2), Some(Value::Int8(20))),
+			(Value::Int4(3), Some(Value::Int8(30))),
+			(Value::Int4(4), None),
+		],
+		"each left row must read the price as of its own source, and a removed price must read as none"
+	);
+	assert!(price_commits_after(&db, from) < 4, "the right producer must fold its backlog behind the lookup");
+}
+
+#[test]
+fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view_without_a_commit_log() {
+	// A lookup that reads the folded commit's end state pairs early left rows with a later price; one that refuses
+	// the fold keeps its producer per version.
+	let db = memory_db_without_commit_log();
+	let gate_name = "backlog_commit_x2";
+	create_price(&db, "app::src", gate_name);
+	create_cost(&db, "app::price");
+	settle(&db);
+
+	hold(&db, gate_name);
+	let from = write_src(&db, "a", 10, true);
+	insert_level(&db, 1, "a");
+	write_src(&db, "a", 20, false);
+	insert_level(&db, 2, "a");
+	write_src(&db, "a", 30, false);
+	insert_level(&db, 3, "a");
+	db.command("DELETE app::src FILTER { k == 'a' }");
+	insert_level(&db, 4, "a");
+	set_gate(gate_name, true);
+	settle(&db);
+
+	assert_eq!(
+		cost_rows(&db),
+		vec![
+			(Value::Int4(1), Some(Value::Int8(10))),
+			(Value::Int4(2), Some(Value::Int8(20))),
+			(Value::Int4(3), Some(Value::Int8(30))),
+			(Value::Int4(4), None),
+		],
+		"each left row must read the price as of its own source, and a removed price must read as none"
+	);
+	assert!(price_commits_after(&db, from) < 4, "the right producer must fold its backlog behind the lookup");
+}
+
+#[test]
+fn a_lookup_reads_a_folded_commit_whose_only_output_came_before_the_left_row() {
+	// A fold whose one output sits below a later quiet source must still answer the left row between them,
+	// otherwise it reads the commit before and finds no price.
+	let db = memory_db();
+	let gate_name = "backlog_commit_x3";
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::src { k: utf8, v: int8 }");
+	db.admin(&format!(
+		"CREATE DEFERRED VIEW app::price {{ k: utf8, v: int8 }} WITH {{ partition: {{ by: {{ k }} }} }} AS {{ \
+		 FROM app::src APPLY gated_pass_through {{ gate: '{gate_name}' }} FILTER {{ k == 'a' }} }}"
+	));
+	create_cost(&db, "app::price");
+	settle(&db);
+
+	hold(&db, gate_name);
+	write_src(&db, "a", 10, true);
+	insert_level(&db, 1, "a");
+	write_src(&db, "b", 1, true);
+	set_gate(gate_name, true);
+	settle(&db);
+
+	assert_eq!(
+		cost_rows(&db),
+		vec![(Value::Int4(1), Some(Value::Int8(10)))],
+		"the left row must read the price written just before it, even when the fold ends on a source with no output"
+	);
 }

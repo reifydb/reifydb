@@ -1115,11 +1115,7 @@ impl FlowSupervisor {
 					if let ObjectId::View(view) = object
 						&& let Some(producer) = producers.get(view)
 					{
-						self.flow_tracker.restore_completion(
-							*producer,
-							entry.version.commit,
-							entry.version.source,
-						);
+						self.flow_tracker.restore_completion_at(*producer, entry);
 					}
 				}
 				position.1 = entry.lsn.max(position.1);
@@ -1241,8 +1237,6 @@ impl FlowSupervisor {
 			self.flow_tracker.set_upstreams(*member, Default::default());
 			self.flow_tracker.set_lookup_producers(*member, BTreeMap::new());
 		}
-		let flows = unit.flow_ids();
-		self.flow_tracker.set_backlog_commit(flows.iter().copied(), routing::backlog_commit(graph, &flows));
 	}
 
 	fn spawn_flow(
@@ -1332,7 +1326,6 @@ impl FlowSupervisor {
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 		self.flow_tracker.set_lookup_producers(flow_id, routing::lookup_producers(graph, flow_id));
-		self.flow_tracker.set_backlog_commit([flow_id], routing::backlog_commit(graph, &[flow_id]));
 	}
 
 	fn update_tracker(&self, entries: &[Arc<CommitEntry>]) -> BTreeSet<ObjectId> {

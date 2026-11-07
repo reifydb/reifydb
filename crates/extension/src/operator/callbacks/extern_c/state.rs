@@ -944,7 +944,10 @@ mod join_row_expiry_guard_tests {
 			state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
 		timer::TimerMove,
-		transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
+		transaction::{
+			LookupAt,
+			join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
+		},
 	};
 	use reifydb_value::{
 		Result,
@@ -1222,7 +1225,7 @@ mod join_row_expiry_guard_tests {
 			unreachable!()
 		}
 
-		fn lookup_view_version(&self, _view: ViewId, _source: SourceVersion) -> CommitVersion {
+		fn lookup_view_read(&self, _view: ViewId, _source: SourceVersion) -> LookupAt {
 			unreachable!()
 		}
 

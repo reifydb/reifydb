@@ -15,16 +15,18 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::{CommitVersion, SourceVersion},
-	delta::RemoveVisibility,
+	delta::{Delta, RemoveVisibility},
 	interface::{
 		catalog::{flow::OperatorId, id::ViewId},
 		change::Change,
+		commit::CommitEntry,
 		store::MultiVersionRow,
 	},
 	key::{
 		any::TaggedKey,
 		bound::TaggedKeyBoundRange,
 		operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+		row::PartitionedRowKey,
 	},
 };
 use reifydb_flow::txn::{FlowBatch, FlowGet};
@@ -78,10 +80,115 @@ pub struct DeferredParams {
 	pub lookup: Option<LookupContext>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LookupAt {
+	Commit(CommitVersion),
+	Layered {
+		view: ViewId,
+		base: CommitVersion,
+		commit: CommitVersion,
+		through: SourceVersion,
+	},
+}
+
+#[derive(Debug, Default)]
+pub struct ViewLayers {
+	layers: Vec<(SourceVersion, Vec<(PartitionedRowKey, Option<EncodedBytes>)>)>,
+}
+
+impl ViewLayers {
+	pub fn from_pending(layers: &[(SourceVersion, Pending)]) -> Self {
+		Self {
+			layers: layers
+				.iter()
+				.map(|(source, pending)| {
+					let rows = pending
+						.rows_ordered()
+						.filter_map(|(key, write)| match TaggedKey::decode(key)? {
+							TaggedKey::PartitionedRow(row) => {
+								Some((row, written_row(write)))
+							}
+							_ => None,
+						})
+						.collect();
+					(*source, rows)
+				})
+				.filter(|(_, rows): &(SourceVersion, Vec<_>)| !rows.is_empty())
+				.collect(),
+		}
+	}
+
+	pub fn from_entry(entry: &CommitEntry) -> Self {
+		let mut layers: Vec<(SourceVersion, Vec<(PartitionedRowKey, Option<EncodedBytes>)>)> = Vec::new();
+		for (index, delta) in entry.deltas.iter().enumerate() {
+			let TaggedKey::PartitionedRow(row) = delta.key() else {
+				continue;
+			};
+			let bytes = match delta {
+				Delta::Set {
+					bytes,
+					..
+				} => Some(bytes.clone()),
+				Delta::Remove {
+					..
+				} => None,
+			};
+			let source = entry.source_at(index);
+			match layers.last_mut() {
+				Some((last, rows)) if *last == source => rows.push((row.clone(), bytes)),
+				_ => layers.push((source, vec![(row.clone(), bytes)])),
+			}
+		}
+		Self {
+			layers,
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.layers.is_empty()
+	}
+
+	pub fn rows_through(
+		&self,
+		through: SourceVersion,
+	) -> impl Iterator<Item = &(PartitionedRowKey, Option<EncodedBytes>)> + '_ {
+		self.layers.iter().take_while(move |(source, _)| *source <= through).flat_map(|(_, rows)| rows.iter())
+	}
+}
+
+fn written_row(write: &PendingWrite) -> Option<EncodedBytes> {
+	match write {
+		PendingWrite::Set(bytes) => Some(bytes.clone()),
+		PendingWrite::Remove {
+			..
+		} => None,
+	}
+}
+
+impl LookupAt {
+	pub fn commit(self) -> CommitVersion {
+		match self {
+			Self::Commit(commit) => commit,
+			Self::Layered {
+				commit,
+				..
+			} => commit,
+		}
+	}
+}
+
 pub trait LookupVersions: Send + Sync {
 	fn view_version(&self, view: ViewId, source: SourceVersion) -> Option<CommitVersion>;
 
 	fn view_commit_through(&self, view: ViewId, commit: CommitVersion) -> Option<CommitVersion>;
+
+	fn view_read(&self, view: ViewId, source: SourceVersion) -> Option<LookupAt> {
+		self.view_version(view, source).map(LookupAt::Commit)
+	}
+
+	fn view_layers(&self, _view: ViewId, _commit: CommitVersion) -> Option<Arc<ViewLayers>> {
+		None
+	}
 }
 
 #[derive(Clone)]
@@ -168,11 +275,15 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		None
 	}
 
-	fn lookup_view_version(&self, _view: ViewId, _source: SourceVersion) -> Option<CommitVersion> {
+	fn lookup_view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
 		None
 	}
 
-	fn lookup_view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
+	fn lookup_view_read(&self, _view: ViewId, _source: SourceVersion) -> Option<LookupAt> {
+		None
+	}
+
+	fn lookup_view_layers(&self, _view: ViewId, _commit: CommitVersion) -> Option<Arc<ViewLayers>> {
 		None
 	}
 
