@@ -1,164 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{Arc, LazyLock},
-	thread,
-};
+use std::sync::Arc;
 
 use reifydb::{
 	SqliteConfig, Value, WithSubsystem, embedded,
 	multi_storage::MultiStore,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_core::{
-	common::{CommitVersion, WindowRequirements, WindowSizeDomain},
-	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	lifecycle::task::LifecycleTask,
-	operator_with::ApplyWith,
-};
-use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig, sync::mutex::Mutex};
-use reifydb_sdk::{
-	error::Result as SdkResult,
-	flow::operator::{
-		OperatorMetadata, UnmanagedOperator,
-		column::operator::OperatorColumn,
-		context::{GuestContext, Unmanaged},
-		view::{ChangeView, ColumnsView, DiffView, RowView},
-	},
-	row,
-};
+use reifydb_core::{common::CommitVersion, lifecycle::task::LifecycleTask};
+use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
 	plane::{RetentionPlane, ledger::EngineFloors},
 };
-use reifydb_value::{
-	config::ExtensionParams,
-	value::{
-		constraint::TypeConstraint, diff_type::DiffType, duration::Duration, row_number::RowNumber,
-		value_type::ValueType,
-	},
-};
+use reifydb_value::value::duration::Duration;
+
+use crate::gate::{GatedPassThrough, gate, set_gate};
 
 const SETTLE: Duration = Duration::from_seconds_const(10);
 const HELD: Duration = Duration::from_seconds_const(1);
 const T0: &str = "2026-01-01T00:00:00Z";
-
-#[derive(Default, Clone, Copy)]
-struct Gate {
-	open: bool,
-	entered: bool,
-}
-
-static GATES: LazyLock<Mutex<HashMap<String, Gate>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn set_gate(name: &str, open: bool) {
-	GATES.lock().entry(name.to_string()).or_default().open = open;
-}
-
-fn gate(name: &str) -> Gate {
-	GATES.lock().get(name).copied().unwrap_or_default()
-}
-
-struct GatedPassThrough {
-	gate: String,
-}
-
-struct KeyValue {
-	k: String,
-	v: i64,
-}
-
-row!(KeyValue {
-	k: String,
-	v: i64
-});
-
-const KEY_VALUE_COLUMNS: &[OperatorColumn] = &[
-	OperatorColumn {
-		name: "k",
-		type_constraint: TypeConstraint::unconstrained(ValueType::Utf8),
-		description: "key, copied from the input",
-	},
-	OperatorColumn {
-		name: "v",
-		type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
-		description: "value, copied from the input",
-	},
-];
-
-impl OperatorMetadata for GatedPassThrough {
-	const NAME: &'static str = "gated_pass_through";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "Holds every step until its named gate opens, then passes k and v through";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = KEY_VALUE_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-}
-
-fn key_values(columns: &impl ColumnsView) -> SdkResult<(Vec<KeyValue>, Vec<RowNumber>)> {
-	let mut rows = Vec::with_capacity(columns.row_count());
-	let mut numbers = Vec::with_capacity(columns.row_count());
-	for index in 0..columns.row_count() {
-		let row = columns.row(index).expect("a row inside row_count must exist");
-		rows.push(KeyValue {
-			k: row.utf8("k")?.expect("k is set").to_string(),
-			v: row.i64("v")?.expect("v is set"),
-		});
-		numbers.push(row.row_number().expect("a flow row carries its row number"));
-	}
-	Ok((rows, numbers))
-}
-
-impl UnmanagedOperator for GatedPassThrough {
-	const UNMANAGED_BECAUSE: &'static str = "test operator";
-	const WINDOW: WindowRequirements = WindowRequirements {
-		takes_window: false,
-		kinds: &[],
-		domain: WindowSizeDomain::Time,
-		needs_pane: false,
-	};
-
-	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
-		Ok(GatedPassThrough {
-			gate: params.require_str("gate"),
-		})
-	}
-
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
-		GATES.lock().entry(self.gate.clone()).or_default().entered = true;
-		while !gate(&self.gate).open {
-			thread::sleep(Duration::from_milliseconds_const(10).to_std());
-		}
-		for index in 0..change.diff_count() {
-			let Some(diff) = change.diff(index) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert => {
-					let (rows, numbers) = key_values(&diff.post().expect("an insert has a post"))?;
-					ctx.emit_insert(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])?;
-				}
-				DiffType::Update => {
-					let (pre, numbers) = key_values(&diff.pre().expect("an update has a pre"))?;
-					let (post, _) = key_values(&diff.post().expect("an update has a post"))?;
-					ctx.emit_update(
-						&pre,
-						&post,
-						&numbers,
-						&vec![ctx.batch_time(); (&numbers).len()],
-					)?;
-				}
-				DiffType::Remove => {
-					let (rows, numbers) = key_values(&diff.pre().expect("a remove has a pre"))?;
-					ctx.emit_remove(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])?;
-				}
-			}
-		}
-		Ok(())
-	}
-}
 
 fn disarmed() -> RuntimeConfig {
 	RuntimeConfig::default().fatal(FatalConfig::disarmed())
@@ -432,6 +294,37 @@ fn a_lagging_producer_holds_the_lookup_then_the_price_its_commit_made_comes_out(
 	insert_level(&db, 2, "a", T0);
 	settle(&db);
 	assert_eq!(cost_rows(&db), vec![(1, Some(10)), (2, Some(20))]);
+}
+
+#[test]
+fn a_looked_up_view_with_a_backlog_commits_each_price_so_each_left_row_pairs_with_its_own() {
+	// A producer that folds prices 10 and 20 into one commit leaves no commit for level 1's source, so it misses
+	// 10.
+	let db = memory_db();
+	set_gate("backlog", false);
+	create_level(&db);
+	create_price_view(&db, "APPLY gated_pass_through { gate: 'backlog' }");
+	create_cost(&db, "INNER");
+	settle(&db);
+
+	put_price(&db, "src", "z", 1);
+	assert!(
+		poll_until(|| gate("backlog").entered.then_some(()), SETTLE).is_some(),
+		"the producer never started the step that holds the backlog"
+	);
+	put_price(&db, "src", "a", 10);
+	insert_level(&db, 1, "a", T0);
+	set_price(&db, "src", "a", 20);
+	insert_level(&db, 2, "a", T0);
+	set_gate("backlog", true);
+	settle(&db);
+
+	assert_eq!(db.row_count("FROM app::price"), 2, "precondition: one row per key in the looked-up view");
+	assert_eq!(
+		cost_rows(&db),
+		vec![(1, Some(10)), (2, Some(20))],
+		"each left row must pair with the price committed at or below its own source"
+	);
 }
 
 #[test]

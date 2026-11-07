@@ -50,6 +50,9 @@ mod view_hop_source_order;
 #[path = "regression/view_read_after_upstream_write.rs"]
 mod view_read_after_upstream_write;
 
+#[path = "regression/window_behind_a_backlog.rs"]
+mod window_behind_a_backlog;
+
 #[path = "regression/window_membership_cleanup.rs"]
 mod window_membership_cleanup;
 

@@ -45,6 +45,8 @@ mod frontier_propagation;
 mod frontier_shutdown;
 #[path = "fused_chain.rs"]
 mod fused_chain;
+#[path = "common/gate.rs"]
+mod gate;
 #[path = "lifecycle_coverage.rs"]
 mod lifecycle_coverage;
 #[path = "lower_aggregate.rs"]
