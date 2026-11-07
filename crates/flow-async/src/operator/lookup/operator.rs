@@ -647,11 +647,17 @@ impl LookupOperator {
 		}
 		let mut left = JoinRows::new(rows, JoinSide::Left, host.batch_time());
 		let encoded = left.encoded(host, &self.left_store)?;
-		for (left_idx, key) in held {
-			let group = self.left_store.group_of(&Hash128(key.0));
-			self.left_store.write_row(host, group, encoded.number(left_idx), encoded.row(left_idx))?;
-		}
-		Ok(())
+		let rows = held
+			.into_iter()
+			.map(|(left_idx, key)| {
+				(
+					self.left_store.group_of(&Hash128(key.0)),
+					encoded.number(left_idx),
+					encoded.row(left_idx).clone(),
+				)
+			})
+			.collect();
+		self.left_store.write_rows(host, rows)
 	}
 
 	fn changed_keys(

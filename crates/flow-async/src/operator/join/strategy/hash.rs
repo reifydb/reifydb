@@ -267,8 +267,8 @@ pub(crate) fn add_to_state_entry_batch(
 	}
 	let encoded = rows.encoded(host, store)?;
 	let group = store.group_of(key_hash);
-	let batch = indices.iter().map(|&idx| (encoded.number(idx), encoded.row(idx).clone())).collect();
-	store.write_rows(host, group, batch)
+	let batch = indices.iter().map(|&idx| (group, encoded.number(idx), encoded.row(idx).clone())).collect();
+	store.write_rows(host, batch)
 }
 
 pub(crate) struct EntryUpdate {
@@ -308,7 +308,7 @@ pub(crate) fn update_row_in_entry(
 	if pre_row_number != post_row_number {
 		store.remove_row_in(host, prepared.group, from_ref(&pre_row_number))?;
 	}
-	store.write_row(host, prepared.group, post_row_number, &row)?;
+	store.write_rows(host, vec![(prepared.group, post_row_number, row)])?;
 	Ok(true)
 }
 

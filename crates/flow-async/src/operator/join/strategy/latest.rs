@@ -200,7 +200,7 @@ pub(crate) fn write_right_rows(
 	{
 		right.remove_row_in(host, group, from_ref(previous))?;
 	}
-	right.write_row(host, group, number, &EncodedPodRow::from(content.clone()))?;
+	right.write_rows(host, vec![(group, number, EncodedPodRow::from(content.clone()))])?;
 	Ok(SlotChange {
 		old,
 		written: (held_at != Some(winner)).then_some((number, content)),
