@@ -62,6 +62,12 @@ impl Default for ObjectVersionTracker {
 
 pub type FlowUpstreams = FxHashMap<FlowId, FxHashSet<ObjectId>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BacklogCommit {
+	Fold,
+	PerVersion,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Completion {
 	commit: CommitVersion,
@@ -144,6 +150,7 @@ struct FlowProgress {
 	readers: HashMap<FlowId, HashSet<FlowId>>,
 	wakers: HashMap<FlowId, FlowWaker>,
 	source_counts: HashMap<FlowId, usize>,
+	backlog_commits: HashMap<FlowId, BacklogCommit>,
 	sources: HashMap<FlowId, SourceVersion>,
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 	units: HashMap<FlowId, FlowId>,
@@ -241,9 +248,12 @@ impl FlowProgress {
 		history.get(above.checked_sub(1)?).map(|entry| entry.commit)
 	}
 
+	fn backlog_commit(&self, flow_id: FlowId) -> BacklogCommit {
+		self.backlog_commits.get(&flow_id).copied().unwrap_or(BacklogCommit::PerVersion)
+	}
+
 	fn folds(&self, flow_id: FlowId) -> bool {
-		!self.readers.contains_key(&flow_id)
-			&& self.source_counts.get(&flow_id).copied().unwrap_or(usize::MAX) <= 1
+		self.backlog_commit(flow_id) == BacklogCommit::Fold
 	}
 
 	fn readers_of(&self, producer: FlowId) -> Vec<(FlowWaker, bool)> {
@@ -396,6 +406,10 @@ impl FlowPositionTracker {
 		self.inner.read().readers.contains_key(&flow_id)
 	}
 
+	pub fn backlog_commit(&self, flow_id: FlowId) -> BacklogCommit {
+		self.inner.read().backlog_commit(flow_id)
+	}
+
 	pub fn set_waker(&self, flow_id: FlowId, waker: FlowWaker) {
 		self.inner.write().wakers.insert(flow_id, waker);
 	}
@@ -412,6 +426,13 @@ impl FlowPositionTracker {
 
 	pub fn set_source_count(&self, flow_id: FlowId, count: usize) {
 		self.inner.write().source_counts.insert(flow_id, count);
+	}
+
+	pub fn set_backlog_commit(&self, flow_ids: impl IntoIterator<Item = FlowId>, backlog_commit: BacklogCommit) {
+		let mut progress = self.inner.write();
+		for flow_id in flow_ids {
+			progress.backlog_commits.insert(flow_id, backlog_commit);
+		}
 	}
 
 	pub fn registered_flows(&self) -> Vec<FlowId> {
@@ -436,6 +457,7 @@ impl FlowPositionTracker {
 		progress.unlink_reader(flow_id);
 		progress.wakers.remove(&flow_id);
 		progress.source_counts.remove(&flow_id);
+		progress.backlog_commits.remove(&flow_id);
 		progress.sources.remove(&flow_id);
 		progress.lookup_producers.remove(&flow_id);
 		progress.units.remove(&flow_id);
@@ -514,7 +536,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
-	use super::{COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
+	use super::{BacklogCommit, COMPLETION_HISTORY, FlowPositionTracker, FlowProgress, FlowWaker};
 
 	const PRODUCER: FlowId = FlowId(1);
 	const READER: FlowId = FlowId(2);
@@ -754,7 +776,7 @@ mod tests {
 	}
 
 	fn coalescing_harness(
-		source_count: usize,
+		backlog_commit: BacklogCommit,
 	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
 		let clock = Clock::Mock(MockClock::from_millis(0));
 		let actor_system = ActorSystem::testing(Clock::testing());
@@ -773,7 +795,7 @@ mod tests {
 		let pending = Arc::new(AtomicBool::new(false));
 		let tracker = FlowPositionTracker::new();
 		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
-		tracker.set_source_count(READER, source_count);
+		tracker.set_backlog_commit([READER], backlog_commit);
 		tracker.set_waker(READER, FlowWaker::new(reader.clone(), Arc::clone(&pending), clock.clone()));
 		(clock, tracker, reader, pending, received)
 	}
@@ -781,7 +803,7 @@ mod tests {
 	#[test]
 	fn a_folding_reader_merges_wakes_while_pending_and_is_woken_after_every_drain() {
 		// a wake dropped after the reader cleared pending leaves it stranded until an unrelated drain.
-		let (clock, tracker, reader, pending, received) = coalescing_harness(1);
+		let (clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::Fold);
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
@@ -811,10 +833,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_reader_that_cuts_per_source_is_woken_on_every_upstream_step() {
-		// Delaying a reader that cuts one source version per step buys no folding, so it must never be
-		// coalesced or it pays latency for nothing.
-		let (_clock, tracker, reader, pending, received) = coalescing_harness(2);
+	fn a_reader_that_commits_per_version_is_woken_on_every_upstream_step() {
+		// Delaying a reader that commits per version buys no folding, so coalescing it only adds latency.
+		let (_clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::PerVersion);
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a cutting reader");
@@ -831,10 +852,35 @@ mod tests {
 	}
 
 	#[test]
+	fn a_flow_without_a_backlog_commit_is_woken_now() {
+		// A flow read as Fold before routing publishes it would coalesce a reader that needs every version.
+		assert!(!FlowPositionTracker::new().inner.read().folds(READER), "an unpublished flow must not fold");
+
+		let (clock, tracker, reader, pending, _received) = coalescing_harness(BacklogCommit::Fold);
+		assert!(tracker.inner.read().folds(READER), "the harness reader must start folding");
+		tracker.remove(READER);
+		tracker.set_upstreams(READER, FxHashMap::from_iter([(PRODUCER, FxHashSet::default())]));
+		tracker.set_waker(READER, FlowWaker::new(reader, pending, clock));
+		assert!(!tracker.inner.read().folds(READER), "a re-registered flow must not inherit a stale Fold");
+	}
+
+	#[test]
+	fn every_flow_given_a_backlog_commit_folds_on_the_shared_waker() {
+		// Every unit member must hold the head's value, or its outside reader wakes it as PerVersion.
+		const MEMBER: FlowId = FlowId(3);
+		let (clock, tracker, reader, pending, _received) = coalescing_harness(BacklogCommit::PerVersion);
+		tracker.set_waker(MEMBER, FlowWaker::new(reader, pending, clock));
+		tracker.set_backlog_commit([READER, MEMBER], BacklogCommit::Fold);
+		let progress = tracker.inner.read();
+		assert!(progress.folds(READER), "the first flow given Fold must fold");
+		assert!(progress.folds(MEMBER), "every later flow given Fold must fold too");
+	}
+
+	#[test]
 	fn the_full_wake_ignores_the_coalesce_window() {
 		// The periodic full wake is the liveness backstop that makes dropping a wake safe, so it must never
 		// itself be dropped.
-		let (_clock, tracker, reader, pending, received) = coalescing_harness(1);
+		let (_clock, tracker, reader, pending, received) = coalescing_harness(BacklogCommit::Fold);
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
@@ -852,8 +898,7 @@ mod tests {
 
 	#[test]
 	fn a_flow_has_readers_only_while_another_flow_lists_it_upstream() {
-		// The slice cut and the committer split both key off this flag, so a stale true caps a terminal flow
-		// at one commit per source version and a stale false lets a read producer fold out of order.
+		// The committer split keys off this flag, so it must follow every upstream link and unlink exactly.
 		let tracker = FlowPositionTracker::new();
 		assert!(!tracker.has_readers(PRODUCER), "an unlinked flow must have no readers");
 

@@ -19,7 +19,7 @@ use reifydb_engine::lift::entry_changed_objects;
 use reifydb_value::reifydb_assertions;
 use rustc_hash::FxHashSet;
 
-use crate::commit::slice::accepts;
+use crate::{commit::slice::accepts, progress::tracker::BacklogCommit};
 
 #[derive(Clone)]
 pub struct ReadWindow {
@@ -228,9 +228,9 @@ pub struct Merged {
 	pub more: bool,
 }
 
-pub struct StepCut<'a> {
+pub struct StepScope<'a> {
 	pub source_objects: &'a BTreeSet<ObjectId>,
-	pub per_source: bool,
+	pub backlog_commit: BacklogCommit,
 }
 
 type Rows<'a> = Peekable<Box<dyn Iterator<Item = (bool, &'a Arc<CommitEntry>)> + 'a>>;
@@ -239,7 +239,7 @@ pub fn merge(
 	cursor: CommitVersion,
 	tables: &StreamRead,
 	upstreams: &HashMap<FlowId, UpstreamRead>,
-	cut: &StepCut,
+	scope: &StepScope,
 ) -> Merged {
 	let gated: FxHashSet<ObjectId> =
 		upstreams.values().flat_map(|upstream| upstream.views.iter().copied()).collect();
@@ -254,7 +254,7 @@ pub fn merge(
 			.take_while(|entry| entry.version.commit <= target)
 			.filter(|entry| {
 				entry.version.commit > cursor
-					&& !touches(entry, &gated) && reads(entry, cut.source_objects)
+					&& !touches(entry, &gated) && reads(entry, scope.source_objects)
 			})
 			.map(|entry| (true, entry));
 		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
@@ -284,7 +284,7 @@ pub fn merge(
 	let mut ordered: Vec<(bool, CommitVersion, Arc<CommitEntry>)> = Vec::new();
 	let mut next: Option<SourceVersion> = None;
 	let mut streams = streams();
-	if cut.per_source {
+	if scope.backlog_commit == BacklogCommit::PerVersion {
 		let first =
 			streams.iter_mut().filter_map(|rows| rows.peek().map(|(_, entry)| entry.version.source)).min();
 		if let Some(first) = first {
@@ -410,10 +410,10 @@ mod tests {
 		BTreeSet::from([ObjectId::Table(TableId(1)), ObjectId::View(ViewId(5)), ObjectId::View(ViewId(6))])
 	}
 
-	fn whole(source_objects: &BTreeSet<ObjectId>) -> StepCut<'_> {
-		StepCut {
+	fn fold(source_objects: &BTreeSet<ObjectId>) -> StepScope<'_> {
+		StepScope {
 			source_objects,
-			per_source: false,
+			backlog_commit: BacklogCommit::Fold,
 		}
 	}
 
@@ -431,7 +431,7 @@ mod tests {
 			cv(3),
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(None, read(vec![], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
 		assert!(merged.items.is_empty(), "a held reader must not hand out table rows beyond its cursor");
@@ -444,7 +444,7 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(5), read(vec![view_row(7, 5)], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
 	}
@@ -456,7 +456,7 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(4)], 20, false),
 			&one(upstream(Some(4), read(vec![view_row(6, 3)], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(6, 3), (4, 4)]);
 	}
@@ -468,7 +468,7 @@ mod tests {
 			cv(0),
 			&read(vec![], 20, false),
 			&one(upstream(None, read(vec![view_row(8, 3), view_row(9, 6)], 9, true))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(merged.target, cv(5));
 		assert_eq!(versions(&merged), vec![(8, 3)], "the row stamped 6 may have siblings beyond the read");
@@ -501,7 +501,7 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), view.clone()], 20, false),
 			&one(upstream(Some(5), read(vec![view], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5), (5, 5)]);
 	}
@@ -513,7 +513,7 @@ mod tests {
 			cv(5),
 			&read(vec![], 20, false),
 			&one(upstream(Some(9), read(vec![view_row(7, 5), view_row(9, 8)], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(9, 8)]);
 	}
@@ -525,7 +525,7 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(3)], 3, true),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(merged.target, cv(3));
 		assert!(merged.more);
@@ -542,7 +542,7 @@ mod tests {
 				upstream(Some(10), read(vec![view_row(12, 7)], 20, false)),
 				upstream_of(ViewId(6), Some(4), read(vec![], 20, false)),
 			),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(merged.target, cv(4));
 		assert!(
@@ -563,7 +563,7 @@ mod tests {
 				upstream(Some(6), read(vec![view_row(8, 5)], 20, false)),
 				upstream_of(ViewId(6), Some(6), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(merged.target, cv(6));
 		assert_eq!(
@@ -573,10 +573,10 @@ mod tests {
 		);
 	}
 
-	fn per_source(source_objects: &BTreeSet<ObjectId>) -> StepCut<'_> {
-		StepCut {
+	fn per_version(source_objects: &BTreeSet<ObjectId>) -> StepScope<'_> {
+		StepScope {
 			source_objects,
-			per_source: true,
+			backlog_commit: BacklogCommit::PerVersion,
 		}
 	}
 
@@ -613,13 +613,13 @@ mod tests {
 				upstream(Some(7), read(vec![shared.clone()], 20, false)),
 				upstream_of(ViewId(6), Some(7), read(vec![shared], 20, false)),
 			),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5)], "one commit must reach the reader exactly once");
 	}
 
 	#[test]
-	fn a_commit_holding_both_producers_rows_merges_once_in_a_per_source_step() {
+	fn a_commit_holding_both_producers_rows_merges_once_in_a_per_version_step() {
 		// A per-source step collects from every stream before it sorts, so the same commit must not survive
 		// twice there either.
 		let objects = sources();
@@ -631,7 +631,7 @@ mod tests {
 				upstream(Some(7), read(vec![shared.clone()], 20, false)),
 				upstream_of(ViewId(6), Some(7), read(vec![shared], 20, false)),
 			),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(7, 5)], "one commit must reach the reader exactly once");
 	}
@@ -650,7 +650,7 @@ mod tests {
 				),
 				upstream_of(ViewId(6), Some(8), read(vec![shared, other_view_row(9, 6)], 20, false)),
 			),
-			&whole(&sources()),
+			&fold(&sources()),
 		);
 		assert_eq!(
 			versions(&merged),
@@ -660,14 +660,14 @@ mod tests {
 	}
 
 	#[test]
-	fn a_per_source_step_hands_out_one_source_and_stops_below_the_next() {
+	fn a_per_version_step_hands_out_one_source_and_stops_below_the_next() {
 		// Handing out the whole tail makes every drain rework rows the step drops at its first source change.
 		let objects = sources();
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5), table_row(6), table_row(7)], 20, false),
 			&one(upstream(Some(10), read(vec![view_row(8, 5), view_row(9, 7)], 20, false))),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
 		assert_eq!(merged.target, cv(5), "the step must stop just below source 6, the lowest one left");
@@ -682,7 +682,7 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(10), read(vec![view_row(8, 3)], 20, false))),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 3)]);
 		assert_eq!(merged.target, cv(4));
@@ -696,21 +696,21 @@ mod tests {
 			cv(0),
 			&read(vec![table_row(5), row(StorageId::table(2), 6, 6), table_row(7)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(5, 5)]);
 		assert_eq!(merged.target, cv(6), "the unread commit 6 must be passed together with source 5");
 	}
 
 	#[test]
-	fn a_per_source_step_with_one_source_left_runs_to_the_target() {
+	fn a_per_version_step_with_one_source_left_runs_to_the_target() {
 		// Stopping below a source that does not exist would never let the reader reach the gate.
 		let objects = sources();
 		let merged = merge(
 			cv(0),
 			&read(vec![table_row(5)], 20, false),
 			&one(upstream(Some(20), read(vec![view_row(8, 5)], 20, false))),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 		assert_eq!(versions(&merged), vec![(8, 5), (5, 5)]);
 		assert_eq!(merged.target, cv(20));
@@ -727,7 +727,7 @@ mod tests {
 			cv(0),
 			&read(vec![row(StorageId::table(1), 5, 5), row(StorageId::table(1), 6, 3)], 20, false),
 			&one(upstream(Some(10), read(vec![], 20, false))),
-			&per_source(&objects),
+			&per_version(&objects),
 		);
 	}
 

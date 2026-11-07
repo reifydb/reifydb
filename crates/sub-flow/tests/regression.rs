@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "regression/backlog_commit.rs"]
+mod backlog_commit;
+
 #[path = "regression/flow_aggregate_digest_key.rs"]
 mod flow_aggregate_digest_key;
 

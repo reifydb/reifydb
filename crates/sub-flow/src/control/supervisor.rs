@@ -1241,6 +1241,12 @@ impl FlowSupervisor {
 			self.flow_tracker.set_upstreams(*member, Default::default());
 			self.flow_tracker.set_lookup_producers(*member, BTreeMap::new());
 		}
+		let flows = unit.flow_ids();
+		let source_count = |flow| state.sources.get(&flow).expect("a published flow has its sources").len();
+		self.flow_tracker.set_backlog_commit(
+			flows.iter().copied(),
+			routing::backlog_commit(graph, &flows, &source_count),
+		);
 	}
 
 	fn spawn_flow(
@@ -1330,6 +1336,9 @@ impl FlowSupervisor {
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 		self.flow_tracker.set_lookup_producers(flow_id, routing::lookup_producers(graph, flow_id));
+		let source_count = |flow| state.sources.get(&flow).expect("a published flow has its sources").len();
+		self.flow_tracker
+			.set_backlog_commit([flow_id], routing::backlog_commit(graph, &[flow_id], &source_count));
 	}
 
 	fn update_tracker(&self, entries: &[Arc<CommitEntry>]) -> BTreeSet<ObjectId> {

@@ -49,6 +49,7 @@ use tracing::instrument;
 use crate::{
 	commit::committer::{FlowSlice, produced_output},
 	marker::{MarkerMap, written_views},
+	progress::tracker::BacklogCommit,
 };
 
 pub struct SliceConfig {
@@ -68,7 +69,7 @@ pub struct SliceCursor<'a> {
 	pub lsn: Lsn,
 	pub frontier: (CommitVersion, Lsn),
 	pub durable_cursor: CommitVersion,
-	pub has_readers: bool,
+	pub backlog_commit: BacklogCommit,
 }
 
 pub enum SliceStep {
@@ -180,14 +181,14 @@ impl SliceComputer {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let (mut advance_to, mut more) = (advance_to, more);
 		let mut relevant: Vec<&CommitEntry> = Vec::new();
-		let cut_per_source = cuts_per_source(cursor.has_readers, cursor.source_objects);
+		let per_version = cursor.backlog_commit == BacklogCommit::PerVersion;
 		for entry in items[start..].iter().map(Arc::as_ref) {
 			if !is_relevant(entry, cursor.source_objects) {
 				continue;
 			}
 			if let Some(first) = relevant.first()
 				&& entry.version.source != first.version.source
-				&& cut_per_source
+				&& per_version
 			{
 				advance_to = CommitVersion(entry.version.source.0 - 1);
 				more = true;
@@ -534,10 +535,6 @@ fn tag_dictionaries(view: &View, columns: &RecordBatch) -> Result<RecordBatch> {
 
 fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, config: &SliceConfig) -> bool {
 	advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag
-}
-
-pub(crate) fn cuts_per_source(has_readers: bool, source_objects: &BTreeSet<ObjectId>) -> bool {
-	has_readers || source_objects.len() > 1
 }
 
 pub(crate) fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> bool {
@@ -1163,7 +1160,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
-					has_readers: true,
+					backlog_commit: BacklogCommit::PerVersion,
 				},
 				&config,
 			) {
@@ -1256,7 +1253,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: cursor,
-					has_readers: true,
+					backlog_commit: BacklogCommit::PerVersion,
 				},
 				&config,
 			) {
@@ -1388,7 +1385,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
-					has_readers: true,
+					backlog_commit: BacklogCommit::PerVersion,
 				},
 				&config,
 			) {
@@ -1531,7 +1528,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: CommitVersion(0),
-					has_readers: true,
+					backlog_commit: BacklogCommit::PerVersion,
 				},
 				&far,
 			) {
@@ -1568,7 +1565,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				has_readers: true,
+				backlog_commit: BacklogCommit::PerVersion,
 			},
 			&due,
 		) {
@@ -1637,9 +1634,8 @@ mod integration {
 	}
 
 	#[test]
-	fn a_flow_with_readers_takes_one_source_version_per_step() {
-		// A reader merges its producers by source version, so a step that spans two of them would let one
-		// producer run ahead of the other inside a single commit and reorder what the reader sees.
+	fn a_per_version_flow_takes_one_source_version_per_step() {
+		// An exact reader merges producers by source version, so a step spanning two reorders what it sees.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
@@ -1663,7 +1659,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				has_readers: true,
+				backlog_commit: BacklogCommit::PerVersion,
 			},
 			&config,
 		)
@@ -1691,9 +1687,8 @@ mod integration {
 	}
 
 	#[test]
-	fn a_flow_with_no_readers_folds_every_pending_source_version_into_one_step() {
-		// Nothing reads this flow's output by source version, so a flow that fell behind must catch up in
-		// one step; cutting per source version caps it at one commit per source version forever.
+	fn a_folding_flow_folds_every_pending_source_version_into_one_step() {
+		// A folding flow that fell behind must catch up in one step, or it stays one commit per version behind.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		let inserted = three_separate_inserts(&te);
 		let engine = te.inner().clone();
@@ -1717,7 +1712,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				has_readers: false,
+				backlog_commit: BacklogCommit::Fold,
 			},
 			&config,
 		)
@@ -1750,9 +1745,8 @@ mod integration {
 	}
 
 	#[test]
-	fn a_flow_with_no_readers_that_merges_two_sources_still_takes_one_source_version_per_step() {
-		// A flow that merges two inputs pairs them by source version inside its own join, so folding would let
-		// one input run ahead of the other within a step even though nothing downstream reads this flow.
+	fn a_folding_flow_with_two_sources_folds_every_pending_source_version_into_one_step() {
+		// Only routing may make a flow commit per version, or an append is capped at one per version.
 		let te = TestEngine::builder().with_commit_queue().with_wal(|wal| wal.mode(WalMode::default())).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
@@ -1782,7 +1776,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				has_readers: false,
+				backlog_commit: BacklogCommit::Fold,
 			},
 			&config,
 		)
@@ -1792,7 +1786,7 @@ mod integration {
 			SliceStep::Commit {
 				more,
 				..
-			} => assert!(more, "a merging flow must stop at the first source boundary"),
+			} => assert!(!more, "a folding flow must take the whole batch even with two sources"),
 			SliceStep::Skip {
 				advance_to,
 				..
@@ -1839,7 +1833,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
-				has_readers: false,
+				backlog_commit: BacklogCommit::Fold,
 			},
 			&SliceConfig {
 				checkpoint_lag: 10_000,
@@ -2033,7 +2027,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(4),
-				has_readers: false,
+				backlog_commit: BacklogCommit::Fold,
 			},
 			advance_to,
 			false,

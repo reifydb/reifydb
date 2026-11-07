@@ -10,6 +10,8 @@ use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectI
 use reifydb_flow::analyzer::FlowDependencyGraph;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::progress::tracker::BacklogCommit;
+
 pub fn flow_completeness_objects(
 	graph: &FlowDependencyGraph,
 	flow: FlowId,
@@ -228,6 +230,27 @@ pub fn unit_lookup_producers(graph: &FlowDependencyGraph, unit: &FusedUnit) -> B
 	producers
 }
 
+pub fn backlog_commit(
+	graph: &FlowDependencyGraph,
+	flows: &[FlowId],
+	source_count: &dyn Fn(FlowId) -> usize,
+) -> BacklogCommit {
+	let inside: BTreeSet<FlowId> = flows.iter().copied().collect();
+	let per_version = inside.iter().any(|flow| {
+		let read_exactly_outside = produced_by(graph, *flow).iter().any(|view| {
+			graph.source_exact_reads
+				.get(view)
+				.is_some_and(|readers| readers.iter().any(|reader| !inside.contains(reader)))
+		});
+		read_exactly_outside || (graph.pairs_by_source.contains(flow) && source_count(*flow) > 1)
+	});
+	if per_version {
+		BacklogCommit::PerVersion
+	} else {
+		BacklogCommit::Fold
+	}
+}
+
 fn produced_by(graph: &FlowDependencyGraph, flow: FlowId) -> BTreeSet<ViewId> {
 	graph.sink_views.iter().filter(|(_, producer)| **producer == flow).map(|(view, _)| *view).collect()
 }
@@ -263,6 +286,8 @@ mod tests {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 			lookup_views: BTreeMap::new(),
+			source_exact_reads: BTreeMap::new(),
+			pairs_by_source: BTreeSet::new(),
 		}
 	}
 
@@ -542,6 +567,57 @@ mod tests {
 	}
 
 	#[test]
+	fn a_unit_commits_per_version_only_when_a_flow_outside_it_reads_a_member_exactly() {
+		// A wrong Fold hides versions from an exact reader; a wrong PerVersion throws away the backlog gain.
+		let unit = [FlowId(10), FlowId(20), FlowId(30)];
+		let one = |_: FlowId| 1;
+
+		let mut graph = chain();
+		graph.source_exact_reads.insert(ViewId(6), vec![FlowId(40)]);
+		assert_eq!(
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::PerVersion,
+			"an outside exact reader of a middle member's view must see every version"
+		);
+
+		let mut graph = chain();
+		graph.source_exact_reads.insert(ViewId(6), vec![FlowId(30)]);
+		assert_eq!(
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::Fold,
+			"a member reading its parent exactly already sees every row inside the unit"
+		);
+
+		let mut graph = chain();
+		graph.source_views.insert(ViewId(7), vec![FlowId(40)]);
+		assert_eq!(
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::Fold,
+			"a plain reader of the tail reads the folded state correctly"
+		);
+
+		let mut graph = chain();
+		graph.pairs_by_source.insert(FlowId(10));
+		let two_at_head = |flow: FlowId| {
+			if flow == FlowId(10) {
+				2
+			} else {
+				1
+			}
+		};
+		assert_eq!(
+			backlog_commit(&graph, &unit, &two_at_head),
+			BacklogCommit::PerVersion,
+			"a hash join over two sources must pair each version"
+		);
+		assert_eq!(
+			backlog_commit(&graph, &unit, &one),
+			BacklogCommit::Fold,
+			"a hash join over one source has nothing to pair across sources"
+		);
+	}
+
+	#[test]
 	fn unit_formation_refuses_a_lookup_of_an_in_unit_producer() {
 		// A lookup reads committed state only, so a member looking up its own unit would read the previous
 		// step.
@@ -612,7 +688,7 @@ mod tests {
 
 #[cfg(test)]
 mod lookup_tests {
-	use std::collections::BTreeMap;
+	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 	use reifydb_flow::analyzer::FlowDependencyGraph;
@@ -637,6 +713,8 @@ mod lookup_tests {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::from([(PRICES, PRODUCER), (LEVELS, PRODUCER)]),
 			lookup_views,
+			source_exact_reads: BTreeMap::new(),
+			pairs_by_source: BTreeSet::new(),
 		}
 	}
 

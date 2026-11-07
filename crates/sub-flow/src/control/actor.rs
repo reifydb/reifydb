@@ -66,8 +66,8 @@ use crate::{
 	commit::{
 		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_unit_backfill, upstream_write_after},
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply, produced_output},
-		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
-		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
+		merge::{HeldReads, ReadCache, ReadStream, StepScope, StreamRead, UpstreamRead, UpstreamReads, merge},
+		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep},
 	},
 	control::{health::FlowHealthRegistry, supervisor::FlowSupervisorMessage},
 	marker::MarkerMap,
@@ -624,11 +624,11 @@ impl FlowActor {
 			upstream_reads.reads.insert(*producer, upstream);
 		}
 		state.held_reads.clear();
-		let cut = StepCut {
+		let scope = StepScope {
 			source_objects: &state.source_objects,
-			per_source: cuts_per_source(self.unit_has_readers(), &state.source_objects),
+			backlog_commit: self.flow_tracker.backlog_commit(self.flow_id),
 		};
-		let merged = merge(cursor, &tables, &upstream_reads.reads, &cut);
+		let merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
 		if merged.target <= cursor {
 			let lagging: Vec<FlowId> = upstream_reads
 				.reads
@@ -755,7 +755,7 @@ impl FlowActor {
 					lsn: state.cursor_lsn,
 					frontier: state.frontier,
 					durable_cursor: state.durable_cursor,
-					has_readers: self.unit_has_readers(),
+					backlog_commit: self.flow_tracker.backlog_commit(self.flow_id),
 				},
 				advance_to,
 				more,
