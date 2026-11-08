@@ -145,25 +145,19 @@ impl FlowEngineInner {
 		source_changes: Vec<Change>,
 		topo: &[OperatorId],
 	) -> Result<u32> {
-		let mut views: HashMap<OperatorId, Vec<Change>> = HashMap::new();
-		let mut others: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
 		for change in source_changes {
 			if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
 				collect_completeness(&change, &mut asserted)?;
 				continue;
 			}
-			let pending = match change.origin {
-				ChangeOrigin::Object(ObjectId::View(_)) => &mut views,
-				_ => &mut others,
-			};
-			self.seed_entry_nodes(flow, flow_id, change, pending);
+			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
 		let sources = self.watermark_sources(flow);
-		let mut arrivals: SourceArrivals = views
+		let mut arrivals: SourceArrivals = pending
 			.iter()
-			.chain(others.iter())
 			.map(|(operator_id, changes)| {
 				Ok(latest_input_time(changes)?.map(|at| SourceArrival {
 					source: *operator_id,
@@ -193,8 +187,7 @@ impl FlowEngineInner {
 		advance_lookup_frontiers(txn, &lookup_published)?;
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
-		let mut nodes_processed = self.run_topology(txn, flow, views, topo)?;
-		nodes_processed += self.run_topology(txn, flow, others, topo)?;
+		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
 		Ok(nodes_processed)
 	}
@@ -377,7 +370,7 @@ fn freeze_arrival_frontier<T: FlowTransaction>(
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::sync::{Arc, Mutex};
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
@@ -389,6 +382,7 @@ mod tests {
 				id::{SeriesId, TableId, ViewId},
 			},
 			change::Diff,
+			flow::OperatorCapability,
 		},
 		operator_with::{Emit, LookupWith},
 		value::batch::from_rows,
@@ -405,7 +399,10 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		operator::{
+			HostOperator, InputOrder, host::HostContext, metrics::OperatorSampleRegistry,
+			provider::EmptyOperatorProvider,
+		},
 		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
@@ -936,6 +933,123 @@ mod tests {
 			at_millis(20_000),
 			"the version's rows must still have advanced the source, or the frontier is only stale \
 			 because nothing was folded in at all"
+		);
+	}
+
+	struct Recorder {
+		id: OperatorId,
+		order: InputOrder,
+		calls: Arc<Mutex<Vec<Vec<ChangeOrigin>>>>,
+	}
+
+	impl HostOperator for Recorder {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn input_order(&self) -> InputOrder {
+			self.order
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			let origins =
+				change.diffs.iter().map(|diff| diff.origin().cloned().unwrap_or(change.origin.clone())).collect();
+			self.calls.lock().unwrap().push(origins);
+			Ok(Change::from_flow(self.id, change.version, change.diffs, change.changed_at))
+		}
+	}
+
+	fn recorder(id: OperatorId, order: InputOrder) -> (Box<Recorder>, Arc<Mutex<Vec<Vec<ChangeOrigin>>>>) {
+		let calls = Arc::new(Mutex::new(Vec::new()));
+		(
+			Box::new(Recorder {
+				id,
+				order,
+				calls: calls.clone(),
+			}),
+			calls,
+		)
+	}
+
+	fn one_row_change(origin: ObjectId) -> Change {
+		let post = from_rows(&["k"], &[vec![Value::Uint8(1)]]).unwrap();
+		Change {
+			origin: ChangeOrigin::Object(origin),
+			version: ChangeVersion::from(CommitVersion(5)),
+			diffs: smallvec![Diff::insert(post)],
+			changed_at: DateTime::default(),
+		}
+	}
+
+	#[test]
+	fn a_version_from_a_view_and_a_table_reaches_a_two_input_node_in_one_dispatch_right_first() {
+		// Split into two runs, a view-fed left reaches an emit-off join before its same-version right and never pairs.
+		let engine = TestEngine::new();
+		let mut inner = lookup_engine(&engine);
+		let left = OperatorId(1);
+		let right = OperatorId(2);
+		let paired = OperatorId(3);
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			left,
+			OperatorDef::SourceView {
+				view: ViewId(9),
+			},
+		));
+		builder.add_node(FlowNode::new(
+			right,
+			OperatorDef::SourceTable {
+				table: TableId(3),
+				time_domain: TimeDomain::None,
+			},
+		));
+		builder.add_node(FlowNode::new(
+			paired,
+			OperatorDef::Lookup {
+				join_type: JoinType::Inner,
+				right: LookupObject::Table(TableId(3)),
+				left: vec![],
+				alias: Some("price".to_string()),
+				with: LookupWith {
+					retention: None,
+					emit: Emit::On,
+				},
+			},
+		));
+		builder.add_edge(FlowEdge::new(1u64, FlowId(1), left, paired)).unwrap();
+		builder.add_edge(FlowEdge::new(2u64, FlowId(1), right, paired)).unwrap();
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+		inner.sources.insert(ObjectId::View(ViewId(9)), vec![(FlowId(1), left)]);
+		inner.sources.insert(ObjectId::Table(TableId(3)), vec![(FlowId(1), right)]);
+		let (left_op, _) = recorder(left, InputOrder::Declared);
+		let (right_op, _) = recorder(right, InputOrder::Declared);
+		let (paired_op, calls) = recorder(paired, InputOrder::Reversed);
+		inner.insert_operator(FlowId(1), left, left_op);
+		inner.insert_operator(FlowId(1), right, right_op);
+		inner.insert_operator(FlowId(1), paired, paired_op);
+
+		let mut txn = deferred(&engine);
+		let topo = flow.topological_order();
+		inner.process_version(
+			&mut txn,
+			&flow,
+			FlowId(1),
+			ChangeVersion::from(CommitVersion(5)),
+			vec![one_row_change(ObjectId::View(ViewId(9))), one_row_change(ObjectId::Table(TableId(3)))],
+			topo,
+		)
+		.unwrap();
+
+		assert_eq!(
+			*calls.lock().unwrap(),
+			vec![vec![ChangeOrigin::Flow(right), ChangeOrigin::Flow(left)]],
+			"one version must reach a two-input node in one dispatch with its right side first, not one run per \
+			 origin kind"
 		);
 	}
 }

@@ -95,6 +95,10 @@ fn create_left_cost(db: &TestDb) {
 		 MAP { pool, usd: c_usd } }");
 }
 
+fn create_head(db: &TestDb) {
+	db.admin("CREATE DEFERRED VIEW app::head { pool: utf8 } AS { FROM app::snap MAP { pool } }");
+}
+
 fn create_depth(db: &TestDb) {
 	db.admin(
 		"CREATE DEFERRED VIEW app::depth { pool: utf8, qty: int8 } AS { FROM app::level MAP { pool, qty: px } }",
@@ -577,6 +581,22 @@ fn two_tables_in_one_commit_pair_through_a_snapshot_join() {
 	create_tables(&db);
 	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
 		 FROM app::snap \
+		 INNER JOIN { FROM app::level } AS l USING (pool, l.pool) WITH { emit: false, latest: true } \
+		 MAP { pool, usd: l_px } }");
+
+	db.command("INSERT app::level [{ pool: 'a', px: 10 }]; INSERT app::snap [{ pool: 'a' }]");
+	settle(&db);
+	assert_eq!(cost_rows(&db), vec![paired("a", 10)]);
+}
+
+#[test]
+fn a_view_on_the_left_and_a_table_on_the_right_in_one_commit_pair_through_an_emit_off_join() {
+	// A view-fed left that runs before its same-commit right pairs with nothing, and emit off never repairs it.
+	let db = memory_db();
+	create_tables(&db);
+	create_head(&db);
+	db.admin("CREATE DEFERRED VIEW app::cost { pool: utf8, usd: int8 } AS { \
+		 FROM app::head \
 		 INNER JOIN { FROM app::level } AS l USING (pool, l.pool) WITH { emit: false, latest: true } \
 		 MAP { pool, usd: l_px } }");
 
