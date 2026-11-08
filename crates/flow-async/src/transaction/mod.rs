@@ -228,6 +228,10 @@ impl DeferredParams {
 pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 	fn version(&self) -> CommitVersion;
 
+	fn snapshot_version(&self) -> CommitVersion {
+		self.version()
+	}
+
 	fn clock(&self) -> &Clock;
 
 	fn catalog(&self) -> &Catalog;

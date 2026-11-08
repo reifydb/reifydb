@@ -90,12 +90,14 @@ pub struct JoinWith {
 	pub retention: Option<JoinRetention>,
 	pub emit: Emit,
 	pub pick: Option<JoinPick>,
+	pub exact: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookupWith {
 	pub retention: Option<OperatorRetention>,
 	pub emit: Emit,
+	pub exact: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

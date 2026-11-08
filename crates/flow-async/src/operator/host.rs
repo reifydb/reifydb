@@ -78,6 +78,10 @@ use crate::{
 pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn version(&self) -> CommitVersion;
 
+	fn snapshot_version(&self) -> CommitVersion {
+		self.version()
+	}
+
 	fn wall_now(&self) -> DateTime;
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
@@ -468,6 +472,10 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
+	}
+
+	fn snapshot_version(&self) -> CommitVersion {
+		self.txn.snapshot_version()
 	}
 
 	fn wall_now(&self) -> DateTime {

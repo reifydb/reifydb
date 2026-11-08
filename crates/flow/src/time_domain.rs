@@ -585,6 +585,7 @@ mod tests {
 						duration,
 					}),
 					emit: Emit::Off,
+					exact: false,
 				},
 			},
 		)

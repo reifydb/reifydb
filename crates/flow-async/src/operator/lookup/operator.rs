@@ -97,6 +97,7 @@ pub struct LookupConfig {
 	pub right_node: Option<OperatorId>,
 	pub right_kept: Vec<(String, DictionaryId)>,
 	pub emit_after: Option<Duration>,
+	pub exact: bool,
 	pub join_type: JoinType,
 	pub right: LookupObject,
 	pub deferred: bool,
@@ -356,6 +357,7 @@ impl LookupOperator {
 
 	fn read_version(&self, host: &dyn HostContext, source: SourceVersion, reads: &mut ChangeReads) -> LookupAt {
 		*reads.version.get_or_insert_with(|| match self.config.right {
+			_ if !self.config.exact => LookupAt::Commit(host.snapshot_version()),
 			LookupObject::View(view) if self.config.deferred => host.lookup_view_read(view, source),
 			LookupObject::Table(_) | LookupObject::RingBuffer(_) | LookupObject::View(_) => {
 				let at = CommitVersion(source.0).min(host.version());
@@ -1111,6 +1113,7 @@ mod tests {
 			right_node: None,
 			right_kept: Vec::new(),
 			emit_after: None,
+			exact: true,
 			join_type,
 			right: LookupObject::Table(table.id),
 			deferred: true,
@@ -1138,6 +1141,7 @@ mod tests {
 			right_node: None,
 			right_kept: Vec::new(),
 			emit_after: None,
+			exact: true,
 			join_type: JoinType::Left,
 			right: LookupObject::RingBuffer(ringbuffer.id),
 			deferred: false,
@@ -1373,6 +1377,54 @@ mod tests {
 			row_shape_from_columns(RowFamily::Table, &view_columns).fingerprint(),
 			"a view row written by the sink must carry the catalog-derived shape"
 		);
+	}
+
+	fn paired_value_for_a_row_from_an_older_source(exact: bool) -> Value {
+		// The row's source saw 10; the reader's step runs after the right side moved to 20.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let source = put_right(&engine, "a", 10);
+		let step = put_right(&engine, "a", 20);
+		let mut op = lookup(&table, JoinType::Inner, None);
+		op.config.exact = exact;
+		let mut txn = txn_at(&engine, step);
+		let out = only_insert(&run(
+			&mut op,
+			&mut txn,
+			source,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		cell(&out, "r_v", 0)
+	}
+
+	#[test]
+	fn an_exact_lookup_pairs_with_the_right_side_as_of_the_rows_own_source() {
+		// Without the source read point a replay pairs with whatever the right side held when it caught up.
+		assert_eq!(paired_value_for_a_row_from_an_older_source(true), Value::Int4(10));
+	}
+
+	#[test]
+	fn a_lookup_that_opted_out_of_exact_pairs_with_the_right_side_at_its_step_end() {
+		// An opted-out lookup must not read history, or it still pays for the lease and layers it gave up.
+		assert_eq!(paired_value_for_a_row_from_an_older_source(false), Value::Int4(20));
+	}
+
+	#[test]
+	fn a_re_emitting_lookup_pairs_a_new_row_at_its_step_end() {
+		// A re-emitting lookup is never exact, so its first pairing must read the newest right value too.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		let source = put_right(&engine, "a", 10);
+		let step = put_right(&engine, "a", 20);
+		let mut op = re_emitting(&table, JoinType::Inner, None);
+		let mut txn = txn_at(&engine, step);
+		let out = only_insert(&run(
+			&mut op,
+			&mut txn,
+			source,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		assert_eq!(cell(&out, "r_v", 0), Value::Int4(20));
 	}
 
 	#[test]
@@ -1811,6 +1863,7 @@ mod tests {
 	fn re_emitting(table: &Table, join_type: JoinType, retention: Option<Duration>) -> LookupOperator {
 		let mut op = lookup(table, join_type, retention);
 		op.config.right_node = Some(OperatorId(RIGHT));
+		op.config.exact = false;
 		op
 	}
 
@@ -2273,9 +2326,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_delayed_lookup_with_nothing_waiting_still_reads_at_the_source() {
-		// LT3 must keep holding wherever no re-emit is pending, or a lagging step pairs rows with a later
-		// right.
+	fn a_delayed_lookup_with_nothing_waiting_reads_at_its_step_end() {
+		// A delayed lookup is never exact, so reading at the row's source would keep history it does not need.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);
@@ -2291,11 +2343,7 @@ mod tests {
 		));
 
 		assert!(op.waiting.is_empty());
-		assert_eq!(
-			cell(&out, "r_v", 0),
-			Value::Int4(10),
-			"with nothing waiting the source version's right is read"
-		);
+		assert_eq!(cell(&out, "r_v", 0), Value::Int4(11), "with nothing waiting the step-end right is read");
 	}
 
 	#[test]

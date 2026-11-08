@@ -751,6 +751,7 @@ mod tests {
 				with: LookupWith {
 					retention: None,
 					emit: Emit::Off,
+					exact: false,
 				},
 			},
 		));
@@ -956,8 +957,11 @@ mod tests {
 		}
 
 		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
-			let origins =
-				change.diffs.iter().map(|diff| diff.origin().cloned().unwrap_or(change.origin.clone())).collect();
+			let origins = change
+				.diffs
+				.iter()
+				.map(|diff| diff.origin().cloned().unwrap_or(change.origin.clone()))
+				.collect();
 			self.calls.lock().unwrap().push(origins);
 			Ok(Change::from_flow(self.id, change.version, change.diffs, change.changed_at))
 		}
@@ -987,7 +991,8 @@ mod tests {
 
 	#[test]
 	fn a_version_from_a_view_and_a_table_reaches_a_two_input_node_in_one_dispatch_right_first() {
-		// Split into two runs, a view-fed left reaches an emit-off join before its same-version right and never pairs.
+		// Split into two runs, a view-fed left reaches an emit-off join before its same-version right and never
+		// pairs.
 		let engine = TestEngine::new();
 		let mut inner = lookup_engine(&engine);
 		let left = OperatorId(1);
@@ -1017,6 +1022,7 @@ mod tests {
 				with: LookupWith {
 					retention: None,
 					emit: Emit::On,
+					exact: false,
 				},
 			},
 		));

@@ -183,7 +183,9 @@ impl FlowActor {
 		let ticks_enabled = unit.iter().any(|flow| flow.ticks());
 		let has_lookup = unit.iter().any(|flow| {
 			flow.get_operator_ids().any(|id| {
-				flow.get_operator(&id).is_some_and(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+				flow.get_operator(&id).is_some_and(
+					|node| matches!(&node.ty, OperatorDef::Lookup { with, .. } if with.exact),
+				)
 			})
 		});
 		let fed: Vec<(FlowId, ViewId)> =

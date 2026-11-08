@@ -7,14 +7,14 @@ pub mod join;
 pub mod lookup;
 pub mod window;
 
-use reifydb_core::operator_with::{AggregateWith, DistinctWith};
+use reifydb_core::operator_with::{AggregateWith, DistinctWith, Emit};
 use reifydb_rql_frontend::{
 	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
 	diagnostic::AstError,
 	token::token::{Literal, Token, TokenKind},
 };
 use reifydb_value::{
-	error::Error,
+	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
 	value::{duration::Duration, number::parse::parse_primitive_uint},
 };
@@ -91,6 +91,34 @@ pub(crate) fn is_duration(token: &Token<'_>) -> bool {
 
 pub(crate) fn is_number(token: &Token<'_>) -> bool {
 	token.kind == TokenKind::Literal(Literal::Number)
+}
+
+pub(crate) fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
+	let token = literal(entry)?;
+	literal_boolean(token).ok_or_else(|| {
+		AstError::UnexpectedToken {
+			expected: "boolean literal 'true' or 'false'".to_string(),
+			fragment: token.fragment.to_owned(),
+		}
+		.into()
+	})
+}
+
+pub(crate) fn exact_or_default(exact: Option<(bool, &AstOperatorWithEntry<'_>)>, emit: Emit) -> Result<bool> {
+	match exact {
+		None => Ok(emit == Emit::Off),
+		Some((false, _)) => Ok(false),
+		Some((true, _)) if emit == Emit::Off => Ok(true),
+		Some((true, entry)) => Err(Error::from(TypeError::Ast {
+			kind: AstErrorKind::UnexpectedToken {
+				expected: "'exact: true' together with 'emit: false'".to_string(),
+			},
+			message: "exact pins a row's pairing to the right side as of the row's own source, and a re-emit \
+				  on a right change replaces that pairing with a later one, so exact needs emit: false"
+				.to_string(),
+			fragment: entry.key.fragment(),
+		})),
+	}
 }
 
 pub(crate) fn literal_boolean(token: &Token<'_>) -> Option<bool> {

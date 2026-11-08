@@ -22,22 +22,11 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{entries, literal, literal_boolean, unknown_key},
+		operator_with::{boolean, entries, exact_or_default, literal, literal_boolean, unknown_key},
 	},
 };
 
-const JOIN_WITH_KEYS: &str = "retention, emit, latest, or earliest";
-
-fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
-	let token = literal(entry)?;
-	literal_boolean(token).ok_or_else(|| {
-		AstError::UnexpectedToken {
-			expected: "boolean literal 'true' or 'false'".to_string(),
-			fragment: token.fragment.to_owned(),
-		}
-		.into()
-	})
-}
+const JOIN_WITH_KEYS: &str = "retention, emit, exact, latest, or earliest";
 
 fn compile_join_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
 	let token = literal(entry)?;
@@ -58,10 +47,12 @@ impl<'bump> Compiler<'bump> {
 		let mut join = JoinWith::default();
 		let mut picked = false;
 		let mut column_pick = None;
+		let mut exact = None;
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => join.retention = Some(compile_join_retention(entry)?),
 				Some("emit") => join.emit = compile_join_emit(entry)?,
+				Some("exact") => exact = Some((boolean(entry)?, entry)),
 				Some(keyword @ ("latest" | "earliest")) => {
 					if picked {
 						return Err(unknown_key(entry, "one of 'latest' or 'earliest'"));
@@ -80,6 +71,7 @@ impl<'bump> Compiler<'bump> {
 				_ => return Err(unknown_key(entry, JOIN_WITH_KEYS)),
 			}
 		}
+		join.exact = exact_or_default(exact, join.emit)?;
 		if let Some(entry) = column_pick
 			&& join.retention.as_ref().is_some_and(|retention| retention.right.is_some())
 		{
@@ -456,5 +448,30 @@ mod tests {
 		// a join has no delay, so accepting one would silently mean something else.
 		let message = parse_err(&join("emit: 1s"));
 		assert!(message.contains("lookup"), "{message}");
+	}
+
+	#[test]
+	fn test_join_emit_off_is_exact_unless_it_opts_out() {
+		// Exact is the safe default, so folding an emit-off join must be written out as exact: false.
+		assert!(join_with(&join("emit: false, latest: true")).unwrap().exact);
+		assert!(!join_with(&join("emit: false, exact: false, latest: true")).unwrap().exact);
+		assert!(!join_with("inner join { from orders } as o using (id, o.user_id)").unwrap().exact);
+	}
+
+	#[test]
+	fn test_join_exact_with_emit_false_is_kept() {
+		// Without the flag the analyzer folds the join's backlog and pairs at step end.
+		let with = join_with(&join("emit: false, exact: true, latest: true")).unwrap();
+		assert!(with.exact);
+		assert_eq!(with.emit, Emit::Off);
+	}
+
+	#[test]
+	fn test_join_exact_without_emit_false_is_refused() {
+		// A join that re-publishes on a right change cannot keep a pinned pairing, so exact alone must fail.
+		for clause in ["exact: true", "emit: true, exact: true"] {
+			let message = parse_err(&join(clause));
+			assert!(message.contains("emit: false"), "the error must say why for {clause}: {message}");
+		}
 	}
 }

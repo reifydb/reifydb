@@ -429,6 +429,7 @@ impl FlowEngineInner {
 				Emit::After(delay) => Some(delay),
 				Emit::On | Emit::Off => None,
 			},
+			exact: with.exact,
 			join_type,
 			right,
 			deferred,

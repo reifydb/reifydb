@@ -510,6 +510,7 @@ mod tests {
 					duration: Duration::from_seconds(10).unwrap(),
 				}),
 				emit: Emit::Off,
+				exact: false,
 			},
 		}
 	}

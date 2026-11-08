@@ -396,7 +396,7 @@ impl SliceComputer {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
-		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
+		let (current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
 		let base_query = self
 			.engine
 			.multi()
@@ -421,6 +421,7 @@ impl SliceComputer {
 			substrate: flow_engine.substrate().clone(),
 			lookup: self.lookup.clone(),
 		});
+		txn.snapshot = current;
 
 		flow_engine.begin_watermarks(&mut txn)?;
 		let mut emitted = Vec::with_capacity(groups.len());

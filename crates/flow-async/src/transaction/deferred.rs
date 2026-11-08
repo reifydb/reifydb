@@ -110,6 +110,7 @@ use crate::{
 pub struct DeferredTransaction {
 	pub ctx: Arc<TransactionContext>,
 	pub version: CommitVersion,
+	pub snapshot: CommitVersion,
 	pub pending: Pending,
 	pub query: Option<MultiReadTransaction>,
 	pub state_query: Option<MultiReadTransaction>,
@@ -155,6 +156,7 @@ impl DeferredTransaction {
 		Self {
 			ctx: params.ctx,
 			version: params.version,
+			snapshot: params.version,
 			pending: params.pending,
 			query,
 			state_query: params.state_query,
@@ -287,6 +289,10 @@ pub(crate) fn deferred_fetch_state(
 impl FlowTransaction for DeferredTransaction {
 	fn version(&self) -> CommitVersion {
 		self.version
+	}
+
+	fn snapshot_version(&self) -> CommitVersion {
+		self.snapshot
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {

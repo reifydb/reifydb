@@ -12,20 +12,23 @@ use crate::{
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
-		operator_with::{entries, literal, literal_boolean, unknown_key},
+		operator_with::{boolean, entries, exact_or_default, literal, literal_boolean, unknown_key},
 	},
 };
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith> {
 		let mut lookup = LookupWith::default();
+		let mut exact = None;
 		for entry in entries(with) {
 			match entry.key.word() {
 				Some("retention") => lookup.retention = Some(compile_lookup_retention(entry)?),
 				Some("emit") => lookup.emit = compile_lookup_emit(entry)?,
-				_ => return Err(unknown_key(entry, "retention or emit")),
+				Some("exact") => exact = Some((boolean(entry)?, entry)),
+				_ => return Err(unknown_key(entry, "retention, emit, or exact")),
 			}
 		}
+		lookup.exact = exact_or_default(exact, lookup.emit)?;
 		Ok(lookup)
 	}
 }
@@ -170,5 +173,50 @@ mod tests {
 	fn emit_refuses_a_zero_duration() {
 		// a zero delay is emit: true through extra machinery, so it must be written as what it is.
 		assert!(lookup_with(&lookup(" with { emit: 0s }")).is_err());
+	}
+
+	#[test]
+	fn an_emit_off_lookup_is_exact_unless_it_opts_out() {
+		// Exact is the safe default, so dropping to step-end reads must be written out as exact: false.
+		assert!(lookup_with(&lookup(" with { emit: false }")).unwrap().exact);
+		assert!(!lookup_with(&lookup(" with { emit: false, exact: false }")).unwrap().exact);
+		assert!(!lookup_with(&lookup("")).unwrap().exact, "a re-emitting lookup is never exact");
+		assert!(!lookup_with(&lookup(" with { emit: 1s }")).unwrap().exact, "a delayed lookup is never exact");
+	}
+
+	#[test]
+	fn exact_true_with_emit_false_is_kept() {
+		// Without the flag reaching the operator the read point silently drops to step end.
+		let with = lookup_with(&lookup(" with { emit: false, exact: true }")).unwrap();
+		assert!(with.exact);
+		assert_eq!(with.emit, Emit::Off);
+		assert!(
+			lookup_with(&lookup(" with { exact: true, emit: false }")).unwrap().exact,
+			"key order must not matter"
+		);
+	}
+
+	#[test]
+	fn exact_with_any_other_emit_is_refused_at_the_exact_key() {
+		// A re-emit replaces the pinned pairing, so exact with emit on or a delay would promise what it cannot
+		// keep.
+		for emit in ["", "emit: true, ", "emit: 1s, "] {
+			let source = lookup(&format!(" with {{ {emit}exact: true }}"));
+			let err = lookup_with(&source).expect_err(&format!("must be refused: {source}"));
+			assert_eq!(err.fragment.text(), "exact", "wrong span for: {source}");
+			assert!(err.to_string().contains("emit: false"), "the error must say why: {err}");
+		}
+	}
+
+	#[test]
+	fn exact_false_is_accepted_with_any_emit() {
+		// Writing the default out must never be an error.
+		assert!(!lookup_with(&lookup(" with { emit: true, exact: false }")).unwrap().exact);
+	}
+
+	#[test]
+	fn exact_takes_only_a_boolean() {
+		// A duration or word here is a typo for emit, and reading it as true would pin reads silently.
+		assert_eq!(code(&lookup(" with { emit: false, exact: 1s }")), "AST_005");
 	}
 }

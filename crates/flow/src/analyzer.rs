@@ -193,11 +193,11 @@ impl FlowGraphAnalyzer {
 				OperatorDef::Join {
 					with,
 					..
-				} => with.emit != Emit::Off && with.retention.is_none(),
+				} => (with.emit != Emit::Off || !with.exact) && with.retention.is_none(),
 				OperatorDef::Lookup {
 					with,
 					..
-				} => with.emit != Emit::Off && with.retention.is_none(),
+				} => (with.emit != Emit::Off || !with.exact) && with.retention.is_none(),
 				_ => false,
 			})
 		});
@@ -329,7 +329,7 @@ impl FlowGraphAnalyzer {
 						right: LookupObject::View(view),
 						with,
 						..
-					}) if with.emit == Emit::Off => Some(*view),
+					}) if with.exact => Some(*view),
 					_ => None,
 				})
 				.collect();
@@ -1233,7 +1233,24 @@ pub mod tests {
 					..JoinWith::default()
 				}),
 			),
+			(
+				"join emit off, not exact",
+				join_with(JoinWith {
+					emit: Emit::Off,
+					pick: Some(JoinPick::latest()),
+					exact: false,
+					..JoinWith::default()
+				}),
+			),
 			("lookup emit on", lookup_with(LookupWith::default())),
+			(
+				"lookup emit off, not exact",
+				lookup_with(LookupWith {
+					emit: Emit::Off,
+					exact: false,
+					..LookupWith::default()
+				}),
+			),
 			(
 				"lookup emit after",
 				lookup_with(LookupWith {
@@ -1293,10 +1310,11 @@ pub mod tests {
 				},
 			),
 			(
-				"join emit off",
+				"join emit off, exact",
 				join_with(JoinWith {
 					emit: Emit::Off,
 					pick: Some(JoinPick::latest()),
+					exact: true,
 					..JoinWith::default()
 				}),
 			),
@@ -1311,9 +1329,10 @@ pub mod tests {
 				}),
 			),
 			(
-				"lookup emit off",
+				"lookup emit off, exact",
 				lookup_with(LookupWith {
 					emit: Emit::Off,
+					exact: true,
 					..LookupWith::default()
 				}),
 			),
@@ -1341,6 +1360,7 @@ pub mod tests {
 				},
 				lookup_with(LookupWith {
 					emit: Emit::Off,
+					exact: true,
 					..LookupWith::default()
 				}),
 				SinkTableView {
@@ -1352,13 +1372,21 @@ pub mod tests {
 	}
 
 	#[test]
-	fn only_an_emit_off_lookup_lists_its_reader_as_an_exact_reader_once() {
+	fn only_an_exact_lookup_lists_its_reader_as_an_exact_reader_once() {
 		// A producer read exactly must keep one layer per source, so a missed exact reader collapses it into
 		// drift.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		let emit_off = || {
 			lookup_with(LookupWith {
 				emit: Emit::Off,
+				exact: true,
+				..LookupWith::default()
+			})
+		};
+		let opted_out = || {
+			lookup_with(LookupWith {
+				emit: Emit::Off,
+				exact: false,
 				..LookupWith::default()
 			})
 		};
@@ -1381,13 +1409,14 @@ pub mod tests {
 		analyzer.add(create_test_flow_with_nodes(1, vec![on_view(emit_off()), on_view(emit_off())]));
 		analyzer.add(create_test_flow_with_nodes(2, vec![on_view(lookup_with(LookupWith::default()))]));
 		analyzer.add(create_test_flow_with_nodes(3, vec![emit_off()]));
+		analyzer.add(create_test_flow_with_nodes(4, vec![on_view(opted_out())]));
 
 		let graph = analyzer.get_dependency_graph();
-		assert_eq!(graph.lookup_views.get(&ViewId(500)), Some(&vec![FlowId(1), FlowId(2)]));
+		assert_eq!(graph.lookup_views.get(&ViewId(500)), Some(&vec![FlowId(1), FlowId(2), FlowId(4)]));
 		assert_eq!(
 			graph.exact_lookup_views,
 			BTreeMap::from([(ViewId(500), vec![FlowId(1)])]),
-			"an emit-on reader or a table lookup must never count as an exact view reader"
+			"an emit-on reader, an opted-out reader or a table lookup must never count as an exact view reader"
 		);
 	}
 

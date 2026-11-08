@@ -63,7 +63,7 @@ pub fn flow_upstreams(
 }
 
 pub fn lookup_producers(graph: &FlowDependencyGraph, flow: FlowId) -> BTreeMap<ViewId, FlowId> {
-	graph.lookup_views
+	graph.exact_lookup_views
 		.iter()
 		.filter(|(_, consumer_flows)| consumer_flows.contains(&flow))
 		.filter_map(|(view_id, _)| graph.sink_views.get(view_id).map(|producer| (*view_id, *producer)))
@@ -544,6 +544,7 @@ mod tests {
 		graph.source_tables.insert(TableId(9), vec![FlowId(40)]);
 		graph.sink_views.insert(ViewId(8), FlowId(40));
 		graph.lookup_views.insert(ViewId(8), vec![FlowId(30)]);
+		graph.exact_lookup_views.insert(ViewId(8), vec![FlowId(30)]);
 		let unit = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer).remove(0);
 		let upstreams = unit_upstreams(&graph, &unit, &all_deferred);
 		assert!(!upstreams.contains_key(&FlowId(10)), "an in-unit parent stays an upstream");
@@ -766,8 +767,8 @@ mod lookup_tests {
 			source_ringbuffers: BTreeMap::new(),
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::from([(PRICES, PRODUCER), (LEVELS, PRODUCER)]),
+			exact_lookup_views: lookup_views.clone(),
 			lookup_views,
-			exact_lookup_views: BTreeMap::new(),
 			from_views: BTreeMap::new(),
 		}
 	}
@@ -815,5 +816,20 @@ mod lookup_tests {
 
 		assert!(flow_upstreams(&g, PRODUCER, &deferred).is_empty());
 		assert!(lookup_producers(&g, PRODUCER).is_empty());
+	}
+
+	#[test]
+	fn only_an_exact_reader_is_given_its_lookup_producer_but_every_reader_still_waits_on_it() {
+		// An opted-out reader handed the producer would hold a lease and force layers it never reads.
+		let opted_out = FlowId(3);
+		let mut graph = graph(BTreeMap::from([(PRICES, vec![READER, opted_out])]), BTreeMap::new());
+		graph.exact_lookup_views = BTreeMap::from([(PRICES, vec![READER])]);
+
+		assert_eq!(lookup_producers(&graph, READER), BTreeMap::from([(PRICES, PRODUCER)]));
+		assert!(lookup_producers(&graph, opted_out).is_empty());
+		assert!(
+			flow_upstreams(&graph, opted_out, &deferred).contains_key(&PRODUCER),
+			"an opted-out reader must still run after its producer, or it pairs with a step-old view"
+		);
 	}
 }

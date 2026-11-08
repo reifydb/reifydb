@@ -163,6 +163,7 @@ fn lookup_flow(left: TableId, right: LookupObject, key: &str) -> FlowDag {
 			with: LookupWith {
 				retention: None,
 				emit: Emit::Off,
+				exact: false,
 			},
 		},
 	));
@@ -343,6 +344,7 @@ fn a_lookup_with_two_inputs_fails_registration_instead_of_reading_the_second_as_
 			with: LookupWith {
 				retention: None,
 				emit: Emit::Off,
+				exact: false,
 			},
 		},
 	));
