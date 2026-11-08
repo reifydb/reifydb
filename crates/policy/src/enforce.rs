@@ -9,10 +9,10 @@ use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
 	value::batch::empty_batch,
 };
-use reifydb_rql::{
+use reifydb_rql::expression::ExpressionCompiler;
+use reifydb_rql_frontend::{
 	ast::{ast::Ast, parse_str},
 	bump::BumpBox,
-	expression::ExpressionCompiler,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::identity::IdentityId};
@@ -348,7 +348,7 @@ fn compile_policy_condition(node: Ast<'_>) -> Result<Option<Expression>> {
 #[cfg(test)]
 mod tests {
 	use bumpalo::Bump;
-	use reifydb_rql::ast::parse_str;
+	use reifydb_rql_frontend::ast::parse_str;
 
 	use super::{compile_policy_condition, reads_row};
 

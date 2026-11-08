@@ -6,22 +6,24 @@ use reifydb_core::{
 	row::{JoinPick, JoinRetention, OperatorRetention},
 	sort::{SortDirection, SortKey},
 };
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithKey, AstOperatorWithValue},
 		identifier::MaybeQualifiedColumnObject,
 	},
 	bump::BumpFragment,
 	diagnostic::AstError,
+	token::{keyword::Keyword, token::Token},
+};
+use reifydb_value::error::{AstErrorKind, Error, TypeError};
+
+use crate::{
+	Result,
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
 		operator_with::{entries, literal, literal_boolean, unknown_key},
 	},
-	token::{keyword::Keyword, token::Token},
 };
 
 const JOIN_WITH_KEYS: &str = "retention, emit, latest, or earliest";
@@ -203,17 +205,16 @@ mod tests {
 		operator_with::{Emit, JoinWith},
 		sort::SortDirection,
 	};
-	use reifydb_value::value::{datetime::TIME_COLUMN_NAME, duration::Duration};
-
-	use crate::{
-		Result,
+	use reifydb_rql_frontend::{
 		ast::{
 			ast::{Ast, AstJoin},
 			parse_str,
 		},
 		bump::Bump,
-		plan::logical::Compiler,
 	};
+	use reifydb_value::value::{datetime::TIME_COLUMN_NAME, duration::Duration};
+
+	use crate::{Result, plan::logical::Compiler};
 
 	fn join_with(source: &str) -> Result<JoinWith> {
 		let bump = Bump::new();

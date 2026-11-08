@@ -16,6 +16,8 @@ use super::{
 };
 use crate::Result;
 
+pub const FOREVER: &str = "forever";
+
 macro_rules! keyword {
     (
         $( $variant:ident => $string:literal ),* $(,)?

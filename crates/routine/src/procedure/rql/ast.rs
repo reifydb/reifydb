@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use bumpalo::Bump;
 use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_rql::{
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{Ast, AstAlter, AstCreate, AstFrom, AstJoin},
 		identifier::UnqualifiedIdentifier,

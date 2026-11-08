@@ -7,7 +7,7 @@ use crate::{
 		ast::AstApply,
 		parse::{Parser, Precedence},
 	},
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
@@ -19,7 +19,7 @@ impl<'bump> Parser<'bump> {
 		let operator = self.parse_as_identifier()?;
 
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(RqlError::OperatorMissingBraces {
+			return Err(AstError::OperatorMissingBraces {
 				kind: OperationKind::Apply,
 				fragment: token.fragment.to_owned(),
 			}

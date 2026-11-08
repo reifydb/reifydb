@@ -5,7 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "ReifyDB Query Language (RQL) parser and AST"
+description = "ReifyDB Query Language (RQL) planner and compiler"
 
 [lib]
 doctest = false
@@ -20,6 +20,7 @@ reifydb-build = { workspace = true }
 bumpalo = { workspace = true }
 datafusion-common = { workspace = true }
 reifydb-core = {workspace = true}
+reifydb-rql-frontend = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-runtime = { workspace = true }

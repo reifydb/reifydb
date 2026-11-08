@@ -42,11 +42,10 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::{BumpBox, BumpFragment},
-	duration::FOREVER,
-	error::RqlError,
+	diagnostic::AstError,
 	token::{
 		keyword::{
-			Keyword,
+			FOREVER, Keyword,
 			Keyword::{
 				Create, Deferred, Dictionary, Exists, For, If, Namespace, Remote, Replace, Ringbuffer,
 				Series, Subscription, Table, Test, Transactional, View,
@@ -1340,7 +1339,7 @@ impl<'bump> Parser<'bump> {
 				}
 			};
 			if duplicate {
-				return Err(RqlError::OperatorWithDuplicateKey {
+				return Err(AstError::OperatorWithDuplicateKey {
 					key: key.fragment.text().to_string(),
 					fragment: key.fragment.to_owned(),
 				}

@@ -4,12 +4,12 @@
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_routine_abi::registry::Routines;
+use reifydb_rql_frontend::ast::ast::AstStatement;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
 	Result,
-	ast::ast::AstStatement,
 	plan::{
 		logical::{LogicalPlan, compile_logical},
 		physical::{PhysicalPlan, compile_physical},

@@ -51,15 +51,7 @@ use reifydb_core::{
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	fragment::Fragment,
-	value::{duration::Duration, identity::IdentityKind},
-};
-use tracing::instrument;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstBindingProtocol, AstBodyEntry, AstConfigPair, AstInfix,
@@ -81,6 +73,16 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{
+	fragment::Fragment,
+	value::{duration::Duration, identity::IdentityKind},
+};
+use tracing::instrument;
+
+use crate::{
+	Result,
 	expression::ExpressionCompiler,
 	nodes::{AlterMethodTtl, TakeLimit},
 	plan::logical::alter::table::AlterTableNode,

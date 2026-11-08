@@ -19,6 +19,7 @@ bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-rql-frontend = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }

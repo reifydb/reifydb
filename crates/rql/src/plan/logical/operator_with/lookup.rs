@@ -5,10 +5,10 @@ use reifydb_core::{
 	operator_with::{Emit, LookupWith},
 	row::OperatorRetention,
 };
+use reifydb_rql_frontend::ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
@@ -63,14 +63,13 @@ fn compile_lookup_retention(entry: &AstOperatorWithEntry<'_>) -> Result<Operator
 #[cfg(test)]
 mod tests {
 	use reifydb_core::operator_with::{Emit, LookupWith};
-	use reifydb_value::value::duration::Duration;
-
-	use crate::{
-		Result,
+	use reifydb_rql_frontend::{
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
-		plan::logical::Compiler,
 	};
+	use reifydb_value::value::duration::Duration;
+
+	use crate::{Result, plan::logical::Compiler};
 
 	fn lookup_with(source: &str) -> Result<LookupWith> {
 		let bump = Bump::new();

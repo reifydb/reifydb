@@ -10,14 +10,16 @@ use reifydb_core::{
 	expression::Expression,
 	operator_with::{JoinWith, LookupWith},
 };
-use reifydb_value::{error, error::Error, fragment::Fragment};
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::identifier::{
 		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
+};
+use reifydb_value::{error, error::Error, fragment::Fragment};
+
+use crate::{
+	Result,
 	error::RqlError,
 	plan::logical::{
 		AggregateNode, AppendNode, ApplyNode, AssertNode, ChangesNode, DistinctNode, EnvironmentNode,

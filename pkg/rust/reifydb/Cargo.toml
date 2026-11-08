@@ -28,6 +28,7 @@ reifydb-remote-proxy = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-routine-abi = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-rql-frontend = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-sqlite = { workspace = true }

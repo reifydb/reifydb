@@ -4,6 +4,7 @@
 pub mod alter;
 pub mod create;
 pub mod drop;
+pub(crate) mod interner;
 pub mod mutate;
 
 use std::{collections, fmt, iter::once, marker};
@@ -41,6 +42,10 @@ use reifydb_core::{
 	sort::SortKey,
 };
 use reifydb_routine_abi::registry::Routines;
+use reifydb_rql_frontend::{
+	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
+	bump::{BumpBox, BumpVec},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -50,10 +55,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	Result,
-	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
-	bump::{BumpBox, BumpVec, FragmentInterner},
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	error::RqlError,
 	expression::ExpressionCompiler,
 	nodes,
@@ -74,6 +76,7 @@ use crate::{
 			series_predicate::{extract_series_bounds, extract_series_predicate},
 			tree::{QueryTree, fold},
 		},
+		physical::interner::FragmentInterner,
 	},
 };
 

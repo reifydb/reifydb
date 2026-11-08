@@ -65,7 +65,7 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{ast::parse::Ast, plan::logical::Compiler, token::tokenize};
+	use crate::{ast::parse::Ast, token::tokenize};
 
 	#[test]
 	fn test_distinct_empty_braces() {
@@ -165,59 +165,5 @@ pub mod tests {
 			panic!("Expected Distinct operator");
 		};
 		assert!(distinct.with.is_none());
-	}
-
-	#[test]
-	fn test_distinct_with_retention_duration_only_is_rejected() {
-		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { lateness: 1h }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
-			panic!("Expected Distinct operator");
-		};
-		assert!(
-			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
-			"expected error: DISTINCT takes no WITH clause"
-		);
-	}
-
-	#[test]
-	fn test_distinct_with_retention_full_config_is_rejected() {
-		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
-			panic!("Expected Distinct operator");
-		};
-		assert!(
-			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
-			"expected error: DISTINCT takes no WITH clause"
-		);
-	}
-
-	#[test]
-	fn test_distinct_with_unknown_key_errors() {
-		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { unknown: 'foo' }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
-			panic!("Expected Distinct operator");
-		};
-		assert!(
-			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
-			"expected error for unknown WITH key"
-		);
 	}
 }

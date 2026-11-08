@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::sort::{SortDirection, SortKey};
+use reifydb_rql_frontend::ast::ast::AstSort;
 
 use crate::{
 	Result,
-	ast::ast::AstSort,
 	plan::logical::{Compiler, LogicalPlan, OrderNode},
 };
 

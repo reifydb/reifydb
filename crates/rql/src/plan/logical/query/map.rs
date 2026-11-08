@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::query::empty_map;
+use reifydb_rql_frontend::ast::ast::AstMap;
 use reifydb_value::return_error;
 
 use crate::{
 	Result,
-	ast::ast::AstMap,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan, MapNode, reserved::reject_reserved_output_names},
 };

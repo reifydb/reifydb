@@ -2,18 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::table::TableColumnToCreate;
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{Ast, AstAlterTable, AstAlterTableAction, AstColumnProperty, AstLiteral},
 		identifier::MaybeQualifiedTableIdentifier,
 	},
 	bump::BumpFragment,
-	convert_data_type_with_constraints,
 	diagnostic::AstError,
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::fragment::Fragment;
+
+use crate::{
+	Result, convert_data_type_with_constraints,
 	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_column_name},
 };
 

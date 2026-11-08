@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{ast::AstSort, parse::Parser},
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{
 		keyword::Keyword,
 		operator::Operator::{CloseCurly, Colon, OpenCurly},
@@ -18,7 +18,7 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Sort)?;
 
 		if self.is_eof() || !self.current()?.is_operator(OpenCurly) {
-			return Err(RqlError::OperatorMissingBraces {
+			return Err(AstError::OperatorMissingBraces {
 				kind: OperationKind::Sort,
 				fragment: token.fragment.to_owned(),
 			}

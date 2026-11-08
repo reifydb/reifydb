@@ -3,12 +3,12 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::interface::catalog::namespace::Namespace;
+use reifydb_rql_frontend::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	ast::identifier::MaybeQualifiedDeferredViewIdentifier,
 	plan::{
 		logical,
 		physical::{Compiler, CreateDeferredWindowedViewGroupNode, PhysicalPlan, WindowedViewGroupMember},

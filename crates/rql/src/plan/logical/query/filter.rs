@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::{ast::ast::AstFilter, bump::BumpBox};
+
 use crate::{
 	Result,
-	ast::ast::AstFilter,
-	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, FilterNode, LogicalPlan},
 };

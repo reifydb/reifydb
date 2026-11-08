@@ -5,11 +5,11 @@ pub mod remote_namespace;
 pub mod sequence;
 pub mod table;
 
+use reifydb_rql_frontend::ast::ast::AstAlter;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	Result,
-	ast::ast::AstAlter,
 	plan::logical::{AlterIdentityNode, AlterPolicyNode, Compiler, LogicalPlan},
 };
 

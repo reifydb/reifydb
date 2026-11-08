@@ -8,11 +8,7 @@ use reifydb_core::{
 	expression::{AliasExpression, Expression, IdentExpression},
 	interface::catalog::view::ViewStorageKind,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{Ast, AstFrom, AstInsert, AstInsertWith},
 		identifier::{
@@ -22,6 +18,12 @@ use crate::{
 		},
 	},
 	bump::BumpBox,
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::fragment::Fragment;
+
+use crate::{
+	Result,
 	error::{IdentifierError, RqlError},
 	expression::ExpressionCompiler,
 	plan::logical::{

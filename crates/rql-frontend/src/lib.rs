@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
+
+use reifydb_value::Result;
+
+pub mod ast;
+pub mod bump;
+pub mod diagnostic;
+pub mod token;
+
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+
+pub struct RqlFrontendVersion;
+
+impl HasVersion for RqlFrontendVersion {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "ReifyDB Query Language tokenizer and parser module".to_string(),
+			r#type: ComponentType::Module,
+		}
+	}
+}

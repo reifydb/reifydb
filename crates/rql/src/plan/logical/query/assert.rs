@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::ast::AstAssert,
 	bump::BumpBox,
+	token::token::{Literal, TokenKind},
+};
+
+use crate::{
+	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{AssertBlockNode, AssertNode, Compiler, LogicalPlan},
-	token::token::{Literal, TokenKind},
 };
 
 impl<'bump> Compiler<'bump> {

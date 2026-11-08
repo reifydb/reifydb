@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::AstCreateSumType;
+
 use crate::{
 	Result,
-	ast::ast::AstCreateSumType,
 	plan::logical::{Compiler, CreateSumTypeNode, LogicalPlan},
 };
 

@@ -2,15 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
+use reifydb_rql_frontend::ast::ast::{
+	Ast, AstCreateDeferredWindowedViewGroup, AstOperatorWith, AstOperatorWithEntry, AstOperatorWithKey,
+	AstOperatorWithValue, AstStatement, AstWindowKind, AstWindowedViewGroupMember,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
-	ast::ast::{
-		Ast, AstCreateDeferredWindowedViewGroup, AstOperatorWith, AstOperatorWithEntry, AstOperatorWithKey,
-		AstOperatorWithValue, AstStatement, AstWindowKind, AstWindowedViewGroupMember,
-	},
 	duration::{DurationBound, compile_duration, invalid_option},
 	error::RqlError,
 	plan::logical::{

@@ -9,6 +9,7 @@ use reifydb_core::interface::catalog::{
 	ringbuffer::EvictionVisibility,
 	series::{SeriesKey, TimestampPrecision},
 };
+use reifydb_rql_frontend::ast::ast::{AstColumnProperty, AstCreateSeries, AstTimestampPrecision};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{AstErrorKind, TypeError},
@@ -17,9 +18,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
-	ast::ast::{AstColumnProperty, AstCreateSeries, AstTimestampPrecision},
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateSeriesNode, LogicalPlan,
 		create::{

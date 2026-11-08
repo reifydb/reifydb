@@ -7,7 +7,7 @@ use crate::{
 		ast::AstMap,
 		parse::{Parser, reject_duplicate_aliases},
 	},
-	error::OperationKind,
+	diagnostic::OperationKind,
 	token::keyword::Keyword,
 };
 

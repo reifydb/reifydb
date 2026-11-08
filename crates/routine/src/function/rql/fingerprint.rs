@@ -9,10 +9,8 @@ use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
 	error::RoutineError,
 };
-use reifydb_rql::{
-	ast::parse_str,
-	fingerprint::{request::fingerprint_request, statement::fingerprint_statement},
-};
+use reifydb_rql::fingerprint::{request::fingerprint_request, statement::fingerprint_statement};
+use reifydb_rql_frontend::ast::parse_str;
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	value_type::ValueType,

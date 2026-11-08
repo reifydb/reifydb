@@ -5,13 +5,15 @@ use reifydb_core::{
 	error::diagnostic::query,
 	expression::{AliasExpression, IdentExpression},
 };
+use reifydb_rql_frontend::{
+	ast::ast::{Ast, AstFrom},
+	bump::BumpBox,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{err, error, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstFrom},
-	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, ObjectScanNode, RemoteScanNode,

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::AstCreateMigration;
+
 use crate::{
 	Result,
-	ast::ast::AstCreateMigration,
 	plan::logical::{Compiler, CreateMigrationNode, LogicalPlan},
 };
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_rql::bump::BumpBox;
+use reifydb_rql_frontend::bump::BumpBox;
 use thiserror::Error;
 
 use crate::{

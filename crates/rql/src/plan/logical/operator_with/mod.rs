@@ -8,6 +8,11 @@ pub mod lookup;
 pub mod window;
 
 use reifydb_core::operator_with::{AggregateWith, DistinctWith};
+use reifydb_rql_frontend::{
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
+	diagnostic::AstError,
+	token::token::{Literal, Token, TokenKind},
+};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -16,12 +21,9 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
-	diagnostic::AstError,
 	duration::{DurationBound, compile_duration},
 	error::RqlError,
 	plan::logical::Compiler,
-	token::token::{Literal, Token, TokenKind},
 };
 
 #[derive(Debug, Clone)]
@@ -141,4 +143,77 @@ pub(crate) fn reject_immutable_not_smaller_than_lateness<T: PartialOrd>(
 		fragment: immutable.fragment.clone(),
 	}
 	.into())
+}
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+	use reifydb_rql_frontend::ast::{ast::Ast, parse_str};
+
+	use crate::plan::logical::Compiler;
+
+	#[test]
+	fn an_aggregate_with_a_with_clause_after_its_by_clause_is_rejected() {
+		// AGGREGATE takes no WITH clause: the BY clause is the only bound on an aggregate's groups.
+		let bump = Bump::new();
+		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
+		let mut result = parse_str(&bump, source).unwrap();
+
+		let result = result.pop().unwrap();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
+		assert!(
+			Compiler::compile_aggregate_with(aggregate.with.as_ref()).is_err(),
+			"expected error: AGGREGATE takes no WITH clause"
+		);
+	}
+
+	#[test]
+	fn test_distinct_with_retention_duration_only_is_rejected() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { lateness: 1h }";
+		let mut result = parse_str(&bump, source).unwrap();
+
+		let result = result.pop().unwrap();
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error: DISTINCT takes no WITH clause"
+		);
+	}
+
+	#[test]
+	fn test_distinct_with_retention_full_config_is_rejected() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
+		let mut result = parse_str(&bump, source).unwrap();
+
+		let result = result.pop().unwrap();
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error: DISTINCT takes no WITH clause"
+		);
+	}
+
+	#[test]
+	fn test_distinct_with_unknown_key_errors() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { unknown: 'foo' }";
+		let mut result = parse_str(&bump, source).unwrap();
+
+		let result = result.pop().unwrap();
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(
+			Compiler::compile_distinct_with(distinct.with.as_ref()).is_err(),
+			"expected error for unknown WITH key"
+		);
+	}
 }

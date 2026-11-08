@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::AstDrop;
+
 use crate::{
 	Result,
-	ast::ast::AstDrop,
 	plan::logical::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
 		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,

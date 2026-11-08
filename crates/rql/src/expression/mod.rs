@@ -6,16 +6,16 @@ pub mod json;
 pub mod variant;
 
 use bumpalo::Bump;
-
-use crate::{
+use reifydb_rql_frontend::{
 	ast,
 	ast::{
 		ast::{Ast, AstFrom, AstInfix, AstLiteral, InfixOperator},
 		parse_str,
 	},
 	bump::BumpBox,
-	convert_data_type_with_constraints,
 };
+
+use crate::convert_data_type_with_constraints;
 
 pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
 	let bump = Bump::new();
@@ -50,9 +50,10 @@ use reifydb_core::{
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
+use reifydb_rql_frontend::{ast::ast::AstBlock, diagnostic::AstError};
 use reifydb_value::{err, error::Diagnostic, fragment::Fragment, value::row_number::ROW_NUMBER_COLUMN_NAME};
 
-use crate::{Result, ast::ast::AstBlock, diagnostic::AstError};
+use crate::Result;
 
 pub struct ExpressionCompiler {}
 

@@ -3,12 +3,12 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::interface::catalog::binding::{BindingFormat, BindingProtocol, HttpMethod};
+use reifydb_rql_frontend::ast::ast::AstBindingProtocolKind;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	ast::ast::AstBindingProtocolKind,
 	nodes::CreateBindingNode,
 	plan::{
 		logical,

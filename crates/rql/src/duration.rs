@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::token::token::{Literal, Token, TokenKind};
 use reifydb_value::{
 	Result,
 	error::{AstErrorKind, Error, TypeError},
 	value::{duration::Duration, temporal::parse::duration::parse_duration},
 };
-
-use crate::token::token::{Literal, Token, TokenKind};
-
-pub(crate) const FOREVER: &str = "forever";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DurationBound {

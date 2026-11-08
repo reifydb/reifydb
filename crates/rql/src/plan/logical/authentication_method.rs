@@ -3,21 +3,26 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_value::value::duration::Duration;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::ast::{
 		AstAlterAuthenticationMethod, AstAuthenticationMethodSetting, AstCreateAuthenticationMethod,
 		AstDropAuthenticationMethod,
 	},
-	duration::{DurationBound, FOREVER, compile_duration},
+	token::{
+		keyword::FOREVER,
+		token::{Literal, Token, TokenKind},
+	},
+};
+use reifydb_value::value::duration::Duration;
+
+use crate::{
+	Result,
+	duration::{DurationBound, compile_duration},
 	nodes::AlterMethodTtl,
 	plan::logical::{
 		AlterAuthenticationMethodNode, Compiler, CreateAuthenticationMethodNode, DropAuthenticationMethodNode,
 		LogicalPlan,
 	},
-	token::token::{Literal, Token, TokenKind},
 };
 
 impl<'bump> Compiler<'bump> {

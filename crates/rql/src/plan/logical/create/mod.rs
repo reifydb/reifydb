@@ -33,6 +33,7 @@ use reifydb_core::{
 	interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	partition::PartitionError,
 };
+use reifydb_rql_frontend::ast::ast::{Ast, AstCreate, AstLiteral, AstViewStorageKind};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
@@ -42,7 +43,6 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstCreate, AstLiteral, AstViewStorageKind},
 	plan::logical::{
 		Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
 		CreateRoleNode, LogicalPlan,

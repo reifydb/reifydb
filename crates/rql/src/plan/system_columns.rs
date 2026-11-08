@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
+use reifydb_rql_frontend::bump::BumpBox;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -23,7 +24,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	bump::BumpBox,
 	nodes::InlineDataNode,
 	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan, ReturnValue},
 };

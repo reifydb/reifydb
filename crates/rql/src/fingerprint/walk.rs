@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::JoinType;
-
-use crate::{
+use reifydb_rql_frontend::{
 	ast::{
 		ast::*,
 		identifier::{

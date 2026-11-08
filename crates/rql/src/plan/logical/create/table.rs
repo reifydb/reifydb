@@ -6,6 +6,10 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
+use reifydb_rql_frontend::{
+	ast::ast::{AstColumnProperty, AstCreateTable, AstType},
+	bump::BumpFragment,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -16,10 +20,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
-	ast::ast::{AstColumnProperty, AstCreateTable, AstType},
-	bump::BumpFragment,
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan,
 		create::{

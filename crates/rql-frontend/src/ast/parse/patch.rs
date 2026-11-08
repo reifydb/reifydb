@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{ast::AstPatch, parse::Parser},
-	error::OperationKind,
+	diagnostic::OperationKind,
 	token::keyword::Keyword,
 };
 

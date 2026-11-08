@@ -9,7 +9,7 @@ use reifydb_core::interface::catalog::{
 	relationship::{Relationship, RelationshipCardinality, RelationshipJunction},
 	table::Table,
 };
-use reifydb_rql::{
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{
 			Ast, AstAppend, AstAppendSource, AstBlock, AstFilter, AstFor, AstFrom, AstInfix, AstInline,

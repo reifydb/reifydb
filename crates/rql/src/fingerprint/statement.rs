@@ -3,14 +3,14 @@
 
 use bumpalo::Bump;
 use reifydb_core::fingerprint::StatementFingerprint;
-use reifydb_value::util::hash::xxh3_128;
-
-use super::walk::{FingerprintBuffer, fingerprint_ast_slice};
-use crate::{
+use reifydb_rql_frontend::{
 	ast::ast::AstStatement,
 	bump::BumpFragment,
 	token::{token::TokenKind, tokenize},
 };
+use reifydb_value::util::hash::xxh3_128;
+
+use super::walk::{FingerprintBuffer, fingerprint_ast_slice};
 
 pub fn fingerprint_statement(statement: &AstStatement<'_>) -> StatementFingerprint {
 	let mut buf = FingerprintBuffer::new();

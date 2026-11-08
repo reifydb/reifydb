@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::{AstTake, AstTakeValue};
+
 use crate::{
 	Result,
-	ast::ast::{AstTake, AstTakeValue},
 	nodes::TakeLimit,
 	plan::logical::{Compiler, LogicalPlan, TakeNode},
 };

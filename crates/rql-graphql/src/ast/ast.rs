@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_rql::bump::{BumpBox, BumpFragment};
+use reifydb_rql_frontend::bump::{BumpBox, BumpFragment};
 
 use crate::token::token::Token;
 

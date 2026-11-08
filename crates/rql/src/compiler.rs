@@ -15,6 +15,13 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::registry::Routines;
+use reifydb_rql_frontend::{
+	ast::{
+		ast::{AstStatement, AstTimestampPrecision, AstViewStorageKind},
+		parse_str,
+	},
+	bump::BumpBox,
+};
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -26,11 +33,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	ast::{
-		ast::{AstStatement, AstTimestampPrecision, AstViewStorageKind},
-		parse_str,
-	},
-	bump::BumpBox,
 	error::RqlError,
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},

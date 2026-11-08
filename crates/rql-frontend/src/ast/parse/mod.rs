@@ -70,8 +70,7 @@ use crate::{
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
 	bump::{BumpBox, BumpFragment},
-	diagnostic::AstError,
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -684,7 +683,7 @@ impl<'bump> Parser<'bump> {
 		let (nodes, has_braces) = self.parse_expressions(true, None)?;
 
 		if !has_braces {
-			return Err(RqlError::OperatorMissingBraces {
+			return Err(AstError::OperatorMissingBraces {
 				kind: op,
 				fragment: token.fragment.to_owned(),
 			}

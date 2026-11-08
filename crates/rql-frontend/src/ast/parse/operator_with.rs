@@ -10,7 +10,6 @@ use crate::{
 		parse::Parser,
 	},
 	diagnostic::AstError,
-	error::RqlError,
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -60,7 +59,7 @@ impl<'bump> Parser<'bump> {
 			let key = self.parse_operator_with_key()?;
 			let text = self.source_since(start);
 			if !seen.insert(text) {
-				return Err(RqlError::OperatorWithDuplicateKey {
+				return Err(AstError::OperatorWithDuplicateKey {
 					key: text.to_string(),
 					fragment: key.fragment(),
 				}

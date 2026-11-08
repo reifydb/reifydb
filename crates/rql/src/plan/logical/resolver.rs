@@ -19,13 +19,11 @@ use reifydb_core::{
 		},
 	},
 };
+use reifydb_rql_frontend::ast::identifier::UnresolvedObjectIdentifier;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, fragment::Fragment};
 
-use crate::{
-	ast::identifier::UnresolvedObjectIdentifier,
-	error::{IdentifierError, ObjectNotFoundError},
-};
+use crate::error::{IdentifierError, ObjectNotFoundError};
 
 pub enum ResolvedSource {
 	Object(ResolvedObject),

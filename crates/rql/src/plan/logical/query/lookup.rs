@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::operation::{lookup_block_not_bare_from, lookup_using_not_partition};
+use reifydb_rql_frontend::ast::ast::{AstLookup, JoinConnector};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error;
 
 use crate::{
 	Result,
-	ast::ast::{AstLookup, JoinConnector},
 	plan::logical::{
 		Compiler, LogicalPlan, LookupNode, ObjectScanNode, RemoteScanNode, query::join::build_join_expressions,
 	},

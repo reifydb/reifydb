@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_rql::bump::BumpFragment;
+use reifydb_rql_frontend::bump::BumpFragment;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Token<'bump> {

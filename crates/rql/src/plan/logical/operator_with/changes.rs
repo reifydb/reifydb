@@ -2,16 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::operator_with::{ChangesWith, DeleteTo, InsertTo, UpdateTo};
+use reifydb_rql_frontend::{
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
+	token::token::Token,
+};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
 	error::RqlError,
 	plan::logical::{
 		Compiler,
 		operator_with::{entries, unknown_key},
 	},
-	token::token::Token,
 };
 
 impl<'bump> Compiler<'bump> {
@@ -137,13 +139,12 @@ fn check_changes(token: &Token<'_>, changes: &ChangesWith) -> Result<()> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::operator_with::{ChangesWith, DeleteTo, InsertTo, UpdateTo};
-
-	use crate::{
-		Result,
+	use reifydb_rql_frontend::{
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
-		plan::logical::Compiler,
 	};
+
+	use crate::{Result, plan::logical::Compiler};
 
 	fn changes_with(source: &str) -> Result<ChangesWith> {
 		let bump = Bump::new();

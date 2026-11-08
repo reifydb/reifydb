@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::procedure::RunAs;
+use reifydb_rql_frontend::ast::{ast::AstCreateHandler, identifier::MaybeQualifiedProcedureIdentifier};
 
 use crate::{
 	Result,
-	ast::{ast::AstCreateHandler, identifier::MaybeQualifiedProcedureIdentifier},
 	plan::logical::{Compiler, CreateProcedureNode, LogicalPlan},
 };
 

@@ -7,7 +7,7 @@ use crate::{
 		ast::{Ast, AstLiteral, AstTake, AstTakeValue},
 		parse::{Parser, Precedence},
 	},
-	error::RqlError,
+	diagnostic::AstError,
 	token::{keyword::Keyword, operator::Operator},
 };
 
@@ -32,7 +32,7 @@ impl<'bump> Parser<'bump> {
 				AstLiteral::Number(number) => {
 					let take_value: i64 = number.value().parse().unwrap();
 					if take_value < 0 {
-						return Err(RqlError::TakeNegativeValue {
+						return Err(AstError::TakeNegativeValue {
 							fragment: number.0.fragment.to_owned(),
 						}
 						.into());

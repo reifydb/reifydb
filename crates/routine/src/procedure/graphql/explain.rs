@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::{batch::batch, column::factory},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_rql::ast::ast::{
+use reifydb_rql_frontend::ast::ast::{
 	Ast, AstAppend, AstAppendSource, AstFor, AstFrom, AstInline, AstJoin, AstLet, AstList, AstLiteral, AstSkip,
 	AstTake, AstTakeValue, InfixOperator, LetValue,
 };

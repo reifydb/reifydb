@@ -11,12 +11,10 @@ use reifydb_core::{
 	interface::resolved::ResolvedObject,
 };
 use reifydb_routine_abi::registry::Routines;
+use reifydb_rql_frontend::bump::BumpBox;
 use reifydb_value::value::{Value, system_columns::SystemColumn};
 
-use crate::{
-	bump::BumpBox,
-	plan::logical::{ExtendNode, FilterNode, MapNode, tree::QueryTree},
-};
+use crate::plan::logical::{ExtendNode, FilterNode, MapNode, tree::QueryTree};
 
 pub(crate) fn optimize_tree<'bump>(bump: &'bump Bump, routines: &Routines, tree: QueryTree<'bump>) -> QueryTree<'bump> {
 	let rules = Rules {

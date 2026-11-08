@@ -7,6 +7,11 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::internal_error;
+use reifydb_rql_frontend::{
+	ast::ast::{AstLiteral, AstType, AstTypeParameter},
+	bump::BumpFragment,
+	diagnostic::AstError,
+};
 use reifydb_value::{
 	Result,
 	value::{
@@ -16,16 +21,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	ast::ast::{AstLiteral, AstType, AstTypeParameter},
-	bump::BumpFragment,
-	diagnostic::AstError,
-};
-
-pub mod ast;
-pub mod bump;
 pub mod compiler;
-pub mod diagnostic;
 pub(crate) mod duration;
 pub mod error;
 pub mod expression;
@@ -35,7 +31,6 @@ pub mod nodes;
 pub mod optimize;
 pub mod plan;
 pub mod query;
-pub mod token;
 
 pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {
@@ -313,7 +308,7 @@ impl HasVersion for RqlVersion {
 				.unwrap_or(env!("CARGO_PKG_NAME"))
 				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB Query Language parser and planner module".to_string(),
+			description: "ReifyDB Query Language planner module".to_string(),
 			r#type: ComponentType::Module,
 		}
 	}

@@ -11,15 +11,13 @@ use reifydb_core::{
 	value::{batch::batch, column::factory},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_rql::{
-	ast::{ast::AstAlterPolicyAction, parse_str},
-	plan::logical::{
-		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
-		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode, InlineDataNode,
-		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LookupNode, MapNode, ObjectScanNode,
-		OrderNode, PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, compile_logical,
-	},
+use reifydb_rql::plan::logical::{
+	AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
+	CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode, InlineDataNode,
+	JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LookupNode, MapNode, ObjectScanNode, OrderNode,
+	PatchNode, RemoteScanNode, TakeNode, VariableSourceNode, compile_logical,
 };
+use reifydb_rql_frontend::ast::{ast::AstAlterPolicyAction, parse_str};
 use reifydb_value::value::value_type::ValueType;
 
 use crate::procedure::rql::extract_query;

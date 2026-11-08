@@ -5,12 +5,15 @@ use reifydb_core::{
 	common::{OnEmpty, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
+use reifydb_rql_frontend::{
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
+	diagnostic::AstError,
+	token::token::Token,
+};
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
-	diagnostic::AstError,
 	duration::DurationBound,
 	error::RqlError,
 	plan::logical::{
@@ -20,7 +23,6 @@ use crate::{
 			literal_boolean, reject_immutable_not_smaller_than_lateness, unknown_key, window::ParsedConfig,
 		},
 	},
-	token::token::Token,
 };
 
 const APPLY_WITH_KEYS: &str = "window, duration, slots, slide, gap, lag, pane, lateness, retention, immutable, or on";
@@ -371,14 +373,13 @@ mod tests {
 		common::{OnEmpty, WindowKind, WindowSize},
 		operator_with::{ApplyWith, WithSpan},
 	};
-	use reifydb_value::value::duration::Duration;
-
-	use crate::{
-		Result,
+	use reifydb_rql_frontend::{
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
-		plan::logical::Compiler,
 	};
+	use reifydb_value::value::duration::Duration;
+
+	use crate::{Result, plan::logical::Compiler};
 
 	fn apply_with(source: &str) -> Result<ApplyWith> {
 		let bump = Bump::new();

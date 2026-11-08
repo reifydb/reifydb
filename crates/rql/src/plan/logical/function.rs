@@ -4,10 +4,10 @@
 use std::fmt::{self, Display, Formatter};
 
 use reifydb_core::expression::Expression;
+use reifydb_rql_frontend::bump::{BumpFragment, BumpVec};
 use reifydb_value::value::constraint::TypeConstraint;
 
 use super::LogicalPlan;
-use crate::bump::{BumpFragment, BumpVec};
 
 #[derive(Debug, Clone)]
 pub struct FunctionParameter<'bump> {

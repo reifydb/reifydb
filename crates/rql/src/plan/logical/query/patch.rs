@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::AstPatch;
+
 use crate::{
 	Result,
-	ast::ast::AstPatch,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan, PatchNode, reserved::reject_reserved_output_names},
 };

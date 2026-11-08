@@ -2,13 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::expression::{AliasExpression, IdentExpression};
+use reifydb_rql_frontend::{
+	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
+	bump::BumpBox,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{err, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
-	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan,

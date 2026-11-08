@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{ast::AstAggregate, parse::Parser},
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{keyword::Keyword, operator::Operator::OpenCurly},
 };
 
@@ -15,7 +15,7 @@ impl<'bump> Parser<'bump> {
 
 		let projections = if !self.current()?.is_keyword(Keyword::By) {
 			if !self.current()?.is_operator(OpenCurly) {
-				return Err(RqlError::OperatorMissingBraces {
+				return Err(AstError::OperatorMissingBraces {
 					kind: OperationKind::Aggregate,
 					fragment: token.fragment.to_owned(),
 				}
@@ -30,7 +30,7 @@ impl<'bump> Parser<'bump> {
 		let by = if !self.is_eof() && self.current().is_ok_and(|t| t.is_keyword(Keyword::By)) {
 			let by_token = self.consume_keyword(Keyword::By)?;
 			if !self.current()?.is_operator(OpenCurly) {
-				return Err(RqlError::OperatorMissingBraces {
+				return Err(AstError::OperatorMissingBraces {
 					kind: OperationKind::AggregateBy,
 					fragment: by_token.fragment.to_owned(),
 				}
@@ -61,7 +61,6 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		ast::ast::{Ast, InfixOperator},
-		plan::logical::Compiler,
 		token::tokenize,
 	};
 
@@ -287,25 +286,6 @@ pub mod tests {
 		assert_eq!(aggregate.map.len(), 0);
 		assert_eq!(aggregate.by.len(), 1);
 		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
-	}
-
-	#[test]
-	fn an_aggregate_with_a_with_clause_after_its_by_clause_is_rejected() {
-		// AGGREGATE takes no WITH clause: the BY clause is the only bound on an aggregate's groups.
-		let bump = Bump::new();
-		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
-			panic!("not aggregate")
-		};
-		assert!(
-			Compiler::compile_aggregate_with(aggregate.with.as_ref()).is_err(),
-			"expected error: AGGREGATE takes no WITH clause"
-		);
 	}
 
 	#[test]

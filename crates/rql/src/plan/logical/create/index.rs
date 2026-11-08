@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::ast::{AstCreateIndex, AstIndexColumn},
 	bump::BumpBox,
+};
+
+use crate::{
+	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan},
 };

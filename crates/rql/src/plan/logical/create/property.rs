@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::{AstColumnPropertyKind, AstCreateColumnProperty};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	Result,
-	ast::ast::{AstColumnPropertyKind, AstCreateColumnProperty},
 	plan::logical::{
 		Compiler, CreateColumnPropertyNode, LogicalPlan,
 		create::{column_saturation_property, reject_column_default},

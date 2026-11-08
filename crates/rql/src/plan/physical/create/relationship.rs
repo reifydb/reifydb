@@ -6,13 +6,15 @@ use reifydb_core::interface::catalog::{
 	id::{ColumnId, NamespaceId, TableId},
 	relationship::RelationshipCardinality,
 };
+use reifydb_rql_frontend::{
+	ast::{ast::AstRelationshipCardinality, identifier::MaybeQualifiedTableIdentifier},
+	bump::BumpFragment,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	ast::{ast::AstRelationshipCardinality, identifier::MaybeQualifiedTableIdentifier},
-	bump::BumpFragment,
 	nodes::{CreateRelationshipNode, RelationshipJunction},
 	plan::{
 		logical::{self, resolver::DEFAULT_NAMESPACE},

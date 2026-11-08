@@ -31,6 +31,7 @@ reifydb-transaction = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-flow = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-rql-frontend = { workspace = true }
 
 serde_json = { workspace = true }
 

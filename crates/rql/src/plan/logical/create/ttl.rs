@@ -2,11 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::row::Ttl;
+use reifydb_rql_frontend::{ast::ast::AstTtl, diagnostic::AstError};
 
 use crate::{
 	Result,
-	ast::ast::AstTtl,
-	diagnostic::AstError,
 	duration::{DurationBound, compile_duration},
 	plan::logical::Compiler,
 };
@@ -31,10 +30,10 @@ impl<'bump> Compiler<'bump> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_rql_frontend::{bump::Bump, token::tokenize};
 	use reifydb_runtime::version_epoch::EpochRetention;
 
 	use super::*;
-	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn compile_ttl_accepts_compound_duration() {

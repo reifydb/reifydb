@@ -19,14 +19,11 @@ use reifydb_core::{
 		resolved::ResolvedObject,
 	},
 };
-use reifydb_rql::{
-	ast::parse_str,
-	bump::BumpBox,
-	plan::logical::{
-		AppendNode, AppendSourcePlan, AssignValue, ElseIfBranch, FilterNode, LetValue, LogicalPlan,
-		ObjectScanNode, PipelineNode, compile_logical, function::ReturnValue,
-	},
+use reifydb_rql::plan::logical::{
+	AppendNode, AppendSourcePlan, AssignValue, ElseIfBranch, FilterNode, LetValue, LogicalPlan, ObjectScanNode,
+	PipelineNode, compile_logical, function::ReturnValue,
 };
+use reifydb_rql_frontend::{ast::parse_str, bump::BumpBox};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment, value::identity::IdentityId};
 use tracing::instrument;

@@ -6,6 +6,13 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::interface::catalog::queue::{Queue, QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry};
+use reifydb_rql_frontend::{
+	ast::ast::{
+		AstColumnProperty, AstCreateQueue, AstQueueDeduplicate, AstQueueDispatch, AstQueueRetention,
+		AstQueueRetry,
+	},
+	token::{keyword::FOREVER, token::Token},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -16,13 +23,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
-	ast::ast::{
-		AstColumnProperty, AstCreateQueue, AstQueueDeduplicate, AstQueueDispatch, AstQueueRetention,
-		AstQueueRetry,
-	},
-	convert_data_type_with_constraints,
-	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
+	Result, convert_data_type_with_constraints,
+	duration::{DurationBound, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
 		create::{
@@ -32,7 +34,6 @@ use crate::{
 		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
-	token::token::Token,
 };
 
 impl<'bump> Compiler<'bump> {

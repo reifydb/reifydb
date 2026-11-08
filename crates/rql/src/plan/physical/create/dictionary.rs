@@ -2,13 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
+use reifydb_rql_frontend::ast::ast::AstType;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
-	Result,
-	ast::ast::AstType,
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	plan::{
 		logical,
 		physical::{Compiler, CreateDictionaryNode, PhysicalPlan},

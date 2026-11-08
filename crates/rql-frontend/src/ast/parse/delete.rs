@@ -9,7 +9,7 @@ use crate::{
 		parse::Parser,
 	},
 	bump::BumpBox,
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{keyword::Keyword, token::TokenKind},
 };
 
@@ -18,7 +18,7 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return Err(RqlError::DeleteMissingTarget {
+			return Err(AstError::DeleteMissingTarget {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -34,7 +34,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
-			return Err(RqlError::DeleteMissingFilterClause {
+			return Err(AstError::DeleteMissingFilterClause {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -52,7 +52,7 @@ impl<'bump> Parser<'bump> {
 			let returning_token = self.advance()?;
 			let (exprs, had_braces) = self.parse_expressions(true, None)?;
 			if !had_braces {
-				return Err(RqlError::OperatorMissingBraces {
+				return Err(AstError::OperatorMissingBraces {
 					kind: OperationKind::Returning,
 					fragment: returning_token.fragment.to_owned(),
 				}

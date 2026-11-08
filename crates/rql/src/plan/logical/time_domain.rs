@@ -2,9 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::TimeSource;
+use reifydb_rql_frontend::ast::ast::AstTimeDeclaration;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-use crate::{Result, ast::ast::AstTimeDeclaration, error::RqlError};
+use crate::{Result, error::RqlError};
 
 #[derive(Debug, Default, Clone)]
 pub enum TimeDeclaration {

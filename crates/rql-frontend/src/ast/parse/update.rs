@@ -9,7 +9,7 @@ use crate::{
 		parse::{Parser, reject_duplicate_aliases},
 	},
 	bump::BumpBox,
-	error::{OperationKind, RqlError},
+	diagnostic::{AstError, OperationKind},
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
@@ -18,7 +18,7 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return Err(RqlError::UpdateMissingAssignmentsBlock {
+			return Err(AstError::UpdateMissingAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -34,7 +34,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(RqlError::UpdateMissingAssignmentsBlock {
+			return Err(AstError::UpdateMissingAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -42,14 +42,14 @@ impl<'bump> Parser<'bump> {
 		let (assignments, _) = self.parse_expressions(true, None)?;
 		reject_duplicate_aliases(&assignments)?;
 		if assignments.is_empty() {
-			return Err(RqlError::UpdateEmptyAssignmentsBlock {
+			return Err(AstError::UpdateEmptyAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
 		}
 
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
-			return Err(RqlError::UpdateMissingFilterClause {
+			return Err(AstError::UpdateMissingFilterClause {
 				fragment: token.fragment.to_owned(),
 			}
 			.into());
@@ -67,7 +67,7 @@ impl<'bump> Parser<'bump> {
 			let returning_token = self.advance()?;
 			let (exprs, had_braces) = self.parse_expressions(true, None)?;
 			if !had_braces {
-				return Err(RqlError::OperatorMissingBraces {
+				return Err(AstError::OperatorMissingBraces {
 					kind: OperationKind::Returning,
 					fragment: returning_token.fragment.to_owned(),
 				}

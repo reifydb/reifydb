@@ -44,6 +44,7 @@ use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::Engine
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
+use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	context::{clock::Clock, spawner::Spawner},
@@ -338,6 +339,7 @@ impl WasmDB {
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
+			RqlFrontendVersion.version(),
 			flow_subsystem.version(),
 		];
 

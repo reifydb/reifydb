@@ -4,7 +4,8 @@
 use arrow_array::RecordBatch;
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::value::batch::single_row;
-use reifydb_rql::{nodes::CreateIdentityAttributeNode, token::keyword::is_keyword};
+use reifydb_rql::nodes::CreateIdentityAttributeNode;
+use reifydb_rql_frontend::token::keyword::is_keyword;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{Value, value_type::ValueType};
 

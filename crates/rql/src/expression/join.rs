@@ -11,14 +11,13 @@ use reifydb_core::{
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
-use reifydb_value::{fragment::Fragment, return_error};
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
-	expression::ExpressionCompiler,
 };
+use reifydb_value::{fragment::Fragment, return_error};
+
+use crate::{Result, expression::ExpressionCompiler};
 
 pub struct JoinConditionCompiler {
 	alias: Option<Fragment>,

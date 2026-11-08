@@ -13,7 +13,6 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
-	ast::parse_str,
 	nodes::{AlterSequenceNode, PartitionKey, RowKey, RowKeyPredicate, SeriesBound},
 	optimize::optimize_physical,
 	plan::{
@@ -27,6 +26,7 @@ use reifydb_rql::{
 		system_columns::check_system_columns,
 	},
 };
+use reifydb_rql_frontend::ast::parse_str;
 use reifydb_value::value::value_type::ValueType;
 
 use crate::procedure::rql::extract_query;

@@ -5,6 +5,10 @@ use reifydb_catalog::{
 	catalog::view::ViewColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
+use reifydb_rql_frontend::{
+	ast::ast::{AstColumnProperty, AstCreateTransactionalView, AstViewStorageKind},
+	bump::BumpVec,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -12,10 +16,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
-	ast::ast::{AstColumnProperty, AstCreateTransactionalView, AstViewStorageKind},
-	bump::BumpVec,
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTransactionalViewNode, LogicalPlan,
 		create::{reject_dictionary_on_decimal, reject_digest_partition_columns},

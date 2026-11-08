@@ -23,11 +23,11 @@ use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_flow::compiler::compile_subscription_flow_ephemeral;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
-	ast::parse_str,
 	compiler::{CompilationResult, Compiled, IncrementalCompilation, constrain_policy},
 	fingerprint::request::fingerprint_request,
 	query::QueryPlan,
 };
+use reifydb_rql_frontend::ast::parse_str;
 use reifydb_runtime::context::clock::Instant;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{

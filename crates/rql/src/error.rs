@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	error, fmt,
-	fmt::{Display, Formatter},
-};
+use std::{error, fmt};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_value::{
@@ -13,52 +10,8 @@ use reifydb_value::{
 	value::value_type::ValueType,
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum OperationKind {
-	Sort,
-	Map,
-	Extend,
-	Patch,
-	Apply,
-	Aggregate,
-	AggregateBy,
-	Returning,
-}
-
-impl Display for OperationKind {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		match self {
-			OperationKind::Sort => f.write_str("SORT"),
-			OperationKind::Map => f.write_str("MAP"),
-			OperationKind::Extend => f.write_str("EXTEND"),
-			OperationKind::Patch => f.write_str("PATCH"),
-			OperationKind::Apply => f.write_str("APPLY"),
-			OperationKind::Aggregate => f.write_str("AGGREGATE"),
-			OperationKind::AggregateBy => f.write_str("AGGREGATE BY"),
-			OperationKind::Returning => f.write_str("RETURNING"),
-		}
-	}
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum RqlError {
-	#[error("TAKE operator requires non-negative value")]
-	TakeNegativeValue {
-		fragment: Fragment,
-	},
-
-	#[error("{kind} requires curly braces")]
-	OperatorMissingBraces {
-		kind: OperationKind,
-		fragment: Fragment,
-	},
-
-	#[error("WITH key `{key}` is given more than once")]
-	OperatorWithDuplicateKey {
-		key: String,
-		fragment: Fragment,
-	},
-
 	#[error("changes cannot run with this WITH block: {reason}")]
 	ChangesWithRefused {
 		reason: String,
@@ -155,41 +108,6 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("UPDATE requires an assignments block")]
-	UpdateMissingAssignmentsBlock {
-		fragment: Fragment,
-	},
-
-	#[error("UPDATE assignments block cannot be empty")]
-	UpdateEmptyAssignmentsBlock {
-		fragment: Fragment,
-	},
-
-	#[error("UPDATE requires a FILTER clause")]
-	UpdateMissingFilterClause {
-		fragment: Fragment,
-	},
-
-	#[error("DELETE requires a target table")]
-	DeleteMissingTarget {
-		fragment: Fragment,
-	},
-
-	#[error("DELETE requires a FILTER clause")]
-	DeleteMissingFilterClause {
-		fragment: Fragment,
-	},
-
-	#[error("INSERT requires a target table")]
-	InsertMissingTarget {
-		fragment: Fragment,
-	},
-
-	#[error("INSERT requires a data source")]
-	InsertMissingSource {
-		fragment: Fragment,
-	},
-
 	#[error("Cannot mix keyed and positional rows in the same INSERT")]
 	InsertMixedRowTypes {
 		fragment: Fragment,
@@ -198,18 +116,6 @@ pub enum RqlError {
 	#[error("INSERT ... WITH is only supported for queues")]
 	InsertWithOnlyForQueues {
 		fragment: Fragment,
-	},
-
-	#[error("unknown INSERT WITH option `{option}`")]
-	InsertWithUnknownOption {
-		fragment: Fragment,
-		option: String,
-	},
-
-	#[error("duplicate INSERT WITH option `{option}`")]
-	InsertWithDuplicateOption {
-		fragment: Fragment,
-		option: String,
 	},
 
 	#[error("queue `{queue}` declares deduplicate by {{{by}}}; INSERT WITH deduplication_key is not allowed")]
@@ -286,120 +192,6 @@ pub enum RqlError {
 impl IntoDiagnostic for RqlError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			RqlError::TakeNegativeValue { fragment } => {
-				let value = fragment.text().to_string();
-				Diagnostic {
-					code: "TAKE_001".to_string(),
-					rql: None,
-					message: format!("TAKE operator requires non-negative value, got {}", value),
-					column: None,
-					fragment,
-					label: Some("negative value not allowed".to_string()),
-					help: Some("Use a positive number to limit results, or 0 to return no rows".to_string()),
-					notes: vec![
-						"TAKE operator limits the number of rows returned from a query".to_string(),
-						"Negative values are not meaningful in this context".to_string(),
-						"Valid examples: TAKE 10, TAKE 0, TAKE 100".to_string(),
-					],
-					cause: None,
-					operator_chain: None,
-				}
-			}
-
-
-
-			RqlError::OperatorMissingBraces { kind, fragment } => {
-				let (code, message, help, notes) = match kind {
-					OperationKind::Sort => (
-						"SORT_001",
-						"SORT requires curly braces around columns",
-						"Wrap SORT columns in curly braces, e.g., 'SORT {name}' or 'SORT {name:ASC, age:DESC}'",
-						vec![
-							"SORT always requires curly braces: SORT {column}".to_string(),
-							"Multiple columns: SORT {col1:ASC, col2:DESC}".to_string(),
-						],
-					),
-					OperationKind::Map => (
-						"MAP_002",
-						"MAP requires curly braces around expressions",
-						"Wrap MAP expressions in curly braces, e.g., 'MAP {name}' or 'MAP {name, age}'",
-						vec![
-							"MAP always requires curly braces: MAP {expression}".to_string(),
-							"Multiple expressions: MAP {expr1, expr2}".to_string(),
-						],
-					),
-					OperationKind::Extend => (
-						"EXTEND_003",
-						"EXTEND requires curly braces around expressions",
-						"Wrap EXTEND expressions in curly braces, e.g., 'EXTEND {total: price * qty}'",
-						vec![
-							"EXTEND always requires curly braces: EXTEND {expression}".to_string(),
-							"Multiple expressions: EXTEND {expr1, expr2}".to_string(),
-						],
-					),
-					OperationKind::Patch => (
-						"PATCH_001",
-						"PATCH requires curly braces around expressions",
-						"Wrap PATCH expressions in curly braces, e.g., 'PATCH {status: \"active\"}'",
-						vec![
-							"PATCH always requires curly braces: PATCH {expression}".to_string(),
-							"Multiple expressions: PATCH {expr1, expr2}".to_string(),
-						],
-					),
-					OperationKind::Apply => (
-						"APPLY_002",
-						"APPLY requires curly braces around arguments",
-						"Wrap APPLY arguments in curly braces, e.g., 'APPLY running_sum {value}'",
-						vec![
-							"APPLY always requires curly braces: APPLY operator {arguments}".to_string(),
-							"No arguments: APPLY counter {}".to_string(),
-							"Multiple arguments: APPLY op {arg1, arg2}".to_string(),
-						],
-					),
-					OperationKind::Aggregate => (
-						"AGGREGATE_004",
-						"AGGREGATE requires curly braces around aggregation expressions",
-						"Wrap aggregation expressions in curly braces, e.g., 'AGGREGATE {count(id)} BY {name}'",
-						vec![
-							"AGGREGATE always requires curly braces: AGGREGATE {expressions} BY {columns}".to_string(),
-							"Example: AGGREGATE {sum(amount), avg(price)} BY {category}".to_string(),
-						],
-					),
-					OperationKind::AggregateBy => (
-						"AGGREGATE_005",
-						"AGGREGATE BY requires curly braces around grouping columns",
-						"Wrap BY columns in curly braces, e.g., 'AGGREGATE {count(id)} BY {name}'",
-						vec![
-							"AGGREGATE BY always requires curly braces: BY {columns}".to_string(),
-							"Global aggregation (no grouping): BY {}".to_string(),
-							"Multiple columns: BY {col1, col2}".to_string(),
-						],
-					),
-					OperationKind::Returning => (
-						"RETURNING_001",
-						"RETURNING requires curly braces around expressions",
-						"Wrap RETURNING expressions in curly braces, e.g., 'RETURNING {id, name}'",
-						vec![
-							"RETURNING always requires curly braces: RETURNING {expressions}".to_string(),
-							"All columns: RETURNING {*}".to_string(),
-							"Computed: RETURNING {id, total: price * qty}".to_string(),
-						],
-					),
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message: message.to_string(),
-					column: None,
-					fragment,
-					label: Some("missing curly braces".to_string()),
-					help: Some(help.to_string()),
-					notes,
-					cause: None,
-					operator_chain: None,
-				}
-			}
-
 			RqlError::ChangesWithRefused { reason, fragment } => Diagnostic {
 				code: "OP_004".to_string(),
 				rql: None,
@@ -411,19 +203,6 @@ impl IntoDiagnostic for RqlError {
 					"Each of insert, update and delete says what that change becomes: insert: insert|drop, update: update|insert|drop, delete: delete|insert|drop"
 						.to_string(),
 				),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::OperatorWithDuplicateKey { key, fragment } => Diagnostic {
-				code: "OP_003".to_string(),
-				rql: None,
-				message: format!("WITH key `{}` is given more than once", key),
-				column: None,
-				fragment,
-				label: Some("key given twice".to_string()),
-				help: Some("Each WITH key may appear at most once in its block".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
@@ -692,141 +471,6 @@ impl IntoDiagnostic for RqlError {
 				operator_chain: None,
 			},
 
-			RqlError::UpdateMissingAssignmentsBlock { fragment } => Diagnostic {
-				code: "UPDATE_001".to_string(),
-				rql: None,
-				message: "UPDATE requires an assignments block".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing assignments block".to_string()),
-				help: Some(
-					"Specify the fields to update in curly braces, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
-						.to_string(),
-				),
-				notes: vec![
-					"The assignments block specifies which columns to update and their new values".to_string(),
-					"Use colon syntax for assignments: { column: value, ... }".to_string(),
-					"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::UpdateEmptyAssignmentsBlock { fragment } => Diagnostic {
-				code: "UPDATE_002".to_string(),
-				rql: None,
-				message: "UPDATE assignments block cannot be empty".to_string(),
-				column: None,
-				fragment,
-				label: Some("empty assignments block".to_string()),
-				help: Some(
-					"Specify at least one field to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
-						.to_string(),
-				),
-				notes: vec![
-					"At least one column must be specified for update".to_string(),
-					"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::UpdateMissingFilterClause { fragment } => Diagnostic {
-				code: "UPDATE_003".to_string(),
-				rql: None,
-				message: "UPDATE requires a FILTER clause".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing FILTER clause".to_string()),
-				help: Some(
-					"Add a FILTER clause to specify which rows to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
-						.to_string(),
-				),
-				notes: vec![
-					"The FILTER clause is required to prevent accidental mass updates".to_string(),
-					"It specifies the condition for selecting rows to update".to_string(),
-					"Example: UPDATE users { name: 'alice' } FILTER id == 1".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::DeleteMissingTarget { fragment } => Diagnostic {
-				code: "DELETE_001".to_string(),
-				rql: None,
-				message: "DELETE requires a target table".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing target table".to_string()),
-				help: Some("Specify the table to delete from, e.g., 'DELETE users FILTER id == 1'".to_string()),
-				notes: vec![
-					"The target table specifies which table to delete rows from".to_string(),
-					"Example: DELETE users FILTER id == 1".to_string(),
-					"Example with namespace: DELETE test::users FILTER id == 1".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::DeleteMissingFilterClause { fragment } => Diagnostic {
-				code: "DELETE_002".to_string(),
-				rql: None,
-				message: "DELETE requires a FILTER clause".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing FILTER clause".to_string()),
-				help: Some(
-					"Add a FILTER clause to specify which rows to delete, e.g., 'DELETE users FILTER id == 1'"
-						.to_string(),
-				),
-				notes: vec![
-					"The FILTER clause is required to prevent accidental mass deletes".to_string(),
-					"It specifies the condition for selecting rows to delete".to_string(),
-					"Example: DELETE users FILTER id == 1".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::InsertMissingTarget { fragment } => Diagnostic {
-				code: "INSERT_001".to_string(),
-				rql: None,
-				message: "INSERT requires a target table".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing target table".to_string()),
-				help: Some(
-					"Specify the table to insert into, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'"
-						.to_string(),
-				),
-				notes: vec![
-					"The target table specifies where to insert the data".to_string(),
-					"Example: INSERT users [{ id: 1, name: \"Alice\" }]".to_string(),
-					"Example with namespace: INSERT test::users [{ id: 1, name: \"Alice\" }]".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::InsertMissingSource { fragment } => Diagnostic {
-				code: "INSERT_002".to_string(),
-				rql: None,
-				message: "INSERT requires a data source".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing data source".to_string()),
-				help: Some(
-					"Specify the data to insert, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'".to_string(),
-				),
-				notes: vec![
-					"Use inline array directly: INSERT users [{ id: 1 }, { id: 2 }]".to_string(),
-					"Use variable directly: INSERT users $data".to_string(),
-					"Use FROM for table sources: INSERT target_table FROM source_table".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
 			RqlError::InsertWithOnlyForQueues { fragment } => Diagnostic {
 				code: "INSERT_005".to_string(),
 				rql: None,
@@ -840,34 +484,6 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"deduplication_key and not_before only have meaning for queue items".to_string(),
 				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::InsertWithUnknownOption { fragment, option } => Diagnostic {
-				code: "INSERT_006".to_string(),
-				rql: None,
-				message: format!("unknown INSERT WITH option `{}`", option),
-				column: None,
-				fragment,
-				label: Some("unknown option".to_string()),
-				help: Some("INSERT ... WITH accepts deduplication_key and not_before".to_string()),
-				notes: vec![
-					"Example: INSERT ns::jobs [{ id: 1 }] WITH { deduplication_key: \"job-1\" }".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
-
-			RqlError::InsertWithDuplicateOption { fragment, option } => Diagnostic {
-				code: "INSERT_007".to_string(),
-				rql: None,
-				message: format!("duplicate INSERT WITH option `{}`", option),
-				column: None,
-				fragment,
-				label: Some("option given twice".to_string()),
-				help: Some("Each INSERT WITH option may appear at most once".to_string()),
-				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

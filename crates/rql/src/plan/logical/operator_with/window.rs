@@ -5,12 +5,14 @@ use reifydb_core::{
 	common::{OnEmpty, WindowKind, WindowSize},
 	operator_with::WindowWith,
 };
+use reifydb_rql_frontend::{
+	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
+	diagnostic::AstError,
+};
 use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
-	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
-	diagnostic::AstError,
 	duration::DurationBound,
 	error::RqlError,
 	plan::logical::{
@@ -529,11 +531,12 @@ impl<'bump> Compiler<'bump> {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{
+	use reifydb_rql_frontend::{
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
 	};
+
+	use super::*;
 
 	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
 		let bump = Bump::new();

@@ -46,6 +46,7 @@ use reifydb_extension::{
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
+use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
 #[cfg(feature = "column")]
 use reifydb_store_column::store::ColumnStore;
@@ -582,6 +583,7 @@ impl DatabaseBuilder {
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
+			RqlFrontendVersion.version(),
 		];
 
 		// IMPORTANT: order matters for shutdown - subsystems are stopped in REVERSE order.

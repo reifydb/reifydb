@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{expression::Expression, operator_with::WindowWith};
+use reifydb_rql_frontend::ast::ast::{Ast, AstWindow};
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstWindow},
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_output_names},
 };

@@ -3,25 +3,26 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use reifydb_core::expression::{AndExpression, EqExpression, Expression};
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::ast::{
 		Ast, AstAssign, AstBlock, AstCall, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
 		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstStatement, AstWhile,
 		LetValue as AstLetValue,
 	},
 	bump::{BumpBox, BumpFragment},
-	convert_data_type_with_constraints,
+	token::token::{Literal, Token, TokenKind},
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::fragment::Fragment;
+
+use crate::{
+	Result, convert_data_type_with_constraints,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		AssignNode, AssignValue, Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue,
 		LogicalPlan, LoopNode, PipelineNode, WhileNode,
 		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode, ReturnValue},
 	},
-	token::token::{Literal, Token, TokenKind},
 };
 
 type MatchBranches<'bump> = (Vec<(Expression, LogicalPlan<'bump>)>, Option<LogicalPlan<'bump>>);

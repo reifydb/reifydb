@@ -39,6 +39,7 @@ use reifydb_extension::{block_encoding::registry::BlockEncodings, transform::reg
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
+use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	actor::timers::drain_expired_timers,
@@ -201,6 +202,7 @@ impl Bridge {
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
+			RqlFrontendVersion.version(),
 			flow_subsystem.version(),
 		];
 

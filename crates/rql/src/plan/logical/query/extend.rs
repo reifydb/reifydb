@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_rql_frontend::ast::ast::AstExtend;
+
 use crate::{
 	Result,
-	ast::ast::AstExtend,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, ExtendNode, LogicalPlan, reserved::reject_reserved_output_names},
 };

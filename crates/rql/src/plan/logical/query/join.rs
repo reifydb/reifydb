@@ -7,16 +7,18 @@ use reifydb_core::{
 	common::JoinType,
 	expression::{AndExpression, EqExpression, Expression, OrExpression},
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
-
-use crate::{
-	Result,
+use reifydb_rql_frontend::{
 	ast::{
 		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
 		identifier::UnresolvedObjectIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::fragment::Fragment;
+
+use crate::{
+	Result,
 	error::RqlError,
 	expression::join::JoinConditionCompiler,
 	plan::logical::{

@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use bumpalo::Bump;
 use reifydb_core::value::{batch::batch, column::factory};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_rql::token::{token::TokenKind, tokenize};
+use reifydb_rql_frontend::token::{token::TokenKind, tokenize};
 use reifydb_value::value::value_type::ValueType;
 
 use crate::procedure::rql::extract_query;

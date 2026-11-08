@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-pub(crate) use bumpalo::collections::Vec as BumpVec;
+pub use bumpalo::collections::Vec as BumpVec;
 use reifydb_value::fragment::{Fragment, StatementColumn, StatementLine};
 
 pub type Bump = bumpalo::Bump;
@@ -103,45 +103,6 @@ impl<'bump> BumpFragment<'bump> {
 				text,
 			} => Fragment::Internal {
 				text: Arc::from(*text),
-			},
-		}
-	}
-}
-
-pub(crate) struct FragmentInterner {
-	strings: HashMap<*const str, Arc<str>>,
-}
-
-impl FragmentInterner {
-	pub fn new() -> Self {
-		Self {
-			strings: HashMap::new(),
-		}
-	}
-
-	pub fn intern(&mut self, text: &str) -> Arc<str> {
-		let key = text as *const str;
-		self.strings.entry(key).or_insert_with(|| Arc::from(text)).clone()
-	}
-
-	pub fn intern_fragment(&mut self, fragment: &BumpFragment<'_>) -> Fragment {
-		match fragment {
-			BumpFragment::None => Fragment::None,
-			BumpFragment::Statement {
-				text,
-				offset: _,
-				source_end: _,
-				line,
-				column,
-			} => Fragment::Statement {
-				text: self.intern(text),
-				line: *line,
-				column: *column,
-			},
-			BumpFragment::Internal {
-				text,
-			} => Fragment::Internal {
-				text: self.intern(text),
 			},
 		}
 	}

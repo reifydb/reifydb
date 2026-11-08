@@ -39,6 +39,7 @@ reifydb-flow-sync = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-rql-frontend = { workspace = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-operator = { workspace = true }
