@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::{
+	common::JoinType,
 	flow::{
 		dag::FlowDag,
 		operator::{LookupObject, OperatorDef},
@@ -191,9 +192,14 @@ impl FlowGraphAnalyzer {
 					..
 				} => true,
 				OperatorDef::Join {
+					join_type,
 					with,
 					..
-				} => (with.emit != Emit::Off || !with.exact) && with.retention.is_none(),
+				} => {
+					(with.emit != Emit::Off || !with.exact)
+						&& with.retention.is_none()
+						&& !(*join_type == JoinType::Left && with.emit != Emit::Off)
+				}
 				OperatorDef::Lookup {
 					with,
 					..
@@ -1126,7 +1132,7 @@ pub mod tests {
 
 	fn join_with(with: JoinWith) -> OperatorDef {
 		OperatorDef::Join {
-			join_type: JoinType::Left,
+			join_type: JoinType::Inner,
 			left: vec![],
 			right: vec![],
 			alias: None,
@@ -1310,6 +1316,17 @@ pub mod tests {
 				},
 			),
 			(
+				"left join emit on",
+				OperatorDef::Join {
+					join_type: JoinType::Left,
+					left: vec![],
+					right: vec![],
+					alias: None,
+					natural: false,
+					with: JoinWith::default(),
+				},
+			),
+			(
 				"join emit off, exact",
 				join_with(JoinWith {
 					emit: Emit::Off,
@@ -1347,6 +1364,24 @@ pub mod tests {
 		for (name, operator) in refused {
 			assert!(!one_operator_flow(operator).collapsible_operators, "{name} must refuse a collapse");
 		}
+	}
+
+	#[test]
+	fn an_emit_off_left_join_still_collapses() {
+		// Refusing every left join would undo f3: an emit-off join never re-mints a row when its right arrives.
+		let operator = OperatorDef::Join {
+			join_type: JoinType::Left,
+			left: vec![],
+			right: vec![],
+			alias: None,
+			natural: true,
+			with: JoinWith {
+				emit: Emit::Off,
+				exact: false,
+				..JoinWith::default()
+			},
+		};
+		assert!(one_operator_flow(operator).collapsible_operators);
 	}
 
 	#[test]
