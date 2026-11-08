@@ -14,5 +14,5 @@ pub(crate) mod discovery;
 pub mod error;
 pub mod marker;
 pub mod operator;
-pub(crate) mod progress;
+pub mod progress;
 pub mod subsystem;

@@ -166,6 +166,7 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(health.clone()));
 		metrics_registry.register_collector(Arc::new(PoisonedFlowsCollector::new(engine.clone())));
 		let control = ControlFrontier::new();
+		ioc.register_service::<ControlFrontier>(control.clone());
 		let loader_handle =
 			flow_scope.spawn_flow("flow-loader", CommitLoader::new(flow_wal.log.clone(), loader_metrics));
 		let pull_batch_bytes =
