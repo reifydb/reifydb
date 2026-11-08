@@ -53,6 +53,7 @@ use tracing::instrument;
 use crate::{
 	commit::committer::{FlowSlice, produced_output},
 	marker::{MarkerMap, written_views},
+	progress::tracker::FoldShape,
 };
 
 pub struct SliceConfig {
@@ -72,6 +73,7 @@ pub struct SliceCursor<'a> {
 	pub lsn: Lsn,
 	pub frontier: (CommitVersion, Lsn),
 	pub durable_cursor: CommitVersion,
+	pub fold_shape: FoldShape,
 }
 
 pub enum SliceStep {
@@ -238,6 +240,40 @@ impl SliceComputer {
 		let mut groups: BTreeMap<SourceVersion, Vec<Change>> = BTreeMap::new();
 		for change in changes {
 			groups.entry(change.version.source).or_default().push(change);
+		}
+		if cursor.fold_shape == FoldShape::Collapsed && groups.len() > 1 {
+			let changes: Vec<Change> = groups.into_values().flatten().collect();
+			let version = ChangeVersion {
+				commit: changes
+					.iter()
+					.map(|change| change.version.commit)
+					.max()
+					.expect("a fold holds changes"),
+				source: changes
+					.iter()
+					.map(|change| change.version.source)
+					.max()
+					.expect("a fold holds changes"),
+			};
+			let mut by_origin: Vec<(ChangeOrigin, Vec<Change>)> = Vec::new();
+			let mut collapsed: Vec<Change> = Vec::new();
+			for mut change in changes {
+				if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
+					change.version = version;
+					collapsed.push(change);
+					continue;
+				}
+				match by_origin.iter_mut().find(|(origin, _)| *origin == change.origin) {
+					Some((_, same)) => same.push(change),
+					None => by_origin.push((change.origin.clone(), vec![change])),
+				}
+			}
+			for (_, same) in by_origin {
+				let mut merged = Change::merge(same)?;
+				merged.version = version;
+				collapsed.push(merged);
+			}
+			groups = BTreeMap::from([(version.source, collapsed)]);
 		}
 		let sources: Vec<SourceVersion> = groups.keys().copied().collect();
 		let (computed, holds) =
@@ -1173,6 +1209,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
+					fold_shape: FoldShape::PerSource,
 				},
 				&config,
 			) {
@@ -1265,6 +1302,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: cursor,
+					fold_shape: FoldShape::PerSource,
 				},
 				&config,
 			) {
@@ -1396,6 +1434,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
+					fold_shape: FoldShape::PerSource,
 				},
 				&config,
 			) {
@@ -1538,6 +1577,7 @@ mod integration {
 					lsn: Lsn::new(0),
 					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: CommitVersion(0),
+					fold_shape: FoldShape::PerSource,
 				},
 				&far,
 			) {
@@ -1574,6 +1614,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
+				fold_shape: FoldShape::PerSource,
 			},
 			&due,
 		) {
@@ -1667,6 +1708,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
+				fold_shape: FoldShape::PerSource,
 			},
 			&config,
 		)
@@ -1730,6 +1772,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
+				fold_shape: FoldShape::PerSource,
 			},
 			&config,
 		)
@@ -1786,6 +1829,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
+				fold_shape: FoldShape::PerSource,
 			},
 			&SliceConfig {
 				checkpoint_lag: 10_000,
@@ -1979,6 +2023,7 @@ mod integration {
 				lsn: Lsn::new(0),
 				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(4),
+				fold_shape: FoldShape::PerSource,
 			},
 			advance_to,
 			false,

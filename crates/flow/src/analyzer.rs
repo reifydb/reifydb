@@ -13,6 +13,7 @@ use reifydb_core::{
 		id::{RingBufferId, SeriesId, TableId, ViewId},
 		object::ObjectId,
 	},
+	operator_with::Emit,
 };
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +38,7 @@ pub struct FlowSummary {
 	pub node_count: usize,
 	pub edge_count: usize,
 	pub execution_order: Vec<OperatorId>,
+	pub collapsible_operators: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,8 @@ pub struct FlowDependencyGraph {
 	pub source_series: BTreeMap<SeriesId, Vec<FlowId>>,
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 	pub lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
+	pub exact_lookup_views: BTreeMap<ViewId, Vec<FlowId>>,
+	pub from_views: BTreeMap<ViewId, Vec<FlowId>>,
 }
 
 impl FlowDependencyGraph {
@@ -132,6 +136,8 @@ impl FlowGraphAnalyzer {
 				source_series: BTreeMap::new(),
 				sink_views: BTreeMap::new(),
 				lookup_views: BTreeMap::new(),
+				exact_lookup_views: BTreeMap::new(),
+				from_views: BTreeMap::new(),
 			},
 		}
 	}
@@ -161,6 +167,40 @@ impl FlowGraphAnalyzer {
 		let sources = Self::get_sources(flow);
 		let sinks = Self::get_sinks(flow);
 		let execution_order = flow.topological_order().to_vec();
+		let collapsible_operators = flow.get_operator_ids().into_iter().all(|node_id| {
+			flow.get_operator(&node_id).is_some_and(|node| match &node.ty {
+				OperatorDef::SourceTable {
+					..
+				}
+				| OperatorDef::SourceView {
+					..
+				}
+				| OperatorDef::SourceRingBuffer {
+					..
+				}
+				| OperatorDef::Filter {
+					..
+				}
+				| OperatorDef::Map {
+					..
+				}
+				| OperatorDef::Extend {
+					..
+				}
+				| OperatorDef::SinkTableView {
+					..
+				} => true,
+				OperatorDef::Join {
+					with,
+					..
+				} => with.emit != Emit::Off && with.retention.is_none(),
+				OperatorDef::Lookup {
+					with,
+					..
+				} => with.emit != Emit::Off && with.retention.is_none(),
+				_ => false,
+			})
+		});
 
 		FlowSummary {
 			id: flow.id(),
@@ -169,6 +209,7 @@ impl FlowGraphAnalyzer {
 			node_count: flow.node_count(),
 			edge_count: flow.edge_count(),
 			execution_order,
+			collapsible_operators,
 		}
 	}
 
@@ -270,12 +311,52 @@ impl FlowGraphAnalyzer {
 		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 		let mut lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
+		let mut exact_lookup_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
+		let mut from_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 
 		for flow in &self.flows {
 			let summary = Self::analyze_flow(flow);
 
 			for view_id in Self::get_lookup_views(flow) {
 				lookup_views.entry(view_id).or_default().push(flow.id());
+			}
+
+			let exact: BTreeSet<ViewId> = flow
+				.get_operator_ids()
+				.into_iter()
+				.filter_map(|node_id| match flow.get_operator(&node_id).map(|node| &node.ty) {
+					Some(OperatorDef::Lookup {
+						right: LookupObject::View(view),
+						with,
+						..
+					}) if with.emit == Emit::Off => Some(*view),
+					_ => None,
+				})
+				.collect();
+			for view_id in exact {
+				exact_lookup_views.entry(view_id).or_default().push(flow.id());
+			}
+
+			let lookup_rights: BTreeSet<OperatorId> = flow
+				.get_operator_ids()
+				.into_iter()
+				.filter_map(|node_id| flow.get_operator(&node_id))
+				.filter(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+				.filter_map(|node| node.inputs.get(1).copied())
+				.collect();
+			let read_from: BTreeSet<ViewId> = flow
+				.get_operator_ids()
+				.into_iter()
+				.filter(|node_id| !lookup_rights.contains(node_id))
+				.filter_map(|node_id| match flow.get_operator(&node_id).map(|node| &node.ty) {
+					Some(OperatorDef::SourceView {
+						view,
+					}) => Some(*view),
+					_ => None,
+				})
+				.collect();
+			for view_id in read_from {
+				from_views.entry(view_id).or_default().push(flow.id());
 			}
 
 			for source in &summary.sources {
@@ -317,6 +398,8 @@ impl FlowGraphAnalyzer {
 			source_series,
 			sink_views,
 			lookup_views,
+			exact_lookup_views,
+			from_views,
 		}
 	}
 
@@ -375,6 +458,8 @@ impl FlowGraphAnalyzer {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 			lookup_views: BTreeMap::new(),
+			exact_lookup_views: BTreeMap::new(),
+			from_views: BTreeMap::new(),
 		};
 	}
 }
@@ -389,17 +474,20 @@ impl Default for FlowGraphAnalyzer {
 pub mod tests {
 	use OperatorDef::{Filter, SinkTableView, SourceTable, SourceView};
 	use reifydb_core::{
-		common::{JoinType, TimeDomain},
+		common::{JoinType, TimeDomain, WindowKind, WindowSize},
 		flow::{
 			dag::FlowDag,
 			operator::{FlowNode, OperatorDef},
 		},
 		interface::catalog::{
-			flow::{FlowId, OperatorId},
-			id::{TableId, ViewId},
+			flow::{FlowEdge, FlowId, OperatorId},
+			id::{RingBufferId, TableId, ViewId},
 		},
-		operator_with::{JoinWith, LookupWith},
+		operator_with::{AggregateWith, ApplyWith, Emit, JoinWith, LookupWith, WindowWith},
+		row::{JoinPick, JoinRetention, OperatorRetention},
+		sort::{SortDirection, SortKey},
 	};
+	use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 	use super::*;
 
@@ -1030,5 +1118,321 @@ pub mod tests {
 
 		assert!(analyzer.get_dependency_graph().lookup_views.is_empty());
 		assert!(analyzer.get_dependency_graph().dependencies.is_empty());
+	}
+
+	fn one_operator_flow(operator: OperatorDef) -> FlowSummary {
+		FlowGraphAnalyzer::new().add(create_test_flow_with_nodes(1, vec![operator]))
+	}
+
+	fn join_with(with: JoinWith) -> OperatorDef {
+		OperatorDef::Join {
+			join_type: JoinType::Left,
+			left: vec![],
+			right: vec![],
+			alias: None,
+			natural: false,
+			with,
+		}
+	}
+
+	fn lookup_with(with: LookupWith) -> OperatorDef {
+		OperatorDef::Lookup {
+			join_type: JoinType::Left,
+			right: LookupObject::Table(TableId(9)),
+			left: vec![],
+			alias: None,
+			with,
+		}
+	}
+
+	fn second() -> Duration {
+		Duration::from_seconds(1).unwrap()
+	}
+
+	#[test]
+	fn every_operator_whose_final_state_ignores_in_between_versions_marks_its_flow_collapsible() {
+		// A kind missing here keeps its flows on one graph run per source, which silently loses the collapse
+		// gain.
+		let column_pick = JoinPick {
+			keys: vec![SortKey {
+				column: Fragment::internal("tvl"),
+				direction: SortDirection::Desc,
+			}],
+		};
+		let allowed = vec![
+			(
+				"source table",
+				SourceTable {
+					table: TableId(1),
+					time_domain: TimeDomain::None,
+				},
+			),
+			(
+				"source view",
+				SourceView {
+					view: ViewId(2),
+				},
+			),
+			(
+				"source ring buffer",
+				OperatorDef::SourceRingBuffer {
+					ringbuffer: RingBufferId(3),
+					time_domain: TimeDomain::None,
+				},
+			),
+			(
+				"filter",
+				Filter {
+					conditions: vec![],
+				},
+			),
+			(
+				"map",
+				OperatorDef::Map {
+					expressions: vec![],
+				},
+			),
+			(
+				"extend",
+				OperatorDef::Extend {
+					expressions: vec![],
+				},
+			),
+			(
+				"sink table view",
+				SinkTableView {
+					view: ViewId(4),
+				},
+			),
+			("hash join", join_with(JoinWith::default())),
+			(
+				"latest join",
+				join_with(JoinWith {
+					pick: Some(JoinPick::latest()),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"earliest join",
+				join_with(JoinWith {
+					pick: Some(JoinPick::earliest()),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"column pick join",
+				join_with(JoinWith {
+					pick: Some(column_pick),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"join emit after",
+				join_with(JoinWith {
+					emit: Emit::After(second()),
+					..JoinWith::default()
+				}),
+			),
+			("lookup emit on", lookup_with(LookupWith::default())),
+			(
+				"lookup emit after",
+				lookup_with(LookupWith {
+					emit: Emit::After(second()),
+					..LookupWith::default()
+				}),
+			),
+		];
+		for (name, operator) in allowed {
+			assert!(one_operator_flow(operator).collapsible_operators, "{name} must allow a collapse");
+		}
+	}
+
+	#[test]
+	fn an_operator_that_needs_every_version_keeps_its_flow_from_collapsing() {
+		// One of these collapsed would drop in-between rows or pair a left row with a later right version.
+		let retention = || OperatorRetention {
+			duration: second(),
+		};
+		let refused = vec![
+			("append", OperatorDef::Append {}),
+			(
+				"aggregate",
+				OperatorDef::Aggregate {
+					by: vec![],
+					map: vec![],
+					with: AggregateWith {},
+				},
+			),
+			(
+				"window",
+				OperatorDef::Window {
+					group_by: vec![],
+					aggregations: vec![],
+					with: WindowWith {
+						kind: WindowKind::Tumbling {
+							size: WindowSize::Count(2),
+						},
+						lateness: None,
+						immutable: None,
+					},
+				},
+			),
+			(
+				"apply",
+				OperatorDef::Apply {
+					operator: "custom".to_string(),
+					params: vec![],
+					with: ApplyWith::default(),
+				},
+			),
+			(
+				"sink ring buffer view",
+				OperatorDef::SinkRingBufferView {
+					view: ViewId(5),
+					capacity: 4,
+				},
+			),
+			(
+				"join emit off",
+				join_with(JoinWith {
+					emit: Emit::Off,
+					pick: Some(JoinPick::latest()),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"join with retention",
+				join_with(JoinWith {
+					retention: Some(JoinRetention {
+						left: None,
+						right: Some(retention()),
+					}),
+					..JoinWith::default()
+				}),
+			),
+			(
+				"lookup emit off",
+				lookup_with(LookupWith {
+					emit: Emit::Off,
+					..LookupWith::default()
+				}),
+			),
+			(
+				"lookup with retention",
+				lookup_with(LookupWith {
+					retention: Some(retention()),
+					..LookupWith::default()
+				}),
+			),
+		];
+		for (name, operator) in refused {
+			assert!(!one_operator_flow(operator).collapsible_operators, "{name} must refuse a collapse");
+		}
+	}
+
+	#[test]
+	fn one_refused_operator_keeps_a_flow_of_allowed_ones_from_collapsing() {
+		// The flag must hold for every operator of the flow, not the first one or the sink.
+		let summary = FlowGraphAnalyzer::new().add(create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceView {
+					view: ViewId(2),
+				},
+				lookup_with(LookupWith {
+					emit: Emit::Off,
+					..LookupWith::default()
+				}),
+				SinkTableView {
+					view: ViewId(4),
+				},
+			],
+		));
+		assert!(!summary.collapsible_operators);
+	}
+
+	#[test]
+	fn only_an_emit_off_lookup_lists_its_reader_as_an_exact_reader_once() {
+		// A producer read exactly must keep one layer per source, so a missed exact reader collapses it into
+		// drift.
+		let mut analyzer = FlowGraphAnalyzer::new();
+		let emit_off = || {
+			lookup_with(LookupWith {
+				emit: Emit::Off,
+				..LookupWith::default()
+			})
+		};
+		let on_view = |operator: OperatorDef| match operator {
+			OperatorDef::Lookup {
+				join_type,
+				left,
+				alias,
+				with,
+				..
+			} => OperatorDef::Lookup {
+				join_type,
+				right: LookupObject::View(ViewId(500)),
+				left,
+				alias,
+				with,
+			},
+			other => other,
+		};
+		analyzer.add(create_test_flow_with_nodes(1, vec![on_view(emit_off()), on_view(emit_off())]));
+		analyzer.add(create_test_flow_with_nodes(2, vec![on_view(lookup_with(LookupWith::default()))]));
+		analyzer.add(create_test_flow_with_nodes(3, vec![emit_off()]));
+
+		let graph = analyzer.get_dependency_graph();
+		assert_eq!(graph.lookup_views.get(&ViewId(500)), Some(&vec![FlowId(1), FlowId(2)]));
+		assert_eq!(
+			graph.exact_lookup_views,
+			BTreeMap::from([(ViewId(500), vec![FlowId(1)])]),
+			"an emit-on reader or a table lookup must never count as an exact view reader"
+		);
+	}
+
+	#[test]
+	fn a_view_feeding_only_a_lookup_right_side_is_not_a_from_read() {
+		// A re-emitting lookup's right input is a source node too, and counting it as a from read refuses its
+		// producer.
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			OperatorId(1),
+			SourceTable {
+				table: TableId(1),
+				time_domain: TimeDomain::None,
+			},
+		));
+		builder.add_node(FlowNode::new(
+			OperatorId(2),
+			SourceView {
+				view: ViewId(500),
+			},
+		));
+		builder.add_node(FlowNode::new(OperatorId(3), lookup_with(LookupWith::default())));
+		builder.add_node(FlowNode::new(
+			OperatorId(4),
+			SourceView {
+				view: ViewId(501),
+			},
+		));
+		builder.add_node(FlowNode::new(OperatorId(5), OperatorDef::Append {}));
+		builder.add_edge(FlowEdge::new(1, FlowId(1), OperatorId(1), OperatorId(3))).unwrap();
+		builder.add_edge(FlowEdge::new(2, FlowId(1), OperatorId(2), OperatorId(3))).unwrap();
+		builder.add_edge(FlowEdge::new(3, FlowId(1), OperatorId(3), OperatorId(5))).unwrap();
+		builder.add_edge(FlowEdge::new(4, FlowId(1), OperatorId(4), OperatorId(5))).unwrap();
+		let mut analyzer = FlowGraphAnalyzer::new();
+		analyzer.add(builder.build());
+
+		let graph = analyzer.get_dependency_graph();
+		assert!(
+			graph.source_views.contains_key(&ViewId(500)),
+			"precondition: the lookup right side is a source"
+		);
+		assert_eq!(
+			graph.from_views,
+			BTreeMap::from([(ViewId(501), vec![FlowId(1)])]),
+			"only the appended view is read from, the looked up view is not"
+		);
 	}
 }

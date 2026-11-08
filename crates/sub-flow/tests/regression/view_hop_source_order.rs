@@ -16,6 +16,8 @@ use reifydb_engine::lift::entry_changed_objects;
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_value::value::duration::Duration;
 
+use crate::layers::layer_sources;
+
 const SETTLE: Duration = Duration::from_seconds_const(10);
 const LIVE_ROUNDS: usize = 50;
 
@@ -536,20 +538,6 @@ fn a_view_with_downstream_readers_keeps_each_source_version() {
 		vec![SourceVersion::from(level[0].commit), SourceVersion::from(level[1].commit)],
 		"curve must keep each rung's source, one layer per rung, so its join reader pairs each"
 	);
-}
-
-fn layer_sources(db: &TestDb, object: ObjectId) -> Vec<SourceVersion> {
-	db.commit_history()
-		.iter()
-		.filter(|entry| entry_changed_objects(entry).contains(&object))
-		.flat_map(|entry| {
-			if entry.layers.is_empty() {
-				vec![entry.version.source]
-			} else {
-				entry.layers.iter().map(|(source, _)| *source).collect()
-			}
-		})
-		.collect()
 }
 
 #[test]

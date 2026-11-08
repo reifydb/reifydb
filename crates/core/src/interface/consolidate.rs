@@ -638,7 +638,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		common::{ChangeVersion, CommitVersion},
+		common::{ChangeVersion, CommitVersion, SourceVersion},
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, object::ObjectId},
 			change::Change,
@@ -1055,5 +1055,103 @@ mod tests {
 			rows.iter().map(|&row| (row, value(row, 0).1, value(row, 2).1)).collect();
 		expected.sort();
 		assert_eq!(seen, expected, "each row keeps its first pre and its last post");
+	}
+
+	fn table_change(table: u64, at: u64, diffs: Vec<Diff>) -> Change {
+		Change::from_object(
+			ObjectId::Table(TableId(table)),
+			ChangeVersion {
+				commit: CommitVersion(at + 10),
+				source: SourceVersion(at),
+			},
+			diffs,
+			DateTime::from_nanos(at as i64),
+		)
+	}
+
+	#[test]
+	fn merge_folds_a_chain_of_updates_across_sources_to_first_pre_and_last_post() {
+		// A fold must reach the graph once per row with its net change, or a downstream join repeats every
+		// step.
+		let merged = Change::merge(vec![
+			table_change(1, 1, vec![update(&[(1, 10)], &[(1, 11)])]),
+			table_change(1, 5, vec![update(&[(1, 11)], &[(1, 12)]), update(&[(2, 20)], &[(2, 21)])]),
+			table_change(1, 9, vec![update(&[(1, 12)], &[(1, 13)])]),
+		])
+		.unwrap();
+
+		assert_eq!(merged.version.commit, CommitVersion(19), "the merged change must carry the newest commit");
+		assert_eq!(merged.version.source, SourceVersion(9), "the merged change must carry the newest source");
+		assert_eq!(merged.changed_at, DateTime::from_nanos(9));
+		let mut seen: Vec<((u64, i32), (u64, i32))> = Vec::new();
+		for diff in &merged.diffs {
+			let Diff::Update {
+				pre,
+				post,
+				..
+			} = diff
+			else {
+				panic!("expected only updates, got {:?}", diff.kind());
+			};
+			seen.extend(rows_of(pre).into_iter().zip(rows_of(post)));
+		}
+		seen.sort();
+		assert_eq!(
+			seen,
+			vec![((1, 10), (1, 13)), ((2, 20), (2, 21))],
+			"each row keeps its first pre and last post"
+		);
+	}
+
+	#[test]
+	fn merge_drops_a_row_inserted_and_removed_inside_the_fold() {
+		// A row that lived only inside the fold must never reach the graph, otherwise a sink keeps a ghost row.
+		let merged = Change::merge(vec![
+			table_change(1, 1, vec![insert(&[(3, 30)]), insert(&[(4, 40)])]),
+			table_change(1, 5, vec![remove(&[(3, 30)])]),
+		])
+		.unwrap();
+
+		let rows: Vec<(DiffType, Vec<(u64, i32)>)> = merged
+			.diffs
+			.iter()
+			.map(|diff| (diff.kind(), rows_of(diff.post().or(diff.pre()).unwrap())))
+			.collect();
+		assert_eq!(rows, vec![(DiffType::Insert, vec![(4, 40)])]);
+	}
+
+	#[test]
+	fn merge_keeps_a_remove_before_an_insert_of_one_row_number_across_sources() {
+		// The remove must come first, or row-keyed state downstream drops the new row.
+		let merged = Change::merge(vec![
+			table_change(1, 1, vec![remove(&[(1, 10)])]),
+			table_change(1, 5, vec![insert(&[(1, 20)])]),
+		])
+		.unwrap();
+
+		assert_eq!(merged.version.source, SourceVersion(5));
+		let kinds: Vec<DiffType> = merged.diffs.iter().map(Diff::kind).collect();
+		assert_eq!(
+			kinds,
+			vec![DiffType::Remove, DiffType::Insert],
+			"a remove then an insert must stay in order"
+		);
+		assert_eq!(rows_of(merged.diffs[0].pre().unwrap()), vec![(1, 10)]);
+		assert_eq!(rows_of(merged.diffs[1].post().unwrap()), vec![(1, 20)]);
+	}
+
+	#[test]
+	fn merge_keeps_one_row_number_from_two_origins_apart() {
+		// Row numbers are per object, so folding two sources' row 1 together would join unrelated rows.
+		let merged = Change::merge(vec![
+			table_change(1, 1, vec![update(&[(1, 10)], &[(1, 11)])]),
+			table_change(2, 5, vec![update(&[(1, 20)], &[(1, 21)])]),
+		])
+		.unwrap();
+
+		let mut posts: Vec<(u64, i32)> =
+			merged.diffs.iter().flat_map(|diff| rows_of(diff.post().unwrap())).collect();
+		posts.sort();
+		assert_eq!(posts, vec![(1, 11), (1, 21)], "both origins' row 1 must survive with their own value");
 	}
 }

@@ -228,6 +228,35 @@ pub fn unit_lookup_producers(graph: &FlowDependencyGraph, unit: &FusedUnit) -> B
 	producers
 }
 
+pub fn collapsing_flows(graph: &FlowDependencyGraph) -> BTreeSet<FlowId> {
+	let mut collapsing: BTreeSet<FlowId> =
+		graph.flows.iter().filter(|flow| flow.collapsible_operators).map(|flow| flow.id).collect();
+	loop {
+		let refused: Vec<FlowId> = collapsing
+			.iter()
+			.copied()
+			.filter(|flow| {
+				produced_by(graph, *flow).iter().any(|view| {
+					graph.exact_lookup_views.get(view).is_some_and(|readers| !readers.is_empty())
+						|| graph.from_views.get(view).is_some_and(|readers| {
+							readers.iter().any(|reader| !collapsing.contains(reader))
+						})
+				})
+			})
+			.collect();
+		if refused.is_empty() {
+			return collapsing;
+		}
+		for flow in refused {
+			collapsing.remove(&flow);
+		}
+	}
+}
+
+pub fn unit_collapses(collapsing: &BTreeSet<FlowId>, unit: &FusedUnit) -> bool {
+	unit.flow_ids().iter().all(|flow| collapsing.contains(flow))
+}
+
 fn produced_by(graph: &FlowDependencyGraph, flow: FlowId) -> BTreeSet<ViewId> {
 	graph.sink_views.iter().filter(|(_, producer)| **producer == flow).map(|(view, _)| *view).collect()
 }
@@ -249,6 +278,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_core::interface::catalog::id::{RingBufferId, SeriesId, TableId};
+	use reifydb_flow::analyzer::FlowSummary;
 
 	use super::*;
 	use crate::progress::tracker::FlowPositionTracker;
@@ -263,6 +293,8 @@ mod tests {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 			lookup_views: BTreeMap::new(),
+			exact_lookup_views: BTreeMap::new(),
+			from_views: BTreeMap::new(),
 		}
 	}
 
@@ -608,6 +640,104 @@ mod tests {
 			}]
 		);
 	}
+
+	fn with_flows(mut graph: FlowDependencyGraph, flows: &[(u64, bool)]) -> FlowDependencyGraph {
+		graph.flows = flows
+			.iter()
+			.map(|&(id, collapsible_operators)| FlowSummary {
+				id: FlowId(id),
+				sources: Vec::new(),
+				sinks: Vec::new(),
+				node_count: 0,
+				edge_count: 0,
+				execution_order: Vec::new(),
+				collapsible_operators,
+			})
+			.collect();
+		graph
+	}
+
+	#[test]
+	fn a_flow_of_collapsible_operators_with_no_reader_collapses() {
+		// A leaf view only serves its final state, so keeping it per source wastes one graph run per version.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.sink_views.insert(ViewId(6), FlowId(11));
+		let graph = with_flows(graph, &[(10, true), (11, false)]);
+
+		assert_eq!(
+			collapsing_flows(&graph),
+			BTreeSet::from([FlowId(10)]),
+			"only the collapsible flow may collapse"
+		);
+	}
+
+	#[test]
+	fn a_producer_read_by_an_exact_lookup_keeps_one_layer_per_source() {
+		// A collapsed producer leaves an exact reader only the fold's last state, which drifts its pairings.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.lookup_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.exact_lookup_views.insert(ViewId(5), vec![FlowId(20)]);
+		let graph = with_flows(graph, &[(10, true), (20, true)]);
+
+		assert_eq!(collapsing_flows(&graph), BTreeSet::from([FlowId(20)]));
+	}
+
+	#[test]
+	fn a_producer_read_only_by_collapsing_from_readers_collapses_with_them() {
+		// A from reader that collapses itself only needs the net change, so it must not hold its producer back.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.from_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.sink_views.insert(ViewId(6), FlowId(20));
+		let graph = with_flows(graph, &[(10, true), (20, true)]);
+
+		assert_eq!(collapsing_flows(&graph), BTreeSet::from([FlowId(10), FlowId(20)]));
+	}
+
+	#[test]
+	fn a_from_reader_that_needs_every_version_holds_back_every_producer_above_it() {
+		// The refusal must travel up the whole chain, or a grandparent collapses away the versions its
+		// grandchild needs.
+		let mut graph = chain();
+		graph.from_views = graph.source_views.clone();
+		let graph = with_flows(graph, &[(10, true), (20, true), (30, false)]);
+
+		assert!(collapsing_flows(&graph).is_empty(), "flows 10 and 20 feed the aggregate in 30 through views");
+	}
+
+	#[test]
+	fn a_producer_read_by_a_re_emitting_lookup_collapses_even_when_the_reader_does_not() {
+		// An emit on lookup re-reads on every right change, so its producer's net change keeps its final state.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.lookup_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
+		let graph = with_flows(graph, &[(10, true), (20, false)]);
+
+		assert_eq!(collapsing_flows(&graph), BTreeSet::from([FlowId(10)]));
+	}
+
+	#[test]
+	fn a_unit_collapses_only_when_every_member_collapses() {
+		// A unit runs as one step, so one refused member must keep the whole step per source.
+		let unit = FusedUnit {
+			head: FlowId(10),
+			members: vec![(FlowId(20), ViewId(5)), (FlowId(30), ViewId(6))],
+		};
+
+		assert!(
+			!unit_collapses(&BTreeSet::from([FlowId(20), FlowId(30)]), &unit),
+			"a refused head blocks the unit"
+		);
+		assert!(
+			!unit_collapses(&BTreeSet::from([FlowId(10), FlowId(20)]), &unit),
+			"a refused tail blocks the unit"
+		);
+		assert!(unit_collapses(&BTreeSet::from([FlowId(10), FlowId(20), FlowId(30)]), &unit));
+	}
 }
 
 #[cfg(test)]
@@ -637,6 +767,8 @@ mod lookup_tests {
 			source_series: BTreeMap::new(),
 			sink_views: BTreeMap::from([(PRICES, PRODUCER), (LEVELS, PRODUCER)]),
 			lookup_views,
+			exact_lookup_views: BTreeMap::new(),
+			from_views: BTreeMap::new(),
 		}
 	}
 

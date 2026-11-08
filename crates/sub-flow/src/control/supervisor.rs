@@ -75,7 +75,7 @@ use crate::{
 	progress::{
 		frontier::ControlFrontier,
 		output_frontier,
-		tracker::{FlowPositionTracker, FlowWaker, ObjectVersionTracker},
+		tracker::{FlowPositionTracker, FlowWaker, FoldShape, ObjectVersionTracker},
 	},
 };
 
@@ -1232,6 +1232,11 @@ impl FlowSupervisor {
 		self.flow_tracker.set_upstreams(unit.head, routing::unit_upstreams(graph, unit, &view_kind));
 		self.flow_tracker.set_lookup_producers(unit.head, routing::unit_lookup_producers(graph, unit));
 		self.flow_tracker.set_unit(unit.head, unit.head);
+		let shape = match routing::unit_collapses(&routing::collapsing_flows(graph), unit) {
+			true => FoldShape::Collapsed,
+			false => FoldShape::PerSource,
+		};
+		self.flow_tracker.set_fold_shape(unit.flow_ids(), shape);
 		for (member, _) in &unit.members {
 			self.flow_tracker.set_unit(*member, unit.head);
 			self.flow_tracker.set_upstreams(*member, Default::default());
@@ -1326,6 +1331,11 @@ impl FlowSupervisor {
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(flow_id, routing::flow_upstreams(graph, flow_id, &view_kind));
 		self.flow_tracker.set_lookup_producers(flow_id, routing::lookup_producers(graph, flow_id));
+		let shape = match routing::collapsing_flows(graph).contains(&flow_id) {
+			true => FoldShape::Collapsed,
+			false => FoldShape::PerSource,
+		};
+		self.flow_tracker.set_fold_shape([flow_id], shape);
 	}
 
 	fn update_tracker(&self, entries: &[Arc<CommitEntry>]) -> BTreeSet<ObjectId> {

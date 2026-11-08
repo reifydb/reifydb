@@ -4,6 +4,9 @@
 #[path = "regression/backlog_commit.rs"]
 mod backlog_commit;
 
+#[path = "regression/collapse.rs"]
+mod collapse;
+
 #[path = "regression/flow_aggregate_digest_key.rs"]
 mod flow_aggregate_digest_key;
 

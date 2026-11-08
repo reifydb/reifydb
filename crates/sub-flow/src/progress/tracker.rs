@@ -24,6 +24,12 @@ use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwl
 use reifydb_value::value::duration::Duration;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FoldShape {
+	PerSource,
+	Collapsed,
+}
+
 #[derive(Clone)]
 pub struct ObjectVersionTracker {
 	inner: Arc<ObjectVersionTrackerInner>,
@@ -238,6 +244,7 @@ struct FlowProgress {
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
 	units: HashMap<FlowId, FlowId>,
 	ticks: HashMap<FlowId, u64>,
+	fold_shapes: HashMap<FlowId, FoldShape>,
 }
 
 impl FlowProgress {
@@ -555,6 +562,17 @@ impl FlowPositionTracker {
 		self.inner.read().upstreams.get(&flow_id).cloned().unwrap_or_default()
 	}
 
+	pub fn set_fold_shape(&self, flows: impl IntoIterator<Item = FlowId>, shape: FoldShape) {
+		let mut progress = self.inner.write();
+		for flow_id in flows {
+			progress.fold_shapes.insert(flow_id, shape);
+		}
+	}
+
+	pub fn fold_shape(&self, flow_id: FlowId) -> FoldShape {
+		self.inner.read().fold_shapes.get(&flow_id).copied().unwrap_or(FoldShape::PerSource)
+	}
+
 	pub fn set_unit(&self, flow_id: FlowId, head: FlowId) {
 		self.inner.write().units.insert(flow_id, head);
 	}
@@ -611,6 +629,7 @@ impl FlowPositionTracker {
 		progress.lookup_producers.remove(&flow_id);
 		progress.units.remove(&flow_id);
 		progress.ticks.remove(&flow_id);
+		progress.fold_shapes.remove(&flow_id);
 	}
 
 	pub fn all(&self) -> HashMap<FlowId, CommitVersion> {

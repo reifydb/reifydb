@@ -772,6 +772,7 @@ impl FlowActor {
 					lsn: state.cursor_lsn,
 					frontier: state.frontier,
 					durable_cursor: state.durable_cursor,
+					fold_shape: self.flow_tracker.fold_shape(self.flow_id),
 				},
 				advance_to,
 				more,
