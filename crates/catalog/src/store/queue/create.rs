@@ -411,7 +411,7 @@ pub mod tests {
 mod time_declaration_tests {
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
+		interface::catalog::queue::{QueueDispatch, QueueRetention, QueueRetry},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(any(test, feature = "testing"))]
+use std::sync::LazyLock;
+
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::evaluate::TargetColumn,
@@ -30,8 +33,6 @@ pub struct EvalContext<'a> {
 impl<'a> EvalContext<'a> {
 	#[cfg(any(test, feature = "testing"))]
 	pub fn testing() -> EvalContext<'static> {
-		use std::sync::LazyLock;
-
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 		static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);

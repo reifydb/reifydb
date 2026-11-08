@@ -313,7 +313,7 @@ fn insert(db: &TestDb, model: &mut Model, ids: Range<usize>, rng: &mut StdRng) {
 fn delete(db: &TestDb, model: &mut Model, ids: Range<usize>) {
 	db.command(&format!("DELETE app::t FILTER {{ id >= {} and id < {} }}", ids.start, ids.end));
 	for id in ids {
-		if let Some((group, _)) = model.table.remove(&id) {}
+		model.table.remove(&id);
 	}
 }
 
@@ -325,7 +325,7 @@ fn update_latency(db: &TestDb, model: &mut Model, ids: Range<usize>, latency: Op
 		ids.end
 	));
 	for id in ids {
-		if let Some((group, held)) = model.table.get_mut(&id) {
+		if let Some((_, held)) = model.table.get_mut(&id) {
 			*held = latency;
 		}
 	}
