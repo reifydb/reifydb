@@ -7,6 +7,8 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{commit::tracker::TrackerLease, common::CommitVersion};
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 
+use crate::transaction::LookupAt;
+
 pub(crate) type CachedRow = Option<(RowNumber, EncodedBytes)>;
 
 struct Cached {
@@ -35,12 +37,20 @@ impl LookupCache {
 	pub(crate) fn hits(
 		&self,
 		lease: &TrackerLease,
-		wanted: CommitVersion,
+		at: LookupAt,
 		floor: Option<CommitVersion>,
 		partitions: &[Partition],
 	) -> Vec<Option<CachedRow>> {
+		let (read, seen) = match at {
+			LookupAt::Commit(wanted) => (wanted, wanted),
+			LookupAt::Layered {
+				base,
+				commit,
+				..
+			} => (base, commit),
+		};
 		let mut hits = vec![None; partitions.len()];
-		if floor.is_some_and(|floor| wanted < floor) {
+		if floor.is_some_and(|floor| read < floor) {
 			return hits;
 		}
 		let frontier = lease.frontier();
@@ -48,14 +58,14 @@ impl LookupCache {
 			.iter()
 			.enumerate()
 			.filter_map(|(at, partition)| self.rows.get(partition).map(|cached| (at, cached)))
-			.filter(|(_, cached)| cached.version.max(wanted) <= frontier)
+			.filter(|(_, cached)| cached.version.max(seen) <= frontier)
 			.collect();
 		if held.is_empty() {
 			return hits;
 		}
 		let asked: Vec<Partition> = held.iter().map(|(at, _)| partitions[*at]).collect();
 		for ((at, cached), last) in held.into_iter().zip(lease.last_writes(&asked)) {
-			if last <= cached.version.min(wanted) {
+			if last <= cached.version.min(read) {
 				hits[at] = Some(cached.row.clone());
 			}
 		}
@@ -93,10 +103,13 @@ impl LookupCache {
 mod tests {
 	use reifydb_core::{
 		commit::queue::CommitQueue,
-		common::ChangeVersion,
+		common::{ChangeVersion, SourceVersion},
 		delta::{Delta, SetPre},
 		event::{EventListener, transaction::PostCommitEvent},
-		interface::catalog::{id::RingBufferId, storage::StorageId},
+		interface::catalog::{
+			id::{RingBufferId, ViewId},
+			storage::StorageId,
+		},
 		key::row::PartitionedRowKey,
 	};
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::datetime::DateTime};
@@ -108,6 +121,19 @@ mod tests {
 
 	fn v(version: u64) -> CommitVersion {
 		CommitVersion(version)
+	}
+
+	fn at(version: u64) -> LookupAt {
+		LookupAt::Commit(v(version))
+	}
+
+	fn layered(base: u64, commit: u64) -> LookupAt {
+		LookupAt::Layered {
+			view: ViewId(1),
+			base: v(base),
+			commit: v(commit),
+			through: SourceVersion(base),
+		}
 	}
 
 	fn row(byte: u8) -> CachedRow {
@@ -159,7 +185,7 @@ mod tests {
 		let mut cache = LookupCache::new(16);
 		commits(&queue, 20, &[(15, 9)]);
 		cache.store(v(12), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(18), None, &[Partition(1)]), vec![Some(row(4))]);
+		assert_eq!(cache.hits(&lease, at(18), None, &[Partition(1)]), vec![Some(row(4))]);
 	}
 
 	#[test]
@@ -170,7 +196,7 @@ mod tests {
 		let mut cache = LookupCache::new(16);
 		commits(&queue, 20, &[(15, 1)]);
 		cache.store(v(12), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(18), None, &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, at(18), None, &[Partition(1)]), vec![None]);
 	}
 
 	#[test]
@@ -181,8 +207,8 @@ mod tests {
 		let mut cache = LookupCache::new(16);
 		commits(&queue, 20, &[(14, 1)]);
 		cache.store(v(18), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(12), None, &[Partition(1)]), vec![None]);
-		assert_eq!(cache.hits(&lease, v(16), None, &[Partition(1)]), vec![Some(row(4))]);
+		assert_eq!(cache.hits(&lease, at(12), None, &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, at(16), None, &[Partition(1)]), vec![Some(row(4))]);
 	}
 
 	#[test]
@@ -194,8 +220,8 @@ mod tests {
 		commits(&queue, 12, &[]);
 		commit(&queue, 14, &[2]);
 		cache.store(v(11), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(12), None, &[Partition(1)]), vec![Some(row(4))]);
-		assert_eq!(cache.hits(&lease, v(14), None, &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, at(12), None, &[Partition(1)]), vec![Some(row(4))]);
+		assert_eq!(cache.hits(&lease, at(14), None, &[Partition(1)]), vec![None]);
 	}
 
 	#[test]
@@ -207,7 +233,7 @@ mod tests {
 		commits(&queue, 12, &[]);
 		commit(&queue, 14, &[1]);
 		cache.store(v(11), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(12), None, &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, at(12), None, &[Partition(1)]), vec![None]);
 	}
 
 	#[test]
@@ -218,8 +244,8 @@ mod tests {
 		let mut cache = LookupCache::new(16);
 		commits(&queue, 20, &[]);
 		cache.store(v(11), Partition(1), row(4));
-		assert_eq!(cache.hits(&lease, v(12), Some(v(13)), &[Partition(1)]), vec![None]);
-		assert_eq!(cache.hits(&lease, v(13), Some(v(13)), &[Partition(1)]), vec![Some(row(4))]);
+		assert_eq!(cache.hits(&lease, at(12), Some(v(13)), &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, at(13), Some(v(13)), &[Partition(1)]), vec![Some(row(4))]);
 	}
 
 	#[test]
@@ -233,8 +259,53 @@ mod tests {
 		cache.store(v(11), Partition(2), row(2));
 		cache.store(v(11), Partition(3), row(3));
 		assert_eq!(
-			cache.hits(&lease, v(19), None, &[Partition(1), Partition(2), Partition(3)]),
+			cache.hits(&lease, at(19), None, &[Partition(1), Partition(2), Partition(3)]),
 			vec![None, Some(row(2)), Some(row(3))]
 		);
+	}
+
+	#[test]
+	fn a_layered_read_of_a_partition_its_commit_never_wrote_is_served_from_the_cache() {
+		// a commit that never wrote the partition must leave the layered read equal to the read at base.
+		let queue = queue();
+		let lease = queue.write_tracker().register(VAULT);
+		let mut cache = LookupCache::new(16);
+		commits(&queue, 20, &[(15, 2)]);
+		cache.store(v(12), Partition(1), row(4));
+		assert_eq!(cache.hits(&lease, layered(14, 15), None, &[Partition(1)]), vec![Some(row(4))]);
+	}
+
+	#[test]
+	fn a_layered_read_of_a_partition_its_commit_wrote_goes_to_storage() {
+		// a write inside the commit must never be hidden by a cached read taken above it.
+		let queue = queue();
+		let lease = queue.write_tracker().register(VAULT);
+		let mut cache = LookupCache::new(16);
+		commits(&queue, 20, &[(15, 1)]);
+		cache.store(v(17), Partition(1), row(4));
+		assert_eq!(cache.hits(&lease, layered(14, 15), None, &[Partition(1)]), vec![None]);
+	}
+
+	#[test]
+	fn a_layered_read_whose_commit_is_above_the_frontier_goes_to_storage() {
+		// a commit the tracker has not received may hold a write to the partition, so it must never be served.
+		let queue = queue();
+		let lease = queue.write_tracker().register(VAULT);
+		let mut cache = LookupCache::new(16);
+		commits(&queue, 14, &[]);
+		cache.store(v(12), Partition(1), row(4));
+		assert_eq!(cache.hits(&lease, layered(14, 15), None, &[Partition(1)]), vec![None]);
+	}
+
+	#[test]
+	fn a_layered_read_whose_base_is_below_the_floor_goes_to_storage() {
+		// a base below the floor must reach the storage read, which refuses it loudly.
+		let queue = queue();
+		let lease = queue.write_tracker().register(VAULT);
+		let mut cache = LookupCache::new(16);
+		commits(&queue, 20, &[]);
+		cache.store(v(11), Partition(1), row(4));
+		assert_eq!(cache.hits(&lease, layered(14, 15), Some(v(15)), &[Partition(1)]), vec![None]);
+		assert_eq!(cache.hits(&lease, layered(15, 16), Some(v(15)), &[Partition(1)]), vec![Some(row(4))]);
 	}
 }

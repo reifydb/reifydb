@@ -421,12 +421,7 @@ impl LookupOperator {
 			}
 		}
 		for (version, partitions) in groups {
-			let partitions = match version {
-				LookupAt::Commit(wanted) => self.cached(host, reads, wanted, partitions),
-				LookupAt::Layered {
-					..
-				} => partitions,
-			};
+			let partitions = self.cached(host, reads, version, partitions);
 			if partitions.is_empty() {
 				continue;
 			}
@@ -446,15 +441,15 @@ impl LookupOperator {
 		&self,
 		host: &dyn HostContext,
 		reads: &mut ChangeReads,
-		wanted: CommitVersion,
+		version: LookupAt,
 		partitions: Vec<Partition>,
 	) -> Vec<Partition> {
-		let hits = self.cache.borrow().hits(&self.config.writes, wanted, host.lookup_floor(), &partitions);
+		let hits = self.cache.borrow().hits(&self.config.writes, version, host.lookup_floor(), &partitions);
 		let mut missed = Vec::with_capacity(partitions.len());
 		for (partition, hit) in partitions.into_iter().zip(hits) {
 			match hit {
 				Some(row) => {
-					reads.rows.insert((partition, LookupAt::Commit(wanted)), row);
+					reads.rows.insert((partition, version), row);
 				}
 				None => missed.push(partition),
 			}
@@ -1038,7 +1033,14 @@ impl HostOperator for LookupOperator {
 
 #[cfg(test)]
 mod tests {
-	use std::{ops::Bound, slice::from_ref, sync::Arc};
+	use std::{
+		ops::Bound,
+		slice::from_ref,
+		sync::{
+			Arc,
+			atomic::{AtomicUsize, Ordering},
+		},
+	};
 
 	use arrow_array::UInt64Array;
 	use reifydb_codec::row::{bytes::read_fingerprint, shape::RowFamily};
@@ -1096,8 +1098,8 @@ mod tests {
 		},
 		timer::extension::TimerExtension,
 		transaction::{
-			FlowTransaction, LookupAt, LookupContext, LookupVersions, deferred::DeferredTransaction,
-			mock::FlowTxn, substrate::persist,
+			FlowTransaction, LookupAt, LookupContext, LookupVersions, ViewLayers,
+			deferred::DeferredTransaction, mock::FlowTxn, substrate::persist,
 		},
 	};
 
@@ -2553,6 +2555,83 @@ mod tests {
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
 		host.lookup_view_read(ViewId(1), SourceVersion(31));
+	}
+
+	struct FoldedProducer {
+		plain: SourceVersion,
+		commit: CommitVersion,
+		layers_asked: AtomicUsize,
+	}
+
+	impl LookupVersions for FoldedProducer {
+		fn view_version(&self, _view: ViewId, _source: SourceVersion) -> Option<CommitVersion> {
+			Some(self.commit)
+		}
+
+		fn view_commit_through(&self, _view: ViewId, _commit: CommitVersion) -> Option<CommitVersion> {
+			Some(self.commit)
+		}
+
+		fn view_read(&self, view: ViewId, source: SourceVersion) -> Option<LookupAt> {
+			if source == self.plain {
+				return Some(LookupAt::Commit(self.commit));
+			}
+			Some(LookupAt::Layered {
+				view,
+				base: CommitVersion(self.commit.0 - 1),
+				commit: self.commit,
+				through: source,
+			})
+		}
+
+		fn view_layers(&self, _view: ViewId, _commit: CommitVersion) -> Option<Arc<ViewLayers>> {
+			self.layers_asked.fetch_add(1, Ordering::SeqCst);
+			Some(Arc::new(ViewLayers::default()))
+		}
+	}
+
+	#[test]
+	fn a_layered_read_of_a_partition_its_commit_never_wrote_never_reaches_storage() {
+		// a commit that never wrote the partition must be served from the cache, never by the layered storage
+		// read.
+		let engine = TestEngine::new();
+		let table = right_table(&engine, false);
+		engine.admin("CREATE TABLE t::other { v: int4 }");
+		put_right(&engine, "a", 10);
+		engine.await_released();
+		let mut op = lookup(&table, JoinType::Inner, None);
+		op.config.right = LookupObject::View(ViewId(1));
+		op.config.writes = engine.inner().write_tracker().register(StorageId::from(table.id));
+		engine.command("INSERT t::other [{ v: 1 }]");
+		let commit = engine.await_released();
+		let producer = Arc::new(FoldedProducer {
+			plain: SourceVersion(commit.0 - 1),
+			commit,
+			layers_asked: AtomicUsize::new(0),
+		});
+		let mut txn = txn_at(&engine, commit);
+		txn.lookup = Some(LookupContext {
+			versions: producer.clone(),
+			floor: CommitVersion(commit.0 - 1),
+		});
+
+		let plain = only_insert(&run(
+			&mut op,
+			&mut txn,
+			CommitVersion(commit.0 - 1),
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		assert_eq!(cell(&plain, "r_v", 0), Value::Int4(10));
+		assert_eq!(producer.layers_asked.load(Ordering::SeqCst), 0);
+
+		let layered = only_insert(&run(
+			&mut op,
+			&mut txn,
+			commit,
+			Diff::insert(rows(&[Some("a")], &[8], at_millis(5))),
+		));
+		assert_eq!(cell(&layered, "r_v", 0), Value::Int4(10));
+		assert_eq!(producer.layers_asked.load(Ordering::SeqCst), 0, "the layered read went to storage");
 	}
 
 	#[test]
