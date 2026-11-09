@@ -245,8 +245,8 @@ fn insert(db: &TestDb, k: &str, v: i64, ts: &str) {
 	db.command(&format!(r#"INSERT app::src [{{ k: '{k}', v: {v}, ts: "{ts}" }}]"#));
 }
 
-fn update(db: &TestDb, k: &str, v: i64, ts: &str) {
-	db.command(&format!(r#"UPDATE app::src {{ v: {v}, ts: "{ts}" }} FILTER {{ k == '{k}' }}"#));
+fn delete(db: &TestDb, k: &str) {
+	db.command(&format!("DELETE app::src FILTER {{ k == '{k}' }}"));
 }
 
 fn window_columns(window: Window) -> &'static [&'static str] {
@@ -291,7 +291,8 @@ fn reference_run(window: Window, timing: &Timing) -> Vec<Vec<String>> {
 	settle(&db);
 	insert(&db, "a", 100, S1_TS);
 	settle(&db);
-	update(&db, "a", 120, timing.s2_ts);
+	delete(&db, "a");
+	insert(&db, "a", 120, timing.s2_ts);
 	settle(&db);
 	window_rows(&db, window)
 }
@@ -309,7 +310,8 @@ fn backlog_run(window: Window, timing: &Timing) -> Vec<Vec<String>> {
 		timing.name
 	);
 	insert(&db, "a", 100, S1_TS);
-	update(&db, "a", 120, timing.s2_ts);
+	delete(&db, "a");
+	insert(&db, "a", 120, timing.s2_ts);
 	set_gate(&gate_name, true);
 	settle(&db);
 	window_rows(&db, window)
