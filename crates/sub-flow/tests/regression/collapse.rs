@@ -297,6 +297,17 @@ fn a_latest_join_reader_collapses_its_backlog_to_the_reference_state() {
 }
 
 #[test]
+fn a_latest_left_join_reader_collapses_its_backlog_to_the_reference_state() {
+	// A fold must leave every left row, paired or not, with exactly the row id and value of the no-backlog run.
+	one_view_case(
+		"latest_left_join",
+		"id: int4, pv: Option(int8)",
+		"FROM app::level LEFT JOIN { FROM app::price } AS p USING (k, p.k) WITH { latest: true } MAP { id, pv: p_v }",
+		&["#rownum", "id", "pv"],
+	);
+}
+
+#[test]
 fn an_earliest_join_reader_collapses_its_backlog_to_the_reference_state() {
 	// The earliest pick runs over the same right state, so a fold must not change its winner.
 	one_view_case(

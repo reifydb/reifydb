@@ -197,8 +197,10 @@ impl FlowGraphAnalyzer {
 					..
 				} => {
 					(with.emit != Emit::Off || !with.exact)
-						&& with.retention.is_none()
-						&& !(*join_type == JoinType::Left && with.emit != Emit::Off)
+						&& with.retention.is_none() && !(*join_type == JoinType::Left
+						&& with.emit != Emit::Off && with
+						.pick
+						.is_none())
 				}
 				OperatorDef::Lookup {
 					with,
@@ -1378,6 +1380,23 @@ pub mod tests {
 			with: JoinWith {
 				emit: Emit::Off,
 				exact: false,
+				..JoinWith::default()
+			},
+		};
+		assert!(one_operator_flow(operator).collapsible_operators);
+	}
+
+	#[test]
+	fn an_emit_on_latest_left_join_collapses() {
+		// A latest join keys its output id by the left row alone, so a late right row never re-mints it.
+		let operator = OperatorDef::Join {
+			join_type: JoinType::Left,
+			left: vec![],
+			right: vec![],
+			alias: None,
+			natural: false,
+			with: JoinWith {
+				pick: Some(JoinPick::latest()),
 				..JoinWith::default()
 			},
 		};

@@ -68,7 +68,6 @@ use crate::{
 		},
 		row_times,
 		state::seal::ledger::FiredAt,
-		state_access::{RowNumberReserve, mint_row_numbers},
 	},
 	timer::Timer,
 	transaction::LookupAt,
@@ -153,6 +152,19 @@ enum Published {
 }
 
 impl Published {
+	fn output_id(&self) -> RowNumber {
+		match self {
+			Published::Matched {
+				output_id,
+				..
+			}
+			| Published::Unmatched {
+				output_id,
+				..
+			} => *output_id,
+		}
+	}
+
 	fn kind(&self) -> usize {
 		match self {
 			Published::Matched {
@@ -221,7 +233,7 @@ impl Output {
 	}
 
 	fn update(&mut self, pre: Published, post: Published) {
-		if pre.kind() != post.kind() {
+		if pre.kind() != post.kind() || pre.output_id() != post.output_id() {
 			self.remove(pre);
 			self.insert(post);
 			return;
@@ -540,14 +552,13 @@ impl LookupOperator {
 			let row_numbers = require_row_numbers(post)?;
 			let mut ledger =
 				ReadLedger::read(host, resolved.iter().map(|(left_idx, _)| row_numbers[*left_idx]))?;
-			let first = mint_row_numbers(host, resolved.len() as u64)?;
-			for (minted, (left_idx, read)) in (first.0..).zip(resolved) {
+			for (left_idx, read) in resolved {
 				let published = self.publish(
 					&mut ledger,
 					left_idx,
 					&times,
 					row_numbers[left_idx],
-					RowNumber(minted),
+					row_numbers[left_idx],
 					read,
 					&mut output,
 				)?;
@@ -596,7 +607,6 @@ impl LookupOperator {
 		let pre_builder = self.builder(pre.schema_ref());
 		let post_builder = self.builder(post.schema_ref());
 		let times = row_times(post)?;
-		let mut reserve = RowNumberReserve::default();
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().chain(row_numbers(post)?).copied())?;
 		let wanted = self.wanted(host, reads, &post_keys, source);
 		self.prefetch(host, reads, wanted)?;
@@ -612,16 +622,12 @@ impl LookupOperator {
 			)? {
 				Some(read) => {
 					let row_number = require_row_numbers(post)?[left_idx];
-					let output_id = match undone.as_ref() {
-						Some((_, id)) => *id,
-						None => reserve.take(host)?,
-					};
 					Some(self.publish(
 						&mut ledger,
 						left_idx,
 						&times,
 						row_number,
-						output_id,
+						row_number,
 						read,
 						&mut output,
 					)?)
@@ -633,7 +639,6 @@ impl LookupOperator {
 			output.publish(pre, post);
 		}
 		ledger.commit(host)?;
-		reserve.commit(host)?;
 		self.hold_left(host, post, &mut output)?;
 		self.finish(host, output, Some((pre, &pre_builder)), Some((post, &post_builder)), result)
 	}
@@ -1453,10 +1458,10 @@ mod tests {
 			&[stored_output(&mut txn, 7)],
 			"IC4: the output carries the id minted for its left row"
 		);
-		assert_ne!(
+		assert_eq!(
 			require_row_numbers(&out).unwrap(),
 			&[RowNumber(7)],
-			"the output id is minted, not the input's"
+			"the output id is the left row's own number, so it never depends on the order rows arrive in"
 		);
 		assert!(stores_a_right_row(&mut txn, 7), "MD28: the published right row is stored per published row");
 	}
