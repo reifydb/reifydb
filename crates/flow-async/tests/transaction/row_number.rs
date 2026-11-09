@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
@@ -72,6 +73,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	})

@@ -83,6 +83,8 @@ pub enum ConfigKey {
 	SubscriptionLoadBatchBytes,
 	SubscriptionWaitTimeout,
 	FlowJoinProbeBlockSize,
+	FlowLookupTrackerEntries,
+	FlowLookupCacheEntries,
 	ThreadsAsync,
 	ThreadsCoordination,
 	ThreadsFlow,
@@ -139,6 +141,8 @@ impl ConfigKey {
 			Self::SubscriptionLoadBatchBytes,
 			Self::SubscriptionWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
+			Self::FlowLookupTrackerEntries,
+			Self::FlowLookupCacheEntries,
 			Self::ThreadsAsync,
 			Self::ThreadsCoordination,
 			Self::ThreadsFlow,
@@ -223,6 +227,8 @@ impl ConfigKey {
 			Self::SubscriptionLoadBatchBytes => Value::Uint8(default::subscription::LOAD_BATCH.as_bytes()),
 			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE),
+			Self::FlowLookupTrackerEntries => Value::Uint8(default::flow::LOOKUP_TRACKER_ENTRIES),
+			Self::FlowLookupCacheEntries => Value::Uint8(default::flow::LOOKUP_CACHE_ENTRIES),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC),
 			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION),
 			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW),
@@ -307,6 +313,8 @@ impl ConfigKey {
 			}
 			Self::SubscriptionWaitTimeout => Value::Duration(default::subscription::WAIT_TIMEOUT_TESTING),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE_TESTING),
+			Self::FlowLookupTrackerEntries => Value::Uint8(default::flow::LOOKUP_TRACKER_ENTRIES_TESTING),
+			Self::FlowLookupCacheEntries => Value::Uint8(default::flow::LOOKUP_CACHE_ENTRIES_TESTING),
 			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC_TESTING),
 			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION_TESTING),
 			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW_TESTING),
@@ -502,6 +510,16 @@ impl ConfigKey {
 				 state. Bounds resident probe memory without dropping matches; smaller trades fewer \
 				 resident rows for more scan round-trips."
 			}
+			Self::FlowLookupTrackerEntries => {
+				"Number of partitions per lookup right storage whose last write version is kept for the \
+				 lookup read cache. When full, the oldest write is forgotten and every partition of that \
+				 storage counts as written at that version, which costs cache hits but never correctness."
+			}
+			Self::FlowLookupCacheEntries => {
+				"Number of right rows each lookup operator keeps from earlier reads. A kept row is reused \
+				 only when no write to its partition happened since it was read; when full, the oldest \
+				 read is dropped and read again from storage on its next use."
+			}
 			Self::ThreadsAsync => {
 				"Number of worker threads for the async runtime. Must be >= 1. \
 				 Read at boot before the runtime starts; changes require restart."
@@ -607,6 +625,8 @@ impl ConfigKey {
 			Self::SubscriptionLoadBatchBytes => true,
 			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
+			Self::FlowLookupTrackerEntries => true,
+			Self::FlowLookupCacheEntries => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsCoordination => true,
 			Self::ThreadsFlow => true,
@@ -663,6 +683,8 @@ impl ConfigKey {
 			Self::SubscriptionLoadBatchBytes => &[ValueType::Uint8],
 			Self::SubscriptionWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
+			Self::FlowLookupTrackerEntries => &[ValueType::Uint8],
+			Self::FlowLookupCacheEntries => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
 			Self::ThreadsCoordination => &[ValueType::Uint2],
 			Self::ThreadsFlow => &[ValueType::Uint2],
@@ -719,6 +741,8 @@ impl ConfigKey {
 			Self::SubscriptionLoadBatchBytes => false,
 			Self::SubscriptionWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
+			Self::FlowLookupTrackerEntries => false,
+			Self::FlowLookupCacheEntries => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsCoordination => false,
 			Self::ThreadsFlow => false,
@@ -936,6 +960,16 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::FlowLookupTrackerEntries => match value {
+				Value::Uint8(0) => {
+					Err("FLOW_LOOKUP_TRACKER_ENTRIES must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::FlowLookupCacheEntries => match value {
+				Value::Uint8(0) => Err("FLOW_LOOKUP_CACHE_ENTRIES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			Self::ThreadsAsync => match value {
 				Value::Uint2(0) => Err("THREADS_ASYNC must be greater than zero".to_string()),
 				_ => Ok(()),
@@ -1072,6 +1106,8 @@ impl fmt::Display for ConfigKey {
 			Self::SubscriptionLoadBatchBytes => write!(f, "SUBSCRIPTION_LOAD_BATCH_BYTES"),
 			Self::SubscriptionWaitTimeout => write!(f, "SUBSCRIPTION_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
+			Self::FlowLookupTrackerEntries => write!(f, "FLOW_LOOKUP_TRACKER_ENTRIES"),
+			Self::FlowLookupCacheEntries => write!(f, "FLOW_LOOKUP_CACHE_ENTRIES"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsCoordination => write!(f, "THREADS_COORDINATION"),
 			Self::ThreadsFlow => write!(f, "THREADS_FLOW"),
@@ -1132,6 +1168,8 @@ impl FromStr for ConfigKey {
 			"SUBSCRIPTION_LOAD_BATCH_BYTES" => Ok(Self::SubscriptionLoadBatchBytes),
 			"SUBSCRIPTION_WAIT_TIMEOUT" => Ok(Self::SubscriptionWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
+			"FLOW_LOOKUP_TRACKER_ENTRIES" => Ok(Self::FlowLookupTrackerEntries),
+			"FLOW_LOOKUP_CACHE_ENTRIES" => Ok(Self::FlowLookupCacheEntries),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_COORDINATION" => Ok(Self::ThreadsCoordination),
 			"THREADS_FLOW" => Ok(Self::ThreadsFlow),
@@ -1323,7 +1361,9 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 51);
+		assert_eq!(all.len(), 53);
+		assert!(all.contains(&ConfigKey::FlowLookupTrackerEntries));
+		assert!(all.contains(&ConfigKey::FlowLookupCacheEntries));
 		assert!(all.contains(&ConfigKey::MetricsSnapshotTtl));
 		assert!(all.contains(&ConfigKey::FlowFullWakeInterval));
 		assert!(all.contains(&ConfigKey::SubscriptionLoadBatchBytes));

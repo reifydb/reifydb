@@ -23,7 +23,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
-	commit::{queue::CommitQueue, watermark::ReaderWatermark},
+	commit::{queue::CommitQueue, tracker::WriteTracker, watermark::ReaderWatermark},
 	common::CommitVersion,
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
@@ -513,6 +513,13 @@ impl StandardEngine {
 
 	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
 		self.dictionary_allocators.clone()
+	}
+
+	pub fn write_tracker(&self) -> WriteTracker {
+		self.executor
+			.ioc
+			.try_resolve::<CommitQueue>()
+			.map_or_else(WriteTracker::detached, |queue| queue.write_tracker())
 	}
 
 	pub fn add_interceptor_factory(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {

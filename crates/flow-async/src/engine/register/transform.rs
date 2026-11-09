@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			column::Column,
+			config::{ConfigKey, GetConfig},
 			flow::{FlowId, OperatorId},
 			object::ObjectId,
 			storage::StorageId,
@@ -446,6 +447,8 @@ impl FlowEngineInner {
 			routines: self.routines.clone(),
 			runtime_context: self.runtime_context.clone(),
 			ctx: Arc::clone(ctx),
+			writes: self.substrate.writes.register(storage),
+			cache_entries: self.catalog.get_config_uint8(ConfigKey::FlowLookupCacheEntries) as usize,
 		})?;
 		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		if let (LookupObject::View(view), true) = (right, deferred) {

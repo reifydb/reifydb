@@ -36,7 +36,6 @@ use reifydb_transaction::{
 	dictionary::DictionaryAllocatorRegistry,
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
-	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
 
@@ -195,34 +194,6 @@ pub trait LookupVersions: Send + Sync {
 pub struct LookupContext {
 	pub versions: Arc<dyn LookupVersions>,
 	pub floor: CommitVersion,
-}
-
-impl DeferredParams {
-	pub fn from_parent(
-		parent: &AdminTransaction,
-		operators: OperatorStore,
-		version: CommitVersion,
-		catalog: Catalog,
-		interceptors: Interceptors,
-		clock: Clock,
-	) -> Self {
-		Self {
-			ctx: Arc::new(TransactionContext::system(parent.multi.runtime_context())),
-			version,
-			pending: Pending::new(),
-			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
-			state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
-			catalog,
-			interceptors,
-			clock,
-			substrate: FlowSubstrate::with_dictionary(
-				parent.dictionary_allocators()
-					.expect("admin transaction reached a flow without a dictionary registry"),
-				operators,
-			),
-			lookup: None,
-		}
-	}
 }
 
 pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {

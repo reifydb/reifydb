@@ -138,6 +138,12 @@ pub mod flow {
 
 	pub const JOIN_PROBE_BLOCK_SIZE: u64 = 1024;
 	pub const JOIN_PROBE_BLOCK_SIZE_TESTING: u64 = 16;
+
+	pub const LOOKUP_TRACKER_ENTRIES: u64 = 1 << 20;
+	pub const LOOKUP_TRACKER_ENTRIES_TESTING: u64 = 8;
+
+	pub const LOOKUP_CACHE_ENTRIES: u64 = 1 << 18;
+	pub const LOOKUP_CACHE_ENTRIES_TESTING: u64 = 8;
 }
 
 pub mod commit {

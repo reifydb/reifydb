@@ -6,6 +6,7 @@ use std::{slice, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
 use reifydb_flow_async::transaction::{
@@ -59,7 +60,11 @@ fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> Defer
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(0)),
-		substrate: FlowSubstrate::with_dictionary(registry, engine.inner().operator_state()),
+		substrate: FlowSubstrate::with_dictionary(
+			registry,
+			engine.inner().operator_state(),
+			WriteTracker::detached(),
+		),
 		lookup: None,
 	})
 }

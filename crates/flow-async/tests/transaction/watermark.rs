@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
@@ -45,6 +46,7 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	})

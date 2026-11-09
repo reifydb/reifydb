@@ -853,6 +853,7 @@ mod integration {
 		actors::pending::PendingWrite,
 		commit::{
 			queue::{CommitPull, CommitQueue},
+			tracker::WriteTracker,
 			watermark::ReaderWatermark,
 		},
 		common::TimeDomain,
@@ -1004,7 +1005,11 @@ mod integration {
 			engine.executor().routines.clone(),
 			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
+			FlowSubstrate::with_dictionary(
+				engine.dictionary_allocators(),
+				engine.operator_state(),
+				WriteTracker::detached(),
+			),
 			OperatorSampleRegistry::new(),
 		)
 	}

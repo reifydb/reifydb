@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
@@ -94,6 +95,7 @@ impl<'a> FlowTxnBuilder<'a> {
 			substrate: FlowSubstrate::with_dictionary(
 				self.engine.inner().dictionary_allocators(),
 				self.engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			lookup: None,
 		});

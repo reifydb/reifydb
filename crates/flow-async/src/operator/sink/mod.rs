@@ -35,6 +35,7 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		actors::pending::{Pending, PendingWrite},
+		commit::tracker::WriteTracker,
 		common::{ChangeVersion, CommitVersion},
 		interface::{
 			catalog::{
@@ -94,7 +95,11 @@ mod tests {
 			catalog: engine.inner().catalog().clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
-			substrate: FlowSubstrate::with_dictionary(registry.clone(), engine.inner().operator_state()),
+			substrate: FlowSubstrate::with_dictionary(
+				registry.clone(),
+				engine.inner().operator_state(),
+				WriteTracker::detached(),
+			),
 			lookup: None,
 		})
 	}

@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	interface::{
 		catalog::{
@@ -48,7 +49,7 @@ use reifydb_value::{
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::common::{create_test_transaction, next_lsn};
+use crate::common::{create_test_transaction, deferred_params, next_lsn};
 
 fn system_ctx() -> Arc<TransactionContext> {
 	Arc::new(TransactionContext::system(RuntimeContext::testing(0, 0)))
@@ -113,6 +114,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	})
@@ -157,7 +159,7 @@ fn stamped_row(payload: &[u8]) -> EncodedPodRow {
 #[test]
 fn test_state_get_set() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -179,7 +181,7 @@ fn test_state_get_set() {
 #[test]
 fn test_state_get_nonexistent() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -198,7 +200,7 @@ fn test_state_get_nonexistent() {
 #[test]
 fn test_state_remove() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -221,7 +223,7 @@ fn test_state_remove() {
 #[test]
 fn test_state_isolation_between_nodes() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -250,7 +252,7 @@ fn test_state_isolation_between_nodes() {
 #[test]
 fn test_state_scan_all() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -273,7 +275,7 @@ fn test_state_scan_all() {
 #[test]
 fn test_state_scan_only_own_node() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -299,7 +301,7 @@ fn test_state_scan_only_own_node() {
 #[test]
 fn test_state_scan_empty() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -316,7 +318,7 @@ fn test_state_scan_empty() {
 #[test]
 fn test_state_range_all() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -342,7 +344,7 @@ fn test_state_range_all() {
 #[test]
 fn test_state_multiple_nodes() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -420,7 +422,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
-		substrate: FlowSubstrate::new(engine.inner().dictionary_allocators()),
+		substrate: FlowSubstrate::new(engine.inner().dictionary_allocators(), WriteTracker::detached()),
 		lookup: None,
 	});
 	assert_eq!(
@@ -596,7 +598,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 	// on rows or on order the reaper spends its budget on a different set than it used to, and a group
 	// it believes it finished can still hold state.
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -636,7 +638,7 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	// The batched read merges pending over one storage page instead of per group. A pending remove that
 	// the merge drops would resurrect a reaped row, and a pending insert it misses would be orphaned.
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),

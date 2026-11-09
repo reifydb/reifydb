@@ -406,7 +406,7 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		commit::watermark::ReaderWatermark,
+		commit::{tracker::WriteTracker, watermark::ReaderWatermark},
 		common::{JoinType, TimeDomain},
 		flow::operator::LookupObject,
 		interface::catalog::{flow::FlowEdge, id::TableId},
@@ -454,7 +454,11 @@ mod tests {
 			engine.executor().routines.clone(),
 			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
+			FlowSubstrate::with_dictionary(
+				engine.dictionary_allocators(),
+				engine.operator_state(),
+				WriteTracker::detached(),
+			),
 			OperatorSampleRegistry::new(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
@@ -555,6 +559,7 @@ mod tests {
 			substrate: FlowSubstrate::with_dictionary(
 				engine.dictionary_allocators(),
 				engine.operator_state(),
+				WriteTracker::detached(),
 			),
 			lookup: None,
 		});

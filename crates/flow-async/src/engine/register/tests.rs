@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	commit::tracker::WriteTracker,
 	common::{JoinType, TimeDomain},
 	flow::{
 		dag::FlowDag,
@@ -75,7 +76,11 @@ fn registering_an_aggregate_with_a_bad_percentile_literal_returns_the_create_err
 		engine.executor().routines.clone(),
 		RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 		Arc::new(EmptyOperatorProvider),
-		FlowSubstrate::with_dictionary(engine.inner().dictionary_allocators(), engine.inner().operator_state()),
+		FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+			WriteTracker::detached(),
+		),
 		OperatorSampleRegistry::new(),
 	);
 
@@ -103,7 +108,11 @@ fn lookup_engine_inner(engine: &TestEngine) -> FlowEngineInner {
 		engine.executor().routines.clone(),
 		RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 		Arc::new(EmptyOperatorProvider),
-		FlowSubstrate::with_dictionary(engine.inner().dictionary_allocators(), engine.inner().operator_state()),
+		FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+			WriteTracker::detached(),
+		),
 		OperatorSampleRegistry::new(),
 	)
 }

@@ -120,6 +120,8 @@ mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
+		actors::pending::Pending,
+		commit::tracker::WriteTracker,
 		common::{TimeDomain, WindowKind, WindowSize},
 		flow::{
 			dag::FlowBuilder,
@@ -141,6 +143,7 @@ mod tests {
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		spawner::Spawner,
+		transaction::TransactionContext,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -222,6 +225,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		)
@@ -230,14 +234,23 @@ mod tests {
 	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DeferredTransaction::new(DeferredParams::from_parent(
-			&parent,
-			engine.inner().operator_state(),
+		DeferredTransaction::new(DeferredParams {
+			ctx: Arc::new(TransactionContext::system(parent.multi.runtime_context())),
 			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		))
+			pending: Pending::new(),
+			query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+			state_query: Some(parent.multi.begin_query(parent.multi.generate_transaction_id()).unwrap()),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			substrate: FlowSubstrate::with_dictionary(
+				parent.dictionary_allocators()
+					.expect("admin transaction reached a flow without a dictionary registry"),
+				engine.inner().operator_state(),
+				WriteTracker::detached(),
+			),
+			lookup: None,
+		})
 	}
 
 	fn source(id: u64) -> FlowNode {

@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::join::{JoinRowExpiryState as JoinRowExpiry, join_expiry_due_key},
@@ -76,6 +77,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	})

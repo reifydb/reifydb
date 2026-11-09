@@ -1354,8 +1354,10 @@ mod pull_protocol {
 		commit::{
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 			queue::{CommitQueueFloor, FlowQueueFloor},
+			tracker::WriteTracker,
 			watermark::ReaderWatermark,
 		},
+		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
 		delta::{Delta, RemoveAnnounce, SetPre},
 		interface::{
 			catalog::{
@@ -1459,7 +1461,11 @@ mod pull_protocol {
 		let flow_id = flows.first().expect("one flow").id;
 		drop(query);
 
-		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		);
 		let mut probe = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -2264,7 +2270,12 @@ mod pull_protocol {
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		h.control.store(CommitVersion(u64::MAX));
-		let ahead = CommitQueue::new(ByteSize::from_mib(8), true, CommitVersion(h.engine.done_until().0 + 15));
+		let ahead = CommitQueue::new(
+			ByteSize::from_mib(8),
+			true,
+			CommitVersion(h.engine.done_until().0 + 15),
+			LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+		);
 		let actor = h.spawn_flow_actor_on(
 			ahead.clone(),
 			h.flow.clone(),
@@ -2754,7 +2765,11 @@ mod pull_protocol {
 		assert!(stopped.wait_timeout(seconds(10)), "the first actor must stop before the restart");
 
 		let (restarted_store, _restarted_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		let substrate2 = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), restarted_store);
+		let substrate2 = FlowSubstrate::with_dictionary(
+			h.engine.dictionary_allocators(),
+			restarted_store,
+			WriteTracker::detached(),
+		);
 		let operators2 = substrate2.operators.clone().expect("the test substrate carries an operator store");
 		assert_eq!(
 			operators2.total_bytes().unwrap(),
@@ -2927,7 +2942,9 @@ mod tick_failures {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		actors::pending::Pending,
+		commit::tracker::WriteTracker,
 		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+		default::flow::LOOKUP_TRACKER_ENTRIES_TESTING,
 		flow::operator::{FlowNode, OperatorDef},
 		interface::{
 			catalog::{
@@ -3357,7 +3374,11 @@ mod tick_failures {
 		let v = view_named(&engine, "v");
 		let w = view_named(&engine, "w");
 
-		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		);
 		arm_due_timer(&engine, &substrate);
 
 		let mut head = FlowDag::builder(FLOW);
@@ -3395,7 +3416,12 @@ mod tick_failures {
 			supervisor: supervisor(&engine),
 			committer: committer.clone(),
 			terminal_committer: committer,
-			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
+			queue: CommitQueue::new(
+				ByteSize::from_mib(8),
+				false,
+				CommitVersion(0),
+				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+			),
 			loader: idle(&engine, "unit-tick-loader"),
 			control: ControlFrontier::new(),
 			custom_operators: operators,
@@ -3499,7 +3525,11 @@ mod tick_failures {
 		te.admin("CREATE TABLE app::t { id: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
 
-		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		);
 		if armed {
 			arm_due_timer(&engine, &substrate);
 		}
@@ -3530,7 +3560,12 @@ mod tick_failures {
 			supervisor: idle(&engine, "tick-failures-supervisor"),
 			committer: committer_ref.clone(),
 			terminal_committer: committer_ref,
-			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
+			queue: CommitQueue::new(
+				ByteSize::from_mib(8),
+				false,
+				CommitVersion(0),
+				LOOKUP_TRACKER_ENTRIES_TESTING as usize,
+			),
 			loader: idle(&engine, "tick-failures-loader"),
 			control: ControlFrontier::new(),
 			custom_operators: timer_operators(),

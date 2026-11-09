@@ -18,6 +18,7 @@ use reifydb_value::byte_size::ByteSize;
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	event::{EventListener, transaction::PostCommitEvent},
 	interface::commit::CommitEntry,
@@ -69,6 +70,7 @@ pub(crate) struct QueueShared {
 	evicted_floor: AtomicU64,
 	evicted_ceiling: AtomicU64,
 	over_soft_cap: AtomicU64,
+	tracker: WriteTracker,
 }
 
 #[derive(Clone)]
@@ -77,7 +79,7 @@ pub struct CommitQueue {
 }
 
 impl CommitQueue {
-	pub fn new(limit: ByteSize, wal_enabled: bool, seed: CommitVersion) -> Self {
+	pub fn new(limit: ByteSize, wal_enabled: bool, seed: CommitVersion, tracker_entries: usize) -> Self {
 		Self {
 			shared: Arc::new(QueueShared {
 				inner: RwLock::new(QueueInner {
@@ -101,8 +103,13 @@ impl CommitQueue {
 				evicted_floor: AtomicU64::new(0),
 				evicted_ceiling: AtomicU64::new(0),
 				over_soft_cap: AtomicU64::new(0),
+				tracker: WriteTracker::new(tracker_entries, seed),
 			}),
 		}
+	}
+
+	pub fn write_tracker(&self) -> WriteTracker {
+		self.shared.tracker.clone()
 	}
 
 	pub(crate) fn from_shared(shared: Arc<QueueShared>) -> Self {
@@ -207,6 +214,7 @@ impl CommitQueue {
 
 	fn publish(&self, event: &PostCommitEvent) {
 		let version = event.version().commit;
+		self.shared.tracker.record(version, event.deltas());
 		let entry = CommitEntry::build(
 			*event.version(),
 			*event.lsn(),
@@ -245,6 +253,7 @@ impl CommitQueue {
 			released = true;
 		}
 		if released {
+			self.shared.tracker.release(inner.released);
 			self.shared.released_through.store(inner.released.0, Ordering::Release);
 			let freed = self.free_below_floors(&mut inner);
 			self.enforce_cap(&mut inner);

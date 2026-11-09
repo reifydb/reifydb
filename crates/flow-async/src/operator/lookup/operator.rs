@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet, hash_map::Entry},
+	cell::RefCell,
+	collections::{HashMap, HashSet},
 	mem,
 	sync::Arc,
 };
@@ -11,6 +12,7 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
+	commit::tracker::TrackerLease,
 	common::{CommitVersion, JoinType, SourceVersion},
 	expression::Expression,
 	flow::operator::LookupObject,
@@ -51,6 +53,7 @@ use reifydb_value::{
 };
 
 use super::{
+	cache::LookupCache,
 	expiry::LookupExpiry,
 	partition::{DictionaryMemo, PartitionLookup, RowKey},
 	store::{ReadLedger, StoredRead},
@@ -113,10 +116,13 @@ pub struct LookupConfig {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	pub ctx: Arc<FlowContext>,
+	pub writes: TrackerLease,
+	pub cache_entries: usize,
 }
 
 pub struct LookupOperator {
 	config: LookupConfig,
+	cache: RefCell<LookupCache>,
 	lowered_left: Vec<LoweredExpr>,
 	expiry: LookupExpiry,
 	columns: JoinedColumnsCache,
@@ -258,8 +264,10 @@ impl LookupOperator {
 				.schema(&config.left_schema, &config.right_schema),
 		)?;
 		let left_kept = dictionary_columns(&config.left_schema)?.into_iter().collect();
+		let cache = RefCell::new(LookupCache::new(config.cache_entries));
 		Ok(Self {
 			config,
+			cache,
 			lowered_left,
 			expiry,
 			columns,
@@ -389,16 +397,10 @@ impl LookupOperator {
 		let Some(partition) = key_partition(host, partitions, reads, key)? else {
 			return Ok(None);
 		};
-		match reads.rows.entry((partition, version)) {
-			Entry::Occupied(read) => Ok(read.get().clone()),
-			Entry::Vacant(slot) => {
-				let read = host
-					.lookup_read_at(self.config.storage, self.config.ring, version, &[partition])?
-					.pop()
-					.flatten();
-				Ok(slot.insert(read).clone())
-			}
+		if !reads.rows.contains_key(&(partition, version)) {
+			self.prefetch(host, reads, vec![(partition, version)])?;
 		}
+		Ok(reads.rows.get(&(partition, version)).cloned().flatten())
 	}
 
 	fn prefetch(
@@ -419,10 +421,45 @@ impl LookupOperator {
 			}
 		}
 		for (version, partitions) in groups {
+			let partitions = match version {
+				LookupAt::Commit(wanted) => self.cached(host, reads, wanted, partitions),
+				LookupAt::Layered {
+					..
+				} => partitions,
+			};
+			if partitions.is_empty() {
+				continue;
+			}
 			let rows = host.lookup_read_at(self.config.storage, self.config.ring, version, &partitions)?;
+			if let LookupAt::Commit(read) = version {
+				let mut cache = self.cache.borrow_mut();
+				for (partition, row) in partitions.iter().zip(&rows) {
+					cache.store(read, *partition, row.clone());
+				}
+			}
 			reads.rows.extend(partitions.into_iter().map(|partition| (partition, version)).zip(rows));
 		}
 		Ok(())
+	}
+
+	fn cached(
+		&self,
+		host: &dyn HostContext,
+		reads: &mut ChangeReads,
+		wanted: CommitVersion,
+		partitions: Vec<Partition>,
+	) -> Vec<Partition> {
+		let hits = self.cache.borrow().hits(&self.config.writes, wanted, host.lookup_floor(), &partitions);
+		let mut missed = Vec::with_capacity(partitions.len());
+		for (partition, hit) in partitions.into_iter().zip(hits) {
+			match hit {
+				Some(row) => {
+					reads.rows.insert((partition, LookupAt::Commit(wanted)), row);
+				}
+				None => missed.push(partition),
+			}
+		}
+		missed
 	}
 
 	fn left_version(
@@ -1007,7 +1044,9 @@ mod tests {
 	use reifydb_codec::row::{bytes::read_fingerprint, shape::RowFamily};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
+		commit::tracker::WriteTracker,
 		common::ChangeVersion,
+		default::flow::LOOKUP_CACHE_ENTRIES_TESTING,
 		interface::catalog::{
 			column::ColumnIndex,
 			dictionary::Dictionary,
@@ -1135,6 +1174,8 @@ mod tests {
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
+			writes: WriteTracker::detached().register(StorageId::from(table.id)),
+			cache_entries: LOOKUP_CACHE_ENTRIES_TESTING as usize,
 		})
 		.expect("the lookup operator must build")
 	}
@@ -1163,6 +1204,8 @@ mod tests {
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
+			writes: WriteTracker::detached().register(StorageId::RingBuffer(ringbuffer.id)),
+			cache_entries: LOOKUP_CACHE_ENTRIES_TESTING as usize,
 		})
 		.expect("the lookup operator must build")
 	}

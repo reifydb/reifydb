@@ -6,6 +6,7 @@ use std::{collections::HashMap, slice, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	interface::catalog::{
 		id::{QueueId, TableId},
@@ -39,7 +40,11 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),
-		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
+		FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		),
 	);
 	txn.set_change_coordinate(ChangeCoordinate {
 		at: Some(DateTime::from_millis(0)),
@@ -96,7 +101,11 @@ fn row_reads_stay_pinned_to_requested_version() {
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),
-		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
+		FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			WriteTracker::detached(),
+		),
 	);
 	assert_eq!(
 		txn.get(slice::from_ref(&row_key)).unwrap().pop().flatten(),

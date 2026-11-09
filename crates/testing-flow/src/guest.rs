@@ -6,6 +6,7 @@ use std::{collections::HashMap, marker::PhantomData, mem, ops::Index, sync::Arc}
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::{
@@ -240,7 +241,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 			allocators.intern_batch(dictionary, values)?;
 		}
 
-		let substrate = FlowSubstrate::with_dictionary(allocators, engine.inner().operator_state());
+		let substrate = FlowSubstrate::with_dictionary(
+			allocators,
+			engine.inner().operator_state(),
+			WriteTracker::detached(),
+		);
 		Ok(GuestOperatorHarness {
 			engine,
 			operator,

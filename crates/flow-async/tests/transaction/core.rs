@@ -22,7 +22,7 @@ use reifydb_core::{
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_flow::txn::{FlowBatch, FlowGet};
-use reifydb_flow_async::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
+use reifydb_flow_async::transaction::{FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
@@ -30,7 +30,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
 
-use crate::common::create_test_transaction;
+use crate::common::{create_test_transaction, deferred_params};
 
 fn make_key(s: &str) -> EncodedKey {
 	make_typed_key(s).encode()
@@ -77,7 +77,7 @@ fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedByt
 #[test]
 fn test_get_from_pending() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -111,7 +111,7 @@ fn test_get_from_committed() {
 	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		t.inner().operator_state(),
 		version,
@@ -132,7 +132,7 @@ fn test_get_pending_shadows_committed() {
 	parent.set(vec![(make_typed_key("key1").into(), make_value("old"))]).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		version,
@@ -156,7 +156,7 @@ fn test_get_removed_returns_none() {
 	parent.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		version,
@@ -174,7 +174,7 @@ fn test_get_removed_returns_none() {
 #[test]
 fn test_get_nonexistent_key() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -190,7 +190,7 @@ fn test_get_nonexistent_key() {
 #[test]
 fn test_contains_key_pending() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -219,7 +219,7 @@ fn test_contains_key_committed() {
 
 	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		t.inner().operator_state(),
 		version,
@@ -239,7 +239,7 @@ fn test_contains_key_removed_returns_false() {
 	parent.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		version,
@@ -255,7 +255,7 @@ fn test_contains_key_removed_returns_false() {
 #[test]
 fn test_contains_key_nonexistent() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -270,7 +270,7 @@ fn test_contains_key_nonexistent() {
 #[test]
 fn test_scan_empty() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -286,7 +286,7 @@ fn test_scan_empty() {
 #[test]
 fn test_scan_only_pending() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -311,7 +311,7 @@ fn test_scan_only_pending() {
 #[test]
 fn test_scan_filters_removes() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -335,7 +335,7 @@ fn test_scan_filters_removes() {
 #[test]
 fn test_range_empty() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -355,7 +355,7 @@ fn test_range_empty() {
 #[test]
 fn test_range_only_pending() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -383,7 +383,7 @@ fn test_range_only_pending() {
 #[test]
 fn test_prefix_empty() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -399,7 +399,7 @@ fn test_prefix_empty() {
 #[test]
 fn test_prefix_only_pending() {
 	let (_engine, parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -423,7 +423,7 @@ fn test_prefix_only_pending() {
 #[test]
 fn test_writes_not_visible_to_parent() {
 	let (_engine, mut parent, operators) = create_test_transaction();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		CommitVersion(1),
@@ -450,7 +450,7 @@ fn test_removes_not_visible_to_parent() {
 	assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 	let parent_version = parent.version();
-	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
+	let mut txn = DeferredTransaction::new(deferred_params(
 		&parent,
 		operators,
 		parent_version,

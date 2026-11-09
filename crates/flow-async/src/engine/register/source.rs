@@ -91,6 +91,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::{
+		commit::tracker::WriteTracker,
 		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::flow::FlowId,
 	};
@@ -120,6 +121,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		);

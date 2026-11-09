@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
+	commit::tracker::WriteTracker,
 	interface::{
 		catalog::flow::FlowId,
 		operator::{FlowCheckpoint, OperatorSlice, OperatorStateWrite},
@@ -35,21 +36,27 @@ pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
 	pub frontiers: OutputFrontiers,
 	pub operators: Option<OperatorStore>,
+	pub writes: WriteTracker,
 }
 
 impl FlowSubstrate {
-	pub fn new(dictionary: DictionaryAllocatorRegistry) -> Self {
+	pub fn new(dictionary: DictionaryAllocatorRegistry, writes: WriteTracker) -> Self {
 		Self {
 			dictionary,
 			frontiers: OutputFrontiers::default(),
 			operators: None,
+			writes,
 		}
 	}
 
-	pub fn with_dictionary(dictionary: DictionaryAllocatorRegistry, operators: OperatorStore) -> Self {
+	pub fn with_dictionary(
+		dictionary: DictionaryAllocatorRegistry,
+		operators: OperatorStore,
+		writes: WriteTracker,
+	) -> Self {
 		Self {
 			operators: Some(operators),
-			..Self::new(dictionary)
+			..Self::new(dictionary, writes)
 		}
 	}
 }

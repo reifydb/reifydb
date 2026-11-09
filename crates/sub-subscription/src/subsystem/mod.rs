@@ -215,7 +215,7 @@ impl SubscriptionSubsystem {
 				.rng(engine.runtime_context().rng.fork(b"sub-subscription/worker-pool"))
 				.build();
 			let provider = Arc::new(EmptyOperatorProvider);
-			let substrate = FlowSubstrate::new(engine.dictionary_allocators());
+			let substrate = FlowSubstrate::new(engine.dictionary_allocators(), engine.write_tracker());
 			let factory = move || {
 				FlowEngineInner::new(
 					cat,

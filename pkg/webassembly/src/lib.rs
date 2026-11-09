@@ -280,6 +280,7 @@ impl WasmDB {
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
 			true,
 			multi.current_version().map_err(|e| JsError::from_error(&e))?,
+			multi.config().get_config_uint8(ConfigKey::FlowLookupTrackerEntries) as usize,
 		);
 		ioc = ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
 		ioc = ioc.register(commit_queue.clone());

@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
@@ -61,6 +62,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	});

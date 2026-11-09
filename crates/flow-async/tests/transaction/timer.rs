@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{actors::pending::Pending, interface::catalog::flow::OperatorId, state::timer::TimerKind};
+use reifydb_core::{
+	actors::pending::Pending, commit::tracker::WriteTracker, interface::catalog::flow::OperatorId,
+	state::timer::TimerKind,
+};
 use reifydb_flow_async::{
 	timer::{
 		Timer, TimerDue,
@@ -50,6 +53,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 		substrate: FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		),
 		lookup: None,
 	})

@@ -13,6 +13,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
+	commit::tracker::WriteTracker,
 	common::{ChangeVersion, CommitVersion},
 	delta::RemoveVisibility,
 	interface::change::Change,
@@ -86,6 +87,7 @@ impl<O> Harness<O> {
 		let substrate = FlowSubstrate::with_dictionary(
 			engine.inner().dictionary_allocators(),
 			engine.inner().operator_state(),
+			WriteTracker::detached(),
 		);
 		Self {
 			engine,
@@ -218,7 +220,11 @@ impl<O: HostOperator> Harness<O> {
 			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			single,
 		)));
-		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
+		self.substrate = FlowSubstrate::with_dictionary(
+			registry,
+			self.engine.inner().operator_state(),
+			WriteTracker::detached(),
+		);
 		self
 	}
 

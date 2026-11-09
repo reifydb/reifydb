@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{actors::pending::Pending, common::CommitVersion};
+use reifydb_core::{actors::pending::Pending, commit::tracker::WriteTracker, common::CommitVersion};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	transaction::TransactionContext,
@@ -62,6 +62,7 @@ impl<'a> FlowTxnBuilder<'a> {
 			substrate: FlowSubstrate::with_dictionary(
 				self.engine.inner().dictionary_allocators(),
 				self.engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			lookup: None,
 		});

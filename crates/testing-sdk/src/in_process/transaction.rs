@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
+	commit::tracker::WriteTracker,
 	common::CommitVersion,
 	interface::{
 		catalog::{dictionary::Dictionary, flow::OperatorId},
@@ -71,7 +72,11 @@ impl TestFlowTransaction {
 			version,
 			clock,
 			catalog: Catalog::testing(),
-			substrate: FlowSubstrate::with_dictionary(dictionary, OperatorStore::testing_memory()),
+			substrate: FlowSubstrate::with_dictionary(
+				dictionary,
+				OperatorStore::testing_memory(),
+				WriteTracker::detached(),
+			),
 			pending: Pending::new(),
 			armed: Vec::new(),
 			change_coordinate: None,

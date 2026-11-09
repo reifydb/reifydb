@@ -144,6 +144,7 @@ mod tests {
 
 	use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 	use reifydb_core::{
+		commit::tracker::WriteTracker,
 		common::TimeDomain,
 		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::id::{SeriesId, ViewId},
@@ -193,7 +194,7 @@ mod tests {
 			engine.executor().routines.clone(),
 			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::new(engine.inner().dictionary_allocators()),
+			FlowSubstrate::new(engine.inner().dictionary_allocators(), WriteTracker::detached()),
 			OperatorSampleRegistry::new(),
 		);
 
@@ -217,6 +218,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		);
@@ -282,6 +284,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		);
@@ -361,7 +364,7 @@ mod tests {
 			engine.executor().routines.clone(),
 			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::new(engine.inner().dictionary_allocators()),
+			FlowSubstrate::new(engine.inner().dictionary_allocators(), WriteTracker::detached()),
 			OperatorSampleRegistry::new(),
 		);
 
@@ -422,7 +425,7 @@ mod tests {
 			engine.executor().routines.clone(),
 			RuntimeContext::builder(Spawner::inline()).clock(engine.clock().clone()).build(),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::new(engine.inner().dictionary_allocators()),
+			FlowSubstrate::new(engine.inner().dictionary_allocators(), WriteTracker::detached()),
 			OperatorSampleRegistry::new(),
 		);
 

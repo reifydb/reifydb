@@ -252,6 +252,7 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	use reifydb_core::interface::change::Diff;
 	use reifydb_core::{
+		commit::tracker::WriteTracker,
 		common::{ChangeVersion, CommitVersion},
 		flow::{
 			dag::FlowDag,
@@ -360,6 +361,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		)

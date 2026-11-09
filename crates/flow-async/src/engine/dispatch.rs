@@ -169,6 +169,7 @@ mod tests {
 
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_core::{
+		commit::tracker::WriteTracker,
 		common::{ChangeVersion, CommitVersion},
 		flow::operator::{FlowNode, OperatorDef},
 		interface::{
@@ -223,6 +224,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(
 				engine.inner().dictionary_allocators(),
 				engine.inner().operator_state(),
+				WriteTracker::detached(),
 			),
 			OperatorSampleRegistry::new(),
 		)

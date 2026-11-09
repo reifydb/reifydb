@@ -112,7 +112,11 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
-		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.dictionary_allocators(),
+			engine.operator_state(),
+			engine.write_tracker(),
+		);
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let flow_wal = flow_wal(engine.multi().wal());
