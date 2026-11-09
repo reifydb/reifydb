@@ -125,3 +125,66 @@ fn a_right_replace_with_no_left_rows_then_a_left_insert_joins_the_newest_price()
 	db.await_all_flows(SETTLE);
 	assert_eq!(totals(&db), (Some(20), 1, 1));
 }
+
+fn make_picked_db() -> TestDb {
+	// The right side must be a plain table, so one UPDATE changes several rows of one key in one change.
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::bar { k: utf8, n: int4 }");
+	db.admin("CREATE TABLE app::quote { id: int4, k: utf8, p: int8 }");
+	db.admin("CREATE DEFERRED VIEW app::total { total: Option(int8), rows: int8, priced: int8 } AS { \
+		 FROM app::bar \
+		 LEFT JOIN { FROM app::quote } AS c USING (k, c.k) WITH { latest: { c.p: desc } } \
+		 AGGREGATE { total: math::sum(c_p), rows: math::count(n), priced: math::count(c_p) } BY {} }");
+	db
+}
+
+#[test]
+fn a_right_replace_where_another_row_of_the_key_takes_the_pick_frees_the_old_winner() {
+	// When another row takes the pick, the old winner must be deleted, otherwise it serves a stale price.
+	let db = make_picked_db();
+	db.command("INSERT app::bar [{ k: 'a', n: 1 }, { k: 'a', n: 2 }]");
+	db.command("INSERT app::quote [{ id: 1, k: 'a', p: 10 }, { id: 2, k: 'a', p: 5 }]");
+	db.await_all_flows(SETTLE);
+	assert_eq!(totals(&db), (Some(20), 2, 2), "the highest quote 10 must win for both bar rows");
+
+	db.command("UPDATE app::quote { id, k, p: if id == 1 { 1 } else { 20 } } FILTER { k == 'a' }");
+	db.await_all_flows(SETTLE);
+	assert_eq!(
+		totals(&db),
+		(Some(40), 2, 2),
+		"quote 2 now holds 20 and must replace the old winner for every bar row"
+	);
+
+	db.command("UPDATE app::quote { p: 30 } FILTER { id == 2 }");
+	db.await_all_flows(SETTLE);
+	assert_eq!(totals(&db), (Some(60), 2, 2), "a later replace must start from exactly one held winner");
+}
+
+#[test]
+fn a_ring_eviction_that_moves_the_winner_position_to_another_key_leaves_one_fresh_winner() {
+	// An evicted winner must be freed and never stay a candidate when its ring position moves to another key.
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::bar { k: utf8, n: int4 }");
+	db.admin("CREATE TABLE app::price { k: utf8, p: int8 }");
+	db.admin(
+		"CREATE DEFERRED RINGBUFFER VIEW app::current { k: utf8, p: int8 } WITH { capacity: 2 } AS { FROM app::price }",
+	);
+	db.admin("CREATE DEFERRED VIEW app::total { total: Option(int8), rows: int8, priced: int8 } AS { \
+		 FROM app::bar \
+		 LEFT JOIN { FROM app::current } AS c USING (k, c.k) WITH { latest: { c.p: desc } } \
+		 AGGREGATE { total: math::sum(c_p), rows: math::count(n), priced: math::count(c_p) } BY {} }");
+	db.command("INSERT app::bar [{ k: 'a', n: 1 }, { k: 'b', n: 2 }]");
+	db.command("INSERT app::price [{ k: 'a', p: 10 }, { k: 'b', p: 1 }]");
+	db.await_all_flows(SETTLE);
+	assert_eq!(totals(&db), (Some(11), 2, 2));
+
+	db.command("INSERT app::price [{ k: 'b', p: 2 }, { k: 'a', p: 8 }]");
+	db.await_all_flows(SETTLE);
+	assert_eq!(totals(&db), (Some(10), 2, 2), "both old prices were evicted, so a must join 8 and b must join 2");
+
+	db.command("INSERT app::bar [{ k: 'a', n: 3 }]");
+	db.await_all_flows(SETTLE);
+	assert_eq!(totals(&db), (Some(18), 3, 3), "a new bar row must read exactly the one fresh winner of its key");
+}

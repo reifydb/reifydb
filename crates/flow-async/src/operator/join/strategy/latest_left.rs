@@ -16,7 +16,10 @@ use tracing::instrument;
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
-	latest::{overwrite_right_slot, read_right_slot, remove_right_rows, republish, write_right_rows},
+	latest::{
+		overwrite_right_slot, read_right_slot, remove_right_rows, replace_right_slot, republish,
+		write_right_rows,
+	},
 	latest_inner::{republished_slot, update_diff},
 };
 use crate::operator::{
@@ -218,10 +221,15 @@ impl LatestLeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		let pre_numbers = require_row_numbers(pre)?;
 		let numbers: Vec<RowNumber> = pre_indices.iter().map(|&idx| pre_numbers[idx]).collect();
-		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
-		remove_right_rows(host, &ctx.state.right, key_hash, &numbers)?;
-		let (_, new) =
-			overwrite_right_slot(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
+		let (old, new) = replace_right_slot(
+			host,
+			&ctx.state.right,
+			key_hash,
+			&numbers,
+			ctx.rows,
+			indices,
+			ctx.operator.pick(),
+		)?;
 		let mut result = Vec::new();
 		if old.is_none() && new.is_none() {
 			return Ok(result);

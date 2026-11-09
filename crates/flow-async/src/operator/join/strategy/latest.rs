@@ -173,6 +173,20 @@ pub(crate) fn write_right_rows(
 	let group = right.group_of(key_hash);
 	let held = read_slot(host, right, group)?;
 	let old = held.clone().map(|held| columns_from_block(host, right, vec![held])).transpose()?;
+	pick_and_write(host, right, group, held, old, rows, indices, pick)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pick_and_write(
+	host: &mut dyn HostContext,
+	right: &Store,
+	group: GroupId,
+	held: Option<(RowNumber, EncodedBytes)>,
+	old: Option<RecordBatch>,
+	rows: &mut JoinRows,
+	indices: &[usize],
+	pick: &JoinPick,
+) -> Result<SlotChange> {
 	let encoded = rows.encoded(host, right)?;
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
@@ -224,6 +238,37 @@ pub(crate) fn overwrite_right_slot(
 		None => change.old.clone(),
 	};
 	Ok((change.old, new))
+}
+
+#[instrument(name = "flow::operator::join::latest::replace_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
+pub(crate) fn replace_right_slot(
+	host: &mut dyn HostContext,
+	right: &Store,
+	key_hash: &Hash128,
+	removed: &[RowNumber],
+	rows: &mut JoinRows,
+	indices: &[usize],
+	pick: &JoinPick,
+) -> Result<(Option<RecordBatch>, Option<RecordBatch>)> {
+	let group = right.group_of(key_hash);
+	let held = read_slot(host, right, group)?;
+	let old = held.clone().map(|held| columns_from_block(host, right, vec![held])).transpose()?;
+	let dropped = held.as_ref().map(|(number, _)| *number).filter(|number| removed.contains(number));
+	let (kept, kept_columns) = match dropped {
+		Some(_) => (None, None),
+		None => (held, old.clone()),
+	};
+	let change = pick_and_write(host, right, group, kept, kept_columns, rows, indices, pick)?;
+	if let Some(number) = dropped
+		&& change.written.as_ref().is_none_or(|(winner, _)| *winner != number)
+	{
+		right.remove_row_in(host, group, from_ref(&number))?;
+	}
+	let new = match change.written {
+		Some(winner) => Some(columns_from_block(host, right, vec![winner])?),
+		None => change.old,
+	};
+	Ok((old, new))
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_rows", level = "trace", skip_all)]
