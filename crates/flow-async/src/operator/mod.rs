@@ -13,16 +13,16 @@ use arrow_array::{ArrayRef, RecordBatch, TimestampNanosecondArray};
 use arrow_ord::cmp::gt_eq;
 #[cfg(feature = "runtime")]
 use arrow_schema::{DataType, SchemaRef};
-use reifydb_core::{
-	common::ChangeVersion,
-	interface::change::{Change, Diffs},
-	internal_err,
-};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
+	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	internal,
 	metrics::heap::OperatorSample,
+};
+use reifydb_core::{
+	interface::change::{Change, Diffs},
+	internal_err,
 };
 use reifydb_value::{
 	Result,

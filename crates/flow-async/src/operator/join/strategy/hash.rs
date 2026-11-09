@@ -36,7 +36,7 @@ use reifydb_value::{
 			SystemColumn, column_view, require_row_numbers, stamp_system_columns, system_column,
 			user_columns,
 		},
-		value_type::ValueType,
+		value_type::{ValueType, field::from_field},
 	},
 };
 use tracing::{Span, instrument};
@@ -470,6 +470,19 @@ pub(crate) fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<Recor
 			runs.iter().map(|run| column_view(run, name)).collect::<Result<_>>()?;
 		let target_type = views.iter().flatten().next().map(ColumnView::get_type).unwrap_or(ValueType::Any);
 		let mut buf = ColumnBuilder::with_capacity(target_type.clone(), total);
+		let dictionary = runs
+			.iter()
+			.find_map(|run| {
+				user_columns(run)
+					.find(|(field, _)| field.name() == name)
+					.map(|(field, _)| field.clone())
+			})
+			.map(|field| from_field(&field))
+			.transpose()?
+			.and_then(|field_type| field_type.dictionary_id);
+		if let Some(dictionary) = dictionary {
+			buf.set_dictionary_id(dictionary);
+		}
 		for (run, view) in runs.iter().zip(&views) {
 			match view {
 				Some(view) if concatenates(&target_type, view) => buf.append_values(view)?,

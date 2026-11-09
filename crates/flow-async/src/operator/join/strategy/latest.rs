@@ -307,6 +307,26 @@ pub(crate) fn republish(
 	Ok(out)
 }
 
+pub(crate) fn republish_slots(
+	host: &mut dyn HostContext,
+	operator: &JoinOperator,
+	left: &RecordBatch,
+	indices: &[usize],
+	pre: (&RecordBatch, &[Option<usize>]),
+	post: (&RecordBatch, &[Option<usize>]),
+) -> Result<Vec<Diff>> {
+	let withdrawn = operator.latest_columns_slots(host, left, indices, pre.0, pre.1, Identity::Existing)?;
+	let published = operator.latest_columns_slots(host, left, indices, post.0, post.1, Identity::Mint)?;
+	let mut out = Vec::new();
+	if withdrawn.existing.num_rows() > 0 && published.existing.num_rows() > 0 {
+		out.push(Diff::update(withdrawn.existing, published.existing));
+	}
+	if published.fresh.num_rows() > 0 {
+		out.push(Diff::insert(published.fresh));
+	}
+	Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;

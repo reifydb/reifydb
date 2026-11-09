@@ -6,7 +6,7 @@ use std::{cell::RefCell, iter::repeat_n, sync::Arc};
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array, new_null_array};
 use arrow_schema::{Field, FieldRef, Schema, SchemaRef};
 use reifydb_core::value::{
-	batch::{batch, take_rows},
+	batch::{batch, take_rows, take_rows_or_none},
 	column::{
 		builder::ColumnBuilder,
 		factory::{none, rename},
@@ -242,6 +242,28 @@ impl JoinedColumnsBuilder {
 
 		let right_columns = self.right_columns(&gather(right, right_indices)?);
 		self.assemble(row_numbers, left, left_indices, right_columns, vec![None; left_indices.len()])
+	}
+
+	pub(crate) fn join_slots(
+		&self,
+		row_numbers: &[RowNumber],
+		left: &RecordBatch,
+		left_indices: &[usize],
+		right: &RecordBatch,
+		right_rows: &[Option<usize>],
+	) -> Result<RecordBatch> {
+		reifydb_assertions! {
+			assert_eq!(left_indices.len(), right_rows.len(), "every left row names its slot row or none");
+			assert_eq!(row_numbers.len(), left_indices.len(), "row_numbers must match left row count");
+		}
+
+		let right_times = row_times(right)?;
+		let times = right_rows
+			.iter()
+			.map(|row| row.and_then(|row| right_times.get(row).copied().flatten()))
+			.collect();
+		let right_columns = self.right_columns(&take_rows_or_none(right, right_rows)?);
+		self.assemble(row_numbers, left, left_indices, right_columns, times)
 	}
 
 	pub(crate) fn unmatched_left(

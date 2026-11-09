@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::repeat_n;
+
 use arrow_array::RecordBatch;
 use reifydb_core::{interface::change::Diff, key::operator::state::GroupId};
 use reifydb_value::{
@@ -15,10 +17,10 @@ use tracing::instrument;
 
 use super::{
 	JoinContext, UpdateKeys,
-	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
+	hash::{add_to_state_entry_batch, for_each_left_block, merge_runs, prepare_entry_update, update_row_in_entry},
 	latest::{
 		overwrite_right_slot, read_right_slot, remove_right_rows, replace_right_slot, republish,
-		write_right_rows,
+		republish_slots, write_right_rows,
 	},
 	latest_inner::{republished_slot, update_diff},
 };
@@ -209,44 +211,63 @@ impl LatestLeftHashJoin {
 		Ok(result)
 	}
 
-	#[instrument(name = "flow::operator::join::latest_left::handle_right_replace", level = "trace", skip_all, fields(rows = indices.len()))]
-	pub(crate) fn handle_right_replace(
+	#[instrument(name = "flow::operator::join::latest_left::handle_right_replaces", level = "trace", skip_all, fields(keys = replaces.len()))]
+	pub(crate) fn handle_right_replaces(
 		&self,
 		host: &mut dyn HostContext,
 		pre: &RecordBatch,
-		pre_indices: &[usize],
-		indices: &[usize],
-		key_hash: &Hash128,
+		replaces: &[(Hash128, Vec<usize>, Vec<usize>)],
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_numbers = require_row_numbers(pre)?;
-		let numbers: Vec<RowNumber> = pre_indices.iter().map(|&idx| pre_numbers[idx]).collect();
-		let (old, new) = replace_right_slot(
-			host,
-			&ctx.state.right,
-			key_hash,
-			&numbers,
-			ctx.rows,
-			indices,
-			ctx.operator.pick(),
-		)?;
-		let mut result = Vec::new();
-		if old.is_none() && new.is_none() {
-			return Ok(result);
-		}
 		let operator = ctx.operator;
-		for_each_left_block(host, &ctx.state.left, key_hash, |host, left| {
-			let left_indices: Vec<usize> = (0..left.num_rows()).collect();
-			result.extend(republish(
+		let mut lefts = Vec::new();
+		let mut olds = Vec::new();
+		let mut news = Vec::new();
+		let mut old_of_row = Vec::new();
+		let mut new_of_row = Vec::new();
+		for (key_hash, pre_indices, indices) in replaces {
+			let numbers: Vec<RowNumber> = pre_indices.iter().map(|&idx| pre_numbers[idx]).collect();
+			let (old, new) = replace_right_slot(
 				host,
-				operator,
-				(left, old.as_ref()),
-				(left, new.as_ref()),
-				&left_indices,
-			)?);
-			Ok(())
-		})?;
-		Ok(result)
+				&ctx.state.right,
+				key_hash,
+				&numbers,
+				ctx.rows,
+				indices,
+				operator.pick(),
+			)?;
+			if old.is_none() && new.is_none() {
+				continue;
+			}
+			let old_at = old.map(|slot| {
+				olds.push(slot);
+				olds.len() - 1
+			});
+			let new_at = new.map(|slot| {
+				news.push(slot);
+				news.len() - 1
+			});
+			for_each_left_block(host, &ctx.state.left, key_hash, |_, left| {
+				old_of_row.extend(repeat_n(old_at, left.num_rows()));
+				new_of_row.extend(repeat_n(new_at, left.num_rows()));
+				lefts.push(left.clone());
+				Ok(())
+			})?;
+		}
+		if lefts.is_empty() {
+			return Ok(Vec::new());
+		}
+		let left = merge_runs(lefts, JoinSide::Left)?;
+		let indices: Vec<usize> = (0..left.num_rows()).collect();
+		republish_slots(
+			host,
+			operator,
+			&left,
+			&indices,
+			(&merge_runs(olds, JoinSide::Right)?, &old_of_row),
+			(&merge_runs(news, JoinSide::Right)?, &new_of_row),
+		)
 	}
 
 	#[instrument(name = "flow::operator::join::latest_left::handle_remove", level = "trace", skip_all)]

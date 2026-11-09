@@ -870,6 +870,40 @@ impl JoinOperator {
 		builder.unmatched_left(row_numbers, left, left_indices, &self.right_schema)
 	}
 
+	pub(crate) fn latest_columns_slots(
+		&self,
+		host: &mut dyn HostContext,
+		left: &RecordBatch,
+		left_indices: &[usize],
+		slots: &RecordBatch,
+		slot_of_row: &[Option<usize>],
+		identity: Identity<'_>,
+	) -> Result<Emitted> {
+		if left_indices.is_empty() {
+			return Ok(Emitted::empty());
+		}
+		let left_numbers = require_row_numbers(left)?;
+		let keys: Vec<JoinRowMappingKey> =
+			left_indices.iter().map(|&idx| Self::unmatched_left_key(left_numbers[idx])).collect();
+		let (row_numbers, fresh, existing) = self.identities(host, &keys, identity)?;
+		let built = match slot_of_row.iter().any(Option::is_some) {
+			true => self.columns.builder(left.schema_ref(), slots.schema_ref()).join_slots(
+				&row_numbers,
+				left,
+				left_indices,
+				slots,
+				slot_of_row,
+			)?,
+			false => self.columns.builder(left.schema_ref(), &self.right_schema).unmatched_left(
+				&row_numbers,
+				left,
+				left_indices,
+				&self.right_schema,
+			)?,
+		};
+		Self::split(built, &fresh, &existing)
+	}
+
 	pub(crate) fn latest_columns(
 		&self,
 		host: &mut dyn HostContext,
@@ -1129,25 +1163,11 @@ impl JoinOperator {
 		let mut pre_rows = JoinRows::new(pre, side, host.batch_time());
 		let mut post_rows = JoinRows::new(post, side, host.batch_time());
 
+		let mut replaces = Vec::new();
 		for key_hash in &pre_order {
 			let pre_indices = &pre_groups[key_hash];
 			match post_groups.get(key_hash) {
-				Some(indices) => {
-					let mut ctx = JoinContext {
-						side,
-						state,
-						operator: self,
-						rows: &mut post_rows,
-					};
-					result.extend(self.strategy.handle_right_replace(
-						host,
-						pre,
-						pre_indices,
-						indices,
-						key_hash,
-						&mut ctx,
-					)?);
-				}
+				Some(indices) => replaces.push((*key_hash, pre_indices.clone(), indices.clone())),
 				None => {
 					let mut ctx = JoinContext {
 						side,
@@ -1173,6 +1193,15 @@ impl JoinOperator {
 				rows: &mut pre_rows,
 			};
 			result.extend(self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?);
+		}
+		if !replaces.is_empty() {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				rows: &mut post_rows,
+			};
+			result.extend(self.strategy.handle_right_replaces(host, pre, &replaces, &mut ctx)?);
 		}
 		self.clear_batch(host, side, pre, &pre_keys)?;
 
@@ -1391,7 +1420,7 @@ mod seal_tests {
 			Value,
 			container::temporal_array::datetime_array,
 			dictionary::DictionaryEntryId,
-			system_columns::{SystemColumn, with_system_column},
+			system_columns::{SystemColumn, user_columns, with_system_column},
 		},
 	};
 
@@ -1399,6 +1428,7 @@ mod seal_tests {
 	use crate::{
 		operator::{
 			host::TxnHostContext,
+			join::strategy::hash::merge_runs,
 			sink::DurableSink,
 			state::test_utils::test::{scan_operator, whole_keyspace},
 		},
@@ -2481,5 +2511,106 @@ mod seal_tests {
 		sets.extend(column_names(&right));
 		sets.dedup();
 		assert_eq!(sets.len(), 1, "left and right driven output must share one column set, got {sets:?}");
+	}
+
+	#[test]
+	fn a_batched_slot_republish_emits_the_cells_the_per_key_path_emits() {
+		// Batching keys must never change a row's id, time or right cells, or put a value where the per-key
+		// path emits none.
+		let priced = |keys: &[i32], values: &[i32], numbers: &[u64], at: DateTime| {
+			let columns = batch(vec![int4("k", keys.to_vec()), int4("v", values.to_vec())]).unwrap();
+			let columns = with_system_column(
+				columns,
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from(numbers.to_vec())),
+			)
+			.unwrap();
+			with_system_column(columns, SystemColumn::Time, Arc::new(datetime_array(vec![at; keys.len()])))
+				.unwrap()
+		};
+		let cells = |columns: &RecordBatch, rows: &[usize]| -> Vec<(String, Vec<Value>)> {
+			columns.schema_ref()
+				.fields()
+				.iter()
+				.zip(columns.columns())
+				.map(|(field, array)| {
+					let view = ColumnView::try_from((array, field.as_ref())).unwrap();
+					(field.name().clone(), rows.iter().map(|&row| view.get_value(row)).collect())
+				})
+				.collect()
+		};
+		let left_a = rows(&[1, 1], &[10, 11], at_millis(5_000));
+		let left_b = rows(&[2], &[12], at_millis(9_000));
+		let left_c = rows(&[3], &[13], at_millis(4_000));
+		let slot_a = priced(&[1], &[100], &[50], at_millis(7_000));
+		let slot_c = priced(&[3], &[300], &[51], at_millis(2_000));
+		let with_right = |slot: &RecordBatch| {
+			let fields: Vec<FieldRef> = user_columns(slot).map(|(field, _)| field.clone()).collect();
+			JoinOperator::new(
+				JoinSideConfig {
+					operator: OperatorId(1_019),
+					exprs: parse_expression("k").expect("the left key parses"),
+					schema: Arc::new(Schema::empty()),
+				},
+				JoinSideConfig {
+					operator: OperatorId(2_019),
+					exprs: parse_expression("k").expect("the right key parses"),
+					schema: Arc::new(Schema::new(fields)),
+				},
+				OperatorId(19),
+				JoinType::Left,
+				None,
+				Routines::empty(),
+				RuntimeContext::testing(0, 1),
+				Emit::On,
+				false,
+				Some(JoinPick::latest()),
+				None,
+				None,
+				Arc::new(FlowContext::default()),
+			)
+			.expect("the join operator must build")
+		};
+
+		let op = with_right(&slot_a);
+		let engine = TestEngine::new();
+		let mut txn = txn_at(&engine, 100);
+		let mut host = TxnHostContext::new(&mut txn, op.operator);
+		let a = op.latest_columns(&mut host, &left_a, &[0, 1], Some(&slot_a), Identity::Mint).unwrap();
+		let b = op.latest_columns(&mut host, &left_b, &[0], None, Identity::Mint).unwrap();
+		let c = op.latest_columns(&mut host, &left_c, &[0], Some(&slot_c), Identity::Mint).unwrap();
+
+		let op = with_right(&slot_a);
+		let engine = TestEngine::new();
+		let mut txn = txn_at(&engine, 100);
+		let mut host = TxnHostContext::new(&mut txn, op.operator);
+		let left = merge_runs(vec![left_a, left_b, left_c], JoinSide::Left).unwrap();
+		let slots = merge_runs(vec![slot_a, slot_c], JoinSide::Right).unwrap();
+		let batched = op
+			.latest_columns_slots(
+				&mut host,
+				&left,
+				&[0, 1, 2, 3],
+				&slots,
+				&[Some(0), Some(0), None, Some(1)],
+				Identity::Mint,
+			)
+			.unwrap();
+
+		assert_eq!(
+			batched.fresh.num_rows(),
+			4,
+			"every left row is new to both paths, so all four must be fresh"
+		);
+		for (part, rows, name) in
+			[(&a.fresh, vec![0, 1], "a"), (&b.fresh, vec![2], "b"), (&c.fresh, vec![3], "c")]
+		{
+			let own: Vec<usize> = (0..part.num_rows()).collect();
+			assert_eq!(
+				cells(&batched.fresh, &rows),
+				cells(part, &own),
+				"key {name} must emit the same cells batched and per key"
+			);
+		}
 	}
 }

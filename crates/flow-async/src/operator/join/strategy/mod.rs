@@ -140,20 +140,15 @@ impl JoinStrategy {
 		matches!(self, JoinStrategy::LatestLeft(_)) && !ignores_right_changes
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn handle_right_replace(
+	pub(crate) fn handle_right_replaces(
 		&self,
 		host: &mut dyn HostContext,
 		pre: &RecordBatch,
-		pre_indices: &[usize],
-		indices: &[usize],
-		key_hash: &Hash128,
+		replaces: &[(Hash128, Vec<usize>, Vec<usize>)],
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LatestLeft(s) => {
-				s.handle_right_replace(host, pre, pre_indices, indices, key_hash, ctx)
-			}
+			JoinStrategy::LatestLeft(s) => s.handle_right_replaces(host, pre, replaces, ctx),
 			JoinStrategy::Left(_) | JoinStrategy::Inner(_) | JoinStrategy::LatestInner(_) => {
 				unreachable!(
 					"only a latest left join coalesces a right remove and insert into one replace"

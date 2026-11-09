@@ -188,3 +188,45 @@ fn a_ring_eviction_that_moves_the_winner_position_to_another_key_leaves_one_fres
 	db.await_all_flows(SETTLE);
 	assert_eq!(totals(&db), (Some(18), 3, 3), "a new bar row must read exactly the one fresh winner of its key");
 }
+
+#[test]
+fn a_batched_replace_keeps_dictionary_columns_decodable() {
+	// Replacing several keys in one change must keep every dictionary column decodable, otherwise the view poisons.
+	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE DICTIONARY app::keys FOR utf8 AS uint4");
+	db.admin("CREATE TABLE app::bar { k: utf8 WITH { dictionary: app::keys }, n: int4 }");
+	db.admin("CREATE TABLE app::price { k: utf8 WITH { dictionary: app::keys }, p: int8 }");
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::current { k: utf8 WITH { dictionary: app::keys }, p: int8 } \
+		 WITH { capacity: 1, partition: { by: { k } } } AS { FROM app::price }");
+	db.admin("CREATE DEFERRED VIEW app::joined { k: utf8, rk: Option(utf8), p: Option(int8) } AS { \
+		 FROM app::bar LEFT JOIN { FROM app::current } AS c USING (k, c.k) WITH { latest: true } \
+		 MAP { k: k, rk: c_k, p: c_p } }");
+	db.command("INSERT app::bar [{ k: 'a', n: 1 }, { k: 'b', n: 2 }]");
+	db.command("INSERT app::price [{ k: 'a', p: 10 }, { k: 'b', p: 20 }]");
+	db.await_all_flows(SETTLE);
+	db.command("INSERT app::price [{ k: 'a', p: 11 }, { k: 'b', p: 21 }]");
+	db.await_all_flows(SETTLE);
+
+	let frames = db.query("FROM app::joined");
+	let batch = &frames.first().expect("the joined view must return a frame").batch;
+	let mut rows: Vec<(Value, Value, Value)> = (0..batch.num_rows())
+		.map(|row| {
+			let mut cells = user_columns(batch).map(|(field, array)| {
+				ColumnView::try_from((array, field.as_ref()))
+					.expect("a joined column reads")
+					.get_value(row)
+			});
+			(cells.next().unwrap(), cells.next().unwrap(), cells.next().unwrap())
+		})
+		.collect();
+	rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+	assert_eq!(
+		rows,
+		vec![
+			(Value::Utf8("a".into()), Value::Utf8("a".into()), Value::Int8(11)),
+			(Value::Utf8("b".into()), Value::Utf8("b".into()), Value::Int8(21)),
+		],
+		"both keys must join their replaced price with left and right keys decoded to text"
+	);
+}
