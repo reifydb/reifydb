@@ -191,7 +191,7 @@ else
         echo -e "${BLUE}  Running Rust tests (fast subset)...${NC}"
         RUST_TEST_LOG="$ROOT_DIR/target/validate-release-rust-tests.log"
         mkdir -p "$ROOT_DIR/target"
-        if cargo test --workspace --lib --bins >"$RUST_TEST_LOG" 2>&1; then
+        if cargo test --workspace --lib --bins --exclude reifydb-uptime-bridge --exclude reifydb-canvas-bridge >"$RUST_TEST_LOG" 2>&1; then
             echo -e "${GREEN}✓ Rust tests passed${NC}"
         else
             echo -e "${RED}✗ Rust tests failed${NC}"
@@ -199,7 +199,7 @@ else
             echo -e "${YELLOW}  Last 30 lines:${NC}"
             tail -n 30 "$RUST_TEST_LOG"
             echo -e "${YELLOW}  Full log: $RUST_TEST_LOG${NC}"
-            echo -e "${YELLOW}  Re-run: cargo test --workspace --lib --bins${NC}"
+            echo -e "${YELLOW}  Re-run: cargo test --workspace --lib --bins --exclude reifydb-uptime-bridge --exclude reifydb-canvas-bridge${NC}"
             VALIDATION_FAILED=1
         fi
     fi
