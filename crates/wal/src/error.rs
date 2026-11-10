@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_store_log::error::LogError;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 use crate::lsn::Lsn;
 
@@ -36,6 +36,14 @@ pub enum WalError {
 	},
 	NonPositiveInterval(Duration),
 	Body(String),
+	SegmentBytes {
+		configured: ByteSize,
+		found: ByteSize,
+	},
+	SegmentTooSmall {
+		segment_bytes: ByteSize,
+		header: usize,
+	},
 }
 
 impl From<LogError> for WalError {
@@ -80,6 +88,20 @@ impl Display for WalError {
 				write!(f, "the wal sync interval must be greater than zero, found {interval}")
 			}
 			Self::Body(reason) => write!(f, "{reason}"),
+			Self::SegmentBytes {
+				configured,
+				found,
+			} => write!(
+				f,
+				"the log was created with {found} segments, the wal config asks for {configured}"
+			),
+			Self::SegmentTooSmall {
+				segment_bytes,
+				header,
+			} => write!(
+				f,
+				"a wal segment of {segment_bytes} cannot hold one record header of {header} bytes"
+			),
 		}
 	}
 }

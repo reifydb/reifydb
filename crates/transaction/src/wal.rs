@@ -13,6 +13,7 @@ use reifydb_codec::log::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	default::wal::SEGMENT_BYTES,
 	interface::{
 		catalog::flow::OperatorId,
 		commit::{CommitEntry, CommitFloor, CommitLog, FlowWal, Loaded},
@@ -60,7 +61,16 @@ pub type CommitWal = Wal<WalRecord, CommitDevice>;
 
 pub enum CommitDevice {
 	Log(Log<Fs, Clock>),
-	Nop(NopDevice),
+	Nop(NopDevice, ByteSize),
+}
+
+impl CommitDevice {
+	fn record_limit(&self) -> WalResult<ByteSize> {
+		match self {
+			Self::Log(log) => Ok(log.segment_bytes(0)?),
+			Self::Nop(_, limit) => Ok(*limit),
+		}
+	}
 }
 
 pub enum CommitCursor<'a> {
@@ -83,14 +93,14 @@ impl Append for CommitDevice {
 	fn append(&self, record: &Record) -> WalResult<Position> {
 		match self {
 			Self::Log(log) => Append::append(log, record),
-			Self::Nop(nop) => nop.append(record),
+			Self::Nop(nop, _) => nop.append(record),
 		}
 	}
 
 	fn head(&self) -> WalResult<Option<LogVersion>> {
 		match self {
 			Self::Log(log) => Append::head(log),
-			Self::Nop(nop) => nop.head(),
+			Self::Nop(nop, _) => nop.head(),
 		}
 	}
 }
@@ -99,14 +109,14 @@ impl Flush for CommitDevice {
 	fn flush(&self) -> WalResult<()> {
 		match self {
 			Self::Log(log) => Flush::flush(log),
-			Self::Nop(nop) => nop.flush(),
+			Self::Nop(nop, _) => nop.flush(),
 		}
 	}
 
 	fn durable(&self) -> WalResult<Option<LogVersion>> {
 		match self {
 			Self::Log(log) => Flush::durable(log),
-			Self::Nop(nop) => nop.durable(),
+			Self::Nop(nop, _) => nop.durable(),
 		}
 	}
 }
@@ -120,7 +130,7 @@ impl ReadFrom for CommitDevice {
 	fn read_from(&self, from: LogVersion) -> WalResult<CommitCursor<'_>> {
 		match self {
 			Self::Log(log) => ReadFrom::read_from(log, from).map(CommitCursor::Log),
-			Self::Nop(nop) => nop.read_from(from).map(CommitCursor::Nop),
+			Self::Nop(nop, _) => nop.read_from(from).map(CommitCursor::Nop),
 		}
 	}
 }
@@ -129,28 +139,28 @@ impl Reclaim for CommitDevice {
 	fn start(&self) -> WalResult<Option<LogVersion>> {
 		match self {
 			Self::Log(log) => Reclaim::start(log),
-			Self::Nop(nop) => nop.start(),
+			Self::Nop(nop, _) => nop.start(),
 		}
 	}
 
 	fn committed(&self) -> WalResult<LogIndex> {
 		match self {
 			Self::Log(log) => Reclaim::committed(log),
-			Self::Nop(nop) => nop.committed(),
+			Self::Nop(nop, _) => nop.committed(),
 		}
 	}
 
 	fn drop_below(&self, index: LogIndex) -> WalResult<()> {
 		match self {
 			Self::Log(log) => Reclaim::drop_below(log, index),
-			Self::Nop(nop) => nop.drop_below(index),
+			Self::Nop(nop, _) => nop.drop_below(index),
 		}
 	}
 
 	fn bytes(&self) -> WalResult<ByteSize> {
 		match self {
 			Self::Log(log) => Reclaim::bytes(log),
-			Self::Nop(nop) => nop.bytes(),
+			Self::Nop(nop, _) => nop.bytes(),
 		}
 	}
 }
@@ -159,28 +169,26 @@ impl Mark for CommitDevice {
 	fn register(&self, id: &str) -> WalResult<()> {
 		match self {
 			Self::Log(log) => Mark::register(log, id),
-			Self::Nop(nop) => nop.register(id),
+			Self::Nop(nop, _) => nop.register(id),
 		}
 	}
 
 	fn record(&self, id: &str, version: LogVersion) -> WalResult<()> {
 		match self {
 			Self::Log(log) => Mark::record(log, id, version),
-			Self::Nop(nop) => nop.record(id, version),
+			Self::Nop(nop, _) => nop.record(id, version),
 		}
 	}
 
 	fn readers(&self) -> WalResult<Vec<(String, LogVersion)>> {
 		match self {
 			Self::Log(log) => Mark::readers(log),
-			Self::Nop(nop) => nop.readers(),
+			Self::Nop(nop, _) => nop.readers(),
 		}
 	}
 }
 
-pub(crate) const SEGMENT_BYTES: ByteSize = ByteSize::from_mib(64);
-
-pub fn open_wal(fs: Fs, clock: Clock, dir: &Path, mode: WalMode) -> WalResult<CommitWal> {
+pub fn open_wal(fs: Fs, clock: Clock, dir: &Path, config: WalConfig) -> WalResult<CommitWal> {
 	let parent = dir.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
 	let exists = fs.read_dir(parent).map_err(LogError::from)?.iter().any(|entry| entry == dir);
 	let complete =
@@ -190,14 +198,27 @@ pub fn open_wal(fs: Fs, clock: Clock, dir: &Path, mode: WalMode) -> WalResult<Co
 		fs.sync_dir(parent).map_err(LogError::from)?;
 	}
 	if !complete {
-		let config = Config {
-			segment_bytes: SEGMENT_BYTES,
+		if config.segment_bytes.as_bytes() <= HEADER_BYTES as u64 {
+			return Err(WalError::SegmentTooSmall {
+				segment_bytes: config.segment_bytes,
+				header: HEADER_BYTES,
+			});
+		}
+		let log_config = Config {
+			segment_bytes: config.segment_bytes,
 			..Config::default()
 		};
-		drop(Log::create_detached(fs.clone(), clock.clone(), dir, config, 1)?);
+		drop(Log::create_detached(fs.clone(), clock.clone(), dir, log_config, 1)?);
 	}
 	let (log, scans) = Log::open_detached(fs, clock, dir)?;
-	let (wal, _) = Wal::open(CommitDevice::Log(log), scans, mode)?;
+	let found = log.segment_bytes(0)?;
+	if found != config.segment_bytes {
+		return Err(WalError::SegmentBytes {
+			configured: config.segment_bytes,
+			found,
+		});
+	}
+	let (wal, _) = Wal::open(CommitDevice::Log(log), scans, config.mode)?;
 	Ok(wal)
 }
 
@@ -230,26 +251,41 @@ impl MetricsCollector for CommitLogMetrics {
 }
 
 pub fn memory_wal(clock: Clock) -> WalResult<CommitWal> {
-	memory_wal_with_mode(clock, WalMode::default())
+	memory_wal_with_mode(clock, WalConfigurator::new().configure())
 }
 
-pub fn memory_wal_with_mode(clock: Clock, mode: WalMode) -> WalResult<CommitWal> {
-	open_wal(Fs::Memory(MemoryFs::new()), clock, Path::new("/wal"), mode)
+pub fn memory_wal_with_mode(clock: Clock, config: WalConfig) -> WalResult<CommitWal> {
+	open_wal(Fs::Memory(MemoryFs::new()), clock, Path::new("/wal"), config)
 }
 
-pub fn nop_wal() -> WalResult<CommitWal> {
+pub fn nop_wal(segment_bytes: ByteSize) -> WalResult<CommitWal> {
 	let scan = Scan {
 		records: Vec::new(),
 		end: Position::ZERO,
 		stop: Stop::Unwritten,
 	};
-	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new()), vec![scan], WalMode::Off)?;
+	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new(), segment_bytes), vec![scan], WalMode::Off)?;
 	Ok(wal)
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy)]
+pub struct WalConfig {
+	pub mode: WalMode,
+	pub segment_bytes: ByteSize,
+}
+
 pub struct WalConfigurator {
 	mode: WalMode,
+	segment_bytes: ByteSize,
+}
+
+impl Default for WalConfigurator {
+	fn default() -> Self {
+		Self {
+			mode: WalMode::default(),
+			segment_bytes: SEGMENT_BYTES,
+		}
+	}
 }
 
 impl WalConfigurator {
@@ -262,14 +298,26 @@ impl WalConfigurator {
 		self
 	}
 
-	pub fn configure(self) -> WalMode {
-		self.mode
+	pub fn segment_bytes(mut self, segment_bytes: ByteSize) -> Self {
+		self.segment_bytes = segment_bytes;
+		self
+	}
+
+	pub fn configure(self) -> WalConfig {
+		WalConfig {
+			mode: self.mode,
+			segment_bytes: self.segment_bytes,
+		}
 	}
 }
 
-pub(crate) fn check_record_size(encoded: &[u8]) -> Result<()> {
+pub(crate) fn check_record_size(wal: &CommitWal, encoded: &[u8]) -> Result<()> {
 	let bytes = (HEADER_BYTES + encoded.len()) as u64;
-	let limit = SEGMENT_BYTES.as_bytes();
+	let limit = wal
+		.device()
+		.record_limit()
+		.unwrap_or_else(|err| panic!("commit log segment size could not be read: {err}"))
+		.as_bytes();
 	if bytes > limit {
 		return Err(TransactionError::CommitTooLarge {
 			bytes,

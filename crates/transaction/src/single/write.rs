@@ -190,7 +190,7 @@ impl<'a> SingleWriteTransaction<'a> {
 
 		let mut encoded = Vec::new();
 		SingleRecord::encode_deltas(&deltas, &mut encoded);
-		check_record_size(&encoded)?;
+		check_record_size(&self.inner.wal, &encoded)?;
 		let lsn = {
 			let store = self.inner.store.write();
 			let _in_flight = store.begin_commit();

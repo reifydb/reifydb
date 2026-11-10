@@ -21,6 +21,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	commit::queue::{CommitPull, CommitQueue, FlowQueueFloor},
 	common::{CommitVersion, TimeSource},
+	default::wal::SEGMENT_BYTES,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		catalog::{config::ConfigKey, id::NamespaceId},
@@ -307,14 +308,14 @@ impl TestEngineBuilder {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
 		let (operator_store, operator_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		let wal_mode =
+		let wal_config =
 			self.wal.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
 				.configure();
-		let wal_enabled = wal_mode != WalMode::Off;
+		let wal_enabled = wal_config.mode != WalMode::Off;
 		let wal = if wal_enabled {
-			memory_wal_with_mode(clock.clone(), wal_mode)
+			memory_wal_with_mode(clock.clone(), wal_config)
 		} else {
-			nop_wal()
+			nop_wal(SEGMENT_BYTES)
 		}
 		.unwrap();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
@@ -446,7 +447,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let wal = nop_wal().unwrap();
+	let wal = nop_wal(SEGMENT_BYTES).unwrap();
 	let single = SingleTransaction::new(
 		single_store,
 		event_bus.clone(),
@@ -492,7 +493,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let wal = nop_wal().unwrap();
+	let wal = nop_wal(SEGMENT_BYTES).unwrap();
 	let single = SingleTransaction::new(
 		single_store,
 		event_bus.clone(),

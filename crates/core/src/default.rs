@@ -153,6 +153,12 @@ pub mod commit {
 	pub const QUEUE_MEMORY_LIMIT_TESTING: ByteSize = ByteSize::from_kib(64);
 }
 
+pub mod wal {
+	use reifydb_value::byte_size::ByteSize;
+
+	pub const SEGMENT_BYTES: ByteSize = ByteSize::from_mib(64);
+}
+
 pub mod threads {
 	pub const ASYNC: u16 = 1;
 	pub const ASYNC_TESTING: u16 = 1;

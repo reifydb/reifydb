@@ -647,7 +647,7 @@ where
 					&layers,
 					&mut encoded,
 				);
-				check_record_size(&encoded)?;
+				check_record_size(&self.wal, &encoded)?;
 				encoded
 			}
 		};

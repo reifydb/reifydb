@@ -39,8 +39,8 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	wal::{
-		CheckpointedStore, CommitWal, Recovery, floor_checkpoint, memory_wal_with_mode, nop_wal, open_wal,
-		replay_operator, replay_single,
+		CheckpointedStore, CommitWal, Recovery, WalConfig, floor_checkpoint, memory_wal_with_mode, nop_wal,
+		open_wal, replay_operator, replay_single,
 	},
 };
 use reifydb_value::value::duration::Duration;
@@ -164,12 +164,12 @@ pub(crate) fn wal_dir(config: &SqliteConfig) -> PathBuf {
 pub(crate) fn commit_wal(
 	factory: &StorageFactory,
 	clock: &Clock,
-	mode: WalMode,
+	wal_config: WalConfig,
 	wal_fs: Option<(Fs, PathBuf)>,
 ) -> CommitWal {
-	let enabled = mode != WalMode::Off;
+	let enabled = wal_config.mode != WalMode::Off;
 	if let (true, Some((fs, dir))) = (enabled, wal_fs) {
-		return open_wal(fs, clock.clone(), &dir, mode)
+		return open_wal(fs, clock.clone(), &dir, wal_config)
 			.unwrap_or_else(|err| panic!("commit log at {} failed to open: {err}", dir.display()));
 	}
 	if !enabled {
@@ -188,14 +188,15 @@ pub(crate) fn commit_wal(
 				);
 			}
 		}
-		return nop_wal().unwrap_or_else(|err| panic!("no-op commit log failed to open: {err}"));
+		return nop_wal(wal_config.segment_bytes)
+			.unwrap_or_else(|err| panic!("no-op commit log failed to open: {err}"));
 	}
 	match factory {
-		StorageFactory::Memory => memory_wal_with_mode(clock.clone(), mode)
+		StorageFactory::Memory => memory_wal_with_mode(clock.clone(), wal_config)
 			.unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}")),
 		StorageFactory::Sqlite(config) => {
 			let dir = wal_dir(config);
-			open_wal(Fs::Host(HostFs::new()), clock.clone(), &dir, mode)
+			open_wal(Fs::Host(HostFs::new()), clock.clone(), &dir, wal_config)
 				.unwrap_or_else(|err| panic!("commit log at {} failed to open: {err}", dir.display()))
 		}
 	}

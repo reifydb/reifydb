@@ -99,7 +99,7 @@ impl<T, L> Wal<T, L> {
 		self.0.mode
 	}
 
-	pub(crate) fn device(&self) -> &L {
+	pub fn device(&self) -> &L {
 		&self.0.device
 	}
 

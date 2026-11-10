@@ -70,7 +70,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
-	wal::{CommitWal, Recovery, WalConfigurator, replay},
+	wal::{CommitWal, Recovery, WalConfig, WalConfigurator, replay},
 };
 use reifydb_value::value::{Value, duration::Duration};
 use reifydb_wal::sync::WalMode;
@@ -97,7 +97,7 @@ fn pool_config_from_sources(
 	ctx: &TransactionContext,
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-	wal_mode: WalMode,
+	wal_config: WalConfig,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
@@ -106,7 +106,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock, wal_mode, None);
+	let wal = commit_wal(factory, clock, wal_config, None);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(ctx, &multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -380,7 +380,7 @@ impl ServerBuilder {
 				.version_epoch(VersionEpoch::new())
 				.build(),
 		);
-		let wal_mode = self
+		let wal_config = self
 			.wal_configurator
 			.take()
 			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
@@ -402,7 +402,7 @@ impl ServerBuilder {
 			&boot_ctx,
 			&self.storage_factory,
 			&self.bootstrap_configs,
-			wal_mode,
+			wal_config,
 			&boot_clock,
 		)?;
 
@@ -426,7 +426,7 @@ impl ServerBuilder {
 				operator_flush_interval,
 				None,
 				&wal,
-				wal_mode != WalMode::Off,
+				wal_config.mode != WalMode::Off,
 				&clock,
 				&spawner,
 			);

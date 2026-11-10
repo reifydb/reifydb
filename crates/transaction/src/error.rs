@@ -94,12 +94,17 @@ pub enum TransactionError {
 
 impl TransactionError {
 	pub const COMMIT_LOG_PURGED: &'static str = "TXN_023";
+	pub const COMMIT_TOO_LARGE: &'static str = "TXN_017";
 	pub const CONSUMER_OVERTAKEN: &'static str = "TXN_016";
 	pub const SHUTTING_DOWN: &'static str = "TXN_014";
 	pub const SNAPSHOT_EVICTED: &'static str = "TXN_012";
 
 	pub fn is_commit_log_purged(error: &Error) -> bool {
 		error.0.code == Self::COMMIT_LOG_PURGED
+	}
+
+	pub fn is_commit_too_large(error: &Error) -> bool {
+		error.0.code == Self::COMMIT_TOO_LARGE
 	}
 
 	pub fn is_consumer_overtaken(error: &Error) -> bool {

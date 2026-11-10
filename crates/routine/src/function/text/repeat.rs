@@ -13,7 +13,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use crate::function::support::column::utf8_column;
+use crate::function::support::{coerce::read_i64, column::utf8_column};
 
 pub struct TextRepeat {
 	info: RoutineInfo,
@@ -31,6 +31,18 @@ impl TextRepeat {
 			info: RoutineInfo::new("text::repeat"),
 		}
 	}
+}
+
+fn is_integer_type(data: &ColumnView) -> bool {
+	matches!(
+		&data.data,
+		ViewData::Int1(_)
+			| ViewData::Int2(_) | ViewData::Int4(_)
+			| ViewData::Int8(_) | ViewData::Int16(_)
+			| ViewData::Uint1(_) | ViewData::Uint2(_)
+			| ViewData::Uint4(_) | ViewData::Uint8(_)
+			| ViewData::Uint16(_)
+	)
 }
 
 impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
@@ -57,45 +69,30 @@ impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
 				container: str_container,
 				..
 			} => {
+				if !is_integer_type(&count_data) {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 1,
+						expected: vec![
+							ValueType::Int1,
+							ValueType::Int2,
+							ValueType::Int4,
+							ValueType::Int8,
+							ValueType::Int16,
+							ValueType::Uint1,
+							ValueType::Uint2,
+							ValueType::Uint4,
+							ValueType::Uint8,
+							ValueType::Uint16,
+						],
+						actual: count_data.get_type(),
+					});
+				}
+
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					let count = match &count_data.data {
-						ViewData::Int1(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						ViewData::Int2(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						ViewData::Int4(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						ViewData::Int8(c) => {
-							c.values().get(row_of(c.values().len(), i)).copied()
-						}
-						ViewData::Uint1(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						ViewData::Uint2(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						ViewData::Uint4(c) => {
-							c.values().get(row_of(c.values().len(), i)).map(|&v| v as i64)
-						}
-						_ => {
-							return Err(RoutineError::FunctionInvalidArgumentType {
-								function: ctx.fragment.clone(),
-								argument_index: 1,
-								expected: vec![
-									ValueType::Int1,
-									ValueType::Int2,
-									ValueType::Int4,
-									ValueType::Int8,
-								],
-								actual: count_data.get_type(),
-							});
-						}
-					};
+					let count = read_i64(&ctx.fragment, &count_data, i)?;
 
 					match count {
 						Some(n) if n >= 0 => {

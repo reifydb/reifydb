@@ -868,7 +868,7 @@ impl MultiWriteTransaction {
 				&layers,
 				&mut buf,
 			);
-			check_record_size(&buf)?;
+			check_record_size(&self.oracle.wal, &buf)?;
 			Some(buf)
 		};
 		Ok(Prepared {

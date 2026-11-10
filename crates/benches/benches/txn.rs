@@ -20,6 +20,7 @@ use reifydb_benches::{
 use reifydb_codec::{key as keycode, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	default::wal::SEGMENT_BYTES,
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
@@ -80,7 +81,7 @@ fn build_stack(wal_enabled: bool) -> (ActorSystem, MultiTransaction) {
 	let wal = if wal_enabled {
 		memory_wal(Clock::Real)
 	} else {
-		nop_wal()
+		nop_wal(SEGMENT_BYTES)
 	}
 	.expect("benchmark commit log must build");
 	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));

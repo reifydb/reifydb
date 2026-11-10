@@ -145,6 +145,30 @@ pub struct FlowActor {
 	create_snapshot: Mutex<Option<(CommitVersion, VersionLeaseGuard, CheckpointPin)>>,
 }
 
+#[derive(Clone, Copy)]
+struct Split {
+	end: CommitVersion,
+	span: u64,
+}
+
+#[derive(Clone, Copy)]
+enum DrainBound {
+	Frontier(CommitVersion),
+	Capped(CommitVersion),
+}
+
+impl DrainBound {
+	fn up_to(self) -> CommitVersion {
+		match self {
+			DrainBound::Frontier(version) | DrainBound::Capped(version) => version,
+		}
+	}
+
+	fn is_capped(self) -> bool {
+		matches!(self, DrainBound::Capped(_))
+	}
+}
+
 pub struct FlowActorState {
 	flow_engine: FlowEngineInner,
 	pending_stop: Option<(bool, Box<dyn FnOnce() + Send>)>,
@@ -174,6 +198,7 @@ pub struct FlowActorState {
 	lookup_lease: Option<VersionLeaseGuard>,
 	hold_cache: Option<HoldCache>,
 	backlog: bool,
+	split: Option<Split>,
 }
 
 impl FlowActor {
@@ -354,14 +379,21 @@ impl FlowActor {
 		Some(target)
 	}
 
+	fn rebuild_flow_engine(&self, state: &mut FlowActorState) -> Result<()> {
+		let mut flow_engine = self.build_flow_engine();
+		self.register_flow(&mut flow_engine)?;
+		state.flow_engine = flow_engine;
+		state.hold_cache = None;
+		Ok(())
+	}
+
 	fn retry_or_poison(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, reason: String) {
 		if state.retry_count >= self.retry_limit {
 			self.poison(state, ctx, reason);
 			return;
 		}
 		state.retry_count += 1;
-		let mut flow_engine = self.build_flow_engine();
-		if let Err(e) = self.register_flow(&mut flow_engine) {
+		if let Err(e) = self.rebuild_flow_engine(state) {
 			self.poison(
 				state,
 				ctx,
@@ -369,8 +401,6 @@ impl FlowActor {
 			);
 			return;
 		}
-		state.flow_engine = flow_engine;
-		state.hold_cache = None;
 		let backoff = match self.retry_backoff.try_mul(1i64 << state.retry_count.min(16)) {
 			Ok(backoff) => backoff,
 			Err(e) => {
@@ -465,22 +495,31 @@ impl FlowActor {
 			self.drain_backfill(state, ctx, safe);
 			return;
 		}
+		if state.split.is_some_and(|split| state.cursor >= split.end) {
+			state.split = None;
+		}
+		let bound = match state.split {
+			Some(split) if safe.0 > state.cursor.0 + split.span => {
+				DrainBound::Capped(CommitVersion(state.cursor.0 + split.span))
+			}
+			_ => DrainBound::Frontier(safe),
+		};
 		state.read_cache.retain_after(state.cursor);
-		if safe <= state.cursor {
+		if bound.up_to() <= state.cursor {
 			state.backlog = false;
 			self.checkpoint_if_stale(state, ctx);
 			return;
 		}
 		let upstreams = self.flow_tracker.upstreams(self.flow_id);
 		if !upstreams.is_empty() {
-			self.drain_merged(state, ctx, safe, &upstreams);
+			self.drain_merged(state, ctx, bound, &upstreams);
 			return;
 		}
 		let cursor = state.cursor;
-		let Some(read) = self.read_range(state, ctx, cursor, safe) else {
+		let Some(read) = self.read_range(state, ctx, cursor, bound.up_to()) else {
 			return;
 		};
-		self.apply_items(state, ctx, &read.items, read.read_to, read.more)
+		self.apply_items(state, ctx, &read.items, read.read_to, read.more || bound.is_capped())
 	}
 
 	fn drain_backfill(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, safe: CommitVersion) {
@@ -582,9 +621,10 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		safe: CommitVersion,
+		bound: DrainBound,
 		upstreams: &FlowUpstreams,
 	) {
+		let safe = bound.up_to();
 		let cursor = state.cursor;
 		let Some(tables) = self.read_stream(state, ctx, ReadStream::Tables, cursor, safe) else {
 			return;
@@ -647,7 +687,8 @@ impl FlowActor {
 		let scope = StepScope {
 			source_objects: &source_objects,
 		};
-		let merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
+		let mut merged = merge(cursor, &tables, &upstream_reads.reads, &scope);
+		merged.more |= bound.is_capped();
 		if merged.target <= cursor {
 			let lagging: Vec<FlowId> = upstream_reads
 				.reads
@@ -995,6 +1036,44 @@ impl FlowActor {
 			Err(e) => {
 				state.pending_view_cursors.clear();
 				state.checkpoint_replies.clear();
+				if !state.backfilling && TransactionError::is_commit_too_large(&e) {
+					let span = (advance_to.0 - state.cursor.0) / 2;
+					if span == 0 {
+						self.poison(
+							state,
+							ctx,
+							format!(
+								"version {} alone is over the commit record limit: {e}",
+								advance_to.0
+							),
+						);
+						return;
+					}
+					let end = state.split.map_or(advance_to, |split| split.end);
+					state.split = Some(Split {
+						end,
+						span,
+					});
+					if let Err(rebuild) = self.rebuild_flow_engine(state) {
+						self.poison(
+							state,
+							ctx,
+							format!(
+								"flow engine rebuild failed after error: {rebuild} (original: slice commit failed: {e})"
+							),
+						);
+						return;
+					}
+					warn!(
+						flow_id = self.flow_id.0,
+						end = end.0,
+						span,
+						reason = %e,
+						"commit over the record limit, rebuilt operators and halving the slice"
+					);
+					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+					return;
+				}
 				self.retry_or_poison(state, ctx, format!("slice commit failed: {e}"));
 			}
 		}
@@ -1229,6 +1308,7 @@ impl Actor for FlowActor {
 			lookup_lease,
 			hold_cache: None,
 			backlog: false,
+			split: None,
 		};
 
 		if !state.poisoned {
