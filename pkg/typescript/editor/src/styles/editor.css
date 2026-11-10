@@ -1021,3 +1021,10 @@
   }
 }
 
+
+.rdb-snippet__results--stale {
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 120ms ease;
+}

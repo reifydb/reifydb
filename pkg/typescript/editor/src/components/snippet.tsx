@@ -19,6 +19,7 @@ export interface SnippetProps {
   theme?: RdbTheme;
   monacoTheme?: string | editor.IStandaloneThemeData;
   readonly?: boolean;
+  busyDelay?: number;
 }
 
 interface QueryResult {
@@ -35,11 +36,13 @@ export function Snippet({
   theme = 'light',
   monacoTheme,
   readonly = false,
+  busyDelay = 0,
 }: SnippetProps) {
   const [code, setCode] = useState(initialCode);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [busyShown, setBusyShown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -78,7 +81,6 @@ export function Snippet({
 
   const handleRun = useCallback(async () => {
     if (isExecuting) return;
-    setResult(null);
     setIsInitializing(executor.isReady ? !executor.isReady() : false);
     setIsExecuting(true);
     await new Promise(r => setTimeout(r, 0));
@@ -99,6 +101,15 @@ export function Snippet({
   }, [code, executor, isExecuting]);
 
   handleRunRef.current = handleRun;
+
+  useEffect(() => {
+    if (!isExecuting || busyDelay <= 0) return;
+    const timer = setTimeout(() => setBusyShown(true), busyDelay);
+    return () => {
+      clearTimeout(timer);
+      setBusyShown(false);
+    };
+  }, [isExecuting, busyDelay]);
 
   const handleReset = useCallback(() => {
     setCode(initialCode);
@@ -139,15 +150,16 @@ export function Snippet({
 
   const columns = result?.data && result.data.length > 0 ? Object.keys(result.data[0]) : [];
 
-  const runHint = isInitializing ? 'downloading engine...' : isExecuting ? 'running...' : 'ctrl+enter to run';
-  const runLabel = isInitializing ? 'Downloading...' : isExecuting ? 'Running...' : 'Run';
+  const showBusy = isExecuting && (busyDelay <= 0 || busyShown);
+  const runHint = !showBusy ? 'ctrl+enter to run' : isInitializing ? 'downloading engine...' : 'running...';
+  const runLabel = !showBusy ? 'Run' : isInitializing ? 'Downloading...' : 'Running...';
   const runButton = (
     <button
       onClick={handleRun}
       disabled={isExecuting}
-      className={`rdb-snippet__run-btn${isExecuting ? ' rdb-snippet__run-btn--loading' : ''}`}
+      className={`rdb-snippet__run-btn${showBusy ? ' rdb-snippet__run-btn--loading' : ''}`}
     >
-      {isExecuting ? (
+      {showBusy ? (
         <span className="rdb-snippet__spinner" />
       ) : (
         <svg className="rdb-snippet__run-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -314,7 +326,7 @@ export function Snippet({
               </div>
 
               {result && (
-                <div className="rdb-snippet__results rdb-snippet__results--fullscreen">
+                <div className={`rdb-snippet__results rdb-snippet__results--fullscreen${showBusy ? ' rdb-snippet__results--stale' : ''}`} aria-busy={showBusy}>
                   {result.error && (
                     <div className="rdb-snippet__error">
                       <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
@@ -372,7 +384,7 @@ export function Snippet({
           </div>
 
           {result && (
-            <div className="rdb-snippet__results-panel">
+            <div className={`rdb-snippet__results-panel${showBusy ? ' rdb-snippet__results--stale' : ''}`} aria-busy={showBusy}>
               <div className="rdb-snippet__results-body">
                 {result.error && (
                   <div className="rdb-snippet__error">
