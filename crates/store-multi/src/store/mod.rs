@@ -300,6 +300,7 @@ impl StandardMultiStore {
 		}
 	}
 
+	#[cfg_attr(not(all(feature = "sqlite", not(target_arch = "wasm32"))), allow(unused_variables))]
 	pub fn flush_below_blocking(&self, cutoff: CommitVersion) {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(engine) = self.flush_engine.as_ref() {

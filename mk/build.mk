@@ -42,6 +42,10 @@ check-flow-async-no-features:
 	@echo "Checking reifydb-flow-async compiles without features..."
 	@MAKEFLAGS= cargo check --profile $(PROFILE) -p reifydb-flow-async $(CARGO_OFFLINE)
 
+check-wasm-release:
+	@echo "Checking reifydb-webassembly compiles for wasm with release lints..."
+	@MAKEFLAGS= cargo check --release --target wasm32-unknown-unknown -p reifydb-webassembly $(CARGO_OFFLINE)
+
 .PHONY: check-dst
 check-dst:
 	MAKEFLAGS= REIFYDB_DST=1 cargo check --profile gate-dst --workspace \

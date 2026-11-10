@@ -208,6 +208,7 @@ check-code-quality:
 	@cargo hakari manage-deps --dry-run
 	@$(MAKE) --no-print-directory check-value-no-features
 	@$(MAKE) --no-print-directory check-flow-async-no-features
+	@$(MAKE) --no-print-directory check-wasm-release
 	cd $(TEST_SUITE_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_CRATE_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check-code-quality
