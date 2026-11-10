@@ -41,10 +41,6 @@
   color: var(--rdb-color-muted);
 }
 
-.rdb-snippet__title-marker {
-  color: var(--rdb-color-primary);
-}
-
 .rdb-snippet__actions {
   display: flex;
   align-items: center;

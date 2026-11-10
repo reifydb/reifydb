@@ -139,7 +139,7 @@ export function Snippet({
 
   const columns = result?.data && result.data.length > 0 ? Object.keys(result.data[0]) : [];
 
-  const runHint = isInitializing ? '$ downloading engine...' : isExecuting ? '$ running...' : '$ ctrl+enter to run';
+  const runHint = isInitializing ? 'downloading engine...' : isExecuting ? 'running...' : 'ctrl+enter to run';
   const runLabel = isInitializing ? 'Downloading...' : isExecuting ? 'Running...' : 'Run';
   const runButton = (
     <button
@@ -162,7 +162,7 @@ export function Snippet({
     <div ref={containerRef} className={`rdb-snippet${isFullscreen ? ' rdb-snippet--fullscreen' : ''}${themeClass(theme)}${className ? ` ${className}` : ''}`}>
       <div className="rdb-snippet__header">
         <div className="rdb-snippet__title">
-          <span className="rdb-snippet__title-marker">$</span> {title}
+          {title}
         </div>
         <div className="rdb-snippet__actions">
           {!readonly && (
