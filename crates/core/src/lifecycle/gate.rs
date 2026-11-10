@@ -58,10 +58,6 @@ impl RetentionStartupGate {
 	pub fn skipped_slices(&self) -> u64 {
 		self.inner.skipped_slices.load(Ordering::Relaxed)
 	}
-
-	pub fn grace(&self) -> Duration {
-		self.inner.grace
-	}
 }
 
 pub struct Gated<T: LifecycleTask> {
