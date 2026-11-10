@@ -286,7 +286,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);
-		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
+		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version, false))
 	}
 
 	fn remove_unobserved(&mut self, keys: Vec<EncodedKey>) -> Result<()> {

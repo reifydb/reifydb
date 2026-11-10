@@ -263,6 +263,10 @@ impl MultiWriteTransaction {
 		self.conflicts.mark_read(k);
 	}
 
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) {
+		self.conflicts.mark_range(range);
+	}
+
 	pub fn mark_write(&mut self, k: &TaggedKey) {
 		self.conflicts.mark_write(k);
 	}

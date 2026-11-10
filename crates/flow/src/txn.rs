@@ -69,6 +69,20 @@ pub trait Range {
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>>;
+
+	fn range_rev(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>>;
+
+	fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>>;
+
+	fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()>;
 }
 
 pub trait StorageTransaction: Get + Batch {}

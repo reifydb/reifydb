@@ -275,7 +275,7 @@ pub trait StateExtension: FlowTransaction {
 
 		let mut items = Vec::new();
 		let mut has_more = truncated;
-		for result in flow_merge_pending_iterator(pending, stored.into_iter(), version) {
+		for result in flow_merge_pending_iterator(pending, stored.into_iter(), version, false) {
 			if items.len() == limit {
 				has_more = true;
 				break;

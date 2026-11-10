@@ -53,7 +53,7 @@ use crate::{
 	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::{RingBufferOperations, place_ring_rows, save_ring},
+	transaction::operation::ringbuffer::{RingBufferOperations, place_ring_rows, reserve_ring_rows, save_ring},
 	vm::{
 		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
@@ -246,18 +246,23 @@ pub(crate) fn insert_ringbuffer_chunks(
 		}
 
 		let count = end - start;
+		let first = reserve_ring_rows(catalog, txn, ringbuffer, count)?;
 		let mut ids = vec![RowNumber(0); count];
 		let mut evicted = vec![None; count];
 		let mut stamped: Vec<EncodedBytes> = rows[start..end].to_vec();
-		let requests: Vec<(Option<Partition>, usize)> =
-			held.iter().map(|(partition, members)| (*partition, members.len())).collect();
+		let requests: Vec<(Option<Partition>, Vec<RowNumber>)> = held
+			.iter()
+			.map(|(partition, members)| {
+				(*partition, members.iter().map(|&offset| RowNumber(first + offset as u64)).collect())
+			})
+			.collect();
 		let placed = place_ring_rows(catalog, txn, ringbuffer, ring, &requests)?;
 		for ((_, members), placements) in held.iter().zip(placed) {
 			for (&offset, placement) in members.iter().zip(placements) {
 				ids[offset] = placement.row;
 				evicted[offset] = placement.evicted;
 				let mut row = EncodedRingBufferRow::from(stamped[offset].clone()).thaw();
-				row.set_sequence(placement.sequence);
+				row.set_sequence(placement.row.0);
 				stamped[offset] = row.freeze_bytes();
 			}
 		}

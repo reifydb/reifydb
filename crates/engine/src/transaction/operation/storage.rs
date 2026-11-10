@@ -52,6 +52,26 @@ impl Range for DmlTransaction<'_> {
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		self.tx.range(range, RangeScope::All, batch_size)
 	}
+
+	fn range_rev(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		self.tx.range_rev(range, RangeScope::All, batch_size)
+	}
+
+	fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		self.tx.range_rev_untracked(range, RangeScope::All, batch_size)
+	}
+
+	fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+		self.tx.mark_range(range)
+	}
 }
 
 #[cfg(test)]

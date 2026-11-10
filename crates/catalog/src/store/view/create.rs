@@ -332,7 +332,7 @@ impl CatalogStore {
 				..
 			} => {
 				if partition_by.is_empty() {
-					let row = encode_ringbuffer_metadata(&RingBufferMetadata::unpartitioned());
+					let row = encode_ringbuffer_metadata(&RingBufferMetadata::default());
 					txn.set(vec![(
 						RingBufferMetadataKey::new(StorageId::View(view)).into(),
 						row.into_bytes(),

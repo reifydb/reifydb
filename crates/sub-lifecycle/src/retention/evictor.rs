@@ -915,10 +915,7 @@ mod tests {
 	fn seed_partition(engine: &StandardEngine, storage: StorageId, values: Vec<Value>) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let metadata = RingBufferMetadata {
-			base_rn: 1,
-			next_sequence: 1,
 			count: 1,
-			filled: 1,
 			head: 0,
 		};
 		txn.set(vec![(
@@ -1257,7 +1254,10 @@ mod tests {
 			let partitions = ringbuffer_partitions(&test, "rb");
 			assert_eq!(partitions.len(), 1, "an unpartitioned ring keeps its one metadata row");
 			assert_eq!(partitions[0].metadata.count, 0, "the count must drain either way");
-			assert_eq!(partitions[0].metadata.next_sequence, 2, "draining must not rewind the write cycle");
+			assert_eq!(
+				partitions[0].metadata.head, 0,
+				"the evictor deletes, and a delete never moves the head"
+			);
 		}
 	}
 
@@ -1313,7 +1313,7 @@ mod tests {
 	#[test]
 	fn partitioned_ringbuffer_delete_mode_maintains_partition_metadata() {
 		// Partition metadata must move in the same commit as the row removals: a fully expired
-		// partition loses its metadata key, a partial one has count decremented and head advanced.
+		// partition loses its metadata key, a partial one has its count decremented.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1337,7 +1337,7 @@ mod tests {
 		);
 		let eu = &partitions[0];
 		assert_eq!(eu.metadata.count, 1, "the count must drop to the single surviving row in the same commit");
-		assert_eq!(eu.metadata.next_sequence, 3, "expiry must never rewind the write cycle");
+		assert_eq!(eu.metadata.head, 4, "the evictor deletes, and a delete never moves the head");
 	}
 
 	#[test]
@@ -1366,13 +1366,9 @@ mod tests {
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
 		let partitions = ringbuffer_partitions(&test, "rb");
-		assert_eq!(
-			partitions.len(),
-			1,
-			"an unpartitioned ring keeps its one metadata row so #sequence never restarts"
-		);
+		assert_eq!(partitions.len(), 1, "an unpartitioned ring keeps its one metadata row");
 		assert_eq!(partitions[0].metadata.count, 0);
-		assert_eq!(partitions[0].metadata.next_sequence, 3);
+		assert_eq!(partitions[0].metadata.head, 0, "the evictor deletes, and a delete never moves the head");
 	}
 
 	#[test]
@@ -1394,7 +1390,7 @@ mod tests {
 		let partitions = ringbuffer_partitions(&test, "rb");
 		assert_eq!(partitions.len(), 1);
 		assert_eq!(partitions[0].metadata.count, 1);
-		assert_eq!(partitions[0].metadata.next_sequence, 3, "expiry must never rewind the write cycle");
+		assert_eq!(partitions[0].metadata.head, 0, "the evictor deletes, and a delete never moves the head");
 	}
 
 	#[test]
@@ -1614,8 +1610,7 @@ mod tests {
 		assert_eq!(dml.len(), 1);
 		assert_eq!(evicted.len(), 1);
 		assert_eq!(
-			(dml[0].metadata.count, dml[0].metadata.base_rn, dml[0].metadata.next_sequence),
-			(evicted[0].metadata.count, evicted[0].metadata.base_rn, evicted[0].metadata.next_sequence),
+			dml[0].metadata, evicted[0].metadata,
 			"DML DELETE and the evictor must produce identical partition metadata from the same state"
 		);
 	}

@@ -29,9 +29,7 @@ use reifydb_core::{
 	},
 	internal_err,
 	key::{
-		ringbuffer::{
-			PartitionedRingBufferOrderKey, RingBufferFreeKey, RingBufferMetadataKey, RingBufferOrderKey,
-		},
+		ringbuffer::RingBufferMetadataKey,
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKeyRange, SeriesRowKeyRange},
 	},
@@ -378,9 +376,6 @@ fn clear_views(
 			SeriesRowKeyRange::full_scan(storage, None),
 			PartitionedSeriesRowKeyRange::full_scan(storage),
 			RingBufferMetadataKey::full_scan_for_storage(storage),
-			RingBufferOrderKey::full_scan_for_storage(storage),
-			PartitionedRingBufferOrderKey::full_scan_for_storage(storage),
-			RingBufferFreeKey::full_scan_for_storage(storage),
 		];
 		for range in ranges {
 			for row in txn.range(range, RangeScope::All, batch_size.get() as usize) {
@@ -410,6 +405,7 @@ mod tests {
 		common::{JoinType, TimeDomain},
 		flow::operator::LookupObject,
 		interface::catalog::{flow::FlowEdge, id::TableId},
+		key::any::TaggedKey,
 		operator_with::LookupWith,
 	};
 	use reifydb_flow_async::{
@@ -508,8 +504,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_backfill_reset_removes_every_free_page_of_the_view() {
-		// A page left behind would hand slots of the old contents to the rebuilt view.
+	fn a_backfill_reset_removes_every_ring_metadata_row_of_the_view() {
+		// A metadata row left behind makes the rebuilt view evict rows that do not exist.
 		let te = TestEngine::builder().with_commit_queue().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -530,13 +526,14 @@ mod tests {
 			.expect("view")
 			.storage_id();
 		drop(query);
-		let pages = [
-			RingBufferFreeKey::of(storage, None, 0),
-			RingBufferFreeKey::of(storage, Some(Partition(1)), 3),
+		let metadata_keys: [TaggedKey; 2] = [
+			RingBufferMetadataKey::of(storage, None).into(),
+			RingBufferMetadataKey::of(storage, Some(Partition(1))).into(),
 		];
 		let mut seed = engine.begin_command(IdentityId::system()).expect("command");
-		for page in &pages {
-			seed.set(vec![(page.clone().into(), EncodedBytes(CowVec::new(vec![0; 8])))]).expect("seed");
+		for metadata_key in &metadata_keys {
+			seed.set(vec![(metadata_key.clone().into(), EncodedBytes(CowVec::new(vec![0; 16])))])
+				.expect("seed");
 		}
 		seed.commit().expect("commit");
 
@@ -565,10 +562,13 @@ mod tests {
 		});
 		clear_views(&engine, &mut txn, &flow, &lease, query_batch_size(&engine).expect("batch size"))
 			.expect("clear");
-		for page in &pages {
+		for metadata_key in &metadata_keys {
 			assert!(
-				matches!(txn.pending().write_at(&page.encode()), Some(PendingWrite::Remove { .. })),
-				"{page:?} must be removed"
+				matches!(
+					txn.pending().write_at(&metadata_key.encode()),
+					Some(PendingWrite::Remove { .. })
+				),
+				"{metadata_key:?} must be removed"
 			);
 		}
 	}

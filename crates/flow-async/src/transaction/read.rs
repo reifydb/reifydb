@@ -37,9 +37,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 		Some(kind) => match kind {
 			KeyTag::OperatorState => ReadFrom::OperatorState,
 			KeyTag::RingBufferMetadata => ReadFrom::StateQuery,
-			KeyTag::RingBufferOrder => ReadFrom::StateQuery,
-			KeyTag::PartitionedRingBufferOrder => ReadFrom::StateQuery,
-			KeyTag::RingBufferFree => ReadFrom::StateQuery,
 			KeyTag::SeriesPartitionMetadata => ReadFrom::StateQuery,
 
 			KeyTag::Row => ReadFrom::OwnedRow,
@@ -243,6 +240,7 @@ where
 	storage_iter: Peekable<I>,
 	pending_iter: Peekable<IntoIter<(TaggedKey, PendingWrite)>>,
 	version: CommitVersion,
+	reverse: bool,
 }
 
 impl<I> Iterator for FlowMergePendingIterator<I>
@@ -264,7 +262,11 @@ where
 							return Some(err);
 						}
 					};
-					let cmp = pending_key.cmp(&storage_val.key);
+					let cmp = if self.reverse {
+						storage_val.key.cmp(pending_key)
+					} else {
+						pending_key.cmp(&storage_val.key)
+					};
 
 					if matches!(cmp, Ordering::Less) {
 						let (key, value) = self.pending_iter.next().unwrap();
@@ -312,6 +314,7 @@ pub(crate) fn flow_merge_pending_iterator<I>(
 	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
 	version: CommitVersion,
+	reverse: bool,
 ) -> FlowMergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
@@ -324,5 +327,54 @@ where
 		storage_iter: storage_iter.peekable(),
 		pending_iter: pending.into_iter().peekable(),
 		version,
+		reverse,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		delta::RemoveVisibility,
+		interface::catalog::{id::ViewId, storage::StorageId},
+		key::row::RowKey,
+	};
+	use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+
+	use super::*;
+
+	#[test]
+	fn a_reverse_merge_interleaves_pending_and_stored_rows_and_hides_a_pending_remove() {
+		// Ignoring the reverse order brings a deleted row back and lets the ring evict out of order.
+		let storage = StorageId::from(ViewId(1));
+		let key = |row: u64| RowKey::encoded(storage, RowNumber(row));
+		let bytes = |value: u8| EncodedBytes(CowVec::new(vec![value]));
+		let tagged = |row: u64| TaggedKey::decode(&key(row)).unwrap();
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = [(1, 10), (2, 20), (4, 40)]
+			.into_iter()
+			.map(|(row, value)| {
+				Ok(MultiVersionRow {
+					key: tagged(row),
+					bytes: bytes(value),
+					version: CommitVersion(1),
+				})
+			})
+			.collect();
+		let pending = vec![
+			(key(2), PendingWrite::Set(bytes(21))),
+			(key(3), PendingWrite::Set(bytes(30))),
+			(
+				key(4),
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Announced,
+				},
+			),
+		];
+		let merged: Vec<(TaggedKey, EncodedBytes)> =
+			flow_merge_pending_iterator(pending, stored.into_iter(), CommitVersion(2), true)
+				.map(|found| found.map(|row| (row.key, row.bytes)).unwrap())
+				.collect();
+		let expected: Vec<(TaggedKey, EncodedBytes)> =
+			[(1, 10), (2, 21), (3, 30)].into_iter().map(|(row, value)| (tagged(row), bytes(value))).collect();
+		assert_eq!(merged, expected, "a pending set replaces its stored row and a pending remove hides it");
 	}
 }

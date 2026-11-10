@@ -58,7 +58,7 @@ impl CatalogStore {
 					txn.remove(vec![(key.clone().into(), None)])?;
 				}
 				txn.remove(vec![(ViewRingBufferKey::new(view).into(), None)])?;
-				Self::drop_ring_index(txn, StorageId::View(view))
+				Ok(())
 			}
 			ViewStorageKind::Series => Ok(()),
 			ViewStorageKind::Queue => {

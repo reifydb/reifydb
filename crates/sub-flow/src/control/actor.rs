@@ -2642,7 +2642,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn only_the_capacity_overwrite_of_the_three_changes_survives_the_lift_as_a_remove_then_an_insert() {
+	fn only_the_capacity_eviction_of_the_three_changes_survives_the_lift_as_a_remove_then_an_insert() {
 		let h = capacity_ring_harness();
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
@@ -2708,12 +2708,18 @@ mod pull_protocol {
 						_ => None,
 					})
 					.collect();
-				(found.len() == 2).then_some(found)
+				(found.len() == 3).then_some(found)
 			})
-			.expect("the two ttl expiries must reach the change stream");
+			.expect("the eviction and the two ttl expiries must reach the change stream");
 
+		let victims: Vec<_> = deletes
+			.iter()
+			.filter(|(_, _, visible)| *visible)
+			.map(|(key, _, _)| tagged_row_target(key).expect("row target").row)
+			.collect();
+		assert_eq!(victims.len(), 1, "only the capacity eviction is announced");
 		assert!(
-			deletes.iter().all(|(_, pre, visible)| pre.is_some() && !*visible),
+			deletes.iter().filter(|(_, _, visible)| !*visible).all(|(_, pre, _)| pre.is_some()),
 			"both ttl expiries are hidden and keep their pre-image for replication"
 		);
 		let overwrites: Vec<TaggedKey> = h
@@ -2730,7 +2736,7 @@ mod pull_protocol {
 				_ => None,
 			})
 			.collect();
-		assert_eq!(overwrites.len(), 1, "the capacity overflow overwrites the oldest slot as one update");
+		assert!(overwrites.is_empty(), "an eviction never sets over a live row");
 
 		let catalog = h.engine.catalog();
 		let mut query = h.engine.begin_query(IdentityId::system()).expect("query transaction");
@@ -2749,33 +2755,30 @@ mod pull_protocol {
 		assert_eq!(
 			lifted.len(),
 			2,
-			"the lift must carry the overwrite as a remove then an insert and drop both ttl expiries"
+			"the lift must carry the eviction as a remove then an insert and drop both ttl expiries"
 		);
-		let slot = tagged_row_target(&overwrites[0]).expect("row target").row;
 		let Diff::Remove {
 			pre,
 			..
 		} = &lifted[0]
 		else {
-			panic!("the overwrite must lift as a remove first, got {lifted:?}");
+			panic!("the eviction must lift as a remove first, got {lifted:?}");
 		};
 		assert_eq!(
 			row_numbers(pre).expect("#rownum").to_vec(),
-			vec![slot],
-			"the lifted remove names the overwritten slot"
+			vec![victims[0]],
+			"the lifted remove names the evicted row"
 		);
 		let Diff::Insert {
 			post,
 			..
 		} = &lifted[1]
 		else {
-			panic!("the overwrite must lift as an insert second, got {lifted:?}");
+			panic!("the eviction must lift as an insert second, got {lifted:?}");
 		};
-		assert_eq!(
-			row_numbers(post).expect("#rownum").to_vec(),
-			vec![slot],
-			"the lifted insert names the same slot"
-		);
+		let inserted = row_numbers(post).expect("#rownum").to_vec();
+		assert_eq!(inserted.len(), 1, "the lifted insert names one row");
+		assert!(inserted[0] > victims[0], "the lifted insert names a fresh row number above the evicted one");
 		drop(actor);
 	}
 
@@ -3001,11 +3004,11 @@ mod pull_protocol {
 		assert_eq!(mirrored.len(), 1, "the sink must keep exactly one mirror for its global metadata");
 		assert_eq!(
 			mirrored[0], stored,
-			"the operator state mirror and the mvcc row must carry the same base, sequence and count: \
+			"the operator state mirror and the mvcc row must carry the same count and head: \
 			 the mirror is what a replay reads, so any drift makes the replay assign different \
 			 storage row numbers than the live run did"
 		);
-		assert!(mirrored[0].next_sequence > 3, "precondition: the write cycle must have lapped the ring");
+		assert!(mirrored[0].head > 0, "precondition: an eviction must have moved the head");
 		drop(actor);
 	}
 }

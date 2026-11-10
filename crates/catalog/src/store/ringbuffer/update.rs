@@ -56,14 +56,11 @@ pub mod tests {
 
 	#[test]
 	fn test_saved_metadata_is_found_under_its_own_partition_only() {
-		// A save that ignored the partition would hand one partition's slot range to another.
+		// A save that ignored the partition would hand one partition's metadata to another.
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 		let metadata = RingBufferMetadata {
-			base_rn: 40,
-			next_sequence: 7,
 			count: 5,
-			filled: 5,
 			head: 2,
 		};
 		let mut tx = Transaction::Admin(&mut txn);
@@ -85,7 +82,10 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 		let mut tx = Transaction::Admin(&mut txn);
-		let metadata = RingBufferMetadata::reserved(10);
+		let metadata = RingBufferMetadata {
+			count: 0,
+			head: 0,
+		};
 		CatalogStore::save_partition_metadata(&mut tx, &ringbuffer, &[(Some(Partition(1)), metadata)]).unwrap();
 		CatalogStore::remove_partition_metadata(&mut tx, &ringbuffer, &[Some(Partition(1))]).unwrap();
 

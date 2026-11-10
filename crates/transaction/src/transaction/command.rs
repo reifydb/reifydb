@@ -638,6 +638,13 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().mark_range(range);
+		Ok(())
+	}
+
+	#[inline]
 	pub fn range_rev_persistence(
 		&mut self,
 		range: TaggedKeyBoundRange,

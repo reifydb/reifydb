@@ -331,12 +331,11 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		self.record("lookup_read", partitions.len());
-		self.inner.lookup_read(storage, ring, version, partitions)
+		self.inner.lookup_read(storage, version, partitions)
 	}
 
 	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt {
@@ -346,12 +345,11 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn lookup_read_at(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		at: LookupAt,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		self.record("lookup_read", partitions.len());
-		self.inner.lookup_read_at(storage, ring, at, partitions)
+		self.inner.lookup_read_at(storage, at, partitions)
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {

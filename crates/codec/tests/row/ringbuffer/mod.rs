@@ -67,8 +67,8 @@ fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 }
 
 #[test]
-fn a_slot_rewrite_moves_updated_at_and_never_created_at() {
-	// Eviction rewrites a slot in place, so one shared stamp slot makes an overwritten row look freshly inserted.
+fn a_row_rewrite_moves_updated_at_and_never_created_at() {
+	// An update rewrites a row in place, so one shared stamp would make an updated row look new.
 	let shape = shape();
 	let mut row = shape.allocate_ringbuffer();
 	row.set_timestamps(DateTime::from_millis(10), DateTime::from_millis(10));
@@ -115,8 +115,8 @@ fn the_body_begins_where_the_bitvec_begins() {
 }
 
 #[test]
-fn thawing_an_evicted_slot_moves_updated_at_and_leaves_created_at_alone() {
-	// Eviction rewrites a slot in place, so one shared stamp slot makes an overwritten row look freshly inserted.
+fn thawing_a_stored_row_moves_updated_at_and_leaves_created_at_alone() {
+	// An update rewrites a row in place, so one shared stamp would make an updated row look new.
 	let shape = shape();
 	let mut row = shape.allocate_ringbuffer();
 	row.set_timestamps(DateTime::from_millis(10), DateTime::from_millis(10));

@@ -48,9 +48,8 @@ use crate::{
 			QueueKeyActiveKey, QueuePartitionKey,
 		},
 		ringbuffer::{
-			PartitionedRingBufferOrderKey, RingBufferEvictionKey, RingBufferFreeKey, RingBufferKey,
-			RingBufferMetadataKey, RingBufferOrderKey, SeriesEvictionKey, TableEvictionKey,
-			ViewEvictionKey,
+			RingBufferEvictionKey, RingBufferKey, RingBufferMetadataKey, SeriesEvictionKey,
+			TableEvictionKey, ViewEvictionKey,
 		},
 		row::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
@@ -91,9 +90,6 @@ pub enum TaggedKey {
 	RingBuffer(RingBufferKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
-	RingBufferOrder(RingBufferOrderKey),
-	PartitionedRingBufferOrder(PartitionedRingBufferOrderKey),
-	RingBufferFree(RingBufferFreeKey),
 	Flow(FlowKey),
 	NamespaceFlow(NamespaceFlowKey),
 	Operator(OperatorKey),
@@ -193,9 +189,6 @@ impl TaggedKey {
 			Self::RingBuffer(_) => KeyTag::RingBuffer,
 			Self::NamespaceRingBuffer(_) => KeyTag::NamespaceRingBuffer,
 			Self::RingBufferMetadata(_) => KeyTag::RingBufferMetadata,
-			Self::RingBufferOrder(_) => KeyTag::RingBufferOrder,
-			Self::PartitionedRingBufferOrder(_) => KeyTag::PartitionedRingBufferOrder,
-			Self::RingBufferFree(_) => KeyTag::RingBufferFree,
 			Self::Flow(_) => KeyTag::Flow,
 			Self::NamespaceFlow(_) => KeyTag::NamespaceFlow,
 			Self::Operator(_) => KeyTag::Operator,
@@ -295,9 +288,6 @@ impl TaggedKey {
 			Self::RingBuffer(key) => key.encode(),
 			Self::NamespaceRingBuffer(key) => key.encode(),
 			Self::RingBufferMetadata(key) => key.encode(),
-			Self::RingBufferOrder(key) => key.encode(),
-			Self::PartitionedRingBufferOrder(key) => key.encode(),
-			Self::RingBufferFree(key) => key.encode(),
 			Self::Flow(key) => key.encode(),
 			Self::NamespaceFlow(key) => key.encode(),
 			Self::Operator(key) => key.encode(),
@@ -399,11 +389,6 @@ impl TaggedKey {
 				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
 			}
 			KeyTag::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
-			KeyTag::RingBufferOrder => RingBufferOrderKey::decode(key).map(Self::RingBufferOrder),
-			KeyTag::PartitionedRingBufferOrder => {
-				PartitionedRingBufferOrderKey::decode(key).map(Self::PartitionedRingBufferOrder)
-			}
-			KeyTag::RingBufferFree => RingBufferFreeKey::decode(key).map(Self::RingBufferFree),
 			KeyTag::Flow => FlowKey::decode(key).map(Self::Flow),
 			KeyTag::NamespaceFlow => NamespaceFlowKey::decode(key).map(Self::NamespaceFlow),
 			KeyTag::Operator => OperatorKey::decode(key).map(Self::Operator),
@@ -629,24 +614,6 @@ impl From<NamespaceRingBufferKey> for TaggedKey {
 impl From<RingBufferMetadataKey> for TaggedKey {
 	fn from(key: RingBufferMetadataKey) -> Self {
 		Self::RingBufferMetadata(key)
-	}
-}
-
-impl From<RingBufferOrderKey> for TaggedKey {
-	fn from(key: RingBufferOrderKey) -> Self {
-		Self::RingBufferOrder(key)
-	}
-}
-
-impl From<PartitionedRingBufferOrderKey> for TaggedKey {
-	fn from(key: PartitionedRingBufferOrderKey) -> Self {
-		Self::PartitionedRingBufferOrder(key)
-	}
-}
-
-impl From<RingBufferFreeKey> for TaggedKey {
-	fn from(key: RingBufferFreeKey) -> Self {
-		Self::RingBufferFree(key)
 	}
 }
 
@@ -1274,9 +1241,6 @@ impl KeyFields for TaggedKey {
 			Self::RingBuffer(key) => key.fields(),
 			Self::NamespaceRingBuffer(key) => key.fields(),
 			Self::RingBufferMetadata(key) => key.fields(),
-			Self::RingBufferOrder(key) => key.fields(),
-			Self::PartitionedRingBufferOrder(key) => key.fields(),
-			Self::RingBufferFree(key) => key.fields(),
 			Self::Flow(key) => key.fields(),
 			Self::NamespaceFlow(key) => key.fields(),
 			Self::Operator(key) => key.fields(),
@@ -1378,11 +1342,6 @@ impl Ord for TaggedKey {
 			(Self::RingBuffer(left), Self::RingBuffer(right)) => left.cmp_fields(right),
 			(Self::NamespaceRingBuffer(left), Self::NamespaceRingBuffer(right)) => left.cmp_fields(right),
 			(Self::RingBufferMetadata(left), Self::RingBufferMetadata(right)) => left.cmp_fields(right),
-			(Self::RingBufferOrder(left), Self::RingBufferOrder(right)) => left.cmp_fields(right),
-			(Self::PartitionedRingBufferOrder(left), Self::PartitionedRingBufferOrder(right)) => {
-				left.cmp_fields(right)
-			}
-			(Self::RingBufferFree(left), Self::RingBufferFree(right)) => left.cmp_fields(right),
 			(Self::Flow(left), Self::Flow(right)) => left.cmp_fields(right),
 			(Self::NamespaceFlow(left), Self::NamespaceFlow(right)) => left.cmp_fields(right),
 			(Self::Operator(left), Self::Operator(right)) => left.cmp_fields(right),

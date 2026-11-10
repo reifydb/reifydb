@@ -12,7 +12,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
-	actors::pending::Pending,
+	actors::pending::{Pending, PendingWrite},
 	common::{CommitVersion, SourceVersion},
 	interface::{
 		catalog::{dictionary::Dictionary, flow::OperatorId, id::ViewId},
@@ -20,6 +20,7 @@ use reifydb_core::{
 		store::MultiVersionRow,
 	},
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
+	return_internal_error,
 };
 use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Range, Resolve};
 use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
@@ -101,7 +102,7 @@ use crate::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupAt, LookupContext, ViewLayers,
 		dictionary::DictionaryExtension,
 		pending_get,
-		read::{OperatorStateRangeIter, ReadFrom, range_read_from, read_from},
+		read::{OperatorStateRangeIter, ReadFrom, flow_merge_pending_iterator, range_read_from, read_from},
 		scope::{OperatorScope, operator_state_coordinates},
 		substrate::FlowSubstrate,
 	},
@@ -446,6 +447,45 @@ impl Range for DeferredTransaction {
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
 		Ok(FlowTransaction::range(self, range, RangeScope::All, batch_size))
 	}
+
+	fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		Range::range_rev(self, range, batch_size)
+	}
+
+	fn mark_range(&mut self, _range: TaggedKeyBoundRange) -> Result<()> {
+		Ok(())
+	}
+
+	fn range_rev(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		#[cfg(test)]
+		{
+			self.storage_counts.ranges += 1;
+		}
+		let read = match range_read_from(&range) {
+			ReadFrom::OperatorState => {
+				return_internal_error!(
+					"a reverse range over operator state is not supported: {:?}",
+					range
+				)
+			}
+			ReadFrom::StateQuery | ReadFrom::OwnedRow => self.state_query.as_ref(),
+			ReadFrom::Query => self.query.as_ref(),
+		};
+		let encoded = range.encode();
+		let mut merged = BTreeMap::new();
+		self.pending().collect_range((encoded.start.as_ref(), encoded.end.as_ref()), &mut merged);
+		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
+		let stored = read.expect(NO_READ_TRANSACTION).range_rev(&self.ctx, range, RangeScope::All, batch_size);
+		Ok(Box::new(flow_merge_pending_iterator(pending, stored, self.version, true)))
+	}
 }
 
 impl Emit for DeferredTransaction {
@@ -711,7 +751,7 @@ mod tests {
 
 	#[test]
 	fn a_forward_range_sees_pending_rows_in_key_order() {
-		// The ring reads its order index here, so a range skipping pending writes would miss rows just placed.
+		// A range skipping pending writes would miss rows the same step just wrote.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let storage = StorageId::from(ViewId(1));
@@ -727,6 +767,26 @@ mod tests {
 			.map(|found| found.unwrap().bytes)
 			.collect();
 		assert_eq!(rows, vec![row(2), row(1)], "row keys encode the row number descending");
+	}
+
+	#[test]
+	fn a_reverse_range_sees_pending_rows_oldest_first() {
+		// The ring picks its eviction victims here, so pending rows out of order would evict the newest row.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+		let storage = StorageId::from(ViewId(1));
+		let row = |row: u64| EncodedBytes(CowVec::new(vec![row as u8]));
+		FlowBatch::set(
+			&mut txn,
+			vec![RowKey::encoded(storage, RowNumber(2)), RowKey::encoded(storage, RowNumber(1))],
+			vec![row(2), row(1)],
+		)
+		.unwrap();
+		let rows: Vec<EncodedBytes> = Range::range_rev(&mut txn, RowKeyRange::storage_scan(storage), 16)
+			.unwrap()
+			.map(|found| found.unwrap().bytes)
+			.collect();
+		assert_eq!(rows, vec![row(1), row(2)], "a reverse range walks the row numbers upward");
 	}
 
 	#[test]

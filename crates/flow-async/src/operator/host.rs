@@ -5,7 +5,6 @@ use std::{
 	borrow::Cow,
 	collections::{BTreeMap, BTreeSet, HashMap},
 	ops::Bound,
-	sync::Arc,
 };
 
 use reifydb_codec::{
@@ -20,7 +19,6 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		flow::OperatorId,
 		id::ViewId,
-		ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, decode_ringbuffer_order},
 		storage::StorageId,
 	},
 	internal_err,
@@ -30,18 +28,15 @@ use reifydb_core::{
 			keyspace::join::JoinRowMappingKey,
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
-		ringbuffer::{RingBufferMetadataKey, ring_order_key, ring_order_range},
-		row::{PartitionedRowKey, RowKey, StoragePartitionedRowKey},
+		row::StoragePartitionedRowKey,
 	},
-	ring::{RingNewest, RingRead, newest},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
 use reifydb_flow::txn::{Find, Intern, Resolve};
-use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
+use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -150,7 +145,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
@@ -160,12 +154,11 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn lookup_read_at(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		at: LookupAt,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		match at {
-			LookupAt::Commit(version) => self.lookup_read(storage, ring, version, partitions),
+			LookupAt::Commit(version) => self.lookup_read(storage, version, partitions),
 			LookupAt::Layered {
 				..
 			} => panic!("lookup at {at:?} reads inside a layered commit, which this host cannot read"),
@@ -173,93 +166,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	}
 
 	fn lookup_floor(&self) -> Option<CommitVersion>;
-}
-
-struct QueryRing<'a> {
-	ctx: Arc<TransactionContext>,
-	query: &'a MultiReadTransaction,
-	storage: StorageId,
-}
-
-impl RingRead for QueryRing<'_> {
-	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
-		let keys: Vec<TaggedKey> = partitions
-			.iter()
-			.map(|&partition| RingBufferMetadataKey::of(self.storage, partition).into())
-			.collect();
-		self.query
-			.get(&self.ctx, &keys)?
-			.into_iter()
-			.map(|row| {
-				row.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(row.bytes()))).transpose()
-			})
-			.collect()
-	}
-
-	fn slots(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
-		let keys: Vec<TaggedKey> = rows
-			.iter()
-			.map(|&(partition, row)| match partition {
-				Some(partition) => PartitionedRowKey::new(self.storage, partition, row).into(),
-				None => RowKey::new(self.storage, row).into(),
-			})
-			.collect();
-		Ok(self.query
-			.get(&self.ctx, &keys)?
-			.into_iter()
-			.map(|row| row.map(|row| row.bytes().clone()))
-			.collect())
-	}
-
-	fn order_at(&mut self, entries: &[(Option<Partition>, u64)]) -> Result<Vec<Option<RowNumber>>> {
-		let keys: Vec<TaggedKey> = entries
-			.iter()
-			.map(|&(partition, sequence)| ring_order_key(self.storage, partition, sequence))
-			.collect();
-		let rows = self.query.get(&self.ctx, &keys)?;
-		keys.iter()
-			.zip(rows)
-			.map(|(key, row)| {
-				row.map(|row| {
-					decode_ringbuffer_order(key, EncodedPodRow::view(row.bytes()))
-						.map(|(_, row)| row)
-				})
-				.transpose()
-			})
-			.collect()
-	}
-
-	fn order(
-		&mut self,
-		partition: Option<Partition>,
-		after: Option<u64>,
-		limit: usize,
-	) -> Result<Vec<(u64, RowNumber)>> {
-		let resume = after.map(|sequence| ring_order_key(self.storage, partition, sequence));
-		let range = ring_order_range(self.storage, partition).resume_after(resume.as_ref());
-		let mut entries = Vec::with_capacity(limit);
-		for row in self.query.range(&self.ctx, range, RangeScope::All, limit).take(limit) {
-			let row = row?;
-			entries.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?);
-		}
-		Ok(entries)
-	}
-}
-
-impl RingNewest for QueryRing<'_> {
-	fn newest_order(&mut self, partition: Option<Partition>) -> Result<Option<(u64, RowNumber)>> {
-		match self
-			.query
-			.range_rev(&self.ctx, ring_order_range(self.storage, partition), RangeScope::All, 1)
-			.next()
-		{
-			None => Ok(None),
-			Some(row) => {
-				let row = row?;
-				Ok(Some(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?))
-			}
-		}
-	}
 }
 
 pub struct TxnHostContext<'a, T: FlowTransaction> {
@@ -485,7 +391,6 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
@@ -498,15 +403,6 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		let ctx = self.txn.context().clone();
 		let mut query = self.txn.query();
 		query.read_as_of_version_inclusive(version);
-		if ring {
-			let mut store = QueryRing {
-				ctx,
-				query: &query,
-				storage,
-			};
-			let partitions: Vec<Option<Partition>> = partitions.iter().copied().map(Some).collect();
-			return newest(&mut store, &partitions);
-		}
 		partitions
 			.iter()
 			.map(|&partition| {
@@ -557,7 +453,6 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn lookup_read_at(
 		&mut self,
 		storage: StorageId,
-		ring: bool,
 		at: LookupAt,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
@@ -568,9 +463,8 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			through,
 		} = at
 		else {
-			return self.lookup_read(storage, ring, at.commit(), partitions);
+			return self.lookup_read(storage, at.commit(), partitions);
 		};
-		assert!(!ring, "lookup of ring storage {storage:?} must never read inside layered commit {commit:?}");
 		let Some(layers) = self.txn.lookup_view_layers(view, commit) else {
 			panic!(
 				"lookup of view {view:?} reads inside commit {commit:?}, but the tracker holds no layers for it"

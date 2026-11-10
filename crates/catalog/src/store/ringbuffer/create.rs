@@ -196,7 +196,7 @@ impl CatalogStore {
 	}
 
 	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&RingBufferMetadata::unpartitioned());
+		let row = encode_ringbuffer_metadata(&RingBufferMetadata::default());
 		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
 		Ok(())
 	}
@@ -431,7 +431,7 @@ pub mod tests {
 				.unwrap()[0]
 				.expect("Metadata should exist");
 
-		assert_eq!(metadata, RingBufferMetadata::unpartitioned());
+		assert_eq!(metadata, RingBufferMetadata::default());
 	}
 
 	#[test]

@@ -2,17 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::RingBufferId, storage::StorageId},
-	key::{
-		any::TaggedKey,
-		namespace::NamespaceRingBufferKey,
-		ringbuffer::{PartitionedRingBufferOrderKey, RingBufferFreeKey, RingBufferKey, RingBufferOrderKey},
-	},
+	interface::catalog::id::RingBufferId,
+	key::{namespace::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
 };
-use reifydb_transaction::{
-	multi::RangeScope,
-	transaction::{Transaction, admin::AdminTransaction},
-};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
@@ -37,8 +30,6 @@ impl CatalogStore {
 				&partitions,
 			)?;
 
-			Self::drop_ring_index(txn, ringbuffer_def.id.into())?;
-
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
@@ -50,39 +41,19 @@ impl CatalogStore {
 
 		Ok(())
 	}
-
-	pub(crate) fn drop_ring_index(txn: &mut AdminTransaction, storage: StorageId) -> Result<()> {
-		for range in [
-			RingBufferOrderKey::full_scan_for_storage(storage),
-			PartitionedRingBufferOrderKey::full_scan_for_storage(storage),
-			RingBufferFreeKey::full_scan_for_storage(storage),
-		] {
-			let mut keys: Vec<TaggedKey> = Vec::new();
-			for entry in txn.range(range, RangeScope::All, 1024)? {
-				keys.push(entry?.key);
-			}
-			for key in keys {
-				txn.remove(vec![(key, None)])?;
-			}
-		}
-		Ok(())
-	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata, storage::StorageId},
-		key::ringbuffer::{RingBufferFreeKey, RingBufferMetadataKey},
-		ring::FREE_PAGE_SLOTS,
+		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
+		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		fragment::Fragment,
-		util::cowvec::CowVec,
 		value::{Value, constraint::TypeConstraint, partition::Partition, value_type::ValueType},
 	};
 
@@ -187,10 +158,7 @@ pub mod tests {
 			#[allow(clippy::disallowed_methods)]
 			let partition = Partition::of(&[Value::Utf8(region.to_string())]);
 			let metadata = RingBufferMetadata {
-				base_rn: 1,
-				next_sequence: 3,
 				count: 3,
-				filled: 3,
 				head: 0,
 			};
 			CatalogStore::save_partition_metadata(
@@ -212,35 +180,5 @@ pub mod tests {
 		let remaining: Vec<_> =
 			Transaction::Admin(&mut txn).range(range, RangeScope::All, 4096).unwrap().collect();
 		assert!(remaining.is_empty(), "expected no orphaned RingBufferMetadataKey entries after drop");
-	}
-
-	#[test]
-	fn dropping_a_ring_removes_every_free_page_and_stays_under_the_write_limit() {
-		// A page left behind under a recycled storage would hand out slots of a dead ring.
-		let mut txn = create_test_admin_transaction();
-		let created = ensure_test_ringbuffer(&mut txn);
-		let storage: StorageId = created.id.into();
-		let page_bytes = EncodedBytes(CowVec::new(vec![0; 8]));
-		let million_slot_ring_pages = 1_000_000u64.div_ceil(FREE_PAGE_SLOTS);
-		for page in 0..million_slot_ring_pages {
-			for partition in [None, Some(Partition(1))] {
-				txn.set(vec![(
-					RingBufferFreeKey::of(storage, partition, page).into(),
-					page_bytes.clone(),
-				)])
-				.unwrap();
-			}
-		}
-		CatalogStore::drop_ringbuffer(&mut txn, created.id).unwrap();
-
-		let left = txn
-			.range(RingBufferFreeKey::full_scan_for_storage(storage), RangeScope::All, 1024)
-			.unwrap()
-			.count();
-		assert_eq!(left, 0, "every free page must go");
-		assert!(
-			(txn.cmd.as_ref().unwrap().pending_writes().len() as u64) < 1_000_000,
-			"a million slot ring must drop inside one transaction"
-		);
 	}
 }

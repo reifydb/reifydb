@@ -430,6 +430,15 @@ impl<'a> Transaction<'a> {
 			Transaction::Test(t) => t.inner.range_rev_untracked(range, scope, batch_size),
 		}
 	}
+
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.mark_range(range),
+			Transaction::Admin(txn) => txn.mark_range(range),
+			Transaction::Query(_) => Ok(()),
+			Transaction::Test(t) => t.inner.mark_range(range),
+		}
+	}
 }
 
 impl<'a> From<&'a mut CommandTransaction> for Transaction<'a> {

@@ -9,17 +9,13 @@ use std::{
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, ringbuffer::EncodedRingBufferRow, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
 use reifydb_core::{
 	common::TimeSource,
 	interface::{
 		catalog::{
-			column::Column,
-			dictionary::Dictionary,
-			object::ObjectId,
-			ringbuffer::{PartitionedMetadata, decode_ringbuffer_order},
-			storage::StorageId,
-			view::View,
+			column::Column, dictionary::Dictionary, object::ObjectId, ringbuffer::PartitionedMetadata,
+			storage::StorageId, view::View,
 		},
 		resolved::{ResolvedRingBuffer, ResolvedView},
 	},
@@ -27,7 +23,6 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		partition::PartitionKey,
-		ringbuffer::{ring_order_key, ring_order_range},
 		row::{PartitionedRowKey, RowKey},
 	},
 	partition::{partition_col_indices, registry_values},
@@ -36,6 +31,7 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
+use reifydb_flow::writer::ring::{collect_ring_rows, ring_row_range};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::{
 	datetime::DateTime,
@@ -57,6 +53,8 @@ use crate::{
 
 const MERGE_WINDOW: usize = 64;
 
+const SCAN_BATCH: usize = 1024;
+
 struct RingSource {
 	storage: StorageId,
 	name: String,
@@ -74,42 +72,27 @@ impl RingSource {
 		}
 	}
 
-	fn read(
+	fn oldest(
 		&self,
 		txn: &mut Transaction<'_>,
 		partition: Option<Partition>,
-		rows: &[RowNumber],
+		after: Option<RowNumber>,
+		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		if rows.is_empty() {
-			return Ok(Vec::new());
-		}
-		let keys: Vec<TaggedKey> = rows.iter().map(|&row| self.key(partition, row)).collect();
-		Ok(rows.iter()
-			.zip(txn.get(&keys)?)
-			.filter_map(|(&row, stored)| stored.map(|stored| (row, stored.bytes)))
-			.collect())
+		let resume = after.map(|row| self.key(partition, row));
+		let range = ring_row_range(self.storage, partition).resume_before(resume.as_ref());
+		collect_ring_rows(txn.range_rev(range, RangeScope::All, limit.min(SCAN_BATCH))?, limit)
 	}
+}
 
-	fn oldest_first(&self, txn: &mut Transaction<'_>, listed: &PartitionedMetadata) -> Result<Vec<RowNumber>> {
-		let partition = listed.partition;
-		let resume = listed
-			.metadata
-			.head
-			.checked_sub(1)
-			.map(|sequence| ring_order_key(self.storage, partition, sequence));
-		let range = ring_order_range(self.storage, partition).resume_after(resume.as_ref());
-		let mut rows = Vec::new();
-		for row in txn.range(range, RangeScope::All, 1024)? {
-			let row = row?;
-			rows.push(decode_ringbuffer_order(&row.key, EncodedPodRow::view(&row.bytes))?.1);
-		}
-		Ok(rows)
-	}
+fn head_cursor(listed: &PartitionedMetadata) -> Option<RowNumber> {
+	listed.metadata.head.checked_sub(1).map(RowNumber)
 }
 
 struct MergeHead {
 	partition: Option<Partition>,
-	pending: VecDeque<RowNumber>,
+	after: Option<RowNumber>,
+	exhausted: bool,
 	buffer: VecDeque<(RowNumber, EncodedBytes)>,
 }
 
@@ -125,14 +108,13 @@ impl OldestFirstMerge {
 		let mut merge = Self {
 			heads: partitions
 				.iter()
-				.map(|listed| {
-					Ok(MergeHead {
-						partition: listed.partition,
-						pending: source.oldest_first(txn, listed)?.into(),
-						buffer: VecDeque::new(),
-					})
+				.map(|listed| MergeHead {
+					partition: listed.partition,
+					after: head_cursor(listed),
+					exhausted: false,
+					buffer: VecDeque::new(),
 				})
-				.collect::<Result<_>>()?,
+				.collect(),
 			queue: BinaryHeap::new(),
 		};
 		for index in 0..merge.heads.len() {
@@ -143,10 +125,11 @@ impl OldestFirstMerge {
 
 	fn enqueue(&mut self, txn: &mut Transaction<'_>, source: &RingSource, index: usize) -> Result<()> {
 		let head = &mut self.heads[index];
-		while head.buffer.is_empty() && !head.pending.is_empty() {
-			let take = head.pending.len().min(MERGE_WINDOW);
-			let window: Vec<RowNumber> = head.pending.drain(..take).collect();
-			head.buffer.extend(source.read(txn, head.partition, &window)?);
+		if head.buffer.is_empty() && !head.exhausted {
+			let window = source.oldest(txn, head.partition, head.after, MERGE_WINDOW)?;
+			head.exhausted = window.len() < MERGE_WINDOW;
+			head.after = window.last().map(|&(row, _)| row).or(head.after);
+			head.buffer.extend(window);
 		}
 		if let Some((_, bytes)) = head.buffer.front() {
 			let row = EncodedRingBufferRow::view(bytes);
@@ -361,8 +344,7 @@ impl RingBufferScan {
 		index: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		let listed = &self.partitions[index];
-		let rows = self.source.oldest_first(txn, listed)?;
-		let mut loaded = self.source.read(txn, listed.partition, &rows)?;
+		let mut loaded = self.source.oldest(txn, listed.partition, head_cursor(listed), usize::MAX)?;
 		if self.newest_first {
 			loaded.reverse();
 		}

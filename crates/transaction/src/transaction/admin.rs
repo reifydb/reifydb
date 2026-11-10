@@ -506,6 +506,13 @@ impl AdminTransaction {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(&self.context, range, scope, batch_size))
 	}
+
+	#[inline]
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().mark_range(range);
+		Ok(())
+	}
 }
 
 impl WithEventBus for AdminTransaction {

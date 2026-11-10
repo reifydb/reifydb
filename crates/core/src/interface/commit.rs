@@ -44,9 +44,6 @@ pub fn is_commit_excluded(kind: KeyTag) -> bool {
 			| KeyTag::RowSequence | KeyTag::ColumnSequence
 			| KeyTag::SystemVersion
 			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
-			| KeyTag::RingBufferOrder
-			| KeyTag::PartitionedRingBufferOrder
-			| KeyTag::RingBufferFree
 			| KeyTag::Index | KeyTag::ConfigStorage
 			| KeyTag::Token | KeyTag::VersionEpoch
 			| KeyTag::QueuePartition
@@ -269,9 +266,6 @@ mod exclusion_tests {
 			KeyTag::RingBuffer => {}
 			KeyTag::NamespaceRingBuffer => {}
 			KeyTag::RingBufferMetadata => {}
-			KeyTag::RingBufferOrder => {}
-			KeyTag::PartitionedRingBufferOrder => {}
-			KeyTag::RingBufferFree => {}
 			KeyTag::Flow => {}
 			KeyTag::NamespaceFlow => {}
 			KeyTag::Operator => {}

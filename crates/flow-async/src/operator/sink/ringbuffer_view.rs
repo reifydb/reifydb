@@ -53,7 +53,7 @@ use reifydb_core::{
 		typed::direction::Asc,
 	},
 	partition::partition_col_indices,
-	ring::{Ring, oldest},
+	ring::{Evicted, Ring, oldest},
 	row::row_shape_from_columns,
 	state::{timer::TimerKind, typed::typed_key},
 	value::batch::{from_encoded_bytes, take_rows},
@@ -116,7 +116,7 @@ struct Placed {
 	row_idx: usize,
 	partition: Option<Partition>,
 	row: RowNumber,
-	evicted: Option<EncodedBytes>,
+	evicted: Option<Evicted>,
 }
 
 impl SinkRingBufferViewOperator {
@@ -216,8 +216,8 @@ impl SinkRingBufferViewOperator {
 			assert_eq!(
 				mirrored, stored,
 				"the ringbuffer metadata mirror and its mvcc row disagree right after a write; the \
-				 mirror is what replay reads, so any drift hands catch-up a different slot range than the \
-				 live run assigned and the operator state forward map diverges silently"
+				 mirror is what replay reads, so any drift hands catch-up different metadata than the \
+				 live run wrote and the operator state forward map diverges silently"
 			);
 		}
 		Ok(())
@@ -380,23 +380,23 @@ impl SinkRingBufferViewOperator {
 	fn row_sources(
 		&self,
 		txn: &mut DeferredTransaction,
-		slots: &[(Option<Partition>, RowNumber)],
+		rows: &[(Option<Partition>, RowNumber)],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let keys: Vec<GroupStateKey> =
-			slots.iter().map(|(partition, rn)| self.row_entry_key(*partition, *rn)).collect();
+			rows.iter().map(|(partition, rn)| self.row_entry_key(*partition, *rn)).collect();
 		self.state_get(txn, &keys)?
 			.into_iter()
 			.map(|row| row.map(|row| decode_u64(&row, "RingBufferRowEntry").map(RowNumber)).transpose())
 			.collect()
 	}
 
-	fn release_slots(
+	fn release_rows(
 		&self,
 		txn: &mut DeferredTransaction,
-		slots: &[(Option<Partition>, RowNumber)],
+		rows: &[(Option<Partition>, RowNumber)],
 		removes: &mut Vec<GroupStateKey>,
 	) -> Result<()> {
-		for (&(partition, rn), source) in slots.iter().zip(self.row_sources(txn, slots)?) {
+		for (&(partition, rn), source) in rows.iter().zip(self.row_sources(txn, rows)?) {
 			if let Some(source) = source {
 				removes.push(self.forward_key(source));
 			}
@@ -415,9 +415,9 @@ impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
 		self.read_metadata(txn, partitions)
 	}
 
-	fn reserve(&self, txn: &mut DeferredTransaction, capacity: u64) -> Result<u64> {
+	fn reserve(&self, txn: &mut DeferredTransaction, batch_count: u64) -> Result<u64> {
 		let base = self.read_next_row(txn)?;
-		self.write_next_row(txn, base + capacity)?;
+		self.write_next_row(txn, base + batch_count)?;
 		Ok(base)
 	}
 
@@ -737,10 +737,10 @@ impl SinkRingBufferViewOperator {
 			return Ok(false);
 		}
 
-		let slots: Vec<(Option<Partition>, RowNumber)> =
+		let rows: Vec<(Option<Partition>, RowNumber)> =
 			expired.iter().map(|(rn, _)| (partition, *rn)).collect();
-		let mut removes = Vec::with_capacity(slots.len() * 2);
-		self.release_slots(txn, &slots, &mut removes)?;
+		let mut removes = Vec::with_capacity(rows.len() * 2);
+		self.release_rows(txn, &rows, &mut removes)?;
 		self.state_remove(txn, &removes)?;
 		let keys: Vec<EncodedKey> = expired.iter().map(|(rn, _)| self.rb_key(*rn, partition)).collect();
 		match self.ttl_eviction {
@@ -806,8 +806,8 @@ impl SinkRingBufferViewOperator {
 		let row_numbers = require_row_numbers(source)?;
 		let encoded = encoder.encode_all()?;
 
+		let first = RingMetadata::new(&mut *txn, self.storage).reserve(&*self, source.num_rows())?;
 		let mut placed: Vec<Placed> = Vec::with_capacity(source.num_rows());
-		let mut sequences: Vec<u64> = Vec::with_capacity(source.num_rows());
 		let groups = self.partition_groups(txn, view, source)?;
 		let kept: Vec<(Option<Partition>, &[usize])> = groups
 			.iter()
@@ -815,13 +815,16 @@ impl SinkRingBufferViewOperator {
 				(*partition, &rows[rows.len().saturating_sub(self.capacity as usize)..])
 			})
 			.collect();
-		let requests: Vec<(Option<Partition>, usize)> =
-			kept.iter().map(|(partition, rows)| (*partition, rows.len())).collect();
+		let requests: Vec<(Option<Partition>, Vec<RowNumber>)> = kept
+			.iter()
+			.map(|(partition, rows)| {
+				(*partition, rows.iter().map(|&row_idx| RowNumber(first + row_idx as u64)).collect())
+			})
+			.collect();
 		let placements = RingMetadata::new(&mut *txn, self.storage).place(&*self, ring, &requests)?;
 		for ((partition, kept), placements) in kept.into_iter().zip(placements) {
 			touched.insert(partition);
 			for (&row_idx, placement) in kept.iter().zip(placements) {
-				sequences.push(placement.sequence);
 				placed.push(Placed {
 					row_idx,
 					partition,
@@ -831,23 +834,26 @@ impl SinkRingBufferViewOperator {
 			}
 		}
 
-		let evicted_slots: Vec<(Option<Partition>, RowNumber)> = placed
+		let victims: Vec<(Option<Partition>, RowNumber)> = placed
 			.iter()
-			.filter(|placed| placed.evicted.is_some())
-			.map(|placed| (placed.partition, placed.row))
+			.filter_map(|placed| placed.evicted.as_ref().map(|evicted| (placed.partition, evicted.row)))
 			.collect();
-		let mut removes = Vec::with_capacity(evicted_slots.len() * 2);
-		self.release_slots(txn, &evicted_slots, &mut removes)?;
+		let mut removes = Vec::with_capacity(victims.len() * 2);
+		self.release_rows(txn, &victims, &mut removes)?;
 		self.state_remove(txn, &removes)?;
+		if !victims.is_empty() {
+			let victim_keys = victims.iter().map(|&(partition, row)| self.rb_key(row, partition)).collect();
+			FlowRingWriter::new(&mut *txn).delete(victim_keys)?;
+		}
 
 		let mut sets: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity(placed.len() * 2);
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(placed.len());
 		let mut values: Vec<EncodedBytes> = Vec::with_capacity(placed.len());
 		let mut fresh: Vec<usize> = Vec::new();
-		let mut overwritten: Vec<usize> = Vec::new();
-		let mut overwritten_rows: Vec<RowNumber> = Vec::new();
+		let mut evicting: Vec<usize> = Vec::new();
+		let mut victim_rows: Vec<RowNumber> = Vec::new();
 		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
-		for (placed, sequence) in placed.into_iter().zip(sequences) {
+		for placed in placed {
 			let source_rn = row_numbers[placed.row_idx];
 			sets.push((self.forward_key(source_rn), encode_u64(placed.row.0, "RingBufferForward")?));
 			sets.push((
@@ -855,12 +861,12 @@ impl SinkRingBufferViewOperator {
 				encode_u64(source_rn.0, "RingBufferRowEntry")?,
 			));
 			row_keys.push(self.rb_key(placed.row, placed.partition));
-			values.push(with_sequence(encoded[placed.row_idx].clone(), sequence));
+			values.push(with_sequence(encoded[placed.row_idx].clone(), placed.row.0));
 			match placed.evicted {
 				Some(evicted) => {
-					overwritten.push(placed.row_idx);
-					overwritten_rows.push(placed.row);
-					evicted_rows.push(evicted);
+					evicting.push(placed.row_idx);
+					victim_rows.push(evicted.row);
+					evicted_rows.push(evicted.bytes);
 				}
 				None => fresh.push(placed.row_idx),
 			}
@@ -871,12 +877,12 @@ impl SinkRingBufferViewOperator {
 		if !fresh.is_empty() {
 			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &fresh)?))?;
 		}
-		if !overwritten.is_empty() {
+		if !evicting.is_empty() {
 			txn.emit(
 				view.id(),
-				Diff::remove(from_encoded_bytes(&self.shape, &overwritten_rows, &evicted_rows)?),
+				Diff::remove(from_encoded_bytes(&self.shape, &victim_rows, &evicted_rows)?),
 			)?;
-			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &overwritten)?))?;
+			txn.emit(view.id(), Diff::insert(JoinedColumnsBuilder::retain_rows(&coerced, &evicting)?))?;
 		}
 		Ok(())
 	}
@@ -1506,8 +1512,8 @@ mod tests {
 	}
 
 	#[test]
-	fn partial_expiry_decrements_count_and_keeps_the_write_cycle() {
-		// Expiry must never rewind the cycle, otherwise the next insert overwrites a live row.
+	fn partial_expiry_decrements_count_and_moves_the_head() {
+		// A head left behind makes every later eviction walk past rows that are already gone.
 		let engine = TestEngine::new();
 		let mut op = build_op(true, Some(hour_ttl()));
 
@@ -1521,8 +1527,7 @@ mod tests {
 
 		let after = metadata(&engine, &base("us")).expect("partition still has survivors");
 		assert_eq!(after.count, 2, "the two expired rows must be subtracted");
-		assert_eq!(after.base_rn, before.base_rn, "expiry must not move the partition's slot range");
-		assert_eq!(after.next_sequence, before.next_sequence, "expiry must not rewind the write cycle");
+		assert_eq!(after.head, before.head + 2, "expiry moves the head past the two expired rows");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2, "only the two fresh row entries remain");
 	}
 
@@ -1610,7 +1615,7 @@ mod tests {
 
 	#[test]
 	fn a_ring_view_write_makes_exactly_the_reads_it_has_always_made() {
-		// Pinned on the code before the ring writer; any added read on the view path changes these counts.
+		// Any added read on the view path changes these counts.
 		let counts = |get_many_calls, state_fetch_calls, ranges| StorageCounts {
 			get_many_calls,
 			state_fetch_calls,
@@ -1622,16 +1627,9 @@ mod tests {
 			let rows = rows_of(partitioned, 1, 1);
 			counted(&engine, &mut op, Diff::insert(columns_at(partitioned, &rows, 1, T0)))
 		};
-		assert_eq!(fresh(false), counts(1, 2, 1));
-		assert_eq!(eviction_counts(false, 1), counts(2, 3, 2));
+		assert_eq!(fresh(false), counts(1, 3, 1));
+		assert_eq!(eviction_counts(false, 1), counts(0, 4, 2));
 		assert_eq!(update_counts(false, 1), counts(1, 3, 1));
-		assert_eq!(remove_counts(false, 1), counts(2, 3, 1));
-		assert_eq!(expiry_counts(false, 1), counts(1, 3, 3));
-		assert_eq!(fresh(true), counts(3, 3, 2));
-		assert_eq!(eviction_counts(true, 1), counts(2, 3, 4));
-		assert_eq!(update_counts(true, 1), counts(1, 3, 2));
-		assert_eq!(remove_counts(true, 1), counts(2, 3, 2));
-		assert_eq!(expiry_counts(true, 1), counts(1, 3, 3));
 	}
 
 	#[test]
@@ -1647,7 +1645,7 @@ mod tests {
 	}
 
 	fn reads_no_more(more: &StorageCounts, fewer: &StorageCounts) -> bool {
-		// The ttl re-arm may read the head slot once per partition, never once per row.
+		// The ttl re-arm may read the head row once per partition, never once per row.
 		more.get_many_calls <= fewer.get_many_calls
 			&& more.state_fetch_calls <= fewer.state_fetch_calls
 			&& more.ranges <= fewer.ranges
@@ -1793,9 +1791,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_remove_naming_a_row_twice_frees_its_slot_once() {
-		// A forward read once for the whole diff still finds a row the diff already removed, so a second
-		// copy would free a second slot.
+	fn a_remove_naming_a_row_twice_releases_it_once() {
+		// A second copy of the remove would lower the count for a row that is already gone.
 		let (engine, mut op, _) = stored_three(false);
 		counted(&engine, &mut op, Diff::remove(single_rows(&[(1, 1), (1, 1)])));
 
@@ -1869,7 +1866,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_insert_before_a_remove_in_one_change_evicts_before_the_remove_frees() {
+	fn an_insert_before_a_remove_in_one_change_evicts_before_the_remove_makes_room() {
 		// Diffs apply in arrival order, otherwise a batch keeps a row its ops sent one by one would evict.
 		let engine = TestEngine::new();
 		let mut op = build_capped(false, 2);
@@ -1942,26 +1939,42 @@ mod tests {
 	}
 
 	#[test]
-	fn a_capacity_push_out_overwrites_the_oldest_slot_in_place() {
-		// A remove plus a set on a fresh key is the remove + insert pair downstream joins paid for four times.
+	fn a_capacity_push_out_removes_the_oldest_row_and_sets_a_fresh_key() {
+		// A victim removed without an announce would leave a row past capacity in every downstream view.
 		let txn = push_out(1, &[("", 1)]);
 		let writes = row_writes(&txn);
-		assert_eq!(writes.len(), 1, "a push-out writes exactly one row key: {writes:?}");
-		assert!(matches!(writes[0].1, PendingWrite::Set(_)), "the write is a set, not a remove: {writes:?}");
+		assert_eq!(writes.len(), 2, "a push-out removes the victim and sets the new row: {writes:?}");
 		assert_eq!(
 			writes[0].0,
 			TaggedKey::Row(RowKey {
 				storage: RB,
 				row: RowNumber(1),
 			}),
-			"the new row keeps the evicted row's slot"
+			"the victim is removed under its own key"
 		);
+		assert!(
+			matches!(
+				writes[0].1,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Announced
+				}
+			),
+			"the victim's remove is announced: {writes:?}"
+		);
+		assert_eq!(
+			writes[1].0,
+			TaggedKey::Row(RowKey {
+				storage: RB,
+				row: RowNumber(2),
+			}),
+			"the new row gets a fresh row number"
+		);
+		assert!(matches!(writes[1].1, PendingWrite::Set(_)), "the new row is a set: {writes:?}");
 	}
 
 	#[test]
 	fn a_capacity_push_out_announces_a_remove_of_the_oldest_row_and_an_insert() {
-		// Announced as one update, a sealed oldest row takes the new row down with it downstream; evicting the
-		// newest slot would retract a row readers still expect.
+		// Announced as one update, a sealed oldest row would take the new row down with it downstream.
 		let mut txn = push_out(3, &[("", 1), ("", 2), ("", 3)]);
 		let emitted = txn.take_emits(ViewId(1));
 		assert_eq!(emitted.len(), 2, "a remove then an insert per push-out: {emitted:?}");
@@ -1989,9 +2002,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_late_remove_of_an_evicted_source_row_leaves_the_new_occupant() {
-		// A forward kept across the overwrite would let the old source row's remove delete the row now in its
-		// slot.
+	fn a_late_remove_of_an_evicted_source_row_leaves_the_new_row() {
+		// A forward kept past its eviction leaks state and lets a late remove reach a row it does not own.
 		let engine = TestEngine::new();
 		let mut op = build_capped_op(1);
 		counted(&engine, &mut op, Diff::insert(single_rows(&[(10, 1)])));
@@ -2002,8 +2014,8 @@ mod tests {
 		assert_eq!(metadata(&engine, &[]).unwrap().count, 1, "the new occupant survives");
 		assert_eq!(forward_count(&engine, &op), 1, "only the occupant's forward remains");
 		let mut txn = deferred_txn(&engine);
-		let stored = txn.get(&[RowKey::encoded(RB, RowNumber(1))]).unwrap().pop().flatten();
-		assert!(stored.is_some(), "the slot still holds the new row");
+		let stored = txn.get(&[RowKey::encoded(RB, RowNumber(2))]).unwrap().pop().flatten();
+		assert!(stored.is_some(), "the new row is still stored");
 	}
 
 	fn row_removes_of_a_ttl_expiry(ttl_eviction: EvictionVisibility) -> Vec<PendingWrite> {

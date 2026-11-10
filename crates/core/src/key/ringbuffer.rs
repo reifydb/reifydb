@@ -13,10 +13,9 @@ use crate::{
 		storage::StorageId,
 	},
 	key::{
-		any::{Field, KeyFields, RawEncoding, TaggedKey, Width},
+		any::{Field, KeyFields, RawEncoding, Width},
 		bound::{TaggedKeyBoundRange, object_fields},
 		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
-		typed::direction::Asc,
 	},
 };
 
@@ -82,108 +81,6 @@ impl RingBufferMetadataKey {
 			)))),
 			_ => None,
 		}
-	}
-
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = RingBufferOrder)]
-pub struct RingBufferOrderKey {
-	pub storage: StorageId,
-	pub sequence: Asc<u64>,
-}
-
-impl RingBufferOrderKey {
-	pub fn new(storage: impl Into<StorageId>, sequence: u64) -> Self {
-		Self {
-			storage: storage.into(),
-			sequence: Asc(sequence),
-		}
-	}
-
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = PartitionedRingBufferOrder)]
-pub struct PartitionedRingBufferOrderKey {
-	pub storage: StorageId,
-	pub partition: Partition,
-	pub sequence: Asc<u64>,
-}
-
-impl PartitionedRingBufferOrderKey {
-	pub fn new(storage: impl Into<StorageId>, partition: Partition, sequence: u64) -> Self {
-		Self {
-			storage: storage.into(),
-			partition,
-			sequence: Asc(sequence),
-		}
-	}
-
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
-	}
-
-	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(
-			Self::TAG,
-			object_fields(ObjectId::from(storage.into()))
-				.into_iter()
-				.chain([Field::UDesc(Width::U128, partition.0)])
-				.collect::<Vec<_>>(),
-		)
-	}
-}
-
-pub fn ring_order_key(storage: impl Into<StorageId>, partition: Option<Partition>, sequence: u64) -> TaggedKey {
-	match partition {
-		None => RingBufferOrderKey::new(storage, sequence).into(),
-		Some(partition) => PartitionedRingBufferOrderKey::new(storage, partition, sequence).into(),
-	}
-}
-
-pub fn ring_order_range(storage: impl Into<StorageId>, partition: Option<Partition>) -> TaggedKeyBoundRange {
-	match partition {
-		None => RingBufferOrderKey::full_scan_for_storage(storage),
-		Some(partition) => PartitionedRingBufferOrderKey::partition_range(storage, partition),
-	}
-}
-
-pub fn ring_order_sequence(key: &TaggedKey) -> Option<u64> {
-	match key {
-		TaggedKey::RingBufferOrder(key) => Some(key.sequence.0),
-		TaggedKey::PartitionedRingBufferOrder(key) => Some(key.sequence.0),
-		_ => None,
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = RingBufferFree)]
-pub struct RingBufferFreeKey {
-	pub storage: StorageId,
-	pub page: Asc<u64>,
-	pub encoded_partition: Vec<u8>,
-}
-
-impl RingBufferFreeKey {
-	pub fn of(storage: impl Into<StorageId>, partition: Option<Partition>, page: u64) -> Self {
-		Self {
-			storage: storage.into(),
-			page: Asc(page),
-			encoded_partition: partition
-				.map(|partition| partition.0.to_be_bytes().to_vec())
-				.unwrap_or_default(),
-		}
-	}
-
-	pub fn encoded_of(storage: impl Into<StorageId>, partition: Option<Partition>, page: u64) -> EncodedKey {
-		Self::of(storage, partition, page).encode()
 	}
 
 	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
