@@ -91,6 +91,10 @@ where
 	fn finalize(&self) -> Option<BTreeMap<K, V>> {
 		(!self.map.is_empty()).then(|| self.map.entries().clone())
 	}
+
+	fn rows(&self) -> Option<u64> {
+		Some(self.map.len() as u64)
+	}
 }
 
 impl<K, V> MergeAccumulator for RetainedAccumulator<K, V>
@@ -157,6 +161,10 @@ mod tests {
 
 		fn finalize(&self) -> Option<i64> {
 			self.retained.entries().last_key_value().map(|(_, v)| *v)
+		}
+
+		fn rows(&self) -> Option<u64> {
+			Some(self.retained.len() as u64)
 		}
 	}
 

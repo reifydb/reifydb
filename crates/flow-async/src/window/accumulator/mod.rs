@@ -85,6 +85,10 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCode
 	fn remove(&mut self, contributions: Slice<'_, Self>);
 
 	fn finalize(&self) -> Option<Self::Output>;
+
+	fn rows(&self) -> Option<u64> {
+		None
+	}
 }
 
 pub fn one<X: Contributions>(item: X::Item) -> X {
@@ -221,9 +225,12 @@ impl<A> CountedAccumulator<A> {
 		self.live == 0
 	}
 
-	pub fn merge_by(&mut self, other: &Self, merge: fn(&mut A, &A)) {
+	pub fn merge_by(&mut self, other: &Self, merge: fn(&mut A, &A))
+	where
+		A: WindowAccumulator,
+	{
 		merge(&mut self.acc, &other.acc);
-		self.live += other.live;
+		self.sync(self.live + other.live);
 	}
 
 	pub fn compact_by(&mut self, compact: fn(&mut A)) {
@@ -246,12 +253,16 @@ impl<A: WindowAccumulator> CountedAccumulator<A> {
 		applied
 	}
 
+	fn sync(&mut self, events: u64) {
+		self.live = self.acc.rows().unwrap_or(events);
+	}
+
 	fn add_run(&mut self, run: Slice<'_, A>) -> Applied {
 		if run.is_empty() {
 			return Applied::default();
 		}
 		self.acc.add(run);
-		self.live += run.len() as u64;
+		self.sync(self.live + run.len() as u64);
 		Applied {
 			touched: true,
 			dropped: 0,
@@ -262,7 +273,7 @@ impl<A: WindowAccumulator> CountedAccumulator<A> {
 		let cut = run.len().min(usize::try_from(self.live).unwrap_or(usize::MAX));
 		if cut > 0 {
 			self.acc.remove(run.range(0..cut));
-			self.live -= cut as u64;
+			self.sync(self.live - cut as u64);
 		}
 		Applied {
 			touched: cut > 0,
@@ -326,8 +337,9 @@ where
 {
 	fn unmerge(&mut self, other: &Self) {
 		self.acc.unmerge(&other.acc);
-		self.live = self.live.checked_sub(other.live).unwrap_or_else(|| {
+		let events = self.live.checked_sub(other.live).unwrap_or_else(|| {
 			panic!("CountedAccumulator unmerge of {} live rows from {} live rows", other.live, self.live)
 		});
+		self.sync(events);
 	}
 }
