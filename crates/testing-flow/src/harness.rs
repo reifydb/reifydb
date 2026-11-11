@@ -17,7 +17,10 @@ use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	delta::RemoveVisibility,
 	interface::change::Change,
-	key::{any::TaggedKey, operator::state::OperatorStateKey},
+	key::{
+		any::TaggedKey,
+		operator::state::{KeyspaceId, OperatorStateKey},
+	},
 	state::timer::TimerKind,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -68,6 +71,7 @@ pub struct Harness<O> {
 	pending: Pending,
 	substrate: FlowSubstrate,
 	catalog: Catalog,
+	flow_watermark: Option<DateTime>,
 }
 
 impl<O> Harness<O> {
@@ -97,7 +101,12 @@ impl<O> Harness<O> {
 			pending: Pending::new(),
 			substrate,
 			catalog: Catalog::testing(),
+			flow_watermark: None,
 		}
+	}
+
+	pub fn set_flow_watermark(&mut self, at: DateTime) {
+		self.flow_watermark = Some(at);
 	}
 
 	pub fn operator(&self) -> &O {
@@ -130,6 +139,9 @@ impl<O> Harness<O> {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(at),
 		});
+		if let Some(watermark) = self.flow_watermark {
+			txn.set_flow_watermark(watermark);
+		}
 		txn
 	}
 
@@ -257,6 +269,11 @@ impl<O: HostOperator> Harness<O> {
 			.collect::<Result<Vec<_>>>()?;
 		let mut footprint = StateFootprint::default();
 		for item in &items {
+			if let TaggedKey::OperatorState(state) = &item.key
+				&& state.keyspace == KeyspaceId::TUMBLING_EXPIRY
+			{
+				footprint.expiring_windows += 1;
+			}
 			match &item.key {
 				TaggedKey::OperatorState(state) if state.keyspace.is_identity() => {
 					footprint.identity_rows += 1

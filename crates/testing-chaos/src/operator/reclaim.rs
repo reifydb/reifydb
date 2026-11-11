@@ -8,6 +8,8 @@ pub struct StateFootprint {
 	pub node_scoped_data_rows: usize,
 
 	pub identity_rows: usize,
+
+	pub expiring_windows: usize,
 }
 
 impl StateFootprint {
