@@ -2,9 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod hooks;
+pub mod publish;
 pub mod route;
 pub mod rows;
 pub mod runner;
 pub mod seal;
+pub mod session;
 pub mod store;
 pub mod tumbling;

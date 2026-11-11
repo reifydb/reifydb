@@ -3,8 +3,11 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::key::encoded::EncodedKeyBuilder;
-use reifydb_core::{common::WindowSizeDomain, error::CoreError, metrics::heap::HeapSize, operator_with::ApplyWith};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyBuilder};
+use reifydb_core::{
+	common::WindowSizeDomain, error::CoreError, metrics::heap::HeapSize, operator_with::ApplyWith,
+	state::timer::TimerMove,
+};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -200,6 +203,15 @@ impl SealDomain for U8Coord {
 		_after: Option<u64>,
 	) -> Result<()> {
 		Ok(())
+	}
+
+	fn seal_move(
+		_seal_span: RowSpan,
+		_key: EncodedKey,
+		_before: Option<u64>,
+		_after: Option<u64>,
+	) -> Option<TimerMove> {
+		None
 	}
 
 	fn arm_reap(_store: &mut dyn WindowStore, _fired: DateTime, _seal_span: RowSpan) -> Result<()> {

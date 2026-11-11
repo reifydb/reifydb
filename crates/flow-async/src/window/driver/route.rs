@@ -25,7 +25,7 @@ pub struct Routed<G, C, X> {
 	pub window_max_coord: HashMap<(G, WindowSpan<C>), C>,
 }
 
-struct Routing<G, C: Coord, X> {
+pub(crate) struct Routing<G, C: Coord, X> {
 	size: C::Span,
 	slide: Option<C::Span>,
 	index: HashMap<(G, WindowSpan<C>), usize>,
@@ -64,7 +64,23 @@ where
 		Ok(())
 	}
 
-	fn push_span(&mut self, op: AccumulatorOp, group: &G, coord: C, span: WindowSpan<C>, contribution: &X::Item) {
+	pub(crate) fn sessions(gap: C::Span) -> Self {
+		Self {
+			size: gap,
+			slide: None,
+			index: HashMap::new(),
+			windows: Vec::new(),
+		}
+	}
+
+	pub(crate) fn push_span(
+		&mut self,
+		op: AccumulatorOp,
+		group: &G,
+		coord: C,
+		span: WindowSpan<C>,
+		contribution: &X::Item,
+	) {
 		let key = (group.clone(), span);
 		let at = match self.index.entry(key.clone()) {
 			Entry::Occupied(slot) => *slot.get(),
@@ -159,7 +175,7 @@ where
 		Ok(())
 	}
 
-	fn finish(self) -> Routed<G, C, X> {
+	pub(crate) fn finish(self) -> Routed<G, C, X> {
 		let mut routed = Routed {
 			buckets: TumblingBuckets::new(),
 			arrival: Vec::with_capacity(self.windows.len()),

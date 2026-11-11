@@ -25,6 +25,7 @@ use crate::{
 		accumulator::WindowAccumulator,
 		driver::{
 			hooks::{WindowEmits, WindowHooks},
+			publish::publish,
 			route::Routed,
 		},
 		engine::{EmitKind, ExpiryAnchor, WindowReindex, tumbling::TumblingEngine},
@@ -165,12 +166,7 @@ where
 			EmitKind::Remove => None,
 			EmitKind::Insert | EmitKind::Update => hooks.build(&r.group, r.span, &r.value),
 		};
-		match (pre, post) {
-			(None, Some(post)) => emits.inserts.push((r.row_number, time, post)),
-			(Some(pre), Some(post)) => emits.updates.push((r.row_number, time, pre, post)),
-			(Some(pre), None) => emits.removes.push((r.row_number, time, pre)),
-			(None, None) => {}
-		}
+		publish(&mut emits, r.row_number, time, pre, post);
 	}
 	hooks.emit(emits)
 }

@@ -13,23 +13,13 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{
-		aggregation::core::SlotRow,
 		host::HostContext,
-		state::seal::{
-			coord::Coord,
-			gate::SealGate,
-			ledger::FiredAt,
-			rule::{SealRule, SealedThrough},
-		},
+		state::seal::{coord::Coord, ledger::FiredAt, rule::SealedThrough},
 	},
 	window::{
 		coord::DateTimeCoord,
-		kind::session::{
-			SessionKind,
-			open::{Member, OpenSession, OpenSessions, SessionIds},
-		},
+		kind::session::open::{Member, OpenSession, OpenSessions, SessionIds},
 		meta::OpenSessionsState,
-		mint::Mint,
 	},
 };
 
@@ -42,14 +32,6 @@ impl WindowOperator {
 			} => *gap,
 			_ => Duration::default(),
 		}
-	}
-
-	pub(super) fn session_kind(&self) -> SessionKind {
-		SessionKind::with_gap(self.session_gap())
-	}
-
-	pub(super) fn session_rule(&self) -> SealRule {
-		self.session_kind().seal_rule(self.lateness().unwrap_or_else(Duration::zero))
 	}
 
 	pub(super) fn load_open_sessions(
@@ -101,95 +83,8 @@ impl WindowOperator {
 		self.meta_slot().save_open_sessions(store, states)
 	}
 
-	pub(super) fn load_session_member(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		session_id: u64,
-		row_number: RowNumber,
-	) -> Result<SlotRow> {
-		self.meta_slot().load_session_member(store, GroupId::window(group_hash, session_id), row_number)
-	}
-
-	pub(super) fn drop_session_trackers(
-		&mut self,
-		host: &mut dyn HostContext,
-		group_hashes: &[Hash128],
-	) -> Result<()> {
-		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
-		self.meta_slot().drop_sessions(host, &groups)
-	}
-
 	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {
 		GroupId::hashed(partition)
-	}
-
-	pub fn store_row_index(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		row_number: RowNumber,
-		window_id: u64,
-	) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).record_membership(store, group, row_number, window_id)
-	}
-
-	pub(super) fn withdraw_row_index(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		row_number: RowNumber,
-		window_id: u64,
-	) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).withdraw_membership(store, group, row_number, window_id)
-	}
-
-	pub(super) fn lookup_row_index(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		row_number: RowNumber,
-	) -> Result<Vec<u64>> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).membership(store, group, row_number)
-	}
-
-	pub(super) fn drop_row_index(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		row_number: RowNumber,
-	) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).drop_membership(store, group, row_number)
-	}
-
-	pub(super) fn store_session_member(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		session_id: u64,
-		row_number: RowNumber,
-		member: &SlotRow,
-	) -> Result<()> {
-		self.meta_slot().store_session_member(
-			store,
-			GroupId::window(group_hash, session_id),
-			row_number,
-			member,
-		)
-	}
-
-	pub(super) fn drop_session_member(
-		&mut self,
-		store: &mut dyn StateStore,
-		group_hash: Hash128,
-		session_id: u64,
-		row_number: RowNumber,
-	) -> Result<()> {
-		self.meta_slot().drop_session_member(store, GroupId::window(group_hash, session_id), row_number)
 	}
 
 	pub(super) fn seal_ledger(&mut self, host: &mut dyn HostContext) -> Result<SealedThrough> {
@@ -198,12 +93,6 @@ impl WindowOperator {
 
 	pub(super) fn advance_seal_ledger(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
 		self.meta_slot().advance_seal_ledger(host, fired.at().to_order())
-	}
-
-	pub(super) fn seal_gate(&mut self, host: &mut dyn HostContext, rule: SealRule) -> Result<SealGate> {
-		let watermark = host.flow_watermark()?;
-		let ledger = self.seal_ledger(host)?;
-		Ok(SealGate::new(rule, Some(ledger), watermark))
 	}
 }
 

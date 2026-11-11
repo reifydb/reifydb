@@ -71,7 +71,6 @@ pub struct WindowOperator {
 	pub immutable: Option<Duration>,
 	sealed_drops: DropCounter,
 	stale_retractions: DropCounter,
-	refused_rows: DropCounter,
 	rolling_engine: Option<Box<NativePaneEngine>>,
 	pub(super) runner: Option<WindowRunner<DateTimeCoord>>,
 	meta: WindowMeta,
@@ -130,6 +129,14 @@ impl WindowOperator {
 				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
 				&WindowEngineConfig::builder().build(),
 			)),
+			WindowKind::Session {
+				gap,
+			} => Some(WindowRunner::sessions(
+				config.operator,
+				*gap,
+				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				&WindowEngineConfig::builder().build(),
+			)),
 			_ => None,
 		};
 		Ok(Self {
@@ -139,7 +146,6 @@ impl WindowOperator {
 			immutable: config.immutable,
 			sealed_drops: DropCounter::new(config.operator, "mutations targeting sealed windows"),
 			stale_retractions: DropCounter::new(config.operator, "updates/removes past immutable"),
-			refused_rows: DropCounter::new(config.operator, "session rows refused by assignment"),
 			rolling_engine: None,
 			runner,
 			meta: WindowMeta::new(),
@@ -172,10 +178,6 @@ impl WindowOperator {
 
 	pub(crate) fn note_stale_retractions(&self, dropped: u64) {
 		self.stale_retractions.note(dropped);
-	}
-
-	pub(crate) fn note_refused_rows(&self, refused: u64) {
-		self.refused_rows.note(refused);
 	}
 
 	pub fn size_duration(&self) -> Option<Duration> {

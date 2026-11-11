@@ -1,56 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet, hash_map::Entry},
-	slice::from_ref,
-};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use arrow_array::RecordBatch;
-use reifydb_core::{
-	interface::change::{Change, Diff},
-	internal_err,
-	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
-};
-use reifydb_flow::aggregate::SlotKind;
+use reifydb_core::key::operator::state::GroupId;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration, system_columns::require_row_numbers},
+	value::{Value, datetime::DateTime, system_columns::require_row_numbers},
 };
 use tracing::instrument;
 
 use super::{
-	accumulator::{RowAccumulator, SlotContributions, WindowSlotKey},
-	core::{Aggregation, EmitRow, SlotRow},
+	accumulator::{SlotContributions, WindowSlotKey},
+	core::{Aggregation, SlotRow},
 };
-use crate::{
-	operator::{
-		host::HostContext,
-		state::{seal::coord::Coord, store},
-		state_access::{get_classified, remove, set},
-	},
-	window::{
-		accumulator::{AccumulatorEvents, AccumulatorOp},
-		coord::DateTimeCoord,
-		engine::{
-			EmitKind, ExpiryAnchor, WindowReindex,
-			config::WindowEngineConfig,
-			tumbling::{TumblingBuckets, TumblingEngine},
-		},
-		meta::{EngineMeta, EngineMetaKey, SessionKey, SessionState},
-		prefetch::Prefetched,
-		span::WindowSpan,
-	},
+use crate::window::{
+	accumulator::{AccumulatorEvents, AccumulatorOp},
+	coord::DateTimeCoord,
+	engine::tumbling::TumblingBuckets,
+	span::WindowSpan,
 };
 
 pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTimeCoord, SlotContributions>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
-
-pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTimeCoord, DateTimeCoord)>;
-
-pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTimeCoord>), Option<EngineMeta>>;
 
 type WindowKey = (Hash128, WindowSpan<DateTimeCoord>);
 
@@ -124,10 +99,6 @@ impl Routing {
 	}
 }
 
-fn prior_engine_meta(gated: &GatedMeta, window: &(Hash128, WindowSpan<DateTimeCoord>)) -> Option<EngineMeta> {
-	gated.get(window).cloned().expect("the seal gate reads the engine meta of every session window it admits")
-}
-
 #[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
 pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
 	windows.iter().map(|&(p, w)| ((p, w), GroupId::window(p, w))).collect()
@@ -197,188 +168,6 @@ where
 	Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-#[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
-pub(crate) fn finish_tumbling_engine(
-	core: &mut Aggregation,
-	host: &mut dyn HostContext,
-	change: &Change,
-	buckets: EngineBuckets,
-	group_values: &HashMap<Hash128, Vec<Value>>,
-	arrival: Vec<(Hash128, WindowSpan<DateTimeCoord>)>,
-	window_max_coord: HashMap<(Hash128, WindowSpan<DateTimeCoord>), DateTimeCoord>,
-	groups: &WindowGroups,
-	kinds: &[SlotKind],
-	engine_config: WindowEngineConfig,
-	immutable: Option<Duration>,
-	anchor: ExpiryAnchor,
-	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] indexed_retractions: bool,
-	gap: Duration,
-	bounds: &SessionBounds,
-	gated: &GatedMeta,
-) -> Result<Vec<Diff>> {
-	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
-	});
-	let results = engine.apply(
-		host,
-		buckets,
-		&arrival,
-		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), store::empty_key()),
-		|| RowAccumulator::new(kinds, immutable),
-	)?;
-	reifydb_assertions! {
-		let dropped = engine.dropped_retractions();
-		assert!(
-			!indexed_retractions || dropped == 0,
-			"a retraction resolved through the row index must find the state it addresses; dropping \
-			 it against an empty accumulator means the row index outlived the window it points at, \
-			 so the withdrawal is lost and the window publishes its pre-retraction value forever \
-			 (dropped={dropped})"
-		);
-	}
-
-	let keys: Vec<GroupStateKey> = results
-		.iter()
-		.map(|r| (&SessionKey(group_of(groups, r.group, r.span.start.to_order()))).into_group_state_key())
-		.collect();
-	let gone = |hash: Hash128, window_start: u64| !bounds.contains_key(&(hash, window_start));
-	let mut store = Prefetched::read(host, keys)?;
-	let empty_key = store::empty_key();
-	let mut reindexed = Vec::with_capacity(arrival.len());
-	let mut spans = Vec::with_capacity(results.len());
-	for r in &results {
-		let group = group_of(groups, r.group, r.span.start.to_order());
-		let window_start = r.span.start.to_order();
-		let prior_meta = prior_engine_meta(gated, &(r.group, r.span));
-		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
-		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		match r.kind {
-			EmitKind::Remove => {
-				if gone(r.group, window_start) {
-					reindexed.push(WindowReindex {
-						group: &r.group,
-						window_start: r.span.start,
-						id: group,
-						slot_key: &empty_key,
-						prior: prior_index,
-						new: None,
-					});
-				}
-			}
-			EmitKind::Insert | EmitKind::Update => {
-				let batch_max = window_max_coord.get(&(r.group, r.span)).map(|ts| ts.to_order());
-				let last_event_time = prior_last.max(batch_max);
-				let new_index = anchor.of(window_start, last_event_time);
-				reindexed.push(WindowReindex {
-					group: &r.group,
-					window_start: r.span.start,
-					id: group,
-					slot_key: &empty_key,
-					prior: prior_index,
-					new: new_index,
-				});
-				let meta = EngineMeta {
-					last_event_time: last_event_time.unwrap_or_default(),
-				};
-				set(&mut store, vec![(EngineMetaKey(group), meta)])?;
-			}
-		}
-		spans.push({
-			let stored =
-				get_classified::<_, SessionState>(&mut store, from_ref(&SessionKey(group)))?.remove(0);
-			let first = stored.as_ref().map(|state| state.first_time);
-			let before = stored.map(|state| {
-				(
-					<DateTimeCoord as Coord>::from_order(state.session_start),
-					<DateTimeCoord as Coord>::from_order(state.last_event_time),
-				)
-			});
-			let now = bounds.get(&(r.group, window_start)).copied().or(before);
-			let pre = match r.kind {
-				EmitKind::Insert => now,
-				EmitKind::Update | EmitKind::Remove => before,
-			};
-			let (Some(pre), Some(now)) = (pre, now) else {
-				panic!("session {window_start}: a published session window has no bounds record");
-			};
-			match r.kind {
-				EmitKind::Remove => remove(&mut store, from_ref(&SessionKey(group)))?,
-				EmitKind::Insert | EmitKind::Update => set(
-					&mut store,
-					vec![(
-						SessionKey(group),
-						SessionState {
-							session_id: window_start,
-							last_event_time: now.1.to_order(),
-							session_start: now.0.to_order(),
-							first_time: first.unwrap_or(now.0.0),
-						},
-					)],
-				)?,
-			}
-			let span = |(start, last): (DateTimeCoord, DateTimeCoord)| WindowSpan {
-				start,
-				end: last.add_span(gap),
-			};
-			(span(pre), span(now))
-		});
-	}
-	let published: HashSet<(Hash128, WindowSpan<DateTimeCoord>)> =
-		results.iter().map(|r| (r.group, r.span)).collect();
-	for (hash, span) in arrival.iter().filter(|key| !published.contains(key)) {
-		let group = group_of(groups, *hash, span.start.to_order());
-		let window_start = span.start.to_order();
-		let prior_meta = prior_engine_meta(gated, &(*hash, *span));
-		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
-		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		let batch_max = window_max_coord.get(&(*hash, *span)).map(|ts| ts.to_order());
-		let last_event_time = prior_last.max(batch_max);
-		let new_index = match gone(*hash, window_start) {
-			true => None,
-			false => anchor.of(window_start, last_event_time),
-		};
-		reindexed.push(WindowReindex {
-			group: hash,
-			window_start: span.start,
-			id: group,
-			slot_key: &empty_key,
-			prior: prior_index,
-			new: new_index,
-		});
-		let meta = EngineMeta {
-			last_event_time: last_event_time.unwrap_or_default(),
-		};
-		set(&mut store, vec![(EngineMetaKey(group), meta)])?;
-	}
-	engine.reindex_windows(&mut store, &reindexed)?;
-	store.write()?;
-	*core.tumbling_engine_slot() = Some(engine);
-
-	let mut inserts = Vec::new();
-	let mut updates = Vec::new();
-	let mut removes = Vec::new();
-	for (r, (pre_span, post_span)) in results.into_iter().zip(spans) {
-		let Some(group_values) = group_values.get(&r.group).cloned() else {
-			return internal_err!("window result for group {:?} has no routed group values", r.group);
-		};
-		let emit = |slot_values: Vec<Value>, span: WindowSpan<DateTimeCoord>| EmitRow {
-			group_values: group_values.clone(),
-			slot_values,
-			row_number: r.row_number,
-			span: Some(span),
-			time: None,
-		};
-		let pre_values = r.prior.clone().unwrap_or_else(|| r.value.clone());
-		match r.kind {
-			EmitKind::Insert => inserts.push(emit(r.value, post_span)),
-			EmitKind::Update => updates.push((emit(pre_values, pre_span), emit(r.value, post_span))),
-			EmitKind::Remove => removes.push(emit(pre_values, pre_span)),
-		}
-	}
-	core.emit_diffs(inserts, updates, removes, change.changed_at)
-}
-
 #[cfg(test)]
 mod tests {
 	use reifydb_core::key::operator::state::GroupId;
@@ -422,7 +211,10 @@ mod tests {
 
 #[cfg(test)]
 mod bucket_start_tests {
+	use reifydb_value::value::duration::Duration;
+
 	use super::*;
+	use crate::operator::state::seal::coord::Coord;
 
 	fn order(millis: i64) -> u64 {
 		DateTime::from_epoch_millis(millis).unwrap().to_order()

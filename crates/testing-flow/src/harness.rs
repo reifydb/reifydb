@@ -63,6 +63,14 @@ use reifydb_value::{
 };
 use reifydb_wal::lsn::Lsn;
 
+const SESSION_KEYSPACES: [KeyspaceId; 5] = [
+	KeyspaceId::SESSION,
+	KeyspaceId::SESSION_MEMBER,
+	KeyspaceId::ROW_INDEX,
+	KeyspaceId::GUEST_RUNNING,
+	KeyspaceId::GUEST_BUFFER,
+];
+
 pub struct Harness<O> {
 	engine: TestEngine,
 	operator: O,
@@ -273,6 +281,11 @@ impl<O: HostOperator> Harness<O> {
 				&& state.keyspace == KeyspaceId::TUMBLING_EXPIRY
 			{
 				footprint.expiring_windows += 1;
+			}
+			if let TaggedKey::OperatorState(state) = &item.key
+				&& SESSION_KEYSPACES.contains(&state.keyspace)
+			{
+				footprint.session_rows += 1;
 			}
 			match &item.key {
 				TaggedKey::OperatorState(state) if state.keyspace.is_identity() => {

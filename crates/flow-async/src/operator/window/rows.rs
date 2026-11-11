@@ -8,7 +8,11 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	internal_err,
 };
-use reifydb_value::{Result, util::hash::Hash128, value::Value};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{Value, row_number::RowNumber, system_columns::row_numbers},
+};
 
 use crate::{
 	operator::{
@@ -24,6 +28,7 @@ use crate::{
 pub struct BuiltinRows<'a> {
 	operator: &'a WindowOperator,
 	change: &'a Change,
+	numbered: bool,
 	group_values: HashMap<Hash128, Vec<Value>>,
 }
 
@@ -32,7 +37,15 @@ impl<'a> BuiltinRows<'a> {
 		Self {
 			operator,
 			change,
+			numbered: true,
 			group_values: HashMap::new(),
+		}
+	}
+
+	pub fn sessions(operator: &'a WindowOperator, change: &'a Change) -> Self {
+		Self {
+			numbered: false,
+			..Self::new(operator, change)
 		}
 	}
 
@@ -49,16 +62,25 @@ impl<'a> BuiltinRows<'a> {
 			return WindowColumns::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
 		}
 		let times = self.operator.row_times(batch, row_count)?;
-		let numbers = required_row_numbers(batch)?;
+		let numbers: Vec<Option<RowNumber>> = match self.numbered {
+			true => required_row_numbers(batch)?.iter().copied().map(Some).collect(),
+			false => {
+				let numbers = row_numbers(batch)?;
+				(0..row_count).map(|row| numbers.get(row).copied()).collect()
+			}
+		};
 		let groups = self.operator.core.compute_groups(batch)?;
 		let slot_cols = self.operator.core.evaluate_slot_inputs(batch)?;
 		let views = self.operator.core.slot_views(batch, &slot_cols)?;
 		let contributions = times
 			.iter()
-			.zip(numbers)
+			.zip(&numbers)
 			.enumerate()
 			.map(|(row, (time, number))| {
-				(slot_coord(DateTimeCoord(*time), number.0), views.contribution(row, *time))
+				(
+					slot_coord(DateTimeCoord(*time), number.map_or(0, |number| number.0)),
+					views.contribution(row, *time),
+				)
 			})
 			.collect();
 		for (hash, values) in groups.values {
@@ -66,7 +88,7 @@ impl<'a> BuiltinRows<'a> {
 		}
 		WindowColumns::new(
 			(0..row_count).collect(),
-			numbers.iter().copied().map(Some).collect(),
+			numbers,
 			groups.hashes,
 			times.into_iter().map(|time| Some(DateTimeCoord(time))).collect(),
 			contributions,

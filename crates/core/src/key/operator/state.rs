@@ -390,7 +390,7 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
-const WINDOWED_KEYSPACES: [KeyspaceId; 14] = [
+const WINDOWED_KEYSPACES: [KeyspaceId; 17] = [
 	KeyspaceId::GUEST_ACCUMULATOR,
 	KeyspaceId::GUEST_BUFFER,
 	KeyspaceId::GUEST_RUNNING,
@@ -405,6 +405,9 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 14] = [
 	KeyspaceId::ROLLING_META,
 	KeyspaceId::ROLLING_PANE,
 	KeyspaceId::ENGINE_META,
+	KeyspaceId::SESSION,
+	KeyspaceId::SESSION_MEMBER,
+	KeyspaceId::ROW_INDEX,
 ];
 
 const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;

@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize, WindowSizeDomain},
 	error::CoreError,
 	operator_with::{ApplyWith, WindowKnobs},
-	state::timer::TimerKind,
+	state::timer::{TimerKind, TimerMove},
 };
 use reifydb_value::{
 	Result,
@@ -18,7 +18,7 @@ use reifydb_value::{
 use crate::{
 	operator::state::seal::{
 		coord::Coord,
-		gate::{EvictionGate, rearm_seal},
+		gate::{EvictionGate, rearm_seal, seal_move},
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
@@ -58,6 +58,13 @@ pub trait SealDomain: Coord {
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()>;
+
+	fn seal_move(
+		seal_span: Self::SealSpan,
+		key: EncodedKey,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Option<TimerMove>;
 
 	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Self::SealSpan) -> Result<()>;
 
@@ -160,6 +167,15 @@ impl SealDomain for DateTimeCoord {
 		after: Option<u64>,
 	) -> Result<()> {
 		rearm_seal(store, SealRule::of(seal_span), &EncodedKey::new(Vec::new()), before, after)
+	}
+
+	fn seal_move(
+		seal_span: Duration,
+		key: EncodedKey,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Option<TimerMove> {
+		Some(seal_move(SealRule::of(seal_span), key, before, after))
 	}
 
 	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Duration) -> Result<()> {

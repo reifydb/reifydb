@@ -1,120 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{
-	collections::{HashMap, HashSet, hash_map::Entry},
-	slice::from_ref,
-};
-
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::WindowKind,
 	interface::change::{Change, Diff},
-	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
-	state::timer::{StateStore, TimerKind},
+	state::timer::TimerKind,
 };
-use reifydb_value::{
-	Result,
-	util::hash::Hash128,
-	value::{Value, duration::Duration, row_number::RowNumber},
-};
+use reifydb_value::{Result, util::hash::Hash128, value::duration::Duration};
 use tracing::instrument;
 
-use super::{
-	hooks::BuiltinHooks,
-	operator::{WindowOperator, required_row_numbers},
-	rows::BuiltinRows,
-};
+use super::{hooks::BuiltinHooks, operator::WindowOperator, rows::BuiltinRows};
 use crate::{
 	operator::{
-		aggregation::{
-			accumulator::{RowAccumulator, WindowSlotKey},
-			core::{BatchGroups, SlotRow},
-			engine::{
-				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, WindowGroups,
-				finish_tumbling_engine, group_of, intern_window_groups, slot_coord,
-			},
-		},
+		aggregation::accumulator::RowAccumulator,
 		host::HostContext,
-		state::{
-			reaper::drain_groups,
-			seal::{
-				coord::Coord,
-				gate::{SealGate, rearm_seal, seal_move},
-				ledger::FiredAt,
-				rule::{SealRule, SealedThrough},
-			},
-		},
-		state_access::get_classified,
+		state::seal::{gate::rearm_seal, ledger::FiredAt, rule::SealRule},
 	},
 	timer::Timer,
 	window::{
-		accumulator::AccumulatorOp,
 		coord::DateTimeCoord,
-		driver::seal::{reap, seal},
-		engine::{ExpiryAnchor, tumbling::TumblingEngine},
-		kind::{
-			ordinal_window_span,
-			session::open::{Insertion, Member, OpenSessions, Removal},
-		},
-		meta::{EngineMeta, EngineMetaKey, RowIndexKey, SessionKey, SessionMemberKey},
-		prefetch::Prefetched,
-		span::WindowSpan,
+		driver::{seal::reap, session::route_session},
+		engine::tumbling::TumblingEngine,
 	},
 };
-
-fn push_count_event(
-	routing: &mut Routing,
-	hash: Hash128,
-	gvals: &[Value],
-	span: WindowSpan<DateTimeCoord>,
-	coord: WindowSlotKey,
-	op: AccumulatorOp,
-	contribution: SlotRow,
-	event_coord: DateTimeCoord,
-) {
-	routing.push(hash, gvals, span, op, (coord, contribution), event_coord);
-}
-
-struct DiffGroups {
-	pre: BatchGroups,
-	post: BatchGroups,
-}
-
-fn count_routing_groups(operator: &WindowOperator, change: &Change) -> Result<Vec<DiffGroups>> {
-	let mut grouped = Vec::with_capacity(change.diffs.len());
-	for diff in change.diffs.iter() {
-		grouped.push(DiffGroups {
-			pre: diff.pre().map(|pre| operator.core.compute_groups(pre)).transpose()?.unwrap_or_default(),
-			post: diff
-				.post()
-				.map(|post| operator.core.compute_groups(post))
-				.transpose()?
-				.unwrap_or_default(),
-		});
-	}
-	Ok(grouped)
-}
-
-fn row_index_keys(operator: &WindowOperator, change: &Change, grouped: &[DiffGroups]) -> Result<Vec<GroupStateKey>> {
-	let mut keys = Vec::new();
-	for (diff, groups) in change.diffs.iter().zip(grouped) {
-		let pre_rows = match diff.pre() {
-			Some(pre) => required_row_numbers(pre)?,
-			None => &[],
-		};
-		for (hash, row_number) in groups.pre.hashes.iter().zip(pre_rows) {
-			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
-		}
-		let post_rows = match diff.post() {
-			Some(post) => required_row_numbers(post)?,
-			None => &[],
-		};
-		for (hash, row_number) in groups.post.hashes.iter().zip(post_rows) {
-			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
-		}
-	}
-	Ok(keys)
-}
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
 pub fn apply_tumbling_engine(
@@ -139,262 +46,6 @@ pub fn apply_tumbling_engine(
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs?, change.changed_at))
 }
 
-#[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
-fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTimeCoord>)]) -> WindowGroups {
-	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	intern_window_groups(&windows)
-}
-
-type SealedWindows = HashSet<(Hash128, WindowSpan<DateTimeCoord>)>;
-
-struct GroupSessions {
-	loaded_due: Option<u64>,
-	open: OpenSessions<DateTimeCoord>,
-}
-
-struct IndexEvent {
-	hash: Hash128,
-	row_number: RowNumber,
-	session_id: u64,
-	added: bool,
-}
-
-fn withdraw_sealed_admissions(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	events: &[IndexEvent],
-	sealed: &SealedWindows,
-) -> Result<()> {
-	let mut first_touch: HashMap<(Hash128, RowNumber, u64), bool> = HashMap::new();
-	for event in events {
-		if sealed.contains(&(event.hash, ordinal_window_span(event.session_id))) {
-			first_touch.entry((event.hash, event.row_number, event.session_id)).or_insert(event.added);
-		}
-	}
-	for ((hash, row_number, session_id), added) in first_touch {
-		if added {
-			operator.withdraw_row_index(host, hash, row_number, session_id)?;
-			operator.drop_session_member(host, hash, session_id, row_number)?;
-		}
-	}
-	Ok(())
-}
-
-fn earliest_due(open: &OpenSessions<DateTimeCoord>, gap: Duration) -> Option<u64> {
-	open.sessions()
-		.iter()
-		.map(|session| session.last)
-		.min()
-		.or(open.sealed_last())
-		.map(|last| last.0.saturating_add(gap).to_order())
-}
-
-fn group_sessions<'a>(
-	operator: &mut WindowOperator,
-	store: &mut dyn StateStore,
-	groups: &'a mut HashMap<Hash128, GroupSessions>,
-	hash: Hash128,
-	horizon: DateTimeCoord,
-	gap: Duration,
-) -> Result<&'a mut OpenSessions<DateTimeCoord>> {
-	if let Entry::Vacant(entry) = groups.entry(hash) {
-		let mut open = operator.load_open_sessions(store, hash)?;
-		let loaded_due = earliest_due(&open, gap);
-		for closed in open.close(horizon) {
-			for member in &closed.members {
-				operator.drop_session_member(store, hash, closed.id, member.row)?;
-				operator.withdraw_row_index(store, hash, member.row, closed.id)?;
-			}
-		}
-		entry.insert(GroupSessions {
-			loaded_due,
-			open,
-		});
-	}
-	Ok(&mut groups.get_mut(&hash).expect("the group was loaded above").open)
-}
-
-struct SessionPass<'a> {
-	routing: &'a mut Routing,
-	groups: &'a mut HashMap<Hash128, GroupSessions>,
-	index_events: &'a mut Vec<IndexEvent>,
-	horizon: DateTimeCoord,
-	gap: Duration,
-}
-
-impl SessionPass<'_> {
-	fn move_members(
-		&mut self,
-		operator: &mut WindowOperator,
-		store: &mut dyn StateStore,
-		hash: Hash128,
-		gvals: &[Value],
-		from: u64,
-		to: u64,
-		members: &[Member<DateTimeCoord>],
-	) -> Result<()> {
-		for member in members {
-			let slot = operator.load_session_member(store, hash, from, member.row)?;
-			let coord = slot_coord(member.at, member.row.0);
-			push_count_event(
-				self.routing,
-				hash,
-				gvals,
-				ordinal_window_span(from),
-				coord,
-				AccumulatorOp::Remove,
-				slot.clone(),
-				member.at,
-			);
-			push_count_event(
-				self.routing,
-				hash,
-				gvals,
-				ordinal_window_span(to),
-				coord,
-				AccumulatorOp::Add,
-				slot.clone(),
-				member.at,
-			);
-			operator.withdraw_row_index(store, hash, member.row, from)?;
-			operator.store_row_index(store, hash, member.row, to)?;
-			operator.drop_session_member(store, hash, from, member.row)?;
-			operator.store_session_member(store, hash, to, member.row, &slot)?;
-		}
-		Ok(())
-	}
-
-	fn admit(
-		&mut self,
-		operator: &mut WindowOperator,
-		store: &mut dyn StateStore,
-		hash: Hash128,
-		gvals: &[Value],
-		at: DateTimeCoord,
-		row: RowNumber,
-		contribution: SlotRow,
-	) -> Result<bool> {
-		let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
-		let target = match open.insert(at, row, self.horizon) {
-			Insertion::Refused => return Ok(false),
-			Insertion::Opened(id) | Insertion::Extended(id) => id,
-			Insertion::Merged {
-				survivor,
-				absorbed,
-			} => {
-				for session in &absorbed {
-					self.move_members(
-						operator,
-						store,
-						hash,
-						gvals,
-						session.id,
-						survivor,
-						&session.members,
-					)?;
-				}
-				survivor
-			}
-		};
-		operator.store_row_index(store, hash, row, target)?;
-		operator.store_session_member(store, hash, target, row, &contribution)?;
-		self.index_events.push(IndexEvent {
-			hash,
-			row_number: row,
-			session_id: target,
-			added: true,
-		});
-		push_count_event(
-			self.routing,
-			hash,
-			gvals,
-			ordinal_window_span(target),
-			slot_coord(at, row.0),
-			AccumulatorOp::Add,
-			contribution,
-			at,
-		);
-		Ok(true)
-	}
-
-	fn retract(
-		&mut self,
-		operator: &mut WindowOperator,
-		store: &mut dyn StateStore,
-		hash: Hash128,
-		gvals: &[Value],
-		at: DateTimeCoord,
-		row: RowNumber,
-		contribution: SlotRow,
-	) -> Result<()> {
-		for session_id in operator.lookup_row_index(store, hash, row)? {
-			let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
-			let Some(removal) = open.remove(session_id, row)? else {
-				continue;
-			};
-			push_count_event(
-				self.routing,
-				hash,
-				gvals,
-				ordinal_window_span(session_id),
-				slot_coord(at, row.0),
-				AccumulatorOp::Remove,
-				contribution.clone(),
-				at,
-			);
-			self.index_events.push(IndexEvent {
-				hash,
-				row_number: row,
-				session_id,
-				added: false,
-			});
-			operator.drop_session_member(store, hash, session_id, row)?;
-			if let Removal::Split {
-				kept,
-				moved,
-			} = removal
-			{
-				self.move_members(operator, store, hash, gvals, kept, moved.id, &moved.members)?;
-			}
-		}
-		operator.drop_row_index(store, hash, row)
-	}
-
-	fn revalue(
-		&mut self,
-		operator: &mut WindowOperator,
-		store: &mut dyn StateStore,
-		hash: Hash128,
-		gvals: &[Value],
-		at: DateTimeCoord,
-		row: RowNumber,
-		pre: SlotRow,
-		post: SlotRow,
-	) -> Result<()> {
-		for session_id in operator.lookup_row_index(store, hash, row)? {
-			let open = group_sessions(operator, store, self.groups, hash, self.horizon, self.gap)?;
-			if !open.sessions().iter().any(|session| session.id == session_id) {
-				continue;
-			}
-			let coord = slot_coord(at, row.0);
-			let span = ordinal_window_span(session_id);
-			push_count_event(
-				self.routing,
-				hash,
-				gvals,
-				span,
-				coord,
-				AccumulatorOp::Remove,
-				pre.clone(),
-				at,
-			);
-			push_count_event(self.routing, hash, gvals, span, coord, AccumulatorOp::Add, post.clone(), at);
-			operator.store_session_member(store, hash, session_id, row, &post)?;
-		}
-		Ok(())
-	}
-}
-
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
 pub fn apply_session_engine(
 	operator: &mut WindowOperator,
@@ -402,306 +53,20 @@ pub fn apply_session_engine(
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let rule = operator.session_rule();
-	let gap = operator.session_gap();
-	let horizon = operator.seal_gate(host, rule)?.horizon();
-
-	let mut routing = Routing::default();
-	let mut groups: HashMap<Hash128, GroupSessions> = HashMap::new();
-	let mut index_events: Vec<IndexEvent> = Vec::new();
-	let mut refused = 0u64;
-
-	let grouped = count_routing_groups(operator, &change)?;
-	let keys = row_index_keys(operator, &change, &grouped)?;
-	let mut store = Prefetched::read(host, keys)?;
-	{
-		let mut pass = SessionPass {
-			routing: &mut routing,
-			groups: &mut groups,
-			index_events: &mut index_events,
-			horizon,
-			gap,
-		};
-		for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
-			match diff {
-				Diff::Insert {
-					post,
-					..
-				} => {
-					let post_rows = required_row_numbers(post)?;
-					let timestamps = operator.row_times(post, post.num_rows())?;
-					let slot_cols = operator.core.evaluate_slot_inputs(post)?;
-					let views = operator.core.slot_views(post, &slot_cols)?;
-					for row_idx in 0..post.num_rows() {
-						let (hash, gvals) = diff_groups.post.row(row_idx);
-						let at = timestamps[row_idx];
-						let contribution = views.contribution(row_idx, at);
-						if !pass.admit(
-							operator,
-							&mut store,
-							*hash,
-							gvals,
-							DateTimeCoord(at),
-							post_rows[row_idx],
-							contribution,
-						)? {
-							refused += 1;
-						}
-					}
-				}
-				Diff::Remove {
-					pre,
-					..
-				} => {
-					let pre_rows = required_row_numbers(pre)?;
-					let timestamps = operator.row_times(pre, pre.num_rows())?;
-					let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
-					let views = operator.core.slot_views(pre, &slot_cols)?;
-					for row_idx in 0..pre.num_rows() {
-						let (hash, gvals) = diff_groups.pre.row(row_idx);
-						let at = timestamps[row_idx];
-						let contribution = views.contribution(row_idx, at);
-						pass.retract(
-							operator,
-							&mut store,
-							*hash,
-							gvals,
-							DateTimeCoord(at),
-							pre_rows[row_idx],
-							contribution,
-						)?;
-					}
-				}
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => {
-					let pre_rows = required_row_numbers(pre)?;
-					let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
-					let timestamps = operator.row_times(post, post.num_rows())?;
-					let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
-					let post_cols = operator.core.evaluate_slot_inputs(post)?;
-					let pre_views = operator.core.slot_views(pre, &pre_cols)?;
-					let post_views = operator.core.slot_views(post, &post_cols)?;
-					for row_idx in 0..pre.num_rows() {
-						let (hash, gvals) = diff_groups.pre.row(row_idx);
-						let (post_hash, post_gvals) = diff_groups.post.row(row_idx);
-						let row = pre_rows[row_idx];
-						let (pre_at, at) = (pre_timestamps[row_idx], timestamps[row_idx]);
-						let pre_contrib = pre_views.contribution(row_idx, pre_at);
-						let post_contrib = post_views.contribution(row_idx, at);
-						let indexed =
-							!operator.lookup_row_index(&mut store, *hash, row)?.is_empty();
-						if indexed && post_hash == hash && pre_at == at {
-							pass.revalue(
-								operator,
-								&mut store,
-								*hash,
-								gvals,
-								DateTimeCoord(at),
-								row,
-								pre_contrib,
-								post_contrib,
-							)?;
-							continue;
-						}
-						if indexed {
-							pass.retract(
-								operator,
-								&mut store,
-								*hash,
-								gvals,
-								DateTimeCoord(pre_at),
-								row,
-								pre_contrib,
-							)?;
-						}
-						if !pass.admit(
-							operator,
-							&mut store,
-							*post_hash,
-							post_gvals,
-							DateTimeCoord(at),
-							row,
-							post_contrib,
-						)? {
-							refused += 1;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	store.write()?;
-
-	operator.note_refused_rows(refused);
-
-	let Routed {
-		mut buckets,
-		group_values,
-		mut arrival,
-		window_max_coord,
-		..
-	} = routing.finish();
-	let (gated, sealed) = drop_sealed_events(
-		operator,
-		host,
-		&mut buckets,
-		&mut arrival,
-		&window_max_coord,
-		rule,
-		ExpiryAnchor::LastEvent,
-	)?;
-	if !sealed.is_empty() {
-		withdraw_sealed_admissions(operator, host, &index_events, &sealed)?;
-	}
-	let mut bounds: SessionBounds = HashMap::new();
-	let mut moves = Vec::with_capacity(groups.len());
-	let mut emptied = Vec::new();
-	let mut saving = Vec::with_capacity(groups.len());
-	for (hash, group) in &groups {
-		for session in group.open.sessions() {
-			bounds.insert((*hash, session.id), (session.start, session.last));
-		}
-		if group.open.sessions().is_empty() && group.open.sealed_last().is_none() {
-			emptied.push(*hash);
-		} else {
-			saving.push((*hash, &group.open));
-		}
-		moves.push(seal_move(rule, tracker_key(*hash), group.loaded_due, earliest_due(&group.open, gap)));
-	}
-	operator.save_open_sessions(host, &saving)?;
-	operator.drop_session_trackers(host, &emptied)?;
-	host.rearm_timers(TimerKind::Seal, &moves)?;
-
-	let interned = intern_batch(&arrival);
-	let gone: Vec<GroupId> = arrival
-		.iter()
-		.filter(|(hash, span)| !bounds.contains_key(&(*hash, span.start.to_order())))
-		.map(|(hash, span)| group_of(&interned, *hash, span.start.to_order()))
-		.collect();
-
+	let mut runner = operator.runner.take().expect("a session window owns a window runner");
+	let mut rows = BuiltinRows::sessions(operator, &change);
+	let routed = route_session(&mut rows);
+	let group_values = rows.into_group_values();
 	let engine_config = operator.engine_config();
-	let engine_immutable = operator.immutable();
-	let armed_before = engine_earliest_expiry(operator, host)?;
-	let diffs = finish_tumbling_engine(
-		&mut operator.core,
-		host,
-		&change,
-		buckets,
-		&group_values,
-		arrival,
-		window_max_coord,
-		&interned,
-		&kinds,
-		engine_config,
-		engine_immutable,
-		ExpiryAnchor::LastEvent,
-		true,
-		gap,
-		&bounds,
-		&gated,
-	)?;
-	if !gone.is_empty() {
-		let engine_config = operator.engine_config();
-		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
-		});
-		drain_groups(host, &gone, &mut *engine, usize::MAX)?;
-		*operator.core.tumbling_engine_slot() = Some(engine);
-	}
-	rearm_engine_seal(operator, host, rule, armed_before)?;
-	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
-}
-
-#[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
-fn drop_sealed_events(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	buckets: &mut EngineBuckets,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTimeCoord>)>,
-	window_max_coord: &HashMap<(Hash128, WindowSpan<DateTimeCoord>), DateTimeCoord>,
-	rule: SealRule,
-	anchor: ExpiryAnchor,
-) -> Result<(GatedMeta, SealedWindows)> {
-	let mut gated = GatedMeta::new();
-	let gate = operator.seal_gate(host, rule)?;
-	if matches!(anchor, ExpiryAnchor::LastEvent) && !buckets.is_empty() {
-		let keys = buckets
-			.keys()
-			.map(|key| {
-				(&EngineMetaKey(GroupId::window(key.0, key.1.start.to_order()))).into_group_state_key()
-			})
-			.collect();
-		let mut store = Prefetched::read(host, keys)?;
-		for key in buckets.keys() {
-			let group = GroupId::window(key.0, key.1.start.to_order());
-			gated.insert(
-				*key,
-				get_classified::<_, EngineMeta>(&mut store, from_ref(&EngineMetaKey(group)))?.remove(0),
-			);
-		}
-	}
-	let mut sealed: Vec<(Hash128, WindowSpan<DateTimeCoord>)> = Vec::new();
-	let mut dropped = 0u64;
-	{
-		for (key, events) in buckets.iter() {
-			let window_start = key.1.start.to_order();
-			let horizon = match anchor {
-				ExpiryAnchor::LastEvent => {
-					let prior_last = gated
-						.get(key)
-						.expect("the gate reads the engine meta of every bucket")
-						.as_ref()
-						.map(|meta| meta.last_event_time);
-					let batch_last = window_max_coord.get(key).map(|ts| ts.to_order());
-					anchor.of(window_start, prior_last.max(batch_last))
-				}
-				ExpiryAnchor::WindowStart | ExpiryAnchor::Unindexed => anchor.of(window_start, None),
-			};
-			let Some(horizon) = horizon else {
-				continue;
-			};
-			if !gate.admits(horizon) {
-				dropped += events.len() as u64;
-				sealed.push(*key);
-			}
-		}
-	}
-
-	if sealed.is_empty() {
-		return Ok((gated, SealedWindows::new()));
-	}
-	for key in &sealed {
-		buckets.remove(key);
-	}
-	let sealed: SealedWindows = sealed.into_iter().collect();
-	arrival.retain(|key| !sealed.contains(key));
-	operator.note_sealed_drops(dropped);
-	Ok((gated, sealed))
-}
-
-fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
-	let config = operator.engine_config();
-	let mut engine =
-		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
-		});
-	let earliest = engine.earliest_expiry(host)?;
+	let immutable = operator.immutable();
+	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
+	});
+	let mut hooks = BuiltinHooks::new(&mut operator.core, &kinds, immutable, group_values, change.changed_at);
+	let diffs = routed.and_then(|rows| runner.apply_session(&mut engine, host, rows, &mut hooks));
 	*operator.core.tumbling_engine_slot() = Some(engine);
-	Ok(earliest)
-}
-
-fn rearm_engine_seal(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	rule: SealRule,
-	before: Option<u64>,
-) -> Result<()> {
-	let after = engine_earliest_expiry(operator, host)?;
-	rearm_seal(host, rule, &EncodedKey::new(Vec::new()), before, after)
+	operator.runner = Some(runner);
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs?, change.changed_at))
 }
 
 fn with_engine<T>(
@@ -718,6 +83,20 @@ fn with_engine<T>(
 	out
 }
 
+fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
+	with_engine(operator, |engine| engine.earliest_expiry(host))
+}
+
+fn rearm_engine_seal(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	rule: SealRule,
+	before: Option<u64>,
+) -> Result<()> {
+	let after = engine_earliest_expiry(operator, host)?;
+	rearm_seal(host, rule, &EncodedKey::new(Vec::new()), before, after)
+}
+
 pub fn forget_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
 	if let Some(mut runner) = operator.runner.take() {
 		let reaped =
@@ -725,15 +104,10 @@ pub fn forget_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCo
 		operator.runner = Some(runner);
 		return reaped;
 	}
-	let rule = match operator.kind {
-		WindowKind::Session {
-			..
-		} => operator.session_rule(),
-		_ => match operator.size_duration() {
-			Some(size) => SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero)),
-			None => return Ok(()),
-		},
+	let Some(size) = operator.size_duration() else {
+		return Ok(());
 	};
+	let rule = SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero));
 	let budget = operator.engine_config().expire_batch();
 	with_engine(operator, |engine| reap(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ()))
 }
@@ -746,71 +120,14 @@ pub fn seal_session_engines(
 	let Some(latest) = timers.iter().max_by_key(|timer| timer.due) else {
 		return Ok(Vec::new());
 	};
-	let seal_span = operator.session_rule().seal_span().duration();
-	let budget = operator.engine_config().expire_batch().saturating_mul(timers.len());
-	with_engine(operator, |engine| seal(engine, host, FiredAt::of(latest), seal_span, budget, false))?;
-	retire_session_trackers(operator, host, timers, FiredAt::of(latest))?;
+	let Some(mut runner) = operator.runner.take() else {
+		return Ok(Vec::new());
+	};
+	let keys: Vec<&[u8]> = timers.iter().map(|timer| timer.key.as_slice()).collect();
+	let sealed = with_engine(operator, |engine| runner.on_session_timers(engine, host, &keys, FiredAt::of(latest)));
+	operator.runner = Some(runner);
+	sealed?;
 	Ok(Vec::new())
-}
-
-fn tracker_key(hash: Hash128) -> EncodedKey {
-	EncodedKey::new(hash.0.to_be_bytes())
-}
-
-fn retire_session_trackers(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	timers: &[Timer],
-	fired: FiredAt,
-) -> Result<()> {
-	let mut hashes: Vec<Hash128> = timers
-		.iter()
-		.filter(|timer| !timer.key.as_slice().is_empty())
-		.map(|timer| {
-			Hash128(u128::from_be_bytes(
-				timer.key
-					.as_slice()
-					.try_into()
-					.expect("a session tracker timer is keyed by its group hash"),
-			))
-		})
-		.collect();
-	hashes.sort();
-	hashes.dedup();
-	if hashes.is_empty() {
-		return Ok(());
-	}
-	let rule = operator.session_rule();
-	let gap = operator.session_gap();
-	let watermark = host.flow_watermark()?;
-	let horizon = SealGate::new(rule, Some(SealedThrough::from_order(fired.at().to_order())), watermark).horizon();
-	let loaded = operator.load_open_sessions_of(host, &hashes)?;
-	let mut removes: Vec<GroupStateKey> = Vec::new();
-	let mut saves = Vec::new();
-	let mut moves = Vec::new();
-	for (hash, mut open) in hashes.into_iter().zip(loaded) {
-		let group = operator.partition_group(hash);
-		for closed in open.close(horizon) {
-			for member in &closed.members {
-				removes.push((&SessionMemberKey(GroupId::window(hash, closed.id), member.row))
-					.into_group_state_key());
-				removes.push((&RowIndexKey(group, member.row)).into_group_state_key());
-			}
-		}
-		if open.sessions().is_empty() {
-			removes.push((&SessionKey(group)).into_group_state_key());
-		} else {
-			moves.push(seal_move(rule, tracker_key(hash), None, earliest_due(&open, gap)));
-			saves.push((hash, open));
-		}
-	}
-	let saving: Vec<(Hash128, &OpenSessions<DateTimeCoord>)> =
-		saves.iter().map(|(hash, open)| (*hash, open)).collect();
-	operator.save_open_sessions(host, &saving)?;
-	if !removes.is_empty() {
-		host.state_remove(&removes)?;
-	}
-	host.rearm_timers(TimerKind::Seal, &moves)
 }
 
 pub fn seal_engine_windows(
@@ -895,9 +212,9 @@ mod reap_tests {
 	use std::sync::Arc;
 
 	use reifydb_core::{
-		common::{CommitVersion, WindowSize},
+		common::{CommitVersion, WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
-		key::operator::state::KeyspaceId,
+		key::operator::state::{GroupId, KeyspaceId},
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
@@ -1006,17 +323,17 @@ mod reap_tests {
 
 #[cfg(test)]
 mod seal_arm_tests {
-	use std::sync::Arc;
+	use std::{collections::HashMap, sync::Arc};
 
 	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
-		common::{CommitVersion, WindowSize},
+		common::{CommitVersion, WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
 			any::TaggedKey,
 			operator::{
 				keyspace::{expiry::RETIRED_AT_FLUSH, timer::TimerWheelKey},
-				state::KeyspaceId,
+				state::{GroupId, KeyspaceId},
 			},
 		},
 		state::typed::SuffixBytes,
@@ -1027,15 +344,19 @@ mod seal_arm_tests {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{datetime::DateTime, duration::Duration},
+		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 	};
 
 	use super::*;
 	use crate::{
 		operator::{
-			aggregation::{accumulator::SlotContributions, core::slot_rows::slot_row},
+			aggregation::{
+				accumulator::SlotContributions,
+				core::slot_rows::slot_row,
+				engine::{EngineBuckets, slot_coord},
+			},
 			host::TxnHostContext,
-			state::test_utils::test::whole_keyspace,
+			state::{seal::coord::Coord, test_utils::test::whole_keyspace},
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		timer::{Timer, wheel::TimerWheel},
@@ -1046,10 +367,11 @@ mod seal_arm_tests {
 			state::{StateExtension, StateRange},
 		},
 		window::{
-			accumulator::AccumulatorEvents,
-			driver::{route::Routed as DriverRouted, tumbling::finish_tumbling},
-			engine::WindowReindex,
-			kind::session::open::{OpenSession, SessionIds},
+			accumulator::{AccumulatorEvents, AccumulatorOp},
+			driver::{route::Routed as DriverRouted, session::tracker_key, tumbling::finish_tumbling},
+			engine::{ExpiryAnchor, WindowReindex},
+			kind::session::open::{Member, OpenSession, OpenSessions, SessionIds},
+			span::WindowSpan,
 		},
 	};
 

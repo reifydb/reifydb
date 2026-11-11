@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::slice::from_ref;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
@@ -11,45 +11,31 @@ use reifydb_core::{
 	common::{OnEmpty, WindowKind, WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::{
-	operator::state::{
-		reaper::drain_groups,
-		seal::{coord::Coord, domain::SealDomain},
-	},
+	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
-		accumulator::AccumulatorOp,
-		driver::{
-			route::Routed,
-			runner::WindowRunner,
-			seal::{reap, seal},
-		},
+		driver::{route::Routed, runner::WindowRunner, session::route_session},
 		engine::{
-			EmitKind, WindowReindex,
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
 			publish::RowPublisher,
-			session::SessionEngine,
 			tumbling::TumblingEngine,
 		},
-		kind::{
-			session::open::{Insertion, Member, OpenSessions, Removal},
-			sliding::fits_slide,
-		},
+		kind::sliding::fits_slide,
 		meta::NoKey,
 		prefetch::Prefetched,
 		settings::WindowSettings,
-		span::{WindowAnchor, WindowSpan, window_row_key},
+		span::window_row_key,
 	},
 };
 use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
 	error::Error,
-	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -60,17 +46,14 @@ use crate::{
 		column::{operator::OperatorColumn, row::Row},
 		context::{GuestContext, Windowed},
 		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView},
+		view::ChangeView,
 		windowed::{
-			RollingGroups, Routing, WindowGroups, fired_at, group_of,
+			RollingGroups, fired_at,
 			guest_as_host::GuestAsHost,
 			hooks::SdkHooks,
 			observe_batch,
-			operator::{
-				Contribution, Contributions, Emit, KindSet, WindowedOperator, batch_len, counted_merge,
-				extract_rows,
-			},
-			operator_watermark, partition_of,
+			operator::{Contribution, Contributions, Emit, KindSet, WindowedOperator, counted_merge},
+			operator_watermark,
 			publish::{Emitted, UpdateRow},
 			rolling_cutoff, rolling_output, route_rolling,
 			rows::SdkRows,
@@ -80,7 +63,6 @@ use crate::{
 };
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
-type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contributions<A>>;
 struct RollingMode<A: Emit> {
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	pane: <A::Coord as Coord>::Span,
@@ -88,46 +70,6 @@ struct RollingMode<A: Emit> {
 }
 
 type RollingEmits<A> = Vec<RollingEmit<<A as WindowedOperator>::GroupKey, NoKey, <A as WindowedOperator>::Output>>;
-
-struct SessionMode<A: Emit> {
-	engine: SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-}
-
-enum SessionRow<A: Emit> {
-	Admit {
-		group: A::GroupKey,
-		number: RowNumber,
-		coord: A::Coord,
-		contribution: Contribution<A>,
-	},
-	Retract {
-		group: A::GroupKey,
-		number: RowNumber,
-		contribution: Contribution<A>,
-	},
-	Update {
-		number: RowNumber,
-		pre_coord: Option<A::Coord>,
-		post_coord: Option<A::Coord>,
-		before: Option<(A::GroupKey, Contribution<A>)>,
-		after: Option<(A::GroupKey, Contribution<A>)>,
-	},
-}
-
-struct GroupSessions<S: Coord> {
-	partition: GroupId,
-	open: OpenSessions<S>,
-	changed: bool,
-}
-
-struct SessionBatch<A: Emit> {
-	groups: BTreeMap<A::GroupKey, GroupSessions<A::Coord>>,
-	touched: BTreeSet<(A::GroupKey, u64)>,
-	removed: BTreeSet<(A::GroupKey, u64)>,
-	buckets: Buckets<A>,
-	dropped: u64,
-	refused: u64,
-}
 
 pub struct PlainDriver<A>
 where
@@ -139,7 +81,7 @@ where
 	engine: TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	rolling: Option<RollingMode<A>>,
 	runner: Option<WindowRunner<A::Coord>>,
-	session: Option<SessionMode<A>>,
+	sessions: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
 }
@@ -152,14 +94,6 @@ where
 {
 	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
 		window_row_key(group.into_encoded_key(), window_start)
-	}
-
-	fn session_group(group: &A::GroupKey, id: u64) -> GroupId {
-		GroupId::of(&Self::row_key(group, <A::Coord as Coord>::from_order(id)))
-	}
-
-	fn session_span(id: u64) -> WindowSpan<A::Coord> {
-		WindowSpan::new(<A::Coord as Coord>::from_order(id), <A::Coord as Coord>::from_order(id + 1))
 	}
 }
 
@@ -326,597 +260,35 @@ where
 		Ok(emitted)
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn move_members<C: GuestContext>(
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		buckets: &mut Buckets<A>,
-		ctx: &mut C,
-		group: &A::GroupKey,
-		from: u64,
-		to: u64,
-		members: &[Member<A::Coord>],
-	) -> Result<()> {
-		let (from_group, to_group) = (Self::session_group(group, from), Self::session_group(group, to));
-		for member in members {
-			let contribution: Contribution<A> =
-				engine.load_member(&mut GuestAsHost(ctx), from_group, member.row)?;
-			buckets.push(
-				group.clone(),
-				Self::session_span(from),
-				AccumulatorOp::Remove,
-				contribution.clone(),
-			);
-			buckets.push(group.clone(), Self::session_span(to), AccumulatorOp::Add, contribution.clone());
-			engine.drop_member(&mut GuestAsHost(ctx), from_group, member.row)?;
-			engine.store_member(&mut GuestAsHost(ctx), to_group, member.row, &contribution)?;
-		}
-		Ok(())
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn admit_session_row<C: GuestContext>(
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		batch: &mut SessionBatch<A>,
-		ctx: &mut C,
-		group: A::GroupKey,
-		row: RowNumber,
-		coord: A::Coord,
-		contribution: Contribution<A>,
-		horizon: A::Coord,
-	) -> Result<()> {
-		let sessions = batch.groups.get_mut(&group).expect("every routed group's sessions are loaded first");
-		let insertion = sessions.open.insert(coord, row, horizon);
-		if insertion != Insertion::Refused {
-			sessions.changed = true;
-		}
-		let target = match insertion {
-			Insertion::Refused => {
-				batch.refused += 1;
-				return Ok(());
-			}
-			Insertion::Opened(id) | Insertion::Extended(id) => id,
-			Insertion::Merged {
-				survivor,
-				absorbed,
-			} => {
-				for session in &absorbed {
-					Self::move_members(
-						engine,
-						&mut batch.buckets,
-						ctx,
-						&group,
-						session.id,
-						survivor,
-						&session.members,
-					)?;
-					batch.removed.insert((group.clone(), session.id));
-				}
-				survivor
-			}
-		};
-		batch.touched.insert((group.clone(), target));
-		engine.store_member(&mut GuestAsHost(ctx), Self::session_group(&group, target), row, &contribution)?;
-		batch.buckets.push(group, Self::session_span(target), AccumulatorOp::Add, contribution);
-		Ok(())
-	}
-
-	fn holder(batch: &SessionBatch<A>, group: &A::GroupKey, row: RowNumber) -> Option<u64> {
-		batch.groups
-			.get(group)?
-			.open
-			.sessions()
-			.iter()
-			.find(|session| session.members.iter().any(|m| m.row == row))
-			.map(|session| session.id)
-	}
-
-	fn retract_session_row<C: GuestContext>(
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		batch: &mut SessionBatch<A>,
-		ctx: &mut C,
-		group: A::GroupKey,
-		row: RowNumber,
-		contribution: Contribution<A>,
-	) -> Result<()> {
-		let Some(id) = Self::holder(batch, &group, row) else {
-			batch.dropped += 1;
-			return Ok(());
-		};
-		let sessions = batch.groups.get_mut(&group).expect("a held row's group is loaded");
-		let removal = sessions
-			.open
-			.remove(id, row)
-			.map_err(|err| SdkError::OperatorError(err.to_string()))?
-			.expect("the row was found in an open session");
-		sessions.changed = true;
-		batch.buckets.push(group.clone(), Self::session_span(id), AccumulatorOp::Remove, contribution);
-		engine.drop_member(&mut GuestAsHost(ctx), Self::session_group(&group, id), row)?;
-		match removal {
-			Removal::Emptied(id) => {
-				batch.removed.insert((group, id));
-			}
-			Removal::Shrunk(id) => {
-				batch.touched.insert((group, id));
-			}
-			Removal::Split {
-				kept,
-				moved,
-			} => {
-				batch.touched.insert((group.clone(), kept));
-				batch.touched.insert((group.clone(), moved.id));
-				Self::move_members(
-					engine,
-					&mut batch.buckets,
-					ctx,
-					&group,
-					kept,
-					moved.id,
-					&moved.members,
-				)?;
-			}
-		}
-		Ok(())
-	}
-
-	fn extract_session_rows<C: GuestContext>(
+	fn apply_plain_session<C: GuestContext, V: ChangeView>(
 		aggregator: &A,
-		ctx: &mut C,
-		change: &impl ChangeView,
-		refused: &mut u64,
-	) -> Result<Vec<SessionRow<A>>> {
-		let mut rows = Vec::new();
-		for di in 0..change.diff_count() {
-			let Some(diff) = change.diff(di) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert => {
-					let Some(cols) = diff.post() else {
-						continue;
-					};
-					let numbers = cols.row_numbers();
-					let numbered: Vec<usize> = (0..cols.row_count().min(numbers.len())).collect();
-					*refused += (cols.row_count() - numbered.len()) as u64;
-					for (i, coord, group, contribution) in
-						extract_rows(aggregator, ctx, &cols, &numbered)?
-					{
-						rows.push(SessionRow::Admit {
-							group,
-							number: numbers[i],
-							coord,
-							contribution,
-						});
-					}
-				}
-				DiffType::Remove => {
-					let Some(cols) = diff.pre() else {
-						continue;
-					};
-					let numbers = cols.row_numbers();
-					let numbered: Vec<usize> = (0..cols.row_count().min(numbers.len())).collect();
-					*refused += (cols.row_count() - numbered.len()) as u64;
-					let extracted = batch_len::<A, _>(
-						aggregator.extract(ctx, &cols, &numbered)?,
-						numbered.len(),
-						"extract_batch",
-					)?;
-					for (i, extracted) in numbered.into_iter().zip(extracted) {
-						let Some((group, contribution)) = extracted else {
-							continue;
-						};
-						rows.push(SessionRow::Retract {
-							group,
-							number: numbers[i],
-							contribution,
-						});
-					}
-				}
-				DiffType::Update => {
-					let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
-						return Err(SdkError::OperatorError(format!(
-							"{} received an update diff without both pre and post columns",
-							A::NAME
-						)));
-					};
-					let paired = pre.row_count();
-					if post.row_count() != paired {
-						return Err(SdkError::OperatorError(format!(
-							"{} received an update diff pairing {paired} pre rows with {} post rows",
-							A::NAME,
-							post.row_count()
-						)));
-					}
-					let numbers = pre.row_numbers();
-					let numbered: Vec<usize> = (0..paired.min(numbers.len())).collect();
-					*refused += 2 * (paired - numbered.len()) as u64;
-					let rows_len = numbered.len();
-					let pre_coords = batch_len::<A, _>(
-						aggregator.coord(&pre, &numbered)?,
-						rows_len,
-						"coord_batch",
-					)?;
-					let post_coords = batch_len::<A, _>(
-						aggregator.coord(&post, &numbered)?,
-						rows_len,
-						"coord_batch",
-					)?;
-					let before = batch_len::<A, _>(
-						aggregator.extract(ctx, &pre, &numbered)?,
-						rows_len,
-						"extract_batch",
-					)?;
-					let after = batch_len::<A, _>(
-						aggregator.extract(ctx, &post, &numbered)?,
-						rows_len,
-						"extract_batch",
-					)?;
-					let paired_rows = numbered
-						.into_iter()
-						.zip(pre_coords)
-						.zip(post_coords)
-						.zip(before)
-						.zip(after);
-					for ((((i, pre_coord), post_coord), before), after) in paired_rows {
-						rows.push(SessionRow::Update {
-							number: numbers[i],
-							pre_coord,
-							post_coord,
-							before,
-							after,
-						});
-					}
-				}
-			}
-		}
-		Ok(rows)
-	}
-
-	fn load_session_groups<C: GuestContext>(
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		batch: &mut SessionBatch<A>,
-		ctx: &mut C,
-		rows: &[SessionRow<A>],
-		horizon: A::Coord,
-	) -> Result<()> {
-		let mut groups: BTreeSet<A::GroupKey> = BTreeSet::new();
-		for row in rows {
-			match row {
-				SessionRow::Admit {
-					group,
-					..
-				}
-				| SessionRow::Retract {
-					group,
-					..
-				} => {
-					groups.insert(group.clone());
-				}
-				SessionRow::Update {
-					before,
-					after,
-					..
-				} => {
-					for (group, _) in before.iter().chain(after.iter()) {
-						groups.insert(group.clone());
-					}
-				}
-			}
-		}
-		if groups.is_empty() {
-			return Ok(());
-		}
-		let partitions: Vec<GroupId> = groups.iter().map(partition_of).collect();
-		let loaded = engine.load_open(&mut GuestAsHost(ctx), &partitions)?;
-		for ((group, partition), mut open) in groups.into_iter().zip(partitions).zip(loaded) {
-			let changed = !open.close(horizon).is_empty();
-			batch.groups.insert(
-				group,
-				GroupSessions {
-					partition,
-					open,
-					changed,
-				},
-			);
-		}
-		Ok(())
-	}
-
-	fn route_session<C: GuestContext>(
-		aggregator: &A,
-		engine: &SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		ctx: &mut C,
-		change: &impl ChangeView,
-		horizon: A::Coord,
-	) -> Result<SessionBatch<A>> {
-		let mut batch = SessionBatch {
-			groups: BTreeMap::new(),
-			touched: BTreeSet::new(),
-			removed: BTreeSet::new(),
-			buckets: Routing::default(),
-			dropped: 0,
-			refused: 0,
-		};
-		let rows = Self::extract_session_rows(aggregator, ctx, change, &mut batch.refused)?;
-		Self::load_session_groups(engine, &mut batch, ctx, &rows, horizon)?;
-		for row in rows {
-			match row {
-				SessionRow::Admit {
-					group,
-					number,
-					coord,
-					contribution,
-				} => {
-					Self::admit_session_row(
-						engine,
-						&mut batch,
-						ctx,
-						group,
-						number,
-						coord,
-						contribution,
-						horizon,
-					)?;
-				}
-				SessionRow::Retract {
-					group,
-					number,
-					contribution,
-				} => {
-					Self::retract_session_row(
-						engine,
-						&mut batch,
-						ctx,
-						group,
-						number,
-						contribution,
-					)?;
-				}
-				SessionRow::Update {
-					number,
-					pre_coord,
-					post_coord,
-					before,
-					after,
-				} => {
-					if let (
-						Some(pre_coord),
-						Some(post_coord),
-						Some((pre_group, pre_value)),
-						Some((post_group, post_value)),
-					) = (pre_coord, post_coord, &before, &after)
-						&& pre_group == post_group && pre_coord == post_coord
-						&& let Some(id) = Self::holder(&batch, pre_group, number)
-					{
-						let span = Self::session_span(id);
-						batch.buckets.push(
-							pre_group.clone(),
-							span,
-							AccumulatorOp::Remove,
-							pre_value.clone(),
-						);
-						batch.buckets.push(
-							pre_group.clone(),
-							span,
-							AccumulatorOp::Add,
-							post_value.clone(),
-						);
-						engine.store_member(
-							&mut GuestAsHost(ctx),
-							Self::session_group(pre_group, id),
-							number,
-							post_value,
-						)?;
-						continue;
-					}
-					if let Some((group, contribution)) = before {
-						Self::retract_session_row(
-							engine,
-							&mut batch,
-							ctx,
-							group,
-							number,
-							contribution,
-						)?;
-					}
-					if let (Some(coord), Some((group, contribution))) = (post_coord, after) {
-						Self::admit_session_row(
-							engine,
-							&mut batch,
-							ctx,
-							group,
-							number,
-							coord,
-							contribution,
-							horizon,
-						)?;
-					}
-				}
-			}
-		}
-		Ok(batch)
-	}
-
-	fn apply_session<C: GuestContext>(
-		aggregator: &A,
-		mode: &mut SessionMode<A>,
-		seal_span: Option<SealSpan<A>>,
+		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		runner: &mut WindowRunner<A::Coord>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
-		change: &impl ChangeView,
+		change: &V,
 	) -> Result<Emitted<A>> {
-		let Some(seal_span) = seal_span else {
-			panic!("{}: a session window reached apply without a seal span", A::NAME);
-		};
-		let now = ctx.batch_time();
-		let watermark = operator_watermark::<A::Coord>(&mut GuestAsHost(ctx))?;
-		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-		let SessionBatch {
-			groups: session_groups,
-			touched,
-			removed,
-			buckets: routing,
-			dropped,
-			refused,
-		} = Self::route_session(aggregator, &mode.engine, ctx, change, horizon)?;
-		let (buckets, order) = routing.finish();
-		if dropped > 0 || refused > 0 {
-			debug!(operator = A::NAME, dropped, refused, "session mutations were dropped or refused");
-		}
-
-		let mut store = GuestAsHost(ctx);
-		let mut saves = Vec::new();
-		let mut drops = Vec::new();
-		for sessions in session_groups.values().filter(|sessions| sessions.changed) {
-			if sessions.open.sessions().is_empty() && sessions.open.sealed_last().is_none() {
-				drops.push(sessions.partition);
-			} else {
-				saves.push((sessions.partition, &sessions.open));
-			}
-		}
-		mode.engine.save_open(&mut store, &saves, &drops)?;
-
-		let mut keys: BTreeSet<(A::GroupKey, u64)> =
-			buckets.keys().map(|(group, span)| (group.clone(), span.start.to_order())).collect();
-		keys.extend(touched.iter().cloned());
-		keys.extend(removed.iter().cloned());
-		let keys: Vec<(A::GroupKey, u64)> = keys.into_iter().collect();
-		let session_ids: Vec<GroupId> =
-			keys.iter().map(|(group, id)| Self::session_group(group, *id)).collect();
-		let records = mode.engine.load_records(&mut store, &session_ids)?;
-		let before: BTreeMap<(A::GroupKey, u64), (DateTime, A::Coord, A::Coord)> = keys
-			.iter()
-			.cloned()
-			.zip(records)
-			.filter_map(|(key, record)| record.map(|record| (key, record)))
-			.collect();
-		let current = |group: &A::GroupKey, id: u64| {
-			session_groups.get(group).and_then(|sessions| {
-				sessions.open
-					.sessions()
-					.iter()
-					.find(|session| session.id == id)
-					.map(|s| (s.start, s.last))
-			})
-		};
-		let bounds_of = |group: &A::GroupKey, span: &WindowSpan<A::Coord>| {
-			let id = span.start.to_order();
-			current(group, id)
-				.or_else(|| before.get(&(group.clone(), id)).map(|&(_, start, last)| (start, last)))
-				.expect("every emitted session is open or was recorded before this batch")
-		};
-
-		if let Some(newest) = buckets.keys().map(|(group, span)| bounds_of(group, span).1).max() {
-			observe_batch(&mut store, newest, seal_span)?;
-		}
-		let emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-
-		let mut records = Vec::new();
-		let mut stale = Vec::new();
-		let mut moved = Vec::new();
-		for (group, id) in &touched {
-			let Some((start, last)) = current(group, *id) else {
-				continue;
-			};
-			let prior = before.get(&(group.clone(), *id)).copied();
-			if prior.is_some_and(|(_, prior_start, prior_last)| (prior_start, prior_last) == (start, last))
-			{
-				continue;
-			}
-			let session = Self::session_group(group, *id);
-			let first = prior.map_or_else(|| start.as_time().unwrap_or(now), |(first, ..)| first);
-			records.push((session, first, start, last));
-			moved.push((group, *id, session, prior.map(|(.., last)| last), Some(last)));
-		}
-		for (group, id) in &removed {
-			if current(group, *id).is_some() {
-				continue;
-			}
-			let session = Self::session_group(group, *id);
-			stale.push(session);
-			if let Some((.., last)) = before.get(&(group.clone(), *id)) {
-				moved.push((group, *id, session, Some(*last), None));
-			}
-		}
-		let slot_keys: Vec<EncodedKey> = moved
-			.iter()
-			.map(|(group, id, ..)| Self::row_key(group, <A::Coord as Coord>::from_order(*id)))
-			.collect();
-		let entries: Vec<_> = moved
-			.iter()
-			.zip(&slot_keys)
-			.map(|((group, id, session, prior, new), key)| WindowReindex {
-				group: *group,
-				window_start: <A::Coord as Coord>::from_order(*id),
-				id: *session,
-				slot_key: key,
-				prior: prior.map(Coord::to_order),
-				new: new.map(Coord::to_order),
-			})
-			.collect();
-		mode.engine.tumbling_mut().reindex_windows(&mut store, &entries)?;
-		mode.engine.save_records(&mut store, &records, &stale)?;
-
-		if buckets.is_empty() {
-			drain_groups(&mut store, &stale, mode.engine.tumbling_mut(), usize::MAX)?;
+		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
+		let mut rows = SdkRows::new(aggregator, ctx, change);
+		let routed = route_session(&mut rows)?;
+		drop(rows);
+		if routed.ops.is_empty() && routed.refused == 0 {
 			return Ok(emitted);
 		}
-		let groups: WindowGroups<A::GroupKey, A::Coord> = buckets
-			.keys()
-			.map(|(group, span)| {
-				(
-					(group.clone(), span.start),
-					(
-						Self::session_group(group, span.start.to_order()),
-						Self::row_key(group, span.start),
-					),
-				)
-			})
-			.collect();
-		let results = mode.engine.tumbling_mut().apply(
-			&mut store,
-			buckets,
-			&order,
-			|group, window_start| group_of(&groups, group, window_start),
-			|| aggregator.new_accumulator(settings),
+		let emits = runner.apply_session(
+			engine,
+			&mut GuestAsHost(ctx),
+			routed,
+			&mut SdkHooks::new(aggregator, settings),
 		)?;
-		drain_groups(&mut store, &stale, mode.engine.tumbling_mut(), usize::MAX)?;
-
-		let gap = mode.engine.gap();
-		let (mut inserts, mut updates, mut removes) = emitted;
-		for r in results {
-			let id = r.span.start.to_order();
-			let prior = before.get(&(r.group.clone(), id)).copied();
-			let (start, last) = match r.kind {
-				EmitKind::Remove => prior
-					.map(|(_, start, last)| (start, last))
-					.unwrap_or_else(|| bounds_of(&r.group, &r.span)),
-				EmitKind::Insert | EmitKind::Update => bounds_of(&r.group, &r.span),
-			};
-			let span = WindowSpan {
-				start,
-				end: last.add_span(gap),
-			};
-			let time = prior.map_or_else(|| span.start.as_time().unwrap_or(now), |(first, ..)| first);
-			let Some(out) = aggregator.build_output(&r.group, span, &r.value) else {
-				continue;
-			};
-			match r.kind {
-				EmitKind::Insert => inserts.push((r.row_number, time, out)),
-				EmitKind::Update => {
-					let pre_span = prior.map_or(span, |(_, start, last)| WindowSpan {
-						start,
-						end: last.add_span(gap),
-					});
-					let pre = r
-						.prior
-						.as_ref()
-						.and_then(|prior| aggregator.build_output(&r.group, pre_span, prior));
-					updates.push((r.row_number, time, pre, out))
-				}
-				EmitKind::Remove => removes.push((r.row_number, time, out)),
-			}
-		}
-		Ok((inserts, updates, removes))
+		emitted.0 = emits.inserts;
+		emitted.1 = emits
+			.updates
+			.into_iter()
+			.map(|(number, time, pre, post)| (number, time, Some(pre), post))
+			.collect();
+		emitted.2 = emits.removes;
+		Ok(emitted)
 	}
 
 	#[inline]
@@ -1057,41 +429,35 @@ where
 		} else {
 			None
 		};
-		let session = if sessions {
-			let Some(gap) = settings.gap else {
-				panic!("{}: a session window reached create without a gap", A::NAME);
-			};
-			Some(SessionMode {
-				engine: SessionEngine::new(window_engine_config(params), gap),
-			})
-		} else {
-			None
-		};
-		let runner = (!rolls && !sessions).then(|| {
-			WindowRunner::new(
+		let runner = match (rolls, sessions) {
+			(true, _) => None,
+			(false, true) => {
+				let Some(gap) = settings.gap else {
+					panic!("{}: a session window reached create without a gap", A::NAME);
+				};
+				Some(WindowRunner::sessions(operator_id, gap, seal_span, &window_engine_config(params)))
+			}
+			(false, false) => Some(WindowRunner::new(
 				operator_id,
 				settings.fixed_size(),
 				slide,
 				seal_span,
 				&window_engine_config(params),
-			)
-		});
+			)),
+		};
 		Ok(Self {
 			aggregator,
 			engine: TumblingEngine::new(window_engine_config(params)),
 			rolling,
 			runner,
-			session,
+			sessions,
 			seal_span,
 			settings,
 		})
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_span) = self.seal_span else {
-			return Ok(());
-		};
-		if !<A::Coord as SealDomain>::arms_timer() {
+		if self.seal_span.is_none() || !<A::Coord as SealDomain>::arms_timer() {
 			return Ok(());
 		}
 		let Self {
@@ -1099,28 +465,24 @@ where
 			engine,
 			rolling,
 			runner,
-			session,
+			sessions,
 			settings,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
 		let fired = fired_at(&timer);
-		let (inserts, updates, removes) = match (timer.kind, rolling, session, runner) {
+		let (inserts, updates, removes) = match (timer.kind, rolling, *sessions, runner) {
 			(TimerKind::Seal, Some(mode), _, _) => {
 				let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
 					return Ok(());
 				};
 				Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?
 			}
-			(TimerKind::Seal, None, Some(mode), _) => {
-				seal(mode.engine.tumbling_mut(), &mut store, fired, seal_span, usize::MAX, false)?;
+			(TimerKind::Seal, None, true, Some(runner)) => {
+				runner.on_session_timers(engine, &mut store, from_ref(&timer.key), fired)?;
 				(Vec::new(), Vec::new(), Vec::new())
 			}
-			(TimerKind::Maintenance, None, Some(mode), _) => {
-				reap(mode.engine.tumbling_mut(), &mut store, fired, seal_span, usize::MAX)?;
-				(Vec::new(), Vec::new(), Vec::new())
-			}
-			(kind, None, None, Some(runner)) => {
+			(kind, None, _, Some(runner)) => {
 				runner.on_timer(engine, &mut store, kind, fired)?;
 				(Vec::new(), Vec::new(), Vec::new())
 			}
@@ -1136,15 +498,20 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		if let Some(mode) = &mut self.session {
-			let (inserts, updates, removes) = Self::apply_session(
-				&self.aggregator,
-				mode,
-				self.seal_span,
-				&self.settings,
-				ctx,
-				&change,
-			)?;
+		if self.sessions {
+			let (inserts, updates, removes) = {
+				let Self {
+					aggregator,
+					engine,
+					runner: Some(runner),
+					settings,
+					..
+				} = &mut *self
+				else {
+					unreachable!("create builds a runner for every session window")
+				};
+				Self::apply_plain_session(aggregator, engine, runner, settings, ctx, &change)?
+			};
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		if let Some(pane) = self.rolling.as_ref().map(|mode| mode.pane) {
@@ -1197,12 +564,13 @@ mod tests {
 	use reifydb_flow_async::window::{
 		accumulator::{WindowAccumulator, invertible::last_value::LastValue},
 		coord::{DateTimeCoord, RowSpan, U8Coord},
+		span::WindowSpan,
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::row;
+	use crate::{flow::operator::view::ColumnsView, row};
 
 	#[reifydb_macro::operator_state]
 	#[derive(Clone, HeapSize)]
