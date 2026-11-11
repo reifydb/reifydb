@@ -1,114 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::iter::successors;
-
-use reifydb_value::value::duration::Duration;
-
-use crate::{
-	operator::state::seal::coord::Coord,
-	window::{coord::DateTimeCoord, span::WindowSpan},
-};
-
-fn fits_span(size: Duration, slide: Duration) -> Option<(Duration, Duration)> {
-	(size.is_positive() && slide.is_positive() && slide < size).then_some((size, slide))
-}
-
-pub struct SlidingOverTime {
-	size: Duration,
-	slide: Duration,
-}
-
-impl SlidingOverTime {
-	pub fn by_duration(size: Duration, slide: Duration) -> Option<Self> {
-		let (size, slide) = fits_span(size, slide)?;
-		Some(Self {
-			size,
-			slide,
-		})
-	}
-
-	pub fn span(&self, anchor: u64) -> WindowSpan<DateTimeCoord> {
-		let start = <DateTimeCoord as Coord>::from_order(anchor);
-		WindowSpan::new(start, DateTimeCoord(start.0.saturating_add(self.size)))
-	}
-
-	pub fn anchors(&self, coord: DateTimeCoord) -> impl Iterator<Item = u64> + use<> {
-		let (size, slide) = (self.size, self.slide);
-		successors(Some(coord.saturating_sub_span(size).floor_to(slide)), move |start| {
-			Some(DateTimeCoord(start.0.saturating_add(slide)))
-		})
-		.take_while(move |start| *start <= coord)
-		.filter(move |start| coord.0 < start.0.saturating_add(size))
-		.map(|start| start.to_order())
-	}
+pub fn fits_slide<S: Ord + Default>(size: S, slide: S) -> bool {
+	S::default() < slide && slide < size
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::factory::coord::event_coord_at_millis;
+	use crate::{
+		factory::coord::event_coord_at_millis,
+		window::{coord::DateTimeCoord, span::WindowSpan},
+	};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn order(millis: i64) -> u64 {
-		DateTime::from_millis(millis).to_order()
+	fn starts(coord: DateTimeCoord) -> Vec<DateTimeCoord> {
+		WindowSpan::covering(coord, ms(1_000), ms(250))
+			.expect("a coordinate near the epoch has every window end before the maximum")
+			.into_iter()
+			.map(|span| span.start)
+			.collect()
 	}
 
-	fn timed() -> SlidingOverTime {
-		SlidingOverTime::by_duration(ms(1_000), ms(250)).expect("a 250ms slide fits inside a 1000ms window")
+	fn at(millis: i64) -> DateTimeCoord {
+		DateTimeCoord(DateTime::from_millis(millis))
 	}
 
 	#[test]
 	fn a_zero_slide_cannot_be_constructed_at_all() {
-		// Every anchor path divides by the slide. RQL rejects `slide >= size`, which lets `slide: 0`
-		// through, so a zero slide reaches the arithmetic and panics the whole flow from a plain
-		// user query.
-		assert!(SlidingOverTime::by_duration(ms(1_000), ms(0)).is_none());
+		// A zero slide reaching the window arithmetic panics the whole flow from a plain user query.
+		assert!(!fits_slide(ms(1_000), ms(0)));
 	}
 
 	#[test]
 	fn a_slide_that_does_not_fit_inside_the_window_is_refused() {
-		// A slide at or above the size makes the windows disjoint or gapped - tumbling at best,
-		// row-dropping at worst. RQL rejects matched pairs; refusing here closes every other route.
-		assert!(SlidingOverTime::by_duration(ms(1_000), ms(1_000)).is_none());
+		// A slide at or above the size makes the windows disjoint or gapped, so rows would be dropped.
+		assert!(!fits_slide(ms(1_000), ms(1_000)));
 	}
 
 	#[test]
 	fn a_time_coordinate_lands_in_every_window_whose_span_still_covers_it() {
-		// One row contributes to several overlapping windows, and missing one under-counts that
-		// window forever. Size 1000 with slide 250 covers an instant with exactly four windows.
-		assert_eq!(
-			timed().anchors(event_coord_at_millis(5_000)).collect::<Vec<_>>(),
-			vec![order(4_250), order(4_500), order(4_750), order(5_000)]
-		);
+		// Missing one overlapping window under-counts it forever; size 1000 slide 250 must give exactly four.
+		assert_eq!(starts(event_coord_at_millis(5_000)), vec![at(4_250), at(4_500), at(4_750), at(5_000)]);
 	}
 
 	#[test]
 	fn the_earliest_instants_produce_windows_that_start_before_the_epoch() {
-		// Wrapping through u64 here would underflow to near u64::MAX and iterate a range the size of the
-		// address space.
-		assert_eq!(
-			timed().anchors(event_coord_at_millis(0)).collect::<Vec<_>>(),
-			vec![order(-750), order(-500), order(-250), order(0)]
-		);
-		assert_eq!(
-			timed().anchors(event_coord_at_millis(250)).collect::<Vec<_>>(),
-			vec![order(-500), order(-250), order(0), order(250)]
-		);
+		// Wrapping below the epoch would iterate a range the size of the address space.
+		assert_eq!(starts(event_coord_at_millis(0)), vec![at(-750), at(-500), at(-250), at(0)]);
+		assert_eq!(starts(event_coord_at_millis(250)), vec![at(-500), at(-250), at(0), at(250)]);
 	}
 
 	#[test]
 	fn no_coordinate_ever_lands_in_zero_windows() {
-		// A row that maps to no anchor is silently dropped - it reaches no accumulator and is absent
-		// from every aggregate with nothing logged.
+		// A row that maps to no window reaches no accumulator and vanishes with nothing logged.
 		for instant in (0..4_000).step_by(37) {
 			assert!(
-				timed().anchors(event_coord_at_millis(instant)).next().is_some(),
+				!starts(event_coord_at_millis(instant)).is_empty(),
 				"instant {instant} joined no window"
 			);
 		}
@@ -116,10 +69,13 @@ mod tests {
 
 	#[test]
 	fn a_time_window_span_covers_exactly_the_size_it_was_built_with() {
-		// The span the engine keys by must agree with the anchors() filter that decided membership
-		// (`instant < start + size`). A span one unit off keys the window under a boundary no row
-		// was admitted against, and the seal timer armed from it closes a different window.
-		let span = timed().span(order(4_250));
+		// A span one unit off keys the window under a boundary no row was admitted against.
+		let spans = WindowSpan::covering(event_coord_at_millis(4_250), ms(1_000), ms(250))
+			.expect("a coordinate near the epoch has every window end before the maximum");
+		let span = spans
+			.iter()
+			.find(|span| span.start == at(4_250))
+			.expect("the window starting at the coordinate");
 
 		assert_eq!(span.start, DateTimeCoord(DateTime::from_millis(4_250)));
 		assert_eq!(span.end, DateTimeCoord(DateTime::from_millis(5_250)));

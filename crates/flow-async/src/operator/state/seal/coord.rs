@@ -19,6 +19,8 @@ pub trait Coord: Copy + Ord + Debug {
 
 	fn add_span(self, span: Self::Span) -> Self;
 
+	fn checked_add_span(self, span: Self::Span) -> Option<Self>;
+
 	fn floor_to(self, span: Self::Span) -> Self;
 
 	fn span_since(self, earlier: Self) -> Self::Span;
@@ -45,6 +47,10 @@ impl Coord for DateTimeCoord {
 
 	fn add_span(self, span: Duration) -> Self {
 		Self(self.0 + span)
+	}
+
+	fn checked_add_span(self, span: Duration) -> Option<Self> {
+		self.0.checked_add(span).map(Self)
 	}
 
 	fn floor_to(self, span: Duration) -> Self {

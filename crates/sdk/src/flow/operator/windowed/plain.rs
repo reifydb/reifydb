@@ -24,7 +24,7 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::AccumulatorOp,
 		driver::{
-			route::{Routed, route_tumbling},
+			route::{Routed, route_sliding, route_tumbling},
 			tumbling::finish_tumbling,
 		},
 		engine::{
@@ -32,10 +32,12 @@ use reifydb_flow_async::{
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
 			publish::RowPublisher,
 			session::SessionEngine,
-			sliding::SlidingEngine,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		kind::session::open::{Insertion, Member, OpenSessions, Removal},
+		kind::{
+			session::open::{Insertion, Member, OpenSessions, Removal},
+			sliding::fits_slide,
+		},
 		meta::NoKey,
 		prefetch::Prefetched,
 		settings::WindowSettings,
@@ -60,13 +62,13 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			RollingGroups, Routing, WindowGroups, all_rows, group_of,
+			RollingGroups, Routing, WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
 			hooks::SdkHooks,
-			intern_window_groups, observe_batch,
+			observe_batch,
 			operator::{
-				Contribution, Contributions, Emit, Extracted, KindSet, WindowedOperator, batch_len,
-				counted_merge, extract_rows,
+				Contribution, Contributions, Emit, KindSet, WindowedOperator, batch_len, counted_merge,
+				extract_rows,
 			},
 			operator_watermark, partition_of,
 			publish::{Emitted, UpdateRow},
@@ -88,10 +90,6 @@ struct RollingMode<A: Emit> {
 }
 
 type RollingEmits<A> = Vec<RollingEmit<<A as WindowedOperator>::GroupKey, NoKey, <A as WindowedOperator>::Output>>;
-
-struct SlidingMode<A: Emit> {
-	engine: SlidingEngine<A::GroupKey, A::Coord, A::Accumulator>,
-}
 
 struct SessionMode<A: Emit> {
 	engine: SessionEngine<A::GroupKey, A::Coord, A::Accumulator>,
@@ -142,7 +140,7 @@ where
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	rolling: Option<RollingMode<A>>,
-	sliding: Option<SlidingMode<A>>,
+	slide: Option<<A::Coord as Coord>::Span>,
 	session: Option<SessionMode<A>>,
 	reap_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
@@ -165,68 +163,6 @@ where
 
 	fn session_span(id: u64) -> WindowSpan<A::Coord> {
 		WindowSpan::new(<A::Coord as Coord>::from_order(id), <A::Coord as Coord>::from_order(id + 1))
-	}
-
-	fn route(
-		aggregator: &A,
-		mode: &SlidingMode<A>,
-		ctx: &mut impl GuestContext,
-		change: &impl ChangeView,
-	) -> Result<Buckets<A>> {
-		let mut buckets: Buckets<A> = Routing::default();
-
-		for di in 0..change.diff_count() {
-			let Some(diff) = change.diff(di) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert => {
-					if let Some(cols) = diff.post() {
-						Self::push_all(aggregator, mode, ctx, &cols, &mut buckets, true)?;
-					}
-				}
-				DiffType::Update => {
-					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						let before = extract_rows(aggregator, ctx, &pre, &all_rows(&pre))?;
-						let after = extract_rows(aggregator, ctx, &post, &all_rows(&post))?;
-						Self::push_extracted(mode, before, &mut buckets, false);
-						Self::push_extracted(mode, after, &mut buckets, true);
-					}
-				}
-				DiffType::Remove => {
-					if let Some(cols) = diff.pre() {
-						Self::push_all(aggregator, mode, ctx, &cols, &mut buckets, false)?;
-					}
-				}
-			}
-		}
-		Ok(buckets)
-	}
-
-	fn push_all<C: ColumnsView>(
-		aggregator: &A,
-		mode: &SlidingMode<A>,
-		ctx: &mut impl GuestContext,
-		cols: &C,
-		buckets: &mut Buckets<A>,
-		is_add: bool,
-	) -> Result<()> {
-		let extracted = extract_rows(aggregator, ctx, cols, &all_rows(cols))?;
-		Self::push_extracted(mode, extracted, buckets, is_add);
-		Ok(())
-	}
-
-	fn push_extracted(mode: &SlidingMode<A>, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A>, is_add: bool) {
-		let op = if is_add {
-			AccumulatorOp::Add
-		} else {
-			AccumulatorOp::Remove
-		};
-		for (_, coord, group, contribution) in extracted {
-			for span in mode.engine.spans(coord) {
-				buckets.push(group.clone(), span, op, contribution.clone());
-			}
-		}
 	}
 }
 
@@ -450,13 +386,18 @@ where
 		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 		reap_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
+		slide: Option<<A::Coord as Coord>::Span>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		change: &V,
 	) -> Result<Emitted<A>> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		let mut routed: Routed<A::GroupKey, A::Coord, Contributions<A>> =
-			route_tumbling(&mut SdkRows::new(aggregator, ctx, change), settings.fixed_size())?;
+		let mut rows = SdkRows::new(aggregator, ctx, change);
+		let mut routed: Routed<A::GroupKey, A::Coord, Contributions<A>> = match slide {
+			Some(slide) => route_sliding(&mut rows, settings.fixed_size(), slide)?,
+			None => route_tumbling(&mut rows, settings.fixed_size())?,
+		};
+		drop(rows);
 		if routed.buckets.is_empty() {
 			return Ok(emitted);
 		}
@@ -487,87 +428,6 @@ where
 			.map(|(number, time, pre, post)| (number, time, Some(pre), post))
 			.collect();
 		emitted.2 = emits.removes;
-		Ok(emitted)
-	}
-
-	fn apply_tumbling<C: GuestContext>(
-		aggregator: &A,
-		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		reap_queue_empty: &mut bool,
-		seal_span: Option<SealSpan<A>>,
-		settings: &WindowSettings<A::Coord>,
-		ctx: &mut C,
-		routing: Buckets<A>,
-	) -> Result<Emitted<A>> {
-		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		let (mut buckets, mut order) = routing.finish();
-		if let Some(seal_span) = seal_span {
-			Self::drop_sealed(engine, reap_queue_empty, seal_span, ctx, &mut buckets, &mut order)?;
-			if buckets.is_empty() {
-				return Ok(emitted);
-			}
-		}
-
-		let groups = intern_window_groups(
-			buckets.keys()
-				.map(|(group, span)| ((group.clone(), span.start), Self::row_key(group, span.start))),
-		);
-
-		let results = {
-			let mut store = GuestAsHost(ctx);
-			engine.apply(
-				&mut store,
-				buckets,
-				&order,
-				|group, window_start| group_of(&groups, group, window_start),
-				|| aggregator.new_accumulator(settings),
-			)?
-		};
-
-		if seal_span.is_some() {
-			let inserted: Vec<_> = results
-				.iter()
-				.filter(|r| r.kind == EmitKind::Insert)
-				.map(|r| (r, group_of(&groups, &r.group, r.span.start)))
-				.collect();
-			let entries: Vec<_> = inserted
-				.iter()
-				.map(|(r, (group, key))| WindowReindex {
-					group: &r.group,
-					window_start: r.span.start,
-					id: *group,
-					slot_key: key,
-					prior: None,
-					new: Some(r.span.start.to_order()),
-				})
-				.collect();
-			engine.reindex_windows(&mut GuestAsHost(ctx), &entries)?;
-		}
-
-		if results.is_empty() {
-			return Ok(emitted);
-		}
-		for r in results {
-			let Some(time) = r.first_time else {
-				return Err(SdkError::Other(format!(
-					"a tumbling result for row {:?} carries no first time",
-					r.row_number
-				)));
-			};
-			let pre = r.prior.as_ref().and_then(|prior| aggregator.build_output(&r.group, r.span, prior));
-			let out = match r.kind {
-				EmitKind::Remove => None,
-				EmitKind::Insert | EmitKind::Update => {
-					aggregator.build_output(&r.group, r.span, &r.value)
-				}
-			};
-			match (out, pre) {
-				(Some(out), None) => emitted.0.push((r.row_number, time, out)),
-				(Some(out), Some(pre)) => emitted.1.push((r.row_number, time, Some(pre), out)),
-				(None, Some(pre)) => emitted.2.push((r.row_number, time, pre)),
-				(None, None) => {}
-			}
-		}
 		Ok(emitted)
 	}
 
@@ -1297,13 +1157,17 @@ where
 		} else {
 			None
 		};
-		let sliding = if slides {
+		let slide = if slides {
 			let Some(slide) = settings.slide else {
 				panic!("{}: a sliding window reached create without a slide", A::NAME);
 			};
-			Some(SlidingMode {
-				engine: SlidingEngine::new(window_engine_config(params), settings.fixed_size(), slide),
-			})
+			if !fits_slide(settings.fixed_size(), slide) {
+				return Err(SdkError::OperatorError(format!(
+					"{}: a sliding window needs a slide above zero and below its size",
+					A::NAME
+				)));
+			}
+			Some(slide)
 		} else {
 			None
 		};
@@ -1321,7 +1185,7 @@ where
 			aggregator,
 			engine: TumblingEngine::new(window_engine_config(params)),
 			rolling,
-			sliding,
+			slide,
 			session,
 			reap_queue_empty: false,
 			seal_span,
@@ -1337,7 +1201,6 @@ where
 			aggregator,
 			engine,
 			rolling,
-			sliding,
 			session,
 			reap_queue_empty,
 			settings,
@@ -1351,10 +1214,9 @@ where
 			Some(mode) => Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?,
 			None => {
 				let may_retire = session.is_none();
-				let tumbling = match (sliding, session) {
-					(Some(mode), _) => mode.engine.tumbling_mut(),
-					(None, Some(mode)) => mode.engine.tumbling_mut(),
-					(None, None) => engine,
+				let tumbling = match session {
+					Some(mode) => mode.engine.tumbling_mut(),
+					None => engine,
 				};
 				Self::expire_through(
 					tumbling,
@@ -1406,38 +1268,22 @@ where
 			let Self {
 				aggregator,
 				engine,
-				sliding,
+				slide,
 				reap_queue_empty,
 				seal_span,
 				settings,
 				..
 			} = &mut *self;
-			match sliding {
-				Some(mode) => {
-					let buckets = Self::route(aggregator, mode, ctx, &change)?;
-					if buckets.is_empty() {
-						return Ok(());
-					}
-					Self::apply_tumbling(
-						aggregator,
-						mode.engine.tumbling_mut(),
-						reap_queue_empty,
-						*seal_span,
-						settings,
-						ctx,
-						buckets,
-					)?
-				}
-				None => Self::apply_plain_tumbling(
-					aggregator,
-					engine,
-					reap_queue_empty,
-					*seal_span,
-					settings,
-					ctx,
-					&change,
-				)?,
-			}
+			Self::apply_plain_tumbling(
+				aggregator,
+				engine,
+				reap_queue_empty,
+				*seal_span,
+				*slide,
+				settings,
+				ctx,
+				&change,
+			)?
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
@@ -1680,11 +1526,12 @@ mod tests {
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
-		let sliding = driver.sliding.as_ref().expect("a sliding view builds a sliding engine");
+		let slide = driver.slide.expect("a sliding view keeps its slide");
 
 		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
 		assert_eq!(
-			sliding.engine.spans(U8Coord(23)),
+			WindowSpan::covering(U8Coord(23), driver.settings.fixed_size(), slide)
+				.expect("every window around slot 23 ends before the maximum"),
 			vec![WindowSpan::new(U8Coord(16), U8Coord(26)), WindowSpan::new(U8Coord(20), U8Coord(30)),]
 		);
 	}

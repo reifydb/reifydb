@@ -86,14 +86,14 @@ where
 		}
 	}
 
-	pub fn covering(coord: C, size: C::Span, slide: C::Span) -> Vec<Self> {
+	pub fn covering(coord: C, size: C::Span, slide: C::Span) -> Option<Vec<Self>> {
 		assert!(!size.is_zero(), "WindowSpan::covering: size must be > 0");
 		assert!(!slide.is_zero(), "WindowSpan::covering: slide must be > 0");
 		assert!(slide < size, "WindowSpan::covering: slide must be below size");
 		let mut spans = Vec::new();
 		let mut start = coord.saturating_sub_span(size).floor_to(slide);
 		while start <= coord {
-			let end = start.add_span(size);
+			let end = start.checked_add_span(size)?;
 			if coord < end {
 				spans.push(Self {
 					start,
@@ -102,7 +102,7 @@ where
 			}
 			start = start.add_span(slide);
 		}
-		spans
+		Some(spans)
 	}
 
 	#[inline]
@@ -253,7 +253,8 @@ mod tests {
 	#[test]
 	fn covering_returns_every_window_that_holds_the_coord() {
 		// stepping by the size instead of the slide would skip the overlapping windows
-		let spans = WindowSpan::covering(event_coord_at_millis(5_000), millis(1_000), millis(250));
+		let spans = WindowSpan::covering(event_coord_at_millis(5_000), millis(1_000), millis(250))
+			.expect("every window around 5s ends before the maximum");
 
 		assert_eq!(
 			spans,
@@ -269,7 +270,8 @@ mod tests {
 	#[test]
 	fn covering_excludes_the_window_that_ends_at_the_coord() {
 		// a closed end would put the coord in the window that ended at it
-		let spans = WindowSpan::covering(event_coord_at_millis(5_000), millis(1_000), millis(250));
+		let spans = WindowSpan::covering(event_coord_at_millis(5_000), millis(1_000), millis(250))
+			.expect("every window around 5s ends before the maximum");
 
 		assert!(!spans.contains(&WindowSpan::new(event_coord_at_millis(4_000), event_coord_at_millis(5_000))));
 	}
@@ -277,7 +279,8 @@ mod tests {
 	#[test]
 	fn covering_on_an_ordinal_coord_counts_slots() {
 		// flooring the coord by the size would start the windows off the slide grid
-		let spans = WindowSpan::covering(U8Coord(23), RowSpan::of(10), RowSpan::of(4));
+		let spans = WindowSpan::covering(U8Coord(23), RowSpan::of(10), RowSpan::of(4))
+			.expect("every window around slot 23 ends before the maximum");
 
 		assert_eq!(
 			spans,

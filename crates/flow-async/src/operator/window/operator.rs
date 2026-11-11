@@ -28,8 +28,8 @@ use reifydb_value::{
 
 use super::{
 	apply::{
-		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, forget_sealed_groups,
-		seal_engine_windows, seal_session_engines,
+		apply_session_engine, apply_tumbling_engine, forget_sealed_groups, seal_engine_windows,
+		seal_session_engines,
 	},
 	rolling::{NativePaneEngine, apply_rolling_engine, seal_rolling_engine},
 };
@@ -42,7 +42,7 @@ use crate::{
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
 	timer::Timer,
-	window::{engine::config::WindowEngineConfig, meta::WindowMeta},
+	window::{engine::config::WindowEngineConfig, kind::sliding::fits_slide, meta::WindowMeta},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -87,6 +87,22 @@ impl WindowOperator {
 		)?;
 		if config.kind.size().is_some_and(WindowSize::is_count) {
 			return internal_err!("a native window must be sized by duration");
+		}
+		if let WindowKind::Sliding {
+			size,
+			slide,
+			..
+		} = &config.kind
+		{
+			let fits = match (size, slide) {
+				(WindowSize::Duration(size), WindowSize::Duration(slide)) => fits_slide(*size, *slide),
+				_ => false,
+			};
+			if !fits {
+				return internal_err!(
+					"a native sliding window needs a duration slide above zero and below its size"
+				);
+			}
 		}
 		Ok(Self {
 			core,
@@ -204,7 +220,7 @@ impl HostOperator for WindowOperator {
 			} => apply_tumbling_engine(self, host, change),
 			WindowKind::Sliding {
 				..
-			} => apply_sliding_engine(self, host, change),
+			} => apply_tumbling_engine(self, host, change),
 			WindowKind::Rolling {
 				..
 			} => apply_rolling_engine(self, host, change),

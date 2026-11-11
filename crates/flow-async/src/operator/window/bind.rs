@@ -28,38 +28,14 @@ use crate::{
 	},
 	window::{
 		coord::DateTimeCoord,
-		kind::{
-			ordinal_window_span,
-			session::{
-				SessionKind,
-				open::{Member, OpenSession, OpenSessions, SessionIds},
-			},
-			sliding::SlidingOverTime,
+		kind::session::{
+			SessionKind,
+			open::{Member, OpenSession, OpenSessions, SessionIds},
 		},
 		meta::OpenSessionsState,
 		mint::Mint,
-		span::WindowSpan,
 	},
 };
-
-pub(super) struct SlidingBound {
-	over_time: Option<SlidingOverTime>,
-}
-
-impl SlidingBound {
-	pub(super) fn anchors(&self, timestamp_or_row_index: u64) -> impl Iterator<Item = u64> + use<> {
-		let over_time = self
-			.over_time
-			.as_ref()
-			.map(|kind| kind.anchors(<DateTimeCoord as Coord>::from_order(timestamp_or_row_index)));
-		let neither = over_time.is_none().then_some(0);
-		over_time.into_iter().flatten().chain(neither)
-	}
-
-	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTimeCoord> {
-		self.over_time.as_ref().map_or_else(|| ordinal_window_span(anchor), |kind| kind.span(anchor))
-	}
-}
 
 impl WindowOperator {
 	pub(super) fn session_gap(&self) -> Duration {
@@ -148,20 +124,13 @@ impl WindowOperator {
 		self.meta_slot().drop_sessions(host, &groups)
 	}
 
-	fn sliding_over_time(&self) -> Option<SlidingOverTime> {
+	pub(super) fn slide_duration(&self) -> Option<Duration> {
 		match &self.kind {
 			WindowKind::Sliding {
-				size: WindowSize::Duration(size),
 				slide: WindowSize::Duration(slide),
 				..
-			} => SlidingOverTime::by_duration(*size, *slide),
+			} => Some(*slide),
 			_ => None,
-		}
-	}
-
-	pub(super) fn sliding_bound(&self) -> SlidingBound {
-		SlidingBound {
-			over_time: self.sliding_over_time(),
 		}
 	}
 

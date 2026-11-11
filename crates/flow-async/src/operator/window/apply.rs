@@ -5,7 +5,6 @@ use std::{
 	slice::from_ref,
 };
 
-use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
@@ -21,7 +20,6 @@ use reifydb_value::{
 use tracing::{Span, instrument};
 
 use super::{
-	bind::SlidingBound,
 	hooks::BuiltinHooks,
 	operator::{WindowOperator, required_row_numbers},
 	rows::BuiltinRows,
@@ -32,8 +30,8 @@ use crate::{
 			accumulator::{RowAccumulator, SlotContributions, WindowSlotKey},
 			core::{BatchGroups, SlotRow},
 			engine::{
-				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, Stamp, WindowGroups,
-				distinct_row_runs, finish_tumbling_engine, group_of, intern_window_groups, slot_coord,
+				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, WindowGroups,
+				finish_tumbling_engine, group_of, intern_window_groups, slot_coord,
 			},
 		},
 		host::HostContext,
@@ -54,7 +52,7 @@ use crate::{
 		accumulator::AccumulatorOp,
 		coord::DateTimeCoord,
 		driver::{
-			route::{Routed as DriverRouted, route_tumbling},
+			route::{Routed as DriverRouted, route_sliding, route_tumbling},
 			tumbling::finish_tumbling,
 		},
 		engine::{ExpiryAnchor, tumbling::TumblingEngine},
@@ -133,8 +131,10 @@ pub fn apply_tumbling_engine(
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 
 	let mut rows = BuiltinRows::new(operator, &change);
-	let mut routed: DriverRouted<Hash128, DateTimeCoord, SlotContributions> =
-		route_tumbling(&mut rows, window_size)?;
+	let mut routed: DriverRouted<Hash128, DateTimeCoord, SlotContributions> = match operator.slide_duration() {
+		Some(slide) => route_sliding(&mut rows, window_size, slide)?,
+		None => route_tumbling(&mut rows, window_size)?,
+	};
 	let group_values = rows.into_group_values();
 	drop_sealed_events(
 		operator,
@@ -163,121 +163,6 @@ pub fn apply_tumbling_engine(
 fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTimeCoord>)]) -> WindowGroups {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	intern_window_groups(&windows)
-}
-
-fn route_time_sliding(
-	operator: &WindowOperator,
-	bound: &SlidingBound,
-	columns: &RecordBatch,
-	is_add: bool,
-	routing: &mut Routing,
-) -> Result<()> {
-	let groups = operator.core.compute_groups(columns)?;
-	let row_numbers = required_row_numbers(columns)?;
-	let timestamps = operator.row_times(columns, columns.num_rows())?;
-	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
-	let views = operator.core.slot_views(columns, &slot_cols)?;
-	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let event_coord = DateTimeCoord(timestamps[row_idx]);
-		let contribution = views.contribution(row_idx, event_coord.0);
-		let coord = slot_coord(event_coord, row_numbers[row_idx].0);
-		for wid in bound.anchors(event_coord.to_order()) {
-			let op = if is_add {
-				AccumulatorOp::Add
-			} else {
-				AccumulatorOp::Remove
-			};
-			push_count_event(
-				routing,
-				*hash,
-				gvals,
-				bound.span(wid),
-				coord,
-				op,
-				contribution.clone(),
-				event_coord,
-			);
-		}
-	}
-	Ok(())
-}
-
-#[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
-pub fn apply_sliding_engine(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	change: Change,
-) -> Result<Change> {
-	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let window_size = operator.size_duration().unwrap_or_default();
-	let bound = operator.sliding_bound();
-
-	let mut routing = Routing::default();
-
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => route_time_sliding(operator, &bound, post, true, &mut routing)?,
-			Diff::Remove {
-				pre,
-				..
-			} => route_time_sliding(operator, &bound, pre, false, &mut routing)?,
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				for (pre, post) in distinct_row_runs(pre, post)? {
-					route_time_sliding(operator, &bound, &pre, false, &mut routing)?;
-					route_time_sliding(operator, &bound, &post, true, &mut routing)?;
-				}
-			}
-		}
-	}
-
-	let Routed {
-		mut buckets,
-		group_values,
-		mut arrival,
-		window_max_coord,
-	} = routing.finish();
-	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-	drop_sealed_events(
-		operator,
-		host,
-		&mut buckets,
-		&mut arrival,
-		&window_max_coord,
-		rule,
-		ExpiryAnchor::WindowStart,
-	)?;
-
-	let groups = intern_batch(&arrival);
-
-	let engine_config = operator.engine_config();
-	let engine_immutable = operator.immutable();
-	let expiry_anchor = ExpiryAnchor::WindowStart;
-	let armed_before = engine_earliest_expiry(operator, host)?;
-	let diffs = finish_tumbling_engine(
-		&mut operator.core,
-		host,
-		&change,
-		buckets,
-		&group_values,
-		arrival,
-		window_max_coord,
-		&groups,
-		&kinds,
-		engine_config,
-		engine_immutable,
-		expiry_anchor,
-		true,
-		Stamp::SpanStart,
-	)?;
-	rearm_engine_seal(operator, host, rule, armed_before)?;
-	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 type SealedWindows = HashSet<(Hash128, WindowSpan<DateTimeCoord>)>;
@@ -735,7 +620,9 @@ pub fn apply_session_engine(
 		engine_immutable,
 		ExpiryAnchor::LastEvent,
 		true,
-		Stamp::Session(gap, &bounds, &gated),
+		gap,
+		&bounds,
+		&gated,
 	)?;
 	if !gone.is_empty() {
 		let engine_config = operator.engine_config();
@@ -1180,7 +1067,7 @@ mod seal_arm_tests {
 
 	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
-		common::{ChangeVersion, CommitVersion, WindowSize},
+		common::{CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
 		key::{
 			any::TaggedKey,
@@ -1216,6 +1103,7 @@ mod seal_arm_tests {
 			state::{StateExtension, StateRange},
 		},
 		window::{
+			accumulator::AccumulatorEvents,
 			engine::WindowReindex,
 			kind::session::open::{OpenSession, SessionIds},
 		},
@@ -1598,50 +1486,36 @@ mod seal_arm_tests {
 		let mut txn = txn_at(&engine, 100);
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
-			let mut routing = Routing::default();
-			for (op, contribution) in [
-				(AccumulatorOp::Add, slot_row(Vec::new())),
-				(AccumulatorOp::Remove, slot_row(Vec::new())),
-			] {
-				push_count_event(
-					&mut routing,
-					hash,
-					&[],
-					span,
-					slot_coord(start, 1),
-					op,
-					contribution,
-					start,
-				);
-			}
-			let Routed {
+			let mut events = AccumulatorEvents::<SlotContributions>::new();
+			events.push(AccumulatorOp::Add, (slot_coord(start, 1), slot_row(Vec::new())));
+			events.push(AccumulatorOp::Remove, (slot_coord(start, 1), slot_row(Vec::new())));
+			let mut buckets = EngineBuckets::new();
+			buckets.insert((hash, span), events);
+			let routed = DriverRouted {
 				buckets,
-				group_values,
-				arrival,
-				window_max_coord,
-				..
-			} = routing.finish();
-			let groups = intern_batch(&arrival);
-			let change =
-				Change::from_flow(id, ChangeVersion::from(CommitVersion(100)), Vec::new(), start.0);
+				arrival: vec![(hash, span)],
+				window_max_coord: HashMap::from([((hash, span), start)]),
+			};
 			let config = operator.engine_config();
-			let diffs = finish_tumbling_engine(
+			let mut tumbling = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+				Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
+			});
+			let mut hooks = BuiltinHooks::new(
 				&mut operator.core,
-				&mut host,
-				&change,
-				buckets,
-				&group_values,
-				arrival,
-				window_max_coord,
-				&groups,
 				&[],
-				config,
 				None,
+				HashMap::from([(hash, Vec::new())]),
+				start.0,
+			);
+			let diffs = finish_tumbling(
+				&mut tumbling,
+				&mut host,
+				routed,
+				&mut hooks,
 				ExpiryAnchor::WindowStart,
-				false,
-				Stamp::SpanStart,
 			)
 			.unwrap();
+			*operator.core.tumbling_engine_slot() = Some(tumbling);
 			assert!(diffs.is_empty(), "precondition: a window that nets to empty publishes nothing");
 		}
 		assert_eq!(accumulators(&mut txn, id, group), 1, "precondition: the empty accumulator is stored");

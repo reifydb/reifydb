@@ -117,6 +117,10 @@ impl Coord for U8Coord {
 		Self(self.0 + span.rows)
 	}
 
+	fn checked_add_span(self, span: RowSpan) -> Option<Self> {
+		self.0.checked_add(span.rows).map(Self)
+	}
+
 	fn floor_to(self, span: RowSpan) -> Self {
 		Self(self.0 - (self.0 % span.rows))
 	}

@@ -6,7 +6,6 @@ pub mod daba;
 pub mod pane;
 pub mod publish;
 pub mod session;
-pub mod sliding;
 pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;

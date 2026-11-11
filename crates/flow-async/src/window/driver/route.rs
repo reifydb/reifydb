@@ -27,6 +27,7 @@ pub struct Routed<G, C, X> {
 
 struct Routing<G, C: Coord, X> {
 	size: C::Span,
+	slide: Option<C::Span>,
 	index: HashMap<(G, WindowSpan<C>), usize>,
 	windows: Vec<((G, WindowSpan<C>), AccumulatorEvents<X>, Option<C>)>,
 }
@@ -37,11 +38,28 @@ where
 	C: Coord + Hash,
 	X: Contributions,
 {
-	fn push(&mut self, op: AccumulatorOp, group: &G, coord: Option<C>, contribution: &X::Item) {
+	fn push(&mut self, op: AccumulatorOp, group: &G, coord: Option<C>, contribution: &X::Item) -> Result<()> {
 		let Some(coord) = coord else {
-			return;
+			return Ok(());
 		};
-		let key = (group.clone(), WindowSpan::for_coord(coord, self.size));
+		let Some(slide) = self.slide else {
+			self.push_span(op, group, coord, WindowSpan::for_coord(coord, self.size), contribution);
+			return Ok(());
+		};
+		let Some(spans) = WindowSpan::covering(coord, self.size, slide) else {
+			return internal_err!(
+				"a sliding window of size {:?} holding {coord:?} would end past the coordinate maximum",
+				self.size
+			);
+		};
+		for span in spans {
+			self.push_span(op, group, coord, span, contribution);
+		}
+		Ok(())
+	}
+
+	fn push_span(&mut self, op: AccumulatorOp, group: &G, coord: C, span: WindowSpan<C>, contribution: &X::Item) {
+		let key = (group.clone(), span);
 		let at = match self.index.entry(key.clone()) {
 			Entry::Occupied(slot) => *slot.get(),
 			Entry::Vacant(slot) => {
@@ -56,14 +74,15 @@ where
 		events.push(op, contribution.clone());
 	}
 
-	fn push_row(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>, row: usize) {
-		self.push(op, &columns.groups()[row], columns.coords()[row], &columns.contributions()[row]);
+	fn push_row(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>, row: usize) -> Result<()> {
+		self.push(op, &columns.groups()[row], columns.coords()[row], &columns.contributions()[row])
 	}
 
-	fn push_all(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>) {
+	fn push_all(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>) -> Result<()> {
 		for row in 0..columns.len() {
-			self.push_row(op, columns, row);
+			self.push_row(op, columns, row)?;
 		}
+		Ok(())
 	}
 
 	fn push_update(
@@ -102,7 +121,7 @@ where
 				numbers.push(number(post, row)?);
 			}
 			if numbers.iter().any(|n| seen.contains(n)) {
-				self.flush_run(pre, post, &mut run_pre, &mut run_post);
+				self.flush_run(pre, post, &mut run_pre, &mut run_post)?;
 				seen.clear();
 			}
 			seen.extend(numbers);
@@ -115,8 +134,7 @@ where
 				q += 1;
 			}
 		}
-		self.flush_run(pre, post, &mut run_pre, &mut run_post);
-		Ok(())
+		self.flush_run(pre, post, &mut run_pre, &mut run_post)
 	}
 
 	fn flush_run(
@@ -125,13 +143,14 @@ where
 		post: &WindowColumns<G, C, X::Item>,
 		run_pre: &mut Vec<usize>,
 		run_post: &mut Vec<usize>,
-	) {
+	) -> Result<()> {
 		for row in run_pre.drain(..) {
-			self.push_row(AccumulatorOp::Remove, pre, row);
+			self.push_row(AccumulatorOp::Remove, pre, row)?;
 		}
 		for row in run_post.drain(..) {
-			self.push_row(AccumulatorOp::Add, post, row);
+			self.push_row(AccumulatorOp::Add, post, row)?;
 		}
+		Ok(())
 	}
 
 	fn finish(self) -> Routed<G, C, X> {
@@ -158,15 +177,44 @@ where
 	R::Group: Clone + Ord + Hash,
 	R::Coord: Coord + Hash,
 {
+	route(rows, size, None)
+}
+
+pub fn route_sliding<R, X>(
+	rows: &mut R,
+	size: <R::Coord as Coord>::Span,
+	slide: <R::Coord as Coord>::Span,
+) -> Result<Routed<R::Group, R::Coord, X>>
+where
+	R: WindowRows,
+	X: Contributions<Item = R::Contribution>,
+	R::Group: Clone + Ord + Hash,
+	R::Coord: Coord + Hash,
+{
+	route(rows, size, Some(slide))
+}
+
+fn route<R, X>(
+	rows: &mut R,
+	size: <R::Coord as Coord>::Span,
+	slide: Option<<R::Coord as Coord>::Span>,
+) -> Result<Routed<R::Group, R::Coord, X>>
+where
+	R: WindowRows,
+	X: Contributions<Item = R::Contribution>,
+	R::Group: Clone + Ord + Hash,
+	R::Coord: Coord + Hash,
+{
 	let mut routing = Routing {
 		size,
+		slide,
 		index: HashMap::new(),
 		windows: Vec::new(),
 	};
 	for diff in 0..rows.diff_count() {
 		match rows.diff(diff)? {
-			WindowDiff::Insert(post) => routing.push_all(AccumulatorOp::Add, &post),
-			WindowDiff::Remove(pre) => routing.push_all(AccumulatorOp::Remove, &pre),
+			WindowDiff::Insert(post) => routing.push_all(AccumulatorOp::Add, &post)?,
+			WindowDiff::Remove(pre) => routing.push_all(AccumulatorOp::Remove, &pre)?,
 			WindowDiff::Update {
 				pre,
 				post,
