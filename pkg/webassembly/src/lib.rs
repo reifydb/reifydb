@@ -200,7 +200,7 @@ impl WasmDB {
 		set_panic_hook();
 
 		let runtime = Runtime::from_config(
-			RuntimeConfig::default().seeded(0),
+			RuntimeConfig::default().seeded(0).clock(Clock::Real),
 			PoolConfig {
 				coordination_threads: 1,
 				flow_threads: 1,
