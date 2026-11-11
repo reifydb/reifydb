@@ -918,7 +918,7 @@ fn seal_due_windows(
 			}
 		}
 		if !res.is_empty() && !retires {
-			let due = fired.at().saturating_add(rule.admissible().duration());
+			let due = fired.at().saturating_add(rule.seal_span().duration());
 			host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
@@ -940,7 +940,11 @@ fn maintenance_rule(operator: &WindowOperator) -> Option<SealRule> {
 	}
 }
 
-pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<usize> {
+pub fn forget_sealed_groups(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	fired: FiredAt,
+) -> Result<usize> {
 	let config = operator.engine_config();
 	let budget = config.expire_batch();
 	let mut engine =
@@ -952,7 +956,7 @@ pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCont
 	if !drained.queue_is_empty()
 		&& let Some(rule) = maintenance_rule(operator)
 	{
-		let due = fired.at().saturating_add(rule.admissible().duration());
+		let due = fired.at().saturating_add(rule.seal_span().duration());
 		host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
 	}
 	Ok(drained.freed)
@@ -1050,7 +1054,7 @@ mod tests {
 
 	use super::SealRule;
 	use crate::{
-		operator::state::seal::rule::{is_sealed, seal_horizon},
+		operator::state::seal::rule::{is_sealed, output_watermark},
 		window::coord::DateTimeCoord,
 	};
 
@@ -1081,21 +1085,27 @@ mod tests {
 	}
 
 	#[test]
-	fn seal_horizon_goes_pre_epoch_for_young_watermarks() {
+	fn output_watermark_goes_pre_epoch_for_young_watermarks() {
 		// Wrapping past the epoch instead of going negative would seal every window early
 		let lateness = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
-			seal_horizon(DateTimeCoord(at_millis(3)), lateness),
+			output_watermark(DateTimeCoord(at_millis(3)), lateness),
 			DateTimeCoord(at_millis(-7)),
 			"young watermark minus lateness is a real pre-epoch instant"
 		);
 		assert!(
-			!is_sealed(DateTimeCoord(at_millis(0)), seal_horizon(DateTimeCoord(at_millis(3)), lateness)),
+			!is_sealed(
+				DateTimeCoord(at_millis(0)),
+				output_watermark(DateTimeCoord(at_millis(3)), lateness)
+			),
 			"the epoch is still after a pre-epoch horizon"
 		);
 		assert!(
-			is_sealed(DateTimeCoord(at_millis(4)), seal_horizon(DateTimeCoord(at_millis(20)), lateness)),
+			is_sealed(
+				DateTimeCoord(at_millis(4)),
+				output_watermark(DateTimeCoord(at_millis(20)), lateness)
+			),
 			"anchor below watermark - lateness is sealed"
 		);
 	}
@@ -1191,7 +1201,7 @@ mod reap_tests {
 			for n in 0..groups {
 				enqueue(&mut host, &[GroupId::hashed(Hash128(n + 1))]).unwrap();
 			}
-			reap_sealed_groups(&mut operator, &mut host, fired()).unwrap();
+			forget_sealed_groups(&mut operator, &mut host, fired()).unwrap();
 		}
 		armed_timers(&mut txn, id)
 	}
@@ -1468,7 +1478,7 @@ mod seal_arm_tests {
 	}
 
 	#[test]
-	fn a_seal_run_keeps_a_group_with_a_session_ahead_of_the_horizon_and_retires_one_behind_it() {
+	fn a_seal_run_keeps_a_group_with_a_session_ahead_of_the_output_watermark_and_forgets_one_behind_it() {
 		// Retiring a group whose session is still ahead of the horizon drops a live session and its later rows.
 		let engine = TestEngine::new();
 		let mut operator = session_window();
@@ -1624,7 +1634,7 @@ mod seal_arm_tests {
 	}
 
 	#[test]
-	fn a_window_that_nets_to_empty_in_one_batch_is_still_reaped_once_it_seals() {
+	fn a_window_that_nets_to_empty_in_one_batch_is_still_forgotten_once_it_seals() {
 		// a window that publishes nothing must still be indexed, otherwise its accumulator is never reaped
 		let engine = TestEngine::new();
 		let mut operator = window();
@@ -1686,7 +1696,7 @@ mod seal_arm_tests {
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
 			seal_engine_windows(&mut operator, &mut host, seal).unwrap();
-			reap_sealed_groups(&mut operator, &mut host, seal).unwrap();
+			forget_sealed_groups(&mut operator, &mut host, seal).unwrap();
 		}
 
 		assert_eq!(accumulators(&mut txn, id, group), 0, "a sealed window must not keep its accumulator");

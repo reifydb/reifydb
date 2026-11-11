@@ -371,7 +371,7 @@ fn take_due_removes_what_it_returns_and_keeps_the_rest() {
 #[test]
 fn a_restart_still_fires_persisted_timers() {
 	// Armed timers are state, not RAM: a restart must fire what was armed before the crash or
-	// every in-flight window seal and grace deadline dies with the process.
+	// every in-flight window seal and lateness deadline dies with the process.
 	let engine = TestEngine::new();
 
 	let mut txn = deferred(&engine);

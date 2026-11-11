@@ -223,9 +223,9 @@ fn test_a_replayed_item_gets_its_whole_budget_back_and_not_one_attempt() {
 	// operator exactly one retry instead of the declared budget of two. The item must survive its
 	// first post-replay failure and only die on the second.
 	let t = engine_with_queue(TWO_ATTEMPTS);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 
 	fail(&t, &claim_one(&t, "w1"));
 	t.mock_clock().advance_millis(10_000);
@@ -284,9 +284,9 @@ fn test_replay_leaves_no_trace_of_the_previous_life_in_the_scheduling_state() {
 	// and a backoff instant misreports itself to every introspection path, and the stale backoff
 	// would be what the due entry is placed at.
 	let t = engine_with_queue(TWO_ATTEMPTS);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	fail(&t, &claim_one(&t, "w1"));
 	t.mock_clock().advance_millis(10_000);
 	fail(&t, &claim_one(&t, "w1"));

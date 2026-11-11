@@ -180,13 +180,13 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 		let filled = RingBufferMetadata {
-			base_rn: 40,
-			next_sequence: 7,
 			count: 5,
-			filled: 5,
 			head: 2,
 		};
-		let emptied = RingBufferMetadata::reserved(80);
+		let emptied = RingBufferMetadata {
+			count: 0,
+			head: 7,
+		};
 		let mut tx = Transaction::Admin(&mut txn);
 		CatalogStore::save_partition_metadata(
 			&mut tx,

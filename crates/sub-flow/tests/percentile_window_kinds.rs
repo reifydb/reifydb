@@ -183,9 +183,9 @@ fn a_session_percentile_view_equals_the_median_of_each_session_through_inserts_d
 }
 
 #[test]
-fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_min_in_tumbling_sliding_and_session_views()
+fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable_min_in_tumbling_sliding_and_session_views()
  {
-	// The digest applies every retraction, while a min sealed past immutable keeps the retracted value.
+	// The digest applies every retraction, while a min folded past immutable keeps the retracted value.
 	let db = memory();
 	let calls = "p50: stats::approx_percentile(v, 0.5, 0.01), lo: math::min(v)";
 	let views = [
@@ -200,7 +200,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_mi
 	insert(&db, &[(3, 1, 10, 20.0), (4, 1, 10, 30.0)]);
 	for (name, _, _, _, windows) in views {
 		let want = expect(median(&[1.0, 50.0, 20.0, 30.0]), 1.0, windows);
-		assert_view(&db, name, &["p50", "lo"], want, "the 12:00 and 12:01 rows sealed by the 12:10 rows");
+		assert_view(&db, name, &["p50", "lo"], want, "the 12:00 and 12:01 rows folded by the 12:10 rows");
 	}
 
 	db.command("DELETE app::t FILTER { id == 1 }");
@@ -212,6 +212,6 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_mi
 	db.command("DELETE app::t FILTER { id >= 2 }");
 	for (name, _, _, _, windows) in views {
 		let want = expect(Value::none_of(ValueType::Float8), 1.0, windows);
-		assert_view(&db, name, &["p50", "lo"], want, "every row deleted behind a sealed min");
+		assert_view(&db, name, &["p50", "lo"], want, "every row deleted behind an immutable min");
 	}
 }

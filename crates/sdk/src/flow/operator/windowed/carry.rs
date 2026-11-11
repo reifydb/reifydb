@@ -43,7 +43,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			observe_batch,
 			operator::{CarryEmit, Contribution, Extracted, WindowedOperator, extract_rows},
-			seal_frontier, timer_frontier, window_engine_config,
+			operator_watermark, timer_frontier, window_engine_config,
 		},
 	},
 };
@@ -216,7 +216,7 @@ where
 				observe_batch(&mut store, newest.add_span(idle_retention), seal_span)?;
 			}
 		}
-		let watermark = seal_frontier::<A::Coord>(&mut store)?;
+		let watermark = operator_watermark::<A::Coord>(&mut store)?;
 		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;

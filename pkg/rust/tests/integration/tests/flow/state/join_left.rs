@@ -191,7 +191,7 @@ fn a_sealed_pair_leaves_the_join_operator_holding_nothing_per_key() {
 }
 
 #[test]
-fn the_sealed_pairs_published_row_survives_the_reap() {
+fn the_forgotten_pairs_published_row_survives() {
 	// Reclamation must be silent, so freeing state must never retract what the view published.
 	let db = setup();
 	sealing_left_join(&db);
@@ -209,7 +209,7 @@ fn the_sealed_pairs_published_row_survives_the_reap() {
 }
 
 #[test]
-fn a_row_still_inside_its_seal_keeps_its_state_through_a_reap() {
+fn a_row_still_inside_its_retention_keeps_its_state_through_a_forget() {
 	// A reaper that collected on arrival order rather than due time would take live rows with it.
 	let db = setup();
 	sealing_left_join(&db);

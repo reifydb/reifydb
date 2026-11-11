@@ -14,7 +14,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedHostOperator, state::seal::rule::seal_horizon},
+	operator::{BoxedHostOperator, state::seal::rule::output_watermark},
 	transaction::{FlowTransaction, watermark::SourceWatermarks},
 	window::coord::DateTimeCoord,
 };
@@ -106,7 +106,7 @@ fn output_frontiers<T: FlowTransaction>(
 		let frontier = operators
 			.get(&(flow.id, *operator_id))
 			.and_then(|operator| operator.seal_span())
-			.map_or(input, |span| seal_horizon(DateTimeCoord(input), span).0);
+			.map_or(input, |span| output_watermark(DateTimeCoord(input), span).0);
 
 		computed.insert(*operator_id, frontier);
 	}
@@ -414,7 +414,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_sealing_operator_holds_its_output_back_by_exactly_its_seal_horizon() {
+	fn a_sealing_operator_holds_its_output_back_by_exactly_its_seal_span() {
 		// Publishing the input watermark past an unsealed window lets a consumer read a bucket the operator may
 		// still amend.
 		let held = Harness::new()
@@ -493,7 +493,7 @@ mod tests {
 	}
 
 	#[test]
-	fn chained_seal_horizons_accumulate_along_the_path() {
+	fn chained_seal_spans_accumulate_along_the_path() {
 		// Each hop seals against its own input, so the lag must be the sum; a max or a re-read of the source
 		// understates it.
 		let held = Harness::new()
@@ -594,7 +594,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_horizon_deeper_than_the_watermark_holds_a_real_pre_epoch_frontier() {
+	fn a_seal_span_deeper_than_the_watermark_holds_a_real_pre_epoch_output_watermark() {
 		// A cutoff before 1970 is a real instant now, not a clamp, so the sink is held there.
 		let held = Harness::new()
 			.node(source(1))

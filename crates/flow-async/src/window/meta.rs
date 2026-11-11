@@ -433,7 +433,7 @@ mod tests {
 	#[test]
 	fn the_seal_ledger_stays_out_of_every_group_range() {
 		// The seal ledger is per operator, one entry for the whole operator. Under a real group id,
-		// reclaiming that group would reset it and every later event would look admissible again.
+		// reclaiming that group would reset it and every later event would look seal_span again.
 		let key = (&SealLedgerKey).into_group_state_key();
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::ROOT);

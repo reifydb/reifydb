@@ -23,7 +23,7 @@ fn series_materialization_populates_block_store() {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		// Width 5 over keys 0..=11 gives [0,5), [5,10), [10,15); newest_key 11 closes the first two.
 		series_bucket_width: 5,
-		series_grace: Duration::from_milliseconds(0).unwrap(),
+		series_lateness: Duration::from_milliseconds(0).unwrap(),
 		materialize: true,
 		..StorageConfig::default()
 	};

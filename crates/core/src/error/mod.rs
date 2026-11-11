@@ -33,7 +33,7 @@ pub enum CoreError {
 		column: String,
 	},
 
-	#[error("operator setting '{key}' is a count ({count}), but this operator seals by time")]
+	#[error("operator setting '{key}' is a count ({count}), but this operator is measured in time")]
 	OperatorWithCountSpan {
 		key: &'static str,
 		count: u64,
@@ -100,7 +100,7 @@ pub enum CoreError {
 		immutable: Duration,
 	},
 
-	#[error("operator setting '{key}' is a duration ({duration}), but this operator seals by count")]
+	#[error("operator setting '{key}' is a duration ({duration}), but this operator is measured in rows")]
 	OperatorWithDurationSpan {
 		key: &'static str,
 		duration: Duration,

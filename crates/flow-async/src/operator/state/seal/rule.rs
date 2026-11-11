@@ -15,9 +15,9 @@ use crate::{
 pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct AdmissibleSpan(Duration);
+pub struct SealSpanDuration(Duration);
 
-impl AdmissibleSpan {
+impl SealSpanDuration {
 	pub fn duration(self) -> Duration {
 		self.0
 	}
@@ -56,7 +56,7 @@ impl SealedThrough {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SealRule {
-	admissible: AdmissibleSpan,
+	seal_span: SealSpanDuration,
 }
 
 impl SealRule {
@@ -76,9 +76,9 @@ impl SealRule {
 		Self::extended_by_seal(span, lateness)
 	}
 
-	pub fn of(admissible: Duration) -> Self {
+	pub fn of(seal_span: Duration) -> Self {
 		Self {
-			admissible: AdmissibleSpan(admissible),
+			seal_span: SealSpanDuration(seal_span),
 		}
 	}
 
@@ -105,16 +105,16 @@ impl SealRule {
 
 	fn extended_by_seal(base: Duration, lateness: Duration) -> Self {
 		Self {
-			admissible: AdmissibleSpan(base.try_add(lateness).unwrap_or(base)),
+			seal_span: SealSpanDuration(base.try_add(lateness).unwrap_or(base)),
 		}
 	}
 
-	pub fn admissible(self) -> AdmissibleSpan {
-		self.admissible
+	pub fn seal_span(self) -> SealSpanDuration {
+		self.seal_span
 	}
 
 	pub fn seal_instant(self, event: DateTime) -> SealInstant {
-		SealInstant(event.saturating_add(self.admissible.0).saturating_add(SEAL_GATE_STEP))
+		SealInstant(event.saturating_add(self.seal_span.0).saturating_add(SEAL_GATE_STEP))
 	}
 
 	pub fn seal_instant_from_order(self, event_order: u64) -> SealInstant {
@@ -122,13 +122,13 @@ impl SealRule {
 	}
 
 	pub fn horizon_at(self, at: DateTimeCoord) -> Option<DateTimeCoord> {
-		at.0.checked_sub(self.admissible.0)
+		at.0.checked_sub(self.seal_span.0)
 			.and_then(|horizon| horizon.checked_sub(SEAL_GATE_STEP))
 			.map(DateTimeCoord)
 	}
 }
 
-pub fn seal_horizon<C: Coord>(watermark: C, lateness: C::Span) -> C {
+pub fn output_watermark<C: Coord>(watermark: C, lateness: C::Span) -> C {
 	watermark.saturating_sub_span(lateness)
 }
 
@@ -169,25 +169,25 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_instant_is_one_past_the_admissible_span() {
+	fn a_seal_instant_is_one_past_the_seal_span() {
 		// The wheel fires inclusively (`at <= watermark`) but the seal gate is strict - a window
-		// closes once the watermark has passed its whole admissible span, not on reaching it. The +1
+		// closes once the watermark has passed its whole seal span, not on reaching it. The +1
 		// is what converts one into the other.
 		let rule = SealRule::tumbling(ms(1_000), ms(200));
 
-		assert_eq!(rule.admissible().duration(), ms(1_200));
+		assert_eq!(rule.seal_span().duration(), ms(1_200));
 		assert_eq!(rule.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
 	}
 
 	#[test]
-	fn the_horizon_trails_the_ledger_by_the_whole_admissible_span() {
-		// The ledger holds the instant a seal timer fired, a whole admissible span ahead of the
+	fn the_output_watermark_trails_the_ledger_by_the_whole_seal_span() {
+		// The ledger holds the instant a seal timer fired, a whole seal span ahead of the
 		// newest window that timer actually sealed. Treating the ledger itself as the immutable
 		// frontier erases the accumulator of a window that is still open and still taking rows.
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let horizon = rule.horizon_at(DateTimeCoord(ledger)).expect("the ledger is past one admissible span");
+		let horizon = rule.horizon_at(DateTimeCoord(ledger)).expect("the ledger is past one seal_span span");
 
 		assert_eq!(horizon.0, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(horizon.0 < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
@@ -200,7 +200,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_ledger_short_of_one_admissible_span_has_a_real_pre_epoch_horizon() {
+	fn a_ledger_short_of_one_seal_span_has_a_real_pre_epoch_output_watermark() {
 		// Wrapping through u64 would put the horizon near u64::MAX and report every window sealed
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
@@ -238,23 +238,23 @@ mod tests {
 	fn every_kind_admits_its_own_base_span_plus_lateness() {
 		// Tumbling and sliding admit size + lateness, session admits gap + lateness, rolling
 		// admits span + lateness. A divergence here is a behaviour change, not a refactor.
-		assert_eq!(SealRule::tumbling(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
-		assert_eq!(SealRule::sliding(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
-		assert_eq!(SealRule::session(ms(300), ms(50)).admissible().duration(), ms(350));
-		assert_eq!(SealRule::rolling(ms(2_000), ms(50)).admissible().duration(), ms(2_050));
+		assert_eq!(SealRule::tumbling(ms(1_000), ms(50)).seal_span().duration(), ms(1_050));
+		assert_eq!(SealRule::sliding(ms(1_000), ms(50)).seal_span().duration(), ms(1_050));
+		assert_eq!(SealRule::session(ms(300), ms(50)).seal_span().duration(), ms(350));
+		assert_eq!(SealRule::rolling(ms(2_000), ms(50)).seal_span().duration(), ms(2_050));
 	}
 
 	#[test]
-	fn no_lateness_can_make_the_admissible_span_shorter_than_the_window() {
-		// the admissible span must never fall below the window size, or a live window seals on arrival
+	fn no_lateness_can_make_the_seal_span_shorter_than_the_window() {
+		// the seal span must never fall below the window size, or a live window seals on arrival
 		let enormous = Duration::from_nanoseconds_const(i64::MAX);
 
 		for lateness in [ms(0), ms(1), enormous] {
 			let rule = SealRule::tumbling(ms(1_000), lateness);
 			assert!(
-				rule.admissible().duration() >= ms(1_000),
-				"admissible {:?} fell below the 1000ms window for lateness {lateness:?}",
-				rule.admissible().duration()
+				rule.seal_span().duration() >= ms(1_000),
+				"seal span {:?} fell below the 1000ms window for lateness {lateness:?}",
+				rule.seal_span().duration()
 			);
 		}
 	}

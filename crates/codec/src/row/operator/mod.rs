@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::{byte_size::ByteSize, encoding::LeBytes, util::cowvec::CowVec, value::datetime::DateTime};
 
-use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
+use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Internal};
 
 pub mod state;
 
@@ -141,7 +141,7 @@ impl EncodedOperatorRowBuilder {
 	}
 }
 
-impl Sealed for EncodedOperatorRowBuilder {
+impl Internal for EncodedOperatorRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		self.0.buffer()
 	}

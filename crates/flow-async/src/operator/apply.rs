@@ -163,7 +163,7 @@ pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
 				Some(WithSpan::Duration(d)) => d,
 				_ => Duration::zero(),
 			};
-			SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration())
+			SealRule::for_window(kind, lateness).map(|rule| rule.seal_span().duration())
 		}
 		None => match with.lateness {
 			Some(WithSpan::Duration(d)) => Some(d),

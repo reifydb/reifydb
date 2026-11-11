@@ -173,9 +173,9 @@ fn test_an_ok_ack_finishes_the_item_for_good() {
 fn test_a_fail_ack_records_what_the_worker_reported() {
 	// Without the attempt record, a redelivered ack after a crash cannot be told apart from a first ack.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_nanos(4_200);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_nanos(4_200);
 	let token = claim_one(&t, "worker-a");
 
 	t.command(&format!(r#"CALL queue::fail("{token}", "gateway timeout")"#));
@@ -251,9 +251,9 @@ fn test_consecutive_failures_double_the_wait() {
 	// One retry proves the delay exists; two prove it grows. A constant delay would let a
 	// permanently failing item hammer a struggling endpoint at a fixed rate for its whole budget.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 5 } }");
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 
 	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 	assert_eq!(dues(&t, queue)[0].due.to_nanos(), 10_000_000_000, "first failure waits one base interval");

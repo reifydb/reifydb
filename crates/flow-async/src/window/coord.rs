@@ -250,7 +250,7 @@ mod tests {
 
 	#[test]
 	fn event_coordinates_order_by_instant() {
-		// Ordering is what the seal ledger and the admissible-span comparison are built
+		// Ordering is what the seal ledger and the seal-span comparison are built
 		// on, so it must be the instant's order and nothing else.
 		let early = DateTimeCoord::of(&DateTime::from_millis(1));
 		let late = DateTimeCoord::of(&DateTime::from_millis(2));

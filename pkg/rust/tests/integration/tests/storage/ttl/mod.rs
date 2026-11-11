@@ -22,7 +22,7 @@ pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item =
 	// profile's 4x2 rows per tick is 1024x too slow, and extra wins because bootstrap rejects a duplicate key.
 	let overrides: Vec<(ConfigKey, Value)> = extra.into_iter().collect();
 	let mut configs: Vec<(ConfigKey, Value)> = vec![
-		(ConfigKey::RetentionStartupGrace, Value::duration_seconds(1)),
+		(ConfigKey::LifecycleStartupDelay, Value::duration_seconds(1)),
 		(ConfigKey::RetentionEvictInterval, Value::duration_seconds(1)),
 		(ConfigKey::EpochBucketInterval, Value::duration_seconds(1)),
 		(ConfigKey::MultiFlushInterval, Value::duration_seconds(1)),

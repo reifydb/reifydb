@@ -50,13 +50,14 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Emit, Extracted, WindowedOperator, extract_rows},
+			operator_watermark,
 			publish::{Emitted, UpdateRow},
-			seal_frontier, timer_frontier, window_engine_config,
+			timer_frontier, window_engine_config,
 		},
 	},
 };
 
-const SEAL_REAP_BATCH: usize = 256;
+const FORGET_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
@@ -199,8 +200,8 @@ where
 			return Ok(());
 		}
 		let drained = match store_queue_empty {
-			true => drain_groups(store, &expired, engine, SEAL_REAP_BATCH)?,
-			false => drain(store, engine, SEAL_REAP_BATCH)?,
+			true => drain_groups(store, &expired, engine, FORGET_BATCH)?,
+			false => drain(store, engine, FORGET_BATCH)?,
 		};
 		*reap_queue_empty = drained.queue_is_empty();
 		if !*reap_queue_empty {
@@ -225,7 +226,7 @@ where
 			if let Some(newest) = newest {
 				observe_batch(&mut store, newest, seal_span)?;
 			}
-			let watermark = seal_frontier::<A::Coord>(&mut store)?;
+			let watermark = operator_watermark::<A::Coord>(&mut store)?;
 			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {

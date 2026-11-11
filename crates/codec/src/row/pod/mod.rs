@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
-use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
+use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Internal};
 
 pub const POD_HEADER_SIZE: usize = 0;
 
@@ -92,7 +92,7 @@ impl EncodedPodRowBuilder {
 	}
 }
 
-impl Sealed for EncodedPodRowBuilder {
+impl Internal for EncodedPodRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		self.0.buffer()
 	}

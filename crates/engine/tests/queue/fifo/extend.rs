@@ -72,9 +72,9 @@ fn test_extend_moves_the_deadline_of_a_live_lease() {
 	// deadline never reached the state record the reaper would take the item back mid-execution
 	// and hand the same work to someone else.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_nanos(1_000);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_nanos(1_000);
 	let token = claim_one(&t, "w1");
 	assert_eq!(state_of(&t, queue).lease_deadline, Some(DateTime::from_nanos(1_000 + 30 * 1_000_000_000)));
 
@@ -92,9 +92,9 @@ fn test_extend_never_shortens_a_deadline() {
 	// holds - a retry with a smaller ttl, or a clock that moved - must not accidentally hand its
 	// own lease back early while it is still working.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_nanos(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_nanos(0);
 	let token = claim_one(&t, "w1");
 	let original = state_of(&t, queue).lease_deadline.unwrap();
 

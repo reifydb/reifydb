@@ -28,8 +28,8 @@ pub mod retention {
 	pub const EVICT_MAX_BATCHES_PER_TICK: u64 = 8;
 	pub const EVICT_MAX_BATCHES_PER_TICK_TESTING: u64 = 2;
 
-	pub const STARTUP_GRACE: Duration = Duration::from_seconds_const(300);
-	pub const STARTUP_GRACE_TESTING: Duration = Duration::from_seconds_const(300);
+	pub const STARTUP_DELAY: Duration = Duration::from_seconds_const(300);
+	pub const STARTUP_DELAY_TESTING: Duration = Duration::from_seconds_const(300);
 
 	pub const MAX_HORIZON_FLOOR: Duration = Duration::from_hours_const(7 * 24);
 	pub const MAX_HORIZON_FLOOR_TESTING: Duration = Duration::from_hours_const(7 * 24);

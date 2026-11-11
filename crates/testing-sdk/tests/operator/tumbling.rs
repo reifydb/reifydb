@@ -3,7 +3,7 @@
 
 //! Differential chaos for the tumbling driver: every randomized stream is replayed through
 //! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
-//! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
+//! must agree. Covers an invertible sum, a removal-safe multiset min, and immutable OHLCV.
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -20,7 +20,7 @@ use reifydb_testing_sdk::chaos::{
 };
 use reifydb_value::factory::time::millis;
 
-use super::common::{self, MinTumbling, OhlcvSealingTumbling, VolumeTumbling};
+use super::common::{self, MinTumbling, OhlcvImmutableTumbling, VolumeTumbling};
 
 fn window_key() -> Vec<String> {
 	vec!["group".to_string(), "window_start".to_string()]
@@ -100,20 +100,20 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<PlainDriver<OhlcvSealingTumbling>>::builder()
+	ChaosHarness::<PlainDriver<OhlcvImmutableTumbling>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
 		.with_time_column("slot")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH"]))
-		// Slots span more than WINDOW so some events age past OHLCV_IMMUTABLE and reach the sealing path.
+		// Slots span more than WINDOW so some events age past OHLCV_IMMUTABLE and reach the folding path.
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
 		.with_scenario(scenario)
 		.with(window_with())
 		.with_oracle(move |ctx, batches| {
-			tumbling_accumulator_oracle(&OhlcvSealingTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
+			tumbling_accumulator_oracle(&OhlcvImmutableTumbling, &common::settings(&window_with()), ctx, batches, &window_key())
 		})
 		.seed(seed)
 		.build()
@@ -176,7 +176,7 @@ fn min_handles_none_inputs() {
 }
 
 #[test]
-fn ohlcv_sealing_matches_across_configs_and_seeds() {
+fn ohlcv_immutable_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
 		{
 			run_ohlcv(false, common::baseline(150, SupportedOps::insert_only()), seed).assert_matches();
@@ -188,12 +188,12 @@ fn ohlcv_sealing_matches_across_configs_and_seeds() {
 }
 
 #[test]
-fn ohlcv_sealing_produces_nonempty_output() {
+fn ohlcv_immutable_produces_nonempty_output() {
 	// A fixture that emits nothing matches the oracle trivially, so emptiness has to fail.
 	let outcome = run_ohlcv(false, common::baseline(200, SupportedOps::insert_only()), 42);
 	outcome.assert_matches();
 	assert!(
 		!outcome.oracle_table.is_empty(),
-		"sealing OHLCV produced no rows; fixture is not exercising the driver"
+		"immutable OHLCV produced no rows; fixture is not exercising the driver"
 	);
 }

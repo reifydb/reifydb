@@ -19,18 +19,18 @@ pub struct RetentionStartupGate {
 struct Inner {
 	clock: Clock,
 	armed_at_nanos: i64,
-	grace: Duration,
+	delay: Duration,
 	skipped_slices: AtomicU64,
 }
 
 impl RetentionStartupGate {
-	pub fn arm(clock: Clock, grace: Duration) -> Self {
+	pub fn arm(clock: Clock, delay: Duration) -> Self {
 		let armed_at_nanos = clock.now().to_nanos();
 		Self {
 			inner: Arc::new(Inner {
 				clock,
 				armed_at_nanos,
-				grace,
+				delay,
 				skipped_slices: AtomicU64::new(0),
 			}),
 		}
@@ -41,11 +41,11 @@ impl RetentionStartupGate {
 	}
 
 	pub fn is_open(&self) -> bool {
-		if self.inner.grace.is_zero() {
+		if self.inner.delay.is_zero() {
 			return true;
 		}
 		let now = self.inner.clock.now();
-		match now.checked_sub(self.inner.grace) {
+		match now.checked_sub(self.inner.delay) {
 			Some(released) => released.to_nanos() >= self.inner.armed_at_nanos,
 			None => false,
 		}
@@ -115,36 +115,36 @@ mod tests {
 	}
 
 	#[test]
-	fn a_gate_armed_with_a_grace_period_starts_closed() {
+	fn a_gate_armed_with_a_startup_delay_starts_closed() {
 		// The whole point of the gate: the first tick after a restart must not delete. A gate that starts
 		// open would let a process that was down longer than its TTLs mass-evict on tick one.
 		let (clock, _mock) = mock();
 		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 
-		assert!(!gate.is_open(), "a freshly armed gate must hold reclamation back for its grace period");
+		assert!(!gate.is_open(), "a freshly armed gate must hold reclamation back for its startup delay");
 	}
 
 	#[test]
-	fn a_zero_grace_gate_is_open_immediately() {
-		// Tests and single-shot tools need reclamation without waiting out a grace period; zero grace is the
+	fn a_zero_delay_gate_is_open_immediately() {
+		// Tests and single-shot tools need reclamation without waiting out a startup delay; zero delay is the
 		// documented way to ask for that, so it must not accidentally still gate.
 		let (clock, _mock) = mock();
 		let gate = RetentionStartupGate::open(clock);
 
-		assert!(gate.is_open(), "zero grace must mean no gating at all");
+		assert!(gate.is_open(), "zero delay must mean no gating at all");
 	}
 
 	#[test]
-	fn the_gate_opens_once_the_grace_period_has_elapsed() {
+	fn the_gate_opens_once_the_startup_delay_has_elapsed() {
 		let (clock, mock) = mock();
 		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(60).unwrap());
-		assert!(!gate.is_open(), "precondition: still inside the grace window");
+		assert!(!gate.is_open(), "precondition: still inside the startup delay");
 
 		mock.advance_secs(59);
-		assert!(!gate.is_open(), "one second short of the grace period must still gate");
+		assert!(!gate.is_open(), "one second short of the startup delay must still gate");
 
 		mock.advance_secs(1);
-		assert!(gate.is_open(), "once the grace period elapses the gate must release reclamation");
+		assert!(gate.is_open(), "once the startup delay elapses the gate must release reclamation");
 	}
 
 	#[test]

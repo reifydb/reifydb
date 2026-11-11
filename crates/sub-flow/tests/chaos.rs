@@ -254,7 +254,7 @@ fn window_fold_params(lateness_secs: u64) -> operators::window::tumbling::Params
 }
 
 chaos_test!(window_tumbling_min_zero_lateness_chaos, |seed| {
-	// Min seals only under immutable, never by lateness, so retracting the current minimum must still apply.
+	// Min folds only under immutable, never by lateness, so retracting the current minimum must still apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Min);
 });
 
@@ -263,7 +263,8 @@ chaos_test!(window_tumbling_max_zero_lateness_chaos, |seed| {
 });
 
 chaos_test!(window_tumbling_min_lateness_chaos, |seed| {
-	// Lateness seals the window but never the min, only immutable does, so an admitted late retraction must apply.
+	// Lateness seals the window but never folds the min, only immutable does, so an admitted late retraction must
+	// apply.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Min);
 });
 
@@ -296,7 +297,7 @@ fn rolling_fold_params(lateness_secs: u64) -> operators::window::rolling::Params
 }
 
 chaos_test!(window_rolling_min_lateness_chaos, |seed| {
-	// Lateness never makes min a sealing min, only immutable does, so a late retraction in the frame must apply.
+	// Lateness never makes min an immutable min, only immutable does, so a late retraction in the frame must apply.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Min);
 });
 
@@ -2014,8 +2015,8 @@ fn window_row(number: u64, value: i64, at_ms: i64) -> Row {
 }
 
 #[test]
-fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_min_beside_it() {
-	// The digest applies every retraction, while a min sealed past immutable drops it and keeps the row alive.
+fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable_min_beside_it() {
+	// The digest applies every retraction, while a min folded past immutable drops it and keeps the row alive.
 	let specs = [
 		(
 			"tumbling",
@@ -2060,7 +2061,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_mi
 			assert_eq!(
 				lo,
 				Value::Int8(10),
-				"{kind}: the sealed min must keep the row retracted past immutable"
+				"{kind}: the immutable min must keep the row retracted past immutable"
 			);
 		}
 
@@ -2073,7 +2074,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_sealed_mi
 				percentile::no_rows(),
 				"{kind}: a window with no live rows has no percentile"
 			);
-			assert_eq!(lo, Value::Int8(10), "{kind}: the sealed min keeps the window row alive");
+			assert_eq!(lo, Value::Int8(10), "{kind}: the immutable min keeps the window row alive");
 		}
 	}
 }
@@ -2124,7 +2125,7 @@ fn rolling_immutable_spec(aggregations: &'static str) -> WindowSpec {
 }
 
 #[test]
-fn a_rolling_update_dropped_past_the_seal_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
+fn a_rolling_update_dropped_past_the_immutable_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
 	// The update is dropped, so the pane keeps 30; removing the row with its new value 50 must still take it out.
 	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
 	let immutable = Some(Duration::from_seconds(5).unwrap());
@@ -2140,7 +2141,7 @@ fn a_rolling_update_dropped_past_the_seal_line_then_removed_takes_the_row_out_of
 }
 
 #[test]
-fn a_rolling_update_dropped_past_the_seal_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
+fn a_rolling_update_dropped_past_the_immutable_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
 	// A second row keeps the pane alive, so subtracting the event's 50 instead of the held 30 publishes -5, not 15.
 	let spec = rolling_immutable_spec("total: math::sum(v)");
 	let immutable = Some(Duration::from_seconds(5).unwrap());
@@ -2163,7 +2164,7 @@ fn a_rolling_update_dropped_past_the_seal_line_then_removed_publishes_the_sum_of
 }
 
 #[test]
-fn a_rolling_insert_dropped_past_the_seal_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
+fn a_rolling_insert_dropped_past_the_immutable_line_then_removed_takes_the_row_out_of_the_percentile_and_the_min() {
 	// The insert is dropped, so the pane holds 5 but never 30; removing that row must change nothing.
 	let spec = rolling_immutable_spec(percentile::MEDIAN_NEXT_TO_MIN);
 	let immutable = Some(Duration::from_seconds(5).unwrap());
@@ -2178,7 +2179,7 @@ fn a_rolling_insert_dropped_past_the_seal_line_then_removed_takes_the_row_out_of
 }
 
 #[test]
-fn a_rolling_insert_dropped_past_the_seal_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
+fn a_rolling_insert_dropped_past_the_immutable_line_then_removed_publishes_the_sum_of_the_remaining_rows() {
 	// Subtracting the never-held 30 empties the pane's count, so the 5 vanishes and 10 is published instead of 15.
 	let spec = rolling_immutable_spec("total: math::sum(v)");
 	let immutable = Some(Duration::from_seconds(5).unwrap());
@@ -2284,7 +2285,7 @@ chaos_test!(window_tumbling_percentile_lateness_chaos, |seed| {
 });
 
 chaos_test!(window_tumbling_percentile_immutable_chaos, |seed| {
-	// A retraction older than immutable leaves the digest, while the sealed min beside it keeps the row alive.
+	// A retraction older than immutable leaves the digest, while the immutable min beside it keeps the row alive.
 	tumbling::drive_immutable(
 		seed,
 		tumbling::Params {
@@ -2319,7 +2320,7 @@ chaos_test!(window_sliding_percentile_lateness_chaos, |seed| {
 });
 
 chaos_test!(window_sliding_percentile_immutable_chaos, |seed| {
-	// One row in several windows must leave every digest it entered, whichever of them sealed its min.
+	// One row in several windows must leave every digest it entered, whichever of them folded its min.
 	sliding::drive_immutable(
 		seed,
 		sliding::Params {

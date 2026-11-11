@@ -144,9 +144,9 @@ fn test_an_expired_lease_comes_back_with_exactly_one_lost_attempt() {
 	// to the ready set, and the loss must be on the record: without it the next reap could not tell
 	// a first loss from a repeat, and the retry budget would never be charged for the dead worker.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
@@ -171,9 +171,9 @@ fn test_a_reaped_item_waits_out_its_backoff_before_redelivery() {
 	// Redelivering instantly would let a task that kills its worker take the next worker down at
 	// full speed. The reaper's requeue goes through the same backoff curve an err-ack does.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
@@ -196,10 +196,10 @@ fn test_lost_attempts_spend_the_retry_budget() {
 	// lost attempts did not count, an item that never produces an ack would cycle forever and the
 	// dead state would be unreachable for exactly the failure mode that needs it most.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "doomed-1", 30);
 	t.mock_clock().set_millis(31_000);
 	reaper(&t).run_slice();
@@ -221,9 +221,9 @@ fn test_a_live_lease_is_left_alone() {
 	// The reaper scans every item state, not just expired ones. Reaping on the wrong side of the
 	// deadline comparison would hand a working worker's item to a second worker.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "alive", 30);
 
 	t.mock_clock().set_millis(29_999);
@@ -240,9 +240,9 @@ fn test_an_extended_lease_survives_a_concurrent_sweep() {
 	// compare-and-set. Guarding only on (leased, attempt) would let the reaper steal an item from a
 	// worker that is demonstrably alive - the exact race queue::extend exists to prevent.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	let token = claim_one(&t, "slow", 30);
 
 	t.mock_clock().set_millis(31_000);
@@ -262,9 +262,9 @@ fn test_an_already_acked_item_is_healed_rather_than_marked_lost() {
 	// re-run work the worker already completed - the one thing an at-least-once queue must not do
 	// when it has the evidence in hand.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "w1", 30);
 
 	plant_attempt(
@@ -297,9 +297,9 @@ fn test_a_recorded_err_outcome_is_completed_by_the_reaper() {
 	// Same crash window, failing outcome. The item must follow the err path (retry or dead), not be
 	// double-charged with a second lost record for the same attempt.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "w1", 30);
 
 	plant_attempt(
@@ -331,9 +331,9 @@ fn test_a_reap_that_crashed_after_recording_finishes_on_the_next_slice() {
 	// transition without writing a second record, or every crash would inflate the attempt history
 	// and spend the budget twice as fast.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "doomed", 30);
 
 	plant_attempt(
@@ -363,9 +363,9 @@ fn test_a_second_slice_over_the_same_state_changes_nothing() {
 	// run_slice is called on a timer forever. A sweep that transitioned an item it already
 	// transitioned would decrement in_flight twice and corrupt the counters permanently.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	claim_one(&t, "doomed", 30);
 
 	t.mock_clock().set_millis(31_000);
@@ -386,11 +386,11 @@ fn test_a_backlog_deeper_than_the_budget_drains_across_slices() {
 	// every slice and never reach the tail, so a queue could hold expired leases indefinitely while
 	// the task reported progress.
 	let t = engine_with_queue(ONE_PARTITION);
+	t.mock_clock().set_millis(0);
 	for id in 1..=6 {
 		t.command(&format!("INSERT test::jobs [{{ id: {id} }}]"));
 	}
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	for worker in 1..=6 {
 		claim_one(&t, &format!("doomed-{worker}"), 30);
 	}
@@ -421,9 +421,9 @@ fn test_the_reaper_reaches_an_expired_lease_in_every_partition() {
 	let t = engine_with_queue(
 		"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {}, retry: { attempts: 2 } }",
 	);
+	t.mock_clock().set_millis(0);
 	t.command(r#"INSERT test::jobs [{ id: 1, region: "eu" }, { id: 2, region: "us" }, { id: 3, region: "ap" }]"#);
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	t.command(r#"CALL queue::claim("doomed", "test::jobs", 3, duration::seconds(30))"#);
 	assert!(states(&t, queue).iter().all(|state| state.status == QueueItemStatus::Leased));
 

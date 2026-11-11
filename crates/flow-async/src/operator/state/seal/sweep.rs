@@ -48,8 +48,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_sweep_horizon_inverts_the_seal_instant_exactly() {
-		// Arming computes `event + admissible + 1`; the sweep must invert it exactly or a window
+	fn the_output_watermark_inverts_the_seal_instant_exactly() {
+		// Arming computes `event + seal_span + 1`; the sweep must invert it exactly or a window
 		// seals its neighbour instead of itself. The two halves live in separate files and have
 		// drifted apart before.
 		let rule = SealRule::tumbling(ms(1_000), ms(200));
@@ -76,8 +76,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_zero_admissible_rule_sweeps_one_millisecond_behind_the_fired_instant() {
-		// a zero admissible span must sweep just behind the fired instant, otherwise a zero gap never seals.
+	fn a_zero_seal_span_rule_puts_the_output_watermark_one_millisecond_behind_the_fired_instant() {
+		// a zero seal span must sweep just behind the fired instant, otherwise a zero gap never seals.
 		let sweep = SealSweep::new(SealRule::tumbling(ms(0), ms(0)));
 
 		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTimeCoord(DateTime::from_millis(4_999))));

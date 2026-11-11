@@ -8,8 +8,8 @@ use reifydb_value::value::datetime::DateTime;
 use crate::row::{
 	bytes::{
 		EncodedBytes, EncodedRowBuilder, QUEUE_HEADER_SIZE, RowBuilder, SourceRowBuilder, read_created_at,
-		read_defined_at, read_fingerprint, read_not_before, read_updated_at, sealed::Sealed, write_fingerprint,
-		write_not_before, write_storage_time, write_timestamps,
+		read_defined_at, read_fingerprint, read_not_before, read_updated_at, sealed::Internal,
+		write_fingerprint, write_not_before, write_storage_time, write_timestamps,
 	},
 	shape::fingerprint::RowShapeFingerprint,
 };
@@ -148,7 +148,7 @@ impl SourceRowBuilder for EncodedQueueRowBuilder {
 	}
 }
 
-impl Sealed for EncodedQueueRowBuilder {
+impl Internal for EncodedQueueRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		self.0.buffer()
 	}

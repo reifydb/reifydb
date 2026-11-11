@@ -98,7 +98,7 @@ fn a_live_window_reports_the_accumulator_holding_its_aggregate() {
 }
 
 #[test]
-fn a_sealed_window_has_both_its_data_and_its_identity_reaped() {
+fn a_sealed_window_has_both_its_data_and_its_identity_forgotten() {
 	// A sealed window is closed to everything, so sparing its identity would leave a reachable address per window.
 	let db = setup();
 	tumbling_window(&db);
@@ -132,7 +132,7 @@ fn a_sealed_window_has_both_its_data_and_its_identity_reaped() {
 }
 
 #[test]
-fn the_sealed_windows_published_rows_survive_the_reap() {
+fn the_sealed_windows_published_rows_survive_the_forget() {
 	// Reclamation must be silent, so freeing state must never retract what the view published.
 	let db = setup();
 	tumbling_window(&db);

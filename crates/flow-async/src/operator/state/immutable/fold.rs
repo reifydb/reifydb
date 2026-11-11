@@ -11,13 +11,13 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use super::base::SealingBase;
+use super::base::ImmutableBase;
 use crate::window::{
 	accumulator::WindowAccumulator,
 	span::{Slot, SlotSpan},
 };
 
-pub trait SealFold {
+pub trait ImmutableFoldStep {
 	type Value: Clone + Debug;
 	type State: Clone + Debug + Default;
 	type Params: Clone + Debug + Default;
@@ -29,60 +29,60 @@ pub trait SealFold {
 }
 
 #[operator_state]
-pub struct SealingFold<S: Slot, F: SealFold> {
-	base: SealingBase<S, F::Value>,
+pub struct ImmutableFold<S: Slot, F: ImmutableFoldStep> {
+	base: ImmutableBase<S, F::Value>,
 	params: F::Params,
-	sealed: F::State,
-	last_sealed: Option<F::Value>,
+	immutable: F::State,
+	last_immutable: Option<F::Value>,
 	marker: PhantomData<fn() -> F>,
 }
 
-impl<S: Slot, F: SealFold> Clone for SealingFold<S, F> {
+impl<S: Slot, F: ImmutableFoldStep> Clone for ImmutableFold<S, F> {
 	fn clone(&self) -> Self {
 		Self {
 			base: self.base.clone(),
 			params: self.params.clone(),
-			sealed: self.sealed.clone(),
-			last_sealed: self.last_sealed.clone(),
+			immutable: self.immutable.clone(),
+			last_immutable: self.last_immutable.clone(),
 			marker: PhantomData,
 		}
 	}
 }
 
-impl<S: Slot, F: SealFold> Debug for SealingFold<S, F> {
+impl<S: Slot, F: ImmutableFoldStep> Debug for ImmutableFold<S, F> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("SealingFold")
+		f.debug_struct("ImmutableFold")
 			.field("base", &self.base)
 			.field("params", &self.params)
-			.field("sealed", &self.sealed)
-			.field("last_sealed", &self.last_sealed)
+			.field("immutable", &self.immutable)
+			.field("last_immutable", &self.last_immutable)
 			.finish()
 	}
 }
 
-impl<S: Slot, F: SealFold> Default for SealingFold<S, F> {
+impl<S: Slot, F: ImmutableFoldStep> Default for ImmutableFold<S, F> {
 	fn default() -> Self {
 		Self {
-			base: SealingBase::default(),
+			base: ImmutableBase::default(),
 			params: F::Params::default(),
-			sealed: F::State::default(),
-			last_sealed: None,
+			immutable: F::State::default(),
+			last_immutable: None,
 			marker: PhantomData,
 		}
 	}
 }
 
-impl<S: Slot, F: SealFold> SealingFold<S, F> {
+impl<S: Slot, F: ImmutableFoldStep> ImmutableFold<S, F> {
 	pub fn new(immutable: SlotSpan<S>, params: F::Params) -> Self {
 		Self::maybe_immutable(Some(immutable), params)
 	}
 
 	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>, params: F::Params) -> Self {
 		Self {
-			base: SealingBase::maybe_immutable(immutable),
+			base: ImmutableBase::maybe_immutable(immutable),
 			params,
-			sealed: F::State::default(),
-			last_sealed: None,
+			immutable: F::State::default(),
+			last_immutable: None,
 			marker: PhantomData,
 		}
 	}
@@ -99,24 +99,24 @@ impl<S: Slot, F: SealFold> SealingFold<S, F> {
 		self.base.len() == 0
 	}
 
-	pub fn sealed_count(&self) -> u64 {
-		self.base.sealed_count()
+	pub fn immutable_count(&self) -> u64 {
+		self.base.immutable_count()
 	}
 }
 
-impl<S, F> WindowAccumulator for SealingFold<S, F>
+impl<S, F> WindowAccumulator for ImmutableFold<S, F>
 where
 	S: Slot + Hash,
-	F: SealFold,
-	SealingFold<S, F>: OperatorState + StateCodec + HeapSize,
+	F: ImmutableFoldStep,
+	ImmutableFold<S, F>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (S, F::Value);
 	type Output = F::Output;
 
 	fn add(&mut self, contribution: &(S, F::Value)) {
 		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			F::fold(&self.params, &mut self.sealed, self.last_sealed.as_ref(), &v);
-			self.last_sealed = Some(v);
+			F::fold(&self.params, &mut self.immutable, self.last_immutable.as_ref(), &v);
+			self.last_immutable = Some(v);
 		}
 	}
 
@@ -125,8 +125,8 @@ where
 	}
 
 	fn finalize(&self) -> Option<F::Output> {
-		let mut state = self.sealed.clone();
-		let mut prev = self.last_sealed.clone();
+		let mut state = self.immutable.clone();
+		let mut prev = self.last_immutable.clone();
 		for v in self.base.tail().values() {
 			F::fold(&self.params, &mut state, prev.as_ref(), v);
 			prev = Some(v.clone());
@@ -135,18 +135,21 @@ where
 	}
 
 	fn is_empty(&self) -> bool {
-		self.last_sealed.is_none() && self.base.is_tail_empty()
+		self.last_immutable.is_none() && self.base.is_tail_empty()
 	}
 }
 
-impl<S: Slot + HeapSize, F: SealFold> HeapSize for SealingFold<S, F>
+impl<S: Slot + HeapSize, F: ImmutableFoldStep> HeapSize for ImmutableFold<S, F>
 where
 	F::Value: HeapSize,
 	F::State: HeapSize,
 	F::Params: HeapSize,
 {
 	fn heap_size(&self) -> usize {
-		self.base.heap_size() + self.params.heap_size() + self.sealed.heap_size() + self.last_sealed.heap_size()
+		self.base.heap_size()
+			+ self.params.heap_size()
+			+ self.immutable.heap_size()
+			+ self.last_immutable.heap_size()
 	}
 }
 
@@ -166,7 +169,7 @@ mod tests {
 
 	struct AbsPathFold;
 
-	impl SealFold for AbsPathFold {
+	impl ImmutableFoldStep for AbsPathFold {
 		type Value = f64;
 		type State = f64;
 		type Params = ();
@@ -185,7 +188,7 @@ mod tests {
 
 	struct ScaledPathFold;
 
-	impl SealFold for ScaledPathFold {
+	impl ImmutableFoldStep for ScaledPathFold {
 		type Value = f64;
 		type State = f64;
 		type Params = f64;
@@ -204,7 +207,7 @@ mod tests {
 
 	struct SumFold;
 
-	impl SealFold for SumFold {
+	impl ImmutableFoldStep for SumFold {
 		type Value = f64;
 		type State = f64;
 		type Params = ();
@@ -220,8 +223,8 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_fold_no_seal_sums_all_adjacent_steps() {
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::default();
+	fn immutable_fold_no_seal_sums_all_adjacent_steps() {
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::default();
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
@@ -230,68 +233,68 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::new(millis(1), ());
+	fn immutable_fold_seals_aged_prefix_exactly_for_forward_data() {
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
-		assert_eq!(accumulator.finalize(), Some(15.0), "sealed prefix preserves the full path exactly");
+		assert_eq!(accumulator.finalize(), Some(15.0), "immutable prefix preserves the full path exactly");
 	}
 
 	#[test]
-	fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::new(millis(1), ());
+	fn immutable_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
 
 		accumulator.remove(&(event_coord_at_millis(0), 10.0));
-		assert_eq!(accumulator.finalize(), Some(15.0), "aged removal does not disturb the sealed path");
+		assert_eq!(accumulator.finalize(), Some(15.0), "aged removal does not disturb the immutable path");
 
 		accumulator.remove(&(event_coord_at_millis(2), 15.0));
 		assert_eq!(accumulator.finalize(), Some(10.0), "live removal recomputes the path");
 	}
 
 	#[test]
-	fn sealing_fold_is_independent_of_arrival_order() {
+	fn immutable_fold_is_independent_of_arrival_order() {
 		// A row landing behind the high water must still fold, otherwise the answer depends on arrival order.
-		let mut forward: SealingFold<DateTimeCoord, SumFold> = SealingFold::new(millis(1), ());
+		let mut forward: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
 		forward.add(&(event_coord_at_millis(0), 10.0));
 		forward.add(&(event_coord_at_millis(2), 15.0));
 
-		let mut reversed: SealingFold<DateTimeCoord, SumFold> = SealingFold::new(millis(1), ());
+		let mut reversed: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
 		reversed.add(&(event_coord_at_millis(2), 15.0));
 		reversed.add(&(event_coord_at_millis(0), 10.0));
 
-		assert_eq!(forward.sealed_count(), 1, "an unsealed arm makes this comparison vacuous");
-		assert_eq!(reversed.sealed_count(), forward.sealed_count());
+		assert_eq!(forward.immutable_count(), 1, "a plain arm makes this comparison vacuous");
+		assert_eq!(reversed.immutable_count(), forward.immutable_count());
 		assert_eq!(reversed.len(), forward.len());
 		assert_eq!(reversed.finalize(), forward.finalize());
 		assert_eq!(forward.finalize(), Some(25.0), "the late row contributes exactly once");
 	}
 
 	#[test]
-	fn sealing_fold_unsealed_is_independent_of_arrival_order() {
-		// Nothing seals, so no distance behind the high water may keep a row out of the fold.
-		let mut forward: SealingFold<DateTimeCoord, SumFold> = SealingFold::maybe_immutable(None, ());
+	fn immutable_fold_unsealed_is_independent_of_arrival_order() {
+		// Nothing folds, so no distance behind the high water may keep a row out of the fold.
+		let mut forward: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::maybe_immutable(None, ());
 		forward.add(&(event_coord_at_millis(0), 10.0));
 		forward.add(&(event_coord_at_millis(1_000_000), 15.0));
 
-		let mut reversed: SealingFold<DateTimeCoord, SumFold> = SealingFold::maybe_immutable(None, ());
+		let mut reversed: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::maybe_immutable(None, ());
 		reversed.add(&(event_coord_at_millis(1_000_000), 15.0));
 		reversed.add(&(event_coord_at_millis(0), 10.0));
 
-		assert_eq!(forward.sealed_count(), 0, "an immutable span here would make this a sealing test");
-		assert_eq!(reversed.sealed_count(), 0);
+		assert_eq!(forward.immutable_count(), 0, "an immutable span here would make this an immutable test");
+		assert_eq!(reversed.immutable_count(), 0);
 		assert_eq!(reversed.len(), forward.len());
 		assert_eq!(reversed.finalize(), forward.finalize());
 		assert_eq!(forward.finalize(), Some(25.0), "each row contributes exactly once");
 	}
 
 	#[test]
-	fn sealing_fold_does_not_fold_a_corrected_coordinate_twice() {
-		// A repeat of an already sealed slot is a correction to that row, never a second contribution.
-		let mut accumulator: SealingFold<DateTimeCoord, SumFold> = SealingFold::new(millis(1), ());
+	fn immutable_fold_does_not_fold_a_corrected_coordinate_twice() {
+		// A repeat of an already immutable slot is a correction to that row, never a second contribution.
+		let mut accumulator: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(2), 20.0));
 		assert_eq!(accumulator.finalize(), Some(30.0));
@@ -300,17 +303,17 @@ mod tests {
 		assert_eq!(
 			accumulator.finalize(),
 			Some(30.0),
-			"re-sealing a corrected coordinate must not add it twice"
+			"re-folding a corrected coordinate must not add it twice"
 		);
 	}
 
 	#[test]
-	fn sealing_fold_matches_the_unsealed_arm_for_in_order_adds() {
-		// The sealed prefix folds once at add and the tail replays at finalize; together they must be the whole
-		// path.
+	fn immutable_fold_matches_the_unsealed_arm_for_in_order_adds() {
+		// The immutable prefix folds once at add and the tail replays at finalize; together they must be the
+		// whole path.
 		assert_arms_agree(
-			SealingFold::<DateTimeCoord, AbsPathFold>::new(millis(1), ()),
-			SealingFold::<DateTimeCoord, AbsPathFold>::maybe_immutable(None, ()),
+			ImmutableFold::<DateTimeCoord, AbsPathFold>::new(millis(1), ()),
+			ImmutableFold::<DateTimeCoord, AbsPathFold>::maybe_immutable(None, ()),
 			&[
 				Op::Add((event_coord_at_millis(0), 10.0)),
 				Op::Add((event_coord_at_millis(1), 20.0)),
@@ -322,47 +325,51 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_fold_drops_a_new_row_that_lands_below_the_seal_line() {
-		// This is the price of the fast path: the unsealed arm is what the dropped row was worth.
+	fn immutable_fold_drops_a_new_row_that_lands_below_the_seal_line() {
+		// This is the price of the fast path: the plain arm is what the dropped row was worth.
 		let ops = [
 			Op::Add((event_coord_at_millis(0), 10.0)),
 			Op::Add((event_coord_at_millis(2), 20.0)),
 			Op::Add((event_coord_at_millis(4), 30.0)),
 			Op::Add((event_coord_at_millis(1), 7.0)),
 		];
-		let mut sealed: SealingFold<DateTimeCoord, SumFold> = SealingFold::new(millis(1), ());
-		drive(&mut sealed, &ops);
-		let mut unsealed: SealingFold<DateTimeCoord, SumFold> = SealingFold::maybe_immutable(None, ());
-		drive(&mut unsealed, &ops);
+		let mut immutable: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
+		drive(&mut immutable, &ops);
+		let mut plain: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::maybe_immutable(None, ());
+		drive(&mut plain, &ops);
 
-		assert_eq!(unsealed.finalize(), Some(67.0), "retaining everything folds all four rows");
-		assert_eq!(sealed.finalize(), Some(60.0), "a row older than the seal line never reaches the fold");
-		assert_eq!(sealed.len(), 3, "and it is never counted either");
+		assert_eq!(plain.finalize(), Some(67.0), "retaining everything folds all four rows");
+		assert_eq!(
+			immutable.finalize(),
+			Some(60.0),
+			"a row older than the immutable line never reaches the fold"
+		);
+		assert_eq!(immutable.len(), 3, "and it is never counted either");
 	}
 
 	#[test]
-	fn sealing_fold_default_add_remove_is_inverse() {
-		assert_add_remove_is_inverse::<SealingFold<DateTimeCoord, AbsPathFold>>(
+	fn immutable_fold_default_add_remove_is_inverse() {
+		assert_add_remove_is_inverse::<ImmutableFold<DateTimeCoord, AbsPathFold>>(
 			&[(event_coord_at_millis(0), 10.0f64), (event_coord_at_millis(1), 20.0)],
 			(event_coord_at_millis(2), 30.0f64),
 		);
 	}
 
 	#[test]
-	fn sealing_fold_roundtrip() {
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::new(millis(1), ());
+	fn immutable_fold_roundtrip() {
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
 		let bytes = accumulator.encode_state().expect("encode");
-		let restored: SealingFold<DateTimeCoord, AbsPathFold> = decode(&bytes).expect("decode");
+		let restored: ImmutableFold<DateTimeCoord, AbsPathFold> = decode(&bytes).expect("decode");
 		assert_eq!(restored.finalize(), accumulator.finalize());
 	}
 
 	#[test]
-	fn sealing_fold_params_drive_both_the_sealed_prefix_and_the_live_tail() {
+	fn immutable_fold_params_drive_both_the_sealed_prefix_and_the_live_tail() {
 		// Params must reach the aged step folded at add and the tail steps replayed at finalize.
-		let mut accumulator: SealingFold<DateTimeCoord, ScaledPathFold> = SealingFold::new(millis(1), 2.0);
+		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> = ImmutableFold::new(millis(1), 2.0);
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
@@ -371,35 +378,35 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_fold_params_survive_the_state_roundtrip() {
+	fn immutable_fold_params_survive_the_state_roundtrip() {
 		// Params are per-window state; a decode that defaulted them would finalize to 0.0.
-		let mut accumulator: SealingFold<DateTimeCoord, ScaledPathFold> = SealingFold::new(millis(1), 2.0);
+		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> = ImmutableFold::new(millis(1), 2.0);
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
 		let bytes = accumulator.encode_state().expect("encode");
-		let restored: SealingFold<DateTimeCoord, ScaledPathFold> = decode(&bytes).expect("decode");
+		let restored: ImmutableFold<DateTimeCoord, ScaledPathFold> = decode(&bytes).expect("decode");
 
 		assert_eq!(restored.params(), &2.0);
 		assert_eq!(restored.finalize(), Some(30.0));
 	}
 
 	#[test]
-	fn sealing_fold_len_counts_distinct_keys_across_the_seal_boundary() {
-		// Sealing moves a key from the tail into the sealed count, so the total must not move.
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::new(millis(1), ());
+	fn immutable_fold_len_counts_distinct_keys_across_the_seal_boundary() {
+		// Folding moves a key from the tail into the immutable count, so the total must not move.
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(1), 20.0));
 		assert_eq!(accumulator.len(), 2);
 
 		accumulator.add(&(event_coord_at_millis(2), 15.0));
-		assert_eq!(accumulator.len(), 3, "the aged key is still one observation once sealed");
+		assert_eq!(accumulator.len(), 3, "the aged key is still one observation once folded");
 	}
 
 	#[test]
-	fn sealing_fold_len_collapses_a_repeated_key_and_drops_on_live_removal() {
+	fn immutable_fold_len_collapses_a_repeated_key_and_drops_on_live_removal() {
 		// A repeated slot is one corrected observation, never two.
-		let mut accumulator: SealingFold<DateTimeCoord, AbsPathFold> = SealingFold::new(millis(10), ());
+		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(10), ());
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(0), 25.0));
 		assert_eq!(accumulator.len(), 1);
@@ -410,10 +417,10 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_fold_unsealed_carries_params_and_never_ages() {
-		// Without an immutable bound nothing seals, so a live removal must still be exact.
-		let mut accumulator: SealingFold<DateTimeCoord, ScaledPathFold> =
-			SealingFold::maybe_immutable(None, 3.0);
+	fn immutable_fold_unsealed_carries_params_and_never_ages() {
+		// Without an immutable bound nothing folds, so a live removal must still be exact.
+		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> =
+			ImmutableFold::maybe_immutable(None, 3.0);
 		accumulator.add(&(event_coord_at_millis(0), 10.0));
 		accumulator.add(&(event_coord_at_millis(100), 20.0));
 		assert_eq!(accumulator.finalize(), Some(30.0));

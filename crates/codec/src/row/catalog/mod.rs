@@ -11,7 +11,7 @@ use reifydb_value::{
 use thiserror::Error;
 
 use crate::row::{
-	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed},
+	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Internal},
 	shape::fingerprint::RowShapeFingerprint,
 };
 
@@ -166,7 +166,7 @@ impl EncodedCatalogRowBuilder {
 	}
 }
 
-impl Sealed for EncodedCatalogRowBuilder {
+impl Internal for EncodedCatalogRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		self.0.buffer()
 	}

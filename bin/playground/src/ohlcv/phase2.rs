@@ -238,7 +238,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let mut db = embedded::sqlite(SqliteConfig::new(dir.join("bench.db")))
 		.with_storage_config(StorageConfig {
 			series_bucket_width: run.width,
-			series_grace: Duration::from_seconds(1).map_err(|e| e.to_string())?,
+			series_lateness: Duration::from_seconds(1).map_err(|e| e.to_string())?,
 			series_tick_interval: Duration::from_milliseconds(run.tick_ms as i64)
 				.map_err(|e| e.to_string())?,
 			series_merge_buckets: run.merge_buckets,

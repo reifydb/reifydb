@@ -114,7 +114,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			block_encodings,
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
-			self.config.series_grace,
+			self.config.series_lateness,
 			self.config.series_merge_buckets,
 			self.config.series_merge_file_delay,
 		);

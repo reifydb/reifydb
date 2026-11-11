@@ -10,7 +10,7 @@ use crate::{
 	framework::workload::WindowRow,
 	operators::{
 		percentile::{MEDIAN, MEDIAN_NEXT_TO_MIN, median, no_rows},
-		window::seal::Seal,
+		window::immutable_line::ImmutableLine,
 	},
 };
 
@@ -18,7 +18,7 @@ use crate::{
 ///
 /// Sum is the fold every pinned window corpus was recorded against and stays the default, so adding
 /// this enum does not re-point them.
-/// Min and max seal only under immutable, never by lateness alone, otherwise they stay invertible.
+/// Min and max fold only under immutable, never by lateness alone, otherwise they stay invertible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fold {
 	Sum,
@@ -67,7 +67,7 @@ pub struct GridOracle<G: Grid> {
 	contributions: Vec<Contribution>,
 	fold: Fold,
 	immutable_ms: Option<u64>,
-	seals: BTreeMap<(i32, i64), Seal>,
+	immutable_lines: BTreeMap<(i32, i64), ImmutableLine>,
 }
 
 struct Contribution {
@@ -87,7 +87,7 @@ impl<G: Grid> GridOracle<G> {
 			contributions: Vec::new(),
 			fold: Fold::Sum,
 			immutable_ms: None,
-			seals: BTreeMap::new(),
+			immutable_lines: BTreeMap::new(),
 		}
 	}
 
@@ -123,9 +123,9 @@ impl<G: Grid> GridOracle<G> {
 	fn folded(&self) -> Vec<Vec<Value>> {
 		let grouped = self.grouped();
 		let frozen = self
-			.seals
+			.immutable_lines
 			.iter()
-			.filter(|(key, seal)| seal.holds_a_frozen_row() && !grouped.contains_key(*key))
+			.filter(|(key, line)| line.holds_a_frozen_row() && !grouped.contains_key(*key))
 			.map(|((group, _), _)| vec![Value::Int4(*group), no_rows()]);
 		let mut out: Vec<Vec<Value>> = grouped
 			.iter()
@@ -167,7 +167,11 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 				live: true,
 			});
 			if let Some(immutable_ms) = self.immutable_ms {
-				self.seals.entry((group, window)).or_default().push(coord_ms, row, immutable_ms);
+				self.immutable_lines.entry((group, window)).or_default().push(
+					coord_ms,
+					row,
+					immutable_ms,
+				);
 			}
 			admitted = true;
 		}
@@ -197,8 +201,8 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 					 is meaningless"
 				);
 				c.live = false;
-				if let Some(seal) = self.seals.get_mut(&(group, window)) {
-					seal.remove(coord_ms, row);
+				if let Some(line) = self.immutable_lines.get_mut(&(group, window)) {
+					line.remove(coord_ms, row);
 				}
 			}
 		}

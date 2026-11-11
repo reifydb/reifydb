@@ -6,7 +6,7 @@
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_flow_async::{
-	operator::state::sealing::{endpoint::SealingEndpoint, min::SealingMin},
+	operator::state::immutable::{endpoint::ImmutableEndpoint, min::ImmutableMin},
 	window::{
 		accumulator::{
 			WindowAccumulator,
@@ -37,10 +37,10 @@ fn last_value_roundtrip() {
 }
 
 #[test]
-fn sealing_min_default_is_fully_invertible() {
-	// With no lateness bound nothing seals, so add/remove stays a pure inverse even when the
+fn immutable_min_default_is_fully_invertible() {
+	// With no lateness bound nothing folds, so add/remove stays a pure inverse even when the
 	// probe is a new minimum.
-	assert_add_remove_is_inverse::<SealingMin<DateTimeCoord, i64>>(
+	assert_add_remove_is_inverse::<ImmutableMin<DateTimeCoord, i64>>(
 		&[
 			(DateTimeCoord(at_millis(1)), 10i64),
 			(DateTimeCoord(at_millis(2)), 20),
@@ -49,19 +49,19 @@ fn sealing_min_default_is_fully_invertible() {
 		(DateTimeCoord(at_millis(4)), -5i64),
 	);
 
-	let mut accumulator: SealingMin<DateTimeCoord, i64> = SealingMin::default();
+	let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
 	accumulator.add(&(DateTimeCoord(at_millis(0)), 5));
 	accumulator.add(&(DateTimeCoord(at_millis(100)), 1));
 	accumulator.remove(&(DateTimeCoord(at_millis(100)), 1));
-	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has sealed");
+	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has folded");
 }
 
 #[test]
-fn sealing_endpoint_late_middle_arrival_keeps_open() {
-	// A late arrival later than the sealed open must not move it.
-	let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+fn immutable_endpoint_late_middle_arrival_keeps_open() {
+	// A late arrival later than the immutable open must not move it.
+	let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 	accumulator.add(&(DateTimeCoord(at_millis(2)), 999));
-	accumulator.add(&(DateTimeCoord(at_millis(20)), 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
+	accumulator.add(&(DateTimeCoord(at_millis(20)), 200)); // hw=20; coord 2 ages -> immutable_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));
 
 	accumulator.add(&(DateTimeCoord(at_millis(5)), 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)

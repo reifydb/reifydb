@@ -131,9 +131,9 @@ fn test_a_finished_item_is_deleted_once_it_outlives_the_declared_window() {
 	// item row, its attempt records and its scheduling state must all go, or the queue leaks one of
 	// the three forever.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	t.mock_clock().set_millis(3_600_001);
@@ -149,9 +149,9 @@ fn test_a_dead_item_is_swept_too_which_bounds_replayability() {
 	// Documented contract: retention bounds how long a dead item can be replayed. Keeping dead
 	// items forever would make retention.done a lie for exactly the items most likely to pile up.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	kill(&t);
 
 	t.mock_clock().set_millis(3_600_001);
@@ -168,9 +168,9 @@ fn test_sweeping_a_dead_item_closes_its_replay_window_for_good() {
 	// reporting success against scheduling state that no longer exists - an operator who is told a
 	// replay worked will stop looking for the lost work.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	kill(&t);
 	t.command(r#"CALL queue::replay("test::jobs", 1)"#);
 	assert_eq!(states(&t, queue)[0].status, QueueItemStatus::Ready, "before the sweep it is still recoverable");
@@ -189,9 +189,9 @@ fn test_a_finished_item_inside_the_window_survives() {
 	// The cutoff is the contract. Sweeping one second early destroys audit data the operator was
 	// promised, and there is no way to get it back.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	t.mock_clock().set_millis(3_599_999);
@@ -228,9 +228,9 @@ fn test_a_queue_without_a_declared_window_keeps_everything() {
 	// retention.done is opt-in. A queue that never declared one must accumulate, not silently adopt
 	// a default that deletes the operator's data.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	t.mock_clock().set_millis(86_400_000_000);
@@ -247,9 +247,9 @@ fn test_a_terminal_item_with_no_attempt_record_is_left_alone() {
 	// item row still present, the item cannot be dated - and an undateable item must be preserved
 	// and reported, never deleted on the assumption that it is old enough.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
@@ -270,9 +270,9 @@ fn test_an_orphan_state_record_from_a_crashed_sweep_is_collected() {
 	// a state record pointing at nothing. Without this cleanup every crashed sweep would leak one
 	// scheduling record per item, permanently.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	let mut txn = t.inner().begin_command(TestEngine::identity()).unwrap();
@@ -357,14 +357,14 @@ fn test_a_forever_deduplication_record_is_never_swept() {
 }
 
 #[test]
-fn test_retention_does_no_work_inside_the_startup_grace_window() {
+fn test_retention_does_no_work_inside_the_startup_delay() {
 	// Retention is the destructive task, so it is gated: right after boot the floors it trusts are
 	// not yet warm, and deleting on a cold floor is unrecoverable. The gate must suppress the sweep
 	// entirely, not merely narrow it.
 	let t = engine_with_queue(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
+	t.mock_clock().set_millis(0);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 
 	t.mock_clock().set_millis(3_600_001);
@@ -372,7 +372,7 @@ fn test_retention_does_no_work_inside_the_startup_grace_window() {
 	let mut gated = Gated::new(sweeper(&t), gate);
 	gated.run_slice();
 
-	assert_eq!(items(&t), 1, "the gate must suppress a destructive sweep during the grace window");
+	assert_eq!(items(&t), 1, "the gate must suppress a destructive sweep during the startup delay");
 	assert_eq!(states(&t, queue).len(), 1);
 }
 
@@ -411,9 +411,9 @@ fn test_retention_sweeps_a_finished_item_in_every_partition() {
 	let t = engine_with_queue(
 		r#"CREATE QUEUE test::jobs { id: int4, region: utf8 } WITH { partition: { by: { region } }, fifo: {}, retention: { done: 1h } }"#,
 	);
+	t.mock_clock().set_millis(0);
 	t.command(r#"INSERT test::jobs [{ id: 1, region: "eu" }, { id: 2, region: "us" }, { id: 3, region: "ap" }]"#);
 	let queue = queue_id(&t, "jobs");
-	t.mock_clock().set_millis(0);
 	finish(&t);
 	finish(&t);
 	finish(&t);

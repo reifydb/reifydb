@@ -8,13 +8,13 @@ use tracing::warn;
 
 const WARN_STRIDE: u64 = 1_000;
 
-pub struct SealedDrops {
+pub struct DropCounter {
 	operator: OperatorId,
 	reason: &'static str,
 	count: AtomicU64,
 }
 
-impl SealedDrops {
+impl DropCounter {
 	pub fn new(operator: OperatorId, reason: &'static str) -> Self {
 		Self {
 			operator,
@@ -54,7 +54,7 @@ mod tests {
 		// The warn is rate limited and therefore lossy, so the counter is the only thing that can
 		// be asserted on. Every operator notes unconditionally at the end of a batch, so a zero
 		// note has to be a no-op.
-		let drops = SealedDrops::new(OperatorId(7), "test");
+		let drops = DropCounter::new(OperatorId(7), "test");
 		assert_eq!(drops.total(), 0, "a fresh counter has dropped nothing");
 
 		drops.note(0);
@@ -71,7 +71,7 @@ mod tests {
 		// batch at once must warn equally often - which is what stops a flow replaying a backlog
 		// from turning the warn into a per-diff log storm.
 		fn warns(notes: &[u64]) -> usize {
-			let drops = SealedDrops::new(OperatorId(1), "test");
+			let drops = DropCounter::new(OperatorId(1), "test");
 			let mut warned = 0;
 			for &n in notes {
 				let before = drops.total();

@@ -357,7 +357,7 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 
 #[test]
 fn pruning_is_held_back_while_the_startup_gate_is_closed() {
-	// Pruning is deletion like any other, so it waits out the startup grace - but sampling must continue during
+	// Pruning is deletion like any other, so it waits out the startup delay - but sampling must continue during
 	// it, or the gate creates the very coverage gap it is protecting against.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
@@ -434,9 +434,9 @@ fn the_class_is_paced_by_the_configured_bucket_width() {
 #[test]
 fn the_gate_is_the_only_thing_between_a_cold_start_and_the_whole_backlog() {
 	// The factory relies on this when it arms the gate: an open gate reclaims immediately, otherwise the startup
-	// grace is decorative.
+	// delay is decorative.
 	let t = TestEngine::new();
 	let gate = RetentionStartupGate::arm(Clock::Mock(t.mock_clock()), Duration::from_seconds(0).unwrap());
 
-	assert!(gate.is_open(), "a zero grace gate must not delay the first reclamation slice");
+	assert!(gate.is_open(), "a zero delay gate must not hold back the first reclamation slice");
 }

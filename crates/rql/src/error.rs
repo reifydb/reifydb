@@ -309,7 +309,7 @@ impl IntoDiagnostic for RqlError {
 					"Reduce immutable below the window duration (or gap), or drop it to keep every row for the life of the window".to_string(),
 				),
 				notes: vec![
-					"An immutable at or beyond the window's own span can never seal anything before the window closes".to_string(),
+					"An immutable at or beyond the window's own span can never fold anything before the window closes".to_string(),
 					"Immutable is how long a row may still be updated or deleted before the accumulator folds it away".to_string(),
 					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, immutable: 15s }".to_string(),
 				],

@@ -14,14 +14,14 @@ use crate::{
 };
 
 mod sealed {
-	pub trait Sealed {}
+	pub trait Internal {}
 }
 
-impl sealed::Sealed for DateTimeCoord {}
+impl sealed::Internal for DateTimeCoord {}
 
-impl sealed::Sealed for U8Coord {}
+impl sealed::Internal for U8Coord {}
 
-pub trait WindowAnchor: sealed::Sealed + Slot<Coord = Self> + Coord {
+pub trait WindowAnchor: sealed::Internal + Slot<Coord = Self> + Coord {
 	fn as_time(self) -> Option<DateTime>;
 }
 
@@ -145,7 +145,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		factory::coord::event_coord_at_millis,
-		operator::state::seal::rule::{is_sealed, seal_horizon},
+		operator::state::seal::rule::{is_sealed, output_watermark},
 		window::coord::RowSpan,
 	};
 
@@ -224,12 +224,12 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_horizon_leaves_the_window_exactly_at_the_boundary_admissible() {
+	fn an_output_watermark_leaves_the_window_exactly_at_the_boundary_unsealed() {
 		// The boundary is load-bearing in both directions. A window whose start sits exactly one lateness
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
 		let watermark = DateTimeCoord(DateTime::from_epoch_millis(6_060_000).expect("representable"));
-		let horizon = seal_horizon(watermark, Duration::from_seconds(60).expect("representable"));
+		let horizon = output_watermark(watermark, Duration::from_seconds(60).expect("representable"));
 
 		let at_boundary = DateTimeCoord(DateTime::from_epoch_millis(6_000_000).expect("representable"));
 		let before_boundary = DateTimeCoord(DateTime::from_epoch_millis(5_999_999).expect("representable"));

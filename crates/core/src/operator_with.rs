@@ -115,18 +115,18 @@ pub struct AggregateWith {}
 pub struct DistinctWith {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowSealing {
+pub struct WindowKnobs {
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 }
 
-impl WindowSealing {
+impl WindowKnobs {
 	pub fn from_operator_with(with: &ApplyWith) -> Result<Self> {
-		let sealing = Self {
+		let knobs = Self {
 			lateness: duration_span("lateness", with.lateness)?,
 			immutable: duration_span("immutable", with.immutable)?,
 		};
-		if let (Some(lateness), Some(immutable)) = (sealing.lateness, sealing.immutable)
+		if let (Some(lateness), Some(immutable)) = (knobs.lateness, knobs.immutable)
 			&& immutable >= lateness
 		{
 			return Err(CoreError::OperatorWithImmutableNotBelowLateness {
@@ -135,7 +135,7 @@ impl WindowSealing {
 			}
 			.into());
 		}
-		Ok(sealing)
+		Ok(knobs)
 	}
 }
 
@@ -559,8 +559,7 @@ mod tests {
 	};
 
 	use super::{
-		ApplyWith, OnEmpty, WindowKind, WindowSealing, WindowSize, WithSpan, decode_apply_with,
-		encode_apply_with,
+		ApplyWith, OnEmpty, WindowKind, WindowKnobs, WindowSize, WithSpan, decode_apply_with, encode_apply_with,
 	};
 
 	fn secs(n: i64) -> Duration {
@@ -579,8 +578,8 @@ mod tests {
 	#[test]
 	fn declared_immutable_below_lateness_is_kept_verbatim() {
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(Some(20), Some(15))).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(Some(20), Some(15))).unwrap(),
+			WindowKnobs {
 				lateness: Some(secs(20)),
 				immutable: Some(secs(15)),
 			}
@@ -589,10 +588,10 @@ mod tests {
 
 	#[test]
 	fn lateness_without_immutable_resolves_with_no_immutable() {
-		// Substituting the lateness would arm the sealing slots on a window that never asked to seal.
+		// Substituting the lateness would arm the immutable slots on a window that never asked to fold.
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(Some(20), None)).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(Some(20), None)).unwrap(),
+			WindowKnobs {
 				lateness: Some(secs(20)),
 				immutable: None,
 			}
@@ -601,21 +600,21 @@ mod tests {
 
 	#[test]
 	fn declared_immutable_equal_to_lateness_is_rejected() {
-		// The bound is strict; an immutable equal to the lateness would never seal before the window closes.
-		assert!(WindowSealing::from_operator_with(&with(Some(20), Some(20))).is_err());
+		// The bound is strict; an immutable equal to the lateness would never fold before the window closes.
+		assert!(WindowKnobs::from_operator_with(&with(Some(20), Some(20))).is_err());
 	}
 
 	#[test]
 	fn declared_immutable_above_lateness_is_rejected() {
-		assert!(WindowSealing::from_operator_with(&with(Some(20), Some(30))).is_err());
+		assert!(WindowKnobs::from_operator_with(&with(Some(20), Some(30))).is_err());
 	}
 
 	#[test]
 	fn immutable_without_lateness_is_accepted() {
 		// The ordering bound needs both knobs, so an immutable alone must reach the operator untouched.
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(None, Some(15))).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(None, Some(15))).unwrap(),
+			WindowKnobs {
 				lateness: None,
 				immutable: Some(secs(15)),
 			}
@@ -626,8 +625,8 @@ mod tests {
 	fn neither_knob_declared_leaves_both_absent() {
 		// An undeclared knob must stay absent, never resolve to zero, which is itself a legal declared value.
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(None, None)).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(None, None)).unwrap(),
+			WindowKnobs {
 				lateness: None,
 				immutable: None,
 			}
@@ -637,8 +636,8 @@ mod tests {
 	#[test]
 	fn validated_returns_both_when_declared() {
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(Some(20), Some(15))).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(Some(20), Some(15))).unwrap(),
+			WindowKnobs {
 				lateness: Some(secs(20)),
 				immutable: Some(secs(15)),
 			}
@@ -649,8 +648,8 @@ mod tests {
 	fn validated_returns_no_immutable_when_only_the_lateness_is_declared() {
 		// A window under the immutable floor declares a lateness alone and must still resolve.
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(Some(20), None)).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(Some(20), None)).unwrap(),
+			WindowKnobs {
 				lateness: Some(secs(20)),
 				immutable: None,
 			}
@@ -659,7 +658,7 @@ mod tests {
 
 	#[test]
 	fn validated_names_the_ordering_violation() {
-		let err = WindowSealing::from_operator_with(&with(Some(20), Some(20))).unwrap_err();
+		let err = WindowKnobs::from_operator_with(&with(Some(20), Some(20))).unwrap_err();
 		assert!(err.to_string().contains("must be strictly less than lateness"), "{err}");
 	}
 
@@ -667,8 +666,8 @@ mod tests {
 	fn validated_accepts_an_immutable_without_a_lateness() {
 		// Validation covers the ordering rule only; neither knob is required, so this must not fail.
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(None, Some(15))).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(None, Some(15))).unwrap(),
+			WindowKnobs {
 				lateness: None,
 				immutable: Some(secs(15)),
 			}
@@ -678,8 +677,8 @@ mod tests {
 	#[test]
 	fn validated_accepts_a_window_that_declares_no_knob_at_all() {
 		assert_eq!(
-			WindowSealing::from_operator_with(&with(None, None)).unwrap(),
-			WindowSealing {
+			WindowKnobs::from_operator_with(&with(None, None)).unwrap(),
+			WindowKnobs {
 				lateness: None,
 				immutable: None,
 			}
@@ -695,7 +694,7 @@ mod tests {
 			immutable: None,
 			retention: None,
 		};
-		let err = WindowSealing::from_operator_with(&with).unwrap_err();
+		let err = WindowKnobs::from_operator_with(&with).unwrap_err();
 		assert!(err.to_string().contains("lateness"), "{err}");
 	}
 

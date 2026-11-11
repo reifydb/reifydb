@@ -526,9 +526,9 @@ where
 	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
 	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
-	let sealed_by_horizon =
+	let past_output_watermark =
 		<A::Coord as SealDomain>::SIZE_DOMAIN == WindowSizeDomain::Time || !settings.lateness.is_zero();
-	let retention = if sealed_by_horizon {
+	let retention = if past_output_watermark {
 		None
 	} else {
 		settings.immutable

@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use super::base::SealingBase;
+use super::base::ImmutableBase;
 use crate::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator},
 	span::{Slot, SlotSpan},
@@ -15,35 +15,35 @@ use crate::window::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingMax<S: Slot, V: Ord> {
-	base: SealingBase<S, V>,
-	sealed: Option<V>,
+pub struct ImmutableMax<S: Slot, V: Ord> {
+	base: ImmutableBase<S, V>,
+	immutable: Option<V>,
 }
 
-impl<S: Slot, V: Ord> Default for SealingMax<S, V> {
+impl<S: Slot, V: Ord> Default for ImmutableMax<S, V> {
 	fn default() -> Self {
 		Self {
-			base: SealingBase::default(),
-			sealed: None,
+			base: ImmutableBase::default(),
+			immutable: None,
 		}
 	}
 }
 
-impl<S: Slot, V: Ord + Clone> SealingMax<S, V> {
+impl<S: Slot, V: Ord + Clone> ImmutableMax<S, V> {
 	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self::maybe_immutable(Some(immutable))
 	}
 
 	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
-			base: SealingBase::maybe_immutable(immutable),
-			sealed: None,
+			base: ImmutableBase::maybe_immutable(immutable),
+			immutable: None,
 		}
 	}
 
 	pub fn max(&self) -> Option<V> {
 		let tail_max = self.base.tail().values().max().cloned();
-		match (self.sealed.clone(), tail_max) {
+		match (self.immutable.clone(), tail_max) {
 			(Some(s), Some(t)) => Some(s.max(t)),
 			(Some(s), None) => Some(s),
 			(None, Some(t)) => Some(t),
@@ -51,26 +51,26 @@ impl<S: Slot, V: Ord + Clone> SealingMax<S, V> {
 		}
 	}
 
-	fn seal(&mut self, v: V) {
-		self.sealed = Some(match self.sealed.take() {
+	fn fold(&mut self, v: V) {
+		self.immutable = Some(match self.immutable.take() {
 			Some(s) => s.max(v),
 			None => v,
 		});
 	}
 }
 
-impl<S, V> MergeAccumulator for SealingMax<S, V>
+impl<S, V> MergeAccumulator for ImmutableMax<S, V>
 where
 	S: Slot + Hash,
 	V: Ord + Clone + Debug,
-	SealingMax<S, V>: OperatorState + StateCodec + HeapSize,
+	ImmutableMax<S, V>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
-		if let Some(s) = other.sealed.clone() {
-			self.seal(s);
+		if let Some(s) = other.immutable.clone() {
+			self.fold(s);
 		}
 		for (_, aged) in self.base.absorb(&other.base, |mine, theirs| mine.clone().max(theirs.clone())) {
-			self.seal(aged);
+			self.fold(aged);
 		}
 	}
 
@@ -79,18 +79,18 @@ where
 	}
 }
 
-impl<S, V> WindowAccumulator for SealingMax<S, V>
+impl<S, V> WindowAccumulator for ImmutableMax<S, V>
 where
 	S: Slot + Hash,
 	V: Ord + Clone + Debug,
-	SealingMax<S, V>: OperatorState + StateCodec + HeapSize,
+	ImmutableMax<S, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (S, V);
 	type Output = V;
 
 	fn add(&mut self, contribution: &(S, V)) {
 		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			self.sealed = Some(match self.sealed.take() {
+			self.immutable = Some(match self.immutable.take() {
 				Some(s) => s.max(v),
 				None => v,
 			});
@@ -106,13 +106,13 @@ where
 	}
 
 	fn is_empty(&self) -> bool {
-		self.sealed.is_none() && self.base.is_tail_empty()
+		self.immutable.is_none() && self.base.is_tail_empty()
 	}
 }
 
-impl<S: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<S, V> {
+impl<S: Slot + HeapSize, V: Ord + HeapSize> HeapSize for ImmutableMax<S, V> {
 	fn heap_size(&self) -> usize {
-		self.base.heap_size() + self.sealed.heap_size()
+		self.base.heap_size() + self.immutable.heap_size()
 	}
 }
 
@@ -131,39 +131,39 @@ mod tests {
 	};
 
 	#[test]
-	fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+	fn immutable_max_folds_aged_and_keeps_recent_tail_removal_safe() {
+		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
 		accumulator.add(&(event_coord_at_millis(0), 5));
 		accumulator.add(&(event_coord_at_millis(5), 8));
 		accumulator.add(&(event_coord_at_millis(12), 3));
 		assert_eq!(accumulator.max(), Some(8));
 
 		accumulator.remove(&(event_coord_at_millis(0), 5));
-		assert_eq!(accumulator.max(), Some(8), "aged removal does not disturb the sealed max");
+		assert_eq!(accumulator.max(), Some(8), "aged removal does not disturb the immutable max");
 
 		accumulator.remove(&(event_coord_at_millis(5), 8));
-		assert_eq!(accumulator.max(), Some(5), "tail max 8 removed; falls back to sealed 5");
+		assert_eq!(accumulator.max(), Some(5), "tail max 8 removed; falls back to immutable 5");
 	}
 
 	#[test]
-	fn sealing_max_default_never_seals_and_is_fully_invertible() {
-		assert_add_remove_is_inverse::<SealingMax<DateTimeCoord, i64>>(
+	fn immutable_max_default_never_folds_and_is_fully_invertible() {
+		assert_add_remove_is_inverse::<ImmutableMax<DateTimeCoord, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(2), 20)],
 			(event_coord_at_millis(3), 30i64),
 		);
-		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		accumulator.add(&(event_coord_at_millis(0), 5));
 		accumulator.add(&(event_coord_at_millis(100), 8));
 		accumulator.remove(&(event_coord_at_millis(100), 8));
-		assert_eq!(accumulator.max(), Some(5), "removing the max reveals the prior max (no sealing)");
+		assert_eq!(accumulator.max(), Some(5), "removing the max reveals the prior max (no folding)");
 	}
 
 	#[test]
-	fn sealing_max_merge_keeps_the_larger_value_at_a_shared_coordinate() {
+	fn immutable_max_merge_keeps_the_larger_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a larger one.
-		let mut accumulator: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		let mut accumulator: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		accumulator.add(&(event_coord_at_millis(0), 9));
-		let mut other: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		let mut other: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		other.add(&(event_coord_at_millis(0), 1));
 
 		accumulator.merge(&other);
@@ -175,11 +175,12 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_default_merge_leaves_nothing_sealed() {
-		// merge is the only path that can seal without an immutable span, and a sealed maximum never retracts.
-		let mut left: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+	fn immutable_max_default_merge_leaves_nothing_folded() {
+		// merge is the only path that can fold without an immutable span, and an immutable maximum never
+		// retracts.
+		let mut left: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		left.add(&(event_coord_at_millis(0), 9));
-		let mut right: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		let mut right: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		right.add(&(event_coord_at_millis(1_000_000), 3));
 
 		left.merge(&right);
@@ -187,32 +188,32 @@ mod tests {
 
 		left.remove(&(event_coord_at_millis(0), 9));
 		left.remove(&(event_coord_at_millis(1_000_000), 3));
-		assert!(left.is_empty(), "every merged row stays retractable while nothing seals");
+		assert!(left.is_empty(), "every merged row stays retractable while nothing folds");
 		assert_eq!(left.finalize(), None);
 	}
 
 	#[test]
-	fn sealing_max_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
+	fn immutable_max_with_an_immutable_span_beyond_the_data_matches_the_plain_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut sealed: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(1_000));
-		let mut unsealed: SealingMax<DateTimeCoord, i64> = SealingMax::default();
+		let mut immutable: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(1_000));
+		let mut plain: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::default();
 		for (slot, value) in [(0, 5i64), (10, 9), (20, 7)] {
-			sealed.add(&(event_coord_at_millis(slot), value));
-			unsealed.add(&(event_coord_at_millis(slot), value));
+			immutable.add(&(event_coord_at_millis(slot), value));
+			plain.add(&(event_coord_at_millis(slot), value));
 		}
 
-		sealed.remove(&(event_coord_at_millis(10), 9));
-		unsealed.remove(&(event_coord_at_millis(10), 9));
-		assert_eq!(sealed.max(), unsealed.max(), "with nothing sealed the two arms must agree");
-		assert_eq!(sealed.max(), Some(7));
+		immutable.remove(&(event_coord_at_millis(10), 9));
+		plain.remove(&(event_coord_at_millis(10), 9));
+		assert_eq!(immutable.max(), plain.max(), "with nothing folded the two arms must agree");
+		assert_eq!(immutable.max(), Some(7));
 	}
 
 	#[test]
-	fn sealing_max_matches_the_unsealed_arm_for_in_order_adds() {
-		// Sealing is a memory optimisation over adds; without a retraction it must not move the answer.
+	fn immutable_max_matches_the_plain_arm_for_in_order_adds() {
+		// Folding is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			SealingMax::<DateTimeCoord, i64>::immutable(millis(5)),
-			SealingMax::<DateTimeCoord, i64>::default(),
+			ImmutableMax::<DateTimeCoord, i64>::immutable(millis(5)),
+			ImmutableMax::<DateTimeCoord, i64>::default(),
 			&[
 				Op::Add((event_coord_at_millis(0), 9)),
 				Op::Add((event_coord_at_millis(10), 2)),
@@ -224,13 +225,13 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_merge_keeps_a_branch_maximum_that_predates_the_seal_line() {
-		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
+	fn immutable_max_merge_keeps_a_branch_maximum_that_predates_the_immutable_line() {
+		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
-		let mut left: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		let mut left: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
 		left.add(&(event_coord_at_millis(0), 9));
 
-		let mut right: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+		let mut right: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
 		right.add(&(event_coord_at_millis(50), 1));
 		right.add(&(event_coord_at_millis(70), 3));
 
@@ -244,20 +245,20 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_roundtrip() {
-		let mut mx: SealingMax<DateTimeCoord, i64> = SealingMax::immutable(millis(10));
+	fn immutable_max_roundtrip() {
+		let mut mx: ImmutableMax<DateTimeCoord, i64> = ImmutableMax::immutable(millis(10));
 		mx.add(&(event_coord_at_millis(0), 5));
 		mx.add(&(event_coord_at_millis(12), 8));
 		let bytes = mx.encode_state().expect("encode");
-		let restored: SealingMax<DateTimeCoord, i64> = decode(&bytes).expect("decode");
+		let restored: ImmutableMax<DateTimeCoord, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, mx);
 	}
 
 	#[test]
-	fn sealing_max_compacts_only_with_an_immutable_span() {
-		// without an immutable span nothing seals, so the tail must count as growing with every sample
-		assert!(!SealingMax::<DateTimeCoord, i64>::default().compacts());
-		assert!(!SealingMax::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
-		assert!(SealingMax::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
+	fn immutable_max_compacts_only_with_an_immutable_span() {
+		// without an immutable span nothing folds, so the tail must count as growing with every sample
+		assert!(!ImmutableMax::<DateTimeCoord, i64>::default().compacts());
+		assert!(!ImmutableMax::<DateTimeCoord, i64>::maybe_immutable(None).compacts());
+		assert!(ImmutableMax::<DateTimeCoord, i64>::immutable(millis(10)).compacts());
 	}
 }

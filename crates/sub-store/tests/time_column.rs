@@ -42,7 +42,7 @@ fn db() -> TestDb {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
-		series_grace: Duration::from_milliseconds(0).unwrap(),
+		series_lateness: Duration::from_milliseconds(0).unwrap(),
 		materialize: true,
 		..StorageConfig::default()
 	};

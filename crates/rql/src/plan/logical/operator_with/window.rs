@@ -717,7 +717,7 @@ mod tests {
 
 	#[test]
 	fn immutable_true_resolves_to_zero_duration() {
-		// `true` must compile to a zero-length grace window, never be left unset.
+		// `true` must compile to a zero-length lateness window, never be left unset.
 		let parsed = parse_window_config(
 			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: true }"#,
 		)
@@ -737,7 +737,7 @@ mod tests {
 
 	#[test]
 	fn immutable_duration_literal_is_still_accepted() {
-		// The pre-existing grace-period form must keep working now that `immutable` also accepts a boolean.
+		// The pre-existing lateness-period form must keep working now that `immutable` also accepts a boolean.
 		let parsed = parse_window_config(
 			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: 15s }"#,
 		)
@@ -773,12 +773,12 @@ mod tests {
 				.unwrap();
 		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap();
 		Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind)
-			.expect("an immutable short of the window duration can still seal something before it closes");
+			.expect("an immutable short of the window duration can still fold something before it closes");
 	}
 
 	#[test]
 	fn immutable_at_window_duration_is_rejected() {
-		// At the window's own span, high-water can never get far enough ahead to trigger a seal.
+		// At the window's own span, high-water can never get far enough ahead to trigger a fold.
 		let parsed =
 			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 5m }"#)
 				.unwrap();

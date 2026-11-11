@@ -30,7 +30,7 @@ pub struct FunctionContext<'a> {
 	pub runtime_context: &'a RuntimeContext,
 }
 
-impl sealed::Sealed for FunctionContext<'_> {}
+impl sealed::Internal for FunctionContext<'_> {}
 impl Context for FunctionContext<'_> {
 	type Output = (FieldRef, ArrayRef);
 
@@ -116,7 +116,7 @@ pub struct ProcedureContext<'a, 'tx> {
 	pub ioc: &'a IocContainer,
 }
 
-impl sealed::Sealed for ProcedureContext<'_, '_> {}
+impl sealed::Internal for ProcedureContext<'_, '_> {}
 impl Context for ProcedureContext<'_, '_> {
 	type Output = RecordBatch;
 

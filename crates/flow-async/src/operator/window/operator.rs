@@ -28,7 +28,7 @@ use reifydb_value::{
 
 use super::{
 	apply::{
-		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, reap_sealed_groups,
+		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, forget_sealed_groups,
 		seal_engine_windows, seal_session_engines,
 	},
 	rolling::{NativePaneEngine, apply_rolling_engine, seal_rolling_engine},
@@ -37,7 +37,7 @@ use crate::{
 	operator::{
 		HostOperator, TimedOutput,
 		aggregation::core::Aggregation,
-		drops::SealedDrops,
+		drops::DropCounter,
 		host::HostContext,
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
@@ -66,9 +66,9 @@ pub struct WindowOperator {
 
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
-	sealed_drops: SealedDrops,
-	stale_retractions: SealedDrops,
-	refused_rows: SealedDrops,
+	sealed_drops: DropCounter,
+	stale_retractions: DropCounter,
+	refused_rows: DropCounter,
 	rolling_engine: Option<Box<NativePaneEngine>>,
 	meta: WindowMeta,
 }
@@ -93,9 +93,9 @@ impl WindowOperator {
 			kind: config.kind,
 			lateness: config.lateness,
 			immutable: config.immutable,
-			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
-			stale_retractions: SealedDrops::new(config.operator, "updates/removes past immutable"),
-			refused_rows: SealedDrops::new(config.operator, "session rows refused by assignment"),
+			sealed_drops: DropCounter::new(config.operator, "mutations targeting sealed windows"),
+			stale_retractions: DropCounter::new(config.operator, "updates/removes past immutable"),
+			refused_rows: DropCounter::new(config.operator, "session rows refused by assignment"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
 		})
@@ -218,7 +218,7 @@ impl HostOperator for WindowOperator {
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
 		let fired = FiredAt::of(&timer);
 		if timer.kind == TimerKind::Maintenance {
-			reap_sealed_groups(self, host, fired)?;
+			forget_sealed_groups(self, host, fired)?;
 			return Ok(None);
 		}
 		let diffs = match self.kind {
@@ -266,7 +266,7 @@ impl HostOperator for WindowOperator {
 
 	fn seal_span(&self) -> Option<Duration> {
 		SealRule::for_window(&self.kind, self.lateness().unwrap_or_else(Duration::zero))
-			.map(|rule| rule.admissible().duration())
+			.map(|rule| rule.seal_span().duration())
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {

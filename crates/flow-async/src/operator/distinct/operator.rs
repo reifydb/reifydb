@@ -39,7 +39,7 @@ use crate::{
 	operator::{
 		HostOperator,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState, SerializedRow},
-		drops::SealedDrops,
+		drops::DropCounter,
 		host::HostContext,
 		state::sweep::sweep_all,
 	},
@@ -58,7 +58,7 @@ pub struct DistinctPlan {
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
-	pub(super) dropped: SealedDrops,
+	pub(super) dropped: DropCounter,
 }
 
 pub struct DistinctOperator {
@@ -85,7 +85,7 @@ impl DistinctOperator {
 				routines,
 				runtime_context,
 				ctx,
-				dropped: SealedDrops::new(operator, DROP_REASON),
+				dropped: DropCounter::new(operator, DROP_REASON),
 			},
 		})
 	}

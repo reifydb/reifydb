@@ -54,7 +54,7 @@ pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow_async::operator::state::{seal, sealing};
+pub use reifydb_flow_async::operator::state::{immutable, seal};
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator};
 #[cfg(feature = "sub_flow")]

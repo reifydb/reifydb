@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use super::base::SealingBase;
+use super::base::ImmutableBase;
 use crate::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator},
 	span::{Slot, SlotSpan},
@@ -15,37 +15,37 @@ use crate::window::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingEndpoint<S: Slot, V> {
-	base: SealingBase<S, V>,
-	sealed_open: Option<(S, V)>,
-	sealed_close: Option<(S, V)>,
+pub struct ImmutableEndpoint<S: Slot, V> {
+	base: ImmutableBase<S, V>,
+	immutable_open: Option<(S, V)>,
+	immutable_close: Option<(S, V)>,
 }
 
-impl<S: Slot, V> Default for SealingEndpoint<S, V> {
+impl<S: Slot, V> Default for ImmutableEndpoint<S, V> {
 	fn default() -> Self {
 		Self {
-			base: SealingBase::default(),
-			sealed_open: None,
-			sealed_close: None,
+			base: ImmutableBase::default(),
+			immutable_open: None,
+			immutable_close: None,
 		}
 	}
 }
 
-impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
+impl<S: Slot, V: Clone> ImmutableEndpoint<S, V> {
 	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self::maybe_immutable(Some(immutable))
 	}
 
 	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
-			base: SealingBase::maybe_immutable(immutable),
-			sealed_open: None,
-			sealed_close: None,
+			base: ImmutableBase::maybe_immutable(immutable),
+			immutable_open: None,
+			immutable_close: None,
 		}
 	}
 
 	pub fn open(&self) -> Option<&V> {
-		match &self.sealed_open {
+		match &self.immutable_open {
 			Some((_, v)) => Some(v),
 			None => self.base.tail().values().next(),
 		}
@@ -54,59 +54,59 @@ impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
 	pub fn close(&self) -> Option<&V> {
 		match self.base.tail().values().next_back() {
 			Some(v) => Some(v),
-			None => self.sealed_close.as_ref().map(|(_, v)| v),
+			None => self.immutable_close.as_ref().map(|(_, v)| v),
 		}
 	}
 
-	pub fn seal_tail(&mut self) {
+	pub fn fold_immutable_tail(&mut self) {
 		for (c, v) in self.base.drain_tail() {
-			self.seal(c, v);
+			self.fold(c, v);
 		}
 	}
 
-	fn seal(&mut self, c: S, v: V) {
-		self.sealed_open = Some(match self.sealed_open.take() {
+	fn fold(&mut self, c: S, v: V) {
+		self.immutable_open = Some(match self.immutable_open.take() {
 			Some((sc, sv)) if sc <= c => (sc, sv),
 			_ => (c, v.clone()),
 		});
-		self.sealed_close = Some(match self.sealed_close.take() {
+		self.immutable_close = Some(match self.immutable_close.take() {
 			Some((sc, sv)) if sc >= c => (sc, sv),
 			_ => (c, v),
 		});
 	}
 }
 
-impl<S, V> MergeAccumulator for SealingEndpoint<S, V>
+impl<S, V> MergeAccumulator for ImmutableEndpoint<S, V>
 where
 	S: Slot + Hash,
 	V: Clone + Debug + PartialEq,
-	SealingEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
+	ImmutableEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
-		if let Some((c, v)) = other.sealed_open.clone() {
-			self.seal(c, v);
+		if let Some((c, v)) = other.immutable_open.clone() {
+			self.fold(c, v);
 		}
-		if let Some((c, v)) = other.sealed_close.clone() {
-			self.seal(c, v);
+		if let Some((c, v)) = other.immutable_close.clone() {
+			self.fold(c, v);
 		}
 		for (c, v) in self.base.absorb(&other.base, |_mine, theirs| theirs.clone()) {
-			self.seal(c, v);
+			self.fold(c, v);
 		}
 	}
 }
 
-impl<S, V> WindowAccumulator for SealingEndpoint<S, V>
+impl<S, V> WindowAccumulator for ImmutableEndpoint<S, V>
 where
 	S: Slot + Hash,
 	V: Clone + Debug + PartialEq,
-	SealingEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
+	ImmutableEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (S, V);
 	type Output = (V, V);
 
 	fn add(&mut self, contribution: &(S, V)) {
 		for (c, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			self.seal(c, v);
+			self.fold(c, v);
 		}
 	}
 
@@ -122,13 +122,13 @@ where
 	}
 
 	fn is_empty(&self) -> bool {
-		self.sealed_open.is_none() && self.base.is_tail_empty()
+		self.immutable_open.is_none() && self.base.is_tail_empty()
 	}
 }
 
-impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<S, V> {
+impl<S: Slot + HeapSize, V: HeapSize> HeapSize for ImmutableEndpoint<S, V> {
 	fn heap_size(&self) -> usize {
-		self.base.heap_size() + self.sealed_open.heap_size() + self.sealed_close.heap_size()
+		self.base.heap_size() + self.immutable_open.heap_size() + self.immutable_close.heap_size()
 	}
 }
 
@@ -147,8 +147,8 @@ mod tests {
 	};
 
 	#[test]
-	fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+	fn immutable_endpoint_freezes_open_and_tracks_live_close() {
+		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 		accumulator.add(&(event_coord_at_millis(0), 100));
 		accumulator.add(&(event_coord_at_millis(5), 200));
 		accumulator.add(&(event_coord_at_millis(12), 300));
@@ -167,25 +167,25 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_default_is_fully_invertible() {
-		assert_add_remove_is_inverse::<SealingEndpoint<DateTimeCoord, i64>>(
+	fn immutable_endpoint_default_is_fully_invertible() {
+		assert_add_remove_is_inverse::<ImmutableEndpoint<DateTimeCoord, i64>>(
 			&[(event_coord_at_millis(1), 10i64), (event_coord_at_millis(3), 30)],
 			(event_coord_at_millis(2), 20i64),
 		);
 	}
 
 	#[test]
-	fn sealing_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
+	fn immutable_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
 		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
 		// next.
-		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::default();
+		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::default();
 		accumulator.add(&(event_coord_at_millis(0), 100));
 		accumulator.add(&(event_coord_at_millis(5), 200));
 		accumulator.add(&(event_coord_at_millis(1_000_000), 300));
 		assert_eq!(accumulator.finalize(), Some((100, 300)));
 
 		accumulator.remove(&(event_coord_at_millis(0), 100));
-		assert_eq!(accumulator.open(), Some(&200), "the open is retractable while nothing is sealed");
+		assert_eq!(accumulator.open(), Some(&200), "the open is retractable while nothing is folded");
 		assert_eq!(accumulator.finalize(), Some((200, 300)));
 
 		accumulator.remove(&(event_coord_at_millis(5), 200));
@@ -195,10 +195,10 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
-		// Only the earliest sealed slot is kept, so retracting the live tail must never make close report
+	fn immutable_endpoint_close_is_the_latest_surviving_row_not_the_open() {
+		// Only the earliest immutable slot is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
-		let mut accumulator: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 		accumulator.add(&(event_coord_at_millis(0), 1));
 		accumulator.add(&(event_coord_at_millis(5), 2));
 		accumulator.add(&(event_coord_at_millis(20), 3));
@@ -209,11 +209,11 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
+	fn immutable_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
 		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
 		assert_arms_agree(
-			SealingEndpoint::<DateTimeCoord, i64>::immutable(millis(5)),
-			SealingEndpoint::<DateTimeCoord, i64>::default(),
+			ImmutableEndpoint::<DateTimeCoord, i64>::immutable(millis(5)),
+			ImmutableEndpoint::<DateTimeCoord, i64>::default(),
 			&[
 				Op::Add((event_coord_at_millis(0), 1)),
 				Op::Add((event_coord_at_millis(10), 2)),
@@ -224,13 +224,13 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
-		// merge combines two parallel histories, never late arrivals, so the receiver's seal line must not
+	fn immutable_endpoint_merge_keeps_a_branch_open_that_predates_the_seal_line() {
+		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
-		let mut left: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		let mut left: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 		left.add(&(event_coord_at_millis(0), 1));
 
-		let mut right: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+		let mut right: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 		right.add(&(event_coord_at_millis(50), 5));
 		right.add(&(event_coord_at_millis(70), 7));
 
@@ -244,12 +244,12 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_endpoint_roundtrip() {
-		let mut ep: SealingEndpoint<DateTimeCoord, i64> = SealingEndpoint::immutable(millis(10));
+	fn immutable_endpoint_roundtrip() {
+		let mut ep: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
 		ep.add(&(event_coord_at_millis(0), 100));
 		ep.add(&(event_coord_at_millis(12), 300));
 		let bytes = ep.encode_state().expect("encode");
-		let restored: SealingEndpoint<DateTimeCoord, i64> = decode(&bytes).expect("decode");
+		let restored: ImmutableEndpoint<DateTimeCoord, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, ep);
 	}
 }

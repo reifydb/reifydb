@@ -31,7 +31,7 @@ pub struct StorageConfig {
 
 	pub series_bucket_width: u64,
 
-	pub series_grace: Duration,
+	pub series_lateness: Duration,
 
 	pub series_merge_buckets: u64,
 
@@ -50,7 +50,7 @@ impl Default for StorageConfig {
 			series_tick_interval: Duration::from_seconds(1).unwrap(),
 
 			series_bucket_width: 3_600 * 1_000_000_000,
-			series_grace: Duration::from_seconds(5).unwrap(),
+			series_lateness: Duration::from_seconds(5).unwrap(),
 			series_merge_buckets: 1,
 			series_merge_file_delay: Duration::from_seconds(60).unwrap(),
 

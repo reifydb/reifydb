@@ -73,7 +73,7 @@ fn series_block_records_sealed_at_commit_version() {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
-		series_grace: Duration::from_milliseconds(0).unwrap(),
+		series_lateness: Duration::from_milliseconds(0).unwrap(),
 		materialize: true,
 		..StorageConfig::default()
 	};
@@ -130,7 +130,7 @@ fn series_block_system_columns_match_row_metadata() {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
-		series_grace: Duration::from_milliseconds(0).unwrap(),
+		series_lateness: Duration::from_milliseconds(0).unwrap(),
 		materialize: true,
 		..StorageConfig::default()
 	};

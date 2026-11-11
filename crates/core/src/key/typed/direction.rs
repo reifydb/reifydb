@@ -416,10 +416,10 @@ impl<T: KeyScalar> DenseKey for Desc<T> {
 }
 
 mod sealed {
-	pub trait Sealed {}
+	pub trait Internal {}
 }
 
-pub trait KeyField: sealed::Sealed {
+pub trait KeyField: sealed::Internal {
 	const DIRECTION: Direction;
 
 	fn to_key_value(&self) -> KeyValue;
@@ -429,9 +429,9 @@ pub trait KeyField: sealed::Sealed {
 		Self: Sized;
 }
 
-impl<T> sealed::Sealed for Asc<T> {}
+impl<T> sealed::Internal for Asc<T> {}
 
-impl<T> sealed::Sealed for Desc<T> {}
+impl<T> sealed::Internal for Desc<T> {}
 
 impl<T: KeyScalar> KeyField for Asc<T> {
 	const DIRECTION: Direction = Direction::Asc;

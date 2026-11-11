@@ -21,10 +21,10 @@ use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 mod sealed {
-	pub trait Sealed {}
+	pub trait Internal {}
 }
 
-pub trait Context: Send + Sync + sealed::Sealed {
+pub trait Context: Send + Sync + sealed::Internal {
 	type Output;
 
 	fn call<R: Routine<Self> + ?Sized>(

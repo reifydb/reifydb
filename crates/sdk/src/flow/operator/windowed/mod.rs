@@ -50,7 +50,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn seal_frontier<C: SealDomain>(store: &mut (impl StateStore + TimerStore)) -> Result<C> {
+pub(crate) fn operator_watermark<C: SealDomain>(store: &mut (impl StateStore + TimerStore)) -> Result<C> {
 	C::frontier(store)
 }
 

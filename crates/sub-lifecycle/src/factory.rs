@@ -68,7 +68,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		let gate = RetentionStartupGate::arm(
 			engine.clock().clone(),
-			catalog.get_config_duration(ConfigKey::RetentionStartupGrace),
+			catalog.get_config_duration(ConfigKey::LifecycleStartupDelay),
 		);
 
 		let bucket = catalog.get_config_duration(ConfigKey::EpochBucketInterval);

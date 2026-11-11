@@ -124,7 +124,7 @@ fn a_live_pair_reports_both_sides_and_an_anchor_arming_each_of_them() {
 }
 
 #[test]
-fn a_left_only_seal_evicts_the_left_row_and_leaves_the_right_one_addressable() {
+fn a_left_only_retention_forgets_the_left_row_and_leaves_the_right_one_addressable() {
 	// The two sides seal on their own configuration, so an unconfigured side must never arm or be freed.
 	let db = setup();
 	inner_join(&db, LEFT_ONLY);
@@ -149,7 +149,7 @@ fn a_left_only_seal_evicts_the_left_row_and_leaves_the_right_one_addressable() {
 }
 
 #[test]
-fn a_right_only_seal_evicts_the_right_row_and_leaves_the_left_one_addressable() {
+fn a_right_only_retention_forgets_the_right_row_and_leaves_the_left_one_addressable() {
 	// The mirror of the left-only case: a rule that keyed off one side would pass one of these and fail the other.
 	let db = setup();
 	inner_join(&db, RIGHT_ONLY);
@@ -216,7 +216,7 @@ fn both_sides_sealed_leave_the_join_operator_holding_nothing_per_key() {
 }
 
 #[test]
-fn a_longer_right_seal_evicts_on_its_own_schedule_rather_than_the_lefts() {
+fn a_longer_right_retention_forgets_on_its_own_schedule_rather_than_the_lefts() {
 	// Two spans under one group must expire independently, or the wider one is cut short by the narrower.
 	let db = setup();
 	inner_join(&db, LEFT_SHORT_RIGHT_LONG);

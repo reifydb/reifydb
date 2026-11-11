@@ -81,7 +81,7 @@ impl EncodedRowBuilder {
 	}
 }
 
-impl sealed::Sealed for EncodedRowBuilder {
+impl sealed::Internal for EncodedRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		&self.0
 	}
@@ -98,7 +98,7 @@ impl sealed::Sealed for EncodedRowBuilder {
 pub(crate) mod sealed {
 	use std::ops::Range;
 
-	pub trait Sealed {
+	pub trait Internal {
 		fn buffer(&self) -> &Vec<u8>;
 
 		fn buffer_mut(&mut self) -> &mut Vec<u8>;
@@ -126,7 +126,7 @@ pub(crate) mod sealed {
 	}
 }
 
-pub trait RowBuilder: sealed::Sealed {
+pub trait RowBuilder: sealed::Internal {
 	fn as_slice(&self) -> &[u8];
 
 	fn as_mut_slice(&mut self) -> &mut [u8];
@@ -142,7 +142,7 @@ pub trait RowBuilder: sealed::Sealed {
 		Self: Sized;
 }
 
-impl<T: sealed::Sealed> RowBuilder for T {
+impl<T: sealed::Internal> RowBuilder for T {
 	#[inline]
 	fn as_slice(&self) -> &[u8] {
 		self.buffer()

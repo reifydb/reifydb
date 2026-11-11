@@ -49,7 +49,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 /// The same corpus and grid under a different fold.
 ///
-/// Min and max seal only under immutable, never by lateness alone, otherwise they stay invertible.
+/// Min and max fold only under immutable, never by lateness alone, otherwise they stay invertible.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	drive_with(seed, params, fold, None)
 }

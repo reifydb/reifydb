@@ -176,8 +176,8 @@ fn test_a_claim_records_the_lease_on_the_item_state() {
 	// at 0 would give the retry budget infinite lives; a missing deadline would make the lease
 	// immortal and the item unrecoverable after a worker dies.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
-	t.command("INSERT test::jobs [{ id: 1 }]");
 	t.mock_clock().set_nanos(5_000);
+	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	claim(&t, "w1", 1, 30);
 

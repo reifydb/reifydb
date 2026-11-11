@@ -236,7 +236,7 @@ fn a_guest_window_that_is_still_open_keeps_its_accumulator_through_a_reap() {
 }
 
 #[test]
-fn the_sealed_guest_windows_published_rows_survive_the_reap() {
+fn the_sealed_guest_windows_published_rows_survive_the_forget() {
 	// Reclamation must be silent, so freeing state must never retract what the view published.
 	let db = setup();
 	guest_window(&db);
@@ -253,7 +253,7 @@ fn the_sealed_guest_windows_published_rows_survive_the_reap() {
 }
 
 #[test]
-fn a_sealed_guest_window_has_both_its_data_and_its_identity_reaped() {
+fn a_sealed_guest_window_has_both_its_data_and_its_identity_forgotten() {
 	// A guest operator that seals without reaping keeps every window it ever opened, growing without bound.
 	let db = setup();
 	guest_window(&db);

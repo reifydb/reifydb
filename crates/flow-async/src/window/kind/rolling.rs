@@ -53,7 +53,7 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_uses_the_bare_span_and_sealing_adds_the_lateness() {
+	fn forget_uses_the_bare_span_and_sealing_adds_the_lateness() {
 		// Rolling admits a late row inside the lateness but evicts on the bare span. An eviction that
 		// also waited out the lateness keeps every window one lateness-period too wide, inflating every
 		// aggregate it publishes.

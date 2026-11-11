@@ -616,7 +616,7 @@ mod tests {
 
 	#[test]
 	fn a_maintenance_timer_between_seals_keeps_its_place_in_the_dispatch() {
-		// A seal batched past a maintenance timer reaps groups before their grace runs out.
+		// A seal batched past a maintenance timer reaps groups before their lateness runs out.
 		let fired = dispatch_recorded(&[
 			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
 			(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
@@ -632,7 +632,7 @@ mod tests {
 
 	#[test]
 	fn a_batching_operator_gets_each_run_of_its_own_seals_and_nothing_else_in_one_call() {
-		// A run spanning another operator or a maintenance timer reorders outputs or reaps before grace.
+		// A run spanning another operator or a maintenance timer reorders outputs or reaps before lateness.
 		let runs: Runs = Arc::default();
 		dispatch_with(
 			&[

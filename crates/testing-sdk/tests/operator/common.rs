@@ -20,8 +20,8 @@ use reifydb_core::{
 };
 use reifydb_flow_async::{
 	operator::state::{
+		immutable::{endpoint::ImmutableEndpoint, max::ImmutableMax, min::ImmutableMin},
 		seal::{coord::Coord, domain::SealDomain},
-		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
 	},
 	window::{
 		accumulator::{
@@ -370,17 +370,17 @@ impl Emit for MinTumbling {
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
-	high: SealingMax<DateTimeCoord, OrdF64>,
-	low: SealingMin<DateTimeCoord, OrdF64>,
-	ends: SealingEndpoint<DateTimeCoord, OrdF64>,
+	high: ImmutableMax<DateTimeCoord, OrdF64>,
+	low: ImmutableMin<DateTimeCoord, OrdF64>,
+	ends: ImmutableEndpoint<DateTimeCoord, OrdF64>,
 }
 
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::immutable(millis(OHLCV_IMMUTABLE)),
-			low: SealingMin::immutable(millis(OHLCV_IMMUTABLE)),
-			ends: SealingEndpoint::immutable(millis(OHLCV_IMMUTABLE)),
+			high: ImmutableMax::immutable(millis(OHLCV_IMMUTABLE)),
+			low: ImmutableMin::immutable(millis(OHLCV_IMMUTABLE)),
+			ends: ImmutableEndpoint::immutable(millis(OHLCV_IMMUTABLE)),
 		}
 	}
 }
@@ -446,18 +446,18 @@ row!(OhlcvOut {
 	close: f64
 });
 
-pub struct OhlcvSealingTumbling;
+pub struct OhlcvImmutableTumbling;
 
-impl OperatorMetadata for OhlcvSealingTumbling {
-	const NAME: &'static str = "operator_test_ohlcv_sealing";
+impl OperatorMetadata for OhlcvImmutableTumbling {
+	const NAME: &'static str = "operator_test_ohlcv_immutable";
 	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "chaos fixture: sealing OHLCV with bounded lateness";
+	const DESCRIPTION: &'static str = "chaos fixture: immutable OHLCV with bounded lateness";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl WindowedOperator for OhlcvSealingTumbling {
+impl WindowedOperator for OhlcvImmutableTumbling {
 	type Coord = DateTimeCoord;
 	type GroupKey = String;
 	type Accumulator = OhlcvAcc;
@@ -516,7 +516,7 @@ impl WindowedOperator for OhlcvSealingTumbling {
 	}
 }
 
-impl Emit for OhlcvSealingTumbling {
+impl Emit for OhlcvImmutableTumbling {
 	type Kinds = NoRolling;
 
 	fn build_output(

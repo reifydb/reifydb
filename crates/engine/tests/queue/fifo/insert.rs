@@ -10,7 +10,7 @@ use reifydb_transaction::{
 	change::RowChange,
 	interceptor::{interceptors::Interceptors, transaction::post_commit},
 };
-use reifydb_value::value::{Value, partition::Partition, system_columns::user_columns};
+use reifydb_value::value::{Value, datetime::DateTime, partition::Partition, system_columns::user_columns};
 
 /// Every `RowChange` the committed transactions produced, in commit order.
 #[derive(Clone, Default)]
@@ -89,6 +89,7 @@ fn test_row_changes_carry_one_queue_insert_per_item() {
 
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
+	t.mock_clock().set_millis(7_000);
 	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }]");
 
 	let inserts = recorded.queue_inserts();
@@ -99,7 +100,11 @@ fn test_row_changes_carry_one_queue_insert_per_item() {
 
 	for insert in &inserts {
 		assert_eq!(insert.partition, Queue::UNPARTITIONED, "an unpartitioned queue is one FIFO");
-		assert_eq!(insert.not_before, None, "an insert without WITH is immediately due");
+		assert_eq!(
+			insert.not_before,
+			Some(DateTime::from_nanos(7_000_000_000)),
+			"an insert without WITH is due at insert time"
+		);
 		assert!(!insert.encoded.is_empty(), "the record must carry the encoded item row");
 	}
 }

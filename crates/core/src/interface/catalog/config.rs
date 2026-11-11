@@ -55,7 +55,7 @@ pub enum ConfigKey {
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
 	EpochBucketInterval,
-	RetentionStartupGrace,
+	LifecycleStartupDelay,
 	MaxRetentionHorizonFloor,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
@@ -113,7 +113,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
 			Self::EpochBucketInterval,
-			Self::RetentionStartupGrace,
+			Self::LifecycleStartupDelay,
 			Self::MaxRetentionHorizonFloor,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
@@ -189,7 +189,7 @@ impl ConfigKey {
 				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK)
 			}
 			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL),
-			Self::RetentionStartupGrace => Value::Duration(default::retention::STARTUP_GRACE),
+			Self::LifecycleStartupDelay => Value::Duration(default::retention::STARTUP_DELAY),
 			Self::MaxRetentionHorizonFloor => Value::Duration(default::retention::MAX_HORIZON_FLOOR),
 			Self::HistoricalGcBatchSize => Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE),
 			Self::HistoricalGcInterval => Value::Duration(default::retention::HISTORICAL_GC_INTERVAL),
@@ -259,7 +259,7 @@ impl ConfigKey {
 				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK_TESTING)
 			}
 			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL_TESTING),
-			Self::RetentionStartupGrace => Value::Duration(default::retention::STARTUP_GRACE_TESTING),
+			Self::LifecycleStartupDelay => Value::Duration(default::retention::STARTUP_DELAY_TESTING),
 			Self::MaxRetentionHorizonFloor => {
 				Value::Duration(default::retention::MAX_HORIZON_FLOOR_TESTING)
 			}
@@ -360,10 +360,10 @@ impl ConfigKey {
 				 cutoff after a restart. Smaller buckets give finer expiry resolution at the cost of more \
 				 persisted samples over the retention horizon."
 			}
-			Self::RetentionStartupGrace => {
+			Self::LifecycleStartupDelay => {
 				"How long after startup every retention executor computes cutoffs but deletes nothing. A \
-				 process restarted after a long downtime wakes with a large expired backlog; the grace \
-				 period plus per-class budgets drain it over many ticks instead of one mass eviction."
+				 process restarted after a long downtime wakes with a large expired backlog; the startup \
+				 delay plus per-class budgets drain it over many ticks instead of one mass eviction."
 			}
 			Self::MaxRetentionHorizonFloor => {
 				"Lower bound on the retained version-epoch horizon. The horizon is the longest declared \
@@ -597,7 +597,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::EpochBucketInterval => true,
-			Self::RetentionStartupGrace => false,
+			Self::LifecycleStartupDelay => false,
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => true,
@@ -655,7 +655,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::EpochBucketInterval => &[ValueType::Duration],
-			Self::RetentionStartupGrace => &[ValueType::Duration],
+			Self::LifecycleStartupDelay => &[ValueType::Duration],
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
@@ -713,7 +713,7 @@ impl ConfigKey {
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
 			Self::EpochBucketInterval => false,
-			Self::RetentionStartupGrace => false,
+			Self::LifecycleStartupDelay => false,
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
@@ -776,9 +776,9 @@ impl ConfigKey {
 				)),
 				_ => Ok(()),
 			},
-			Self::RetentionStartupGrace => match value {
+			Self::LifecycleStartupDelay => match value {
 				Value::Duration(d) if d.is_negative() => {
-					Err("RETENTION_STARTUP_GRACE must not be negative".to_string())
+					Err("LIFECYCLE_STARTUP_DELAY must not be negative".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -1078,7 +1078,7 @@ impl fmt::Display for ConfigKey {
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
-			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
+			Self::LifecycleStartupDelay => write!(f, "LIFECYCLE_STARTUP_DELAY"),
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
@@ -1140,7 +1140,7 @@ impl FromStr for ConfigKey {
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
-			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
+			"LIFECYCLE_STARTUP_DELAY" => Ok(Self::LifecycleStartupDelay),
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),

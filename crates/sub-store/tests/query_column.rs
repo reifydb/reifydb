@@ -260,18 +260,18 @@ fn rownum_lookup_is_rejected_instead_of_reading_the_row_store() {
 }
 
 const SERIES_BUCKET_WIDTH: u64 = 10;
-const SERIES_GRACE_MS: i64 = 500;
+const SERIES_LATENESS_MS: i64 = 500;
 const MOCK_EPOCH_NANOS: u64 = 1_700_000_000_000_000_000;
 
 fn series_db() -> TestDb {
 	// The clock is frozen so an integer keyed series seals only on the key rule, which is
-	// deterministic. A sealing test opts into the grace path by advancing it explicitly; a real
+	// deterministic. A sealing test opts into the lateness path by advancing it explicitly; a real
 	// clock would make that path fire whenever the machine was slow and pass for the wrong reason.
 	let config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: SERIES_BUCKET_WIDTH,
-		series_grace: Duration::from_milliseconds(SERIES_GRACE_MS).unwrap(),
+		series_lateness: Duration::from_milliseconds(SERIES_LATENESS_MS).unwrap(),
 		materialize: true,
 		..StorageConfig::default()
 	};
@@ -546,9 +546,9 @@ fn a_partition_filter_returns_only_that_partition() {
 }
 
 #[test]
-fn a_quiet_partition_seals_once_grace_elapses() {
+fn a_quiet_partition_seals_once_lateness_elapses() {
 	// An integer key carries no wall clock meaning, so a partition that stops writing mid bucket
-	// has no key based path to sealing. Without the grace backstop these rows stay unreadable
+	// has no key based path to sealing. Without the lateness backstop these rows stay unreadable
 	// forever, which is the failure this design introduced.
 	let db = series_db();
 	db.admin(
@@ -560,7 +560,7 @@ fn a_quiet_partition_seals_once_grace_elapses() {
 		column_query(&db, "from test::p").error.expect("a bucket below the key rule must not seal on its own");
 	assert_eq!(err.code, "QUERY_012");
 
-	db.mock_clock().advance_millis((SERIES_GRACE_MS * 2) as u64);
+	db.mock_clock().advance_millis((SERIES_LATENESS_MS * 2) as u64);
 
 	let result = await_column_rows(&db, "from test::p", 5);
 	assert_eq!(uint8_cells(&result.frames, "k"), vec![5, 4, 3, 2, 1]);

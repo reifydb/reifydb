@@ -378,7 +378,7 @@ impl Accumulator for PngAccumulator {
 }
 
 pub fn configs() -> [(ConfigKey, Value); 1] {
-	[(ConfigKey::RetentionStartupGrace, Value::Duration(Duration::from_seconds_const(10)))]
+	[(ConfigKey::LifecycleStartupDelay, Value::Duration(Duration::from_seconds_const(10)))]
 }
 
 pub struct TileEdit {

@@ -85,7 +85,7 @@ use crate::{
 	},
 };
 
-pub trait ValidationMode: sealed::Sealed + 'static {
+pub trait ValidationMode: sealed::Internal + 'static {
 	const VALIDATED: bool;
 
 	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
@@ -132,9 +132,9 @@ where
 pub mod sealed {
 
 	use super::{Unchecked, Validated};
-	pub trait Sealed {}
-	impl Sealed for Validated {}
-	impl Sealed for Unchecked {}
+	pub trait Internal {}
+	impl Internal for Validated {}
+	impl Internal for Unchecked {}
 }
 
 pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {

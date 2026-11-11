@@ -20,7 +20,7 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		aggregation::core::SlotRow,
-		state::sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
+		state::immutable::{endpoint::ImmutableEndpoint, max::ImmutableMax, min::ImmutableMin},
 	},
 	window::{
 		accumulator::{
@@ -91,10 +91,10 @@ pub enum AggregateSlot {
 	},
 	Min(Multiset<Value>),
 	Max(Multiset<Value>),
-	MinSealed(SealingMin<WindowSlotKey, Value>),
-	MaxSealed(SealingMax<WindowSlotKey, Value>),
-	First(SealingEndpoint<WindowSlotKey, Value>),
-	Last(SealingEndpoint<WindowSlotKey, Value>),
+	MinImmutable(ImmutableMin<WindowSlotKey, Value>),
+	MaxImmutable(ImmutableMax<WindowSlotKey, Value>),
+	First(ImmutableEndpoint<WindowSlotKey, Value>),
+	Last(ImmutableEndpoint<WindowSlotKey, Value>),
 	Span {
 		n: i64,
 	},
@@ -196,10 +196,10 @@ impl DigestSlot {
 	}
 }
 
-fn endpoint(immutable: Option<Duration>) -> SealingEndpoint<WindowSlotKey, Value> {
+fn endpoint(immutable: Option<Duration>) -> ImmutableEndpoint<WindowSlotKey, Value> {
 	match immutable {
-		Some(immutable) => SealingEndpoint::immutable(immutable),
-		None => SealingEndpoint::default(),
+		Some(immutable) => ImmutableEndpoint::immutable(immutable),
+		None => ImmutableEndpoint::default(),
 	}
 }
 
@@ -225,11 +225,11 @@ impl AggregateSlot {
 				seen_negative: false,
 			},
 			SlotKind::Min => match immutable {
-				Some(immutable) => AggregateSlot::MinSealed(SealingMin::immutable(immutable)),
+				Some(immutable) => AggregateSlot::MinImmutable(ImmutableMin::immutable(immutable)),
 				None => AggregateSlot::Min(Multiset::default()),
 			},
 			SlotKind::Max | SlotKind::WindowLast => match immutable {
-				Some(immutable) => AggregateSlot::MaxSealed(SealingMax::immutable(immutable)),
+				Some(immutable) => AggregateSlot::MaxImmutable(ImmutableMax::immutable(immutable)),
 				None => AggregateSlot::Max(Multiset::default()),
 			},
 			SlotKind::First => AggregateSlot::First(endpoint(immutable)),
@@ -350,7 +350,7 @@ impl AggregateSlot {
 					}
 				}
 			}
-			AggregateSlot::MinSealed(s) => {
+			AggregateSlot::MinImmutable(s) => {
 				for event in events {
 					let (adding, coord, row) = parts(event);
 					let cell = row.cell(index);
@@ -363,7 +363,7 @@ impl AggregateSlot {
 					}
 				}
 			}
-			AggregateSlot::MaxSealed(s) => {
+			AggregateSlot::MaxImmutable(s) => {
 				for event in events {
 					let (adding, coord, row) = parts(event);
 					let cell = row.cell(index);
@@ -484,8 +484,8 @@ impl AggregateSlot {
 				AggregateSlot::Min(set) | AggregateSlot::Max(set),
 				AggregateSlot::Min(oset) | AggregateSlot::Max(oset),
 			) => set.merge(oset),
-			(AggregateSlot::MinSealed(a), AggregateSlot::MinSealed(b)) => a.merge(b),
-			(AggregateSlot::MaxSealed(a), AggregateSlot::MaxSealed(b)) => a.merge(b),
+			(AggregateSlot::MinImmutable(a), AggregateSlot::MinImmutable(b)) => a.merge(b),
+			(AggregateSlot::MaxImmutable(a), AggregateSlot::MaxImmutable(b)) => a.merge(b),
 			(
 				AggregateSlot::First(a) | AggregateSlot::Last(a),
 				AggregateSlot::First(b) | AggregateSlot::Last(b),
@@ -601,7 +601,7 @@ impl AggregateSlot {
 		match self {
 			AggregateSlot::Min(set) => set.keep_min(),
 			AggregateSlot::Max(set) => set.keep_max(),
-			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.seal_tail(),
+			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.fold_immutable_tail(),
 			_ => {}
 		}
 	}
@@ -628,8 +628,8 @@ impl AggregateSlot {
 				.unwrap_or_else(Value::none),
 			AggregateSlot::Min(set) => set.min().cloned().unwrap_or_else(Value::none),
 			AggregateSlot::Max(set) => set.max().cloned().unwrap_or_else(Value::none),
-			AggregateSlot::MinSealed(s) => s.min().unwrap_or_else(Value::none),
-			AggregateSlot::MaxSealed(s) => s.max().unwrap_or_else(Value::none),
+			AggregateSlot::MinImmutable(s) => s.min().unwrap_or_else(Value::none),
+			AggregateSlot::MaxImmutable(s) => s.max().unwrap_or_else(Value::none),
 			AggregateSlot::First(e) => e.open().cloned().unwrap_or_else(Value::none),
 			AggregateSlot::Last(e) => e.close().cloned().unwrap_or_else(Value::none),
 			AggregateSlot::Span {
@@ -654,8 +654,8 @@ impl AggregateSlot {
 				..
 			} => *n == 0,
 			AggregateSlot::Min(set) | AggregateSlot::Max(set) => set.is_empty(),
-			AggregateSlot::MinSealed(s) => s.is_empty(),
-			AggregateSlot::MaxSealed(s) => s.is_empty(),
+			AggregateSlot::MinImmutable(s) => s.is_empty(),
+			AggregateSlot::MaxImmutable(s) => s.is_empty(),
 			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.is_empty(),
 			AggregateSlot::Span {
 				n,
@@ -1163,7 +1163,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_span_slot_is_invertible_and_window_last_is_invertible_only_while_unsealed() {
+	fn a_span_slot_is_invertible_and_window_last_is_invertible_only_without_an_immutable_span() {
 		// invertible() lets a rolling window unmerge expired rows; claiming it for a slot that cannot unmerge
 		// leaves a stale value.
 		assert!(RowAccumulator::invertible(&[SlotKind::WindowStart], None));
@@ -1171,11 +1171,11 @@ mod tests {
 		assert!(RowAccumulator::invertible(&[SlotKind::WindowDuration], None));
 		assert!(
 			RowAccumulator::invertible(&[SlotKind::WindowLast], None),
-			"an unsealed window last counts each event time, so it unmerges like max"
+			"a plain window last counts each event time, so it unmerges like max"
 		);
 		assert!(
 			!RowAccumulator::invertible(&[SlotKind::WindowLast], Some(Duration::from_seconds(60).unwrap())),
-			"a sealed window last folds old times into one value and cannot give them back"
+			"an immutable window last folds old times into one value and cannot give them back"
 		);
 	}
 
@@ -1386,20 +1386,20 @@ mod tests {
 	}
 
 	#[test]
-	fn an_immutable_span_seals_aged_min_max_and_drops_late_retraction() {
-		// An entry more than one immutable span behind the high-water mark is folded into the sealed
+	fn an_immutable_span_folds_aged_min_max_and_drops_late_retraction() {
+		// An entry more than one immutable span behind the high-water mark is folded into the immutable
 		// scalar, so retracting it is a no-op: the deliberate memory-vs-exactness trade.
 		let immutable = Duration::from_seconds(5).unwrap();
 		let mut a = RowAccumulator::new(&[SlotKind::Max], Some(immutable));
-		a.add(&(coord(0), slot_row(vec![i4(100)]))); // becomes sealed once high-water passes 5s
+		a.add(&(coord(0), slot_row(vec![i4(100)]))); // becomes immutable once high-water passes 5s
 		a.add(&(coord(10), slot_row(vec![i4(50)])));
-		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]), "sealed max still dominates");
-		// Retracting the sealed entry cannot lower the max: it was already folded away.
+		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]), "immutable max still dominates");
+		// Retracting the immutable entry cannot lower the max: it was already folded away.
 		a.remove(&(coord(0), slot_row(vec![i4(100)])));
 		assert_eq!(
 			a.finalize(),
 			Some(vec![Value::Int4(100)]),
-			"retraction older than the immutable span is a no-op, so the sealed max survives"
+			"retraction older than the immutable span is a no-op, so the immutable max survives"
 		);
 		// A retraction still inside the immutable window does take effect.
 		a.add(&(coord(12), slot_row(vec![i4(70)])));
@@ -1419,8 +1419,8 @@ mod tests {
 	}
 
 	#[test]
-	fn sealed_merge_matches_one_combined_accumulator() {
-		// Rolling merges sub-accumulators; a sealed Min/Max/endpoint merge must equal one
+	fn immutable_merge_matches_one_combined_accumulator() {
+		// Rolling merges sub-accumulators; an immutable Min/Max/endpoint merge must equal one
 		// accumulator that saw all contributions.
 		let immutable = Duration::from_seconds(60).unwrap();
 		let kinds = [SlotKind::Min, SlotKind::Max, SlotKind::First, SlotKind::Last];
@@ -1438,7 +1438,7 @@ mod tests {
 			right.add(&(coord(((i + 2) as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])));
 		}
 		left.merge(&right);
-		assert_eq!(left.finalize(), whole.finalize(), "sealed merge must equal one combined accumulator");
+		assert_eq!(left.finalize(), whole.finalize(), "immutable merge must equal one combined accumulator");
 	}
 
 	#[test]
@@ -1641,7 +1641,7 @@ mod tests {
 		assert!(RowAccumulator::invertible(&[SlotKind::Min, SlotKind::Max], None));
 		assert!(
 			!RowAccumulator::invertible(&[SlotKind::Min], Some(Duration::from_seconds(60).unwrap())),
-			"an immutable span turns Min/Max into sealed slots, which cannot unmerge"
+			"an immutable span turns Min/Max into immutable slots, which cannot unmerge"
 		);
 		assert!(!RowAccumulator::invertible(&[SlotKind::Sum, SlotKind::First], None));
 		assert!(!RowAccumulator::invertible(&[SlotKind::Last], None));
@@ -1844,8 +1844,8 @@ mod tests {
 
 	#[test]
 	fn a_digest_slot_is_invertible_with_or_without_an_immutable_span() {
-		// A digest keeps no per-row history, so sealing cannot fold it; refusing the running path costs every
-		// frame.
+		// A digest keeps no per-row history, so the immutable path cannot fold it; refusing the running path
+		// costs every frame.
 		let immutable = Some(Duration::from_seconds(60).unwrap());
 		assert!(RowAccumulator::invertible(&[digest_kind(Some(PPM))], None));
 		assert!(RowAccumulator::invertible(&[digest_kind(None)], immutable));

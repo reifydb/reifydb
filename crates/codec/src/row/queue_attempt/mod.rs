@@ -9,7 +9,7 @@ use crate::row::{
 	bytes::{
 		EncodedBytes, EncodedRowBuilder, QUEUE_ATTEMPT_HEADER_SIZE, RowBuilder, read_created_at,
 		read_defined_at, read_fingerprint, read_finished_at, read_lost, read_outcome, read_updated_at,
-		sealed::Sealed, write_fingerprint, write_finished_at, write_lost, write_outcome, write_storage_time,
+		sealed::Internal, write_fingerprint, write_finished_at, write_lost, write_outcome, write_storage_time,
 		write_timestamps,
 	},
 	shape::fingerprint::RowShapeFingerprint,
@@ -167,7 +167,7 @@ impl EncodedQueueAttemptRowBuilder {
 	}
 }
 
-impl Sealed for EncodedQueueAttemptRowBuilder {
+impl Internal for EncodedQueueAttemptRowBuilder {
 	fn buffer(&self) -> &Vec<u8> {
 		self.0.buffer()
 	}

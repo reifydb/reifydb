@@ -6,17 +6,17 @@ use std::collections::BTreeSet;
 use reifydb_value::value::row_number::RowNumber;
 
 #[derive(Default)]
-pub struct Seal {
+pub struct ImmutableLine {
 	high: Option<(u64, u64)>,
-	sealed_high: Option<(u64, u64)>,
+	immutable_high: Option<(u64, u64)>,
 	tail: BTreeSet<(u64, u64)>,
 }
 
-impl Seal {
+impl ImmutableLine {
 	pub fn push(&mut self, coord_ms: u64, row: RowNumber, immutable_ms: u64) {
 		let key = (coord_ms, row.0);
-		// A sealed min never takes a row at or behind the newest row it froze.
-		if self.sealed_high.is_some_and(|sealed| key <= sealed) {
+		// An immutable min never takes a row at or behind the newest row it froze.
+		if self.immutable_high.is_some_and(|immutable| key <= immutable) {
 			return;
 		}
 		let high = self.high.map_or(key, |high| high.max(key));
@@ -25,7 +25,7 @@ impl Seal {
 		while let Some(&oldest) = self.tail.first()
 			&& high.0 - oldest.0 > immutable_ms
 		{
-			self.sealed_high = Some(oldest);
+			self.immutable_high = Some(oldest);
 			self.tail.pop_first();
 		}
 	}
@@ -35,6 +35,6 @@ impl Seal {
 	}
 
 	pub fn holds_a_frozen_row(&self) -> bool {
-		self.sealed_high.is_some()
+		self.immutable_high.is_some()
 	}
 }

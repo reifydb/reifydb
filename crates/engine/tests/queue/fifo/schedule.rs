@@ -98,6 +98,7 @@ fn test_an_insert_creates_a_ready_state_a_due_entry_and_depth() {
 	// due entry no scan will find it, and without the depth bump the queue reports itself empty
 	// while holding work.
 	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
+	t.mock_clock().set_millis(7_000);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 
 	let queue = queue_id(&t, "jobs");
@@ -108,13 +109,17 @@ fn test_an_insert_creates_a_ready_state_a_due_entry_and_depth() {
 	assert_eq!(key.partition, Queue::UNPARTITIONED);
 	assert_eq!(state.status, QueueItemStatus::Ready);
 	assert_eq!(state.attempt, 0);
-	assert_eq!(state.not_before, None);
+	assert_eq!(state.not_before, Some(DateTime::from_nanos(7_000_000_000)));
 	assert_eq!(state.lease_deadline, None);
 	assert_eq!(state.backoff_until, None);
 
 	let dues = dues(&t, queue);
 	assert_eq!(dues.len(), 1, "one item must leave exactly one due entry");
-	assert_eq!(dues[0].due, DateTime::from_nanos(0), "an item with no not_before is due at epoch");
+	assert_eq!(
+		dues[0].due,
+		DateTime::from_nanos(7_000_000_000),
+		"an item with no not_before is due at insert time"
+	);
 	assert_eq!(dues[0].row, key.row, "the due entry must point at the state record's item");
 
 	assert_eq!(counters(&t, queue, Queue::UNPARTITIONED).depth, 1);

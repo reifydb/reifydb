@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{WindowKind, WindowSize, WindowSizeDomain},
 	error::CoreError,
-	operator_with::{ApplyWith, WindowSealing},
+	operator_with::{ApplyWith, WindowKnobs},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
@@ -77,7 +77,7 @@ impl SealDomain for DateTimeCoord {
 			.into());
 		}
 		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
-		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
+		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.seal_span().duration()))
 	}
 
 	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Duration>> {
@@ -93,7 +93,7 @@ impl SealDomain for DateTimeCoord {
 			Some(gap) => (None, Some(gap)),
 			None => (Some(with.window_duration()?), None),
 		};
-		let sealing = WindowSealing::from_operator_with(with)?;
+		let knobs = WindowKnobs::from_operator_with(with)?;
 		let (pane, lag) = match kind {
 			WindowKind::Rolling {
 				pane,
@@ -109,8 +109,8 @@ impl SealDomain for DateTimeCoord {
 			lag,
 			slide: with.window_slide_duration()?,
 			gap,
-			lateness: sealing.lateness.unwrap_or_else(Duration::zero),
-			immutable: sealing.immutable,
+			lateness: knobs.lateness.unwrap_or_else(Duration::zero),
+			immutable: knobs.immutable,
 		})
 	}
 
@@ -204,7 +204,7 @@ mod tests {
 	}
 
 	#[test]
-	fn observing_a_wall_clock_batch_arms_one_past_the_admissible_span() {
+	fn observing_a_wall_clock_batch_arms_one_past_the_seal_span() {
 		// the bare sum seals a window still taking late rows, so the arm must carry the strict gate step
 		let mut store = MockStore::recording_timers();
 

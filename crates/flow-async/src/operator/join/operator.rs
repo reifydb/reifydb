@@ -91,7 +91,7 @@ const JOIN_MAPPING_TAG: u8 = b'L';
 
 const UNMATCHED_RIGHT: u64 = 0;
 
-const SEAL_BATCH: usize = 256;
+const FORGET_BATCH: usize = 256;
 
 const QUEUE_SWEEP_EVERY: u64 = 1024;
 
@@ -190,7 +190,7 @@ pub struct JoinOperator {
 	left_retention: Option<Duration>,
 	right_retention: Option<Duration>,
 	ctx: Arc<FlowContext>,
-	seal_fires: Counter,
+	forget_fires: Counter,
 	expiry: JoinExpiryIndex,
 	columns: JoinedColumnsCache,
 }
@@ -257,7 +257,7 @@ impl JoinOperator {
 			left_retention: left_retention.filter(|span| !span.is_zero()),
 			right_retention: right_retention.filter(|span| !span.is_zero()),
 			ctx,
-			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
+			forget_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 			expiry: JoinExpiryIndex::default(),
 			output_sumtypes,
 		})
@@ -504,12 +504,12 @@ impl JoinOperator {
 		};
 		let retry = fired.at().saturating_add(span);
 
-		self.seal_fires.inc();
+		self.forget_fires.inc();
 		let mut stalled = false;
-		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
-			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
+		if (self.forget_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
+			let drained = drain(host, &mut StoreReaper, FORGET_BATCH)?;
 			stalled = if drained.more {
-				!queued(host, SEAL_BATCH)?.groups.is_empty()
+				!queued(host, FORGET_BATCH)?.groups.is_empty()
 			} else {
 				!drained.still_queued.is_empty()
 			};
@@ -523,7 +523,7 @@ impl JoinOperator {
 			None => DueStart::Bottom,
 		};
 		let earliest = loop {
-			let page = host.join_due_page(fired.at(), SEAL_BATCH, &start)?;
+			let page = host.join_due_page(fired.at(), FORGET_BATCH, &start)?;
 			if page.due.is_empty() {
 				break page.next;
 			}
@@ -571,7 +571,7 @@ impl JoinOperator {
 				continue;
 			}
 			enqueue(host, &[group])?;
-			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
+			let drained = drain_group(host, group, &mut StoreReaper, FORGET_BATCH)?;
 			stalled |= drained.still_queued;
 		}
 

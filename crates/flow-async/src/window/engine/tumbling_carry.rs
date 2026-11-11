@@ -955,7 +955,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_folds_every_window_below_the_horizon_of_every_group_and_frees_its_rows() {
+	fn a_seal_folds_every_window_below_the_output_watermark_of_every_group_and_forgets_its_rows() {
 		// Without retention only the seal can free a window; every group's windows below the horizon must
 		// lose both the accumulator row and the row-number mapping, and later windows must be left alone.
 		let mut store = CountingStore::default();
@@ -979,7 +979,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_keeps_the_window_that_starts_exactly_at_the_horizon() {
+	fn a_seal_keeps_the_window_that_starts_exactly_at_the_output_watermark() {
 		// A window is sealed only when it starts strictly below the horizon, the same test the driver applies
 		// to incoming rows; folding the boundary window would drop a window that still takes rows.
 		let mut store = CountingStore::default();
@@ -1192,7 +1192,7 @@ mod tests {
 	}
 
 	#[test]
-	fn successive_seals_keep_folding_as_the_horizon_rises() {
+	fn successive_seals_keep_folding_as_the_output_watermark_rises() {
 		// A pass that found nothing more to fold must not stop later passes: the horizon only moves up, and
 		// each move seals more of the same group's windows.
 		let mut store = CountingStore::default();

@@ -94,7 +94,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::state::sealing::min::SealingMin,
+		operator::state::immutable::min::ImmutableMin,
 		window::{
 			accumulator::{invertible::moments::Moments, testkit::assert_add_remove_is_inverse},
 			coord::DateTimeCoord,
@@ -211,8 +211,8 @@ mod tests {
 		// a keyed map must answer as its inner accumulator, otherwise unbounded state slips past create
 		let moments: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		assert!(moments.compacts());
-		let sealing: KeyedInvertibleAccumulator<u64, SealingMin<DateTimeCoord, i64>> =
+		let immutable: KeyedInvertibleAccumulator<u64, ImmutableMin<DateTimeCoord, i64>> =
 			KeyedInvertibleAccumulator::default();
-		assert!(!sealing.compacts());
+		assert!(!immutable.compacts());
 	}
 }

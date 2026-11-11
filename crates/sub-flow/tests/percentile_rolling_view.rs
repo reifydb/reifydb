@@ -225,7 +225,7 @@ const VIEWS: [View; 2] = [
 		with: "duration: 10m, pane: 1ms, lateness: 1h",
 	},
 	View {
-		name: "sealed",
+		name: "immutable",
 		kind: FrameKind::Duration,
 		with_min: true,
 		with: "duration: 10m, pane: 1ms, lateness: 1h, immutable: 5m",

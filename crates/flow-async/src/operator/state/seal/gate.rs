@@ -147,7 +147,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_is_admitted_until_the_frontier_passes_its_whole_admissible_span() {
+	fn a_window_is_admitted_until_the_watermark_passes_its_whole_seal_span() {
 		// The gate is strict: a window whose seal instant lands exactly on the frontier is still
 		// open, because the wheel fires inclusively at that instant and has not fired yet. Sealing
 		// one millisecond early drops rows that were still legitimately late.
@@ -195,7 +195,7 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_rearms_on_the_bare_span_and_never_on_the_seal_instant() {
+	fn forget_rearms_on_the_bare_span_and_never_on_the_seal_instant() {
 		// Rolling eviction is a retention boundary, not a gate, so it carries neither the seal nor
 		// the strict-gate +1. Both mistakes silently keep too much state on every group, forever.
 		let mut store = MockStore::recording_timers();

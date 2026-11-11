@@ -618,8 +618,8 @@ pub fn flow_step_panicked(reason: String) -> Diagnostic {
 pub fn flow_operator_with_count_span(key: &str, count: u64) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_063",
-		format!("operator setting '{}' is a count ({}), but this operator seals by time", key, count),
-		"Declare the setting as a duration, for example 30s, or use an operator that seals by row count.",
+		format!("operator setting '{}' is a count ({}), but this operator is measured in time", key, count),
+		"Declare the setting as a duration, for example 30s, or use an operator measured in rows.",
 	)
 }
 
@@ -741,7 +741,10 @@ pub fn flow_operator_with_retention_below_lateness(retention: Duration, lateness
 pub fn flow_operator_with_duration_span(key: &str, duration: Duration) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_070",
-		format!("operator setting '{}' is a duration ({}), but this operator seals by count", key, duration),
+		format!(
+			"operator setting '{}' is a duration ({}), but this operator is measured in rows",
+			key, duration
+		),
 		"Declare the setting as a count, for example lateness: 150.",
 	)
 }

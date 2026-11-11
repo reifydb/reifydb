@@ -49,7 +49,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator},
-			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
+			operator_watermark, rolling_cutoff, rolling_output, route_rolling, timer_frontier,
 			window_engine_config,
 		},
 	},
@@ -194,7 +194,7 @@ where
 		if let (Some(seal_span), Some(newest)) = (self.seal_span, newest) {
 			observe_batch(&mut store, newest, seal_span)?;
 		}
-		let frontier = seal_frontier::<A::Coord>(&mut store)?;
+		let frontier = operator_watermark::<A::Coord>(&mut store)?;
 		let clock = match (self.seal_span, newest) {
 			(None, Some(newest)) => frontier.max(newest),
 			_ => frontier,

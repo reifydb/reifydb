@@ -168,7 +168,7 @@ pub(crate) fn insert_queue(
 					row_number,
 					partition: item.placement.partition,
 					key_hash: item.placement.key_hash,
-					not_before: item.not_before,
+					not_before: item.not_before.or(Some(now)),
 					encoded: item.encoded.clone(),
 				});
 				returned.push(ReturnedRow {
