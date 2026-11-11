@@ -22,6 +22,7 @@ ALLOWED=(
     "wasmtime;"
     "wasmtime_wasi;"
     "reifydb_macro::"
+    "reifydb_codec as __codec;"
     "serde::"
     "std::"
     "loom::"

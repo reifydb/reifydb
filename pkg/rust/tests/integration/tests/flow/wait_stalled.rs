@@ -29,7 +29,7 @@ use reifydb::{
 			view::ChangeView,
 		},
 	},
-	sub::subsystem::HealthStatus,
+	sub::api::subsystem::HealthStatus,
 	testing::db::TestDb,
 	value::{config::ExtensionParams, value::duration::Duration as ValueDuration},
 };

@@ -7,6 +7,7 @@ pub mod operator;
 pub mod plain;
 pub mod publish;
 pub mod retained;
+pub mod rows;
 pub mod top_k;
 
 use std::{

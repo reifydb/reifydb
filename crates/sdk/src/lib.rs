@@ -15,3 +15,7 @@ pub mod flow;
 pub mod procedure;
 #[cfg(feature = "host")]
 pub mod transform;
+
+#[cfg(feature = "host")]
+#[doc(hidden)]
+pub use reifydb_codec as __codec;

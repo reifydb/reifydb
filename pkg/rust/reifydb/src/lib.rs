@@ -87,7 +87,11 @@ pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_single as single_storage;
-pub use reifydb_sub_api as sub;
+pub mod sub {
+	#[cfg(feature = "sub_flow")]
+	pub use reifydb_flow as flow;
+	pub use reifydb_sub_api as api;
+}
 #[cfg(feature = "sub_console")]
 pub use reifydb_sub_console as sub_console;
 pub use reifydb_sub_core as sub_core;

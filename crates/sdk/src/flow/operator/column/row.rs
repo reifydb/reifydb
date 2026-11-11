@@ -56,7 +56,7 @@ impl<K: Ord, R: Row> OutputRows for BTreeMap<K, R> {
 #[macro_export]
 macro_rules! __row_body {
 	($($fname:ident : $fty:ty),+ $(,)?) => {
-		const COLUMNS: &'static [(&'static str, ::reifydb_codec::tag::ValueKind)] = &[
+		const COLUMNS: &'static [(&'static str, $crate::__codec::tag::ValueKind)] = &[
 			$((stringify!($fname), <$fty as $crate::flow::operator::column::cell::Cell>::COLUMN_TYPE),)+
 		];
 

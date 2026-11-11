@@ -9,7 +9,7 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb::{Database, server, sub::subsystem::Subsystem};
+use reifydb::{Database, server, sub::api::subsystem::Subsystem};
 use reifydb_console_protocol::{
 	ExternalAccess, PROTOCOL_VERSION, Refusal, Register, Reply, read_message, write_message,
 };
