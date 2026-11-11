@@ -10,18 +10,25 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, operator::state::decode, pod::EncodedPodRow},
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	commit::tracker::WriteTracker,
 	common::{ChangeVersion, CommitVersion},
 	delta::RemoveVisibility,
 	interface::change::Change,
+	internal_err,
 	key::{
 		any::TaggedKey,
-		operator::state::{KeyspaceId, OperatorStateKey},
+		operator::{
+			keyspace::timer::TimerWheelKey,
+			state::{KeyspaceId, OperatorStateKey},
+		},
 	},
-	state::timer::TimerKind,
+	state::{timer::TimerKind, typed::SuffixBytes},
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::{
@@ -51,6 +58,7 @@ use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
+use reifydb_testing_sdk::in_process::harness::ArmedTimer;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	interceptor::interceptors::Interceptors,
@@ -310,6 +318,34 @@ impl<O: HostOperator> Harness<O> {
 			.collect::<Result<Vec<_>>>()?;
 		self.end(txn);
 		Ok(items)
+	}
+
+	pub fn armed_timers(&mut self) -> Result<Vec<ArmedTimer>> {
+		let operator = self.operator.id();
+		let mut txn = self.begin(DateTime::default());
+		let items = txn
+			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
+		self.end(txn);
+		let mut armed = Vec::new();
+		for item in items {
+			let TaggedKey::OperatorState(state) = &item.key else {
+				continue;
+			};
+			if state.keyspace != KeyspaceId::TIMER_WHEEL {
+				continue;
+			}
+			let Some(wheel) = TimerWheelKey::from_suffix_bytes(&state.suffix) else {
+				return internal_err!("a timer wheel row carries no due, kind and id");
+			};
+			let key: Vec<u8> = decode(&EncodedPodRow::from(item.bytes))?;
+			armed.push(ArmedTimer {
+				due: wheel.due.0,
+				kind: wheel.kind.0,
+				key,
+			});
+		}
+		Ok(armed)
 	}
 
 	pub fn apply(&mut self, change: Change) -> Result<Change> {
