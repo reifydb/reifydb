@@ -86,6 +86,15 @@ where
 		}
 	}
 
+	pub fn checked_for_coord(coord: C, span: C::Span) -> Option<Self> {
+		assert!(!span.is_zero(), "WindowSpan::checked_for_coord: span must be > 0");
+		let start = coord.floor_to(span);
+		Some(Self {
+			start,
+			end: start.checked_add_span(span)?,
+		})
+	}
+
 	pub fn covering(coord: C, size: C::Span, slide: C::Span) -> Option<Vec<Self>> {
 		assert!(!size.is_zero(), "WindowSpan::covering: size must be > 0");
 		assert!(!slide.is_zero(), "WindowSpan::covering: slide must be > 0");
@@ -286,6 +295,27 @@ mod tests {
 			spans,
 			vec![WindowSpan::new(U8Coord(16), U8Coord(26)), WindowSpan::new(U8Coord(20), U8Coord(30)),]
 		);
+	}
+
+	#[test]
+	fn checked_for_coord_refuses_a_window_that_would_end_past_the_maximum() {
+		// a window whose end overflows panics the flow in the addition instead of failing loud
+		let near = DateTimeCoord(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
+		let minute = Duration::from_seconds(60).unwrap();
+
+		assert_eq!(WindowSpan::checked_for_coord(near, minute), None);
+		assert_eq!(
+			WindowSpan::checked_for_coord(event_coord_at_millis(70_000), minute),
+			Some(WindowSpan::for_coord(event_coord_at_millis(70_000), minute))
+		);
+	}
+
+	#[test]
+	fn covering_refuses_a_window_that_would_end_past_the_maximum() {
+		// a covering window whose end overflows must not be cut short or panic
+		let near = DateTimeCoord(DateTime::MAX.saturating_sub(Duration::from_seconds(10).unwrap()));
+
+		assert_eq!(WindowSpan::covering(near, millis(60_000), millis(30_000)), None);
 	}
 
 	#[test]

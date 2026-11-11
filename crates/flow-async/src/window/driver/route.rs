@@ -43,7 +43,13 @@ where
 			return Ok(());
 		};
 		let Some(slide) = self.slide else {
-			self.push_span(op, group, coord, WindowSpan::for_coord(coord, self.size), contribution);
+			let Some(span) = WindowSpan::checked_for_coord(coord, self.size) else {
+				return internal_err!(
+					"a tumbling window of size {:?} holding {coord:?} would end past the coordinate maximum",
+					self.size
+				);
+			};
+			self.push_span(op, group, coord, span, contribution);
 			return Ok(());
 		};
 		let Some(spans) = WindowSpan::covering(coord, self.size, slide) else {
