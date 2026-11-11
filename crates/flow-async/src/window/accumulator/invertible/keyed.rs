@@ -25,12 +25,6 @@ impl<K: Ord, A> Default for KeyedInvertibleAccumulator<K, A> {
 	}
 }
 
-impl<K: Ord, A> KeyedInvertibleAccumulator<K, A> {
-	pub fn entries(&self) -> &BTreeMap<K, CountedAccumulator<A>> {
-		&self.subs
-	}
-}
-
 impl<K, A> WindowAccumulator for KeyedInvertibleAccumulator<K, A>
 where
 	K: Ord + Clone + Debug,
@@ -145,7 +139,7 @@ mod tests {
 
 		accumulator.remove(&[(2, 10.0)]);
 
-		assert_eq!(accumulator.entries().len(), 1, "the unknown key must never materialise");
+		assert_eq!(accumulator.finalize().map(|o| o.len()), Some(1), "the unknown key must never materialise");
 		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.get(&1).map(|m| m.sum()), Some(10.0), "the live key must be untouched");
 	}
@@ -159,6 +153,7 @@ mod tests {
 		let mut newer: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		newer.add(&[(2, 7.0)]);
 		newer.add(&[(3, 1.0)]);
+		let snapshot = newer.clone();
 		let mut whole: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		for c in [(1, 10.0), (2, 5.0), (2, 7.0), (3, 1.0)] {
 			whole.add(&[c]);
@@ -171,7 +166,7 @@ mod tests {
 		assert_eq!(out.get(&1).map(|m| m.sum()), Some(10.0), "a key only in self must survive");
 		assert_eq!(out.get(&2).map(|m| m.sum()), Some(12.0), "a key in both must be summed");
 		assert_eq!(out.get(&3).map(|m| m.sum()), Some(1.0), "a key only in other must be adopted");
-		assert_eq!(newer.entries().len(), 2, "the merged-in accumulator must be left untouched");
+		assert_eq!(newer, snapshot, "the merged-in accumulator must be left untouched");
 	}
 
 	#[test]
@@ -199,8 +194,9 @@ mod tests {
 
 		folded.remove(&[(2, 4.0)]);
 
-		assert_eq!(folded.entries().len(), 1, "key 2 drained to empty and was dropped");
-		assert!(folded.entries().get(&2).is_none());
+		let out = folded.finalize().expect("non-empty");
+		assert_eq!(out.len(), 1, "key 2 drained to empty and was dropped");
+		assert!(!out.contains_key(&2));
 	}
 
 	#[test]

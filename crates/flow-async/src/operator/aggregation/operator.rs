@@ -12,6 +12,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
+	internal_err,
 	metrics::heap::OperatorSample,
 };
 use reifydb_flow::{
@@ -184,7 +185,9 @@ fn finish_aggregate_engine(
 	let mut updates = Vec::new();
 	let mut removes = Vec::new();
 	for r in results {
-		let group_values = group_values.get(&r.group).cloned().unwrap_or_default();
+		let Some(group_values) = group_values.get(&r.group).cloned() else {
+			return internal_err!("aggregate result for group {:?} has no routed group values", r.group);
+		};
 		let emit = |mut slot_values: Vec<Value>| {
 			let time = match slot_values.pop() {
 				Some(Value::DateTime(time)) => time,
