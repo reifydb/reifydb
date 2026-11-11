@@ -36,9 +36,10 @@ use crate::{
 		reaper::Reaper,
 	},
 	window::{
+		accumulator::{AccumulatorEvents, AccumulatorOp},
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey,
-			WindowReindex, WindowStateKey,
+			BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey, WindowReindex,
+			WindowStateKey,
 			config::WindowEngineConfig,
 			group_hash, meta_key_for, note_when_expiry_capped,
 			tumbling::{ExpiredWindow, TumblingBuckets, TumblingIndexEntry},
@@ -215,7 +216,7 @@ where
 	pub fn apply<SK, BO>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: TumblingBuckets<G, S, (K, V)>,
+		buckets: TumblingBuckets<G, S, Vec<(K, V)>>,
 		order: &[(G, WindowSpan<S>)],
 		slot_key: SK,
 		build_output: BO,
@@ -450,7 +451,7 @@ where
 
 	fn open_session(
 		store: &mut dyn StateStore,
-		buckets: &TumblingBuckets<G, S, (K, V)>,
+		buckets: &TumblingBuckets<G, S, Vec<(K, V)>>,
 		slot_resolved: &SlotResolved<G, S>,
 	) -> Result<RetainedSession<G, S, K>> {
 		let mut keys: Vec<GroupStateKey> = Vec::new();
@@ -475,8 +476,7 @@ where
 				(&WindowStateKey::new(KeyspaceFamily::Guest, *id, key.clone())).into_group_state_key();
 			keys.push(header_key.clone());
 			let mut entries: BTreeMap<K, usize> = BTreeMap::new();
-			for event in events {
-				let (AccumulatorEvent::Add((k, _)) | AccumulatorEvent::Remove((k, _))) = event;
+			for (k, _) in events.contributions() {
 				entries.entry(k.clone()).or_default();
 			}
 			for (k, slot) in entries.iter_mut() {
@@ -553,7 +553,7 @@ where
 	fn fold_window(
 		batch: &mut StateBatch,
 		slots: &WindowSlots<K>,
-		events: Vec<AccumulatorEvent<(K, V)>>,
+		events: AccumulatorEvents<Vec<(K, V)>>,
 		first_time: DateTime,
 	) -> Result<(u64, RetainedHeader<O>)> {
 		let mut header: RetainedHeader<O> =
@@ -565,15 +565,15 @@ where
 			});
 		let before = header.count;
 		let mut folded: BTreeMap<K, Option<V>> = BTreeMap::new();
-		for event in events {
-			match event {
-				AccumulatorEvent::Add((k, v)) => {
+		for (op, (k, v)) in events {
+			match op {
+				AccumulatorOp::Add => {
 					if Self::current(batch, slots, &folded, &k)?.is_none() {
 						header.count += 1;
 					}
 					folded.insert(k, Some(v));
 				}
-				AccumulatorEvent::Remove((k, v)) => {
+				AccumulatorOp::Remove => {
 					if header.count == 0 {
 						continue;
 					}
@@ -608,7 +608,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		session: &mut RetainedSession<G, S, K>,
-		mut buckets: TumblingBuckets<G, S, (K, V)>,
+		mut buckets: TumblingBuckets<G, S, Vec<(K, V)>>,
 		order: &[(G, WindowSpan<S>)],
 	) -> Result<Vec<PendingEmit<G, S, O>>> {
 		let now = store.batch_time();
@@ -712,10 +712,12 @@ mod tests {
 			state_access::get,
 		},
 		window::{
-			accumulator::invertible::retained_map::RetainedAccumulator,
+			accumulator::{
+				AccumulatorOp, invertible::retained_map::RetainedAccumulator,
+				testkit::events as accumulator_events,
+			},
 			coord::DateTimeCoord,
 			engine::{
-				AccumulatorEvent::{self, Add, Remove},
 				EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
@@ -727,7 +729,7 @@ mod tests {
 	type Out = BTreeMap<u64, i64>;
 	type Engine = RetainedTumblingEngine<u32, DateTimeCoord, u64, i64, Out>;
 	type Blob = TumblingEngine<u32, DateTimeCoord, RetainedAccumulator<u64, i64>>;
-	type Event = AccumulatorEvent<(u64, i64)>;
+	type Event = (AccumulatorOp, (u64, i64));
 
 	fn test_config() -> WindowEngineConfig {
 		WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
@@ -737,8 +739,11 @@ mod tests {
 		(GroupId::window(Hash128(u128::from(*group)), window_start.to_order()), EncodedKey::new(Vec::new()))
 	}
 
-	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, DateTimeCoord, (u64, i64)> {
-		BTreeMap::from([((1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(10))), events)])
+	fn bucket(events: Vec<Event>) -> TumblingBuckets<u32, DateTimeCoord, Vec<(u64, i64)>> {
+		BTreeMap::from([(
+			(1u32, WindowSpan::new(event_coord_at_millis(0), event_coord_at_millis(10))),
+			accumulator_events(events),
+		)])
 	}
 
 	fn apply(
@@ -778,10 +783,10 @@ mod tests {
 		// The per-entry engine replaces the blob engine, so any drift in row number, emit kind or entries is a
 		// wrong row downstream.
 		let batches: Vec<fn() -> Vec<Event>> = vec![
-			|| vec![Add((1, 10)), Add((2, 20))],
-			|| vec![Add((1, 11)), Remove((2, 20))],
-			|| vec![Remove((1, 11))],
-			|| vec![Add((3, 30))],
+			|| vec![(AccumulatorOp::Add, (1, 10)), (AccumulatorOp::Add, (2, 20))],
+			|| vec![(AccumulatorOp::Add, (1, 11)), (AccumulatorOp::Remove, (2, 20))],
+			|| vec![(AccumulatorOp::Remove, (1, 11))],
+			|| vec![(AccumulatorOp::Add, (3, 30))],
 		];
 		let (mut entries_store, mut blob_store) = (MockStore::default(), MockStore::default());
 		let mut engine = Engine::new(test_config());
@@ -815,9 +820,18 @@ mod tests {
 		// Counting an overwrite as a new entry keeps an emptied window alive, so its removal never publishes.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Add((1, 10))])), vec![EmitKind::Insert]);
-		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Add((1, 99))])), vec![EmitKind::Update]);
-		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Remove((1, 99))])), vec![EmitKind::Remove]);
+		assert_eq!(
+			kinds(&apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 10))])),
+			vec![EmitKind::Insert]
+		);
+		assert_eq!(
+			kinds(&apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 99))])),
+			vec![EmitKind::Update]
+		);
+		assert_eq!(
+			kinds(&apply(&mut engine, &mut store, vec![(AccumulatorOp::Remove, (1, 99))])),
+			vec![EmitKind::Remove]
+		);
 	}
 
 	#[test]
@@ -825,9 +839,9 @@ mod tests {
 		// A retraction of an overwritten value must not delete the newer value that replaced it.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		apply(&mut engine, &mut store, vec![Add((1, 10))]);
-		apply(&mut engine, &mut store, vec![Add((1, 99))]);
-		let out = apply(&mut engine, &mut store, vec![Remove((1, 10))]);
+		apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 10))]);
+		apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 99))]);
+		let out = apply(&mut engine, &mut store, vec![(AccumulatorOp::Remove, (1, 10))]);
 		assert_eq!(kinds(&out), vec![EmitKind::Update]);
 		assert_eq!(
 			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap(),
@@ -841,18 +855,24 @@ mod tests {
 		// later removal never publishes.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		let out = apply(&mut engine, &mut store, vec![Remove((1, 10))]);
+		let out = apply(&mut engine, &mut store, vec![(AccumulatorOp::Remove, (1, 10))]);
 		assert!(out.is_empty(), "an empty window publishes nothing");
 		assert!(
 			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap().is_empty(),
 			"nothing is stored"
 		);
-		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Add((1, 10))])), vec![EmitKind::Insert]);
+		assert_eq!(
+			kinds(&apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 10))])),
+			vec![EmitKind::Insert]
+		);
 		assert_eq!(
 			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap(),
 			BTreeMap::from([(1, 10)])
 		);
-		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Remove((1, 10))])), vec![EmitKind::Remove]);
+		assert_eq!(
+			kinds(&apply(&mut engine, &mut store, vec![(AccumulatorOp::Remove, (1, 10))])),
+			vec![EmitKind::Remove]
+		);
 	}
 
 	#[test]
@@ -861,14 +881,22 @@ mod tests {
 		// remove.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20)), Add((3, 30))]);
+		apply(
+			&mut engine,
+			&mut store,
+			vec![
+				(AccumulatorOp::Add, (1, 10)),
+				(AccumulatorOp::Add, (2, 20)),
+				(AccumulatorOp::Add, (3, 30)),
+			],
+		);
 		assert_eq!(
 			stored(&engine, &mut store, group_slot(&1, event_coord_at_millis(0))).unwrap().len(),
 			3,
 			"precondition: entries exist"
 		);
 		let visited = store.rows_visited();
-		apply(&mut engine, &mut store, vec![Add((4, 40)), Remove((1, 10))]);
+		apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (4, 40)), (AccumulatorOp::Remove, (1, 10))]);
 		assert_eq!(
 			store.rows_visited(),
 			visited + 3,
@@ -884,9 +912,13 @@ mod tests {
 		let mut engine = Engine::new(test_config());
 		let start = event_coord_at_millis(0).as_time().unwrap();
 
-		let inserted = apply(&mut engine, &mut store, vec![Add((1, 10))]);
-		let updated = apply(&mut engine, &mut store, vec![Add((2, 20))]);
-		let removed = apply(&mut engine, &mut store, vec![Remove((1, 10)), Remove((2, 20))]);
+		let inserted = apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 10))]);
+		let updated = apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (2, 20))]);
+		let removed = apply(
+			&mut engine,
+			&mut store,
+			vec![(AccumulatorOp::Remove, (1, 10)), (AccumulatorOp::Remove, (2, 20))],
+		);
 
 		assert_eq!(kinds(&inserted), vec![EmitKind::Insert]);
 		assert_eq!(inserted[0].prior, None, "an insert has no pre-image");
@@ -922,7 +954,7 @@ mod tests {
 		// a duplicate.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		let published = apply(&mut engine, &mut store, vec![Add((1, 10))]);
+		let published = apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (1, 10))]);
 		let (group, slot) = group_slot(&1, event_coord_at_millis(0));
 		assert!(!store.contains_row_mapping(group), "precondition: the hot path writes no mapping");
 		engine.reindex_windows(
@@ -944,7 +976,7 @@ mod tests {
 		Reaper::reap(&mut engine, &mut store, &swept).unwrap();
 
 		assert!(store.contains_row_mapping(group), "the reap must move the header's row into the mapping");
-		let woken = apply(&mut engine, &mut store, vec![Add((3, 30))]);
+		let woken = apply(&mut engine, &mut store, vec![(AccumulatorOp::Add, (3, 30))]);
 		assert_eq!(kinds(&woken), vec![EmitKind::Update], "the sink still holds the row, so this is an update");
 		assert_eq!(woken[0].row_number, published[0].row_number, "the woken window keeps the row it published");
 	}
@@ -954,7 +986,11 @@ mod tests {
 		// Entries left behind after the reap leak one row per retained key per closed window.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
-		let out = apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20))]);
+		let out = apply(
+			&mut engine,
+			&mut store,
+			vec![(AccumulatorOp::Add, (1, 10)), (AccumulatorOp::Add, (2, 20))],
+		);
 		let (group, slot) = group_slot(&1, event_coord_at_millis(0));
 		assert_eq!(out[0].group_id, group);
 		assert_eq!(

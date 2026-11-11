@@ -21,9 +21,9 @@ use reifydb_flow_async::{
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
-		accumulator::invertible::retained_map::RetainedAccumulator,
+		accumulator::{AccumulatorOp, invertible::retained_map::RetainedAccumulator},
 		engine::{
-			AccumulatorEvent, EmitKind, WindowReindex,
+			EmitKind, WindowReindex,
 			tumbling_retained::{RetainedEntry, RetainedHeader, RetainedTumblingEngine},
 		},
 		settings::WindowSettings,
@@ -60,7 +60,7 @@ use crate::{
 const FORGET_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
-type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
+type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Vec<(K, V)>>;
 type Engine<A, K, V> = RetainedTumblingEngine<
 	<A as WindowedOperator>::GroupKey,
 	<A as WindowedOperator>::Coord,
@@ -152,12 +152,12 @@ where
 	fn push_extracted(&self, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A, K, V>, is_add: bool) {
 		for (_, coord, group, contribution) in extracted {
 			let span = self.window_span(coord);
-			let event = if is_add {
-				AccumulatorEvent::Add(contribution)
+			let op = if is_add {
+				AccumulatorOp::Add
 			} else {
-				AccumulatorEvent::Remove(contribution)
+				AccumulatorOp::Remove
 			};
-			buckets.push(group, span, event);
+			buckets.push(group, span, op, contribution);
 		}
 	}
 

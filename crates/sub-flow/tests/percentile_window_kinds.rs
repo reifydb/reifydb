@@ -210,8 +210,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable
 	}
 
 	db.command("DELETE app::t FILTER { id >= 2 }");
-	for (name, _, _, _, windows) in views {
-		let want = expect(Value::none_of(ValueType::Float8), 1.0, windows);
-		assert_view(&db, name, &["p50", "lo"], want, "every row deleted behind an immutable min");
+	for (name, _, _, _, _) in views {
+		assert_view(&db, name, &["p50", "lo"], Vec::new(), "every row deleted closes the window");
 	}
 }

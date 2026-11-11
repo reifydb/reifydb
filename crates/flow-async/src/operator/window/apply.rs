@@ -50,8 +50,9 @@ use crate::{
 	},
 	timer::Timer,
 	window::{
+		accumulator::AccumulatorOp,
 		coord::DateTimeCoord,
-		engine::{AccumulatorEvent, ExpiryAnchor, tumbling::TumblingEngine},
+		engine::{ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
 			session::open::{Insertion, Member, OpenSessions, Removal},
@@ -89,14 +90,11 @@ fn push_count_event(
 	gvals: &[Value],
 	span: WindowSpan<DateTimeCoord>,
 	coord: WindowSlotKey,
-	event: AccumulatorEvent<SlotRow>,
+	op: AccumulatorOp,
+	contribution: SlotRow,
 	event_coord: DateTimeCoord,
 ) {
-	let event = match event {
-		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
-		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
-	};
-	routing.push(hash, gvals, span, event, event_coord);
+	routing.push(hash, gvals, span, op, (coord, contribution), event_coord);
 }
 
 struct DiffGroups {
@@ -239,12 +237,21 @@ fn route_time_sliding(
 		let contribution = views.contribution(row_idx, event_coord.0);
 		let coord = slot_coord(event_coord, row_numbers[row_idx].0);
 		for wid in bound.anchors(event_coord.to_order()) {
-			let event = if is_add {
-				AccumulatorEvent::Add(contribution.clone())
+			let op = if is_add {
+				AccumulatorOp::Add
 			} else {
-				AccumulatorEvent::Remove(contribution.clone())
+				AccumulatorOp::Remove
 			};
-			push_count_event(routing, *hash, gvals, bound.span(wid), coord, event, event_coord);
+			push_count_event(
+				routing,
+				*hash,
+				gvals,
+				bound.span(wid),
+				coord,
+				op,
+				contribution.clone(),
+				event_coord,
+			);
 		}
 	}
 	Ok(())
@@ -425,7 +432,8 @@ impl SessionPass<'_> {
 				gvals,
 				ordinal_window_span(from),
 				coord,
-				AccumulatorEvent::Remove(slot.clone()),
+				AccumulatorOp::Remove,
+				slot.clone(),
 				member.at,
 			);
 			push_count_event(
@@ -434,7 +442,8 @@ impl SessionPass<'_> {
 				gvals,
 				ordinal_window_span(to),
 				coord,
-				AccumulatorEvent::Add(slot.clone()),
+				AccumulatorOp::Add,
+				slot.clone(),
 				member.at,
 			);
 			operator.withdraw_row_index(store, hash, member.row, from)?;
@@ -491,7 +500,8 @@ impl SessionPass<'_> {
 			gvals,
 			ordinal_window_span(target),
 			slot_coord(at, row.0),
-			AccumulatorEvent::Add(contribution),
+			AccumulatorOp::Add,
+			contribution,
 			at,
 		);
 		Ok(true)
@@ -518,7 +528,8 @@ impl SessionPass<'_> {
 				gvals,
 				ordinal_window_span(session_id),
 				slot_coord(at, row.0),
-				AccumulatorEvent::Remove(contribution.clone()),
+				AccumulatorOp::Remove,
+				contribution.clone(),
 				at,
 			);
 			self.index_events.push(IndexEvent {
@@ -563,18 +574,11 @@ impl SessionPass<'_> {
 				gvals,
 				span,
 				coord,
-				AccumulatorEvent::Remove(pre.clone()),
+				AccumulatorOp::Remove,
+				pre.clone(),
 				at,
 			);
-			push_count_event(
-				self.routing,
-				hash,
-				gvals,
-				span,
-				coord,
-				AccumulatorEvent::Add(post.clone()),
-				at,
-			);
+			push_count_event(self.routing, hash, gvals, span, coord, AccumulatorOp::Add, post.clone(), at);
 			operator.store_session_member(store, hash, session_id, row, &post)?;
 		}
 		Ok(())
@@ -1650,11 +1654,20 @@ mod seal_arm_tests {
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
 			let mut routing = Routing::default();
-			for event in [
-				AccumulatorEvent::Add(slot_row(Vec::new())),
-				AccumulatorEvent::Remove(slot_row(Vec::new())),
+			for (op, contribution) in [
+				(AccumulatorOp::Add, slot_row(Vec::new())),
+				(AccumulatorOp::Remove, slot_row(Vec::new())),
 			] {
-				push_count_event(&mut routing, hash, &[], span, slot_coord(start, 1), event, start);
+				push_count_event(
+					&mut routing,
+					hash,
+					&[],
+					span,
+					slot_coord(start, 1),
+					op,
+					contribution,
+					start,
+				);
 			}
 			let Routed {
 				buckets,

@@ -22,9 +22,9 @@ use reifydb_flow_async::{
 		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
+		accumulator::AccumulatorOp,
 		engine::{
-			AccumulatorEvent, EmitKind, WindowReindex,
-			daba::Merge,
+			EmitKind, WindowReindex,
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
 			publish::RowPublisher,
 			session::SessionEngine,
@@ -59,7 +59,10 @@ use crate::{
 			RollingGroups, Routing, WindowGroups, all_rows, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Contribution, Emit, Extracted, KindSet, WindowedOperator, batch_len, extract_rows},
+			operator::{
+				Contribution, Contributions, Emit, Extracted, KindSet, WindowedOperator, batch_len,
+				counted_merge, extract_rows,
+			},
 			operator_watermark, partition_of,
 			publish::{Emitted, UpdateRow},
 			rolling_cutoff, rolling_output, route_rolling, timer_frontier, window_engine_config,
@@ -70,7 +73,7 @@ use crate::{
 const FORGET_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
-type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contributions<A>>;
 struct RollingMode<A: Emit> {
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	pane: <A::Coord as Coord>::Span,
@@ -218,22 +221,22 @@ where
 			match &self.sliding {
 				Some(mode) => {
 					for span in mode.engine.spans(coord) {
-						let event = if is_add {
-							AccumulatorEvent::Add(contribution.clone())
+						let op = if is_add {
+							AccumulatorOp::Add
 						} else {
-							AccumulatorEvent::Remove(contribution.clone())
+							AccumulatorOp::Remove
 						};
-						buckets.push(group.clone(), span, event);
+						buckets.push(group.clone(), span, op, contribution.clone());
 					}
 				}
 				None => {
 					let span = self.bucket_span(coord);
-					let event = if is_add {
-						AccumulatorEvent::Add(contribution)
+					let op = if is_add {
+						AccumulatorOp::Add
 					} else {
-						AccumulatorEvent::Remove(contribution)
+						AccumulatorOp::Remove
 					};
-					buckets.push(group, span, event);
+					buckets.push(group, span, op, contribution);
 				}
 			}
 		}
@@ -541,13 +544,10 @@ where
 			buckets.push(
 				group.clone(),
 				Self::session_span(from),
-				AccumulatorEvent::Remove(contribution.clone()),
+				AccumulatorOp::Remove,
+				contribution.clone(),
 			);
-			buckets.push(
-				group.clone(),
-				Self::session_span(to),
-				AccumulatorEvent::Add(contribution.clone()),
-			);
+			buckets.push(group.clone(), Self::session_span(to), AccumulatorOp::Add, contribution.clone());
 			engine.drop_member(&mut GuestAsHost(ctx), from_group, member.row)?;
 			engine.store_member(&mut GuestAsHost(ctx), to_group, member.row, &contribution)?;
 		}
@@ -597,7 +597,7 @@ where
 		};
 		batch.touched.insert((group.clone(), target));
 		engine.store_member(&mut GuestAsHost(ctx), Self::session_group(&group, target), row, &contribution)?;
-		batch.buckets.push(group, Self::session_span(target), AccumulatorEvent::Add(contribution));
+		batch.buckets.push(group, Self::session_span(target), AccumulatorOp::Add, contribution);
 		Ok(())
 	}
 
@@ -630,7 +630,7 @@ where
 			.map_err(|err| SdkError::OperatorError(err.to_string()))?
 			.expect("the row was found in an open session");
 		sessions.changed = true;
-		batch.buckets.push(group.clone(), Self::session_span(id), AccumulatorEvent::Remove(contribution));
+		batch.buckets.push(group.clone(), Self::session_span(id), AccumulatorOp::Remove, contribution);
 		engine.drop_member(&mut GuestAsHost(ctx), Self::session_group(&group, id), row)?;
 		match removal {
 			Removal::Emptied(id) => {
@@ -892,12 +892,14 @@ where
 						batch.buckets.push(
 							pre_group.clone(),
 							span,
-							AccumulatorEvent::Remove(pre_value.clone()),
+							AccumulatorOp::Remove,
+							pre_value.clone(),
 						);
 						batch.buckets.push(
 							pre_group.clone(),
 							span,
-							AccumulatorEvent::Add(post_value.clone()),
+							AccumulatorOp::Add,
+							post_value.clone(),
 						);
 						engine.store_member(
 							&mut GuestAsHost(ctx),
@@ -1223,10 +1225,7 @@ where
 				})
 				.into());
 			}
-			let merge = Merge {
-				merge: <A::Kinds as KindSet<A>>::merge,
-				compact: <A::Kinds as KindSet<A>>::compact,
-			};
+			let merge = counted_merge::<A>();
 			let spans = PaneSpans {
 				size: settings.fixed_size(),
 				lag: settings.lag.unwrap_or_default(),
@@ -1770,7 +1769,7 @@ mod tests {
 
 		let probe = SpanProbe::create(OperatorId(1), &params(), &ApplyWith::default()).unwrap();
 		let mut accumulator = LastValue::default();
-		accumulator.add(&7);
+		accumulator.add(&[7]);
 
 		rolling_output(&probe, &rolling_lagged(5, 1, Some(2)), secs(1), &1, at(20), &accumulator);
 		rolling_output(&probe, &rolling_lagged(5, 1, None), secs(1), &1, at(20), &accumulator);

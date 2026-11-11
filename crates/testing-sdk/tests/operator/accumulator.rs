@@ -4,6 +4,8 @@
 //! Primitive-level gap tests for the public accumulators: the cases the in-crate
 //! `#[cfg(test)]` suite does not already cover.
 
+use std::slice::from_ref;
+
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_flow_async::{
 	operator::state::immutable::{endpoint::ImmutableEndpoint, min::ImmutableMin},
@@ -29,7 +31,7 @@ fn of(v: f64) -> OrdF64 {
 #[test]
 fn last_value_roundtrip() {
 	let mut lv: LastValue<i64> = LastValue::default();
-	lv.add(&42);
+	lv.add(from_ref(&42));
 	let bytes = lv.encode_state().expect("encode");
 	let restored: LastValue<i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, lv);
@@ -50,9 +52,9 @@ fn immutable_min_default_is_fully_invertible() {
 	);
 
 	let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-	accumulator.add(&(DateTimeCoord(at_millis(0)), 5));
-	accumulator.add(&(DateTimeCoord(at_millis(100)), 1));
-	accumulator.remove(&(DateTimeCoord(at_millis(100)), 1));
+	accumulator.add(from_ref(&(DateTimeCoord(at_millis(0)), 5)));
+	accumulator.add(from_ref(&(DateTimeCoord(at_millis(100)), 1)));
+	accumulator.remove(from_ref(&(DateTimeCoord(at_millis(100)), 1)));
 	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has folded");
 }
 
@@ -60,11 +62,11 @@ fn immutable_min_default_is_fully_invertible() {
 fn immutable_endpoint_late_middle_arrival_keeps_open() {
 	// A late arrival later than the immutable open must not move it.
 	let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-	accumulator.add(&(DateTimeCoord(at_millis(2)), 999));
-	accumulator.add(&(DateTimeCoord(at_millis(20)), 200)); // hw=20; coord 2 ages -> immutable_open=(2,999)
+	accumulator.add(from_ref(&(DateTimeCoord(at_millis(2)), 999)));
+	accumulator.add(from_ref(&(DateTimeCoord(at_millis(20)), 200))); // hw=20; coord 2 ages -> immutable_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));
 
-	accumulator.add(&(DateTimeCoord(at_millis(5)), 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
+	accumulator.add(from_ref(&(DateTimeCoord(at_millis(5)), 50))); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
 	assert_eq!(accumulator.open(), Some(&999), "a later late arrival does not displace the earlier open");
 }
 

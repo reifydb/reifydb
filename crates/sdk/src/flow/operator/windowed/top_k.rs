@@ -20,10 +20,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
-		engine::{
-			daba::Merge,
-			pane::{PaneApplied, PaneEngine, PaneEvent, PanePublisher, PaneSpans},
-		},
+		engine::pane::{PaneApplied, PaneEngine, PaneEvent, PanePublisher, PaneSpans},
 		prefetch::Prefetched,
 		settings::WindowSettings,
 	},
@@ -48,7 +45,7 @@ use crate::{
 			RollingGroups,
 			guest_as_host::GuestAsHost,
 			observe_batch,
-			operator::{Contribution, Emit, KindSet, WindowedOperator},
+			operator::{Contribution, Emit, KindSet, WindowedOperator, counted_merge},
 			operator_watermark, rolling_cutoff, rolling_output, route_rolling, timer_frontier,
 			window_engine_config,
 		},
@@ -342,10 +339,7 @@ where
 			})
 			.into());
 		}
-		let merge = Merge {
-			merge: <A::Kinds as KindSet<A>>::merge,
-			compact: <A::Kinds as KindSet<A>>::compact,
-		};
+		let merge = counted_merge::<A>();
 		let spans = PaneSpans {
 			size: settings.fixed_size(),
 			lag: settings.lag.unwrap_or_default(),

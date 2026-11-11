@@ -8,7 +8,11 @@ use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize
 use reifydb_flow_async::{
 	operator::state::seal::domain::SealDomain,
 	window::{
-		accumulator::{MergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator},
+		accumulator::{
+			Contribution as AccumulatorContribution, CountedAccumulator, MergeAccumulator,
+			WindowAccumulator, invertible::retained_map::RetainedAccumulator,
+		},
+		engine::daba::Merge,
 		settings::WindowSettings,
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -26,7 +30,9 @@ use crate::{
 	},
 };
 
-pub type Contribution<T> = <<T as WindowedOperator>::Accumulator as WindowAccumulator>::Contribution;
+pub type Contribution<T> = AccumulatorContribution<<T as WindowedOperator>::Accumulator>;
+
+pub type Contributions<T> = <<T as WindowedOperator>::Accumulator as WindowAccumulator>::Contributions;
 
 pub type Value<T> = <<T as WindowedOperator>::Accumulator as WindowAccumulator>::Output;
 
@@ -128,6 +134,21 @@ pub trait CarryEmit: WindowedOperator {
 	) -> Option<Self::Output>;
 
 	fn carry_forward(&self, value: &Value<Self>, prev: Option<&Self::Carry>) -> Option<Self::Carry>;
+}
+
+pub(crate) fn counted_merge<T: Emit>() -> Merge<CountedAccumulator<T::Accumulator>> {
+	Merge {
+		merge: merge_counted::<T>,
+		compact: compact_counted::<T>,
+	}
+}
+
+fn merge_counted<T: Emit>(target: &mut CountedAccumulator<T::Accumulator>, other: &CountedAccumulator<T::Accumulator>) {
+	target.merge_by(other, <T::Kinds as KindSet<T>>::merge);
+}
+
+fn compact_counted<T: Emit>(accumulator: &mut CountedAccumulator<T::Accumulator>) {
+	accumulator.compact_by(<T::Kinds as KindSet<T>>::compact);
 }
 
 pub struct AllKinds;

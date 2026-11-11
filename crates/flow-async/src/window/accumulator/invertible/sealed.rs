@@ -54,21 +54,25 @@ where
 	S: Summary<K, V> + Clone + Debug + PartialEq + Default,
 	SealedAccumulator<K, V, S>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (K, V);
+	type Contributions = Vec<(K, V)>;
 	type Output = S;
 
-	fn add(&mut self, contribution: &(K, V)) {
-		self.open.insert(contribution.0.clone(), contribution.1.clone());
+	fn add(&mut self, contributions: &[(K, V)]) {
+		for (key, value) in contributions {
+			self.open.insert(key.clone(), value.clone());
+		}
 	}
 
-	fn remove(&mut self, contribution: &(K, V)) {
-		if self.open.get(&contribution.0) == Some(&contribution.1) {
-			self.open.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(K, V)]) {
+		for (key, value) in contributions {
+			if self.open.get(key) == Some(value) {
+				self.open.remove(key);
+			}
 		}
 	}
 
 	fn finalize(&self) -> Option<S> {
-		if WindowAccumulator::is_empty(self) {
+		if self.open.is_empty() && self.sealed.is_empty() {
 			return None;
 		}
 		let mut summary = self.sealed.clone();
@@ -76,10 +80,6 @@ where
 			summary.push(key, value);
 		}
 		Some(summary)
-	}
-
-	fn is_empty(&self) -> bool {
-		self.open.is_empty() && self.sealed.is_empty()
 	}
 }
 
@@ -111,9 +111,12 @@ impl<K: Ord + HeapSize, V: HeapSize, S: HeapSize> HeapSize for SealedAccumulator
 
 #[cfg(test)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_codec::row::operator::state::decode;
 
 	use super::*;
+	use crate::window::accumulator::CountedAccumulator;
 
 	#[operator_state]
 	#[derive(Debug, Clone, Default, PartialEq)]
@@ -150,7 +153,18 @@ mod tests {
 	fn pane_of(bars: &[(u64, i64)], compact: bool) -> Acc {
 		let mut pane = Acc::default();
 		for bar in bars {
-			pane.add(bar);
+			pane.add(from_ref(bar));
+		}
+		if compact {
+			pane.compact();
+		}
+		pane
+	}
+
+	fn counted_pane_of(bars: &[(u64, i64)], compact: bool) -> CountedAccumulator<Acc> {
+		let mut pane = CountedAccumulator::new(Acc::default());
+		for bar in bars {
+			pane.add(from_ref(bar));
 		}
 		if compact {
 			pane.compact();
@@ -200,7 +214,7 @@ mod tests {
 	#[test]
 	fn a_compacted_pane_is_not_empty() {
 		// The engine drops empty pane rows, so a compacted pane reported empty would lose its bars.
-		let pane = pane_of(&bars(3), true);
+		let pane = counted_pane_of(&bars(3), true);
 		assert!(!pane.is_empty());
 		assert_eq!(pane.finalize().map(|t| t.pushed.len()), Some(3));
 	}
@@ -214,7 +228,7 @@ mod tests {
 
 	#[test]
 	fn an_empty_accumulator_finalizes_to_none() {
-		let mut accumulator = Acc::default();
+		let mut accumulator = CountedAccumulator::new(Acc::default());
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 		accumulator.compact();
@@ -225,8 +239,8 @@ mod tests {
 	fn an_open_bar_written_twice_keeps_the_last_value() {
 		// An upstream bar re-emitted as a plain add must replace its value, never count twice.
 		let mut accumulator = Acc::default();
-		accumulator.add(&(1, 10));
-		accumulator.add(&(1, 99));
+		accumulator.add(&[(1, 10)]);
+		accumulator.add(&[(1, 99)]);
 		assert_eq!(accumulator.finalize().map(|t| t.pushed), Some(vec![(1, 99)]));
 	}
 
@@ -234,18 +248,18 @@ mod tests {
 	fn removing_a_superseded_value_keeps_the_current_one() {
 		// An update fans out as remove(pre) then add(post); a reordered pair must not delete the live value.
 		let mut accumulator = Acc::default();
-		accumulator.add(&(1, 10));
-		accumulator.add(&(1, 99));
-		accumulator.remove(&(1, 10));
+		accumulator.add(&[(1, 10)]);
+		accumulator.add(&[(1, 99)]);
+		accumulator.remove(&[(1, 10)]);
 		assert_eq!(accumulator.finalize().map(|t| t.pushed), Some(vec![(1, 99)]));
-		accumulator.remove(&(1, 99));
+		accumulator.remove(&[(1, 99)]);
 		assert_eq!(accumulator.finalize(), None);
 	}
 
 	#[test]
 	fn a_compacted_accumulator_roundtrips() {
 		let mut accumulator = pane_of(&bars(2), true);
-		accumulator.add(&(5, 50));
+		accumulator.add(&[(5, 50)]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: Acc = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);

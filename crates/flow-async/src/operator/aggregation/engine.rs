@@ -21,7 +21,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	accumulator::{RowAccumulator, WindowSlotKey},
+	accumulator::{RowAccumulator, SlotContributions, WindowSlotKey},
 	core::{Aggregation, EmitRow, SlotRow},
 };
 use crate::{
@@ -31,9 +31,10 @@ use crate::{
 		state_access::{get_classified, remove, set},
 	},
 	window::{
+		accumulator::{AccumulatorEvents, AccumulatorOp},
 		coord::DateTimeCoord,
 		engine::{
-			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowReindex,
+			EmitKind, ExpiryAnchor, WindowReindex,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
@@ -43,7 +44,7 @@ use crate::{
 	},
 };
 
-pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>;
+pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTimeCoord, SlotContributions>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
@@ -55,7 +56,7 @@ type WindowKey = (Hash128, WindowSpan<DateTimeCoord>);
 
 struct RoutedWindow {
 	key: WindowKey,
-	events: Vec<AccumulatorEvent<(WindowSlotKey, SlotRow)>>,
+	events: AccumulatorEvents<SlotContributions>,
 	latest: Option<DateTimeCoord>,
 }
 
@@ -79,7 +80,8 @@ impl Routing {
 		hash: Hash128,
 		gvals: &[Value],
 		span: WindowSpan<DateTimeCoord>,
-		event: AccumulatorEvent<(WindowSlotKey, SlotRow)>,
+		op: AccumulatorOp,
+		contribution: (WindowSlotKey, SlotRow),
 		event_coord: DateTimeCoord,
 	) {
 		let key = (hash, span);
@@ -89,19 +91,19 @@ impl Routing {
 				self.group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 				self.windows.push(RoutedWindow {
 					key,
-					events: Vec::new(),
+					events: AccumulatorEvents::new(),
 					latest: None,
 				});
 				*slot.insert(self.windows.len() - 1)
 			}
 		};
 		let window = &mut self.windows[index];
-		if matches!(event, AccumulatorEvent::Add(_)) {
+		if op == AccumulatorOp::Add {
 			window.latest = Some(DateTimeCoord(
 				window.latest.map_or_else(DateTime::default, |latest| latest.0).max(event_coord.0),
 			));
 		}
-		window.events.push(event);
+		window.events.push(op, contribution);
 	}
 
 	pub(crate) fn finish(self) -> Routed {
@@ -203,12 +205,12 @@ where
 		let (span, event_coord) = assign(row_idx);
 		let coord = slot_coord(event_coord, row_numbers[row_idx].0);
 		let contribution = (coord, views.contribution(row_idx, event_coord.0));
-		let event = if is_add {
-			AccumulatorEvent::Add(contribution)
+		let op = if is_add {
+			AccumulatorOp::Add
 		} else {
-			AccumulatorEvent::Remove(contribution)
+			AccumulatorOp::Remove
 		};
-		routing.push(*hash, gvals, span, event, event_coord);
+		routing.push(*hash, gvals, span, op, contribution, event_coord);
 	}
 	Ok(())
 }

@@ -57,28 +57,28 @@ struct TraderVolumes {
 }
 
 impl WindowAccumulator for TraderVolumes {
-	type Contribution = (u64, f64);
+	type Contributions = Vec<(u64, f64)>;
 	type Output = BTreeMap<u64, f64>;
 
-	fn add(&mut self, (trader, volume): &(u64, f64)) {
-		*self.volumes.entry(*trader).or_insert(0.0) += volume;
+	fn add(&mut self, contributions: &[(u64, f64)]) {
+		for (trader, volume) in contributions {
+			*self.volumes.entry(*trader).or_insert(0.0) += volume;
+		}
 	}
 
-	fn remove(&mut self, (trader, volume): &(u64, f64)) {
-		if let Some(total) = self.volumes.get_mut(trader) {
-			*total -= volume;
-			if *total == 0.0 {
-				self.volumes.remove(trader);
+	fn remove(&mut self, contributions: &[(u64, f64)]) {
+		for (trader, volume) in contributions {
+			if let Some(total) = self.volumes.get_mut(trader) {
+				*total -= volume;
+				if *total == 0.0 {
+					self.volumes.remove(trader);
+				}
 			}
 		}
 	}
 
 	fn finalize(&self) -> Option<BTreeMap<u64, f64>> {
 		(!self.volumes.is_empty()).then(|| self.volumes.clone())
-	}
-
-	fn is_empty(&self) -> bool {
-		self.volumes.is_empty()
 	}
 }
 

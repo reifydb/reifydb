@@ -25,7 +25,7 @@ use reifydb_flow_async::{
 	},
 	transaction::FlowTransaction,
 	window::{
-		accumulator::{MergeAccumulator, WindowAccumulator},
+		accumulator::{Contributions as _, CountedAccumulator, MergeAccumulator, WindowAccumulator, one},
 		coord::DateTimeCoord,
 		settings::WindowSettings,
 		span::WindowSpan,
@@ -36,7 +36,7 @@ use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::in_process::InProcessRowSink},
 	mount::context::InProcessContext,
 	view::in_process::InProcessColumnsView,
-	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
+	windowed::operator::{CarryEmit, Contribution, Contributions, Emit, WindowedOperator},
 };
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent, Row as CoreRow},
@@ -78,7 +78,7 @@ where
 	A: Emit,
 	A::Output: Row,
 {
-	let mut accumulators: HashMap<WindowKey<A>, A::Accumulator> = HashMap::new();
+	let mut accumulators: HashMap<WindowKey<A>, Counted<A>> = HashMap::new();
 	let mut spans: HashMap<WindowKey<A>, WindowSpan<TumblingCoord<A>>> = HashMap::new();
 	let mut high_water: HashMap<Group<A>, TumblingCoord<A>> = HashMap::new();
 	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
@@ -129,7 +129,7 @@ fn apply_leg<A>(
 	row: &CoreRow,
 	is_add: bool,
 	snapshot: &HashMap<Group<A>, TumblingCoord<A>>,
-	accumulators: &mut HashMap<WindowKey<A>, A::Accumulator>,
+	accumulators: &mut HashMap<WindowKey<A>, Counted<A>>,
 	spans: &mut HashMap<WindowKey<A>, WindowSpan<TumblingCoord<A>>>,
 	touched: &mut BTreeSet<WindowKey<A>>,
 ) where
@@ -146,9 +146,10 @@ fn apply_leg<A>(
 			return;
 		}
 		spans.insert(key.clone(), span);
-		let accumulator =
-			accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator(settings));
-		accumulator.add(&contribution);
+		let accumulator = accumulators
+			.entry(key.clone())
+			.or_insert_with(|| CountedAccumulator::new(aggregate.new_accumulator(settings)));
+		accumulator.add(one::<Contributions<A>>(contribution).slice());
 		touched.insert(key);
 	} else if let Some(accumulator) = accumulators.get_mut(&key)
 		&& !accumulator.is_empty()
@@ -157,7 +158,7 @@ fn apply_leg<A>(
 		if !survives {
 			return;
 		}
-		accumulator.remove(&contribution);
+		accumulator.remove(one::<Contributions<A>>(contribution).slice());
 		spans.insert(key.clone(), span);
 		touched.insert(key);
 	}
@@ -217,6 +218,8 @@ fn materialize_outputs<O: Row>(
 type RollingCoord<A> = <A as WindowedOperator>::Coord;
 type RollingGroup<A> = <A as WindowedOperator>::GroupKey;
 
+type Counted<A> = CountedAccumulator<<A as WindowedOperator>::Accumulator>;
+
 type RollingContribution<A> = Contribution<A>;
 
 enum Leg<C> {
@@ -250,13 +253,13 @@ fn fan_out(batch: &ChaosBatch, mut leg: impl FnMut(&CoreRow, bool)) {
 fn fold_panes<A>(
 	aggregate: &A,
 	settings: &WindowSettings<A::Coord>,
-	buffer: &BTreeMap<RollingCoord<A>, A::Accumulator>,
-) -> A::Accumulator
+	buffer: &BTreeMap<RollingCoord<A>, Counted<A>>,
+) -> Counted<A>
 where
 	A: WindowedOperator,
 	A::Accumulator: MergeAccumulator,
 {
-	let mut folded = aggregate.new_accumulator(settings);
+	let mut folded = CountedAccumulator::new(aggregate.new_accumulator(settings));
 	for pane in buffer.values() {
 		folded.merge(pane);
 	}
@@ -268,7 +271,7 @@ fn combine_rolling<A>(
 	settings: &WindowSettings<A::Coord>,
 	pane: <RollingCoord<A> as Coord>::Span,
 	group: &RollingGroup<A>,
-	buffer: &BTreeMap<RollingCoord<A>, A::Accumulator>,
+	buffer: &BTreeMap<RollingCoord<A>, Counted<A>>,
 ) -> Option<A::Output>
 where
 	A: Emit,
@@ -294,7 +297,7 @@ fn rolling_windows<A>(
 	settings: &WindowSettings<DateTimeCoord>,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
-) -> Vec<(RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>)>
+) -> Vec<(RollingGroup<A>, BTreeMap<RollingCoord<A>, Counted<A>>)>
 where
 	A: WindowedOperator<Coord = DateTimeCoord>,
 {
@@ -307,7 +310,7 @@ where
 			retract: settings.immutable.unwrap_or(settings.lateness),
 		});
 
-	let mut panes: BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = BTreeMap::new();
+	let mut panes: BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, Counted<A>>> = BTreeMap::new();
 	for batch in batches {
 		for event in &batch.events {
 			match event {
@@ -372,7 +375,7 @@ where
 fn replay_rolling<A>(
 	aggregate: &A,
 	settings: &WindowSettings<A::Coord>,
-	panes: &mut BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
+	panes: &mut BTreeMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, Counted<A>>>,
 	applied: Vec<RollingApplied<RollingGroup<A>, RollingCoord<A>, RollingContribution<A>>>,
 ) where
 	A: WindowedOperator,
@@ -383,14 +386,14 @@ fn replay_rolling<A>(
 				panes.entry(group)
 					.or_default()
 					.entry(coord)
-					.or_insert_with(|| aggregate.new_accumulator(settings))
-					.add(&contribution);
+					.or_insert_with(|| CountedAccumulator::new(aggregate.new_accumulator(settings)))
+					.add(one::<Contributions<A>>(contribution).slice());
 			}
 			RollingApplied::Remove(group, coord, contribution) => {
 				if let Some(group_panes) = panes.get_mut(&group)
 					&& let Some(accumulator) = group_panes.get_mut(&coord)
 				{
-					accumulator.remove(&contribution);
+					accumulator.remove(one::<Contributions<A>>(contribution).slice());
 					if accumulator.is_empty() {
 						group_panes.remove(&coord);
 					}
@@ -522,7 +525,7 @@ where
 	A: CarryEmit,
 	A::Output: Row,
 {
-	let mut accumulators: HashMap<CarryWindowKey<A>, A::Accumulator> = HashMap::new();
+	let mut accumulators: HashMap<CarryWindowKey<A>, Counted<A>> = HashMap::new();
 	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
 	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
@@ -552,8 +555,9 @@ where
 			}
 			let drop_adds = snap_hw.is_some_and(|hw| start < hw);
 			let key = (group.clone(), start);
-			let accumulator =
-				accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator(settings));
+			let accumulator = accumulators
+				.entry(key.clone())
+				.or_insert_with(|| CountedAccumulator::new(aggregate.new_accumulator(settings)));
 			let mut changed = false;
 			for leg in legs {
 				match leg {
@@ -561,14 +565,14 @@ where
 						if drop_adds {
 							continue;
 						}
-						accumulator.add(&c);
+						accumulator.add(one::<Contributions<A>>(c).slice());
 						changed = true;
 					}
 					Leg::Remove(c) => {
 						if accumulator.is_empty() {
 							continue;
 						}
-						accumulator.remove(&c);
+						accumulator.remove(one::<Contributions<A>>(c).slice());
 						changed = true;
 					}
 				}

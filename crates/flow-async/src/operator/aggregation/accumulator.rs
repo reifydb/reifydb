@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
+use std::{mem, ops::Range};
 
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_flow::aggregate::SlotKind;
@@ -24,11 +24,10 @@ use crate::{
 	},
 	window::{
 		accumulator::{
-			Applied, MergeAccumulator, UnmergeAccumulator, WindowAccumulator,
+			ContributionSlice, Contributions, MergeAccumulator, UnmergeAccumulator, WindowAccumulator,
 			invertible::multiset::Multiset,
 		},
 		coord::DateTimeCoord,
-		engine::AccumulatorEvent,
 		span::Slot,
 	},
 };
@@ -190,10 +189,6 @@ impl DigestSlot {
 			None => Value::none(),
 		}
 	}
-
-	fn is_empty(&self) -> bool {
-		self.digest.is_none()
-	}
 }
 
 fn endpoint(immutable: Option<Duration>) -> ImmutableEndpoint<WindowSlotKey, Value> {
@@ -246,18 +241,22 @@ impl AggregateSlot {
 		}
 	}
 
-	fn apply(&mut self, index: usize, events: &[AccumulatorEvent<Contribution>]) {
+	fn apply(&mut self, index: usize, adding: bool, slice: SlotSlice<'_>) {
 		match self {
 			AggregateSlot::Count {
 				n,
 				count_star,
 			} => {
-				for event in events {
-					let (adding, _, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, _, row) = parts(adding, event);
 					if *count_star || present(row.cell(index).as_deref()).is_some() {
 						if adding {
 							*n += 1;
 						} else {
+							assert!(
+								*n > 0,
+								"RowAccumulator remove of a row it never added"
+							);
 							*n -= 1;
 						}
 					}
@@ -269,8 +268,8 @@ impl AggregateSlot {
 				compensation,
 				seen_negative,
 			} => {
-				for event in events {
-					let (adding, _, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, _, row) = parts(adding, event);
 					let cell = row.cell(index);
 					let Some(v) = present(cell.as_deref()) else {
 						continue;
@@ -309,8 +308,8 @@ impl AggregateSlot {
 				compensation,
 				seen_negative,
 			} => {
-				for event in events {
-					let (adding, _, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, _, row) = parts(adding, event);
 					let cell = row.cell(index);
 					let Some(v) = present(cell.as_deref()) else {
 						continue;
@@ -338,8 +337,8 @@ impl AggregateSlot {
 				}
 			}
 			AggregateSlot::Min(set) | AggregateSlot::Max(set) => {
-				for event in events {
-					let (adding, _, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, _, row) = parts(adding, event);
 					let cell = row.cell(index);
 					if let Some(v) = present(cell.as_deref()) {
 						if adding {
@@ -351,40 +350,40 @@ impl AggregateSlot {
 				}
 			}
 			AggregateSlot::MinImmutable(s) => {
-				for event in events {
-					let (adding, coord, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, coord, row) = parts(adding, event);
 					let cell = row.cell(index);
 					if let Some(v) = present(cell.as_deref()) {
 						if adding {
-							s.add(&(coord, v.clone()));
+							s.add(&[(coord, v.clone())]);
 						} else {
-							s.remove(&(coord, v.clone()));
+							s.remove(&[(coord, v.clone())]);
 						}
 					}
 				}
 			}
 			AggregateSlot::MaxImmutable(s) => {
-				for event in events {
-					let (adding, coord, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, coord, row) = parts(adding, event);
 					let cell = row.cell(index);
 					if let Some(v) = present(cell.as_deref()) {
 						if adding {
-							s.add(&(coord, v.clone()));
+							s.add(&[(coord, v.clone())]);
 						} else {
-							s.remove(&(coord, v.clone()));
+							s.remove(&[(coord, v.clone())]);
 						}
 					}
 				}
 			}
 			AggregateSlot::First(e) | AggregateSlot::Last(e) => {
-				for event in events {
-					let (adding, coord, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, coord, row) = parts(adding, event);
 					let cell = row.cell(index);
 					if let Some(v) = present(cell.as_deref()) {
 						if adding {
-							e.add(&(coord, v.clone()));
+							e.add(&[(coord, v.clone())]);
 						} else {
-							e.remove(&(coord, v.clone()));
+							e.remove(&[(coord, v.clone())]);
 						}
 					}
 				}
@@ -392,8 +391,8 @@ impl AggregateSlot {
 			AggregateSlot::Span {
 				n,
 			} => {
-				for event in events {
-					if parts(event).0 {
+				for event in slice.iter() {
+					if parts(adding, event).0 {
 						*n += 1;
 					} else {
 						*n -= 1;
@@ -401,8 +400,8 @@ impl AggregateSlot {
 				}
 			}
 			AggregateSlot::Digest(slot) => {
-				for event in events {
-					let (adding, _, row) = parts(event);
+				for event in slice.iter() {
+					let (adding, _, row) = parts(adding, event);
 					let cell = row.cell(index);
 					if let Some(v) = present(cell.as_deref()) {
 						if adding {
@@ -638,38 +637,12 @@ impl AggregateSlot {
 			AggregateSlot::Digest(slot) => slot.finalize(),
 		}
 	}
-
-	fn is_empty(&self) -> bool {
-		match self {
-			AggregateSlot::Count {
-				n,
-				..
-			} => *n == 0,
-			AggregateSlot::Sum {
-				n,
-				..
-			} => *n == 0,
-			AggregateSlot::Avg {
-				n,
-				..
-			} => *n == 0,
-			AggregateSlot::Min(set) | AggregateSlot::Max(set) => set.is_empty(),
-			AggregateSlot::MinImmutable(s) => s.is_empty(),
-			AggregateSlot::MaxImmutable(s) => s.is_empty(),
-			AggregateSlot::First(e) | AggregateSlot::Last(e) => e.is_empty(),
-			AggregateSlot::Span {
-				n,
-			} => *n == 0,
-			AggregateSlot::Digest(slot) => slot.is_empty(),
-		}
-	}
 }
 
 #[operator_state]
 #[derive(Clone, Debug, Default)]
 pub struct RowAccumulator {
 	slots: Vec<AggregateSlot>,
-	rows: u64,
 }
 
 impl HeapSize for RowAccumulator {
@@ -682,7 +655,6 @@ impl RowAccumulator {
 	pub fn new(kinds: &[SlotKind], immutable: Option<Duration>) -> Self {
 		Self {
 			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, immutable)).collect(),
-			rows: 0,
 		}
 	}
 
@@ -690,16 +662,12 @@ impl RowAccumulator {
 		for (slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
 			slot.merge(other_slot);
 		}
-		self.rows += other.rows;
 	}
 
 	pub fn unmerge(&mut self, other: &RowAccumulator) {
 		for (slot, other_slot) in self.slots.iter_mut().zip(other.slots.iter()) {
 			slot.unmerge(other_slot);
 		}
-		self.rows = self.rows.checked_sub(other.rows).unwrap_or_else(|| {
-			panic!("RowAccumulator unmerge of {} rows from {} rows", other.rows, self.rows)
-		});
 	}
 
 	pub fn compact(&mut self) {
@@ -708,13 +676,13 @@ impl RowAccumulator {
 		}
 	}
 
-	fn run(&mut self, events: &[AccumulatorEvent<Contribution>]) {
-		if events.is_empty() {
+	fn run(&mut self, adding: bool, slice: SlotSlice<'_>) {
+		if slice.is_empty() {
 			return;
 		}
 		reifydb_assertions! {
-			for event in events {
-				let width = parts(event).2.width();
+			for row in slice.rows {
+				let width = row.width();
 				assert!(
 					width == self.slots.len(),
 					"RowAccumulator contribution length {} != slot count {}; a default-constructed \
@@ -726,17 +694,7 @@ impl RowAccumulator {
 			}
 		}
 		for (index, slot) in self.slots.iter_mut().enumerate() {
-			slot.apply(index, events);
-		}
-		for event in events {
-			if parts(event).0 {
-				self.rows += 1;
-			} else {
-				self.rows = self
-					.rows
-					.checked_sub(1)
-					.expect("RowAccumulator remove of a row it never added");
-			}
+			slot.apply(index, adding, slice);
 		}
 	}
 
@@ -758,50 +716,19 @@ impl RowAccumulator {
 }
 
 impl WindowAccumulator for RowAccumulator {
-	type Contribution = Contribution;
+	type Contributions = SlotContributions;
 	type Output = Vec<Value>;
 
-	fn add(&mut self, contribution: &Self::Contribution) {
-		self.run(&[AccumulatorEvent::Add(contribution.clone())]);
+	fn add(&mut self, slice: SlotSlice<'_>) {
+		self.run(true, slice);
 	}
 
-	fn remove(&mut self, contribution: &Self::Contribution) {
-		self.run(&[AccumulatorEvent::Remove(contribution.clone())]);
-	}
-
-	fn apply(&mut self, events: &[AccumulatorEvent<Self::Contribution>]) -> Applied {
-		let mut applied = Applied::default();
-		let mut start = 0;
-		let mut rows = self.rows;
-		for (at, event) in events.iter().enumerate() {
-			match event {
-				AccumulatorEvent::Add(_) => rows += 1,
-				AccumulatorEvent::Remove(_) if rows > 0 => rows -= 1,
-				AccumulatorEvent::Remove(_) => {
-					self.run(&events[start..at]);
-					start = at + 1;
-					if self.is_empty() {
-						applied.dropped += 1;
-						continue;
-					}
-					self.run(&events[at..=at]);
-				}
-			}
-			applied.touched = true;
-		}
-		self.run(&events[start..]);
-		applied
+	fn remove(&mut self, slice: SlotSlice<'_>) {
+		self.run(false, slice);
 	}
 
 	fn finalize(&self) -> Option<Self::Output> {
-		if self.is_empty() {
-			return None;
-		}
 		Some(self.slots.iter().map(AggregateSlot::finalize).collect())
-	}
-
-	fn is_empty(&self) -> bool {
-		self.rows == 0 && self.slots.iter().all(AggregateSlot::is_empty)
 	}
 }
 
@@ -821,12 +748,61 @@ impl UnmergeAccumulator for RowAccumulator {
 	}
 }
 
-type Contribution = (WindowSlotKey, SlotRow);
+pub type Contribution = (WindowSlotKey, SlotRow);
 
-fn parts(event: &AccumulatorEvent<Contribution>) -> (bool, WindowSlotKey, &SlotRow) {
-	match event {
-		AccumulatorEvent::Add((coord, row)) => (true, *coord, row),
-		AccumulatorEvent::Remove((coord, row)) => (false, *coord, row),
+fn parts(adding: bool, (key, row): (WindowSlotKey, &SlotRow)) -> (bool, WindowSlotKey, &SlotRow) {
+	(adding, key, row)
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SlotContributions {
+	keys: Vec<WindowSlotKey>,
+	rows: Vec<SlotRow>,
+}
+
+#[derive(Clone, Copy)]
+pub struct SlotSlice<'a> {
+	keys: &'a [WindowSlotKey],
+	rows: &'a [SlotRow],
+}
+
+impl<'a> SlotSlice<'a> {
+	fn iter(self) -> impl Iterator<Item = (WindowSlotKey, &'a SlotRow)> {
+		self.keys.iter().copied().zip(self.rows.iter())
+	}
+}
+
+impl ContributionSlice for SlotSlice<'_> {
+	fn len(&self) -> usize {
+		self.keys.len()
+	}
+
+	fn range(self, range: Range<usize>) -> Self {
+		Self {
+			keys: &self.keys[range.clone()],
+			rows: &self.rows[range],
+		}
+	}
+}
+
+impl Contributions for SlotContributions {
+	type Item = Contribution;
+	type Slice<'a> = SlotSlice<'a>;
+
+	fn push(&mut self, (key, row): Contribution) {
+		self.keys.push(key);
+		self.rows.push(row);
+	}
+
+	fn len(&self) -> usize {
+		self.keys.len()
+	}
+
+	fn slice(&self) -> SlotSlice<'_> {
+		SlotSlice {
+			keys: &self.keys,
+			rows: &self.rows,
+		}
 	}
 }
 
@@ -935,7 +911,10 @@ mod tests {
 			state::seal::coord::Coord,
 		},
 		window::{
-			accumulator::testkit::{Op, drive},
+			accumulator::{
+				AccumulatorOp, Applied, CountedAccumulator, one,
+				testkit::{Op, drive, events as accumulator_events},
+			},
 			span::WindowSpan,
 		},
 	};
@@ -1062,6 +1041,14 @@ mod tests {
 		RowAccumulator::new(kinds, None)
 	}
 
+	fn counted(kinds: &[SlotKind]) -> CountedAccumulator<RowAccumulator> {
+		CountedAccumulator::new(accumulator(kinds))
+	}
+
+	fn one_row(contribution: Contribution) -> SlotContributions {
+		one(contribution)
+	}
+
 	fn at_time(secs: u64, seq: u64) -> WindowSlotKey {
 		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), seq)
 	}
@@ -1076,9 +1063,9 @@ mod tests {
 		// "when did this bucket last see a trade" is 30s. Ordering by arrival sequence instead of by event
 		// time would answer 20s, and every late-arriving row would silently rewind the reported time.
 		let mut a = accumulator(&[SlotKind::WindowLast]);
-		a.add(&(at_time(30, 1), slot_row(vec![Some(dt(30))])));
-		a.add(&(at_time(10, 2), slot_row(vec![Some(dt(10))])));
-		a.add(&(at_time(20, 3), slot_row(vec![Some(dt(20))])));
+		a.add(one_row((at_time(30, 1), slot_row(vec![Some(dt(30))]))).slice());
+		a.add(one_row((at_time(10, 2), slot_row(vec![Some(dt(10))]))).slice());
+		a.add(one_row((at_time(20, 3), slot_row(vec![Some(dt(20))]))).slice());
 		assert_eq!(a.finalize(), Some(vec![dt(30)]));
 	}
 
@@ -1087,9 +1074,9 @@ mod tests {
 		// A window recomputes by retracting rows. Holding a running maximum that never retracts would leave
 		// the reported time pinned to a trade that is no longer in the bucket.
 		let mut a = accumulator(&[SlotKind::WindowLast]);
-		a.add(&(at_time(10, 1), slot_row(vec![Some(dt(10))])));
-		a.add(&(at_time(30, 2), slot_row(vec![Some(dt(30))])));
-		a.remove(&(at_time(30, 2), slot_row(vec![Some(dt(30))])));
+		a.add(one_row((at_time(10, 1), slot_row(vec![Some(dt(10))]))).slice());
+		a.add(one_row((at_time(30, 2), slot_row(vec![Some(dt(30))]))).slice());
+		a.remove(one_row((at_time(30, 2), slot_row(vec![Some(dt(30))]))).slice());
 		assert_eq!(a.finalize(), Some(vec![dt(10)]));
 	}
 
@@ -1097,11 +1084,11 @@ mod tests {
 	fn window_last_stores_one_entry_per_event_time_not_one_per_row() {
 		// An entry per row grows the saved window with its row count, and every batch decodes and re-encodes
 		// all of it.
-		let mut one = accumulator(&[SlotKind::WindowLast]);
-		one.add(&(at_time(30, 0), slot_row(vec![Some(dt(30))])));
-		let mut many = accumulator(&[SlotKind::WindowLast]);
+		let mut one = counted(&[SlotKind::WindowLast]);
+		one.add(one_row((at_time(30, 0), slot_row(vec![Some(dt(30))]))).slice());
+		let mut many = counted(&[SlotKind::WindowLast]);
 		for seq in 0..1000 {
-			many.add(&(at_time(30, seq), slot_row(vec![Some(dt(30))])));
+			many.add(one_row((at_time(30, seq), slot_row(vec![Some(dt(30))]))).slice());
 		}
 		let one_bytes = one.encode_state().unwrap().as_slice().len();
 		let many_bytes = many.encode_state().unwrap().as_slice().len();
@@ -1113,10 +1100,10 @@ mod tests {
 
 		// Rows at one event time must still retract one by one, or the time outlives its last row.
 		for seq in 0..999 {
-			many.remove(&(at_time(30, seq), slot_row(vec![Some(dt(30))])));
+			many.remove(one_row((at_time(30, seq), slot_row(vec![Some(dt(30))]))).slice());
 		}
 		assert_eq!(many.finalize(), Some(vec![dt(30)]), "one row at 30s is still in the window");
-		many.remove(&(at_time(30, 999), slot_row(vec![Some(dt(30))])));
+		many.remove(one_row((at_time(30, 999), slot_row(vec![Some(dt(30))]))).slice());
 		assert!(many.is_empty(), "every row at 30s was retracted");
 	}
 
@@ -1126,12 +1113,12 @@ mod tests {
 		// overwritten from the span at emit. But an accumulator that reports empty is dropped rather than
 		// emitted, so a window whose only output is a boundary would silently produce nothing. The slot
 		// must still count the rows that reached it, and stop being populated once they are all retracted.
-		let mut a = accumulator(&[SlotKind::WindowStart]);
+		let mut a = counted(&[SlotKind::WindowStart]);
 		assert!(a.is_empty());
-		a.add(&(at_time(10, 1), slot_row(vec![Some(dt(10))])));
+		a.add(one_row((at_time(10, 1), slot_row(vec![Some(dt(10))]))).slice());
 		assert!(!a.is_empty(), "a window holding a row must not report empty");
 		assert_eq!(a.finalize(), Some(vec![Value::none()]), "the value is filled from the span at emit");
-		a.remove(&(at_time(10, 1), slot_row(vec![Some(dt(10))])));
+		a.remove(one_row((at_time(10, 1), slot_row(vec![Some(dt(10))]))).slice());
 		assert!(a.is_empty());
 	}
 
@@ -1139,13 +1126,13 @@ mod tests {
 	fn a_span_slot_does_not_make_a_populated_window_look_empty() {
 		// An empty accumulator is dropped rather than emitted. A span slot reports empty because it holds
 		// nothing, so it must not drag a window that really has rows down with it.
-		let mut a = accumulator(&[
+		let mut a = counted(&[
 			SlotKind::Count {
 				count_star: true,
 			},
 			SlotKind::WindowStart,
 		]);
-		a.add(&(at_time(10, 1), slot_row(vec![None, None])));
+		a.add(one_row((at_time(10, 1), slot_row(vec![None, None]))).slice());
 		assert!(!a.is_empty());
 		assert_eq!(a.finalize().unwrap()[0], Value::Int8(1));
 	}
@@ -1155,9 +1142,9 @@ mod tests {
 		// Windows merge partial accumulators from separate batches. Taking the merge target's value rather
 		// than the later of the two would report a stale time whenever the newer batch merged in second.
 		let mut a = accumulator(&[SlotKind::WindowLast]);
-		a.add(&(at_time(10, 1), slot_row(vec![Some(dt(10))])));
+		a.add(one_row((at_time(10, 1), slot_row(vec![Some(dt(10))]))).slice());
 		let mut b = accumulator(&[SlotKind::WindowLast]);
-		b.add(&(at_time(40, 2), slot_row(vec![Some(dt(40))])));
+		b.add(one_row((at_time(40, 2), slot_row(vec![Some(dt(40))]))).slice());
 		a.merge(&b);
 		assert_eq!(a.finalize(), Some(vec![dt(40)]));
 	}
@@ -1185,17 +1172,17 @@ mod tests {
 		// rows already left.
 		let rows: [&[(u64, u64)]; 4] =
 			[&[(10, 1), (30, 2)], &[(30, 3), (30, 4)], &[(20, 5)], &[(30, 6), (25, 7)]];
-		let slots: Vec<RowAccumulator> = rows
+		let slots: Vec<CountedAccumulator<RowAccumulator>> = rows
 			.iter()
 			.map(|slot| {
-				let mut a = accumulator(&[SlotKind::WindowLast]);
+				let mut a = counted(&[SlotKind::WindowLast]);
 				for &(secs, seq) in *slot {
-					a.add(&(at_time(secs, seq), slot_row(vec![Some(dt(secs))])));
+					a.add(one_row((at_time(secs, seq), slot_row(vec![Some(dt(secs))]))).slice());
 				}
 				a
 			})
 			.collect();
-		let mut running = accumulator(&[SlotKind::WindowLast]);
+		let mut running = counted(&[SlotKind::WindowLast]);
 		for slot in &slots {
 			running.merge(slot);
 		}
@@ -1204,7 +1191,7 @@ mod tests {
 		for expired in [1, 0, 3, 2] {
 			running.unmerge(&slots[expired]);
 			left.retain(|&index| index != expired);
-			let mut rebuilt = accumulator(&[SlotKind::WindowLast]);
+			let mut rebuilt = counted(&[SlotKind::WindowLast]);
 			for &index in &left {
 				rebuilt.merge(&slots[index]);
 			}
@@ -1225,17 +1212,25 @@ mod tests {
 		WindowSlotKey::new(DateTimeCoord(DateTime::from_epoch_secs(secs as i64).unwrap()), secs)
 	}
 
-	fn add(a: &mut RowAccumulator, seq: u64, values: Vec<Option<Value>>) {
-		a.add(&(at(seq), slot_row(values)));
+	fn add(
+		a: &mut impl WindowAccumulator<Contributions = SlotContributions>,
+		seq: u64,
+		values: Vec<Option<Value>>,
+	) {
+		a.add(one_row((at(seq), slot_row(values))).slice());
 	}
 
-	fn remove(a: &mut RowAccumulator, seq: u64, values: Vec<Option<Value>>) {
-		a.remove(&(at(seq), slot_row(values)));
+	fn remove(
+		a: &mut impl WindowAccumulator<Contributions = SlotContributions>,
+		seq: u64,
+		values: Vec<Option<Value>>,
+	) {
+		a.remove(one_row((at(seq), slot_row(values))).slice());
 	}
 
 	#[test]
 	fn count_counts_rows_and_resets_on_empty() {
-		let mut a = accumulator(&[SlotKind::Count {
+		let mut a = counted(&[SlotKind::Count {
 			count_star: true,
 		}]);
 		assert!(a.is_empty());
@@ -1367,7 +1362,7 @@ mod tests {
 
 	#[test]
 	fn empty_when_all_removed() {
-		let mut a = accumulator(&[SlotKind::Sum, SlotKind::Min]);
+		let mut a = counted(&[SlotKind::Sum, SlotKind::Min]);
 		add(&mut a, 0, vec![i4(1), i4(1)]);
 		remove(&mut a, 0, vec![i4(1), i4(1)]);
 		assert!(a.is_empty());
@@ -1379,9 +1374,9 @@ mod tests {
 		// first/last order by the event coordinate; out-of-order arrival must still
 		// yield the earliest/latest by coordinate, not by arrival.
 		let mut a = RowAccumulator::new(&[SlotKind::First, SlotKind::Last], None);
-		a.add(&(coord(20), slot_row(vec![i4(20), i4(20)])));
-		a.add(&(coord(10), slot_row(vec![i4(10), i4(10)])));
-		a.add(&(coord(30), slot_row(vec![i4(30), i4(30)])));
+		a.add(one_row((coord(20), slot_row(vec![i4(20), i4(20)]))).slice());
+		a.add(one_row((coord(10), slot_row(vec![i4(10), i4(10)]))).slice());
+		a.add(one_row((coord(30), slot_row(vec![i4(30), i4(30)]))).slice());
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(10), Value::Int4(30)]));
 	}
 
@@ -1391,19 +1386,19 @@ mod tests {
 		// scalar, so retracting it is a no-op: the deliberate memory-vs-exactness trade.
 		let immutable = Duration::from_seconds(5).unwrap();
 		let mut a = RowAccumulator::new(&[SlotKind::Max], Some(immutable));
-		a.add(&(coord(0), slot_row(vec![i4(100)]))); // becomes immutable once high-water passes 5s
-		a.add(&(coord(10), slot_row(vec![i4(50)])));
+		a.add(one_row((coord(0), slot_row(vec![i4(100)]))).slice()); // becomes immutable once high-water passes 5s
+		a.add(one_row((coord(10), slot_row(vec![i4(50)]))).slice());
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]), "immutable max still dominates");
 		// Retracting the immutable entry cannot lower the max: it was already folded away.
-		a.remove(&(coord(0), slot_row(vec![i4(100)])));
+		a.remove(one_row((coord(0), slot_row(vec![i4(100)]))).slice());
 		assert_eq!(
 			a.finalize(),
 			Some(vec![Value::Int4(100)]),
 			"retraction older than the immutable span is a no-op, so the immutable max survives"
 		);
 		// A retraction still inside the immutable window does take effect.
-		a.add(&(coord(12), slot_row(vec![i4(70)])));
-		a.remove(&(coord(12), slot_row(vec![i4(70)])));
+		a.add(one_row((coord(12), slot_row(vec![i4(70)]))).slice());
+		a.remove(one_row((coord(12), slot_row(vec![i4(70)]))).slice());
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]));
 	}
 
@@ -1427,15 +1422,21 @@ mod tests {
 		let rows = [(5, 30), (8, 10), (3, 50), (12, 20)];
 		let mut whole = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows.iter().enumerate() {
-			whole.add(&(coord((i as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])));
+			whole.add(one_row((coord((i as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])))
+				.slice());
 		}
 		let mut left = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows[..2].iter().enumerate() {
-			left.add(&(coord((i as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])));
+			left.add(one_row((coord((i as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])))
+				.slice());
 		}
 		let mut right = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows[2..].iter().enumerate() {
-			right.add(&(coord(((i + 2) as u64) * 10), slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)])));
+			right.add(one_row((
+				coord(((i + 2) as u64) * 10),
+				slot_row(vec![i4(*v), i4(*v), i4(*v), i4(*v)]),
+			))
+			.slice());
 		}
 		left.merge(&right);
 		assert_eq!(left.finalize(), whole.finalize(), "immutable merge must equal one combined accumulator");
@@ -1472,11 +1473,12 @@ mod tests {
 		for round in 0..2_000u64 {
 			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 			let dollars = ((state >> 16) % 1_000_000_000) as f64 / 100.0;
-			a.add(&(at(round), slot_row(vec![Some(Value::float8(dollars))])));
+			a.add(one_row((at(round), slot_row(vec![Some(Value::float8(dollars))]))).slice());
 			pending.push((round, dollars));
 			if round % 2 == 1 {
 				let (old_seq, old_dollars) = pending.remove(0);
-				a.remove(&(at(old_seq), slot_row(vec![Some(Value::float8(old_dollars))])));
+				a.remove(one_row((at(old_seq), slot_row(vec![Some(Value::float8(old_dollars))])))
+					.slice());
 			}
 			if let Some(out) = a.finalize() {
 				let Value::Float8(got) = &out[0] else {
@@ -1520,7 +1522,7 @@ mod tests {
 	fn sum_returns_none_after_float_churn_empties_it() {
 		// The contribution count is an exact integer, so a fully retracted sum must report none
 		// regardless of accumulated float dust.
-		let mut a = accumulator(&[SlotKind::Sum]);
+		let mut a = counted(&[SlotKind::Sum]);
 		add(&mut a, 0, vec![Some(Value::float8(1e16f64))]);
 		add(&mut a, 1, vec![Some(Value::float8(3.14f64))]);
 		remove(&mut a, 0, vec![Some(Value::float8(1e16f64))]);
@@ -1610,8 +1612,8 @@ mod tests {
 		// When the last coord of a group expires the slot must reset to exactly none, not retain
 		// float dust.
 		let kinds = [SlotKind::Sum];
-		let mut running = accumulator(&kinds);
-		let mut coord_state = accumulator(&kinds);
+		let mut running = counted(&kinds);
+		let mut coord_state = counted(&kinds);
 		add(&mut coord_state, 0, vec![Some(Value::float8(0.1f64))]);
 		add(&mut coord_state, 1, vec![Some(Value::float8(0.2f64))]);
 		running.merge(&coord_state);
@@ -1688,8 +1690,8 @@ mod tests {
 	fn a_digest_slot_is_none_until_a_value_and_add_then_remove_restores_the_empty_state() {
 		// A slot that keeps an emptied digest encodes unlike a fresh one, so stored state drifts from a
 		// rebuild.
-		let fresh = accumulator(&[digest_kind(Some(PPM))]);
-		assert_eq!(fresh.slots[0].finalize(), Value::none(), "a slot with no value must finalize none");
+		let fresh = counted(&[digest_kind(Some(PPM))]);
+		assert_eq!(fresh.inner().slots[0].finalize(), Value::none(), "a slot with no value must finalize none");
 		let mut a = fresh.clone();
 		let probe = (at(0), slot_row(vec![f8(5.0)]));
 		drive(&mut a, &[Op::Add(probe.clone())]);
@@ -1701,8 +1703,8 @@ mod tests {
 		assert!(a.is_empty());
 		assert_eq!(a.finalize(), None);
 		assert_eq!(
-			state_bytes(&a),
-			state_bytes(&fresh),
+			state_bytes(a.inner()),
+			state_bytes(fresh.inner()),
 			"add then remove must encode exactly as the empty slot"
 		);
 	}
@@ -1717,19 +1719,19 @@ mod tests {
 		for seq in 0..3_000u64 {
 			let roll = rng.next();
 			if roll.is_multiple_of(5) {
-				a.add(&(at(seq), slot_row(vec![Some(Value::none())])));
+				a.add(one_row((at(seq), slot_row(vec![Some(Value::none())]))).slice());
 				continue;
 			}
 			if roll.is_multiple_of(3) && !live.is_empty() {
 				let (old_seq, old) = live.swap_remove((rng.next() % live.len() as u64) as usize);
-				a.remove(&(at(old_seq), slot_row(vec![f8(old)])));
+				a.remove(one_row((at(old_seq), slot_row(vec![f8(old)]))).slice());
 			} else {
 				let v = match rng.next() % 4 {
 					0 => 0.0,
 					1 => -((rng.next() % 1_000_000) as f64) / 7.0,
 					_ => (rng.next() % 1_000_000) as f64 / 3.0,
 				};
-				a.add(&(at(seq), slot_row(vec![f8(v)])));
+				a.add(one_row((at(seq), slot_row(vec![f8(v)]))).slice());
 				live.push((seq, v));
 			}
 			if seq % 97 == 0 {
@@ -1757,12 +1759,12 @@ mod tests {
 		let mut other = accumulator(&kinds);
 		let mut whole = accumulator(&kinds);
 		for (seq, v) in [(0, 1.5), (1, -2.0), (2, 0.0)] {
-			base.add(&(at(seq), slot_row(vec![f8(v), f8(v)])));
-			whole.add(&(at(seq), slot_row(vec![f8(v), f8(v)])));
+			base.add(one_row((at(seq), slot_row(vec![f8(v), f8(v)]))).slice());
+			whole.add(one_row((at(seq), slot_row(vec![f8(v), f8(v)]))).slice());
 		}
 		for (seq, v) in [(3, 900.0), (4, 1.5)] {
-			other.add(&(at(seq), slot_row(vec![f8(v), f8(v)])));
-			whole.add(&(at(seq), slot_row(vec![f8(v), f8(v)])));
+			other.add(one_row((at(seq), slot_row(vec![f8(v), f8(v)]))).slice());
+			whole.add(one_row((at(seq), slot_row(vec![f8(v), f8(v)]))).slice());
 		}
 		let snapshot = state_bytes(&base);
 		base.merge(&other);
@@ -1773,7 +1775,7 @@ mod tests {
 		let lone_kinds = [digest_kind(Some(PPM))];
 		let mut lone = accumulator(&lone_kinds);
 		for (seq, v) in [(0, 1.5), (1, -2.0), (2, 0.0)] {
-			lone.add(&(at(seq), slot_row(vec![f8(v)])));
+			lone.add(one_row((at(seq), slot_row(vec![f8(v)]))).slice());
 		}
 		let mut running = accumulator(&lone_kinds);
 		running.merge(&lone);
@@ -1792,13 +1794,13 @@ mod tests {
 		let second = oracle(ValueType::Int4, PPM, &[Value::Int4(10), Value::Int4(2_000)]);
 		let fresh = accumulator(&[digest_kind(None)]);
 		let mut a = fresh.clone();
-		a.add(&(at(0), slot_row(vec![Some(digest_value(first.clone()))])));
-		a.add(&(at(1), slot_row(vec![Some(digest_value(second.clone()))])));
+		a.add(one_row((at(0), slot_row(vec![Some(digest_value(first.clone()))]))).slice());
+		a.add(one_row((at(1), slot_row(vec![Some(digest_value(second.clone()))]))).slice());
 		let all = [1, 2, 3, 10, 2_000].map(Value::Int4);
 		assert_eq!(a.finalize(), Some(vec![digest_value(oracle(ValueType::Int4, PPM, &all))]));
-		a.remove(&(at(0), slot_row(vec![Some(digest_value(first))])));
+		a.remove(one_row((at(0), slot_row(vec![Some(digest_value(first))]))).slice());
 		assert_eq!(a.finalize(), Some(vec![digest_value(second.clone())]));
-		a.remove(&(at(1), slot_row(vec![Some(digest_value(second))])));
+		a.remove(one_row((at(1), slot_row(vec![Some(digest_value(second))]))).slice());
 		assert_eq!(
 			state_bytes(&a),
 			state_bytes(&fresh),
@@ -1811,14 +1813,16 @@ mod tests {
 	fn merging_digests_of_different_accuracy_in_one_slot_is_a_named_failure() {
 		// Summing counts of buckets with different widths gives answers that match neither accuracy.
 		let mut a = accumulator(&[digest_kind(None)]);
-		a.add(&(
+		a.add(one_row((
 			at(0),
 			slot_row(vec![Some(digest_value(oracle(ValueType::Float8, PPM, &[Value::float8(1.0)])))]),
-		));
-		a.add(&(
+		))
+		.slice());
+		a.add(one_row((
 			at(1),
 			slot_row(vec![Some(digest_value(oracle(ValueType::Float8, 50_000, &[Value::float8(1.0)])))]),
-		));
+		))
+		.slice());
 	}
 
 	#[test]
@@ -1831,9 +1835,9 @@ mod tests {
 			.collect();
 		let mut a = accumulator(&[digest_kind(Some(1_000))]);
 		for (seq, value) in values.iter().enumerate() {
-			a.add(&(at(seq as u64), slot_row(vec![Some(value.clone())])));
+			a.add(one_row((at(seq as u64), slot_row(vec![Some(value.clone())]))).slice());
 		}
-		a.remove(&(at(0), slot_row(vec![Some(values[0].clone())])));
+		a.remove(one_row((at(0), slot_row(vec![Some(values[0].clone())]))).slice());
 		let out = a.finalize().expect("two durations remain");
 		let Value::Digest(digest) = &out[0] else {
 			panic!("a digest slot must finalize a digest, got {:?}", out[0]);
@@ -1864,17 +1868,17 @@ mod tests {
 			},
 			digest_kind(Some(PPM)),
 		];
-		let mut a = accumulator(&kinds);
+		let mut a = counted(&kinds);
 		let row = (at(0), slot_row(vec![Some(Value::none()), Some(Value::none()), Some(Value::none())]));
-		a.add(&row);
+		a.add(one_row(row.clone()).slice());
 		assert!(!a.is_empty(), "a group holding a row must not report empty");
 		assert_eq!(a.finalize(), Some(vec![Value::none(), Value::Int8(0), Value::none()]));
-		let mut running = accumulator(&kinds);
+		let mut running = counted(&kinds);
 		running.merge(&a);
 		assert_eq!(running.finalize(), a.finalize(), "a merged all-none part must keep the running group");
 		running.unmerge(&a);
 		assert!(running.is_empty(), "unmerging the only all-none part must empty the running group");
-		a.remove(&row);
+		a.remove(one_row(row).slice());
 		assert!(a.is_empty(), "a group whose rows were all retracted must disappear");
 		assert_eq!(a.finalize(), None);
 	}
@@ -1886,21 +1890,24 @@ mod tests {
 		let mut a = accumulator(&[SlotKind::Count {
 			count_star: true,
 		}]);
-		a.remove(&(at(0), slot_row(vec![None])));
+		a.remove(one_row((at(0), slot_row(vec![None]))).slice());
 	}
 
-	fn one_event_at_a_time(a: &mut RowAccumulator, events: &[AccumulatorEvent<Contribution>]) -> Applied {
+	fn one_event_at_a_time(
+		a: &mut CountedAccumulator<RowAccumulator>,
+		events: &[(AccumulatorOp, Contribution)],
+	) -> Applied {
 		// The engines' per-event loop before slot-ordered apply: the reference the batch path must match.
 		let mut applied = Applied::default();
-		for event in events {
-			match event {
-				AccumulatorEvent::Add(contribution) => a.add(contribution),
-				AccumulatorEvent::Remove(contribution) => {
+		for (op, contribution) in events {
+			match op {
+				AccumulatorOp::Add => a.add(one_row(contribution.clone()).slice()),
+				AccumulatorOp::Remove => {
 					if a.is_empty() {
 						applied.dropped += 1;
 						continue;
 					}
-					a.remove(contribution);
+					a.remove(one_row(contribution.clone()).slice());
 				}
 			}
 			applied.touched = true;
@@ -1931,8 +1938,8 @@ mod tests {
 		let magnitudes = [1e16, 1.0, -1e16, 0.1, -3.7, 2.5e-8, 7e12];
 		for seed in 0..64u64 {
 			let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
-			let mut batched = accumulator(&kinds);
-			let mut stepped = accumulator(&kinds);
+			let mut batched = CountedAccumulator::new(accumulator(&kinds));
+			let mut stepped = CountedAccumulator::new(accumulator(&kinds));
 			let mut live: Vec<Contribution> = Vec::new();
 			let mut seq = 0u64;
 			for round in 0..40 {
@@ -1959,12 +1966,15 @@ mod tests {
 					match rng.next() % 3 {
 						0 if !live.is_empty() => {
 							let index = (rng.next() % live.len() as u64) as usize;
-							events.push(AccumulatorEvent::Remove(live.swap_remove(index)));
+							events.push((AccumulatorOp::Remove, live.swap_remove(index)));
 						}
-						0 => events.push(AccumulatorEvent::Remove((
-							at(u64::MAX),
-							SlotRow::new(batch.clone(), 0, DateTime::default()),
-						))),
+						0 => events.push((
+							AccumulatorOp::Remove,
+							(
+								at(u64::MAX),
+								SlotRow::new(batch.clone(), 0, DateTime::default()),
+							),
+						)),
 						_ if fresh < width => {
 							let contribution = (
 								at(seq),
@@ -1973,13 +1983,13 @@ mod tests {
 							seq += 1;
 							fresh += 1;
 							live.push(contribution.clone());
-							events.push(AccumulatorEvent::Add(contribution));
+							events.push((AccumulatorOp::Add, contribution));
 						}
 						_ => {}
 					}
 				}
 				let want = one_event_at_a_time(&mut stepped, &events);
-				let got = batched.apply(&events);
+				let got = batched.apply(&accumulator_events(events.iter().cloned()));
 				assert_eq!(got, want, "seed {seed} round {round}: touched / dropped differ");
 				assert_eq!(
 					batched.encode_state().unwrap(),

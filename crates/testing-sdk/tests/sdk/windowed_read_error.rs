@@ -51,23 +51,23 @@ struct SumAccumulator {
 }
 
 impl WindowAccumulator for SumAccumulator {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = OrdF64;
 
-	fn add(&mut self, contribution: &f64) {
-		self.moments.add(*contribution);
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.moments.remove(*contribution);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.remove(*contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<OrdF64> {
 		(!self.moments.is_empty()).then(|| OrdF64::new(self.moments.sum()).expect("finite"))
-	}
-
-	fn is_empty(&self) -> bool {
-		self.moments.is_empty()
 	}
 }
 

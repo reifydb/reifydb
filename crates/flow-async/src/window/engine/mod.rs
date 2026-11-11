@@ -11,7 +11,7 @@ pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;
 
-use std::{collections::BTreeMap, ops::Bound, slice::from_ref};
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey},
@@ -55,13 +55,6 @@ pub struct WindowReindex<'a, G, S> {
 	pub prior: Option<u64>,
 	pub new: Option<u64>,
 }
-
-pub enum AccumulatorEvent<Contribution> {
-	Add(Contribution),
-	Remove(Contribution),
-}
-
-pub type RollingBuckets<G, S, Contribution> = BTreeMap<(G, S), Vec<AccumulatorEvent<Contribution>>>;
 
 fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
 	if expired >= expire_batch {

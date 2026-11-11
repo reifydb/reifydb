@@ -7,7 +7,7 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
+use crate::window::accumulator::{MergeAccumulator, Slice, WindowAccumulator};
 
 pub trait Fold<T> {
 	fn fold(&mut self, value: &T);
@@ -53,30 +53,27 @@ where
 	S: Fold<A::Output> + Clone + Debug + PartialEq + Default,
 	FoldedAccumulator<A, S>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = A::Contribution;
+	type Contributions = A::Contributions;
 	type Output = S;
 
-	fn add(&mut self, contribution: &A::Contribution) {
-		self.open.add(contribution);
+	fn add(&mut self, contributions: Slice<'_, A>) {
+		self.open.add(contributions);
 	}
 
-	fn remove(&mut self, contribution: &A::Contribution) {
-		self.open.remove(contribution);
+	fn remove(&mut self, contributions: Slice<'_, A>) {
+		self.open.remove(contributions);
 	}
 
 	fn finalize(&self) -> Option<S> {
-		if WindowAccumulator::is_empty(self) {
+		let open = self.open.finalize();
+		if open.is_none() && self.sealed.is_empty() {
 			return None;
 		}
 		let mut summary = self.sealed.clone();
-		if let Some(value) = self.open.finalize() {
+		if let Some(value) = open {
 			summary.fold(&value);
 		}
 		Some(summary)
-	}
-
-	fn is_empty(&self) -> bool {
-		self.open.is_empty() && self.sealed.is_empty()
 	}
 }
 
@@ -107,15 +104,24 @@ impl<A: HeapSize, S: HeapSize> HeapSize for FoldedAccumulator<A, S> {
 
 #[cfg(test)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_codec::row::operator::state::decode;
 
 	use super::*;
+	use crate::window::accumulator::CountedAccumulator;
 
 	#[operator_state]
 	#[derive(Debug, Clone, Default, PartialEq)]
 	struct PaneSum {
 		n: u64,
 		total: i64,
+	}
+
+	impl PaneSum {
+		fn is_empty(&self) -> bool {
+			self.n == 0
+		}
 	}
 
 	impl HeapSize for PaneSum {
@@ -125,25 +131,25 @@ mod tests {
 	}
 
 	impl WindowAccumulator for PaneSum {
-		type Contribution = i64;
+		type Contributions = Vec<i64>;
 		type Output = (u64, i64);
 
-		fn add(&mut self, contribution: &i64) {
-			self.n += 1;
-			self.total += contribution;
+		fn add(&mut self, contributions: &[i64]) {
+			for contribution in contributions {
+				self.n += 1;
+				self.total += contribution;
+			}
 		}
 
-		fn remove(&mut self, contribution: &i64) {
-			self.n -= 1;
-			self.total -= contribution;
+		fn remove(&mut self, contributions: &[i64]) {
+			for contribution in contributions {
+				self.n -= 1;
+				self.total -= contribution;
+			}
 		}
 
 		fn finalize(&self) -> Option<(u64, i64)> {
 			(self.n > 0).then_some((self.n, self.total))
-		}
-
-		fn is_empty(&self) -> bool {
-			self.n == 0
 		}
 	}
 
@@ -178,7 +184,18 @@ mod tests {
 	fn pane_of(values: &[i64], compact: bool) -> Acc {
 		let mut pane = Acc::default();
 		for value in values {
-			pane.add(value);
+			pane.add(from_ref(value));
+		}
+		if compact {
+			pane.compact();
+		}
+		pane
+	}
+
+	fn counted_pane_of(values: &[i64], compact: bool) -> CountedAccumulator<Acc> {
+		let mut pane = CountedAccumulator::new(Acc::default());
+		for value in values {
+			pane.add(from_ref(value));
 		}
 		if compact {
 			pane.compact();
@@ -216,9 +233,9 @@ mod tests {
 	fn a_compacted_pane_is_not_empty_and_holds_no_open_part() {
 		// The engine drops empty pane rows, and an open part left beside the summary grows every stored
 		// partial.
-		let pane = pane_of(&[1, 2], true);
+		let pane = counted_pane_of(&[1, 2], true);
 		assert!(!pane.is_empty());
-		assert!(pane.open.is_empty());
+		assert!(pane.inner().open.is_empty());
 		assert_eq!(pane.finalize().map(|t| t.panes), Some(vec![(2, 3)]));
 	}
 
@@ -226,9 +243,9 @@ mod tests {
 	fn a_retraction_in_the_open_pane_is_undone_before_it_folds() {
 		// Retraction must reach the open part; a value folded early could never be taken back.
 		let mut pane = pane_of(&[5, 6], false);
-		pane.remove(&6);
+		pane.remove(&[6]);
 		assert_eq!(pane.finalize().map(|t| t.panes), Some(vec![(1, 5)]));
-		pane.remove(&5);
+		pane.remove(&[5]);
 		assert_eq!(pane.finalize(), None);
 	}
 
@@ -238,7 +255,7 @@ mod tests {
 		let mut merged = pane_of(&[4], false);
 		merged.merge(&Acc::default());
 		assert_eq!(merged.finalize().map(|t| t.panes), Some(vec![(1, 4)]));
-		let mut empty = Acc::default();
+		let mut empty = CountedAccumulator::new(Acc::default());
 		empty.compact();
 		assert!(empty.is_empty());
 	}
@@ -246,7 +263,7 @@ mod tests {
 	#[test]
 	fn a_compacted_accumulator_roundtrips() {
 		let mut accumulator = pane_of(&[1, 2], true);
-		accumulator.add(&9);
+		accumulator.add(&[9]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: Acc = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);

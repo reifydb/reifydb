@@ -80,7 +80,7 @@ impl<A: MergeAccumulator> Merge<A> {
 impl<A: WindowAccumulator> Merge<A> {
 	pub fn merged(&self, older: Option<A>, newer: &A) -> A {
 		match older {
-			Some(mut older) if !older.is_empty() => {
+			Some(mut older) => {
 				(self.merge)(&mut older, newer);
 				older
 			}
@@ -245,26 +245,30 @@ mod tests {
 				raw: vec![value],
 			}
 		}
+
+		fn is_empty(&self) -> bool {
+			self.panes.is_empty()
+		}
 	}
 
 	impl WindowAccumulator for Trail {
-		type Contribution = (u64, i64);
+		type Contributions = Vec<(u64, i64)>;
 		type Output = Trail;
 
-		fn add(&mut self, contribution: &(u64, i64)) {
-			self.merge(&Trail::of(contribution.0, contribution.1));
+		fn add(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.merge(&Trail::of(contribution.0, contribution.1));
+			}
 		}
 
-		fn remove(&mut self, _contribution: &(u64, i64)) {
-			unreachable!("the queue never retracts")
+		fn remove(&mut self, contributions: &[(u64, i64)]) {
+			for _contribution in contributions {
+				unreachable!("the queue never retracts")
+			}
 		}
 
 		fn finalize(&self) -> Option<Trail> {
 			(!self.is_empty()).then(|| self.clone())
-		}
-
-		fn is_empty(&self) -> bool {
-			self.panes.is_empty()
 		}
 	}
 

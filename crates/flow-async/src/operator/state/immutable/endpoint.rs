@@ -101,17 +101,21 @@ where
 	V: Clone + Debug + PartialEq,
 	ImmutableEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (S, V);
+	type Contributions = Vec<(S, V)>;
 	type Output = (V, V);
 
-	fn add(&mut self, contribution: &(S, V)) {
-		for (c, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			self.fold(c, v);
+	fn add(&mut self, contributions: &[(S, V)]) {
+		for contribution in contributions {
+			for (c, v) in self.base.push(contribution.0, contribution.1.clone()) {
+				self.fold(c, v);
+			}
 		}
 	}
 
-	fn remove(&mut self, contribution: &(S, V)) {
-		self.base.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(S, V)]) {
+		for contribution in contributions {
+			self.base.remove(&contribution.0);
+		}
 	}
 
 	fn finalize(&self) -> Option<(V, V)> {
@@ -119,10 +123,6 @@ where
 			(Some(o), Some(c)) => Some((o.clone(), c.clone())),
 			_ => None,
 		}
-	}
-
-	fn is_empty(&self) -> bool {
-		self.immutable_open.is_none() && self.base.is_tail_empty()
 	}
 }
 
@@ -141,7 +141,10 @@ mod tests {
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		window::{
-			accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
+			accumulator::{
+				CountedAccumulator,
+				testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree},
+			},
 			coord::DateTimeCoord,
 		},
 	};
@@ -149,19 +152,19 @@ mod tests {
 	#[test]
 	fn immutable_endpoint_freezes_open_and_tracks_live_close() {
 		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-		accumulator.add(&(event_coord_at_millis(0), 100));
-		accumulator.add(&(event_coord_at_millis(5), 200));
-		accumulator.add(&(event_coord_at_millis(12), 300));
+		accumulator.add(&[(event_coord_at_millis(0), 100)]);
+		accumulator.add(&[(event_coord_at_millis(5), 200)]);
+		accumulator.add(&[(event_coord_at_millis(12), 300)]);
 		assert_eq!(accumulator.open(), Some(&100), "open frozen to the earliest observation");
 		assert_eq!(accumulator.close(), Some(&300), "close is the latest live observation");
 
-		accumulator.remove(&(event_coord_at_millis(0), 100));
+		accumulator.remove(&[(event_coord_at_millis(0), 100)]);
 		assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
 
-		accumulator.remove(&(event_coord_at_millis(12), 300));
+		accumulator.remove(&[(event_coord_at_millis(12), 300)]);
 		assert_eq!(accumulator.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
 
-		accumulator.add(&(event_coord_at_millis(20), 400));
+		accumulator.add(&[(event_coord_at_millis(20), 400)]);
 		assert_eq!(accumulator.open(), Some(&100));
 		assert_eq!(accumulator.close(), Some(&400));
 	}
@@ -178,18 +181,19 @@ mod tests {
 	fn immutable_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
 		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
 		// next.
-		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::default();
-		accumulator.add(&(event_coord_at_millis(0), 100));
-		accumulator.add(&(event_coord_at_millis(5), 200));
-		accumulator.add(&(event_coord_at_millis(1_000_000), 300));
+		let mut accumulator: CountedAccumulator<ImmutableEndpoint<DateTimeCoord, i64>> =
+			CountedAccumulator::new(ImmutableEndpoint::default());
+		accumulator.add(&[(event_coord_at_millis(0), 100)]);
+		accumulator.add(&[(event_coord_at_millis(5), 200)]);
+		accumulator.add(&[(event_coord_at_millis(1_000_000), 300)]);
 		assert_eq!(accumulator.finalize(), Some((100, 300)));
 
-		accumulator.remove(&(event_coord_at_millis(0), 100));
-		assert_eq!(accumulator.open(), Some(&200), "the open is retractable while nothing is folded");
+		accumulator.remove(&[(event_coord_at_millis(0), 100)]);
+		assert_eq!(accumulator.inner().open(), Some(&200), "the open is retractable while nothing is folded");
 		assert_eq!(accumulator.finalize(), Some((200, 300)));
 
-		accumulator.remove(&(event_coord_at_millis(5), 200));
-		accumulator.remove(&(event_coord_at_millis(1_000_000), 300));
+		accumulator.remove(&[(event_coord_at_millis(5), 200)]);
+		accumulator.remove(&[(event_coord_at_millis(1_000_000), 300)]);
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 	}
@@ -199,11 +203,11 @@ mod tests {
 		// Only the earliest immutable slot is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
 		let mut accumulator: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-		accumulator.add(&(event_coord_at_millis(0), 1));
-		accumulator.add(&(event_coord_at_millis(5), 2));
-		accumulator.add(&(event_coord_at_millis(20), 3));
+		accumulator.add(&[(event_coord_at_millis(0), 1)]);
+		accumulator.add(&[(event_coord_at_millis(5), 2)]);
+		accumulator.add(&[(event_coord_at_millis(20), 3)]);
 
-		accumulator.remove(&(event_coord_at_millis(20), 3));
+		accumulator.remove(&[(event_coord_at_millis(20), 3)]);
 		assert_eq!(accumulator.close(), Some(&2), "close is the latest surviving observation");
 		assert_eq!(accumulator.finalize(), Some((1, 2)));
 	}
@@ -228,11 +232,11 @@ mod tests {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
 		let mut left: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-		left.add(&(event_coord_at_millis(0), 1));
+		left.add(&[(event_coord_at_millis(0), 1)]);
 
 		let mut right: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-		right.add(&(event_coord_at_millis(50), 5));
-		right.add(&(event_coord_at_millis(70), 7));
+		right.add(&[(event_coord_at_millis(50), 5)]);
+		right.add(&[(event_coord_at_millis(70), 7)]);
 
 		let mut left_first = left.clone();
 		left_first.merge(&right);
@@ -246,8 +250,8 @@ mod tests {
 	#[test]
 	fn immutable_endpoint_roundtrip() {
 		let mut ep: ImmutableEndpoint<DateTimeCoord, i64> = ImmutableEndpoint::immutable(millis(10));
-		ep.add(&(event_coord_at_millis(0), 100));
-		ep.add(&(event_coord_at_millis(12), 300));
+		ep.add(&[(event_coord_at_millis(0), 100)]);
+		ep.add(&[(event_coord_at_millis(12), 300)]);
 		let bytes = ep.encode_state().expect("encode");
 		let restored: ImmutableEndpoint<DateTimeCoord, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, ep);

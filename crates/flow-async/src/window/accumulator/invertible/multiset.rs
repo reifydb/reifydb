@@ -164,23 +164,23 @@ mod tests {
 	}
 
 	impl WindowAccumulator for MinAccumulator {
-		type Contribution = OrdF64;
+		type Contributions = Vec<OrdF64>;
 		type Output = OrdF64;
 
-		fn add(&mut self, contribution: &OrdF64) {
-			self.values.add(*contribution);
+		fn add(&mut self, contributions: &[OrdF64]) {
+			for contribution in contributions {
+				self.values.add(*contribution);
+			}
 		}
 
-		fn remove(&mut self, contribution: &OrdF64) {
-			self.values.remove(contribution);
+		fn remove(&mut self, contributions: &[OrdF64]) {
+			for contribution in contributions {
+				self.values.remove(contribution);
+			}
 		}
 
 		fn finalize(&self) -> Option<OrdF64> {
 			self.values.min().copied()
-		}
-
-		fn is_empty(&self) -> bool {
-			self.values.is_empty()
 		}
 	}
 

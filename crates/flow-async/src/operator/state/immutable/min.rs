@@ -85,28 +85,28 @@ where
 	V: Ord + Clone + Debug,
 	ImmutableMin<S, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (S, V);
+	type Contributions = Vec<(S, V)>;
 	type Output = V;
 
-	fn add(&mut self, contribution: &(S, V)) {
-		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			self.immutable = Some(match self.immutable.take() {
-				Some(s) => s.min(v),
-				None => v,
-			});
+	fn add(&mut self, contributions: &[(S, V)]) {
+		for contribution in contributions {
+			for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
+				self.immutable = Some(match self.immutable.take() {
+					Some(s) => s.min(v),
+					None => v,
+				});
+			}
 		}
 	}
 
-	fn remove(&mut self, contribution: &(S, V)) {
-		self.base.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(S, V)]) {
+		for contribution in contributions {
+			self.base.remove(&contribution.0);
+		}
 	}
 
 	fn finalize(&self) -> Option<V> {
 		self.min()
-	}
-
-	fn is_empty(&self) -> bool {
-		self.immutable.is_none() && self.base.is_tail_empty()
 	}
 }
 
@@ -124,7 +124,10 @@ mod tests {
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		window::{
-			accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive},
+			accumulator::{
+				CountedAccumulator,
+				testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive},
+			},
 			coord::DateTimeCoord,
 		},
 	};
@@ -132,11 +135,11 @@ mod tests {
 	#[test]
 	fn immutable_min_folds_aged_extreme() {
 		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
-		accumulator.add(&(event_coord_at_millis(0), 2));
-		accumulator.add(&(event_coord_at_millis(5), 9));
-		accumulator.add(&(event_coord_at_millis(12), 7));
+		accumulator.add(&[(event_coord_at_millis(0), 2)]);
+		accumulator.add(&[(event_coord_at_millis(5), 9)]);
+		accumulator.add(&[(event_coord_at_millis(12), 7)]);
 		assert_eq!(accumulator.min(), Some(2));
-		accumulator.remove(&(event_coord_at_millis(5), 9));
+		accumulator.remove(&[(event_coord_at_millis(5), 9)]);
 		assert_eq!(accumulator.min(), Some(2), "immutable min 2 survives removal of a live event");
 	}
 
@@ -148,9 +151,9 @@ mod tests {
 			(event_coord_at_millis(3), 30i64),
 		);
 		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-		accumulator.add(&(event_coord_at_millis(0), 5));
-		accumulator.add(&(event_coord_at_millis(1_000_000), 8));
-		accumulator.remove(&(event_coord_at_millis(0), 5));
+		accumulator.add(&[(event_coord_at_millis(0), 5)]);
+		accumulator.add(&[(event_coord_at_millis(1_000_000), 8)]);
+		accumulator.remove(&[(event_coord_at_millis(0), 5)]);
 		assert_eq!(accumulator.min(), Some(8), "removing the min reveals the next min (no folding)");
 	}
 
@@ -158,9 +161,9 @@ mod tests {
 	fn immutable_min_merge_keeps_the_smaller_value_at_a_shared_coordinate() {
 		// Two branches holding the same slot must never let the incoming value replace a smaller one.
 		let mut accumulator: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-		accumulator.add(&(event_coord_at_millis(0), 1));
+		accumulator.add(&[(event_coord_at_millis(0), 1)]);
 		let mut other: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-		other.add(&(event_coord_at_millis(0), 9));
+		other.add(&[(event_coord_at_millis(0), 9)]);
 
 		accumulator.merge(&other);
 		assert_eq!(
@@ -174,16 +177,18 @@ mod tests {
 	fn immutable_min_default_merge_leaves_nothing_folded() {
 		// merge is the only path that can fold without an immutable span, and an immutable minimum never
 		// retracts.
-		let mut left: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-		left.add(&(event_coord_at_millis(0), 5));
-		let mut right: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
-		right.add(&(event_coord_at_millis(1_000_000), 8));
+		let mut left: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+			CountedAccumulator::new(ImmutableMin::default());
+		left.add(&[(event_coord_at_millis(0), 5)]);
+		let mut right: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+			CountedAccumulator::new(ImmutableMin::default());
+		right.add(&[(event_coord_at_millis(1_000_000), 8)]);
 
 		left.merge(&right);
-		assert_eq!(left.min(), Some(5));
+		assert_eq!(left.inner().min(), Some(5));
 
-		left.remove(&(event_coord_at_millis(0), 5));
-		left.remove(&(event_coord_at_millis(1_000_000), 8));
+		left.remove(&[(event_coord_at_millis(0), 5)]);
+		left.remove(&[(event_coord_at_millis(1_000_000), 8)]);
 		assert!(left.is_empty(), "every merged row stays retractable while nothing folds");
 		assert_eq!(left.finalize(), None);
 	}
@@ -194,12 +199,12 @@ mod tests {
 		let mut immutable: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(1_000));
 		let mut plain: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
 		for (slot, value) in [(0, 5i64), (10, 2), (20, 7)] {
-			immutable.add(&(event_coord_at_millis(slot), value));
-			plain.add(&(event_coord_at_millis(slot), value));
+			immutable.add(&[(event_coord_at_millis(slot), value)]);
+			plain.add(&[(event_coord_at_millis(slot), value)]);
 		}
 
-		immutable.remove(&(event_coord_at_millis(10), 2));
-		plain.remove(&(event_coord_at_millis(10), 2));
+		immutable.remove(&[(event_coord_at_millis(10), 2)]);
+		plain.remove(&[(event_coord_at_millis(10), 2)]);
 		assert_eq!(immutable.min(), plain.min(), "with nothing folded the two arms must agree");
 		assert_eq!(immutable.min(), Some(5));
 	}
@@ -229,9 +234,11 @@ mod tests {
 			Op::Remove((event_coord_at_millis(0), 5)),
 			Op::Remove((event_coord_at_millis(50), 8)),
 		];
-		let mut immutable: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
+		let mut immutable: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+			CountedAccumulator::new(ImmutableMin::immutable(millis(10)));
 		drive(&mut immutable, &ops);
-		let mut plain: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::default();
+		let mut plain: CountedAccumulator<ImmutableMin<DateTimeCoord, i64>> =
+			CountedAccumulator::new(ImmutableMin::default());
 		drive(&mut plain, &ops);
 
 		assert!(plain.is_empty(), "with nothing folded every row stays retractable");
@@ -244,11 +251,11 @@ mod tests {
 		// merge combines two parallel histories, never late arrivals, so the receiver's immutable line must not
 		// swallow the other branch.
 		let mut left: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
-		left.add(&(event_coord_at_millis(0), 5));
+		left.add(&[(event_coord_at_millis(0), 5)]);
 
 		let mut right: ImmutableMin<DateTimeCoord, i64> = ImmutableMin::immutable(millis(10));
-		right.add(&(event_coord_at_millis(50), 7));
-		right.add(&(event_coord_at_millis(70), 9));
+		right.add(&[(event_coord_at_millis(50), 7)]);
+		right.add(&[(event_coord_at_millis(70), 9)]);
 
 		let mut left_first = left.clone();
 		left_first.merge(&right);

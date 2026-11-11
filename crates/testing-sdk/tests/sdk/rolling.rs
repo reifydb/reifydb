@@ -63,23 +63,23 @@ impl WindowSum {
 }
 
 impl WindowAccumulator for WindowSum {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = (f64, u32);
 
-	fn add(&mut self, contribution: &f64) {
-		self.moments.add(*contribution);
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.moments.remove(*contribution);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.remove(*contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<(f64, u32)> {
 		(!self.moments.is_empty()).then(|| (self.moments.sum(), self.panes()))
-	}
-
-	fn is_empty(&self) -> bool {
-		self.moments.is_empty()
 	}
 }
 

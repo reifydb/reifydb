@@ -52,25 +52,25 @@ pub(crate) struct PaneSum {
 }
 
 impl WindowAccumulator for PaneSum {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = f64;
 
-	fn add(&mut self, contribution: &f64) {
-		self.sum += contribution;
-		self.count += 1;
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.sum += contribution;
+			self.count += 1;
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.sum -= contribution;
-		self.count = self.count.saturating_sub(1);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.sum -= contribution;
+			self.count = self.count.saturating_sub(1);
+		}
 	}
 
 	fn finalize(&self) -> Option<f64> {
 		(self.count > 0).then_some(self.sum)
-	}
-
-	fn is_empty(&self) -> bool {
-		self.count == 0
 	}
 }
 

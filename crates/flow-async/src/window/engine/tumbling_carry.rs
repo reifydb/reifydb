@@ -33,7 +33,7 @@ use crate::{
 		state_access::{batch, set},
 	},
 	window::{
-		accumulator::WindowAccumulator,
+		accumulator::{CountedAccumulator, WindowAccumulator},
 		engine::{
 			EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaKey, MetaSweep, WindowResult,
 			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
@@ -213,7 +213,7 @@ where
 	pub fn apply<K, NA, BO, CF>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
+		buckets: TumblingBuckets<G, S, Accumulator::Contributions>,
 		order: &[(G, WindowSpan<S>)],
 		row_key: K,
 		new_accumulator: NA,
@@ -244,10 +244,10 @@ where
 		}
 		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
 		let (keys, slot_of) = self.session_keys(&buckets, &slot_resolved, &meta_loaded, &row_key);
-		let mut windows = batch::<_, Accumulator>(store, &keys)?;
+		let mut windows = batch::<_, CountedAccumulator<Accumulator>>(store, &keys)?;
 
 		let mut earliest_affected: BTreeMap<G, S> = BTreeMap::new();
-		let mut touched: HashMap<usize, Accumulator> = HashMap::new();
+		let mut touched: HashMap<usize, CountedAccumulator<Accumulator>> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			if entry.group.is_none() {
@@ -261,7 +261,8 @@ where
 			}
 			let slot = slot_of[&(group.clone(), span.start)];
 
-			let mut accumulator: Accumulator = windows.value(slot)?.unwrap_or_else(&new_accumulator);
+			let mut accumulator =
+				windows.value(slot)?.unwrap_or_else(|| CountedAccumulator::new(new_accumulator()));
 			let changed = accumulator.apply(&events).touched;
 			if !changed {
 				continue;
@@ -305,14 +306,14 @@ where
 				let slot_group = keys[slot].group;
 				let span = meta.windows.get(&window).expect("window entry present").span;
 				let read;
-				let accumulator: Option<&Accumulator> = match touched.get(&slot) {
+				let accumulator: Option<&CountedAccumulator<Accumulator>> = match touched.get(&slot) {
 					Some(accumulator) => Some(accumulator),
 					None => {
 						read = windows.value(slot)?;
 						read.as_ref()
 					}
 				};
-				let drained = accumulator.is_some_and(WindowAccumulator::is_empty);
+				let drained = accumulator.is_some_and(CountedAccumulator::is_empty);
 				let finalized = accumulator.and_then(|a| a.finalize());
 				let emitted = finalized.as_ref().and_then(|value| {
 					build_output(&group, span, value, prev_carry.as_ref()).map(|out| (value, out))
@@ -449,7 +450,7 @@ where
 
 	fn session_keys<K>(
 		&self,
-		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
+		buckets: &TumblingBuckets<G, S, Accumulator::Contributions>,
 		slot_resolved: &SlotResolved,
 		meta_loaded: &MetaLoaded<G, S, Carry, Output>,
 		row_key: &K,
@@ -499,7 +500,7 @@ where
 
 	fn resolve_survivor_rows<K>(
 		&mut self,
-		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
+		buckets: &TumblingBuckets<G, S, Accumulator::Contributions>,
 		meta_loaded: &MetaLoaded<G, S, Carry, Output>,
 		row_key: &K,
 	) -> Result<SlotResolved>
@@ -557,9 +558,9 @@ mod tests {
 		factory::coord::event_coord_at_millis,
 		operator::state::{seal::coord::Coord, test_utils::test::inner_bytes},
 		window::{
-			accumulator::invertible::retained_map::RetainedAccumulator,
+			accumulator::{AccumulatorOp, invertible::retained_map::RetainedAccumulator, testkit::events},
 			coord::DateTimeCoord,
-			engine::{AccumulatorEvent, config::WindowEngineConfig},
+			engine::config::WindowEngineConfig,
 		},
 	};
 
@@ -811,9 +812,9 @@ mod tests {
 		ws: DateTimeCoord,
 		price: f64,
 	) -> Vec<WindowResult<String, DateTimeCoord, f64>> {
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, (u64, f64)> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
 		let span = WindowSpan::for_coord(ws, millis(WINDOW));
-		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws.to_order(), price))]);
+		buckets.insert((group.to_string(), span), events([(AccumulatorOp::Add, (ws.to_order(), price))]));
 		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
@@ -936,9 +937,9 @@ mod tests {
 		ts: u64,
 		price: f64,
 	) -> Vec<WindowResult<String, DateTimeCoord, f64>> {
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, (u64, f64)> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
 		let span = WindowSpan::for_coord(window_start, millis(WINDOW));
-		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add((ts, price))]);
+		buckets.insert(("BTC".to_string(), span), events([(AccumulatorOp::Add, (ts, price))]));
 		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
 		engine.apply(
 			store,
@@ -1238,10 +1239,10 @@ mod tests {
 
 		let mut engine = Engine::new(carry_config(None));
 		let span = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, (u64, f64)> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
 		buckets.insert(
 			("BTC".to_string(), span),
-			vec![AccumulatorEvent::Remove((event_coord_at_millis(0).to_order(), 5.0))],
+			events([(AccumulatorOp::Remove, (event_coord_at_millis(0).to_order(), 5.0))]),
 		);
 		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
 		let withdrawn: Vec<WindowResult<String, DateTimeCoord, f64>> = engine
@@ -1294,10 +1295,10 @@ mod tests {
 		// G00's window was pushed out of the 8-slot accumulator cache by the later groups, so the
 		// engine must re-read its accumulator from the store to apply this retraction.
 		let span = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, (u64, f64)> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
 		buckets.insert(
 			("G00".to_string(), span),
-			vec![AccumulatorEvent::Remove((event_coord_at_millis(0).to_order(), 1.0))],
+			events([(AccumulatorOp::Remove, (event_coord_at_millis(0).to_order(), 1.0))]),
 		);
 		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = buckets.keys().cloned().collect();
 		let withdrawn: Vec<WindowResult<String, DateTimeCoord, f64>> = engine
@@ -1338,11 +1339,11 @@ mod tests {
 		let mut engine = Engine::new(carry_config(None));
 		let w0 = WindowSpan::for_coord(event_coord_at_millis(0), millis(WINDOW));
 		let w1 = WindowSpan::for_coord(event_coord_at_millis(WINDOW as i64), millis(WINDOW));
-		let mut buckets: TumblingBuckets<String, DateTimeCoord, (u64, f64)> = BTreeMap::new();
+		let mut buckets: TumblingBuckets<String, DateTimeCoord, Vec<(u64, f64)>> = BTreeMap::new();
 		for (group, span, price) in [("A", w0, 1.0), ("B", w0, 2.0), ("A", w1, 3.0), ("B", w1, 4.0)] {
 			buckets.insert(
 				(group.to_string(), span),
-				vec![AccumulatorEvent::Add((span.start.to_order(), price))],
+				events([(AccumulatorOp::Add, (span.start.to_order(), price))]),
 			);
 		}
 		let order: Vec<(String, WindowSpan<DateTimeCoord>)> = vec![

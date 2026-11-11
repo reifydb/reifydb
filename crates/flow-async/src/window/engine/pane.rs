@@ -36,9 +36,11 @@ use crate::{
 		state_access::{get_classified, remove, set},
 	},
 	window::{
-		accumulator::{UnmergeAccumulator, WindowAccumulator},
+		accumulator::{
+			AccumulatorEvents, Contribution, CountedAccumulator, UnmergeAccumulator, WindowAccumulator,
+		},
 		engine::{
-			AccumulatorEvent, EmitKind, PaneKey,
+			EmitKind, PaneKey,
 			config::WindowEngineConfig,
 			daba::{DabaPanes, DabaQueue, Merge},
 			group_hash, note_when_expiry_capped,
@@ -439,8 +441,8 @@ where
 
 pub struct PaneEngine<G, C: Coord, A> {
 	fold: PaneFold,
-	merge: Merge<A>,
-	unmerge: Option<fn(&mut A, &A)>,
+	merge: Merge<CountedAccumulator<A>>,
+	unmerge: Option<fn(&mut CountedAccumulator<A>, &CountedAccumulator<A>)>,
 	spans: PaneSpans<C::Span>,
 	expiry: ExpiryIndex<Expiry>,
 	expire_batch: usize,
@@ -456,13 +458,13 @@ where
 	G: Clone + Ord + Hash + Debug + StateCodec,
 	C: Coord,
 	A: UnmergeAccumulator,
-	RollingPane<A>: OperatorState,
+	RollingPane<CountedAccumulator<A>>: OperatorState,
 	RollingIndexEntry<G>: OperatorState,
 {
 	pub fn running(config: WindowEngineConfig, spans: PaneSpans<C::Span>) -> Self {
 		let mut engine = Self::queue(config, spans, Merge::of());
 		engine.fold = PaneFold::Running;
-		engine.unmerge = Some(unmerge_of::<A>);
+		engine.unmerge = Some(unmerge_of::<CountedAccumulator<A>>);
 		engine
 	}
 }
@@ -472,10 +474,14 @@ where
 	G: Clone + Ord + Hash + Debug + StateCodec,
 	C: Coord,
 	A: WindowAccumulator,
-	RollingPane<A>: OperatorState,
+	RollingPane<CountedAccumulator<A>>: OperatorState,
 	RollingIndexEntry<G>: OperatorState,
 {
-	pub fn queue(config: WindowEngineConfig, spans: PaneSpans<C::Span>, merge: Merge<A>) -> Self {
+	pub fn queue(
+		config: WindowEngineConfig,
+		spans: PaneSpans<C::Span>,
+		merge: Merge<CountedAccumulator<A>>,
+	) -> Self {
 		Self {
 			fold: PaneFold::Queue,
 			merge,
@@ -510,7 +516,7 @@ where
 		self.expiry.earliest(store)
 	}
 
-	pub fn state_keys(&self, groups: &PaneGroups<G, C, A::Contribution>) -> Vec<GroupStateKey> {
+	pub fn state_keys(&self, groups: &PaneGroups<G, C, Contribution<A>>) -> Vec<GroupStateKey> {
 		let mut keys = Vec::new();
 		for (group_id, events) in groups.values() {
 			keys.push((&RollingMetaKey(*group_id)).into_group_state_key());
@@ -526,7 +532,7 @@ where
 	pub fn apply<P>(
 		&mut self,
 		store: &mut dyn StateStore,
-		groups: PaneGroups<G, C, A::Contribution>,
+		groups: PaneGroups<G, C, Contribution<A>>,
 		order: &[G],
 		cutoff: Option<C>,
 		new_accumulator: &dyn Fn() -> A,
@@ -534,7 +540,7 @@ where
 	) -> Result<PaneApplied<P::Emit>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		reifydb_assertions! {
 			let ordered = order.len();
@@ -572,7 +578,10 @@ where
 			let ids: Vec<GroupId> = fresh.iter().map(|(group_id, _)| *group_id).collect();
 			let numbers = store.get_or_create_row_numbers_for_groups(&ids)?;
 			let keys: Vec<RollingMetaKey> = ids.iter().map(|group_id| RollingMetaKey(*group_id)).collect();
-			let rows = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(store, &keys)?;
+			let rows = get_classified::<
+				_,
+				RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>,
+			>(store, &keys)?;
 			let mut numbered = Vec::with_capacity(rows.len());
 			for (((group_id, at), (number, _)), row) in fresh.into_iter().zip(numbers).zip(rows) {
 				let Some(mut row) = row else {
@@ -594,17 +603,17 @@ where
 	pub fn expire<P>(&mut self, store: &mut dyn StateStore, cutoff: C, publisher: &P) -> Result<Vec<P::Emit>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			self.expiry.due(store, cutoff.to_order(), self.expire_batch)?;
 		let mut applied = PaneApplied::default();
 		for (index_key, entry) in due {
 			expiry_drop(store, &index_key)?;
-			let Some(row) = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(
-				store,
-				from_ref(&RollingMetaKey(entry.group_id)),
-			)?
+			let Some(row) = get_classified::<
+				_,
+				RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>,
+			>(store, from_ref(&RollingMetaKey(entry.group_id)))?
 			.remove(0) else {
 				return internal_err!("a rolling expiry row names a group with no group row");
 			};
@@ -633,12 +642,12 @@ where
 	fn move_admission<P>(
 		&self,
 		store: &mut dyn StateStore,
-		groups: &PaneGroups<G, C, A::Contribution>,
+		groups: &PaneGroups<G, C, Contribution<A>>,
 		cutoff: Option<u64>,
 	) -> Result<BTreeMap<u64, bool>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		let mut sides: BTreeMap<u64, (Option<(GroupId, u64)>, Option<(GroupId, u64)>)> = BTreeMap::new();
 		for (group_id, events) in groups.values() {
@@ -662,7 +671,9 @@ where
 			.flat_map(|(leave, join)| leave.iter().chain(join.iter()).map(|(group_id, _)| *group_id))
 			.collect();
 		let keys: Vec<RollingMetaKey> = ids.iter().map(|group_id| RollingMetaKey(*group_id)).collect();
-		let rows = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(store, &keys)?;
+		let rows = get_classified::<_, RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>>(
+			store, &keys,
+		)?;
 		let lines: BTreeMap<GroupId, (Option<PaneLines>, Option<u64>)> = ids
 			.into_iter()
 			.zip(rows)
@@ -689,12 +700,12 @@ where
 	fn resolve_moves<P>(
 		&self,
 		store: &mut dyn StateStore,
-		mut groups: PaneGroups<G, C, A::Contribution>,
+		mut groups: PaneGroups<G, C, Contribution<A>>,
 		cutoff: Option<u64>,
-	) -> Result<PaneGroups<G, C, A::Contribution>>
+	) -> Result<PaneGroups<G, C, Contribution<A>>>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		let admitted = self.move_admission::<P>(store, &groups, cutoff)?;
 		if admitted.is_empty() {
@@ -724,7 +735,7 @@ where
 		store: &mut dyn StateStore,
 		group: &G,
 		group_id: GroupId,
-		events: Vec<PaneEvent<C, A::Contribution>>,
+		events: Vec<PaneEvent<C, Contribution<A>>>,
 		cutoff: Option<u64>,
 		new_accumulator: &dyn Fn() -> A,
 		publisher: &P,
@@ -732,13 +743,14 @@ where
 	) -> Result<()>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
-		let mut stored = get_classified::<_, RollingGroup<A, P::Published, A::Contribution>>(
-			store,
-			from_ref(&RollingMetaKey(group_id)),
-		)?
-		.remove(0);
+		let mut stored =
+			get_classified::<_, RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>>(
+				store,
+				from_ref(&RollingMetaKey(group_id)),
+			)?
+			.remove(0);
 		let lines = stored.as_ref().map(|row| self.lines(C::from_order(row.newest)));
 		let admission = match &stored {
 			Some(row) => self.group_cutoff(row.newest, cutoff),
@@ -746,15 +758,13 @@ where
 		};
 		let mut held = stored.as_mut().map(|row| take(&mut row.held)).unwrap_or_default();
 		let mut held_changed = false;
-		let mut panes: BTreeMap<u64, Vec<AccumulatorEvent<A::Contribution>>> = BTreeMap::new();
+		let mut panes: BTreeMap<u64, AccumulatorEvents<A::Contributions>> = BTreeMap::new();
 		for event in events {
 			match event {
 				PaneEvent::Insert(pane, row_number, contribution) => {
 					let pane = pane.to_order();
 					if PaneLines::admits(lines.as_ref(), admission, pane, false) {
-						panes.entry(pane)
-							.or_default()
-							.push(AccumulatorEvent::Add(contribution));
+						panes.entry(pane).or_default().add(contribution);
 						held_changed |= held.remove(&row_number).is_some();
 					} else {
 						applied.sealed_drops += 1;
@@ -796,14 +806,10 @@ where
 						if let Some((at, value)) = record.held.filter(|(at, _)| {
 							PaneLines::admits(lines.as_ref(), admission, *at, true)
 						}) {
-							panes.entry(at)
-								.or_default()
-								.push(AccumulatorEvent::Remove(value));
+							panes.entry(at).or_default().remove(value);
 						}
 					} else {
-						panes.entry(pane)
-							.or_default()
-							.push(AccumulatorEvent::Remove(contribution));
+						panes.entry(pane).or_default().remove(contribution);
 					}
 				}
 				PaneEvent::Update {
@@ -843,17 +849,12 @@ where
 											true,
 										)
 									}) {
-									panes.entry(at)
-										.or_default()
-										.push(AccumulatorEvent::Remove(value));
+									panes.entry(at).or_default().remove(value);
 								}
 							}
-							None => panes
-								.entry(pre_pane)
-								.or_default()
-								.push(AccumulatorEvent::Remove(pre.1)),
+							None => panes.entry(pre_pane).or_default().remove(pre.1),
 						}
-						panes.entry(post_pane).or_default().push(AccumulatorEvent::Add(post.1));
+						panes.entry(post_pane).or_default().add(post.1);
 					}
 				}
 			}
@@ -880,8 +881,10 @@ where
 		let mut touched = false;
 		for (pane, events) in panes {
 			let before = view.get(pane)?;
-			let mut accumulator =
-				before.as_ref().map(|row| row.pane.clone()).unwrap_or_else(new_accumulator);
+			let mut accumulator = before
+				.as_ref()
+				.map(|row| row.pane.clone())
+				.unwrap_or_else(|| CountedAccumulator::new(new_accumulator()));
 			if !accumulator.apply(&events).touched {
 				continue;
 			}
@@ -933,10 +936,10 @@ where
 	#[allow(clippy::too_many_arguments)]
 	fn settle<P>(
 		&mut self,
-		mut view: Panes<'_, A>,
+		mut view: Panes<'_, CountedAccumulator<A>>,
 		group: &G,
 		group_id: GroupId,
-		mut row: RollingGroup<A, P::Published, A::Contribution>,
+		mut row: RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>,
 		existed: bool,
 		prior_oldest: Option<u64>,
 		cutoff: Option<u64>,
@@ -945,7 +948,7 @@ where
 	) -> Result<()>
 	where
 		P: PanePublisher<G, C, A>,
-		RollingGroup<A, P::Published, A::Contribution>: OperatorState + HeapSize,
+		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
 	{
 		let lines = self.lines(C::from_order(row.newest));
 		let admission = self.group_cutoff(row.newest, cutoff);
@@ -1018,7 +1021,7 @@ where
 			group_id,
 			C::from_order(row.newest),
 			row.published.take(),
-			value.as_ref(),
+			value.as_ref().map(CountedAccumulator::inner),
 			applied,
 		)?;
 		let oldest = match oldest {
@@ -1082,7 +1085,7 @@ mod tests {
 	use crate::{
 		operator::state::mock::MockStore,
 		window::{
-			accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
+			accumulator::{CountedAccumulator, MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
 			coord::DateTimeCoord,
 			engine::{config::WindowEngineConfig, daba::Merge, publish::RowPublisher},
 			meta::NoKey,
@@ -1102,23 +1105,23 @@ mod tests {
 	}
 
 	impl WindowAccumulator for Bag {
-		type Contribution = (u64, i64);
+		type Contributions = Vec<(u64, i64)>;
 		type Output = Vec<(u64, i64)>;
 
-		fn add(&mut self, contribution: &(u64, i64)) {
-			self.rows.insert(contribution.0, contribution.1);
+		fn add(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.rows.insert(contribution.0, contribution.1);
+			}
 		}
 
-		fn remove(&mut self, contribution: &(u64, i64)) {
-			self.rows.remove(&contribution.0);
+		fn remove(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.rows.remove(&contribution.0);
+			}
 		}
 
 		fn finalize(&self) -> Option<Vec<(u64, i64)>> {
 			(!self.rows.is_empty()).then(|| self.rows.iter().map(|(row, value)| (*row, *value)).collect())
-		}
-
-		fn is_empty(&self) -> bool {
-			self.rows.is_empty()
 		}
 	}
 
@@ -1455,29 +1458,29 @@ mod tests {
 	}
 
 	impl WindowAccumulator for Tally {
-		type Contribution = (u64, i64);
+		type Contributions = Vec<(u64, i64)>;
 		type Output = i64;
 
-		fn add(&mut self, contribution: &(u64, i64)) {
-			self.n += 1;
-			self.sum += contribution.1;
-			self.raw.push(contribution.1);
+		fn add(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.n += 1;
+				self.sum += contribution.1;
+				self.raw.push(contribution.1);
+			}
 		}
 
-		fn remove(&mut self, contribution: &(u64, i64)) {
-			self.n -= 1;
-			self.sum -= contribution.1;
-			if let Some(at) = self.raw.iter().position(|value| *value == contribution.1) {
-				self.raw.remove(at);
+		fn remove(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.n -= 1;
+				self.sum -= contribution.1;
+				if let Some(at) = self.raw.iter().position(|value| *value == contribution.1) {
+					self.raw.remove(at);
+				}
 			}
 		}
 
 		fn finalize(&self) -> Option<i64> {
 			(self.n > 0).then_some(self.sum)
-		}
-
-		fn is_empty(&self) -> bool {
-			self.n == 0
 		}
 	}
 
@@ -1536,16 +1539,19 @@ mod tests {
 			let queue_line = engine.lines(ms(pane)).queue.unwrap_or(0);
 			for (key, row) in store.state_page(pane_range(group, Unbounded, Unbounded), None).unwrap() {
 				let stored = pane_of(&key).unwrap();
-				let row = decode::<RollingPane<Tally>>(&row).unwrap();
+				let row = decode::<RollingPane<CountedAccumulator<Tally>>>(&row).unwrap();
 				match &row.partial {
 					Some(partial) => {
 						partials += 1;
 						assert!(
-							row.pane.raw.is_empty() && partial.raw.is_empty(),
+							row.pane.inner().raw.is_empty()
+								&& partial.inner().raw.is_empty(),
 							"pane {stored}: a stored partial sits next to raw samples"
 						);
 					}
-					None if stored <= queue_line && !row.pane.raw.is_empty() => raw_queued += 1,
+					None if stored <= queue_line && !row.pane.inner().raw.is_empty() => {
+						raw_queued += 1
+					}
 					None => {}
 				}
 			}

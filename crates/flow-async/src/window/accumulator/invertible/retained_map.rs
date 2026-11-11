@@ -71,25 +71,25 @@ where
 	V: Clone + Debug + PartialEq,
 	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (K, V);
+	type Contributions = Vec<(K, V)>;
 	type Output = BTreeMap<K, V>;
 
-	fn add(&mut self, contribution: &(K, V)) {
-		self.map.insert(contribution.0.clone(), contribution.1.clone());
+	fn add(&mut self, contributions: &[(K, V)]) {
+		for (key, value) in contributions {
+			self.map.insert(key.clone(), value.clone());
+		}
 	}
 
-	fn remove(&mut self, contribution: &(K, V)) {
-		if self.map.entries().get(&contribution.0) == Some(&contribution.1) {
-			self.map.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(K, V)]) {
+		for (key, value) in contributions {
+			if self.map.entries().get(key) == Some(value) {
+				self.map.remove(key);
+			}
 		}
 	}
 
 	fn finalize(&self) -> Option<BTreeMap<K, V>> {
 		(!self.map.is_empty()).then(|| self.map.entries().clone())
-	}
-
-	fn is_empty(&self) -> bool {
-		self.map.is_empty()
 	}
 }
 
@@ -122,7 +122,10 @@ mod tests {
 	use reifydb_macro::operator_state;
 
 	use super::*;
-	use crate::window::accumulator::testkit::{assert_add_remove_is_inverse, assert_order_independent};
+	use crate::window::accumulator::{
+		CountedAccumulator,
+		testkit::{assert_add_remove_is_inverse, assert_order_independent},
+	};
 
 	#[operator_state]
 	#[derive(Clone, Debug, Default)]
@@ -137,23 +140,23 @@ mod tests {
 	}
 
 	impl WindowAccumulator for LastAccumulator {
-		type Contribution = (u64, i64);
+		type Contributions = Vec<(u64, i64)>;
 		type Output = i64;
 
-		fn add(&mut self, contribution: &(u64, i64)) {
-			self.retained.insert(contribution.0, contribution.1);
+		fn add(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.retained.insert(contribution.0, contribution.1);
+			}
 		}
 
-		fn remove(&mut self, contribution: &(u64, i64)) {
-			self.retained.remove(&contribution.0);
+		fn remove(&mut self, contributions: &[(u64, i64)]) {
+			for contribution in contributions {
+				self.retained.remove(&contribution.0);
+			}
 		}
 
 		fn finalize(&self) -> Option<i64> {
 			self.retained.entries().last_key_value().map(|(_, v)| *v)
-		}
-
-		fn is_empty(&self) -> bool {
-			self.retained.is_empty()
 		}
 	}
 
@@ -169,10 +172,10 @@ mod tests {
 
 	#[test]
 	fn retained_add_over_existing_key_then_remove_deletes() {
-		let mut accumulator = LastAccumulator::default();
-		accumulator.add(&(1u64, 10i64));
-		accumulator.add(&(1u64, 99i64));
-		accumulator.remove(&(1u64, 99i64));
+		let mut accumulator = CountedAccumulator::new(LastAccumulator::default());
+		accumulator.add(&[(1u64, 10i64)]);
+		accumulator.add(&[(1u64, 99i64)]);
+		accumulator.remove(&[(1u64, 99i64)]);
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 	}
@@ -200,11 +203,12 @@ mod tests {
 
 	#[test]
 	fn retained_acc_finalize_returns_whole_map() {
-		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		let mut accumulator: CountedAccumulator<RetainedAccumulator<u64, i64>> =
+			CountedAccumulator::new(RetainedAccumulator::default());
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
-		accumulator.add(&(2, 20));
-		accumulator.add(&(1, 10));
+		accumulator.add(&[(2, 20)]);
+		accumulator.add(&[(1, 10)]);
 		let map = accumulator.finalize().expect("non-empty");
 		assert_eq!(map.len(), 2);
 		assert_eq!(map.get(&1), Some(&10));
@@ -213,10 +217,11 @@ mod tests {
 
 	#[test]
 	fn retained_acc_add_over_existing_key_then_remove_deletes() {
-		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
-		accumulator.add(&(1, 10));
-		accumulator.add(&(1, 99));
-		accumulator.remove(&(1, 99));
+		let mut accumulator: CountedAccumulator<RetainedAccumulator<u64, i64>> =
+			CountedAccumulator::new(RetainedAccumulator::default());
+		accumulator.add(&[(1, 10)]);
+		accumulator.add(&[(1, 99)]);
+		accumulator.remove(&[(1, 99)]);
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 	}
@@ -225,9 +230,9 @@ mod tests {
 	fn retained_acc_remove_of_a_superseded_value_keeps_the_current_one() {
 		// An update fans out as remove(pre) then add(post); a reordered pair must not delete the live value.
 		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
-		accumulator.add(&(1, 10));
-		accumulator.add(&(1, 99));
-		accumulator.remove(&(1, 10));
+		accumulator.add(&[(1, 10)]);
+		accumulator.add(&[(1, 99)]);
+		accumulator.remove(&[(1, 10)]);
 		let map = accumulator.finalize().expect("key 1 survives");
 		assert_eq!(map.get(&1), Some(&99), "removing a superseded value must not delete the key");
 	}
@@ -236,11 +241,11 @@ mod tests {
 	fn a_merge_unions_the_panes_and_the_later_pane_wins_a_shared_key() {
 		// Panes merge oldest first, so a key both hold must keep the later pane's value, never the older one.
 		let mut older: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
-		older.add(&(1, 10));
-		older.add(&(2, 20));
+		older.add(&[(1, 10)]);
+		older.add(&[(2, 20)]);
 		let mut later: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
-		later.add(&(2, 99));
-		later.add(&(3, 30));
+		later.add(&[(2, 99)]);
+		later.add(&[(3, 30)]);
 		older.merge(&later);
 		let map = older.finalize().expect("merged panes hold entries");
 		assert_eq!(map, BTreeMap::from([(1, 10), (2, 99), (3, 30)]));
@@ -249,8 +254,8 @@ mod tests {
 	#[test]
 	fn retained_acc_roundtrip() {
 		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
-		accumulator.add(&(1, 10));
-		accumulator.add(&(2, 20));
+		accumulator.add(&[(1, 10)]);
+		accumulator.add(&[(2, 20)]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: RetainedAccumulator<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);

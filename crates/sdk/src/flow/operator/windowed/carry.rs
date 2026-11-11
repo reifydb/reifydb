@@ -16,9 +16,10 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	window::{
+		accumulator::AccumulatorOp,
 		engine::{
-			AccumulatorEvent, EmitKind, WindowResult, config::TumblingCarryConfig,
-			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
+			EmitKind, WindowResult, config::TumblingCarryConfig, tumbling::TumblingBuckets,
+			tumbling_carry::TumblingCarryEngine,
 		},
 		settings::WindowSettings,
 		span::{WindowSpan, window_row_key},
@@ -42,7 +43,7 @@ use crate::{
 			Routing, all_rows,
 			guest_as_host::GuestAsHost,
 			observe_batch,
-			operator::{CarryEmit, Contribution, Extracted, WindowedOperator, extract_rows},
+			operator::{CarryEmit, Contribution, Contributions, Extracted, WindowedOperator, extract_rows},
 			operator_watermark, timer_frontier, window_engine_config,
 		},
 	},
@@ -56,8 +57,8 @@ type CarryEngine<A> = TumblingCarryEngine<
 	<A as CarryEmit>::Carry,
 	<A as WindowedOperator>::Output,
 >;
-type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
-type Routed<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
+type Buckets<A> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contributions<A>>;
+type Routed<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contributions<A>>;
 type WindowOrder<A> = [(<A as WindowedOperator>::GroupKey, WindowSpan<<A as WindowedOperator>::Coord>)];
 type WindowResults<A> = Vec<
 	WindowResult<
@@ -143,12 +144,12 @@ where
 	fn push_extracted(&self, extracted: Vec<Extracted<A>>, buckets: &mut Routed<A>, is_add: bool) {
 		for (_, coord, group, contribution) in extracted {
 			let span = self.window_span(coord);
-			let event = if is_add {
-				AccumulatorEvent::Add(contribution)
+			let op = if is_add {
+				AccumulatorOp::Add
 			} else {
-				AccumulatorEvent::Remove(contribution)
+				AccumulatorOp::Remove
 			};
-			buckets.push(group, span, event);
+			buckets.push(group, span, op, contribution);
 		}
 	}
 

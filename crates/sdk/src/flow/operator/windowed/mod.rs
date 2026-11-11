@@ -28,9 +28,9 @@ use reifydb_flow_async::{
 	},
 	timer::Timer as FlowTimer,
 	window::{
-		accumulator::WindowAccumulator,
+		accumulator::{AccumulatorEvents, AccumulatorOp, Contributions, WindowAccumulator},
 		engine::{
-			AccumulatorEvent, KeyspaceFamily,
+			KeyspaceFamily,
 			config::WindowEngineConfig,
 			pane::{PaneEvent, PaneGroups},
 			tumbling::TumblingBuckets,
@@ -87,12 +87,12 @@ pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {
 	WindowSpan::for_coord(coord, size).start
 }
 
-pub(crate) struct Routing<G, C, E> {
-	buckets: TumblingBuckets<G, C, E>,
+pub(crate) struct Routing<G, C, X> {
+	buckets: TumblingBuckets<G, C, X>,
 	order: Vec<(G, WindowSpan<C>)>,
 }
 
-impl<G, C, E> Default for Routing<G, C, E> {
+impl<G, C, X> Default for Routing<G, C, X> {
 	fn default() -> Self {
 		Self {
 			buckets: BTreeMap::new(),
@@ -101,17 +101,18 @@ impl<G, C, E> Default for Routing<G, C, E> {
 	}
 }
 
-impl<G, C, E> Routing<G, C, E>
+impl<G, C, X> Routing<G, C, X>
 where
 	G: Clone + Ord,
+	X: Contributions,
 	WindowSpan<C>: Clone + Ord,
 {
-	pub(crate) fn push(&mut self, group: G, span: WindowSpan<C>, event: AccumulatorEvent<E>) {
+	pub(crate) fn push(&mut self, group: G, span: WindowSpan<C>, op: AccumulatorOp, item: X::Item) {
 		match self.buckets.entry((group, span)) {
-			Entry::Occupied(mut slot) => slot.get_mut().push(event),
+			Entry::Occupied(mut slot) => slot.get_mut().push(op, item),
 			Entry::Vacant(slot) => {
 				self.order.push(slot.key().clone());
-				slot.insert(vec![event]);
+				slot.insert(AccumulatorEvents::new()).push(op, item);
 			}
 		}
 	}
@@ -120,7 +121,7 @@ where
 		self.buckets.is_empty()
 	}
 
-	pub(crate) fn finish(self) -> (TumblingBuckets<G, C, E>, Vec<(G, WindowSpan<C>)>) {
+	pub(crate) fn finish(self) -> (TumblingBuckets<G, C, X>, Vec<(G, WindowSpan<C>)>) {
 		(self.buckets, self.order)
 	}
 }

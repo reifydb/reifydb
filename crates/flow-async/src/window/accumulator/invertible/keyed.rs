@@ -7,12 +7,14 @@ use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
-use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
+use crate::window::accumulator::{
+	Contribution, Contributions, CountedAccumulator, MergeAccumulator, WindowAccumulator, one,
+};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyedInvertibleAccumulator<K: Ord, A> {
-	subs: BTreeMap<K, A>,
+	subs: BTreeMap<K, CountedAccumulator<A>>,
 }
 
 impl<K: Ord, A> Default for KeyedInvertibleAccumulator<K, A> {
@@ -24,7 +26,7 @@ impl<K: Ord, A> Default for KeyedInvertibleAccumulator<K, A> {
 }
 
 impl<K: Ord, A> KeyedInvertibleAccumulator<K, A> {
-	pub fn entries(&self) -> &BTreeMap<K, A> {
+	pub fn entries(&self) -> &BTreeMap<K, CountedAccumulator<A>> {
 		&self.subs
 	}
 }
@@ -33,20 +35,27 @@ impl<K, A> WindowAccumulator for KeyedInvertibleAccumulator<K, A>
 where
 	K: Ord + Clone + Debug,
 	A: WindowAccumulator,
+	CountedAccumulator<A>: WindowAccumulator<Contributions = A::Contributions, Output = A::Output>,
 	KeyedInvertibleAccumulator<K, A>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (K, A::Contribution);
+	type Contributions = Vec<(K, Contribution<A>)>;
 	type Output = BTreeMap<K, A::Output>;
 
-	fn add(&mut self, contribution: &(K, A::Contribution)) {
-		self.subs.entry(contribution.0.clone()).or_default().add(&contribution.1);
+	fn add(&mut self, contributions: &[(K, Contribution<A>)]) {
+		for (key, contribution) in contributions {
+			let single = one::<A::Contributions>(contribution.clone());
+			self.subs.entry(key.clone()).or_default().add(single.slice());
+		}
 	}
 
-	fn remove(&mut self, contribution: &(K, A::Contribution)) {
-		if let Some(sub) = self.subs.get_mut(&contribution.0) {
-			sub.remove(&contribution.1);
-			if sub.is_empty() {
-				self.subs.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(K, Contribution<A>)]) {
+		for (key, contribution) in contributions {
+			if let Some(sub) = self.subs.get_mut(key) {
+				let single = one::<A::Contributions>(contribution.clone());
+				sub.remove(single.slice());
+				if sub.is_empty() {
+					self.subs.remove(key);
+				}
 			}
 		}
 	}
@@ -59,16 +68,13 @@ where
 			self.subs.iter().filter_map(|(k, s)| s.finalize().map(|v| (k.clone(), v))).collect();
 		(!out.is_empty()).then_some(out)
 	}
-
-	fn is_empty(&self) -> bool {
-		self.subs.is_empty()
-	}
 }
 
 impl<K, A> MergeAccumulator for KeyedInvertibleAccumulator<K, A>
 where
 	K: Ord + Clone + Debug,
 	A: MergeAccumulator,
+	CountedAccumulator<A>: MergeAccumulator<Contributions = A::Contributions, Output = A::Output>,
 	KeyedInvertibleAccumulator<K, A>: OperatorState + StateCodec + HeapSize,
 {
 	fn merge(&mut self, other: &Self) {
@@ -103,19 +109,20 @@ mod tests {
 
 	#[test]
 	fn keyed_invertible_routes_per_key_and_drops_empty_keys() {
-		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		let mut accumulator: CountedAccumulator<KeyedInvertibleAccumulator<u64, Moments>> =
+			CountedAccumulator::new(KeyedInvertibleAccumulator::default());
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
 
-		accumulator.add(&(1, 10.0));
-		accumulator.add(&(1, 20.0));
-		accumulator.add(&(2, 5.0));
+		accumulator.add(&[(1, 10.0)]);
+		accumulator.add(&[(1, 20.0)]);
+		accumulator.add(&[(2, 5.0)]);
 		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.len(), 2);
 		assert_eq!(out.get(&1).map(|m| m.sum()), Some(30.0));
 		assert_eq!(out.get(&2).map(|m| m.sum()), Some(5.0));
 
-		accumulator.remove(&(2, 5.0));
+		accumulator.remove(&[(2, 5.0)]);
 		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.len(), 1, "key 2 drained to empty and was dropped");
 		assert!(!out.contains_key(&2));
@@ -134,9 +141,9 @@ mod tests {
 		// Routing swallows what the leaf accumulator would have caught, so a mis-keyed retraction leaves no
 		// trace.
 		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		accumulator.add(&(1, 10.0));
+		accumulator.add(&[(1, 10.0)]);
 
-		accumulator.remove(&(2, 10.0));
+		accumulator.remove(&[(2, 10.0)]);
 
 		assert_eq!(accumulator.entries().len(), 1, "the unknown key must never materialise");
 		let out = accumulator.finalize().expect("non-empty");
@@ -147,14 +154,14 @@ mod tests {
 	fn keyed_merge_combines_overlapping_keys_and_keeps_disjoint_ones() {
 		// A rolling top-k window folds pane accumulators, so a trader seen in two panes must be summed.
 		let mut older: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		older.add(&(1, 10.0));
-		older.add(&(2, 5.0));
+		older.add(&[(1, 10.0)]);
+		older.add(&[(2, 5.0)]);
 		let mut newer: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		newer.add(&(2, 7.0));
-		newer.add(&(3, 1.0));
+		newer.add(&[(2, 7.0)]);
+		newer.add(&[(3, 1.0)]);
 		let mut whole: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		for c in [(1, 10.0), (2, 5.0), (2, 7.0), (3, 1.0)] {
-			whole.add(&c);
+			whole.add(&[c]);
 		}
 
 		older.merge(&newer);
@@ -170,7 +177,7 @@ mod tests {
 	#[test]
 	fn keyed_merge_with_an_empty_side_is_the_identity() {
 		let mut filled: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		filled.add(&(1, 10.0));
+		filled.add(&[(1, 10.0)]);
 		let before = filled.clone();
 
 		filled.merge(&KeyedInvertibleAccumulator::default());
@@ -185,12 +192,12 @@ mod tests {
 	fn keyed_merge_then_remove_drops_a_key_that_drains() {
 		// Eviction retracts contributions from the folded window; a key merged in must drain and vanish.
 		let mut folded: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		folded.add(&(1, 10.0));
+		folded.add(&[(1, 10.0)]);
 		let mut pane: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		pane.add(&(2, 4.0));
+		pane.add(&[(2, 4.0)]);
 		folded.merge(&pane);
 
-		folded.remove(&(2, 4.0));
+		folded.remove(&[(2, 4.0)]);
 
 		assert_eq!(folded.entries().len(), 1, "key 2 drained to empty and was dropped");
 		assert!(folded.entries().get(&2).is_none());
@@ -199,8 +206,8 @@ mod tests {
 	#[test]
 	fn keyed_invertible_roundtrip() {
 		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
-		accumulator.add(&(1, 10.0));
-		accumulator.add(&(2, 20.0));
+		accumulator.add(&[(1, 10.0)]);
+		accumulator.add(&[(2, 20.0)]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: KeyedInvertibleAccumulator<u64, Moments> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);

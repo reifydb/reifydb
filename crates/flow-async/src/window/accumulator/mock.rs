@@ -20,16 +20,20 @@ impl HeapSize for SumAccumulator {
 }
 
 impl WindowAccumulator for SumAccumulator {
-	type Contribution = i64;
+	type Contributions = Vec<i64>;
 	type Output = i64;
 
-	fn add(&mut self, contribution: &i64) {
-		self.sum += *contribution;
-		self.count += 1;
+	fn add(&mut self, contributions: &[i64]) {
+		for contribution in contributions {
+			self.sum += *contribution;
+			self.count += 1;
+		}
 	}
-	fn remove(&mut self, contribution: &i64) {
-		self.sum -= *contribution;
-		self.count = self.count.saturating_sub(1);
+	fn remove(&mut self, contributions: &[i64]) {
+		for contribution in contributions {
+			self.sum -= *contribution;
+			self.count = self.count.saturating_sub(1);
+		}
 	}
 	fn finalize(&self) -> Option<i64> {
 		if self.count == 0 {
@@ -37,9 +41,6 @@ impl WindowAccumulator for SumAccumulator {
 		} else {
 			Some(self.sum)
 		}
-	}
-	fn is_empty(&self) -> bool {
-		self.count == 0
 	}
 }
 

@@ -25,11 +25,12 @@ use reifydb_flow_async::{
 	},
 	window::{
 		accumulator::{
-			MergeAccumulator, WindowAccumulator,
+			Contribution, Contributions, MergeAccumulator, WindowAccumulator,
 			invertible::{
 				keyed::KeyedInvertibleAccumulator, moments::Moments, multiset::Multiset,
 				ordf64::OrdF64, retained_map::RetainedAccumulator,
 			},
+			one,
 		},
 		coord::DateTimeCoord,
 		settings::WindowSettings,
@@ -106,26 +107,27 @@ pub fn maybe_none_f64(lo: f64, hi: f64) -> ColumnSampler {
 }
 
 /// The probe's identity must be absent from `initial`, or the round-trip proves nothing.
-pub fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[A::Contribution], probe: A::Contribution) {
+pub fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[Contribution<A>], probe: Contribution<A>) {
 	let mut accumulator = A::default();
 	for c in initial {
-		accumulator.add(c);
+		accumulator.add(one::<A::Contributions>(c.clone()).slice());
 	}
 	let before = accumulator.finalize();
-	accumulator.add(&probe);
-	accumulator.remove(&probe);
+	let probe = one::<A::Contributions>(probe);
+	accumulator.add(probe.slice());
+	accumulator.remove(probe.slice());
 	assert_eq!(accumulator.finalize(), before, "add then remove must restore finalize()");
 }
 
 /// Only valid for commutative families: the multiset, not the order, decides `finalize()`.
-pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contribution]) {
+pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[Contribution<A>]) {
 	let mut forward = A::default();
 	for c in contributions {
-		forward.add(c);
+		forward.add(one::<A::Contributions>(c.clone()).slice());
 	}
 	let mut backward = A::default();
 	for c in contributions.iter().rev() {
-		backward.add(c);
+		backward.add(one::<A::Contributions>(c.clone()).slice());
 	}
 	assert_eq!(forward.finalize(), backward.finalize(), "finalize() must be order-independent");
 }
@@ -137,23 +139,23 @@ pub struct VolumeAccumulator {
 }
 
 impl WindowAccumulator for VolumeAccumulator {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = OrdF64;
 
-	fn add(&mut self, contribution: &f64) {
-		self.moments.add(*contribution);
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.moments.remove(*contribution);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.remove(*contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<OrdF64> {
 		(!self.moments.is_empty()).then(|| OrdF64::new(self.moments.sum()).expect("finite"))
-	}
-
-	fn is_empty(&self) -> bool {
-		self.moments.is_empty()
 	}
 }
 
@@ -253,23 +255,23 @@ pub struct MinAccumulator {
 }
 
 impl WindowAccumulator for MinAccumulator {
-	type Contribution = OrdF64;
+	type Contributions = Vec<OrdF64>;
 	type Output = OrdF64;
 
-	fn add(&mut self, contribution: &OrdF64) {
-		self.values.add(*contribution);
+	fn add(&mut self, contributions: &[OrdF64]) {
+		for contribution in contributions {
+			self.values.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &OrdF64) {
-		self.values.remove(contribution);
+	fn remove(&mut self, contributions: &[OrdF64]) {
+		for contribution in contributions {
+			self.values.remove(contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<OrdF64> {
 		self.values.min().copied()
-	}
-
-	fn is_empty(&self) -> bool {
-		self.values.is_empty()
 	}
 }
 
@@ -394,19 +396,19 @@ pub struct OhlcvValue {
 }
 
 impl WindowAccumulator for OhlcvAcc {
-	type Contribution = (DateTimeCoord, OrdF64);
+	type Contributions = Vec<(DateTimeCoord, OrdF64)>;
 	type Output = OhlcvValue;
 
-	fn add(&mut self, contribution: &(DateTimeCoord, OrdF64)) {
-		self.high.add(contribution);
-		self.low.add(contribution);
-		self.ends.add(contribution);
+	fn add(&mut self, contributions: &[(DateTimeCoord, OrdF64)]) {
+		self.high.add(contributions);
+		self.low.add(contributions);
+		self.ends.add(contributions);
 	}
 
-	fn remove(&mut self, contribution: &(DateTimeCoord, OrdF64)) {
-		self.high.remove(contribution);
-		self.low.remove(contribution);
-		self.ends.remove(contribution);
+	fn remove(&mut self, contributions: &[(DateTimeCoord, OrdF64)]) {
+		self.high.remove(contributions);
+		self.low.remove(contributions);
+		self.ends.remove(contributions);
 	}
 
 	fn finalize(&self) -> Option<OhlcvValue> {
@@ -419,10 +421,6 @@ impl WindowAccumulator for OhlcvAcc {
 			low,
 			close,
 		})
-	}
-
-	fn is_empty(&self) -> bool {
-		self.ends.is_empty()
 	}
 }
 
@@ -555,23 +553,23 @@ impl WindowSum {
 }
 
 impl WindowAccumulator for WindowSum {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = (f64, u32);
 
-	fn add(&mut self, contribution: &f64) {
-		self.moments.add(*contribution);
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.moments.remove(*contribution);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.remove(*contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<(f64, u32)> {
 		(!self.moments.is_empty()).then(|| (self.moments.sum(), self.panes()))
-	}
-
-	fn is_empty(&self) -> bool {
-		self.moments.is_empty()
 	}
 }
 

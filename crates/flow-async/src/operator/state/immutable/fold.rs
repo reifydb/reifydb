@@ -110,18 +110,22 @@ where
 	F: ImmutableFoldStep,
 	ImmutableFold<S, F>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (S, F::Value);
+	type Contributions = Vec<(S, F::Value)>;
 	type Output = F::Output;
 
-	fn add(&mut self, contribution: &(S, F::Value)) {
-		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			F::fold(&self.params, &mut self.immutable, self.last_immutable.as_ref(), &v);
-			self.last_immutable = Some(v);
+	fn add(&mut self, contributions: &[(S, F::Value)]) {
+		for contribution in contributions {
+			for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
+				F::fold(&self.params, &mut self.immutable, self.last_immutable.as_ref(), &v);
+				self.last_immutable = Some(v);
+			}
 		}
 	}
 
-	fn remove(&mut self, contribution: &(S, F::Value)) {
-		self.base.remove(&contribution.0);
+	fn remove(&mut self, contributions: &[(S, F::Value)]) {
+		for contribution in contributions {
+			self.base.remove(&contribution.0);
+		}
 	}
 
 	fn finalize(&self) -> Option<F::Output> {
@@ -132,10 +136,6 @@ where
 			prev = Some(v.clone());
 		}
 		F::output(&self.params, &state)
-	}
-
-	fn is_empty(&self) -> bool {
-		self.last_immutable.is_none() && self.base.is_tail_empty()
 	}
 }
 
@@ -225,9 +225,9 @@ mod tests {
 	#[test]
 	fn immutable_fold_no_seal_sums_all_adjacent_steps() {
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::default();
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 
 		assert_eq!(accumulator.finalize(), Some(15.0));
 	}
@@ -235,23 +235,23 @@ mod tests {
 	#[test]
 	fn immutable_fold_seals_aged_prefix_exactly_for_forward_data() {
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 		assert_eq!(accumulator.finalize(), Some(15.0), "immutable prefix preserves the full path exactly");
 	}
 
 	#[test]
 	fn immutable_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 
-		accumulator.remove(&(event_coord_at_millis(0), 10.0));
+		accumulator.remove(&[(event_coord_at_millis(0), 10.0)]);
 		assert_eq!(accumulator.finalize(), Some(15.0), "aged removal does not disturb the immutable path");
 
-		accumulator.remove(&(event_coord_at_millis(2), 15.0));
+		accumulator.remove(&[(event_coord_at_millis(2), 15.0)]);
 		assert_eq!(accumulator.finalize(), Some(10.0), "live removal recomputes the path");
 	}
 
@@ -259,12 +259,12 @@ mod tests {
 	fn immutable_fold_is_independent_of_arrival_order() {
 		// A row landing behind the high water must still fold, otherwise the answer depends on arrival order.
 		let mut forward: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
-		forward.add(&(event_coord_at_millis(0), 10.0));
-		forward.add(&(event_coord_at_millis(2), 15.0));
+		forward.add(&[(event_coord_at_millis(0), 10.0)]);
+		forward.add(&[(event_coord_at_millis(2), 15.0)]);
 
 		let mut reversed: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
-		reversed.add(&(event_coord_at_millis(2), 15.0));
-		reversed.add(&(event_coord_at_millis(0), 10.0));
+		reversed.add(&[(event_coord_at_millis(2), 15.0)]);
+		reversed.add(&[(event_coord_at_millis(0), 10.0)]);
 
 		assert_eq!(forward.immutable_count(), 1, "a plain arm makes this comparison vacuous");
 		assert_eq!(reversed.immutable_count(), forward.immutable_count());
@@ -277,12 +277,12 @@ mod tests {
 	fn immutable_fold_unsealed_is_independent_of_arrival_order() {
 		// Nothing folds, so no distance behind the high water may keep a row out of the fold.
 		let mut forward: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::maybe_immutable(None, ());
-		forward.add(&(event_coord_at_millis(0), 10.0));
-		forward.add(&(event_coord_at_millis(1_000_000), 15.0));
+		forward.add(&[(event_coord_at_millis(0), 10.0)]);
+		forward.add(&[(event_coord_at_millis(1_000_000), 15.0)]);
 
 		let mut reversed: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::maybe_immutable(None, ());
-		reversed.add(&(event_coord_at_millis(1_000_000), 15.0));
-		reversed.add(&(event_coord_at_millis(0), 10.0));
+		reversed.add(&[(event_coord_at_millis(1_000_000), 15.0)]);
+		reversed.add(&[(event_coord_at_millis(0), 10.0)]);
 
 		assert_eq!(forward.immutable_count(), 0, "an immutable span here would make this an immutable test");
 		assert_eq!(reversed.immutable_count(), 0);
@@ -295,11 +295,11 @@ mod tests {
 	fn immutable_fold_does_not_fold_a_corrected_coordinate_twice() {
 		// A repeat of an already immutable slot is a correction to that row, never a second contribution.
 		let mut accumulator: ImmutableFold<DateTimeCoord, SumFold> = ImmutableFold::new(millis(1), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(2), 20.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 20.0)]);
 		assert_eq!(accumulator.finalize(), Some(30.0));
 
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
 		assert_eq!(
 			accumulator.finalize(),
 			Some(30.0),
@@ -358,9 +358,9 @@ mod tests {
 	#[test]
 	fn immutable_fold_roundtrip() {
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: ImmutableFold<DateTimeCoord, AbsPathFold> = decode(&bytes).expect("decode");
 		assert_eq!(restored.finalize(), accumulator.finalize());
@@ -370,9 +370,9 @@ mod tests {
 	fn immutable_fold_params_drive_both_the_sealed_prefix_and_the_live_tail() {
 		// Params must reach the aged step folded at add and the tail steps replayed at finalize.
 		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> = ImmutableFold::new(millis(1), 2.0);
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 
 		assert_eq!(accumulator.finalize(), Some(30.0));
 	}
@@ -381,9 +381,9 @@ mod tests {
 	fn immutable_fold_params_survive_the_state_roundtrip() {
 		// Params are per-window state; a decode that defaulted them would finalize to 0.0.
 		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> = ImmutableFold::new(millis(1), 2.0);
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 		let bytes = accumulator.encode_state().expect("encode");
 		let restored: ImmutableFold<DateTimeCoord, ScaledPathFold> = decode(&bytes).expect("decode");
 
@@ -395,11 +395,11 @@ mod tests {
 	fn immutable_fold_len_counts_distinct_keys_across_the_seal_boundary() {
 		// Folding moves a key from the tail into the immutable count, so the total must not move.
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(1), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(1), 20.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(1), 20.0)]);
 		assert_eq!(accumulator.len(), 2);
 
-		accumulator.add(&(event_coord_at_millis(2), 15.0));
+		accumulator.add(&[(event_coord_at_millis(2), 15.0)]);
 		assert_eq!(accumulator.len(), 3, "the aged key is still one observation once folded");
 	}
 
@@ -407,12 +407,12 @@ mod tests {
 	fn immutable_fold_len_collapses_a_repeated_key_and_drops_on_live_removal() {
 		// A repeated slot is one corrected observation, never two.
 		let mut accumulator: ImmutableFold<DateTimeCoord, AbsPathFold> = ImmutableFold::new(millis(10), ());
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(0), 25.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(0), 25.0)]);
 		assert_eq!(accumulator.len(), 1);
 
-		accumulator.add(&(event_coord_at_millis(1), 30.0));
-		accumulator.remove(&(event_coord_at_millis(1), 30.0));
+		accumulator.add(&[(event_coord_at_millis(1), 30.0)]);
+		accumulator.remove(&[(event_coord_at_millis(1), 30.0)]);
 		assert_eq!(accumulator.len(), 1, "removing a live key drops it from the count");
 	}
 
@@ -421,11 +421,11 @@ mod tests {
 		// Without an immutable bound nothing folds, so a live removal must still be exact.
 		let mut accumulator: ImmutableFold<DateTimeCoord, ScaledPathFold> =
 			ImmutableFold::maybe_immutable(None, 3.0);
-		accumulator.add(&(event_coord_at_millis(0), 10.0));
-		accumulator.add(&(event_coord_at_millis(100), 20.0));
+		accumulator.add(&[(event_coord_at_millis(0), 10.0)]);
+		accumulator.add(&[(event_coord_at_millis(100), 20.0)]);
 		assert_eq!(accumulator.finalize(), Some(30.0));
 
-		accumulator.remove(&(event_coord_at_millis(0), 10.0));
+		accumulator.remove(&[(event_coord_at_millis(0), 10.0)]);
 		assert_eq!(accumulator.finalize(), Some(0.0));
 	}
 }

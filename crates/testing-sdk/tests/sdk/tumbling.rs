@@ -91,23 +91,23 @@ struct VolumeAccumulator {
 }
 
 impl WindowAccumulator for VolumeAccumulator {
-	type Contribution = f64;
+	type Contributions = Vec<f64>;
 	type Output = OrdF64;
 
-	fn add(&mut self, contribution: &f64) {
-		self.moments.add(*contribution);
+	fn add(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &f64) {
-		self.moments.remove(*contribution);
+	fn remove(&mut self, contributions: &[f64]) {
+		for contribution in contributions {
+			self.moments.remove(*contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<OrdF64> {
 		(!self.moments.is_empty()).then(|| OrdF64::new(self.moments.sum()).expect("finite"))
-	}
-
-	fn is_empty(&self) -> bool {
-		self.moments.is_empty()
 	}
 }
 
@@ -275,23 +275,23 @@ struct MinAccumulator {
 }
 
 impl WindowAccumulator for MinAccumulator {
-	type Contribution = OrdF64;
+	type Contributions = Vec<OrdF64>;
 	type Output = OrdF64;
 
-	fn add(&mut self, contribution: &OrdF64) {
-		self.values.add(*contribution);
+	fn add(&mut self, contributions: &[OrdF64]) {
+		for contribution in contributions {
+			self.values.add(*contribution);
+		}
 	}
 
-	fn remove(&mut self, contribution: &OrdF64) {
-		self.values.remove(contribution);
+	fn remove(&mut self, contributions: &[OrdF64]) {
+		for contribution in contributions {
+			self.values.remove(contribution);
+		}
 	}
 
 	fn finalize(&self) -> Option<OrdF64> {
 		self.values.min().copied()
-	}
-
-	fn is_empty(&self) -> bool {
-		self.values.is_empty()
 	}
 }
 
