@@ -24,6 +24,8 @@ use reifydb_core::{
 	interface::change::{Change, Diffs},
 	internal_err,
 };
+#[cfg(feature = "runtime")]
+use reifydb_value::value::system_columns::system_column;
 use reifydb_value::{
 	Result,
 	value::{
@@ -33,8 +35,6 @@ use reifydb_value::{
 		system_columns::{SystemColumn, column_view, with_system_column},
 	},
 };
-#[cfg(feature = "runtime")]
-use reifydb_value::value::system_columns::system_column;
 #[cfg(feature = "runtime")]
 use reifydb_value::{
 	error::Error,
