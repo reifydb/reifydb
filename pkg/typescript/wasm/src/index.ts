@@ -102,6 +102,10 @@ export class WasmDB {
     }
   }
 
+  advanceClock(millis: number): void {
+    this.db.advanceClock(millis);
+  }
+
   free(): void {
     this.db.free();
   }
@@ -124,7 +128,21 @@ export class WasmDB {
  * ```
  */
 export async function createWasmDb(): Promise<WasmDB> {
+  const mod = await loadModule();
+  return new WasmDB(new mod.WasmDB());
+}
+
+export interface TestingOptions {
+  seed: number | bigint;
+}
+
+export async function createTestingWasmDb(options: TestingOptions): Promise<WasmDB> {
+  const mod = await loadModule();
+  return new WasmDB(mod.WasmDB.testing(options));
+}
+
+async function loadModule() {
   const mod = await import('../wasm/reifydb_webassembly.js');
   await mod.default({ module_or_path: await wasmBytes() });
-  return new WasmDB(new mod.WasmDB());
+  return mod;
 }

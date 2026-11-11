@@ -12,6 +12,7 @@ use std::{
 	thread,
 };
 
+use js_sys::Reflect;
 use reifydb_auth::{
 	AuthVersion,
 	registry::AuthenticationRegistry,
@@ -47,7 +48,10 @@ use reifydb_rql::RqlVersion;
 use reifydb_rql_frontend::RqlFrontendVersion;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
-	context::{clock::Clock, spawner::Spawner},
+	context::{
+		clock::{Clock, MockClock},
+		spawner::Spawner,
+	},
 	pool::PoolConfig,
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
@@ -183,6 +187,25 @@ impl WasmSession {
 	}
 }
 
+const TESTING_SEED_ERROR: &str =
+	"testing options need seed as a whole number from 0 to 2^53-1, or a bigint from 0 to 2^64-1";
+
+fn testing_seed(options: &JsValue) -> Result<u64, JsValue> {
+	let seed = Reflect::get(options, &JsValue::from_str("seed"))?;
+	if seed.is_bigint() {
+		return u64::try_from(seed).map_err(|_| JsValue::from_str(TESTING_SEED_ERROR));
+	}
+	seed.as_f64().and_then(whole_number).ok_or_else(|| JsValue::from_str(TESTING_SEED_ERROR))
+}
+
+const ADVANCE_CLOCK_MILLIS_ERROR: &str = "advance clock needs millis as a whole number from 0 to 2^53-1";
+
+const ADVANCE_CLOCK_REAL_ERROR: &str = "advance clock needs a testing database, this one runs on the real clock";
+
+fn whole_number(value: f64) -> Option<u64> {
+	(value.fract() == 0.0 && (0.0..=9_007_199_254_740_991.0).contains(&value)).then_some(value as u64)
+}
+
 #[wasm_bindgen]
 pub struct WasmDB {
 	inner: StandardEngine,
@@ -196,11 +219,35 @@ pub struct WasmDB {
 impl WasmDB {
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Result<WasmDB, JsValue> {
+		Self::build(RuntimeConfig::default())
+	}
+
+	pub fn testing(options: &JsValue) -> Result<WasmDB, JsValue> {
+		Self::build(
+			RuntimeConfig::default()
+				.seeded(testing_seed(options)?)
+				.clock(Clock::Mock(MockClock::from_millis(0))),
+		)
+	}
+
+	#[wasm_bindgen(js_name = advanceClock)]
+	pub fn advance_clock(&self, millis: f64) -> Result<(), JsValue> {
+		let millis = whole_number(millis).ok_or_else(|| JsValue::from_str(ADVANCE_CLOCK_MILLIS_ERROR))?;
+		match self._runtime.clock() {
+			Clock::Mock(mock) => {
+				mock.advance_millis(millis);
+				Ok(())
+			}
+			Clock::Real => Err(JsValue::from_str(ADVANCE_CLOCK_REAL_ERROR)),
+		}
+	}
+
+	fn build(config: RuntimeConfig) -> Result<WasmDB, JsValue> {
 		#[cfg(feature = "console_error_panic_hook")]
 		set_panic_hook();
 
 		let runtime = Runtime::from_config(
-			RuntimeConfig::default().seeded(0).clock(Clock::Real),
+			config,
 			PoolConfig {
 				coordination_threads: 1,
 				flow_threads: 1,
@@ -227,7 +274,7 @@ impl WasmDB {
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			spawner: spawner.clone(),
-			clock: Clock::Real,
+			clock: clock.clone(),
 		});
 		let single_store = SingleStore::testing_memory();
 		let operator_store = OperatorStore::testing_memory();
