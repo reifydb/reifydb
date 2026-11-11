@@ -3,6 +3,7 @@
 
 pub mod carry;
 pub mod guest_as_host;
+pub mod hooks;
 pub mod operator;
 pub mod plain;
 pub mod publish;

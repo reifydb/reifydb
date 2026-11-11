@@ -22,17 +22,18 @@ use tracing::{Span, instrument};
 
 use super::{
 	bind::SlidingBound,
+	hooks::BuiltinHooks,
 	operator::{WindowOperator, required_row_numbers},
+	rows::BuiltinRows,
 };
 use crate::{
 	operator::{
 		aggregation::{
-			accumulator::{RowAccumulator, WindowSlotKey},
+			accumulator::{RowAccumulator, SlotContributions, WindowSlotKey},
 			core::{BatchGroups, SlotRow},
 			engine::{
 				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, Stamp, WindowGroups,
-				distinct_row_runs, finish_tumbling_engine, group_of, intern_window_groups,
-				route_into_buckets, slot_coord,
+				distinct_row_runs, finish_tumbling_engine, group_of, intern_window_groups, slot_coord,
 			},
 		},
 		host::HostContext,
@@ -52,6 +53,10 @@ use crate::{
 	window::{
 		accumulator::AccumulatorOp,
 		coord::DateTimeCoord,
+		driver::{
+			route::{Routed as DriverRouted, route_tumbling},
+			tumbling::finish_tumbling,
+		},
 		engine::{ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
@@ -62,27 +67,6 @@ use crate::{
 		span::WindowSpan,
 	},
 };
-
-#[instrument(name = "flow::operator::window::route", level = "trace", skip_all, fields(rows = columns.num_rows()))]
-fn route_engine_columns(
-	operator: &WindowOperator,
-	columns: &RecordBatch,
-	is_add: bool,
-	window_size: Duration,
-	routing: &mut Routing,
-) -> Result<()> {
-	let timestamps = operator.row_times(columns, columns.num_rows())?;
-	route_into_buckets(
-		&operator.core,
-		columns,
-		is_add,
-		|row_idx| {
-			let event_coord = DateTimeCoord(timestamps[row_idx]);
-			(WindowSpan::for_coord(event_coord, window_size), event_coord)
-		},
-		routing,
-	)
-}
 
 fn push_count_event(
 	routing: &mut Routing,
@@ -146,70 +130,31 @@ pub fn apply_tumbling_engine(
 ) -> Result<Change> {
 	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-
-	let mut routing = Routing::default();
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => route_engine_columns(operator, post, true, window_size, &mut routing)?,
-			Diff::Remove {
-				pre,
-				..
-			} => route_engine_columns(operator, pre, false, window_size, &mut routing)?,
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				for (pre, post) in distinct_row_runs(pre, post)? {
-					route_engine_columns(operator, &pre, false, window_size, &mut routing)?;
-					route_engine_columns(operator, &post, true, window_size, &mut routing)?;
-				}
-			}
-		}
-	}
-	let Routed {
-		mut buckets,
-		group_values,
-		mut arrival,
-		window_max_coord,
-	} = routing.finish();
+	let mut rows = BuiltinRows::new(operator, &change);
+	let mut routed: DriverRouted<Hash128, DateTimeCoord, SlotContributions> =
+		route_tumbling(&mut rows, window_size)?;
+	let group_values = rows.into_group_values();
 	drop_sealed_events(
 		operator,
 		host,
-		&mut buckets,
-		&mut arrival,
-		&window_max_coord,
+		&mut routed.buckets,
+		&mut routed.arrival,
+		&routed.window_max_coord,
 		rule,
 		ExpiryAnchor::WindowStart,
 	)?;
 
-	let groups = intern_batch(&arrival);
-
 	let engine_config = operator.engine_config();
-	let engine_immutable = operator.immutable();
-	let expiry_anchor = ExpiryAnchor::WindowStart;
+	let immutable = operator.immutable();
 	let armed_before = engine_earliest_expiry(operator, host)?;
-	let diffs = finish_tumbling_engine(
-		&mut operator.core,
-		host,
-		&change,
-		buckets,
-		&group_values,
-		arrival,
-		window_max_coord,
-		&groups,
-		&kinds,
-		engine_config,
-		engine_immutable,
-		expiry_anchor,
-		false,
-		Stamp::SpanStart,
-	)?;
+	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
+	});
+	let mut hooks = BuiltinHooks::new(&mut operator.core, &kinds, immutable, group_values, change.changed_at);
+	let diffs = finish_tumbling(&mut engine, host, routed, &mut hooks, ExpiryAnchor::WindowStart)?;
+	*operator.core.tumbling_engine_slot() = Some(engine);
 	rearm_engine_seal(operator, host, rule, armed_before)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }

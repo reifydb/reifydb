@@ -23,13 +23,17 @@ use reifydb_flow_async::{
 	},
 	window::{
 		accumulator::AccumulatorOp,
+		driver::{
+			route::{Routed, route_tumbling},
+			tumbling::finish_tumbling,
+		},
 		engine::{
-			EmitKind, WindowReindex,
+			EmitKind, ExpiryAnchor, WindowReindex,
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
 			publish::RowPublisher,
 			session::SessionEngine,
 			sliding::SlidingEngine,
-			tumbling::TumblingEngine,
+			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		kind::session::open::{Insertion, Member, OpenSessions, Removal},
 		meta::NoKey,
@@ -58,6 +62,7 @@ use crate::{
 		windowed::{
 			RollingGroups, Routing, WindowGroups, all_rows, group_of,
 			guest_as_host::GuestAsHost,
+			hooks::SdkHooks,
 			intern_window_groups, observe_batch,
 			operator::{
 				Contribution, Contributions, Emit, Extracted, KindSet, WindowedOperator, batch_len,
@@ -65,7 +70,9 @@ use crate::{
 			},
 			operator_watermark, partition_of,
 			publish::{Emitted, UpdateRow},
-			rolling_cutoff, rolling_output, route_rolling, timer_frontier, window_engine_config,
+			rolling_cutoff, rolling_output, route_rolling,
+			rows::SdkRows,
+			timer_frontier, window_engine_config,
 		},
 	},
 };
@@ -148,17 +155,6 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn window_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
-		WindowSpan::for_coord(coord, self.settings.fixed_size())
-	}
-
-	fn bucket_span(&self, coord: A::Coord) -> WindowSpan<A::Coord> {
-		match &self.rolling {
-			Some(mode) => WindowSpan::for_coord(coord, mode.pane),
-			None => self.window_span(coord),
-		}
-	}
-
 	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
 		window_row_key(group.into_encoded_key(), window_start)
 	}
@@ -171,7 +167,12 @@ where
 		WindowSpan::new(<A::Coord as Coord>::from_order(id), <A::Coord as Coord>::from_order(id + 1))
 	}
 
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A>> {
+	fn route(
+		aggregator: &A,
+		mode: &SlidingMode<A>,
+		ctx: &mut impl GuestContext,
+		change: &impl ChangeView,
+	) -> Result<Buckets<A>> {
 		let mut buckets: Buckets<A> = Routing::default();
 
 		for di in 0..change.diff_count() {
@@ -181,22 +182,20 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						self.push_all(ctx, &cols, &mut buckets, true)?;
+						Self::push_all(aggregator, mode, ctx, &cols, &mut buckets, true)?;
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						let before =
-							extract_rows(&self.aggregator, ctx, &pre, &all_rows(&pre))?;
-						let after =
-							extract_rows(&self.aggregator, ctx, &post, &all_rows(&post))?;
-						self.push_extracted(before, &mut buckets, false);
-						self.push_extracted(after, &mut buckets, true);
+						let before = extract_rows(aggregator, ctx, &pre, &all_rows(&pre))?;
+						let after = extract_rows(aggregator, ctx, &post, &all_rows(&post))?;
+						Self::push_extracted(mode, before, &mut buckets, false);
+						Self::push_extracted(mode, after, &mut buckets, true);
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						self.push_all(ctx, &cols, &mut buckets, false)?;
+						Self::push_all(aggregator, mode, ctx, &cols, &mut buckets, false)?;
 					}
 				}
 			}
@@ -205,39 +204,27 @@ where
 	}
 
 	fn push_all<C: ColumnsView>(
-		&self,
+		aggregator: &A,
+		mode: &SlidingMode<A>,
 		ctx: &mut impl GuestContext,
 		cols: &C,
 		buckets: &mut Buckets<A>,
 		is_add: bool,
 	) -> Result<()> {
-		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
-		self.push_extracted(extracted, buckets, is_add);
+		let extracted = extract_rows(aggregator, ctx, cols, &all_rows(cols))?;
+		Self::push_extracted(mode, extracted, buckets, is_add);
 		Ok(())
 	}
 
-	fn push_extracted(&self, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A>, is_add: bool) {
+	fn push_extracted(mode: &SlidingMode<A>, extracted: Vec<Extracted<A>>, buckets: &mut Buckets<A>, is_add: bool) {
+		let op = if is_add {
+			AccumulatorOp::Add
+		} else {
+			AccumulatorOp::Remove
+		};
 		for (_, coord, group, contribution) in extracted {
-			match &self.sliding {
-				Some(mode) => {
-					for span in mode.engine.spans(coord) {
-						let op = if is_add {
-							AccumulatorOp::Add
-						} else {
-							AccumulatorOp::Remove
-						};
-						buckets.push(group.clone(), span, op, contribution.clone());
-					}
-				}
-				None => {
-					let span = self.bucket_span(coord);
-					let op = if is_add {
-						AccumulatorOp::Add
-					} else {
-						AccumulatorOp::Remove
-					};
-					buckets.push(group, span, op, contribution);
-				}
+			for span in mode.engine.spans(coord) {
+				buckets.push(group.clone(), span, op, contribution.clone());
 			}
 		}
 	}
@@ -426,6 +413,83 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	fn drop_sealed<C: GuestContext>(
+		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		reap_queue_empty: &mut bool,
+		seal_span: SealSpan<A>,
+		ctx: &mut C,
+		buckets: &mut TumblingBuckets<A::GroupKey, A::Coord, Contributions<A>>,
+		order: &mut Vec<(A::GroupKey, WindowSpan<A::Coord>)>,
+	) -> Result<()> {
+		let mut store = GuestAsHost(ctx);
+		let newest = buckets.keys().map(|(_, span)| span.start).max();
+		if let Some(newest) = newest {
+			observe_batch(&mut store, newest, seal_span)?;
+		}
+		let watermark = operator_watermark::<A::Coord>(&mut store)?;
+		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
+		let mut dropped = 0u64;
+		buckets.retain(|(_, span), events| {
+			if is_sealed(span.start, horizon) {
+				dropped += events.len() as u64;
+				false
+			} else {
+				true
+			}
+		});
+		if dropped > 0 {
+			debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
+		}
+		order.retain(|key| buckets.contains_key(key));
+		Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span, true)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn apply_plain_tumbling<C: GuestContext, V: ChangeView>(
+		aggregator: &A,
+		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
+		reap_queue_empty: &mut bool,
+		seal_span: Option<SealSpan<A>>,
+		settings: &WindowSettings<A::Coord>,
+		ctx: &mut C,
+		change: &V,
+	) -> Result<Emitted<A>> {
+		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
+		let mut routed: Routed<A::GroupKey, A::Coord, Contributions<A>> =
+			route_tumbling(&mut SdkRows::new(aggregator, ctx, change), settings.fixed_size())?;
+		if routed.buckets.is_empty() {
+			return Ok(emitted);
+		}
+		if let Some(seal_span) = seal_span {
+			Self::drop_sealed(
+				engine,
+				reap_queue_empty,
+				seal_span,
+				ctx,
+				&mut routed.buckets,
+				&mut routed.arrival,
+			)?;
+			if routed.buckets.is_empty() {
+				return Ok(emitted);
+			}
+		}
+		let emits = finish_tumbling(
+			engine,
+			&mut GuestAsHost(ctx),
+			routed,
+			&mut SdkHooks::new(aggregator, settings),
+			ExpiryAnchor::WindowStart,
+		)?;
+		emitted.0 = emits.inserts;
+		emitted.1 = emits
+			.updates
+			.into_iter()
+			.map(|(number, time, pre, post)| (number, time, Some(pre), post))
+			.collect();
+		emitted.2 = emits.removes;
+		Ok(emitted)
+	}
+
 	fn apply_tumbling<C: GuestContext>(
 		aggregator: &A,
 		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
@@ -438,27 +502,7 @@ where
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
-			let mut store = GuestAsHost(ctx);
-			let newest = buckets.keys().map(|(_, span)| span.start).max();
-			if let Some(newest) = newest {
-				observe_batch(&mut store, newest, seal_span)?;
-			}
-			let watermark = operator_watermark::<A::Coord>(&mut store)?;
-			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-			let mut dropped = 0u64;
-			buckets.retain(|(_, span), events| {
-				if is_sealed(span.start, horizon) {
-					dropped += events.len() as u64;
-					false
-				} else {
-					true
-				}
-			});
-			if dropped > 0 {
-				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-			}
-			order.retain(|key| buckets.contains_key(key));
-			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span, true)?;
+			Self::drop_sealed(engine, reap_queue_empty, seal_span, ctx, &mut buckets, &mut order)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -1358,11 +1402,6 @@ where
 				Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, groups, &order)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
-		let buckets = self.route(ctx, &change)?;
-		if buckets.is_empty() {
-			return Ok(());
-		}
-
 		let (inserts, updates, removes) = {
 			let Self {
 				aggregator,
@@ -1373,19 +1412,32 @@ where
 				settings,
 				..
 			} = &mut *self;
-			let tumbling = match sliding {
-				Some(mode) => mode.engine.tumbling_mut(),
-				None => engine,
-			};
-			Self::apply_tumbling(
-				aggregator,
-				tumbling,
-				reap_queue_empty,
-				*seal_span,
-				settings,
-				ctx,
-				buckets,
-			)?
+			match sliding {
+				Some(mode) => {
+					let buckets = Self::route(aggregator, mode, ctx, &change)?;
+					if buckets.is_empty() {
+						return Ok(());
+					}
+					Self::apply_tumbling(
+						aggregator,
+						mode.engine.tumbling_mut(),
+						reap_queue_empty,
+						*seal_span,
+						settings,
+						ctx,
+						buckets,
+					)?
+				}
+				None => Self::apply_plain_tumbling(
+					aggregator,
+					engine,
+					reap_queue_empty,
+					*seal_span,
+					settings,
+					ctx,
+					&change,
+				)?,
+			}
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
@@ -1550,14 +1602,14 @@ mod tests {
 		let five_minutes = time_driver(&tumbling_time(300, None, None));
 
 		assert_eq!(
-			minute.window_span(coord),
+			WindowSpan::for_coord(coord, minute.settings.fixed_size()),
 			WindowSpan::new(
 				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
 				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap())
 			)
 		);
 		assert_eq!(
-			five_minutes.window_span(coord),
+			WindowSpan::for_coord(coord, five_minutes.settings.fixed_size()),
 			WindowSpan::new(
 				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap()),
 				DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 35, 0).unwrap())
@@ -1608,7 +1660,10 @@ mod tests {
 		assert_eq!(driver.settings.size, Some(RowSpan::of(10)));
 		assert_eq!(driver.settings.lateness, RowSpan::of(4));
 		assert_eq!(driver.settings.immutable, Some(RowSpan::of(2)));
-		assert_eq!(driver.window_span(U8Coord(23)), WindowSpan::new(U8Coord(20), U8Coord(30)));
+		assert_eq!(
+			WindowSpan::for_coord(U8Coord(23), driver.settings.fixed_size()),
+			WindowSpan::new(U8Coord(20), U8Coord(30))
+		);
 	}
 
 	#[test]

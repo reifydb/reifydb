@@ -3,6 +3,7 @@
 
 pub mod apply;
 pub mod bind;
+pub mod hooks;
 pub mod operator;
 pub mod rolling;
 pub mod rows;
