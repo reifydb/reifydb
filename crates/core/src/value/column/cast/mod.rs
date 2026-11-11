@@ -72,6 +72,9 @@ fn cast_column_data_inner(
 	target: ValueType,
 	lazy_fragment: &dyn Fn() -> Fragment,
 ) -> Result<(FieldRef, ArrayRef)> {
+	if data.get_type() == target {
+		return Ok(owned_column(data));
+	}
 	if data.is_nullable() && !keeps_own_nulls(data) {
 		let total_len = data.len();
 		let nulls = data.logical_nulls().unwrap_or_else(|| NullBuffer::new_valid(total_len));
@@ -172,4 +175,78 @@ fn expand(column: (FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef,
 	let (field, array) = column;
 	let array = take(array.as_ref(), &picks, None).map_err(frame_error)?;
 	Ok((Arc::new(field.as_ref().clone().with_nullable(true)), array))
+}
+
+#[cfg(test)]
+mod tests {
+	use arrow_array::{Array, ArrayRef};
+	use arrow_schema::FieldRef;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{Value, column_view::ColumnView, value_type::ValueType},
+	};
+
+	use super::{cast_column_data, convert::TargetConvert};
+	use crate::value::column::builder::ColumnBuilder;
+
+	fn optional_int4_with_a_gap() -> (FieldRef, ArrayRef) {
+		let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(ValueType::Int4)), 3);
+		builder.push_value(Value::Int4(7));
+		builder.push_none();
+		builder.push_value(Value::Int4(9));
+		builder.finish("n")
+	}
+
+	#[test]
+	fn a_nullable_column_cast_to_its_own_type_is_not_copied() {
+		// Insert, update and the flow sinks cast every column to its target even when it already
+		// has that type; for a nullable column the null split used to filter and re-expand it, two
+		// full copies of data that never changed. The values buffer must be the input's own.
+		let input = optional_int4_with_a_gap();
+		let view = ColumnView::try_from(&input).unwrap();
+		let target = view.get_type();
+		let (field, array) = cast_column_data(
+			TargetConvert {
+				target: None,
+			},
+			&view,
+			target.clone(),
+			|| Fragment::None,
+		)
+		.unwrap();
+
+		assert_eq!(
+			array.to_data().buffers()[0].as_ptr(),
+			input.1.to_data().buffers()[0].as_ptr(),
+			"an equal-type cast must hand back the same values buffer, not a copy"
+		);
+		let cast = ColumnView::try_from((&array, field.as_ref())).unwrap();
+		assert_eq!(cast.get_type(), target);
+		assert_eq!(cast.get_value(0), Value::Int4(7));
+		assert!(cast.none_at(1), "the gap must survive as none");
+		assert_eq!(cast.get_value(2), Value::Int4(9));
+	}
+
+	#[test]
+	fn a_nullable_column_cast_to_a_wider_type_is_still_converted() {
+		// The shortcut must only fire on an exact type match; a nullable Int4 handed through
+		// unchanged as Int8 would be read back as the wrong width.
+		let input = optional_int4_with_a_gap();
+		let view = ColumnView::try_from(&input).unwrap();
+		let target = ValueType::Option(Box::new(ValueType::Int8));
+		let (field, array) = cast_column_data(
+			TargetConvert {
+				target: None,
+			},
+			&view,
+			target,
+			|| Fragment::None,
+		)
+		.unwrap();
+
+		let cast = ColumnView::try_from((&array, field.as_ref())).unwrap();
+		assert_eq!(cast.get_value(0), Value::Int8(7));
+		assert!(cast.none_at(1), "the gap must survive the cast");
+		assert_eq!(cast.get_value(2), Value::Int8(9));
+	}
 }
