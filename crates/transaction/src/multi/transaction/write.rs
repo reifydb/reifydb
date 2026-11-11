@@ -855,6 +855,13 @@ impl MultiWriteTransaction {
 				}
 			}
 		}
+		reifydb_assertions! {
+			assert!(
+				self.layers.len() < 2,
+				"a checked commit carries {} layers; only the unchecked flow commit may build layers",
+				self.layers.len()
+			);
+		}
 		let buf = if rebased {
 			None
 		} else {
@@ -2172,7 +2179,7 @@ mod tests {
 		txn.set(vec![(test_key("k").into(), test_bytes("v1"))]).unwrap();
 		txn.begin_layer(SourceVersion(20));
 		txn.set(vec![(test_key("k").into(), test_bytes("v2"))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit_unchecked().unwrap();
 		engine.event_bus.wait_for_completion();
 
 		assert_eq!(stored(&engine, "k"), Some(test_bytes("v2")), "storage keeps only the last layer's write");

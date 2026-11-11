@@ -23,15 +23,16 @@ use reifydb_runtime::{
 	fatal::FatalConfig,
 };
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_sub_flow::builder::FlowConfigurator;
 use reifydb_test_harness::engine::AsEngine;
-use reifydb_transaction::wal::WalCommitLog;
+use reifydb_transaction::wal::{WalCommitLog, WalConfigurator};
 use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration as ValueDuration},
 };
 use reifydb_wal::lsn::Lsn;
 
-use crate::{Database, Frame, Result, SqliteConfig, embedded};
+use crate::{Database, Frame, Result, SqliteConfig, WithSubsystem, embedded};
 
 pub struct TestDb {
 	db: Database,
@@ -181,12 +182,16 @@ impl TestDb {
 
 pub struct TestDbBuilder {
 	mock_at: Option<DateTime>,
+	wal_configurator: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static>>,
+	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 }
 
 impl TestDbBuilder {
 	fn new() -> Self {
 		Self {
 			mock_at: None,
+			wal_configurator: None,
+			flow_configurator: None,
 		}
 	}
 
@@ -195,25 +200,50 @@ impl TestDbBuilder {
 		self
 	}
 
-	pub fn memory(self) -> TestDb {
-		let mut config = RuntimeConfig::default().fatal(FatalConfig::disarmed());
-		if let Some(at) = self.mock_at {
-			config = config.clock(Clock::Mock(MockClock::new(
+	pub fn with_wal<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static,
+	{
+		self.wal_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_flow<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
+	{
+		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	fn runtime_config(&self) -> RuntimeConfig {
+		let config = RuntimeConfig::default().fatal(FatalConfig::disarmed());
+		match self.mock_at {
+			Some(at) => config.clock(Clock::Mock(MockClock::new(
 				u64::try_from(at.to_nanos()).expect("mock clock cannot start before the Unix epoch"),
-			)));
+			))),
+			None => config,
 		}
-		TestDb::wrap(embedded::memory().with_runtime_config(config).build().unwrap(), None)
+	}
+
+	pub fn memory(self) -> TestDb {
+		let mut builder = embedded::memory().with_runtime_config(self.runtime_config());
+		if let Some(configurator) = self.wal_configurator {
+			builder = builder.with_wal(configurator);
+		}
+		if let Some(configurator) = self.flow_configurator {
+			builder = builder.with_flow(configurator);
+		}
+		TestDb::wrap(builder.build().unwrap(), None)
 	}
 
 	pub fn sqlite(self, config: SqliteConfig) -> TestDb {
-		let mut builder = embedded::sqlite(config);
-		if let Some(at) = self.mock_at {
-			builder = builder.with_runtime_config(
-				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(
-					u64::try_from(at.to_nanos())
-						.expect("mock clock cannot start before the Unix epoch"),
-				))),
-			);
+		let mut builder = embedded::sqlite(config).with_runtime_config(self.runtime_config());
+		if let Some(configurator) = self.wal_configurator {
+			builder = builder.with_wal(configurator);
+		}
+		if let Some(configurator) = self.flow_configurator {
+			builder = builder.with_flow(configurator);
 		}
 		TestDb::wrap(builder.build().unwrap(), None)
 	}
@@ -224,14 +254,12 @@ impl TestDbBuilder {
 
 	pub fn sqlite_memory(self) -> TestDb {
 		let (config, guard) = SqliteConfig::in_memory();
-		let mut builder = embedded::sqlite(config);
-		if let Some(at) = self.mock_at {
-			builder = builder.with_runtime_config(
-				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(
-					u64::try_from(at.to_nanos())
-						.expect("mock clock cannot start before the Unix epoch"),
-				))),
-			);
+		let mut builder = embedded::sqlite(config).with_runtime_config(self.runtime_config());
+		if let Some(configurator) = self.wal_configurator {
+			builder = builder.with_wal(configurator);
+		}
+		if let Some(configurator) = self.flow_configurator {
+			builder = builder.with_flow(configurator);
 		}
 		TestDb::wrap(builder.build().unwrap(), Some(guard))
 	}
