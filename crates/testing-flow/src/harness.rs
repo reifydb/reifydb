@@ -210,6 +210,15 @@ impl Harness<ApplyOperator> {
 			ApplyOperator::new(None, operator, mount(logic, operator, capabilities), &ApplyWith::default())
 		})
 	}
+
+	pub fn guest_with<C: MountedOperator + OperatorMetadata + 'static>(
+		logic: C,
+		operator: OperatorId,
+		capabilities: &'static [OperatorCapability],
+		with: &ApplyWith,
+	) -> Self {
+		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities), with))
+	}
 }
 
 impl<O: HostOperator> Harness<O> {
