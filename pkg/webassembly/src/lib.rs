@@ -37,7 +37,7 @@ use reifydb_core::{
 		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::metrics::RetentionMetrics,
+	lifecycle::{coverage::RetentionCoverage, metrics::RetentionMetrics, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
@@ -63,13 +63,15 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
+use reifydb_sub_lifecycle::factory::LifecycleSubsystemFactory;
 use reifydb_transaction::{
 	TransactionVersion,
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{memory_wal, replay},
+	wal::{CheckpointedStore, memory_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -210,6 +212,7 @@ fn whole_number(value: f64) -> Option<u64> {
 pub struct WasmDB {
 	inner: StandardEngine,
 	flow_subsystem: FlowSubsystem,
+	lifecycle_subsystem: Box<dyn Subsystem>,
 	auth_service: AuthService,
 	session: WasmSession,
 	_runtime: Runtime,
@@ -296,6 +299,9 @@ impl WasmDB {
 			recovery,
 		)
 		.map_err(|e| JsError::from_error(&e))?;
+		multi_store.set_wal_checkpoint(
+			multi.store_checkpoint(CheckpointedStore::Multi).map_err(|e| JsError::from_error(&e))?,
+		);
 
 		let mut ioc = IocContainer::new();
 
@@ -310,6 +316,8 @@ impl WasmDB {
 		ioc = ioc.register(operator_store.clone());
 
 		ioc = ioc.register(RetentionMetrics::new());
+
+		ioc = ioc.register(LifecycleRegistry::new()).register(RetentionCoverage::new());
 
 		let ioc_ref = ioc.clone();
 
@@ -371,6 +379,10 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
 
+		ioc_ref.register_service(inner.clone());
+		let lifecycle_subsystem: Box<dyn Subsystem> =
+			Box::new(LifecycleSubsystemFactory).create(&ioc_ref).map_err(|e| JsError::from_error(&e))?;
+
 		let all_versions = vec![
 			SystemVersion {
 				name: "reifydb-webassembly".to_string(),
@@ -389,6 +401,7 @@ impl WasmDB {
 			RqlVersion.version(),
 			RqlFrontendVersion.version(),
 			flow_subsystem.version(),
+			lifecycle_subsystem.version(),
 		];
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
@@ -404,6 +417,7 @@ impl WasmDB {
 		Ok(WasmDB {
 			inner,
 			flow_subsystem,
+			lifecycle_subsystem,
 			auth_service,
 			session: WasmSession::new(),
 			_runtime: runtime,
@@ -603,7 +617,7 @@ impl WasmDB {
 
 impl Drop for WasmDB {
 	fn drop(&mut self) {
-		if let Err(err) = self.flow_subsystem.shutdown() {
+		if let Err(err) = self.lifecycle_subsystem.shutdown().and_then(|_| self.flow_subsystem.shutdown()) {
 			if thread::panicking() {
 				eprintln!("wasm database shutdown failed during unwind: {err}");
 			} else {

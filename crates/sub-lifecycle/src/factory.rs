@@ -12,6 +12,7 @@ use reifydb_core::{
 		gate::{Gated, RetentionStartupGate},
 		metrics::RetentionMetrics,
 		registry::LifecycleRegistry,
+		task::LifecycleTask,
 	},
 	util::ioc::IocContainer,
 };
@@ -20,11 +21,13 @@ use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	version_epoch::{BUCKET_WIDTH, EpochRetention, EpochSpan},
 };
-use reifydb_store_multi::MultiStore;
+use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 use tracing::{info, warn};
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::store::flush::PersistentFlushTask;
 use crate::{
 	actor::LifecycleActor,
 	gc::{
@@ -34,7 +37,7 @@ use crate::{
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	queue::{reap::QueueLeaseReapTask, retention::QueueRetentionTask},
 	retention::evictor::RetentionEvictTask,
-	store::{checkpoint::CommitLogCheckpointTask, flush::PersistentFlushTask, merge::CommitMergeTask},
+	store::{checkpoint::CommitLogCheckpointTask, merge::CommitMergeTask},
 	subsystem::LifecycleSubsystem,
 };
 
@@ -106,17 +109,8 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		)));
 		let config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 
-		if let Some(flush_engine) = store.flush_engine() {
-			registry.register(Box::new(Measured::new(
-				PersistentFlushTask::new(
-					flush_engine,
-					config.clone(),
-					plane.clone(),
-					engine.clock().clone(),
-					catalog.get_config_duration(ConfigKey::MultiFlushInterval),
-				),
-				plane.clone(),
-			)));
+		if let Some(flush) = persistent_flush(&store, &config, &plane, &engine) {
+			registry.register(flush);
 		} else {
 			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
 			let checkpoint = store
@@ -176,4 +170,34 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 
 		Ok(Box::new(LifecycleSubsystem::new(handles, task_names, coverage, plane)))
 	}
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+fn persistent_flush(
+	store: &StandardMultiStore,
+	config: &Arc<dyn GetConfig>,
+	plane: &RetentionPlane,
+	engine: &StandardEngine,
+) -> Option<Box<dyn LifecycleTask>> {
+	let flush_engine = store.flush_engine()?;
+	Some(Box::new(Measured::new(
+		PersistentFlushTask::new(
+			flush_engine,
+			config.clone(),
+			plane.clone(),
+			engine.clock().clone(),
+			engine.catalog().get_config_duration(ConfigKey::MultiFlushInterval),
+		),
+		plane.clone(),
+	)))
+}
+
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+fn persistent_flush(
+	_store: &StandardMultiStore,
+	_config: &Arc<dyn GetConfig>,
+	_plane: &RetentionPlane,
+	_engine: &StandardEngine,
+) -> Option<Box<dyn LifecycleTask>> {
+	None
 }

@@ -39,7 +39,9 @@ reifydb-catalog = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sub-api = { workspace = true }
 reifydb-sub-flow = { workspace = true }
+reifydb-sub-lifecycle = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-rql-frontend = { workspace = true }
 
