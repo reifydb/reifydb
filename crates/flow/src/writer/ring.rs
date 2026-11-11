@@ -114,7 +114,11 @@ impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter
 		let rows = collect_ring_rows(self.txn.range_rev_untracked(range.clone(), limit)?, limit)?;
 		let marked = match rows.last() {
 			Some(&(last, _)) if rows.len() == limit => TaggedKeyBoundRange {
-				start: Bound::Included(TaggedKeyBound::Key(ring_row_tagged(self.storage, partition, last))),
+				start: Bound::Included(TaggedKeyBound::Key(ring_row_tagged(
+					self.storage,
+					partition,
+					last,
+				))),
 				end: range.end,
 			},
 			_ => range,
@@ -606,7 +610,8 @@ mod tests {
 
 	#[test]
 	fn a_full_oldest_page_marks_only_the_span_it_returned() {
-		// A mark over the whole ring makes every insert into a full ring abort against writers of rows it never read.
+		// A mark over the whole ring makes every insert into a full ring abort against writers of rows it never
+		// read.
 		let mut fixture = Fixture::new(4);
 		let placed = fixture.insert(None, 3);
 		let mut store = RingAdapter {
@@ -618,7 +623,11 @@ mod tests {
 		assert_eq!(
 			fixture.txn.marked,
 			vec![TaggedKeyBoundRange {
-				start: Bound::Included(TaggedKeyBound::Key(ring_row_tagged(storage(), None, placed[1].row))),
+				start: Bound::Included(TaggedKeyBound::Key(ring_row_tagged(
+					storage(),
+					None,
+					placed[1].row
+				))),
 				end: ring_row_range(storage(), None).end,
 			}]
 		);
@@ -626,7 +635,8 @@ mod tests {
 
 	#[test]
 	fn a_short_oldest_page_marks_the_whole_range_it_saw() {
-		// A short page observed the whole range, so a narrower mark would miss a concurrent write anywhere in it.
+		// A short page observed the whole range, so a narrower mark would miss a concurrent write anywhere in
+		// it.
 		let mut fixture = Fixture::new(4);
 		fixture.insert(None, 1);
 		let mut store = RingAdapter {
@@ -706,7 +716,8 @@ mod tests {
 		fixture.txn.seam.clear();
 		let rows: Vec<RowNumber> = placed.iter().map(|p| p.row).collect();
 		fixture.remove(partition, &rows);
-		let held = placed.iter().map(|p| (ring_row_tagged(storage(), partition, p.row), row(p.row.0))).collect();
+		let held =
+			placed.iter().map(|p| (ring_row_tagged(storage(), partition, p.row), row(p.row.0))).collect();
 		assert_eq!(fixture.txn.seam, vec![Seam::RemoveWithPre(held)]);
 		assert_eq!(fixture.counters.removes.get(), 1);
 		assert_eq!(*fixture.counters.removed.borrow(), vec![partition]);

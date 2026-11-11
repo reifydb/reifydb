@@ -697,7 +697,8 @@ mod tests {
 
 	#[test]
 	fn with_capacity_one_interleaved_partitions_evict_their_own_row() {
-		// Mutation: a head left one past the victim lands on another partition's row number and misses the live row.
+		// Mutation: a head left one past the victim lands on another partition's row number and misses the live
+		// row.
 		let mut store = MemoryStore::default();
 		insert(&mut store, 1, Some(Partition(1)), &[1]);
 		let other = insert(&mut store, 1, Some(Partition(2)), &[2]);
@@ -726,7 +727,8 @@ mod tests {
 
 	#[test]
 	fn with_capacity_one_expiry_with_batch_one_expires_the_row_once() {
-		// Mutation: reading the head again after it was walked expires the same row twice and never ends the walk.
+		// Mutation: reading the head again after it was walked expires the same row twice and never ends the
+		// walk.
 		let mut store = MemoryStore::default();
 		let placed = insert(&mut store, 1, None, &[10]);
 		store.reads.clear();
@@ -867,8 +869,9 @@ mod tests {
 		insert(&mut store, 2, None, &[1, 2]);
 		let rows = numbers(&mut store, 2);
 		let mut ring = Ring::new(2);
-		let result =
-			catch_unwind(AssertUnwindSafe(|| ring.place(&mut store, &[(None, vec![rows[0]]), (None, vec![rows[1]])])));
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			ring.place(&mut store, &[(None, vec![rows[0]]), (None, vec![rows[1]])])
+		}));
 		assert!(result.is_err());
 	}
 

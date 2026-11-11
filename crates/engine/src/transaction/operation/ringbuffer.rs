@@ -769,7 +769,8 @@ mod row_number_tests {
 		let mut ring = Ring::new(capacity);
 		let first = reserve_ring_rows(catalog, &mut txn, &ringbuffer, capacity as usize).unwrap();
 		let fresh: Vec<RowNumber> = (first..first + capacity).map(RowNumber).collect();
-		let placed = place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, &[(None, fresh)]).unwrap().remove(0);
+		let placed =
+			place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, &[(None, fresh)]).unwrap().remove(0);
 		for placement in &placed {
 			let mut row = shape.allocate_ringbuffer();
 			row.set_sequence(placement.row.0);
@@ -786,8 +787,15 @@ mod row_number_tests {
 		for _ in 0..2 {
 			let mut ring = Ring::new(capacity);
 			let first = reserve_ring_rows(catalog, &mut txn, &ringbuffer, 1).unwrap();
-			let next =
-				place_ring_rows(catalog, &mut txn, &ringbuffer, &mut ring, &[(None, vec![RowNumber(first)])]).unwrap().remove(0);
+			let next = place_ring_rows(
+				catalog,
+				&mut txn,
+				&ringbuffer,
+				&mut ring,
+				&[(None, vec![RowNumber(first)])],
+			)
+			.unwrap()
+			.remove(0);
 			assert_eq!(next[0].row.0, last.0 + 1, "a released row number is never handed out again");
 			assert_eq!(next[0].evicted, None);
 			save_ring(catalog, &mut txn, &ringbuffer, &ring).unwrap();

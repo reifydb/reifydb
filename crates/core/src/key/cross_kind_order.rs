@@ -59,8 +59,8 @@ use crate::{
 			QueueKeyActiveKey, QueuePartitionKey,
 		},
 		ringbuffer::{
-			RingBufferEvictionKey, RingBufferKey, RingBufferMetadataKey, SeriesEvictionKey, TableEvictionKey,
-			ViewEvictionKey,
+			RingBufferEvictionKey, RingBufferKey, RingBufferMetadataKey, SeriesEvictionKey,
+			TableEvictionKey, ViewEvictionKey,
 		},
 		row::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,

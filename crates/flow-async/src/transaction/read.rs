@@ -373,8 +373,10 @@ mod tests {
 			flow_merge_pending_iterator(pending, stored.into_iter(), CommitVersion(2), true)
 				.map(|found| found.map(|row| (row.key, row.bytes)).unwrap())
 				.collect();
-		let expected: Vec<(TaggedKey, EncodedBytes)> =
-			[(1, 10), (2, 21), (3, 30)].into_iter().map(|(row, value)| (tagged(row), bytes(value))).collect();
+		let expected: Vec<(TaggedKey, EncodedBytes)> = [(1, 10), (2, 21), (3, 30)]
+			.into_iter()
+			.map(|(row, value)| (tagged(row), bytes(value)))
+			.collect();
 		assert_eq!(merged, expected, "a pending set replaces its stored row and a pending remove hides it");
 	}
 }
