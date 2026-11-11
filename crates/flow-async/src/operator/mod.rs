@@ -30,9 +30,11 @@ use reifydb_value::{
 		column_view::ViewData,
 		container::temporal_array::{datetime_array, datetime_timezone, datetime_to_native},
 		datetime::DateTime,
-		system_columns::{SystemColumn, column_view, system_column, with_system_column},
+		system_columns::{SystemColumn, column_view, with_system_column},
 	},
 };
+#[cfg(feature = "runtime")]
+use reifydb_value::value::system_columns::system_column;
 #[cfg(feature = "runtime")]
 use reifydb_value::{
 	error::Error,
@@ -186,9 +188,6 @@ pub(crate) fn stamp_output_created(diffs: &mut Diffs, at: DateTime) -> Result<()
 		for columns in diff.batches_mut() {
 			let rows = columns.num_rows();
 			for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt] {
-				if system_column(columns, column).is_none() {
-					continue;
-				}
 				*columns = with_system_column(
 					columns.clone(),
 					column,

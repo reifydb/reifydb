@@ -88,7 +88,6 @@ impl<'a> InProcessContext<'a> {
 pub struct InProcessInsertEmit<'a> {
 	sink: InProcessRowSink,
 	diffs: &'a mut Vec<Diff>,
-	now: DateTime,
 }
 
 impl GuestEmit for InProcessInsertEmit<'_> {
@@ -97,7 +96,7 @@ impl GuestEmit for InProcessInsertEmit<'_> {
 		&mut self.sink
 	}
 	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec(), times, self.now)?;
+		let columns = self.sink.finish(row_numbers.to_vec(), times)?;
 		self.diffs.push(Diff::insert(columns));
 		Ok(())
 	}
@@ -106,7 +105,6 @@ impl GuestEmit for InProcessInsertEmit<'_> {
 pub struct InProcessRemoveEmit<'a> {
 	sink: InProcessRowSink,
 	diffs: &'a mut Vec<Diff>,
-	now: DateTime,
 }
 
 impl GuestEmit for InProcessRemoveEmit<'_> {
@@ -115,7 +113,7 @@ impl GuestEmit for InProcessRemoveEmit<'_> {
 		&mut self.sink
 	}
 	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec(), times, self.now)?;
+		let columns = self.sink.finish(row_numbers.to_vec(), times)?;
 		self.diffs.push(Diff::remove(columns));
 		Ok(())
 	}
@@ -125,7 +123,6 @@ pub struct InProcessUpdateEmit<'a> {
 	pre: InProcessRowSink,
 	post: InProcessRowSink,
 	diffs: &'a mut Vec<Diff>,
-	now: DateTime,
 }
 
 impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
@@ -137,8 +134,8 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 		&mut self.post
 	}
 	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
-		let pre_columns = self.pre.finish(row_numbers.to_vec(), times, self.now)?;
-		let post_columns = self.post.finish(row_numbers.to_vec(), times, self.now)?;
+		let pre_columns = self.pre.finish(row_numbers.to_vec(), times)?;
+		let post_columns = self.post.finish(row_numbers.to_vec(), times)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
 		Ok(())
 	}
@@ -400,28 +397,22 @@ impl GuestEmitContext for InProcessContext<'_> {
 		unsafe { (*self.host).set_row_numbers_for_groups(rows) }.map_err(to_sdk_err)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
-		let now = self.now;
 		Ok(InProcessInsertEmit {
 			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
-			now,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessUpdateEmit<'_>> {
-		let now = self.now;
 		Ok(InProcessUpdateEmit {
 			pre: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			post: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
-			now,
 		})
 	}
 	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessRemoveEmit<'_>> {
-		let now = self.now;
 		Ok(InProcessRemoveEmit {
 			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
-			now,
 		})
 	}
 }
