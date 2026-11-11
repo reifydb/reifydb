@@ -22,7 +22,9 @@ impl Transaction<'_> {
 			Transaction::Command(cmd) => get_from_registry(cmd.dictionary_allocators(), dictionary, ids),
 			Transaction::Admin(admin) => get_from_registry(admin.dictionary_allocators(), dictionary, ids),
 			Transaction::Test(t) => get_from_registry(t.inner.dictionary_allocators(), dictionary, ids),
-			Transaction::Query(query) => get_from_registry(query.dictionary_allocators(), dictionary, ids),
+			Transaction::Query(query) => {
+				get_from_registry(Some(query.dictionary_allocators()), dictionary, ids)
+			}
 		}
 	}
 }

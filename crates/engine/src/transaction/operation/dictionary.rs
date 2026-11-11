@@ -154,7 +154,9 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, values),
 			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, values),
 			Transaction::Test(t) => t.inner.find_in_dictionary(dictionary, values),
-			Transaction::Query(query) => find_through(query.dictionary_allocators(), dictionary, values),
+			Transaction::Query(query) => {
+				find_through(Some(query.dictionary_allocators()), dictionary, values)
+			}
 		}
 	}
 }

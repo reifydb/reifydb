@@ -75,7 +75,7 @@ use crate::{
 		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
 		TransactionalViewChanges, TransactionalWindowedViewGroupChanges,
 	},
-	dictionary::DictionaryAllocatorRegistry,
+	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
 	transaction::{RqlExecutor, ScanLayout, Transaction},
@@ -89,19 +89,23 @@ pub struct QueryTransaction {
 	pub layout: ScanLayout,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
-	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
+	pub(crate) dictionary_allocators: DictionaryAllocatorRegistry,
 }
 
 impl QueryTransaction {
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
 	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, context: Arc<TransactionContext>) -> Self {
+		let dictionary_allocators = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
+			Arc::new(TransactionContext::system(context.runtime.clone())),
+			single.clone(),
+		)));
 		Self {
 			multi,
 			single,
 			context,
 			layout: ScanLayout::Row,
 			executor: None,
-			dictionary_allocators: None,
+			dictionary_allocators,
 		}
 	}
 
@@ -118,10 +122,10 @@ impl QueryTransaction {
 	}
 
 	pub fn set_dictionary_allocators(&mut self, registry: DictionaryAllocatorRegistry) {
-		self.dictionary_allocators = Some(registry);
+		self.dictionary_allocators = registry;
 	}
 
-	pub fn dictionary_allocators(&self) -> Option<DictionaryAllocatorRegistry> {
+	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
 		self.dictionary_allocators.clone()
 	}
 
