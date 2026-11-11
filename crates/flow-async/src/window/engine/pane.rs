@@ -493,6 +493,18 @@ where
 		}
 	}
 
+	pub fn running_by(
+		config: WindowEngineConfig,
+		spans: PaneSpans<C::Span>,
+		merge: Merge<CountedAccumulator<A>>,
+		unmerge: fn(&mut CountedAccumulator<A>, &CountedAccumulator<A>),
+	) -> Self {
+		let mut engine = Self::queue(config, spans, merge);
+		engine.fold = PaneFold::Running;
+		engine.unmerge = Some(unmerge);
+		engine
+	}
+
 	pub fn fold(&self) -> PaneFold {
 		self.fold
 	}
@@ -1071,7 +1083,9 @@ mod tests {
 	};
 
 	use reifydb_codec::row::operator::state::decode;
-	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
+	use reifydb_core::{
+		common::OnEmpty, key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore,
+	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
 		Result as ValueResult,
@@ -1307,9 +1321,10 @@ mod tests {
 					cutoff.map(ms),
 					&Bag::default,
 					&RowPublisher {
-						key: Some(&|_: &u32| NoKey),
+						key: Some(&|_: &u32| Ok(NoKey)),
 						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
-						zero: None,
+						on_empty: OnEmpty::Remove,
+						empty: &|_| Ok(None),
 					},
 				)
 				.unwrap();
@@ -1336,7 +1351,8 @@ mod tests {
 							finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| {
 								bag.finalize()
 							},
-							zero: None,
+							on_empty: OnEmpty::Remove,
+							empty: &|_| Ok(None),
 						},
 					)
 					.unwrap();
@@ -1429,9 +1445,10 @@ mod tests {
 					None,
 					&Bag::default,
 					&RowPublisher {
-						key: Some(&|_: &u32| NoKey),
+						key: Some(&|_: &u32| Ok(NoKey)),
 						finalize: &|_: &u32, _: DateTimeCoord, bag: &Bag| bag.finalize(),
-						zero: None,
+						on_empty: OnEmpty::Remove,
+						empty: &|_| Ok(None),
 					},
 				)
 				.unwrap();
@@ -1530,9 +1547,10 @@ mod tests {
 				None,
 				&Tally::default,
 				&RowPublisher {
-					key: Some(&|_: &u32| NoKey),
+					key: Some(&|_: &u32| Ok(NoKey)),
 					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
-					zero: None,
+					on_empty: OnEmpty::Remove,
+					empty: &|_| Ok(None),
 				},
 			)
 			.unwrap();
@@ -1572,6 +1590,10 @@ mod tests {
 		PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of())
 	}
 
+	fn no_empty(_: &i64) -> ValueResult<Option<i64>> {
+		Ok(None)
+	}
+
 	fn tally_insert(
 		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
 		store: &mut MockStore,
@@ -1590,9 +1612,10 @@ mod tests {
 			cutoff.map(ms),
 			&Tally::default,
 			&RowPublisher {
-				key: Some(&|_: &u32| NoKey),
+				key: Some(&|_: &u32| Ok(NoKey)),
 				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
-				zero,
+				on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
+				empty: zero.unwrap_or(&no_empty),
 			},
 		)
 		.unwrap()
@@ -1611,7 +1634,8 @@ mod tests {
 			&RowPublisher {
 				key: None,
 				finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
-				zero,
+				on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
+				empty: zero.unwrap_or(&no_empty),
 			},
 		)
 		.unwrap()
@@ -1674,9 +1698,10 @@ mod tests {
 				None,
 				&Tally::default,
 				&RowPublisher {
-					key: Some(&|_: &u32| NoKey),
+					key: Some(&|_: &u32| Ok(NoKey)),
 					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
-					zero,
+					on_empty: zero.map_or(OnEmpty::Remove, |_| OnEmpty::Zero),
+					empty: zero.unwrap_or(&no_empty),
 				},
 			)
 			.unwrap()
@@ -1723,9 +1748,10 @@ mod tests {
 				None,
 				&Tally::default,
 				&RowPublisher {
-					key: Some(&|_: &u32| NoKey),
+					key: Some(&|_: &u32| Ok(NoKey)),
 					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
-					zero: None,
+					on_empty: OnEmpty::Remove,
+					empty: &|_| Ok(None),
 				},
 			)
 			.unwrap()

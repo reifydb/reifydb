@@ -10,7 +10,7 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::{
 			Contribution as AccumulatorContribution, CountedAccumulator, MergeAccumulator,
-			WindowAccumulator, invertible::retained_map::RetainedAccumulator,
+			UnmergeAccumulator, WindowAccumulator, invertible::retained_map::RetainedAccumulator,
 		},
 		engine::daba::Merge,
 		settings::WindowSettings,
@@ -151,18 +151,39 @@ fn compact_counted<T: Emit>(accumulator: &mut CountedAccumulator<T::Accumulator>
 	accumulator.compact_by(<T::Kinds as KindSet<T>>::compact);
 }
 
+pub(crate) fn unmerge_counted<T: Emit>(
+	target: &mut CountedAccumulator<T::Accumulator>,
+	other: &CountedAccumulator<T::Accumulator>,
+) {
+	target.unmerge_by(other, <T::Kinds as KindSet<T>>::unmerge);
+}
+
 pub struct AllKinds;
 
 pub struct NoRolling;
 
+pub struct Invertible;
+
+pub trait RollingKinds {}
+
+impl RollingKinds for AllKinds {}
+
+impl RollingKinds for Invertible {}
+
 pub trait KindSet<T: Emit> {
 	const ROLLING: bool;
+
+	const RUNNING: bool = false;
 
 	fn merge(target: &mut T::Accumulator, other: &T::Accumulator);
 
 	fn compact(accumulator: &mut T::Accumulator);
 
 	fn compacts(accumulator: &T::Accumulator) -> bool;
+
+	fn unmerge(_target: &mut T::Accumulator, _other: &T::Accumulator) {
+		unreachable!("only a running kind set unmerges; create picks the queue fold for every other one")
+	}
 }
 
 impl<T: Emit> KindSet<T> for AllKinds
@@ -181,6 +202,31 @@ where
 
 	fn compacts(accumulator: &T::Accumulator) -> bool {
 		accumulator.compacts()
+	}
+}
+
+impl<T: Emit> KindSet<T> for Invertible
+where
+	T::Accumulator: UnmergeAccumulator,
+{
+	const ROLLING: bool = true;
+
+	const RUNNING: bool = true;
+
+	fn merge(target: &mut T::Accumulator, other: &T::Accumulator) {
+		target.merge(other);
+	}
+
+	fn compact(accumulator: &mut T::Accumulator) {
+		accumulator.compact();
+	}
+
+	fn compacts(accumulator: &T::Accumulator) -> bool {
+		accumulator.compacts()
+	}
+
+	fn unmerge(target: &mut T::Accumulator, other: &T::Accumulator) {
+		target.unmerge(other);
 	}
 }
 
@@ -240,7 +286,8 @@ where
 
 impl<T, SK, R> WindowDriver<TopKMarker> for T
 where
-	T: Emit<Kinds = AllKinds, Output = BTreeMap<SK, R>>,
+	T: Emit<Output = BTreeMap<SK, R>>,
+	T::Kinds: RollingKinds,
 	SK: Ord,
 	R: Row,
 	for<'a> &'a T::GroupKey: IntoEncodedKey,

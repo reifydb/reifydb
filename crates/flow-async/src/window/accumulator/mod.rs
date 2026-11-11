@@ -236,6 +236,17 @@ impl<A> CountedAccumulator<A> {
 	pub fn compact_by(&mut self, compact: fn(&mut A)) {
 		compact(&mut self.acc);
 	}
+
+	pub fn unmerge_by(&mut self, other: &Self, unmerge: fn(&mut A, &A))
+	where
+		A: WindowAccumulator,
+	{
+		unmerge(&mut self.acc, &other.acc);
+		let events = self.live.checked_sub(other.live).unwrap_or_else(|| {
+			panic!("CountedAccumulator unmerge of {} live rows from {} live rows", other.live, self.live)
+		});
+		self.sync(events);
+	}
 }
 
 impl<A: WindowAccumulator> CountedAccumulator<A> {
