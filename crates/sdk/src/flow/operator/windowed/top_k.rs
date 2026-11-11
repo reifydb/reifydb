@@ -15,12 +15,12 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
-	state::timer::StateStore,
+	state::timer::{StateStore, TimerKind},
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain},
+	operator::state::seal::{coord::Coord, domain::SealDomain, ledger::SealLedger},
 	window::{
-		engine::pane::{PaneApplied, PaneEngine, PaneEvent, PanePublisher, PaneSpans},
+		engine::pane::{PaneApplied, PaneEngine, PanePublisher, PaneSpans},
 		prefetch::Prefetched,
 		settings::WindowSettings,
 	},
@@ -34,7 +34,7 @@ use reifydb_value::{
 use tracing::debug;
 
 use crate::{
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::OutputRows},
@@ -42,12 +42,10 @@ use crate::{
 		timer::Timer,
 		view::ChangeView,
 		windowed::{
-			RollingGroups,
+			RollingGroups, fired_at,
 			guest_as_host::GuestAsHost,
-			observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator, counted_merge},
-			operator_watermark, rolling_cutoff, rolling_output, route_rolling, timer_frontier,
-			window_engine_config,
+			rolling_cutoff, rolling_output, route_rolling, window_engine_config,
 		},
 	},
 };
@@ -187,15 +185,7 @@ where
 		order: &[A::GroupKey],
 	) -> Result<Vec<TopKRow<Rw<A>>>> {
 		let mut store = GuestAsHost(ctx);
-		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
-		if let (Some(seal_span), Some(newest)) = (self.seal_span, newest) {
-			observe_batch(&mut store, newest, seal_span)?;
-		}
-		let frontier = operator_watermark::<A::Coord>(&mut store)?;
-		let clock = match (self.seal_span, newest) {
-			(None, Some(newest)) => frontier.max(newest),
-			_ => frontier,
-		};
+		let clock = <A::Coord as SealDomain>::frontier(&mut store)?;
 		let Self {
 			aggregator,
 			engine,
@@ -210,10 +200,6 @@ where
 			pane: *pane,
 		};
 		let before = engine.earliest_expiry(&mut store)?;
-		let mut emits = match cutoff {
-			Some(cutoff) => engine.expire(&mut store, cutoff, &publisher)?,
-			None => Vec::new(),
-		};
 		let keys = engine.state_keys(&groups);
 		let mut prefetched = Prefetched::read(&mut store, keys)?;
 		let applied = engine.apply(
@@ -233,9 +219,9 @@ where
 				"rolling input dropped past its group's seal or retract line"
 			);
 		}
-		emits.extend(applied.emits);
+		let emits = applied.emits;
 		let after = engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), settings.lag, before, after)?;
 		Ok(emits)
 	}
 
@@ -356,8 +342,15 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		if self.seal_span.is_none() {
+		if self.seal_span.is_none() || !<A::Coord as SealDomain>::arms_timer() {
 			return Ok(());
+		}
+		if timer.kind != TimerKind::Seal {
+			return Err(SdkError::OperatorError(format!(
+				"{}: a {:?} timer fired that a rolling top-k window never arms",
+				A::NAME,
+				timer.kind
+			)));
 		}
 		let Self {
 			aggregator,
@@ -368,9 +361,9 @@ where
 		} = &mut *self;
 		let rows = {
 			let mut store = GuestAsHost(ctx);
-			let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
-				return Ok(());
-			};
+			let fired = fired_at(&timer);
+			SealLedger::advance(&mut store, fired)?;
+			let frontier = A::Coord::from_order(fired.at().to_order());
 			let before = engine.earliest_expiry(&mut store)?;
 			let publisher = TopKPublisher {
 				aggregator: &*aggregator,
@@ -382,7 +375,13 @@ where
 				None => Vec::new(),
 			};
 			let after = engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
+			<A::Coord as SealDomain>::rearm_decay(
+				&mut store,
+				settings.fixed_size(),
+				settings.lag,
+				before,
+				after,
+			)?;
 			rows
 		};
 		Self::emit_rows(ctx, rows)

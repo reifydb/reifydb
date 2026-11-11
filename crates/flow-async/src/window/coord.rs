@@ -189,7 +189,8 @@ impl SealDomain for U8Coord {
 
 	fn rearm_decay(
 		_store: &mut dyn WindowStore,
-		_settings: &WindowSettings<Self>,
+		_size: RowSpan,
+		_lag: Option<RowSpan>,
 		_before: Option<u64>,
 		_after: Option<u64>,
 	) -> Result<()> {

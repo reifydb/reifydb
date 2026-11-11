@@ -16,11 +16,11 @@ use reifydb_core::{
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain},
+	operator::state::seal::{coord::Coord, domain::SealDomain, ledger::SealLedger},
 	window::{
 		driver::{route::Routed, runner::WindowRunner, session::route_session},
 		engine::{
-			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
+			pane::{PaneEngine, PaneSpans, RollingEmit},
 			publish::RowPublisher,
 			tumbling::TumblingEngine,
 		},
@@ -51,13 +51,11 @@ use crate::{
 			RollingGroups, fired_at,
 			guest_as_host::GuestAsHost,
 			hooks::SdkHooks,
-			observe_batch,
 			operator::{Contribution, Contributions, Emit, KindSet, WindowedOperator, counted_merge},
-			operator_watermark,
 			publish::{Emitted, UpdateRow},
 			rolling_cutoff, rolling_output, route_rolling,
 			rows::SdkRows,
-			timer_frontier, window_engine_config,
+			window_engine_config,
 		},
 	},
 };
@@ -159,29 +157,20 @@ where
 			None => Vec::new(),
 		};
 		let after = mode.engine.earliest_expiry(store)?;
-		<A::Coord as SealDomain>::rearm_decay(store, settings, before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(store, settings.fixed_size(), settings.lag, before, after)?;
 		Ok(Self::rolling_emitted(emits))
 	}
 
 	fn apply_rolling<C: GuestContext>(
 		aggregator: &A,
 		mode: &mut RollingMode<A>,
-		seal_span: Option<SealSpan<A>>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		groups: RollingGroups<A>,
 		order: &[A::GroupKey],
 	) -> Result<Emitted<A>> {
 		let mut store = GuestAsHost(ctx);
-		let newest = groups.values().flat_map(|(_, events)| events.iter().flat_map(PaneEvent::panes)).max();
-		if let (Some(seal_span), Some(newest)) = (seal_span, newest) {
-			observe_batch(&mut store, newest, seal_span)?;
-		}
-		let frontier = operator_watermark::<A::Coord>(&mut store)?;
-		let clock = match (seal_span, newest) {
-			(None, Some(newest)) => frontier.max(newest),
-			_ => frontier,
-		};
+		let clock = <A::Coord as SealDomain>::frontier(&mut store)?;
 		let pane = mode.pane;
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
@@ -191,18 +180,6 @@ where
 			mode.carries.then_some(&carry);
 		let cutoff = rolling_cutoff::<A>(settings, pane, clock);
 		let before = mode.engine.earliest_expiry(&mut store)?;
-		let mut emits = match cutoff {
-			Some(cutoff) => mode.engine.expire(
-				&mut store,
-				cutoff,
-				&RowPublisher {
-					key: None,
-					finalize: &finalize,
-					zero,
-				},
-			)?,
-			None => Vec::new(),
-		};
 		let keys = mode.engine.state_keys(&groups);
 		let mut prefetched = Prefetched::read(&mut store, keys)?;
 		let applied = mode.engine.apply(
@@ -226,9 +203,9 @@ where
 				"rolling input dropped past its group's seal or retract line"
 			);
 		}
-		emits.extend(applied.emits);
+		let emits = applied.emits;
 		let after = mode.engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings, before, after)?;
+		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), settings.lag, before, after)?;
 		Ok(Self::rolling_emitted(emits))
 	}
 
@@ -473,10 +450,9 @@ where
 		let fired = fired_at(&timer);
 		let (inserts, updates, removes) = match (timer.kind, rolling, *sessions, runner) {
 			(TimerKind::Seal, Some(mode), _, _) => {
-				let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
-					return Ok(());
-				};
-				Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?
+				SealLedger::advance(&mut store, fired)?;
+				let clock = A::Coord::from_order(fired.at().to_order());
+				Self::expire_rolling(aggregator, mode, settings, &mut store, clock)?
 			}
 			(TimerKind::Seal, None, true, Some(runner)) => {
 				runner.on_session_timers(engine, &mut store, from_ref(&timer.key), fired)?;
@@ -522,7 +498,6 @@ where
 			let Self {
 				aggregator,
 				rolling: Some(mode),
-				seal_span,
 				settings,
 				..
 			} = &mut *self
@@ -530,7 +505,7 @@ where
 				unreachable!("the rolling mode was present a line above")
 			};
 			let (inserts, updates, removes) =
-				Self::apply_rolling(aggregator, mode, *seal_span, settings, ctx, groups, &order)?;
+				Self::apply_rolling(aggregator, mode, settings, ctx, groups, &order)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		let (inserts, updates, removes) = {

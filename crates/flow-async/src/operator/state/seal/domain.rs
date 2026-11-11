@@ -47,7 +47,8 @@ pub trait SealDomain: Coord {
 
 	fn rearm_decay(
 		store: &mut dyn WindowStore,
-		settings: &WindowSettings<Self>,
+		size: Self::Span,
+		lag: Option<Self::Span>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()>;
@@ -152,11 +153,12 @@ impl SealDomain for DateTimeCoord {
 
 	fn rearm_decay(
 		store: &mut dyn WindowStore,
-		settings: &WindowSettings<Self>,
+		size: Duration,
+		lag: Option<Duration>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()> {
-		let span = RollingOverTime::new(settings.fixed_size(), settings.lag.unwrap_or_default()).span();
+		let span = RollingOverTime::new(size, lag.unwrap_or_default()).span();
 		EvictionGate::new(span).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
 	}
 
@@ -230,7 +232,8 @@ mod tests {
 		let settings = DateTimeCoord::window_settings_of(&with).unwrap();
 		let mut store = MockStore::recording_timers();
 		let oldest = DateTimeCoord(at_millis(1_000)).to_order();
-		DateTimeCoord::rearm_decay(&mut store, &settings, None, Some(oldest)).unwrap();
+		DateTimeCoord::rearm_decay(&mut store, settings.fixed_size(), settings.lag, None, Some(oldest))
+			.unwrap();
 		match store.timers() {
 			[RecordedTimer::Armed(timer)] => timer.due,
 			other => panic!("expected one armed decay timer, got {other:?}"),

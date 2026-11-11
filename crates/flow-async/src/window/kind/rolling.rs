@@ -22,7 +22,7 @@ impl RollingOverTime {
 	}
 
 	pub fn span(&self) -> Duration {
-		self.size.try_add(self.lag).unwrap_or(self.lag)
+		self.size.saturating_add(self.lag)
 	}
 
 	pub fn seal_rule(&self, lateness: Duration) -> SealRule {

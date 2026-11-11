@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, HashMap};
 
 use arrow_array::RecordBatch;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::OnEmpty,
 	interface::change::{Change, Diff},
@@ -27,7 +26,7 @@ use crate::{
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
-		state::seal::{coord::Coord, gate::EvictionGate, ledger::FiredAt},
+		state::seal::{coord::Coord, domain::SealDomain, ledger::FiredAt},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -319,8 +318,13 @@ fn rearm_rolling_seal(
 	if before == after {
 		return Ok(());
 	}
-	let gate = EvictionGate::new(rolling_over_time(operator).span());
-	gate.rearm(host, &EncodedKey::new(Vec::new()), before, after)
+	DateTimeCoord::rearm_decay(
+		host,
+		operator.size_duration().unwrap_or_default(),
+		Some(operator.rolling_lag()),
+		before,
+		after,
+	)
 }
 
 fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Value>, time: DateTime) -> EmitRow {
