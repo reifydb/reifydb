@@ -35,13 +35,6 @@ pub fn timer_runs(due: Vec<Timer>) -> Vec<Vec<Timer>> {
 	runs
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TimerMove {
-	pub key: EncodedKey,
-	pub before: Option<DateTime>,
-	pub after: Option<DateTime>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TimerDue {
 	pub operator_id: OperatorId,

@@ -4,13 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_codec::key::encoded::EncodedKeyBuilder;
-use reifydb_core::{
-	common::WindowSizeDomain,
-	error::CoreError,
-	metrics::heap::HeapSize,
-	operator_with::ApplyWith,
-	state::timer::{StateStore, TimerStore},
-};
+use reifydb_core::{common::WindowSizeDomain, error::CoreError, metrics::heap::HeapSize, operator_with::ApplyWith};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -23,7 +17,7 @@ use crate::{
 		domain::SealDomain,
 		ledger::SealLedger,
 	},
-	window::{settings::WindowSettings, span::Slot},
+	window::{driver::store::WindowStore, settings::WindowSettings, span::Slot},
 };
 
 pub trait TimeStamped {
@@ -177,12 +171,12 @@ impl SealDomain for U8Coord {
 		})
 	}
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _seal_span: RowSpan) -> Result<()> {
+	fn observe(store: &mut dyn WindowStore, newest: Self, _seal_span: RowSpan) -> Result<()> {
 		SealLedger::observe(store, newest.to_order())?;
 		Ok(())
 	}
 
-	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self> {
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self> {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
@@ -191,11 +185,24 @@ impl SealDomain for U8Coord {
 	}
 
 	fn rearm_decay(
-		_store: &mut (impl StateStore + TimerStore),
+		_store: &mut dyn WindowStore,
 		_settings: &WindowSettings<Self>,
 		_before: Option<u64>,
 		_after: Option<u64>,
 	) -> Result<()> {
+		Ok(())
+	}
+
+	fn rearm_seal(
+		_store: &mut dyn WindowStore,
+		_seal_span: RowSpan,
+		_before: Option<u64>,
+		_after: Option<u64>,
+	) -> Result<()> {
+		Ok(())
+	}
+
+	fn arm_reap(_store: &mut dyn WindowStore, _fired: DateTime, _seal_span: RowSpan) -> Result<()> {
 		Ok(())
 	}
 }

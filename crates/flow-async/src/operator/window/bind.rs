@@ -3,11 +3,7 @@
 
 use std::slice::from_ref;
 
-use reifydb_core::{
-	common::{WindowKind, WindowSize},
-	key::operator::state::GroupId,
-	state::timer::StateStore,
-};
+use reifydb_core::{common::WindowKind, key::operator::state::GroupId, state::timer::StateStore};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -122,16 +118,6 @@ impl WindowOperator {
 	) -> Result<()> {
 		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
 		self.meta_slot().drop_sessions(host, &groups)
-	}
-
-	pub(super) fn slide_duration(&self) -> Option<Duration> {
-		match &self.kind {
-			WindowKind::Sliding {
-				slide: WindowSize::Duration(slide),
-				..
-			} => Some(*slide),
-			_ => None,
-		}
 	}
 
 	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {

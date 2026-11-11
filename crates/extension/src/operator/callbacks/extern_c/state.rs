@@ -1025,7 +1025,7 @@ mod join_row_expiry_guard_tests {
 		state::{
 			batch::StateBatch,
 			per_key,
-			timer::{GroupSweep, StateStore, TimerStore},
+			timer::{GroupSweep, StateStore, TimerMove, TimerStore},
 		},
 	};
 	use reifydb_flow::txn::Resolve;
@@ -1034,7 +1034,6 @@ mod join_row_expiry_guard_tests {
 			host::HostContext,
 			state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
-		timer::TimerMove,
 		transaction::{
 			LookupAt,
 			join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
@@ -1066,6 +1065,10 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl TimerStore for RecordingHost {
+		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<()> {
+			Ok(())
+		}
+
 		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			self.reached.set(true);
 			Ok(())
@@ -1206,10 +1209,6 @@ mod join_row_expiry_guard_tests {
 		}
 
 		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
-			Ok(())
-		}
-
-		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<()> {
 			Ok(())
 		}
 

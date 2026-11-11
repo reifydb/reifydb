@@ -17,7 +17,7 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, duration::Duration, row_number::RowNumber},
 };
-use tracing::{Span, instrument};
+use tracing::instrument;
 
 use super::{
 	hooks::BuiltinHooks,
@@ -27,7 +27,7 @@ use super::{
 use crate::{
 	operator::{
 		aggregation::{
-			accumulator::{RowAccumulator, SlotContributions, WindowSlotKey},
+			accumulator::{RowAccumulator, WindowSlotKey},
 			core::{BatchGroups, SlotRow},
 			engine::{
 				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, WindowGroups,
@@ -36,13 +36,12 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			reaper::{drain, drain_groups, enqueue, enqueue_retired},
+			reaper::drain_groups,
 			seal::{
 				coord::Coord,
 				gate::{SealGate, rearm_seal, seal_move},
 				ledger::FiredAt,
 				rule::{SealRule, SealedThrough},
-				sweep::SealSweep,
 			},
 		},
 		state_access::get_classified,
@@ -51,10 +50,7 @@ use crate::{
 	window::{
 		accumulator::AccumulatorOp,
 		coord::DateTimeCoord,
-		driver::{
-			route::{Routed as DriverRouted, route_sliding, route_tumbling},
-			tumbling::finish_tumbling,
-		},
+		driver::seal::{reap, seal},
 		engine::{ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
@@ -126,37 +122,21 @@ pub fn apply_tumbling_engine(
 	host: &mut dyn HostContext,
 	change: Change,
 ) -> Result<Change> {
-	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-
+	let mut runner = operator.runner.take().expect("a tumbling or sliding window owns a window runner");
 	let mut rows = BuiltinRows::new(operator, &change);
-	let mut routed: DriverRouted<Hash128, DateTimeCoord, SlotContributions> = match operator.slide_duration() {
-		Some(slide) => route_sliding(&mut rows, window_size, slide)?,
-		None => route_tumbling(&mut rows, window_size)?,
-	};
+	let routed = runner.route(&mut rows);
 	let group_values = rows.into_group_values();
-	drop_sealed_events(
-		operator,
-		host,
-		&mut routed.buckets,
-		&mut routed.arrival,
-		&routed.window_max_coord,
-		rule,
-		ExpiryAnchor::WindowStart,
-	)?;
-
 	let engine_config = operator.engine_config();
 	let immutable = operator.immutable();
-	let armed_before = engine_earliest_expiry(operator, host)?;
 	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(engine_config))
 	});
 	let mut hooks = BuiltinHooks::new(&mut operator.core, &kinds, immutable, group_values, change.changed_at);
-	let diffs = finish_tumbling(&mut engine, host, routed, &mut hooks, ExpiryAnchor::WindowStart)?;
+	let diffs = routed.and_then(|routed| runner.apply(&mut engine, host, routed, &mut hooks));
 	*operator.core.tumbling_engine_slot() = Some(engine);
-	rearm_engine_seal(operator, host, rule, armed_before)?;
-	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
+	operator.runner = Some(runner);
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs?, change.changed_at))
 }
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
@@ -724,78 +704,38 @@ fn rearm_engine_seal(
 	rearm_seal(host, rule, &EncodedKey::new(Vec::new()), before, after)
 }
 
-#[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
-#[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
-fn seal_due_windows(
+fn with_engine<T>(
 	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	fired: FiredAt,
-	rule: SealRule,
-	runs: usize,
-) -> Result<Vec<Diff>> {
-	operator.advance_seal_ledger(host, fired)?;
-	let Some(threshold) = SealSweep::new(rule).horizon(fired) else {
-		return Ok(Vec::new());
-	};
+	run: impl FnOnce(&mut TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>) -> Result<T>,
+) -> Result<T> {
 	let config = operator.engine_config();
-	let budget = config.expire_batch().saturating_mul(runs);
-	let expired = {
-		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
-		});
-		let res = engine.expire_within(host, threshold.to_order(), budget)?;
-		let retires = host.state_retires_groups() && !matches!(operator.kind, WindowKind::Session { .. });
-		if retires {
-			let groups: Vec<GroupId> = res.iter().map(|window| window.group_id).collect();
-			enqueue_retired(host, &groups)?;
-		} else {
-			for window in &res {
-				enqueue(host, &[window.group_id])?;
-			}
-		}
-		if !res.is_empty() && !retires {
-			let due = fired.at().saturating_add(rule.seal_span().duration());
-			host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
-		}
-		*operator.core.tumbling_engine_slot() = Some(engine);
-		res
-	};
-	rearm_engine_seal(operator, host, rule, None)?;
-	Span::current().record("expired", expired.len());
-	Ok(Vec::new())
-}
-
-fn maintenance_rule(operator: &WindowOperator) -> Option<SealRule> {
-	match operator.kind {
-		WindowKind::Session {
-			..
-		} => Some(operator.session_rule()),
-		_ => operator
-			.size_duration()
-			.map(|size| SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero))),
-	}
-}
-
-pub fn forget_sealed_groups(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	fired: FiredAt,
-) -> Result<usize> {
-	let config = operator.engine_config();
-	let budget = config.expire_batch();
 	let mut engine =
 		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(config))
 		});
-	let drained = drain(host, &mut *engine, budget)?;
+	let out = run(&mut engine);
 	*operator.core.tumbling_engine_slot() = Some(engine);
-	if !drained.queue_is_empty()
-		&& let Some(rule) = maintenance_rule(operator)
-	{
-		let due = fired.at().saturating_add(rule.seal_span().duration());
-		host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
+	out
+}
+
+pub fn forget_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
+	if let Some(mut runner) = operator.runner.take() {
+		let reaped =
+			with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::Maintenance, fired));
+		operator.runner = Some(runner);
+		return reaped;
 	}
-	Ok(drained.freed)
+	let rule = match operator.kind {
+		WindowKind::Session {
+			..
+		} => operator.session_rule(),
+		_ => match operator.size_duration() {
+			Some(size) => SealRule::tumbling(size, operator.lateness().unwrap_or_else(Duration::zero)),
+			None => return Ok(()),
+		},
+	};
+	let budget = operator.engine_config().expire_batch();
+	with_engine(operator, |engine| reap(engine, host, fired, rule.seal_span().duration(), budget).map(|_| ()))
 }
 
 pub fn seal_session_engines(
@@ -806,10 +746,11 @@ pub fn seal_session_engines(
 	let Some(latest) = timers.iter().max_by_key(|timer| timer.due) else {
 		return Ok(Vec::new());
 	};
-	let rule = operator.session_rule();
-	let diffs = seal_due_windows(operator, host, FiredAt::of(latest), rule, timers.len())?;
+	let seal_span = operator.session_rule().seal_span().duration();
+	let budget = operator.engine_config().expire_batch().saturating_mul(timers.len());
+	with_engine(operator, |engine| seal(engine, host, FiredAt::of(latest), seal_span, budget, false))?;
 	retire_session_trackers(operator, host, timers, FiredAt::of(latest))?;
-	Ok(diffs)
+	Ok(Vec::new())
 }
 
 fn tracker_key(hash: Hash128) -> EncodedKey {
@@ -877,11 +818,13 @@ pub fn seal_engine_windows(
 	host: &mut dyn HostContext,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
-	let Some(window_size) = operator.size_duration() else {
+	let Some(mut runner) = operator.runner.take() else {
 		return Ok(Vec::new());
 	};
-	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-	seal_due_windows(operator, host, fired, rule, 1)
+	let sealed = with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::Seal, fired));
+	operator.runner = Some(runner);
+	sealed?;
+	Ok(Vec::new())
 }
 
 #[cfg(test)]
@@ -969,7 +912,7 @@ mod reap_tests {
 	use crate::{
 		operator::{
 			host::TxnHostContext,
-			state::test_utils::test::whole_keyspace,
+			state::{reaper::enqueue, test_utils::test::whole_keyspace},
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		timer::Timer,
@@ -1090,7 +1033,7 @@ mod seal_arm_tests {
 	use super::*;
 	use crate::{
 		operator::{
-			aggregation::core::slot_rows::slot_row,
+			aggregation::{accumulator::SlotContributions, core::slot_rows::slot_row},
 			host::TxnHostContext,
 			state::test_utils::test::whole_keyspace,
 			window::operator::{WindowConfig, WindowOperator},
@@ -1104,6 +1047,7 @@ mod seal_arm_tests {
 		},
 		window::{
 			accumulator::AccumulatorEvents,
+			driver::{route::Routed as DriverRouted, tumbling::finish_tumbling},
 			engine::WindowReindex,
 			kind::session::open::{OpenSession, SessionIds},
 		},

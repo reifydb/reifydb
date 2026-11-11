@@ -2,11 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::flow::OperatorId, state::timer::TimerKind};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	state::timer::{TimerKind, TimerMove},
+};
 use reifydb_value::Result;
 
 use crate::{
-	timer::{Timer, TimerDue, TimerMove, wheel::TimerWheel},
+	timer::{Timer, TimerDue, wheel::TimerWheel},
 	transaction::FlowTransaction,
 };
 

@@ -18,7 +18,7 @@ use reifydb_core::{
 		typed::direction::Asc,
 	},
 	state::{
-		timer::TimerKind,
+		timer::{TimerKind, TimerMove},
 		typed::{SuffixBytes, typed_key},
 	},
 };
@@ -27,7 +27,7 @@ use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	error::FlowStateError,
-	timer::{Timer, TimerDue, TimerMove},
+	timer::{Timer, TimerDue},
 	transaction::{
 		FlowTransaction,
 		state::{StateExtension, StateRange, decode_payload, encode_payload},

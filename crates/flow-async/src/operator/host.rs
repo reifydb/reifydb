@@ -32,7 +32,7 @@ use reifydb_core::{
 	},
 	state::{
 		batch::StateBatch,
-		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
+		timer::{GroupSweep, StateStore, TimerKind, TimerMove, TimerStore},
 	},
 };
 use reifydb_flow::txn::{Find, Intern, Resolve};
@@ -59,7 +59,7 @@ use crate::{
 		reclaim::ReclaimOutcome,
 		seal::rule::SEAL_GATE_STEP,
 	},
-	timer::{Timer, TimerMove, extension::TimerExtension},
+	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction, LookupAt,
 		dictionary::DictionaryExtension,
@@ -68,9 +68,10 @@ use crate::{
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
 	},
+	window::driver::store::WindowStore,
 };
 
-pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
+pub trait HostContext: WindowStore + Resolve {
 	fn version(&self) -> CommitVersion;
 
 	fn snapshot_version(&self) -> CommitVersion {
@@ -80,8 +81,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn wall_now(&self) -> DateTime;
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
-
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
 
 	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
 
@@ -257,6 +256,10 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		Ok(self.txn.flow_watermark())
+	}
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 }
 
@@ -547,10 +550,6 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
-	}
-
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
-		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 
 	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {

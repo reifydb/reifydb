@@ -127,10 +127,29 @@ pub trait StateStore {
 	fn batch_time(&self) -> DateTime;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimerMove {
+	pub key: EncodedKey,
+	pub before: Option<DateTime>,
+	pub after: Option<DateTime>,
+}
+
 pub trait TimerStore {
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		for timer in moves.iter().filter(|timer| timer.before != timer.after) {
+			if let Some(before) = timer.before {
+				self.disarm_timer(before, kind, &timer.key)?;
+			}
+			if let Some(after) = timer.after {
+				self.arm_timer(after, kind, &timer.key)?;
+			}
+		}
+		Ok(())
+	}
 }

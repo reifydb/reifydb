@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	state::{
 		batch::StateBatch,
-		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
+		timer::{GroupSweep, StateStore, TimerKind, TimerMove, TimerStore},
 	},
 };
 use reifydb_flow::txn::{Intern, Resolve};
@@ -25,7 +25,6 @@ use reifydb_flow_async::{
 		host::{HostContext, TxnHostContext},
 		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	},
-	timer::TimerMove,
 	transaction::{
 		FlowTransaction, LookupAt,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
@@ -65,6 +64,11 @@ impl<'a, T: FlowTransaction> CountingHost<'a, T> {
 }
 
 impl<T: FlowTransaction> TimerStore for CountingHost<'_, T> {
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.record("rearm_timers", moves.len());
+		self.inner.rearm_timers(kind, moves)
+	}
+
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.record("arm_timer", 1);
 		self.inner.arm_timer(due, kind, key)
@@ -221,11 +225,6 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.record("disarm_timer_by_key", 1);
 		self.inner.disarm_timer_by_key(kind, key)
-	}
-
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
-		self.record("rearm_timers", moves.len());
-		self.inner.rearm_timers(kind, moves)
 	}
 
 	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {

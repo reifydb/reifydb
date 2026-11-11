@@ -17,10 +17,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
-use reifydb_core::{
-	key::operator::state::GroupId,
-	state::timer::{StateStore, TimerStore},
-};
+use reifydb_core::key::operator::state::GroupId;
 use reifydb_flow_async::{
 	operator::state::seal::{
 		coord::Coord,
@@ -30,6 +27,7 @@ use reifydb_flow_async::{
 	timer::Timer as FlowTimer,
 	window::{
 		accumulator::{AccumulatorEvents, AccumulatorOp, Contributions, WindowAccumulator},
+		driver::store::WindowStore,
 		engine::{
 			KeyspaceFamily,
 			config::WindowEngineConfig,
@@ -52,12 +50,12 @@ use crate::{
 	},
 };
 
-pub(crate) fn operator_watermark<C: SealDomain>(store: &mut (impl StateStore + TimerStore)) -> Result<C> {
+pub(crate) fn operator_watermark<C: SealDomain>(store: &mut impl WindowStore) -> Result<C> {
 	C::frontier(store)
 }
 
 pub(crate) fn observe_batch<C: SealDomain>(
-	store: &mut (impl StateStore + TimerStore),
+	store: &mut impl WindowStore,
 	newest: C,
 	seal_span: C::SealSpan,
 ) -> Result<()> {
@@ -68,20 +66,20 @@ pub(crate) fn all_rows(cols: &impl ColumnsView) -> Vec<usize> {
 	(0..cols.row_count()).collect()
 }
 
-pub(crate) fn timer_frontier<C: SealDomain>(
-	store: &mut (impl StateStore + TimerStore),
-	timer: Timer<'_>,
-) -> Result<Option<C>> {
+pub(crate) fn timer_frontier<C: SealDomain>(store: &mut impl WindowStore, timer: Timer<'_>) -> Result<Option<C>> {
 	if !C::arms_timer() {
 		return Ok(None);
 	}
-	let fired = FiredAt::of(&FlowTimer {
+	SealLedger::advance(store, fired_at(&timer))?;
+	C::frontier(store).map(Some)
+}
+
+pub(crate) fn fired_at(timer: &Timer<'_>) -> FiredAt {
+	FiredAt::of(&FlowTimer {
 		due: timer.due,
 		kind: timer.kind,
 		key: EncodedKey::new(timer.key),
-	});
-	SealLedger::advance(store, fired)?;
-	C::frontier(store).map(Some)
+	})
 }
 
 pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::timer::{TimerKind, TimerStore};
+use reifydb_core::state::timer::{TimerKind, TimerMove, TimerStore};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -10,7 +10,6 @@ use reifydb_value::{
 
 use crate::{
 	operator::state::seal::rule::{EvictionRule, SealRule, SealedThrough},
-	timer::TimerMove,
 	window::coord::DateTimeCoord,
 };
 

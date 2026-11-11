@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize, WindowSizeDomain},
 	error::CoreError,
 	operator_with::{ApplyWith, WindowKnobs},
-	state::timer::{StateStore, TimerKind, TimerStore},
+	state::timer::TimerKind,
 };
 use reifydb_value::{
 	Result,
@@ -18,11 +18,14 @@ use reifydb_value::{
 use crate::{
 	operator::state::seal::{
 		coord::Coord,
-		gate::EvictionGate,
+		gate::{EvictionGate, rearm_seal},
 		ledger::SealLedger,
 		rule::{SEAL_GATE_STEP, SealRule},
 	},
-	window::{coord::DateTimeCoord, kind::rolling::RollingOverTime, settings::WindowSettings},
+	window::{
+		coord::DateTimeCoord, driver::store::WindowStore, kind::rolling::RollingOverTime,
+		settings::WindowSettings,
+	},
 };
 
 pub trait SealDomain: Coord {
@@ -36,18 +39,27 @@ pub trait SealDomain: Coord {
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
+	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Self::SealSpan) -> Result<()>;
 
-	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self>;
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self>;
 
 	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
 
 	fn rearm_decay(
-		store: &mut (impl StateStore + TimerStore),
+		store: &mut dyn WindowStore,
 		settings: &WindowSettings<Self>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()>;
+
+	fn rearm_seal(
+		store: &mut dyn WindowStore,
+		seal_span: Self::SealSpan,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()>;
+
+	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Self::SealSpan) -> Result<()>;
 
 	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>> {
 		with.reject_retention()?;
@@ -114,12 +126,12 @@ impl SealDomain for DateTimeCoord {
 		})
 	}
 
-	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Duration) -> Result<()> {
+	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Duration) -> Result<()> {
 		let at = newest.0.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 	}
 
-	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self> {
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self> {
 		let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 		let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
 		Ok(Self::from_order(ledger.max(watermark)))
@@ -132,13 +144,26 @@ impl SealDomain for DateTimeCoord {
 	}
 
 	fn rearm_decay(
-		store: &mut (impl StateStore + TimerStore),
+		store: &mut dyn WindowStore,
 		settings: &WindowSettings<Self>,
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()> {
 		let span = RollingOverTime::new(settings.fixed_size(), settings.lag.unwrap_or_default()).span();
 		EvictionGate::new(span).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
+	}
+
+	fn rearm_seal(
+		store: &mut dyn WindowStore,
+		seal_span: Duration,
+		before: Option<u64>,
+		after: Option<u64>,
+	) -> Result<()> {
+		rearm_seal(store, SealRule::of(seal_span), &EncodedKey::new(Vec::new()), before, after)
+	}
+
+	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Duration) -> Result<()> {
+		store.arm_timer(fired.saturating_add(seal_span), TimerKind::Maintenance, &EncodedKey::new(Vec::new()))
 	}
 }
 
@@ -149,6 +174,7 @@ mod tests {
 	use reifydb_core::{
 		common::{OnEmpty, WindowSize},
 		operator_with::WithSpan,
+		state::timer::StateStore,
 	};
 	use reifydb_value::factory::time::at_millis;
 

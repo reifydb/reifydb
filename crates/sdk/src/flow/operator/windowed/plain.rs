@@ -14,25 +14,26 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
-	state::timer::StateStore,
+	state::timer::TimerKind,
 };
 use reifydb_flow_async::{
 	operator::state::{
-		reaper::{drain, drain_groups, enqueue, enqueue_retired},
-		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
+		reaper::drain_groups,
+		seal::{coord::Coord, domain::SealDomain},
 	},
 	window::{
 		accumulator::AccumulatorOp,
 		driver::{
-			route::{Routed, route_sliding, route_tumbling},
-			tumbling::finish_tumbling,
+			route::Routed,
+			runner::WindowRunner,
+			seal::{reap, seal},
 		},
 		engine::{
-			EmitKind, ExpiryAnchor, WindowReindex,
+			EmitKind, WindowReindex,
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
 			publish::RowPublisher,
 			session::SessionEngine,
-			tumbling::{TumblingBuckets, TumblingEngine},
+			tumbling::TumblingEngine,
 		},
 		kind::{
 			session::open::{Insertion, Member, OpenSessions, Removal},
@@ -48,7 +49,6 @@ use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
 	error::Error,
-	reifydb_assertions,
 	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 use tracing::debug;
@@ -62,7 +62,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			RollingGroups, Routing, WindowGroups, group_of,
+			RollingGroups, Routing, WindowGroups, fired_at, group_of,
 			guest_as_host::GuestAsHost,
 			hooks::SdkHooks,
 			observe_batch,
@@ -78,8 +78,6 @@ use crate::{
 		},
 	},
 };
-
-const FORGET_BATCH: usize = 256;
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contributions<A>>;
@@ -140,9 +138,8 @@ where
 	aggregator: A,
 	engine: TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 	rolling: Option<RollingMode<A>>,
-	slide: Option<<A::Coord as Coord>::Span>,
+	runner: Option<WindowRunner<A::Coord>>,
 	session: Option<SessionMode<A>>,
-	reap_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
 }
@@ -176,53 +173,6 @@ where
 	Contribution<A>: Send + Sync + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	#[allow(clippy::too_many_arguments)]
-	fn expire_through<C: GuestContext>(
-		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		reap_queue_empty: &mut bool,
-		store: &mut GuestAsHost<'_, C>,
-		frontier: A::Coord,
-		seal_span: SealSpan<A>,
-		may_retire: bool,
-	) -> Result<()> {
-		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
-		if horizon <= <A::Coord as Coord>::from_order(0) {
-			return Ok(());
-		}
-		let store_queue_empty = *reap_queue_empty;
-		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
-		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
-		if may_retire && StateStore::state_retires_groups(store) {
-			enqueue_retired(store, &expired)?;
-			*reap_queue_empty = true;
-			return Ok(());
-		}
-		enqueue(store, &expired)?;
-		if !expired.is_empty() {
-			*reap_queue_empty = false;
-		}
-		if *reap_queue_empty {
-			reifydb_assertions! {
-				let pending = reifydb_flow_async::operator::state::reaper::queued(store, 1)?;
-				assert!(
-					pending.groups.is_empty(),
-					"the reap queue still holds {:?} while the driver believes it drained the \
-					 queue; skipping the drain here leaves that group's state behind for good",
-					pending.groups
-				);
-			}
-			return Ok(());
-		}
-		let drained = match store_queue_empty {
-			true => drain_groups(store, &expired, engine, FORGET_BATCH)?,
-			false => drain(store, engine, FORGET_BATCH)?,
-		};
-		*reap_queue_empty = drained.queue_is_empty();
-		if !*reap_queue_empty {
-			observe_batch(store, frontier, seal_span)?;
-		}
-		Ok(())
-	}
 	fn rolling_emitted(emits: RollingEmits<A>) -> Emitted<A> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		for emit in emits {
@@ -349,78 +299,23 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn drop_sealed<C: GuestContext>(
-		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		reap_queue_empty: &mut bool,
-		seal_span: SealSpan<A>,
-		ctx: &mut C,
-		buckets: &mut TumblingBuckets<A::GroupKey, A::Coord, Contributions<A>>,
-		order: &mut Vec<(A::GroupKey, WindowSpan<A::Coord>)>,
-	) -> Result<()> {
-		let mut store = GuestAsHost(ctx);
-		let newest = buckets.keys().map(|(_, span)| span.start).max();
-		if let Some(newest) = newest {
-			observe_batch(&mut store, newest, seal_span)?;
-		}
-		let watermark = operator_watermark::<A::Coord>(&mut store)?;
-		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
-		let mut dropped = 0u64;
-		buckets.retain(|(_, span), events| {
-			if is_sealed(span.start, horizon) {
-				dropped += events.len() as u64;
-				false
-			} else {
-				true
-			}
-		});
-		if dropped > 0 {
-			debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-		}
-		order.retain(|key| buckets.contains_key(key));
-		Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span, true)
-	}
-
-	#[allow(clippy::too_many_arguments)]
 	fn apply_plain_tumbling<C: GuestContext, V: ChangeView>(
 		aggregator: &A,
 		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
-		reap_queue_empty: &mut bool,
-		seal_span: Option<SealSpan<A>>,
-		slide: Option<<A::Coord as Coord>::Span>,
+		runner: &mut WindowRunner<A::Coord>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		change: &V,
 	) -> Result<Emitted<A>> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let mut rows = SdkRows::new(aggregator, ctx, change);
-		let mut routed: Routed<A::GroupKey, A::Coord, Contributions<A>> = match slide {
-			Some(slide) => route_sliding(&mut rows, settings.fixed_size(), slide)?,
-			None => route_tumbling(&mut rows, settings.fixed_size())?,
-		};
+		let routed: Routed<A::GroupKey, A::Coord, Contributions<A>> = runner.route(&mut rows)?;
 		drop(rows);
 		if routed.buckets.is_empty() {
 			return Ok(emitted);
 		}
-		if let Some(seal_span) = seal_span {
-			Self::drop_sealed(
-				engine,
-				reap_queue_empty,
-				seal_span,
-				ctx,
-				&mut routed.buckets,
-				&mut routed.arrival,
-			)?;
-			if routed.buckets.is_empty() {
-				return Ok(emitted);
-			}
-		}
-		let emits = finish_tumbling(
-			engine,
-			&mut GuestAsHost(ctx),
-			routed,
-			&mut SdkHooks::new(aggregator, settings),
-			ExpiryAnchor::WindowStart,
-		)?;
+		let emits =
+			runner.apply(engine, &mut GuestAsHost(ctx), routed, &mut SdkHooks::new(aggregator, settings))?;
 		emitted.0 = emits.inserts;
 		emitted.1 = emits
 			.updates
@@ -844,7 +739,6 @@ where
 	fn apply_session<C: GuestContext>(
 		aggregator: &A,
 		mode: &mut SessionMode<A>,
-		reap_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
@@ -915,14 +809,6 @@ where
 			observe_batch(&mut store, newest, seal_span)?;
 		}
 		let emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		Self::expire_through(
-			mode.engine.tumbling_mut(),
-			reap_queue_empty,
-			&mut store,
-			watermark,
-			seal_span,
-			false,
-		)?;
 
 		let mut records = Vec::new();
 		let mut stale = Vec::new();
@@ -1181,13 +1067,21 @@ where
 		} else {
 			None
 		};
+		let runner = (!rolls && !sessions).then(|| {
+			WindowRunner::new(
+				operator_id,
+				settings.fixed_size(),
+				slide,
+				seal_span,
+				&window_engine_config(params),
+			)
+		});
 		Ok(Self {
 			aggregator,
 			engine: TumblingEngine::new(window_engine_config(params)),
 			rolling,
-			slide,
+			runner,
 			session,
-			reap_queue_empty: false,
 			seal_span,
 			settings,
 		})
@@ -1197,36 +1091,45 @@ where
 		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
+		if !<A::Coord as SealDomain>::arms_timer() {
+			return Ok(());
+		}
 		let Self {
 			aggregator,
 			engine,
 			rolling,
+			runner,
 			session,
-			reap_queue_empty,
 			settings,
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
-		let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
-			return Ok(());
-		};
-		let (inserts, updates, removes) = match rolling {
-			Some(mode) => Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?,
-			None => {
-				let may_retire = session.is_none();
-				let tumbling = match session {
-					Some(mode) => mode.engine.tumbling_mut(),
-					None => engine,
+		let fired = fired_at(&timer);
+		let (inserts, updates, removes) = match (timer.kind, rolling, session, runner) {
+			(TimerKind::Seal, Some(mode), _, _) => {
+				let Some(frontier) = timer_frontier::<A::Coord>(&mut store, timer)? else {
+					return Ok(());
 				};
-				Self::expire_through(
-					tumbling,
-					reap_queue_empty,
-					&mut store,
-					frontier,
-					seal_span,
-					may_retire,
-				)?;
+				Self::expire_rolling(aggregator, mode, settings, &mut store, frontier)?
+			}
+			(TimerKind::Seal, None, Some(mode), _) => {
+				seal(mode.engine.tumbling_mut(), &mut store, fired, seal_span, usize::MAX, false)?;
 				(Vec::new(), Vec::new(), Vec::new())
+			}
+			(TimerKind::Maintenance, None, Some(mode), _) => {
+				reap(mode.engine.tumbling_mut(), &mut store, fired, seal_span, usize::MAX)?;
+				(Vec::new(), Vec::new(), Vec::new())
+			}
+			(kind, None, None, Some(runner)) => {
+				runner.on_timer(engine, &mut store, kind, fired)?;
+				(Vec::new(), Vec::new(), Vec::new())
+			}
+			(kind, ..) => {
+				return Err(SdkError::OperatorError(format!(
+					"{}: a {:?} timer fired that this window never arms",
+					A::NAME,
+					kind
+				)));
 			}
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)
@@ -1237,7 +1140,6 @@ where
 			let (inserts, updates, removes) = Self::apply_session(
 				&self.aggregator,
 				mode,
-				&mut self.reap_queue_empty,
 				self.seal_span,
 				&self.settings,
 				ctx,
@@ -1268,22 +1170,14 @@ where
 			let Self {
 				aggregator,
 				engine,
-				slide,
-				reap_queue_empty,
-				seal_span,
+				runner: Some(runner),
 				settings,
 				..
-			} = &mut *self;
-			Self::apply_plain_tumbling(
-				aggregator,
-				engine,
-				reap_queue_empty,
-				*seal_span,
-				*slide,
-				settings,
-				ctx,
-				&change,
-			)?
+			} = &mut *self
+			else {
+				unreachable!("create builds a runner for every tumbling or sliding window")
+			};
+			Self::apply_plain_tumbling(aggregator, engine, runner, settings, ctx, &change)?
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
@@ -1526,7 +1420,7 @@ mod tests {
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
-		let slide = driver.slide.expect("a sliding view keeps its slide");
+		let slide = driver.settings.slide.expect("a sliding view keeps its slide");
 
 		assert_eq!(driver.settings.slide, Some(RowSpan::of(4)));
 		assert_eq!(

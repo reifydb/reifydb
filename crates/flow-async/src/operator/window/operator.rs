@@ -42,7 +42,10 @@ use crate::{
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
 	timer::Timer,
-	window::{engine::config::WindowEngineConfig, kind::sliding::fits_slide, meta::WindowMeta},
+	window::{
+		coord::DateTimeCoord, driver::runner::WindowRunner, engine::config::WindowEngineConfig,
+		kind::sliding::fits_slide, meta::WindowMeta,
+	},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -70,6 +73,7 @@ pub struct WindowOperator {
 	stale_retractions: DropCounter,
 	refused_rows: DropCounter,
 	rolling_engine: Option<Box<NativePaneEngine>>,
+	pub(super) runner: Option<WindowRunner<DateTimeCoord>>,
 	meta: WindowMeta,
 }
 
@@ -104,6 +108,30 @@ impl WindowOperator {
 				);
 			}
 		}
+		let lateness = config.lateness.unwrap_or_else(Duration::zero);
+		let runner = match &config.kind {
+			WindowKind::Tumbling {
+				size: WindowSize::Duration(size),
+			} => Some(WindowRunner::new(
+				config.operator,
+				*size,
+				None,
+				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				&WindowEngineConfig::builder().build(),
+			)),
+			WindowKind::Sliding {
+				size: WindowSize::Duration(size),
+				slide: WindowSize::Duration(slide),
+				..
+			} => Some(WindowRunner::new(
+				config.operator,
+				*size,
+				Some(*slide),
+				SealRule::for_window(&config.kind, lateness).map(|rule| rule.seal_span().duration()),
+				&WindowEngineConfig::builder().build(),
+			)),
+			_ => None,
+		};
 		Ok(Self {
 			core,
 			kind: config.kind,
@@ -113,6 +141,7 @@ impl WindowOperator {
 			stale_retractions: DropCounter::new(config.operator, "updates/removes past immutable"),
 			refused_rows: DropCounter::new(config.operator, "session rows refused by assignment"),
 			rolling_engine: None,
+			runner,
 			meta: WindowMeta::new(),
 		})
 	}
