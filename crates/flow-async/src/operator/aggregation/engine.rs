@@ -9,6 +9,7 @@ use std::{
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::change::{Change, Diff},
+	internal_err,
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::StateStore,
 };
@@ -394,7 +395,9 @@ pub(crate) fn finish_tumbling_engine(
 	let mut updates = Vec::new();
 	let mut removes = Vec::new();
 	for (r, (pre_span, post_span)) in results.into_iter().zip(spans) {
-		let group_values = group_values.get(&r.group).cloned().unwrap_or_default();
+		let Some(group_values) = group_values.get(&r.group).cloned() else {
+			return internal_err!("window result for group {:?} has no routed group values", r.group);
+		};
 		let emit = |slot_values: Vec<Value>, span: WindowSpan<DateTimeCoord>| EmitRow {
 			group_values: group_values.clone(),
 			slot_values,
