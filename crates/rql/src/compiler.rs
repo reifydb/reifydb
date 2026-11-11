@@ -1090,6 +1090,33 @@ impl InstructionCompiler {
 
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
+			PhysicalPlan::Declare(node) => self.compile_declare(node)?,
+			PhysicalPlan::Assign(node) => self.compile_assign(node)?,
+			PhysicalPlan::Append(node) => self.compile_append_plan(node)?,
+			PhysicalPlan::Conditional(node) => {
+				self.compile_conditional(node)?;
+			}
+			PhysicalPlan::Loop(node) => {
+				self.compile_loop(node)?;
+			}
+			PhysicalPlan::While(node) => {
+				self.compile_while(node)?;
+			}
+			PhysicalPlan::For(node) => {
+				self.compile_for(node)?;
+			}
+			PhysicalPlan::DefineFunction(node) => self.compile_define_function(node)?,
+			PhysicalPlan::CallFunction(node) => self.compile_call_function(node)?,
+			PhysicalPlan::Return(node) => self.compile_return(node)?,
+			PhysicalPlan::DefineClosure(node) => self.compile_define_closure(node)?,
+			plan => self.compile_leaf(plan)?,
+		}
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_leaf(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+		match plan {
 			PhysicalPlan::CreateNamespace(node) => {
 				self.emit(Instruction::CreateNamespace(node));
 				self.emit(Instruction::Emit);
@@ -1170,7 +1197,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::RunTests(node)));
 				self.emit(Instruction::Emit);
 			}
-
 			PhysicalPlan::CreateMigration(node) => {
 				self.emit(Instruction::CreateMigration(node));
 				self.emit(Instruction::Emit);
@@ -1187,7 +1213,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Dispatch(node));
 				self.emit(Instruction::Emit);
 			}
-
 			PhysicalPlan::DropNamespace(node) => {
 				self.emit(Instruction::DropNamespace(node));
 				self.emit(Instruction::Emit);
@@ -1252,7 +1277,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropRelationship(node));
 				self.emit(Instruction::Emit);
 			}
-
 			PhysicalPlan::CreateIdentity(node) => {
 				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
@@ -1317,7 +1341,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropAuthenticationMethod(node));
 				self.emit(Instruction::Emit);
 			}
-
 			PhysicalPlan::CreateDeferredView(node) => {
 				self.emit(Instruction::CreateDeferredView(nodes::CreateDeferredViewNode {
 					namespace: node.namespace,
@@ -1412,7 +1435,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::AlterRemoteNamespace(node));
 				self.emit(Instruction::Emit);
 			}
-
 			PhysicalPlan::Delete(node) => {
 				self.emit(Instruction::Delete(nodes::DeleteTableNode {
 					input: node
@@ -1536,140 +1558,12 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
-
-			PhysicalPlan::Declare(node) => {
-				match node.value {
-					physical::LetValue::Expression(expr) => {
-						self.compile_expression(&expr)?;
-					}
-					physical::LetValue::Statement(plan) => {
-						let inner = BumpBox::into_inner(plan);
-						if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
-							self.compile_plan(inner)?;
-						} else if let PhysicalPlan::AssertBlock(block) = inner {
-							self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
-								rql: block.rql,
-								expect_error: block.expect_error,
-								message: block.message,
-							}));
-						} else {
-							self.compile_bound_plan(inner)?;
-						}
-					}
-					physical::LetValue::EmptyFrame => {
-						self.emit(Instruction::PushNone);
-					}
-				}
-				self.emit(Instruction::DeclareVar(node.name));
-			}
-			PhysicalPlan::Assign(node) => {
-				match node.value {
-					physical::AssignValue::Expression(expr) => {
-						self.compile_expression(&expr)?;
-					}
-					physical::AssignValue::Statement(plan) => {
-						self.compile_bound_plan(BumpBox::into_inner(plan))?;
-					}
-				}
-				self.emit(Instruction::StoreVar(node.name));
-			}
-			PhysicalPlan::Append(node) => match node {
-				physical::AppendPhysicalNode::IntoVariable {
-					..
-				} => {
-					self.compile_append(node)?;
-				}
-				physical::AppendPhysicalNode::Query {
-					fragment,
-					left,
-					right,
-				} => {
-					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
-						physical::AppendPhysicalNode::Query {
-							fragment,
-							left,
-							right,
-						},
-					))?));
-					self.emit(Instruction::Emit);
-				}
-			},
-
-			PhysicalPlan::Conditional(node) => {
-				self.compile_conditional(node)?;
-			}
-			PhysicalPlan::Loop(node) => {
-				self.compile_loop(node)?;
-			}
-			PhysicalPlan::While(node) => {
-				self.compile_while(node)?;
-			}
-			PhysicalPlan::For(node) => {
-				self.compile_for(node)?;
-			}
 			PhysicalPlan::Break => {
 				self.compile_break()?;
 			}
 			PhysicalPlan::Continue => {
 				self.compile_continue()?;
 			}
-
-			PhysicalPlan::DefineFunction(node) => {
-				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
-				for plan in node.body {
-					body_compiler.compile_plan(plan)?;
-				}
-				body_compiler.emit(Instruction::Halt);
-				let compiled_func = CompiledFunction {
-					name: node.name,
-					parameters: node.parameters,
-					return_type: node.return_type,
-					body: body_compiler.instructions,
-				};
-				self.emit(Instruction::DefineFunction(compiled_func));
-			}
-			PhysicalPlan::CallFunction(node) => {
-				let arity = node.arguments.len();
-				for arg in &node.arguments {
-					self.compile_expression(arg)?;
-				}
-				self.emit(Instruction::Call {
-					name: node.name,
-					arity: arity as u8,
-					is_procedure_call: node.is_procedure_call,
-					type_arguments: Vec::new(),
-				});
-				self.emit(Instruction::Emit);
-			}
-			PhysicalPlan::Return(node) => match node.value {
-				Some(physical::ReturnValue::Expression(expr)) => {
-					self.compile_expression(&expr)?;
-					self.emit(Instruction::ReturnValue);
-				}
-				Some(physical::ReturnValue::Statement(plan)) => {
-					self.compile_value_plan(BumpBox::into_inner(plan))?;
-					self.emit(Instruction::ReturnValue);
-				}
-				None => {
-					self.emit(Instruction::ReturnVoid);
-				}
-			},
-
-			PhysicalPlan::DefineClosure(node) => {
-				let mut body_compiler = InstructionCompiler::new(self.routines.clone());
-				for plan in node.body {
-					body_compiler.compile_plan(plan)?;
-				}
-				body_compiler.emit(Instruction::Halt);
-				let captures = scan_free_variables(&body_compiler.instructions, &node.parameters);
-				let compiled_closure = CompiledClosure {
-					parameters: node.parameters,
-					body: body_compiler.instructions,
-					captures,
-				};
-				self.emit(Instruction::DefineClosure(compiled_closure));
-			}
-
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 				self.emit(Instruction::Emit);
@@ -1831,7 +1725,144 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::Environment(node)));
 				self.emit(Instruction::Emit);
 			}
+			plan => unreachable!("{plan:?} is compiled by compile_plan"),
 		}
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_declare(&mut self, node: physical::DeclareNode<'_>) -> Result<()> {
+		match node.value {
+			physical::LetValue::Expression(expr) => {
+				self.compile_expression(&expr)?;
+			}
+			physical::LetValue::Statement(plan) => {
+				let inner = BumpBox::into_inner(plan);
+				if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
+					self.compile_plan(inner)?;
+				} else if let PhysicalPlan::AssertBlock(block) = inner {
+					self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
+						rql: block.rql,
+						expect_error: block.expect_error,
+						message: block.message,
+					}));
+				} else {
+					self.compile_bound_plan(inner)?;
+				}
+			}
+			physical::LetValue::EmptyFrame => {
+				self.emit(Instruction::PushNone);
+			}
+		}
+		self.emit(Instruction::DeclareVar(node.name));
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_assign(&mut self, node: physical::AssignNode<'_>) -> Result<()> {
+		match node.value {
+			physical::AssignValue::Expression(expr) => {
+				self.compile_expression(&expr)?;
+			}
+			physical::AssignValue::Statement(plan) => {
+				self.compile_bound_plan(BumpBox::into_inner(plan))?;
+			}
+		}
+		self.emit(Instruction::StoreVar(node.name));
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_append_plan(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<()> {
+		match node {
+			physical::AppendPhysicalNode::IntoVariable {
+				..
+			} => {
+				self.compile_append(node)?;
+			}
+			physical::AppendPhysicalNode::Query {
+				fragment,
+				left,
+				right,
+			} => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
+					physical::AppendPhysicalNode::Query {
+						fragment,
+						left,
+						right,
+					},
+				))?));
+				self.emit(Instruction::Emit);
+			}
+		}
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_define_function(&mut self, node: physical::DefineFunctionNode<'_>) -> Result<()> {
+		let mut body_compiler = InstructionCompiler::new(self.routines.clone());
+		for plan in node.body {
+			body_compiler.compile_plan(plan)?;
+		}
+		body_compiler.emit(Instruction::Halt);
+		let compiled_func = CompiledFunction {
+			name: node.name,
+			parameters: node.parameters,
+			return_type: node.return_type,
+			body: body_compiler.instructions,
+		};
+		self.emit(Instruction::DefineFunction(compiled_func));
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_call_function(&mut self, node: physical::CallFunctionNode) -> Result<()> {
+		let arity = node.arguments.len();
+		for arg in &node.arguments {
+			self.compile_expression(arg)?;
+		}
+		self.emit(Instruction::Call {
+			name: node.name,
+			arity: arity as u8,
+			is_procedure_call: node.is_procedure_call,
+			type_arguments: Vec::new(),
+		});
+		self.emit(Instruction::Emit);
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_return(&mut self, node: physical::ReturnNode<'_>) -> Result<()> {
+		match node.value {
+			Some(physical::ReturnValue::Expression(expr)) => {
+				self.compile_expression(&expr)?;
+				self.emit(Instruction::ReturnValue);
+			}
+			Some(physical::ReturnValue::Statement(plan)) => {
+				self.compile_value_plan(BumpBox::into_inner(plan))?;
+				self.emit(Instruction::ReturnValue);
+			}
+			None => {
+				self.emit(Instruction::ReturnVoid);
+			}
+		}
+		Ok(())
+	}
+
+	#[inline(never)]
+	fn compile_define_closure(&mut self, node: physical::DefineClosureNode<'_>) -> Result<()> {
+		let mut body_compiler = InstructionCompiler::new(self.routines.clone());
+		for plan in node.body {
+			body_compiler.compile_plan(plan)?;
+		}
+		body_compiler.emit(Instruction::Halt);
+		let captures = scan_free_variables(&body_compiler.instructions, &node.parameters);
+		let compiled_closure = CompiledClosure {
+			parameters: node.parameters,
+			body: body_compiler.instructions,
+			captures,
+		};
+		self.emit(Instruction::DefineClosure(compiled_closure));
 		Ok(())
 	}
 
