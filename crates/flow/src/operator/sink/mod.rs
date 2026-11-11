@@ -35,7 +35,7 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
-		system_columns::{column_view, created_at, time, updated_at, user_columns},
+		system_columns::{created_at, time, updated_at, user_columns},
 		value_type::field::{from_field, to_field},
 	},
 };
@@ -97,7 +97,18 @@ pub fn coerce_columns(
 
 		ctx.target = Some(TargetColumn::of_column(None, target_col));
 
-		if let Some(source_col) = column_view(columns, &target_col.name)? {
+		if let Some(index) =
+			columns.schema_ref().fields().iter().position(|field| field.name() == &target_col.name)
+		{
+			let source_col =
+				ColumnView::try_from((columns.column(index), columns.schema_ref().field(index)))?;
+			if source_col.get_type() == target_type {
+				result_columns.push((
+					columns.schema_ref().fields()[index].clone(),
+					columns.column(index).clone(),
+				));
+				continue;
+			}
 			check_digest_write(&source_col, &target_type, Fragment::internal(&target_col.name))?;
 			if let (
 				Some(dictionary_id),
@@ -254,9 +265,13 @@ mod tests {
 
 	use arrow_array::UInt64Array;
 	use reifydb_codec::row::{shape::RowShapeField, table::EncodedTableRow};
-	use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
+	use reifydb_core::{
+		interface::catalog::{column::ColumnIndex, id::ColumnId},
+		value::{batch::batch, column::builder::ColumnBuilder},
+	};
 	use reifydb_value::value::{
 		Value,
+		constraint::TypeConstraint,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
 		system_columns::{SystemColumn, keep_system_columns, with_system_column},
@@ -329,5 +344,70 @@ mod tests {
 		assert_eq!(encoded.time(), None, "the sink row must carry no #time");
 		assert_eq!(encoded.created_at(), DateTime::from_nanos(100), "the wall stamps are still required");
 		assert_eq!(encoded.updated_at(), DateTime::from_nanos(200));
+	}
+
+	fn target(name: &str, ty: ValueType) -> CatalogColumn {
+		CatalogColumn {
+			id: ColumnId(1),
+			name: name.to_string(),
+			constraint: TypeConstraint::unconstrained(ty),
+			properties: vec![],
+			index: ColumnIndex(0),
+			auto_increment: false,
+			dictionary_id: None,
+		}
+	}
+
+	fn n_with_an_extra_pool_column() -> RecordBatch {
+		let mut n = ColumnBuilder::with_capacity(ValueType::Int4, 2);
+		n.push_value(Value::Int4(7));
+		n.push_value(Value::Int4(8));
+		let mut pool = ColumnBuilder::with_capacity(ValueType::Utf8, 2);
+		pool.push_value(Value::Utf8("a".to_string()));
+		pool.push_value(Value::Utf8("b".to_string()));
+		batch(vec![pool.finish("pool"), n.finish("n")]).unwrap()
+	}
+
+	fn names(columns: &RecordBatch) -> Vec<String> {
+		user_columns(columns).map(|(field, _)| field.name().clone()).collect()
+	}
+
+	#[test]
+	fn a_matching_column_is_reused_not_rebuilt() {
+		// The windowed views hand the sink a batch with an extra partition column, so the
+		// whole-batch shortcut misses on every call. A column whose name and type already match the
+		// target must still come through as the same array, otherwise every update re-casts every
+		// column; the extra column must still be dropped, otherwise it leaks into the stored row.
+		let columns = n_with_an_extra_pool_column();
+		let coerced = coerce_columns(&columns, &[target("n", ValueType::Int4)], &RuntimeContext::testing(0, 0))
+			.unwrap();
+
+		assert_eq!(
+			names(&coerced),
+			vec!["n".to_string()],
+			"only the target column survives, the extra is dropped"
+		);
+		let n = coerced.schema_ref().index_of("n").unwrap();
+		let source = columns.schema_ref().index_of("n").unwrap();
+		assert!(
+			Arc::ptr_eq(coerced.column(n), columns.column(source)),
+			"a column already of the target type must be reused, not rebuilt"
+		);
+		assert_eq!(coerced.num_rows(), 2);
+	}
+
+	#[test]
+	fn a_column_of_another_type_is_still_cast_to_the_target() {
+		// Reuse must only fire on an exact type match; a narrower source reused as-is would store
+		// Int4 bytes under an Int8 column and every reader would decode garbage.
+		let columns = n_with_an_extra_pool_column();
+		let coerced = coerce_columns(&columns, &[target("n", ValueType::Int8)], &RuntimeContext::testing(0, 0))
+			.unwrap();
+
+		let n = coerced.schema_ref().index_of("n").unwrap();
+		let view = ColumnView::try_from((coerced.column(n), coerced.schema_ref().field(n))).unwrap();
+		assert_eq!(view.get_type(), ValueType::Int8, "the source must be cast to the target type");
+		assert_eq!(view.get_value(0), Value::Int8(7));
+		assert_eq!(view.get_value(1), Value::Int8(8));
 	}
 }
