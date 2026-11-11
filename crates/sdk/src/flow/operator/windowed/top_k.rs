@@ -15,13 +15,13 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
-	state::timer::{StateStore, TimerKind},
+	state::timer::StateStore,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain, ledger::SealLedger},
+	operator::state::seal::{coord::Coord, domain::SealDomain},
 	window::{
+		driver::rolling::{RollingHooks, RollingRunner, route_rolling},
 		engine::pane::{PaneApplied, PaneEngine, PanePublisher, PaneSpans},
-		prefetch::Prefetched,
 		settings::WindowSettings,
 	},
 };
@@ -29,12 +29,12 @@ use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
 	error::Error,
+	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use tracing::debug;
 
 use crate::{
-	error::{Result, SdkError},
+	error::Result,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::OutputRows},
@@ -42,10 +42,12 @@ use crate::{
 		timer::Timer,
 		view::ChangeView,
 		windowed::{
-			RollingGroups, fired_at,
+			fired_at,
 			guest_as_host::GuestAsHost,
-			operator::{Contribution, Emit, KindSet, WindowedOperator, counted_merge},
-			rolling_cutoff, rolling_output, route_rolling, window_engine_config,
+			operator::{Contribution, Emit, KindSet, WindowedOperator},
+			rolling_engine, rolling_output,
+			rows::SdkRows,
+			window_engine_config,
 		},
 	},
 };
@@ -141,6 +143,47 @@ where
 	}
 }
 
+pub(crate) struct TopKHooks<'f, A: Emit> {
+	aggregator: &'f A,
+	settings: &'f WindowSettings<A::Coord>,
+	pane: <A::Coord as Coord>::Span,
+}
+
+impl<A> RollingHooks for TopKHooks<'_, A>
+where
+	A: Emit,
+	A::Output: OutputRows + IntoIterator<Item = (Sk<A>, Rw<A>)>,
+	Sk<A>: Clone + Ord,
+	Rw<A>: Clone + PartialEq,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+	for<'a> &'a Sk<A>: IntoEncodedKey,
+{
+	type Group = A::GroupKey;
+	type Coord = A::Coord;
+	type Accumulator = A::Accumulator;
+	type Published = Ranking<A>;
+	type Emit = TopKRow<Rw<A>>;
+	type Out = Vec<TopKRow<Rw<A>>>;
+
+	fn new_accumulator(&self) -> A::Accumulator {
+		self.aggregator.new_accumulator(self.settings)
+	}
+
+	fn publisher(
+		&self,
+	) -> impl PanePublisher<A::GroupKey, A::Coord, A::Accumulator, Published = Ranking<A>, Emit = TopKRow<Rw<A>>> {
+		TopKPublisher {
+			aggregator: self.aggregator,
+			settings: self.settings,
+			pane: self.pane,
+		}
+	}
+
+	fn emit(&mut self, emits: Vec<TopKRow<Rw<A>>>) -> ValueResult<Vec<TopKRow<Rw<A>>>> {
+		Ok(emits)
+	}
+}
+
 fn row_key<G, S>(group: &G, secondary: &S) -> EncodedKey
 where
 	for<'a> &'a G: IntoEncodedKey,
@@ -161,6 +204,7 @@ where
 {
 	aggregator: A,
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
+	runner: RollingRunner<A::Coord>,
 	pane: <A::Coord as Coord>::Span,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
@@ -178,53 +222,6 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 	for<'a> &'a Sk<A>: IntoEncodedKey,
 {
-	fn apply_rolling(
-		&mut self,
-		ctx: &mut impl GuestContext,
-		groups: RollingGroups<A>,
-		order: &[A::GroupKey],
-	) -> Result<Vec<TopKRow<Rw<A>>>> {
-		let mut store = GuestAsHost(ctx);
-		let clock = <A::Coord as SealDomain>::frontier(&mut store)?;
-		let Self {
-			aggregator,
-			engine,
-			pane,
-			settings,
-			..
-		} = &mut *self;
-		let cutoff = rolling_cutoff::<A>(settings, *pane, clock);
-		let publisher = TopKPublisher {
-			aggregator: &*aggregator,
-			settings: &*settings,
-			pane: *pane,
-		};
-		let before = engine.earliest_expiry(&mut store)?;
-		let keys = engine.state_keys(&groups);
-		let mut prefetched = Prefetched::read(&mut store, keys)?;
-		let applied = engine.apply(
-			&mut prefetched,
-			groups,
-			order,
-			cutoff,
-			&|| aggregator.new_accumulator(settings),
-			&publisher,
-		)?;
-		prefetched.write()?;
-		if applied.sealed_drops + applied.stale_retractions > 0 {
-			debug!(
-				operator = A::NAME,
-				sealed_drops = applied.sealed_drops,
-				stale_retractions = applied.stale_retractions,
-				"rolling input dropped past its group's seal or retract line"
-			);
-		}
-		let emits = applied.emits;
-		let after = engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), settings.lag, before, after)?;
-		Ok(emits)
-	}
-
 	fn emit_rows(ctx: &mut impl GuestContext, rows: Vec<TopKRow<Rw<A>>>) -> Result<()> {
 		let mut inserts: Vec<(RowNumber, DateTime, Rw<A>)> = Vec::new();
 		let mut updates: Vec<(RowNumber, DateTime, Rw<A>, Rw<A>)> = Vec::new();
@@ -325,7 +322,6 @@ where
 			})
 			.into());
 		}
-		let merge = counted_merge::<A>();
 		let spans = PaneSpans {
 			size: settings.fixed_size(),
 			lag: settings.lag.unwrap_or_default(),
@@ -334,7 +330,8 @@ where
 		};
 		Ok(Self {
 			aggregator,
-			engine: PaneEngine::queue(window_engine_config(params), spans, merge),
+			engine: rolling_engine::<A>(window_engine_config(params), spans),
+			runner: RollingRunner::new(operator_id, spans.size, spans.lag, Some(pane)),
 			pane,
 			seal_span,
 			settings,
@@ -345,54 +342,45 @@ where
 		if self.seal_span.is_none() || !<A::Coord as SealDomain>::arms_timer() {
 			return Ok(());
 		}
-		if timer.kind != TimerKind::Seal {
-			return Err(SdkError::OperatorError(format!(
-				"{}: a {:?} timer fired that a rolling top-k window never arms",
-				A::NAME,
-				timer.kind
-			)));
-		}
 		let Self {
 			aggregator,
 			engine,
+			runner,
 			pane,
 			settings,
 			..
 		} = &mut *self;
-		let rows = {
-			let mut store = GuestAsHost(ctx);
-			let fired = fired_at(&timer);
-			SealLedger::advance(&mut store, fired)?;
-			let frontier = A::Coord::from_order(fired.at().to_order());
-			let before = engine.earliest_expiry(&mut store)?;
-			let publisher = TopKPublisher {
-				aggregator: &*aggregator,
-				settings: &*settings,
-				pane: *pane,
-			};
-			let rows = match rolling_cutoff::<A>(settings, *pane, frontier) {
-				Some(cutoff) => engine.expire(&mut store, cutoff, &publisher)?,
-				None => Vec::new(),
-			};
-			let after = engine.earliest_expiry(&mut store)?;
-			<A::Coord as SealDomain>::rearm_decay(
-				&mut store,
-				settings.fixed_size(),
-				settings.lag,
-				before,
-				after,
-			)?;
-			rows
+		let mut hooks = TopKHooks {
+			aggregator: &*aggregator,
+			settings: &*settings,
+			pane: *pane,
 		};
+		let rows = runner.on_timer(engine, &mut GuestAsHost(ctx), timer.kind, fired_at(&timer), &mut hooks)?;
 		Self::emit_rows(ctx, rows)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
-		let (groups, order) = route_rolling(&self.aggregator, self.pane, ctx, &change)?;
-		if groups.is_empty() {
+		let routed =
+			route_rolling(&mut SdkRows::new(&self.aggregator, ctx, &change), Some(self.pane), &|group| {
+				GroupId::window(xxh3_128(group.into_encoded_key().as_slice()), 0)
+			})?;
+		if routed.is_empty() {
 			return Ok(());
 		}
-		let rows = self.apply_rolling(ctx, groups, &order)?;
+		let Self {
+			aggregator,
+			engine,
+			runner,
+			pane,
+			settings,
+			..
+		} = &mut *self;
+		let mut hooks = TopKHooks {
+			aggregator: &*aggregator,
+			settings: &*settings,
+			pane: *pane,
+		};
+		let rows = runner.apply(engine, &mut GuestAsHost(ctx), routed, &mut hooks)?;
 		Self::emit_rows(ctx, rows)
 	}
 }

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::OnEmpty,
 	interface::change::{Change, Diff},
 	internal_err,
+	key::operator::state::GroupId,
+	state::timer::TimerKind,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -17,35 +18,32 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use super::operator::{WindowOperator, required_row_numbers};
+use super::{operator::WindowOperator, rows::BuiltinRows};
 use crate::{
 	operator::{
-		aggregation::{
-			accumulator::{RowAccumulator, WindowSlotKey},
-			core::{EmitRow, SlotRow},
-			engine::{WindowGroups, group_of, intern_window_groups},
-		},
+		aggregation::{accumulator::RowAccumulator, core::EmitRow},
 		host::HostContext,
-		state::seal::{coord::Coord, domain::SealDomain, ledger::FiredAt},
+		state::seal::ledger::FiredAt,
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		coord::DateTimeCoord,
+		driver::rolling::{RollingRunner, RowHooks, route_rolling},
 		engine::{
 			daba::Merge,
-			pane::{PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit},
-			publish::RowPublisher,
+			pane::{PaneEngine, PaneSpans, RollingEmit},
 		},
-		kind::rolling::RollingOverTime,
-		prefetch::Prefetched,
 	},
 };
 
 pub(crate) type NativePaneEngine = PaneEngine<Hash128, DateTimeCoord, RowAccumulator>;
 
-type Contribution = (WindowSlotKey, SlotRow);
-
 type NativeEmit = RollingEmit<Hash128, Vec<Value>, Vec<Value>>;
+
+pub(crate) struct BuiltinRolling {
+	runner: RollingRunner<DateTimeCoord>,
+	engine: NativePaneEngine,
+}
 
 pub(crate) fn rolling_runs_on_running_total(kinds: &[SlotKind]) -> bool {
 	kinds.iter().all(|kind| {
@@ -59,21 +57,6 @@ pub(crate) fn rolling_runs_on_running_total(kinds: &[SlotKind]) -> bool {
 	})
 }
 
-fn floor_to_pane(operator: &WindowOperator, at: DateTimeCoord) -> DateTimeCoord {
-	match operator.rolling_pane() {
-		Some(pane) => at.floor_to(pane),
-		None => at,
-	}
-}
-
-fn rolling_over_time(operator: &WindowOperator) -> RollingOverTime {
-	RollingOverTime::new(operator.size_duration().unwrap_or_default(), operator.rolling_lag())
-}
-
-fn expiry_cutoff(operator: &WindowOperator, clock: DateTime) -> Option<DateTimeCoord> {
-	rolling_over_time(operator).eviction_cutoff(DateTimeCoord(clock)).map(|cutoff| floor_to_pane(operator, cutoff))
-}
-
 fn rolling_spans(operator: &WindowOperator) -> PaneSpans<Duration> {
 	let lateness = operator.lateness().unwrap_or_else(Duration::zero);
 	PaneSpans {
@@ -84,143 +67,31 @@ fn rolling_spans(operator: &WindowOperator) -> PaneSpans<Duration> {
 	}
 }
 
-fn pane_engine<'o>(operator: &'o mut WindowOperator, kinds: &[SlotKind]) -> &'o mut NativePaneEngine {
+fn rolling_parts<'o>(operator: &'o mut WindowOperator, kinds: &[SlotKind]) -> &'o mut BuiltinRolling {
 	let config = operator.engine_config();
 	let spans = rolling_spans(operator);
-	operator.rolling_engine_slot().get_or_insert_with(|| {
-		Box::new(if rolling_runs_on_running_total(kinds) {
-			NativePaneEngine::running(config, spans)
-		} else {
-			NativePaneEngine::queue(config, spans, Merge::of())
+	let runner = RollingRunner::new(operator.core.operator, spans.size, spans.lag, operator.rolling_pane());
+	operator.rolling_slot().get_or_insert_with(|| {
+		Box::new(BuiltinRolling {
+			runner,
+			engine: if rolling_runs_on_running_total(kinds) {
+				NativePaneEngine::running(config, spans)
+			} else {
+				NativePaneEngine::queue(config, spans, Merge::of())
+			},
 		})
 	})
 }
 
-#[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
-fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
-	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	intern_window_groups(&partitions)
-}
-
-struct RoutedRow {
-	group: Hash128,
-	group_values: Vec<Value>,
-	pane: DateTimeCoord,
-	row: u64,
-	contribution: Contribution,
-}
-
-fn routed_rows(operator: &WindowOperator, columns: &RecordBatch) -> Result<Vec<RoutedRow>> {
-	let row_count = columns.num_rows();
-	if row_count == 0 {
-		return Ok(Vec::new());
-	}
-	let groups = operator.core.compute_groups(columns)?;
-	let row_numbers = required_row_numbers(columns)?;
-	let timestamps = operator.row_times(columns, row_count)?;
-	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
-	let views = operator.core.slot_views(columns, &slot_cols)?;
-	let mut rows = Vec::with_capacity(row_count);
-	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let pane = floor_to_pane(operator, DateTimeCoord(timestamps[row_idx]));
-		rows.push(RoutedRow {
-			group: *hash,
-			group_values: gvals.to_vec(),
-			pane,
-			row: row_numbers[row_idx].0,
-			contribution: (
-				WindowSlotKey::new(pane, row_numbers[row_idx].0),
-				views.contribution(row_idx, timestamps[row_idx]),
-			),
-		});
-	}
-	Ok(rows)
-}
-
-#[derive(Default)]
-struct Routing {
-	events: BTreeMap<Hash128, Vec<PaneEvent<DateTimeCoord, Contribution>>>,
-	group_values: HashMap<Hash128, Vec<Value>>,
-	touched: Vec<Hash128>,
-}
-
-impl Routing {
-	fn push(&mut self, group: Hash128, group_values: Vec<Value>, event: PaneEvent<DateTimeCoord, Contribution>) {
-		if !self.events.contains_key(&group) {
-			self.touched.push(group);
-		}
-		self.events.entry(group).or_default().push(event);
-		self.group_values.entry(group).or_insert(group_values);
-	}
-}
-
-fn route_rolling(operator: &WindowOperator, change: &Change) -> Result<Routing> {
-	let mut routing = Routing::default();
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => {
-				for row in routed_rows(operator, post)? {
-					routing.push(
-						row.group,
-						row.group_values,
-						PaneEvent::Insert(row.pane, row.row, row.contribution),
-					);
-				}
-			}
-			Diff::Remove {
-				pre,
-				..
-			} => {
-				for row in routed_rows(operator, pre)? {
-					routing.push(
-						row.group,
-						row.group_values,
-						PaneEvent::Remove(row.pane, row.row, row.contribution),
-					);
-				}
-			}
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				for (before, after) in
-					routed_rows(operator, pre)?.into_iter().zip(routed_rows(operator, post)?)
-				{
-					if before.group == after.group {
-						routing.push(
-							after.group,
-							after.group_values,
-							PaneEvent::Update {
-								row: after.row,
-								pre: (before.pane, before.contribution),
-								post: (after.pane, after.contribution),
-							},
-						);
-					} else {
-						routing.push(
-							before.group,
-							before.group_values,
-							PaneEvent::Leave(before.pane, before.row, before.contribution),
-						);
-						routing.push(
-							after.group,
-							after.group_values,
-							PaneEvent::Join(after.pane, after.row, after.contribution),
-						);
-					}
-				}
-			}
-		}
-	}
-	Ok(routing)
-}
-
 fn finalize_rolling(_group: &Hash128, _newest: DateTimeCoord, accumulator: &RowAccumulator) -> Option<Vec<Value>> {
 	accumulator.finalize()
+}
+
+fn group_key(group_values: &HashMap<Hash128, Vec<Value>>, group: &Hash128) -> Result<Vec<Value>> {
+	match group_values.get(group) {
+		Some(values) => Ok(values.clone()),
+		None => internal_err!("a rolling group {group:?} was published without its group values"),
+	}
 }
 
 fn zero_rolling(kinds: &[SlotKind], types: &[Option<ValueType>], prior: &[Value]) -> Result<Option<Vec<Value>>> {
@@ -251,11 +122,11 @@ fn zero_rolling(kinds: &[SlotKind], types: &[Option<ValueType>], prior: &[Value]
 	Ok((zero != prior).then_some(zero))
 }
 
-fn zero_of_window<'z>(
-	operator: &WindowOperator,
-	zero: &'z dyn Fn(&Vec<Value>) -> Result<Option<Vec<Value>>>,
-) -> Option<&'z dyn Fn(&Vec<Value>) -> Result<Option<Vec<Value>>>> {
-	(operator.rolling_on_empty() == OnEmpty::Zero).then_some(zero)
+fn on_empty_of(operator: &WindowOperator) -> OnEmpty {
+	match operator.rolling_on_empty() {
+		OnEmpty::Zero => OnEmpty::Zero,
+		OnEmpty::Remove | OnEmpty::Carry => OnEmpty::Remove,
+	}
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
@@ -265,66 +136,60 @@ pub fn apply_rolling_engine(
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let routing = route_rolling(operator, &change)?;
-	if routing.events.is_empty() {
+	let pane = operator.rolling_pane();
+	let (routed, group_values) = {
+		let mut rows = BuiltinRows::rolling(operator, &change, pane);
+		let routed = route_rolling(&mut rows, pane, &|hash: &Hash128| GroupId::window(*hash, 0))?;
+		(routed, rows.into_group_values())
+	};
+	if routed.is_empty() {
 		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
-
-	let ledger = operator.seal_ledger(host)?.at();
-	let clock = host.flow_watermark()?.map_or(ledger, |watermark| ledger.max(watermark));
-	let cutoff = expiry_cutoff(operator, clock);
-
-	let groups = intern_partitions(&routing.touched);
-	let mut pane_groups: PaneGroups<Hash128, DateTimeCoord, Contribution> = BTreeMap::new();
-	for (hash, events) in routing.events {
-		pane_groups.insert(hash, (group_of(&groups, hash, 0), events));
-	}
-
 	let types = operator.core.slot_types().to_vec();
-	let zero = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
-	let zero = zero_of_window(operator, &zero);
-	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
-	let keys = pane_engine(operator, &kinds).state_keys(&pane_groups);
-	let mut state = Prefetched::read(host, keys)?;
-	let group_values = routing.group_values;
-	let applied = pane_engine(operator, &kinds).apply(
-		&mut state,
-		pane_groups,
-		&routing.touched,
-		cutoff,
-		&|| RowAccumulator::new(&kinds, None),
-		&RowPublisher {
-			key: Some(&|hash: &Hash128| group_values.get(hash).cloned().unwrap_or_default()),
-			finalize: &finalize_rolling,
-			zero,
-		},
-	)?;
-	state.write()?;
-	operator.note_sealed_drops(applied.sealed_drops);
-	operator.note_stale_retractions(applied.stale_retractions);
-
-	rearm_rolling_seal(operator, host, &kinds, armed_before)?;
-	let diffs = rolling_diffs(operator, applied.emits, change.changed_at)?;
+	let empty = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
+	let key = |group: &Hash128| group_key(&group_values, group);
+	let new_accumulator = || RowAccumulator::new(&kinds, None);
+	let mut hooks = RowHooks {
+		new_accumulator: &new_accumulator,
+		key: Some(&key),
+		finalize: &finalize_rolling,
+		on_empty: on_empty_of(operator),
+		empty: &empty,
+	};
+	let parts = rolling_parts(operator, &kinds);
+	let emits = parts.runner.apply(&mut parts.engine, host, routed, &mut hooks)?;
+	let diffs = rolling_diffs(operator, emits, change.changed_at)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn rearm_rolling_seal(
+#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
+pub fn seal_rolling_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
-	kinds: &[SlotKind],
-	before: Option<u64>,
-) -> Result<()> {
-	let after = pane_engine(operator, kinds).earliest_expiry(host)?;
-	if before == after {
-		return Ok(());
+	fired: FiredAt,
+	kind: TimerKind,
+) -> Result<Vec<Diff>> {
+	let Some(size) = operator.size_duration() else {
+		return Ok(Vec::new());
+	};
+	if size.is_zero() {
+		return Ok(Vec::new());
 	}
-	DateTimeCoord::rearm_decay(
-		host,
-		operator.size_duration().unwrap_or_default(),
-		Some(operator.rolling_lag()),
-		before,
-		after,
-	)
+	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+	let types = operator.core.slot_types().to_vec();
+	let empty = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
+	let new_accumulator = || RowAccumulator::new(&kinds, None);
+	let mut hooks = RowHooks {
+		new_accumulator: &new_accumulator,
+		key: None,
+		finalize: &finalize_rolling,
+		on_empty: on_empty_of(operator),
+		empty: &empty,
+	};
+	let parts = rolling_parts(operator, &kinds);
+	let emits = parts.runner.on_timer(&mut parts.engine, host, kind, fired, &mut hooks)?;
+	Span::current().record("expired", emits.len());
+	rolling_diffs(operator, emits, fired.at())
 }
 
 fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Value>, time: DateTime) -> EmitRow {
@@ -365,43 +230,6 @@ fn rolling_diffs(operator: &mut WindowOperator, emits: Vec<NativeEmit>, changed_
 	operator.core.emit_diffs(inserts, updates, removes, changed_at)
 }
 
-#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_engine(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	fired: FiredAt,
-) -> Result<Vec<Diff>> {
-	let Some(size) = operator.size_duration() else {
-		return Ok(Vec::new());
-	};
-	if size.is_zero() {
-		return Ok(Vec::new());
-	}
-	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let ts = fired.at();
-	operator.advance_seal_ledger(host, fired)?;
-	let cutoff = expiry_cutoff(operator, ts);
-	let types = operator.core.slot_types().to_vec();
-	let zero = |prior: &Vec<Value>| zero_rolling(&kinds, &types, prior);
-	let zero = zero_of_window(operator, &zero);
-	let armed_before = pane_engine(operator, &kinds).earliest_expiry(host)?;
-	let emits = match cutoff {
-		Some(cutoff) => pane_engine(operator, &kinds).expire(
-			host,
-			cutoff,
-			&RowPublisher {
-				key: None,
-				finalize: &finalize_rolling,
-				zero,
-			},
-		)?,
-		None => Vec::new(),
-	};
-	Span::current().record("expired", emits.len());
-	rearm_rolling_seal(operator, host, &kinds, armed_before)?;
-	rolling_diffs(operator, emits, ts)
-}
-
 #[cfg(test)]
 mod tests {
 	use std::{
@@ -426,14 +254,23 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{
-			aggregation::core::slot_rows::slot_row,
+			aggregation::{
+				accumulator::WindowSlotKey,
+				core::{SlotRow, slot_rows::slot_row},
+			},
 			state::{
 				seal::{coord::Coord, rule::EvictionRule},
 				test_utils::test::inner_bytes,
 			},
 		},
-		window::engine::config::WindowEngineConfig,
+		window::engine::{
+			config::WindowEngineConfig,
+			pane::{PaneEvent, PaneGroups},
+			publish::RowPublisher,
+		},
 	};
+
+	type Contribution = (WindowSlotKey, SlotRow);
 
 	fn order(millis: i64) -> u64 {
 		DateTime::from_millis(millis).to_order()
@@ -854,9 +691,10 @@ mod tests {
 					cutoff.map(millis),
 					&new_accumulator,
 					&RowPublisher {
-						key: Some(&|_: &Hash128| Vec::<Value>::new()),
+						key: Some(&|_: &Hash128| Ok(Vec::<Value>::new())),
 						finalize: &finalize_rolling,
-						zero: None,
+						on_empty: OnEmpty::Remove,
+						empty: &|_| Ok(None),
 					},
 				)
 				.unwrap();
@@ -893,7 +731,8 @@ mod tests {
 						&RowPublisher::<_, Vec<Value>, _, _, _> {
 							key: None,
 							finalize: &finalize_rolling,
-							zero: None,
+							on_empty: OnEmpty::Remove,
+							empty: &|_| Ok(None),
 						},
 					)
 					.unwrap();
@@ -931,7 +770,8 @@ mod tests {
 				&RowPublisher::<_, Vec<Value>, _, _, _> {
 					key: None,
 					finalize: &finalize_rolling,
-					zero: None,
+					on_empty: OnEmpty::Remove,
+					empty: &|_| Ok(None),
 				},
 			)
 			.unwrap();
@@ -1033,5 +873,12 @@ mod tests {
 		// writing none for a sum would turn a quiet pool into a missing value instead of zero.
 		let err = zero_rolling(&[SlotKind::Sum], &[None], &[Value::none()]).unwrap_err();
 		assert!(err.to_string().contains("has no zero"), "{err}");
+	}
+
+	#[test]
+	fn a_rolling_group_published_without_its_group_values_fails_loud() {
+		// Defaulting the missing values publishes a row with empty group columns instead of stopping.
+		let err = group_key(&HashMap::new(), &Hash128(7)).unwrap_err();
+		assert!(err.to_string().contains("without its group values"), "{err}");
 	}
 }

@@ -16,7 +16,7 @@ use std::{
 	hash::Hash,
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::state::OperatorState};
 use reifydb_core::key::operator::state::GroupId;
 use reifydb_flow_async::{
 	operator::state::seal::{
@@ -26,28 +26,24 @@ use reifydb_flow_async::{
 	},
 	timer::Timer as FlowTimer,
 	window::{
-		accumulator::{AccumulatorEvents, AccumulatorOp, Contributions, WindowAccumulator},
+		accumulator::{AccumulatorEvents, AccumulatorOp, Contributions, CountedAccumulator, WindowAccumulator},
 		driver::store::WindowStore,
 		engine::{
 			KeyspaceFamily,
 			config::WindowEngineConfig,
-			pane::{PaneEvent, PaneGroups},
+			pane::{PaneEngine, PaneSpans, RollingIndexEntry, RollingPane},
 			tumbling::TumblingBuckets,
 		},
 		settings::WindowSettings,
 		span::WindowSpan,
 	},
 };
-use reifydb_value::{Result, config::ExtensionParams, value::diff_type::DiffType};
+use reifydb_value::{Result, config::ExtensionParams};
 
-use crate::{
-	error,
-	flow::operator::{
-		context::GuestContext,
-		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView},
-		windowed::operator::{Contribution, Emit, Extracted, WindowedOperator, extract_rows},
-	},
+use crate::flow::operator::{
+	timer::Timer,
+	view::ColumnsView,
+	windowed::operator::{Emit, KindSet, counted_merge, unmerge_counted},
 };
 
 pub(crate) fn operator_watermark<C: SealDomain>(store: &mut impl WindowStore) -> Result<C> {
@@ -80,10 +76,6 @@ pub(crate) fn fired_at(timer: &Timer<'_>) -> FiredAt {
 		kind: timer.kind,
 		key: EncodedKey::new(timer.key),
 	})
-}
-
-pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {
-	WindowSpan::for_coord(coord, size).start
 }
 
 pub(crate) struct Routing<G, C, X> {
@@ -147,135 +139,19 @@ pub(crate) fn window_engine_config(_params: &ExtensionParams) -> WindowEngineCon
 	WindowEngineConfig::builder().family(KeyspaceFamily::Guest).build()
 }
 
-pub(crate) type RollingGroups<A> =
-	PaneGroups<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, Contribution<A>>;
-
-pub(crate) fn partition_of<G>(group: &G) -> GroupId
+pub(crate) fn rolling_engine<A>(
+	config: WindowEngineConfig,
+	spans: PaneSpans<<A::Coord as Coord>::Span>,
+) -> PaneEngine<A::GroupKey, A::Coord, A::Accumulator>
 where
-	for<'a> &'a G: IntoEncodedKey,
+	A: Emit,
+	RollingPane<CountedAccumulator<A::Accumulator>>: OperatorState,
+	RollingIndexEntry<A::GroupKey>: OperatorState,
 {
-	GroupId::of(&group.into_encoded_key())
-}
-
-fn extract_all<A: WindowedOperator, C: ColumnsView>(
-	aggregator: &A,
-	ctx: &mut impl GuestContext,
-	cols: &C,
-) -> error::Result<Vec<Extracted<A>>> {
-	let rows: Vec<usize> = (0..cols.row_count()).collect();
-	extract_rows(aggregator, ctx, cols, &rows)
-}
-
-pub(crate) fn route_rolling<A>(
-	aggregator: &A,
-	pane: <A::Coord as Coord>::Span,
-	ctx: &mut impl GuestContext,
-	change: &impl ChangeView,
-) -> error::Result<(RollingGroups<A>, Vec<A::GroupKey>)>
-where
-	A: WindowedOperator,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	let mut groups: RollingGroups<A> = BTreeMap::new();
-	let mut order: Vec<A::GroupKey> = Vec::new();
-	let mut push = |group: A::GroupKey, event: PaneEvent<A::Coord, Contribution<A>>| {
-		if !groups.contains_key(&group) {
-			order.push(group.clone());
-		}
-		groups.entry(group.clone()).or_insert_with(|| (partition_of(&group), Vec::new())).1.push(event);
-	};
-	for di in 0..change.diff_count() {
-		let Some(diff) = change.diff(di) else {
-			continue;
-		};
-		match diff.kind() {
-			DiffType::Insert => {
-				if let Some(cols) = diff.post() {
-					for (row, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
-						push(
-							group,
-							PaneEvent::Insert(
-								bucket_of(coord, pane),
-								cols.row_numbers()[row].0,
-								contribution,
-							),
-						);
-					}
-				}
-			}
-			DiffType::Remove => {
-				if let Some(cols) = diff.pre() {
-					for (row, coord, group, contribution) in extract_all(aggregator, ctx, &cols)? {
-						push(
-							group,
-							PaneEvent::Remove(
-								bucket_of(coord, pane),
-								cols.row_numbers()[row].0,
-								contribution,
-							),
-						);
-					}
-				}
-			}
-			DiffType::Update => {
-				let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
-					continue;
-				};
-				let after = extract_all(aggregator, ctx, &post)?;
-				let mut before: BTreeMap<usize, (A::Coord, A::GroupKey, Contribution<A>)> =
-					extract_all(aggregator, ctx, &pre)?
-						.into_iter()
-						.map(|(row, coord, group, contribution)| {
-							(row, (coord, group, contribution))
-						})
-						.collect();
-				for (row, coord, group, contribution) in after {
-					let post_pane = bucket_of(coord, pane);
-					let number = post.row_numbers()[row].0;
-					match before.remove(&row) {
-						Some((pre_coord, pre_group, pre_contribution))
-							if pre_group == group =>
-						{
-							push(
-								group,
-								PaneEvent::Update {
-									row: number,
-									pre: (
-										bucket_of(pre_coord, pane),
-										pre_contribution,
-									),
-									post: (post_pane, contribution),
-								},
-							)
-						}
-						Some((pre_coord, pre_group, pre_contribution)) => {
-							push(
-								pre_group,
-								PaneEvent::Leave(
-									bucket_of(pre_coord, pane),
-									pre.row_numbers()[row].0,
-									pre_contribution,
-								),
-							);
-							push(group, PaneEvent::Join(post_pane, number, contribution));
-						}
-						None => push(group, PaneEvent::Insert(post_pane, number, contribution)),
-					}
-				}
-				for (row, (pre_coord, pre_group, pre_contribution)) in before {
-					push(
-						pre_group,
-						PaneEvent::Remove(
-							bucket_of(pre_coord, pane),
-							pre.row_numbers()[row].0,
-							pre_contribution,
-						),
-					);
-				}
-			}
-		}
+	match <A::Kinds as KindSet<A>>::RUNNING {
+		true => PaneEngine::running_by(config, spans, counted_merge::<A>(), unmerge_counted::<A>),
+		false => PaneEngine::queue(config, spans, counted_merge::<A>()),
 	}
-	Ok((groups, order))
 }
 
 pub(crate) fn rolling_output<A: Emit>(
@@ -290,16 +166,6 @@ pub(crate) fn rolling_output<A: Emit>(
 	let end = newest.saturating_sub_span(settings.lag.unwrap_or_default()).add_span(pane);
 	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 	aggregator.build_output(group, span, &value)
-}
-
-pub(crate) fn rolling_cutoff<A: WindowedOperator>(
-	settings: &WindowSettings<A::Coord>,
-	pane: <A::Coord as Coord>::Span,
-	clock: A::Coord,
-) -> Option<A::Coord> {
-	clock.checked_sub_span(settings.lag.unwrap_or_default())
-		.and_then(|end| end.checked_sub_span(settings.fixed_size()))
-		.map(|cutoff| bucket_of(cutoff, pane))
 }
 
 #[cfg(test)]

@@ -11,12 +11,13 @@ use reifydb_core::{
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, row_number::RowNumber, system_columns::row_numbers},
+	value::{Value, duration::Duration, row_number::RowNumber, system_columns::row_numbers},
 };
 
 use crate::{
 	operator::{
 		aggregation::{accumulator::WindowSlotKey, core::SlotRow, engine::slot_coord},
+		state::seal::coord::Coord,
 		window::operator::{WindowOperator, required_row_numbers},
 	},
 	window::{
@@ -29,6 +30,7 @@ pub struct BuiltinRows<'a> {
 	operator: &'a WindowOperator,
 	change: &'a Change,
 	numbered: bool,
+	pane: Option<Duration>,
 	group_values: HashMap<Hash128, Vec<Value>>,
 }
 
@@ -38,7 +40,15 @@ impl<'a> BuiltinRows<'a> {
 			operator,
 			change,
 			numbered: true,
+			pane: None,
 			group_values: HashMap::new(),
+		}
+	}
+
+	pub fn rolling(operator: &'a WindowOperator, change: &'a Change, pane: Option<Duration>) -> Self {
+		Self {
+			pane,
+			..Self::new(operator, change)
 		}
 	}
 
@@ -78,7 +88,13 @@ impl<'a> BuiltinRows<'a> {
 			.enumerate()
 			.map(|(row, (time, number))| {
 				(
-					slot_coord(DateTimeCoord(*time), number.map_or(0, |number| number.0)),
+					slot_coord(
+						match self.pane {
+							Some(pane) => DateTimeCoord(*time).floor_to(pane),
+							None => DateTimeCoord(*time),
+						},
+						number.map_or(0, |number| number.0),
+					),
 					views.contribution(row, *time),
 				)
 			})

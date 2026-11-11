@@ -11,22 +11,27 @@ use reifydb_core::{
 	common::{OnEmpty, WindowKind, WindowRequirements, WindowSizeDomain},
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::{
-	operator::state::seal::{coord::Coord, domain::SealDomain, ledger::SealLedger},
+	operator::state::seal::{coord::Coord, domain::SealDomain, ledger::FiredAt},
 	window::{
-		driver::{route::Routed, runner::WindowRunner, session::route_session},
+		driver::{
+			rolling::{RollingRunner, RoutedPanes, RowHooks, route_rolling},
+			route::Routed,
+			runner::WindowRunner,
+			session::route_session,
+			store::WindowStore,
+		},
 		engine::{
 			pane::{PaneEngine, PaneSpans, RollingEmit},
-			publish::RowPublisher,
 			tumbling::TumblingEngine,
 		},
 		kind::sliding::fits_slide,
 		meta::NoKey,
-		prefetch::Prefetched,
 		settings::WindowSettings,
 		span::window_row_key,
 	},
@@ -35,9 +40,9 @@ use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
 	error::Error,
+	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use tracing::debug;
 
 use crate::{
 	error::{Result, SdkError},
@@ -48,12 +53,12 @@ use crate::{
 		timer::Timer,
 		view::ChangeView,
 		windowed::{
-			RollingGroups, fired_at,
+			fired_at,
 			guest_as_host::GuestAsHost,
 			hooks::SdkHooks,
-			operator::{Contribution, Contributions, Emit, KindSet, WindowedOperator, counted_merge},
+			operator::{Contribution, Contributions, Emit, KindSet, WindowedOperator},
 			publish::{Emitted, UpdateRow},
-			rolling_cutoff, rolling_output, route_rolling,
+			rolling_engine, rolling_output,
 			rows::SdkRows,
 			window_engine_config,
 		},
@@ -63,8 +68,14 @@ use crate::{
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 struct RollingMode<A: Emit> {
 	engine: PaneEngine<A::GroupKey, A::Coord, A::Accumulator>,
+	runner: RollingRunner<A::Coord>,
 	pane: <A::Coord as Coord>::Span,
-	carries: bool,
+	on_empty: OnEmpty,
+}
+
+enum RollingInput<A: WindowedOperator> {
+	Batch(RoutedPanes<A::GroupKey, A::Coord, Contribution<A>>),
+	Timer(TimerKind, FiredAt),
 }
 
 type RollingEmits<A> = Vec<RollingEmit<<A as WindowedOperator>::GroupKey, NoKey, <A as WindowedOperator>::Output>>;
@@ -129,83 +140,36 @@ where
 		emitted
 	}
 
-	fn expire_rolling<C: GuestContext>(
+	fn run_rolling(
 		aggregator: &A,
 		mode: &mut RollingMode<A>,
 		settings: &WindowSettings<A::Coord>,
-		store: &mut GuestAsHost<'_, C>,
-		clock: A::Coord,
+		store: &mut dyn WindowStore,
+		input: RollingInput<A>,
 	) -> Result<Emitted<A>> {
 		let pane = mode.pane;
+		let new_accumulator = || aggregator.new_accumulator(settings);
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
-		let carry = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
-		let zero: Option<&dyn Fn(&A::Output) -> ValueResult<Option<A::Output>>> =
-			mode.carries.then_some(&carry);
-		let before = mode.engine.earliest_expiry(store)?;
-		let emits = match rolling_cutoff::<A>(settings, pane, clock) {
-			Some(cutoff) => mode.engine.expire(
-				store,
-				cutoff,
-				&RowPublisher {
-					key: None,
-					finalize: &finalize,
-					zero,
-				},
-			)?,
-			None => Vec::new(),
+		let empty = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
+		let key = |_: &A::GroupKey| -> ValueResult<NoKey> { Ok(NoKey) };
+		let mut hooks = RowHooks {
+			new_accumulator: &new_accumulator,
+			key: Some(&key),
+			finalize: &finalize,
+			on_empty: mode.on_empty,
+			empty: &empty,
 		};
-		let after = mode.engine.earliest_expiry(store)?;
-		<A::Coord as SealDomain>::rearm_decay(store, settings.fixed_size(), settings.lag, before, after)?;
-		Ok(Self::rolling_emitted(emits))
-	}
-
-	fn apply_rolling<C: GuestContext>(
-		aggregator: &A,
-		mode: &mut RollingMode<A>,
-		settings: &WindowSettings<A::Coord>,
-		ctx: &mut C,
-		groups: RollingGroups<A>,
-		order: &[A::GroupKey],
-	) -> Result<Emitted<A>> {
-		let mut store = GuestAsHost(ctx);
-		let clock = <A::Coord as SealDomain>::frontier(&mut store)?;
-		let pane = mode.pane;
-		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
-			rolling_output(aggregator, settings, pane, group, newest, accumulator)
+		let emits = match input {
+			RollingInput::Batch(routed) => {
+				mode.runner.apply(&mut mode.engine, store, routed, &mut hooks)?
+			}
+			RollingInput::Timer(kind, fired) => {
+				hooks.key = None;
+				mode.runner.on_timer(&mut mode.engine, store, kind, fired, &mut hooks)?
+			}
 		};
-		let carry = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
-		let zero: Option<&dyn Fn(&A::Output) -> ValueResult<Option<A::Output>>> =
-			mode.carries.then_some(&carry);
-		let cutoff = rolling_cutoff::<A>(settings, pane, clock);
-		let before = mode.engine.earliest_expiry(&mut store)?;
-		let keys = mode.engine.state_keys(&groups);
-		let mut prefetched = Prefetched::read(&mut store, keys)?;
-		let applied = mode.engine.apply(
-			&mut prefetched,
-			groups,
-			order,
-			cutoff,
-			&|| aggregator.new_accumulator(settings),
-			&RowPublisher {
-				key: Some(&|_: &A::GroupKey| NoKey),
-				finalize: &finalize,
-				zero,
-			},
-		)?;
-		prefetched.write()?;
-		if applied.sealed_drops + applied.stale_retractions > 0 {
-			debug!(
-				operator = A::NAME,
-				sealed_drops = applied.sealed_drops,
-				stale_retractions = applied.stale_retractions,
-				"rolling input dropped past its group's seal or retract line"
-			);
-		}
-		let emits = applied.emits;
-		let after = mode.engine.earliest_expiry(&mut store)?;
-		<A::Coord as SealDomain>::rearm_decay(&mut store, settings.fixed_size(), settings.lag, before, after)?;
 		Ok(Self::rolling_emitted(emits))
 	}
 
@@ -364,7 +328,6 @@ where
 				})
 				.into());
 			}
-			let merge = counted_merge::<A>();
 			let spans = PaneSpans {
 				size: settings.fixed_size(),
 				lag: settings.lag.unwrap_or_default(),
@@ -385,9 +348,14 @@ where
 				.into());
 			}
 			Some(RollingMode {
-				engine: PaneEngine::queue(window_engine_config(params), spans, merge),
+				engine: rolling_engine::<A>(window_engine_config(params), spans),
+				runner: RollingRunner::new(operator_id, spans.size, spans.lag, Some(pane)),
 				pane,
-				carries,
+				on_empty: if carries {
+					OnEmpty::Carry
+				} else {
+					OnEmpty::Remove
+				},
 			})
 		} else {
 			None
@@ -449,11 +417,13 @@ where
 		let mut store = GuestAsHost(ctx);
 		let fired = fired_at(&timer);
 		let (inserts, updates, removes) = match (timer.kind, rolling, *sessions, runner) {
-			(TimerKind::Seal, Some(mode), _, _) => {
-				SealLedger::advance(&mut store, fired)?;
-				let clock = A::Coord::from_order(fired.at().to_order());
-				Self::expire_rolling(aggregator, mode, settings, &mut store, clock)?
-			}
+			(TimerKind::Seal, Some(mode), _, _) => Self::run_rolling(
+				aggregator,
+				mode,
+				settings,
+				&mut store,
+				RollingInput::Timer(timer.kind, fired),
+			)?,
 			(TimerKind::Seal, None, true, Some(runner)) => {
 				runner.on_session_timers(engine, &mut store, from_ref(&timer.key), fired)?;
 				(Vec::new(), Vec::new(), Vec::new())
@@ -491,8 +461,12 @@ where
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		if let Some(pane) = self.rolling.as_ref().map(|mode| mode.pane) {
-			let (groups, order) = route_rolling(&self.aggregator, pane, ctx, &change)?;
-			if groups.is_empty() {
+			let routed = route_rolling(
+				&mut SdkRows::new(&self.aggregator, ctx, &change),
+				Some(pane),
+				&|group| GroupId::window(xxh3_128(group.into_encoded_key().as_slice()), 0),
+			)?;
+			if routed.is_empty() {
 				return Ok(());
 			}
 			let Self {
@@ -504,8 +478,13 @@ where
 			else {
 				unreachable!("the rolling mode was present a line above")
 			};
-			let (inserts, updates, removes) =
-				Self::apply_rolling(aggregator, mode, settings, ctx, groups, &order)?;
+			let (inserts, updates, removes) = Self::run_rolling(
+				aggregator,
+				mode,
+				settings,
+				&mut GuestAsHost(ctx),
+				RollingInput::Batch(routed),
+			)?;
 			return self.emit_batches(ctx, &inserts, &updates, &removes);
 		}
 		let (inserts, updates, removes) = {
@@ -537,15 +516,22 @@ mod tests {
 		operator_with::WithSpan,
 	};
 	use reifydb_flow_async::window::{
-		accumulator::{WindowAccumulator, invertible::last_value::LastValue},
+		accumulator::{
+			MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::last_value::LastValue,
+		},
 		coord::{DateTimeCoord, RowSpan, U8Coord},
+		driver::rolling::rolling_cutoff,
+		engine::pane::PaneFold,
 		span::WindowSpan,
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
-	use crate::{flow::operator::view::ColumnsView, row};
+	use crate::{
+		flow::operator::{view::ColumnsView, windowed::operator::Invertible},
+		row,
+	};
 
 	#[reifydb_macro::operator_state]
 	#[derive(Clone, HeapSize)]
@@ -898,8 +884,14 @@ mod tests {
 		let lagged = rolling_lagged(5, 1, Some(2));
 		let unlagged = rolling_lagged(5, 1, None);
 
-		assert_eq!(rolling_cutoff::<TimeProbe>(&lagged, secs(1), at(20)), Some(at(13)));
-		assert_eq!(rolling_cutoff::<TimeProbe>(&unlagged, secs(1), at(20)), Some(at(15)));
+		assert_eq!(
+			rolling_cutoff(at(20), lagged.fixed_size(), lagged.lag.unwrap_or_default(), Some(secs(1))),
+			Some(at(13))
+		);
+		assert_eq!(
+			rolling_cutoff(at(20), unlagged.fixed_size(), unlagged.lag.unwrap_or_default(), Some(secs(1))),
+			Some(at(15))
+		);
 	}
 
 	#[test]
@@ -917,6 +909,118 @@ mod tests {
 			*probe.spans.lock(),
 			vec![WindowSpan::new(at(14), at(19)), WindowSpan::new(at(16), at(21))],
 			"the lagged span must end at newest - lag + pane, the unlagged one at newest + pane"
+		);
+	}
+
+	#[reifydb_macro::operator_state]
+	#[derive(Clone, Debug, Default, HeapSize)]
+	struct Tally {
+		total: i64,
+		rows: u64,
+	}
+
+	impl WindowAccumulator for Tally {
+		type Contributions = Vec<i64>;
+		type Output = i64;
+
+		fn add(&mut self, contributions: &[i64]) {
+			self.total += contributions.iter().sum::<i64>();
+			self.rows += contributions.len() as u64;
+		}
+
+		fn remove(&mut self, contributions: &[i64]) {
+			self.total -= contributions.iter().sum::<i64>();
+			self.rows -= contributions.len() as u64;
+		}
+
+		fn finalize(&self) -> Option<i64> {
+			(self.rows > 0).then_some(self.total)
+		}
+	}
+
+	impl MergeAccumulator for Tally {
+		fn merge(&mut self, other: &Self) {
+			self.total += other.total;
+			self.rows += other.rows;
+		}
+	}
+
+	impl UnmergeAccumulator for Tally {
+		fn unmerge(&mut self, other: &Self) {
+			self.total -= other.total;
+			self.rows -= other.rows;
+		}
+	}
+
+	struct TallyProbe;
+
+	impl OperatorMetadata for TallyProbe {
+		const NAME: &'static str = "tally";
+		const VERSION: &'static str = "0";
+		const DESCRIPTION: &'static str = "tally";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+	}
+
+	impl WindowedOperator for TallyProbe {
+		type Coord = DateTimeCoord;
+		type GroupKey = u32;
+		type Accumulator = Tally;
+		type Output = Out;
+
+		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+			Ok(vec![None; rows.len()])
+		}
+
+		fn extract(
+			&self,
+			_: &mut impl GuestContext<Windowed>,
+			_: &impl ColumnsView,
+			rows: &[usize],
+		) -> Result<Vec<Option<(u32, i64)>>> {
+			Ok(vec![None; rows.len()])
+		}
+
+		fn new_accumulator(&self, _: &WindowSettings<DateTimeCoord>) -> Tally {
+			Tally::default()
+		}
+	}
+
+	impl Emit for TallyProbe {
+		type Kinds = Invertible;
+
+		fn build_output(&self, _: &u32, _: WindowSpan<DateTimeCoord>, total: &i64) -> Option<Out> {
+			Some(Out {
+				v: *total,
+			})
+		}
+	}
+
+	#[test]
+	fn an_invertible_rolling_operator_runs_on_a_running_total() {
+		// An invertible operator left on the queue fold re-merges every pane for each output.
+		let with = ApplyWith {
+			window: Some(WindowKind::Rolling {
+				size: WindowSize::Duration(secs(60)),
+				lag: None,
+				pane: Some(secs(10)),
+				on_empty: OnEmpty::Remove,
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+		let driver = PlainDriver::<TallyProbe>::create(OperatorId(1), &params(), &with).unwrap();
+
+		assert_eq!(
+			driver.rolling.as_ref().map(|mode| mode.engine.fold()),
+			Some(PaneFold::Running),
+			"an invertible operator must fold its rolling panes on a running total"
 		);
 	}
 }

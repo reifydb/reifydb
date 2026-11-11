@@ -12,10 +12,7 @@ use reifydb_value::{
 
 use super::operator::WindowOperator;
 use crate::{
-	operator::{
-		host::HostContext,
-		state::seal::{coord::Coord, ledger::FiredAt, rule::SealedThrough},
-	},
+	operator::state::seal::coord::Coord,
 	window::{
 		coord::DateTimeCoord,
 		kind::session::open::{Member, OpenSession, OpenSessions, SessionIds},
@@ -85,14 +82,6 @@ impl WindowOperator {
 
 	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {
 		GroupId::hashed(partition)
-	}
-
-	pub(super) fn seal_ledger(&mut self, host: &mut dyn HostContext) -> Result<SealedThrough> {
-		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(host)?))
-	}
-
-	pub(super) fn advance_seal_ledger(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
-		self.meta_slot().advance_seal_ledger(host, fired.at().to_order())
 	}
 }
 

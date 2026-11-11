@@ -31,13 +31,12 @@ use super::{
 		apply_session_engine, apply_tumbling_engine, forget_sealed_groups, seal_engine_windows,
 		seal_session_engines,
 	},
-	rolling::{NativePaneEngine, apply_rolling_engine, seal_rolling_engine},
+	rolling::{BuiltinRolling, apply_rolling_engine, seal_rolling_engine},
 };
 use crate::{
 	operator::{
 		HostOperator, TimedOutput,
 		aggregation::core::Aggregation,
-		drops::DropCounter,
 		host::HostContext,
 		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
@@ -69,9 +68,7 @@ pub struct WindowOperator {
 
 	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
-	sealed_drops: DropCounter,
-	stale_retractions: DropCounter,
-	rolling_engine: Option<Box<NativePaneEngine>>,
+	rolling: Option<Box<BuiltinRolling>>,
 	pub(super) runner: Option<WindowRunner<DateTimeCoord>>,
 	meta: WindowMeta,
 }
@@ -144,9 +141,7 @@ impl WindowOperator {
 			kind: config.kind,
 			lateness: config.lateness,
 			immutable: config.immutable,
-			sealed_drops: DropCounter::new(config.operator, "mutations targeting sealed windows"),
-			stale_retractions: DropCounter::new(config.operator, "updates/removes past immutable"),
-			rolling_engine: None,
+			rolling: None,
 			runner,
 			meta: WindowMeta::new(),
 		})
@@ -156,8 +151,8 @@ impl WindowOperator {
 		&mut self.meta
 	}
 
-	pub(crate) fn rolling_engine_slot(&mut self) -> &mut Option<Box<NativePaneEngine>> {
-		&mut self.rolling_engine
+	pub(crate) fn rolling_slot(&mut self) -> &mut Option<Box<BuiltinRolling>> {
+		&mut self.rolling
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
@@ -170,14 +165,6 @@ impl WindowOperator {
 
 	pub fn immutable(&self) -> Option<Duration> {
 		self.immutable
-	}
-
-	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
-		self.sealed_drops.note(dropped);
-	}
-
-	pub(crate) fn note_stale_retractions(&self, dropped: u64) {
-		self.stale_retractions.note(dropped);
 	}
 
 	pub fn size_duration(&self) -> Option<Duration> {
@@ -278,7 +265,7 @@ impl HostOperator for WindowOperator {
 			WindowKind::Rolling {
 				size: WindowSize::Duration(_),
 				..
-			} => seal_rolling_engine(self, host, fired)?,
+			} => seal_rolling_engine(self, host, fired, timer.kind)?,
 			WindowKind::Session {
 				..
 			} => seal_session_engines(self, host, slice::from_ref(&timer))?,

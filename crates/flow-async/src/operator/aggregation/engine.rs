@@ -99,11 +99,6 @@ impl Routing {
 	}
 }
 
-#[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
-pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
-	windows.iter().map(|&(p, w)| ((p, w), GroupId::window(p, w))).collect()
-}
-
 pub(crate) fn intern_partition_groups(partitions: &[(Hash128, u64)]) -> WindowGroups {
 	partitions.iter().map(|&(p, w)| ((p, w), GroupId::hashed(p))).collect()
 }

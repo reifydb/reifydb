@@ -3,6 +3,7 @@
 
 pub mod hooks;
 pub mod publish;
+pub mod rolling;
 pub mod route;
 pub mod rows;
 pub mod runner;

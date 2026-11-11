@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{internal_err, key::operator::state::GroupId, state::timer::StateStore};
+use reifydb_core::{common::OnEmpty, internal_err, key::operator::state::GroupId, state::timer::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{
@@ -11,9 +11,10 @@ use crate::window::{
 };
 
 pub struct RowPublisher<'f, G, K, O, A, C> {
-	pub key: Option<&'f dyn Fn(&G) -> K>,
+	pub key: Option<&'f dyn Fn(&G) -> Result<K>>,
 	pub finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
-	pub zero: Option<&'f dyn Fn(&O) -> Result<Option<O>>>,
+	pub on_empty: OnEmpty,
+	pub empty: &'f dyn Fn(&O) -> Result<Option<O>>,
 }
 
 impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
@@ -40,7 +41,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 				};
 				let post = RollingPublished {
 					row_number: 0,
-					key: key(group),
+					key: key(group)?,
 					last_value: out,
 					first_time: newest.as_time().unwrap_or_else(|| store.batch_time()),
 				};
@@ -68,9 +69,9 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 				});
 				Ok(Some(post))
 			}
-			(Some(prior), None) => match self.zero {
-				Some(zero) => {
-					let Some(last_value) = zero(&prior.last_value)? else {
+			(Some(prior), None) => match self.on_empty {
+				OnEmpty::Zero | OnEmpty::Carry => {
+					let Some(last_value) = (self.empty)(&prior.last_value)? else {
 						return Ok(Some(prior));
 					};
 					let post = RollingPublished {
@@ -87,7 +88,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 					});
 					Ok(Some(post))
 				}
-				None => {
+				OnEmpty::Remove => {
 					applied.withdrawn.push(group_id);
 					applied.emits.push(RollingEmit {
 						group: group.clone(),

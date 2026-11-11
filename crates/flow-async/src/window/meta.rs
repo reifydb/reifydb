@@ -27,7 +27,7 @@ use reifydb_value::{
 use serde::de::DeserializeOwned;
 
 use crate::operator::{
-	state::seal::ledger::{SealLedgerState, seal_ledger_key},
+	state::seal::ledger::seal_ledger_key,
 	state_access::{get, get_classified, remove, set},
 };
 
@@ -204,28 +204,6 @@ pub struct WindowMeta;
 impl WindowMeta {
 	pub fn new() -> Self {
 		Self
-	}
-
-	pub fn seal_ledger(&mut self, store: &mut dyn StateStore) -> Result<u64> {
-		Ok(get::<_, SealLedgerState>(store, from_ref(&SealLedgerKey))?
-			.remove(0)
-			.unwrap_or_default()
-			.sealed_through)
-	}
-
-	pub fn advance_seal_ledger(&mut self, store: &mut dyn StateStore, coord: u64) -> Result<()> {
-		if coord > self.seal_ledger(store)? {
-			set(
-				store,
-				vec![(
-					SealLedgerKey,
-					SealLedgerState {
-						sealed_through: coord,
-					},
-				)],
-			)?;
-		}
-		Ok(())
 	}
 
 	pub fn lookup_row_index(
