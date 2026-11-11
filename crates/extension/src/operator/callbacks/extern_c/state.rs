@@ -32,7 +32,10 @@ use reifydb_sdk::{
 		},
 	},
 };
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use super::{
 	context::{get_host_mut, guest_class, stash_failure},
@@ -739,6 +742,94 @@ pub(super) extern "C" fn host_remove_row_number_for_group(
 	}
 }
 
+pub(super) extern "C" fn host_mint_row_numbers(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	count: u64,
+	first_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() || first_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: null-checked above; `ctx` must be the context this host handed to the guest for the
+	// duration of the call, and `first_out` must be valid for one aligned u64 write.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		match host.mint_row_numbers(count as usize) {
+			Ok(first) => {
+				*first_out = first.0;
+				EXTERN_C_OK
+			}
+			Err(err) => stash_failure(&*ctx, err),
+		}
+	}
+}
+
+pub(super) extern "C" fn host_get_row_numbers_for_groups(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const ExternCGroupId,
+	groups_len: usize,
+	row_numbers_out: *mut u64,
+	present_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && (groups.is_null() || row_numbers_out.is_null() || present_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups`, `row_numbers_out`
+	// and `present_out`; the guest must pass back the ExternCContextRaw the host handed it for this call,
+	// `groups` valid for `groups_len` reads, and both out arrays valid and aligned for `groups_len` writes -
+	// get_row_numbers_for_groups returns exactly one result per group.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
+		match host.get_row_numbers_for_groups(&group_ids) {
+			Ok(results) => {
+				for (i, row_number) in results.iter().enumerate() {
+					*row_numbers_out.add(i) = row_number.map_or(0, |row_number| row_number.0);
+					*present_out.add(i) = row_number.is_some() as u8;
+				}
+				EXTERN_C_OK
+			}
+			Err(err) => stash_failure(&*ctx, err),
+		}
+	}
+}
+
+pub(super) extern "C" fn host_set_row_numbers_for_groups(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const ExternCGroupId,
+	row_numbers: *const u64,
+	len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if len > 0 && (groups.is_null() || row_numbers.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `len` so are `groups` and `row_numbers`; the
+	// guest must pass back the ExternCContextRaw the host handed it for this call and both arrays valid and
+	// aligned for `len` reads.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let rows: Vec<(GroupId, RowNumber)> = (0..len)
+			.map(|index| (host_group(*groups.add(index)), RowNumber(*row_numbers.add(index))))
+			.collect();
+		match host.set_row_numbers_for_groups(&rows) {
+			Ok(()) => EXTERN_C_OK,
+			Err(err) => stash_failure(&*ctx, err),
+		}
+	}
+}
+
 pub(super) extern "C" fn host_arm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -1023,6 +1114,19 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
+		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber> {
+			Ok(RowNumber(1))
+		}
+
+		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
+		}
+
+		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<()> {
+			self.reached.set(true);
+			Ok(())
+		}
+
 		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 			Ok(Vec::new())
 		}
@@ -1162,10 +1266,6 @@ mod join_row_expiry_guard_tests {
 			_limit: usize,
 		) -> Result<Vec<ReclaimOutcome>> {
 			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
-		}
-
-		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
-			Ok(Vec::new())
 		}
 
 		fn get_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {

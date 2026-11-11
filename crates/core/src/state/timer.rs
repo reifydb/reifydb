@@ -118,6 +118,12 @@ pub trait StateStore {
 
 	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
 
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber>;
+
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
+
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()>;
+
 	fn batch_time(&self) -> DateTime;
 }
 

@@ -155,6 +155,21 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.get_or_create_row_numbers_for_groups(groups)
 	}
 
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+		self.record("mint_row_numbers", count);
+		self.inner.mint_row_numbers(count)
+	}
+
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		self.record("get_row_numbers_for_groups", groups.len());
+		self.inner.get_row_numbers_for_groups(groups)
+	}
+
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		self.record("set_row_numbers_for_groups", rows.len());
+		self.inner.set_row_numbers_for_groups(rows)
+	}
+
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		self.record("get_row_numbers", keys.len());
 		self.inner.get_row_numbers(group, keys)
@@ -273,11 +288,6 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
 		self.record("reclaim_group_identities", groups.len());
 		self.inner.reclaim_group_identities(groups, limit)
-	}
-
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
-		self.record("get_row_numbers_for_groups", groups.len());
-		self.inner.get_row_numbers_for_groups(groups)
 	}
 
 	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {

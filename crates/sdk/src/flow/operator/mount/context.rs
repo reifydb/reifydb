@@ -384,6 +384,21 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number_for_group(groups) }.map_err(to_sdk_err)
 	}
+	fn mint_row_numbers(&mut self, count: usize) -> SdkResult<RowNumber> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).mint_row_numbers(count) }.map_err(to_sdk_err)
+	}
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<Vec<Option<RowNumber>>> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).get_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
+	}
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> SdkResult<()> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).set_row_numbers_for_groups(rows) }.map_err(to_sdk_err)
+	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessInsertEmit {

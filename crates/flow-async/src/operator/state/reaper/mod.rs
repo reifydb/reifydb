@@ -25,7 +25,7 @@ use crate::operator::state::reclaim::ReclaimOutcome;
 mod tests;
 
 pub trait Reaper {
-	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()>;
+	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()>;
 }
 
 pub trait IdentityReclaim: StateStore {
@@ -35,8 +35,9 @@ pub trait IdentityReclaim: StateStore {
 pub struct StoreReaper;
 
 impl Reaper for StoreReaper {
-	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove(keys)
+	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		let keys: Vec<GroupStateKey> = rows.iter().map(|(key, _)| key.clone()).collect();
+		store.state_remove(&keys)
 	}
 }
 
@@ -180,8 +181,7 @@ where
 		});
 	}
 	store.remove_root_siblings(&scan.data)?;
-	let keys: Vec<GroupStateKey> = scan.data.iter().map(|(key, _)| key.clone()).collect();
-	reaper.reap(store, &keys)?;
+	reaper.reap(store, &scan.data)?;
 	reifydb_assertions! {
 		let leftover = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data())?.rows.len();
 		assert!(
@@ -297,8 +297,7 @@ where
 
 	if !doomed.is_empty() {
 		store.remove_root_siblings(&doomed)?;
-		let keys: Vec<GroupStateKey> = doomed.iter().map(|(key, _)| key.clone()).collect();
-		reaper.reap(store, &keys)?;
+		reaper.reap(store, &doomed)?;
 	}
 
 	let mut spent = 0usize;
@@ -374,7 +373,6 @@ where
 	}
 	let doomed = store.group_sweep(&[group], budget, KeyspaceMask::data())?.rows;
 	store.remove_root_siblings(&doomed)?;
-	let keys: Vec<GroupStateKey> = doomed.iter().map(|(key, _)| key.clone()).collect();
-	reaper.reap(store, &keys)?;
+	reaper.reap(store, &doomed)?;
 	Ok(doomed.len())
 }

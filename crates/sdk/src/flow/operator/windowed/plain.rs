@@ -17,19 +17,16 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_flow_async::{
-	operator::{
-		state::{
-			reaper::{drain, drain_groups, enqueue, enqueue_retired},
-			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
-		},
-		state_access::batch,
+	operator::state::{
+		reaper::{drain, drain_groups, enqueue, enqueue_retired},
+		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
 		engine::{
-			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
+			AccumulatorEvent, EmitKind, WindowReindex,
 			daba::Merge,
 			pane::{PaneEngine, PaneEvent, PaneSpans, RollingEmit},
-			publish::{PublishState, RowPublisher},
+			publish::RowPublisher,
 			session::SessionEngine,
 			sliding::SlidingEngine,
 			tumbling::TumblingEngine,
@@ -64,7 +61,7 @@ use crate::{
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, Extracted, KindSet, WindowedOperator, batch_len, extract_rows},
 			partition_of,
-			publish::{Emitted, UpdateRow, publish_row},
+			publish::{Emitted, UpdateRow},
 			rolling_cutoff, rolling_output, route_rolling, seal_frontier, timer_frontier,
 			window_engine_config,
 		},
@@ -436,7 +433,6 @@ where
 		ctx: &mut C,
 		routing: Buckets<A>,
 	) -> Result<Emitted<A>> {
-		let now = ctx.batch_time();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
@@ -505,28 +501,27 @@ where
 		if results.is_empty() {
 			return Ok(emitted);
 		}
-		let mut store = GuestAsHost(ctx);
-		let keys: Vec<PublishKey> = results
-			.iter()
-			.map(|r| {
-				let (group, key) = group_of(&groups, &r.group, r.span.start);
-				PublishKey::new(group, key)
-			})
-			.collect();
-		let mut session = batch::<_, PublishState<A::Output>>(&mut store, &keys)?;
-		for (slot, r) in results.into_iter().enumerate() {
-			let mut state = session.value(slot)?.unwrap_or_default();
-			let time = r.span.start.as_time().unwrap_or(now);
-			if r.kind == EmitKind::Remove {
-				publish_row::<A>(r.row_number, time, None, &mut state, &mut emitted)?;
-				session.set(slot, &state)?;
-				continue;
+		for r in results {
+			let Some(time) = r.first_time else {
+				return Err(SdkError::Other(format!(
+					"a tumbling result for row {:?} carries no first time",
+					r.row_number
+				)));
+			};
+			let pre = r.prior.as_ref().and_then(|prior| aggregator.build_output(&r.group, r.span, prior));
+			let out = match r.kind {
+				EmitKind::Remove => None,
+				EmitKind::Insert | EmitKind::Update => {
+					aggregator.build_output(&r.group, r.span, &r.value)
+				}
+			};
+			match (out, pre) {
+				(Some(out), None) => emitted.0.push((r.row_number, time, out)),
+				(Some(out), Some(pre)) => emitted.1.push((r.row_number, time, Some(pre), out)),
+				(None, Some(pre)) => emitted.2.push((r.row_number, time, pre)),
+				(None, None) => {}
 			}
-			let out = aggregator.build_output(&r.group, r.span, &r.value);
-			publish_row::<A>(r.row_number, time, out, &mut state, &mut emitted)?;
-			session.set(slot, &state)?;
 		}
-		session.commit(&mut store)?;
 		Ok(emitted)
 	}
 

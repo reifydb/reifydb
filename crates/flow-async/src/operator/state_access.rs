@@ -317,6 +317,18 @@ mod tests {
 			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
+		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber> {
+			Ok(RowNumber(1))
+		}
+
+		fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(vec![None; groups.len()])
+		}
+
+		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<()> {
+			Ok(())
+		}
+
 		fn get_row_numbers(&mut self, _group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 			Ok(keys.iter().enumerate().map(|(i, _)| Some(RowNumber(i as u64 + 1))).collect())
 		}

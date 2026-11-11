@@ -10,18 +10,25 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::state::{OperatorState, StateCodec},
+	row::{
+		operator::state::{OperatorState, StateCodec, decode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	internal_err,
 	key::operator::{
 		keyspace::expiry::TumblingExpiry,
-		state::{GroupId, GroupStateKey},
+		state::{GroupId, GroupStateKey, KeyspaceId},
 	},
+	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{
@@ -67,6 +74,20 @@ pub struct ExpiredWindow<G, S> {
 }
 
 #[operator_state]
+#[derive(Debug, Clone)]
+pub struct WindowSlot<A> {
+	pub row: Option<RowNumber>,
+	pub first_time: DateTime,
+	pub acc: A,
+}
+
+impl<A: HeapSize> HeapSize for WindowSlot<A> {
+	fn heap_size(&self) -> usize {
+		self.acc.heap_size()
+	}
+}
+
+#[operator_state]
 #[derive(Clone)]
 pub struct TumblingIndexEntry<G, S> {
 	pub(crate) group: G,
@@ -80,8 +101,23 @@ where
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove(keys)
+	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		let window_keyspace = self.family.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR);
+		let mut kept: Vec<(GroupId, RowNumber)> = Vec::new();
+		for (key, row) in rows {
+			if key.keyspace() != Some(window_keyspace) {
+				continue;
+			}
+			let window: WindowSlot<Accumulator> = decode(row)?;
+			if let (Some(group), Some(number)) = (key.group(), window.row) {
+				kept.push((group, number));
+			}
+		}
+		if !kept.is_empty() {
+			store.set_row_numbers_for_groups(&kept)?;
+		}
+		let keys: Vec<GroupStateKey> = rows.iter().map(|(key, _)| key.clone()).collect();
+		store.state_remove(&keys)
 	}
 }
 
@@ -239,10 +275,12 @@ where
 			slots.insert(ordered.clone(), keys.len());
 			keys.push(state_key);
 		}
+		let now = store.batch_time();
 		let mut session = match keys.is_empty() {
 			true => None,
-			false => Some(batch::<_, Accumulator>(store, &keys)?),
+			false => Some(batch::<_, WindowSlot<Accumulator>>(store, &keys)?),
 		};
+		let mut held: Vec<(usize, WindowSlot<Accumulator>)> = Vec::new();
 
 		for ordered in order {
 			let Some(events) = buckets.remove(ordered) else {
@@ -261,30 +299,39 @@ where
 				continue;
 			};
 
-			let mut accumulator: Accumulator = session.value(slot)?.unwrap_or_else(new_accumulator);
-			let was_empty_before = accumulator.is_empty();
+			let mut window = match session.value(slot)? {
+				Some(window) => window,
+				None => WindowSlot {
+					row: None,
+					first_time: span.start.as_time().unwrap_or(now),
+					acc: new_accumulator(),
+				},
+			};
+			let was_empty_before = window.acc.is_empty();
 			let prior = if was_empty_before {
 				None
 			} else {
-				accumulator.finalize()
+				window.acc.finalize()
 			};
 
-			self.dropped_retractions += accumulator.apply(&events).dropped;
+			self.dropped_retractions += window.acc.apply(&events).dropped;
 
-			let value = accumulator.finalize();
-			session.set(slot, &accumulator)?;
+			let value = window.acc.finalize();
 
 			match value {
-				Some(value) => pending.push(PendingEmit {
-					group_id: id,
-					group,
-					span,
-					value,
-					prior,
-					withdraw: false,
-				}),
-				None => {
-					if let Some(p) = prior.clone() {
+				Some(value) => {
+					pending.push(PendingEmit {
+						group_id: id,
+						group,
+						span,
+						value,
+						prior,
+						withdraw: false,
+					});
+					held.push((slot, window));
+				}
+				None => match prior.clone() {
+					Some(p) => {
 						pending.push(PendingEmit {
 							group_id: id,
 							group,
@@ -293,8 +340,12 @@ where
 							prior,
 							withdraw: true,
 						});
+						held.push((slot, window));
 					}
-				}
+					None => {
+						session.set(slot, &window)?;
+					}
+				},
 			}
 		}
 		reifydb_assertions! {
@@ -306,47 +357,81 @@ where
 			);
 		}
 
-		if let Some(session) = session {
-			session.commit(store)?;
-		}
-		if pending.is_empty() {
-			return Ok(Vec::new());
-		}
-
-		let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
-		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
-		reifydb_assertions! {
-			let requested = groups.len();
-			let returned = rows.len();
-			assert!(
-				returned == requested,
-				"the identity batch must return one row per publishing window; a short batch makes the \
-				 zip below drop the tail, so those windows publish nothing while their accumulators \
-				 already advanced (requested={requested}, returned={returned})"
-			);
+		let unnumbered: Vec<usize> = pending
+			.iter()
+			.zip(&held)
+			.enumerate()
+			.filter(|(_, (emit, (_, window)))| !emit.withdraw && window.row.is_none())
+			.map(|(index, _)| index)
+			.collect();
+		let mut assigned: HashMap<usize, (RowNumber, bool)> = HashMap::with_capacity(unnumbered.len());
+		if !unnumbered.is_empty() {
+			let groups: Vec<GroupId> = unnumbered.iter().map(|&index| pending[index].group_id).collect();
+			let surviving = store.get_row_numbers_for_groups(&groups)?;
+			reifydb_assertions! {
+				let requested = groups.len();
+				let returned = surviving.len();
+				assert!(
+					returned == requested,
+					"the identity lookup must answer every unnumbered window; a short answer leaves a \
+					 publishing window without a row (requested={requested}, returned={returned})"
+				);
+			}
+			let fresh = surviving.iter().filter(|row| row.is_none()).count();
+			let mut next = match fresh {
+				0 => 0,
+				count => store.mint_row_numbers(count)?.0,
+			};
+			for (&index, row) in unnumbered.iter().zip(surviving) {
+				let numbered = match row {
+					Some(row) => (row, false),
+					None => {
+						let row = RowNumber(next);
+						next += 1;
+						(row, true)
+					}
+				};
+				assigned.insert(index, numbered);
+			}
 		}
 
 		let mut results: Vec<WindowResult<G, S, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		let mut withdrawn: Vec<GroupId> = Vec::new();
-		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
-			let kind = if emit.withdraw {
-				reifydb_assertions! {
-					let group_id = emit.group_id;
-					assert!(
-						!is_new,
-						"a window holding a prior output must already own its mapping; minting \
-						 one here means the identity was released while the row it addresses \
-						 was still live, and this withdrawal names a row no sink can find \
-						 (group={group_id:?}, row={row_number:?})"
+		for (index, (emit, (slot, mut window))) in pending.into_iter().zip(held).enumerate() {
+			let (row_number, kind) = if emit.withdraw {
+				let Some(row_number) = window.row else {
+					return internal_err!(
+						"a window holding a prior output must already own its row; withdrawing \
+						 without one names a row no sink can find (group={:?})",
+						emit.group_id
 					);
-				}
+				};
 				withdrawn.push(emit.group_id);
-				EmitKind::Remove
-			} else if is_new {
-				EmitKind::Insert
+				window.row = None;
+				(row_number, EmitKind::Remove)
 			} else {
-				EmitKind::Update
+				match (window.row, assigned.remove(&index)) {
+					(Some(row_number), _) => (row_number, EmitKind::Update),
+					(None, Some((row_number, true))) => (row_number, EmitKind::Insert),
+					(None, Some((row_number, false))) => (row_number, EmitKind::Update),
+					(None, None) => {
+						return internal_err!(
+							"a publishing window was left without a row (group={:?})",
+							emit.group_id
+						);
+					}
+				}
 			};
+			if !emit.withdraw {
+				if window.row.is_none() {
+					window.first_time = emit.span.start.as_time().unwrap_or(now);
+				}
+				window.row = Some(row_number);
+			}
+			let first_time = window.first_time;
+			if let Some(session) = session.as_mut() {
+				session.set(slot, &window)?;
+			}
 			results.push(WindowResult {
 				row_number,
 				group: emit.group,
@@ -354,8 +439,11 @@ where
 				value: emit.value,
 				prior: emit.prior,
 				kind,
-				first_time: None,
+				first_time: Some(first_time),
 			});
+		}
+		if let Some(session) = session {
+			session.commit(store)?;
 		}
 		if !withdrawn.is_empty() {
 			store.remove_row_number_for_group(&withdrawn)?;
@@ -431,27 +519,31 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
-	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize};
+	use reifydb_codec::{key::encoded::EncodedKey, row::operator::state::decode};
+	use reifydb_core::{
+		key::operator::state::{GroupId, KeyspaceMask},
+		metrics::heap::HeapSize,
+		state::timer::StateStore,
+	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, util::hash::Hash128};
+	use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
 
 	use crate::{
 		factory::coord::event_coord_at_millis,
 		operator::state::{
 			mock::MockStore,
-			reaper::{StoreReaper, enqueue, reap_group},
+			reaper::{Reaper, StoreReaper, drain_group, enqueue, reap_group},
 			seal::coord::Coord,
 		},
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
-			coord::DateTimeCoord,
+			coord::{DateTimeCoord, U8Coord},
 			engine::{
 				AccumulatorEvent, EmitKind, WindowReindex, WindowResult,
 				config::WindowEngineConfig,
-				tumbling::{TumblingBuckets, TumblingEngine},
+				tumbling::{TumblingBuckets, TumblingEngine, WindowSlot},
 			},
-			span::WindowSpan,
+			span::{WindowAnchor, WindowSpan},
 		},
 	};
 
@@ -648,12 +740,21 @@ mod tests {
 
 		assert_eq!(expired.len(), 1);
 		assert_eq!(expired[0].group_id, group, "the entry must name the group whose state it drained");
-		assert!(
-			store.contains_row_mapping(group),
+		let held: Vec<WindowSlot<SumAccumulator>> = store
+			.group_sweep(&[group], usize::MAX, KeyspaceMask::data())
+			.unwrap()
+			.rows
+			.iter()
+			.map(|(_, row)| decode(row).unwrap())
+			.collect();
+		assert_eq!(
+			held.len(),
+			1,
 			"the identity the driver is about to release must still be resolvable from that group alone"
 		);
-		assert!(
-			store.contains_row_mapping(group),
+		assert_eq!(
+			held[0].row,
+			Some(published.row_number),
 			"sealing releases no identity of its own; the reaper collects it at or below the ledger"
 		);
 	}
@@ -748,9 +849,14 @@ mod tests {
 		// insert lays a duplicate row over a live one, which a sink folding the stream cannot place.
 		let mut store = MockStore::default();
 		let published = seed_window(&mut store, 0, 5);
-		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
+		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
+		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
+		assert!(!swept.is_empty(), "precondition: reclaim erased the accumulator");
+		TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config())
+			.reap(&mut store, &swept)
+			.unwrap();
 		assert!(
-			store.contains_row_mapping(GroupId::of(&row_key(&1, event_coord_at_millis(0)))),
+			store.contains_row_mapping(group),
 			"precondition: the identity half must survive the data phase"
 		);
 
@@ -764,6 +870,119 @@ mod tests {
 			EmitKind::Update,
 			"the published row survived the sweep, so this is an update and not a second insert"
 		);
+	}
+
+	#[test]
+	fn a_window_updated_twice_keeps_its_first_row_and_first_time_without_a_mapping() {
+		// A live window must address one row for its whole life, read from its own record and never re-minted.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let first = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 5)).expect("apply");
+		let second = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
+		let third = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 2)).expect("apply");
+
+		assert_eq!(first[0].kind, EmitKind::Insert);
+		assert_eq!(second[0].kind, EmitKind::Update);
+		assert_eq!(third[0].kind, EmitKind::Update);
+		assert_eq!(second[0].row_number, first[0].row_number, "an update must address the inserted row");
+		assert_eq!(third[0].row_number, first[0].row_number, "a second update must address the inserted row");
+		assert_eq!(first[0].first_time, Some(event_coord_at_millis(0).as_time().unwrap()));
+		assert_eq!(third[0].first_time, first[0].first_time, "first time is fixed when the window is created");
+		assert!(
+			!store.contains_row_mapping(GroupId::of(&row_key(&1, event_coord_at_millis(0)))),
+			"a live window keeps its row in its record; a mapping here means the hot path wrote identity state"
+		);
+
+		let other = apply_sums(&mut engine, &mut store, one_bucket(2, 0, 1)).expect("apply");
+		assert_eq!(
+			other[0].row_number.0,
+			first[0].row_number.0 + 1,
+			"the two updates minted nothing, so the next window takes the next number"
+		);
+	}
+
+	fn apply_row_window(
+		store: &mut MockStore,
+		at_millis: i64,
+		event: AccumulatorEvent<i64>,
+	) -> WindowResult<u32, U8Coord, i64> {
+		store.set_batch_time(DateTime::from_millis(at_millis));
+		let mut engine = TumblingEngine::<u32, U8Coord, SumAccumulator>::new(test_config());
+		let mut buckets: TumblingBuckets<u32, U8Coord, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(U8Coord(0), U8Coord(1))), vec![event]);
+		let order: Vec<(u32, WindowSpan<U8Coord>)> = buckets.keys().cloned().collect();
+		let row_slot = |group: &u32, start: U8Coord| {
+			let key = EncodedKey::builder().u32(*group).u64(start.0).build();
+			(GroupId::of(&key), EncodedKey::new(Vec::new()))
+		};
+		let mut results =
+			engine.apply(store, buckets, &order, row_slot, SumAccumulator::default).expect("apply");
+		results.pop().expect("one window")
+	}
+
+	#[test]
+	fn a_window_withdrawn_then_republished_takes_a_new_first_time() {
+		// A reinsert is a new sink row; keeping the withdrawn row's time misstates when it was created.
+		let mut store = MockStore::default();
+		let inserted = apply_row_window(&mut store, 1000, AccumulatorEvent::Add(5));
+		let withdrawn = apply_row_window(&mut store, 2000, AccumulatorEvent::Remove(5));
+		let reinserted = apply_row_window(&mut store, 3000, AccumulatorEvent::Add(7));
+
+		assert_eq!(inserted.kind, EmitKind::Insert);
+		assert_eq!(inserted.first_time, Some(DateTime::from_millis(1000)));
+		assert_eq!(withdrawn.kind, EmitKind::Remove);
+		assert_eq!(
+			withdrawn.first_time,
+			Some(DateTime::from_millis(1000)),
+			"a withdraw retracts the row it published"
+		);
+		assert_eq!(reinserted.kind, EmitKind::Insert);
+		assert_eq!(
+			reinserted.first_time,
+			Some(DateTime::from_millis(3000)),
+			"a fresh row takes the time it was created"
+		);
+	}
+
+	#[test]
+	fn an_update_carries_the_value_published_before_it_as_prior() {
+		// The driver rebuilds the pre-image from prior, so prior must be exactly the last published value.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let first = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 5)).expect("apply");
+		let second = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 3)).expect("apply");
+		let third = apply_sums(&mut engine, &mut store, one_bucket(1, 0, 2)).expect("apply");
+
+		assert_eq!(first[0].prior, None, "an insert has no pre-image");
+		assert_eq!(second[0].prior, Some(first[0].value));
+		assert_eq!(third[0].prior, Some(second[0].value));
+		assert_eq!(third[0].value, 10);
+	}
+
+	#[test]
+	fn a_fully_reaped_window_leaves_no_state_and_no_mapping_behind() {
+		// The reap moves the row into the identity half; phase two must then erase it, or it leaks forever.
+		let mut store = MockStore::default();
+		seed_window(&mut store, 0, 5);
+		let group = GroupId::of(&row_key(&1, event_coord_at_millis(0)));
+		enqueue(&mut store, &[group]).unwrap();
+
+		let mut engine = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let drained = drain_group(&mut store, group, &mut engine, usize::MAX).unwrap();
+
+		assert!(!drained.still_queued, "an unbounded drain finishes the group in one pass");
+		assert!(
+			store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows.is_empty(),
+			"no data row of the reaped window may survive"
+		);
+		assert!(
+			!store.contains_row_mapping(group),
+			"the row moved out by the reap must be reclaimed with the group"
+		);
+
+		let mut woken = TumblingEngine::<u32, DateTimeCoord, SumAccumulator>::new(test_config());
+		let out = apply_sums(&mut woken, &mut store, one_bucket(1, 0, 4)).expect("apply");
+		assert_eq!(out[0].kind, EmitKind::Insert, "a fully reclaimed window starts over as a new row");
 	}
 
 	#[test]

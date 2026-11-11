@@ -559,6 +559,26 @@ mod tests {
 				.collect())
 		}
 
+		fn mint_row_numbers(&mut self, count: usize) -> ValueResult<RowNumber> {
+			let first = self.next_row + 1;
+			self.next_row += count as u64;
+			Ok(RowNumber(first))
+		}
+
+		fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> ValueResult<Vec<Option<RowNumber>>> {
+			Ok(groups
+				.iter()
+				.map(|group| self.rows.get(&(*group, Vec::new())).map(|&row| RowNumber(row)))
+				.collect())
+		}
+
+		fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> ValueResult<()> {
+			for (group, row) in rows {
+				self.rows.insert((*group, Vec::new()), row.0);
+			}
+			Ok(())
+		}
+
 		fn get_row_numbers(
 			&mut self,
 			group: GroupId,

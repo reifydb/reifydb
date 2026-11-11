@@ -16,12 +16,16 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
+	internal_err,
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{
@@ -42,6 +46,7 @@ use crate::{
 #[operator_state]
 #[derive(Debug, Clone)]
 pub struct WindowEntry<S, Carry, Output> {
+	row: Option<RowNumber>,
 	span: WindowSpan<S>,
 	carry_out: Option<Carry>,
 	last_output: Option<Output>,
@@ -105,6 +110,7 @@ struct PendingCarry<S, Output> {
 	prior: Option<Output>,
 	withdraw: bool,
 	first_time: DateTime,
+	row: Option<RowNumber>,
 }
 
 pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
@@ -191,9 +197,6 @@ where
 			if !doomed.is_empty() {
 				store.state_remove(&doomed)?;
 			}
-			if !groups.is_empty() {
-				store.remove_row_number_for_group(&groups)?;
-			}
 		}
 		Ok(dropped)
 	}
@@ -267,6 +270,7 @@ where
 			touched.insert(slot, accumulator);
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
+				row: None,
 				span,
 				carry_out: None,
 				last_output: None,
@@ -283,7 +287,6 @@ where
 		}
 
 		let mut pending: Vec<(G, PendingCarry<S, Output>)> = Vec::new();
-		let mut removed_groups: Vec<GroupId> = Vec::new();
 		for (group, start) in earliest_affected {
 			self.meta_sweep.lower_low_water(start.to_order());
 			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
@@ -321,6 +324,7 @@ where
 						w.carry_out = new_carry.clone();
 						let prior = w.last_output.replace(out.clone());
 						let first_time = w.first_time;
+						let row = w.row;
 						if new_carry.is_some() {
 							prev_carry = new_carry;
 						}
@@ -333,13 +337,16 @@ where
 								prior,
 								withdraw: false,
 								first_time,
+								row,
 							},
 						));
 					}
 					None => {
-						if let Some((prev, first_time)) =
+						if let Some((prev, first_time, row)) =
 							meta.windows.get(&window).and_then(|w| {
-								w.last_output.clone().map(|prev| (prev, w.first_time))
+								w.last_output
+									.clone()
+									.map(|prev| (prev, w.first_time, w.row))
 							}) {
 							pending.push((
 								group.clone(),
@@ -350,6 +357,7 @@ where
 									prior: None,
 									withdraw: true,
 									first_time,
+									row,
 								},
 							));
 						}
@@ -378,7 +386,6 @@ where
 						.get(&(group.clone(), first))
 						.expect("a window the fold seals is in the session");
 					windows.remove(slot);
-					removed_groups.push(keys[slot].group);
 				}
 			}
 		}
@@ -392,45 +399,47 @@ where
 			rank.get(&(group.clone(), emit.span.start)).copied().unwrap_or(usize::MAX)
 		});
 
+		let fresh = pending.iter().filter(|(_, emit)| !emit.withdraw && emit.row.is_none()).count();
+		let mut next_fresh = match fresh {
+			0 => 0,
+			count => store.mint_row_numbers(count)?.0,
+		};
 		let mut results: Vec<WindowResult<G, S, Output>> = Vec::with_capacity(pending.len());
-		if !pending.is_empty() {
-			let ids: Vec<GroupId> = pending.iter().map(|(_, emit)| emit.group_id).collect();
-			let rows = store.get_or_create_row_numbers_for_groups(&ids)?;
-			reifydb_assertions! {
-				let requested = ids.len();
-				let returned = rows.len();
-				assert!(
-					returned == requested,
-					"the identity batch must return one row per publishing window; a short batch makes \
-					 the zip below drop the tail, so those windows publish nothing while their carry \
-					 meta already advanced (requested={requested}, returned={returned})"
-				);
-			}
-			for ((group, emit), (row_number, is_new)) in pending.into_iter().zip(rows) {
-				let kind = if emit.withdraw {
-					removed_groups.push(emit.group_id);
-					EmitKind::Remove
-				} else if is_new {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
-				};
-				results.push(WindowResult {
-					row_number,
-					group,
-					span: emit.span,
-					value: emit.value,
-					prior: emit.prior,
-					kind,
-					first_time: Some(emit.first_time),
-				});
-			}
+		for (group, emit) in pending {
+			let (row_number, kind) = match (emit.withdraw, emit.row) {
+				(true, Some(row_number)) => (row_number, EmitKind::Remove),
+				(true, None) => {
+					return internal_err!(
+						"a carry window holding a prior output must already own its row; withdrawing \
+						 it without one would leave its published row behind (group={:?})",
+						emit.group_id
+					);
+				}
+				(false, Some(row_number)) => (row_number, EmitKind::Update),
+				(false, None) => {
+					let row_number = RowNumber(next_fresh);
+					next_fresh += 1;
+					if let Some(entry) = meta_loaded
+						.get_mut(&group)
+						.and_then(|meta| meta.windows.get_mut(&emit.span.start))
+					{
+						entry.row = Some(row_number);
+					}
+					(row_number, EmitKind::Insert)
+				}
+			};
+			results.push(WindowResult {
+				row_number,
+				group,
+				span: emit.span,
+				value: emit.value,
+				prior: emit.prior,
+				kind,
+				first_time: Some(emit.first_time),
+			});
 		}
 
 		windows.commit(store)?;
-		if !removed_groups.is_empty() {
-			store.remove_row_number_for_group(&removed_groups)?;
-		}
 		for (slot, group) in groups.iter().enumerate() {
 			metas.set(slot, meta_loaded.get(group).expect("every bucket group has meta"))?;
 		}
@@ -695,6 +704,23 @@ mod tests {
 				.collect())
 		}
 
+		fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+			let first = self.next_row + 1;
+			self.next_row += count as u64;
+			Ok(RowNumber(first))
+		}
+
+		fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(groups.iter().map(|group| self.rows.get(&(*group, Vec::new())).copied()).collect())
+		}
+
+		fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+			for (group, row) in rows {
+				self.rows.insert((*group, Vec::new()), *row);
+			}
+			Ok(())
+		}
+
 		fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 			Ok(keys.iter().map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).copied()).collect())
 		}
@@ -839,9 +865,8 @@ mod tests {
 
 	#[test]
 	fn a_window_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
-		// The data phase takes the accumulator, the carry meta and last_output at once while the
-		// mapping stays addressable, so what comes back has no memory of what it published but the
-		// sink still holds that row. A second insert would lay a duplicate row over a live one.
+		// The data phase takes the accumulator; the root-held meta keeps the window entry and its row, so a
+		// second insert would duplicate a live row.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		let published = feed_group(&mut engine, &mut store, "BTC", event_coord_at_millis(0), 5.0);
@@ -849,7 +874,11 @@ mod tests {
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the window publishes once");
 
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
-		assert_eq!(store.row_mapping_count(), 1, "precondition: the identity half must survive the data phase");
+		assert_eq!(
+			store.row_mapping_count(),
+			0,
+			"the row lives in the window entry, so the hot path writes no mapping"
+		);
 
 		let mut engine = Engine::new(carry_config(None));
 		let republished = feed_group(&mut engine, &mut store, "BTC", event_coord_at_millis(0), 3.0);
@@ -935,13 +964,17 @@ mod tests {
 			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
 			feed_group(&mut engine, &mut store, "ETH", window_at(i * WINDOW), i as f64);
 		}
-		assert_eq!((store.accumulator_count(), store.row_mapping_count()), (20, 20));
+		assert_eq!(
+			(store.accumulator_count(), store.row_mapping_count()),
+			(20, 0),
+			"carry keeps rows in its window entries, never in mappings"
+		);
 
 		let dropped = engine.expire(&mut store, window_at(5 * WINDOW), seal_key).unwrap();
 
 		assert_eq!(dropped, 0, "both groups still have windows at or past the horizon");
 		assert_eq!(store.accumulator_count(), 10, "windows 5..9 of each group must keep their accumulators");
-		assert_eq!(store.row_mapping_count(), 10, "a folded window must give back its row-number mapping");
+		assert_eq!(store.row_mapping_count(), 0, "a seal must not mint a mapping for a folded window");
 		assert_eq!(store.meta_entry_count(), 2, "a group with live windows keeps its meta");
 	}
 
@@ -1098,7 +1131,7 @@ mod tests {
 			"a queue row without the marker would be drained inline instead"
 		);
 		assert_eq!(store.accumulator_count(), 10, "the rows belong to the flush now");
-		assert_eq!(store.row_mapping_count(), 10, "the mapping lives in the group and goes with it");
+		assert_eq!(store.row_mapping_count(), 0, "carry writes no mapping for the flush to carry");
 		assert_eq!(store.meta_entry_count(), 1, "the group itself stays open");
 	}
 
@@ -1369,6 +1402,7 @@ mod tests {
 		meta.windows.insert(
 			event_coord_at_millis(10),
 			WindowEntry {
+				row: Some(RowNumber(5)),
 				span: WindowSpan::new(event_coord_at_millis(10), event_coord_at_millis(20)),
 				carry_out: Some(7i64),
 				last_output: Some(3i64),

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{
-	reifydb_assertions,
-	value::{blob::Blob, value_type::ValueType},
-};
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::value_type::ValueType;
+use reifydb_value::{reifydb_assertions, value::blob::Blob};
 
 use crate::row::{bytes::RowBuilder, shape::RowShape};
 

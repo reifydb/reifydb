@@ -304,8 +304,6 @@ impl KeyspaceId {
 
 	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x27);
 
-	pub const GUEST_WINDOW_PUBLISH: Self = Self(0x28);
-
 	pub const GUEST_RETAINED_ENTRY: Self = Self(0x29);
 
 	pub const LOOKUP_READ: Self = Self(0x2A);
@@ -364,7 +362,6 @@ impl KeyspaceId {
 			Self::CUSTOM_MANAGED => "CUSTOM_MANAGED",
 			Self::CUSTOM_MANAGED_DUE => "CUSTOM_MANAGED_DUE",
 			Self::CUSTOM_MANAGED_LATEST => "CUSTOM_MANAGED_LATEST",
-			Self::GUEST_WINDOW_PUBLISH => "GUEST_WINDOW_PUBLISH",
 			Self::GUEST_RETAINED_ENTRY => "GUEST_RETAINED_ENTRY",
 			Self::LOOKUP_READ => "LOOKUP_READ",
 			Self::SESSION_MEMBER => "SESSION_MEMBER",
@@ -393,7 +390,7 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
-const WINDOWED_KEYSPACES: [KeyspaceId; 14] = [
+const WINDOWED_KEYSPACES: [KeyspaceId; 13] = [
 	KeyspaceId::GUEST_ACCUMULATOR,
 	KeyspaceId::GUEST_BUFFER,
 	KeyspaceId::GUEST_RUNNING,
@@ -403,7 +400,6 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 14] = [
 	KeyspaceId::ROLLING_EXPIRY,
 	KeyspaceId::TUMBLING_EXPIRY,
 	KeyspaceId::REAP_QUEUE,
-	KeyspaceId::GUEST_WINDOW_PUBLISH,
 	KeyspaceId::GUEST_RETAINED_ENTRY,
 	KeyspaceId::GUEST_ROW_MAPPING,
 	KeyspaceId::ROLLING_META,
@@ -1010,7 +1006,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 51] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 50] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1055,7 +1051,6 @@ mod tests {
 		("CUSTOM_MANAGED", KeyspaceId::CUSTOM_MANAGED, Phase::Data, false),
 		("CUSTOM_MANAGED_DUE", KeyspaceId::CUSTOM_MANAGED_DUE, Phase::Data, true),
 		("CUSTOM_MANAGED_LATEST", KeyspaceId::CUSTOM_MANAGED_LATEST, Phase::Data, true),
-		("GUEST_WINDOW_PUBLISH", KeyspaceId::GUEST_WINDOW_PUBLISH, Phase::Data, true),
 		("GUEST_RETAINED_ENTRY", KeyspaceId::GUEST_RETAINED_ENTRY, Phase::Data, true),
 		("LOOKUP_READ", KeyspaceId::LOOKUP_READ, Phase::Data, true),
 		("SESSION_MEMBER", KeyspaceId::SESSION_MEMBER, Phase::Data, true),
@@ -1717,7 +1712,6 @@ mod tests {
 				KeyspaceId::GUEST_BUFFER,
 				KeyspaceId::GUEST_RUNNING,
 				KeyspaceId::TUMBLING_EXPIRY,
-				KeyspaceId::GUEST_WINDOW_PUBLISH,
 				KeyspaceId::GUEST_RETAINED_ENTRY,
 				KeyspaceId::ROLLING_PANE,
 				KeyspaceId::GUEST_ROW_MAPPING,

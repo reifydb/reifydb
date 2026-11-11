@@ -10,7 +10,10 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::state::{OperatorState, StateCodec, decode, encode},
+	row::{
+		operator::state::{OperatorState, StateCodec, decode, encode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	internal_err,
@@ -22,7 +25,10 @@ use reifydb_core::{
 	state::{batch::StateBatch, timer::StateStore},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	operator::state::{
@@ -49,16 +55,18 @@ struct ResolvedSlot {
 
 type SlotResolved<G, S> = HashMap<(G, WindowSpan<S>), ResolvedSlot>;
 
-struct PendingEmit<G, S> {
+struct PendingEmit<G, S, O> {
 	group_id: GroupId,
 	group: G,
 	span: WindowSpan<S>,
-	count: u64,
+	header_key: GroupStateKey,
+	header: RetainedHeader<O>,
 }
 
 struct WindowSlots<K> {
 	group: GroupId,
 	header: usize,
+	header_key: GroupStateKey,
 	entries: BTreeMap<K, usize>,
 }
 
@@ -75,19 +83,30 @@ fn slot_value<T: OperatorState>(batch: &StateBatch, slot: usize) -> Result<Optio
 	}
 }
 
-pub struct RetainedResult<G, S> {
+pub struct RetainedResult<G, S, O> {
 	pub row_number: RowNumber,
 	pub group: G,
 	pub group_id: GroupId,
 	pub span: WindowSpan<S>,
 	pub kind: EmitKind,
-	pub count: u64,
+	pub value: Option<O>,
+	pub prior: Option<O>,
+	pub first_time: DateTime,
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Default, PartialEq, HeapSize)]
-struct RetainedHeader {
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetainedHeader<O> {
 	count: u64,
+	row: Option<RowNumber>,
+	first_time: DateTime,
+	last_output: Option<O>,
+}
+
+impl<O: HeapSize> HeapSize for RetainedHeader<O> {
+	fn heap_size(&self) -> usize {
+		self.last_output.heap_size()
+	}
 }
 
 #[operator_state]
@@ -103,23 +122,40 @@ impl<K: HeapSize, V: HeapSize> HeapSize for RetainedEntry<K, V> {
 	}
 }
 
-impl<G, S, K, V> Reaper for RetainedTumblingEngine<G, S, K, V>
+impl<G, S, K, V, O> Reaper for RetainedTumblingEngine<G, S, K, V, O>
 where
 	S: WindowAnchor + Hash,
+	RetainedHeader<O>: OperatorState,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove(keys)
+	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		let header_keyspace =
+			KeyspaceFamily::Guest.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR);
+		let mut kept: Vec<(GroupId, RowNumber)> = Vec::new();
+		for (key, row) in rows {
+			if key.keyspace() != Some(header_keyspace) {
+				continue;
+			}
+			let header: RetainedHeader<O> = decode(row)?;
+			if let (Some(group), Some(number)) = (key.group(), header.row) {
+				kept.push((group, number));
+			}
+		}
+		if !kept.is_empty() {
+			store.set_row_numbers_for_groups(&kept)?;
+		}
+		let keys: Vec<GroupStateKey> = rows.iter().map(|(key, _)| key.clone()).collect();
+		store.state_remove(&keys)
 	}
 }
 
-pub struct RetainedTumblingEngine<G, S, K, V> {
+pub struct RetainedTumblingEngine<G, S, K, V, O> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	expiry: ExpiryIndex<TumblingExpiry>,
-	_pd: PhantomData<(G, S, K, V)>,
+	_pd: PhantomData<(G, S, K, V, fn() -> O)>,
 }
 
-impl<G, S, K, V> RetainedTumblingEngine<G, S, K, V>
+impl<G, S, K, V, O> RetainedTumblingEngine<G, S, K, V, O>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
 	S: WindowAnchor + Hash,
@@ -130,6 +166,8 @@ where
 	GroupMeta<S>: OperatorState,
 	TumblingIndexEntry<G, S>: OperatorState,
 	RetainedEntry<K, V>: OperatorState,
+	O: Clone,
+	RetainedHeader<O>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
@@ -174,15 +212,17 @@ where
 		Ok(())
 	}
 
-	pub fn apply<SK>(
+	pub fn apply<SK, BO>(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: TumblingBuckets<G, S, (K, V)>,
 		order: &[(G, WindowSpan<S>)],
 		slot_key: SK,
-	) -> Result<Vec<RetainedResult<G, S>>>
+		build_output: BO,
+	) -> Result<Vec<RetainedResult<G, S, O>>>
 	where
 		SK: Fn(&G, S) -> (GroupId, EncodedKey),
+		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -200,7 +240,7 @@ where
 			);
 		}
 		let mut session = Self::open_session(store, &buckets, &slot_resolved)?;
-		let results = self.apply_events(store, &mut session, buckets, order)?;
+		let pending = self.apply_events(store, &mut session, buckets, order)?;
 		let RetainedSession {
 			mut batch,
 			metas,
@@ -218,6 +258,136 @@ where
 			}
 		}
 		store.state_write_batch(batch)?;
+		self.publish(store, pending, build_output)
+	}
+
+	fn publish<BO>(
+		&self,
+		store: &mut dyn StateStore,
+		pending: Vec<PendingEmit<G, S, O>>,
+		build_output: BO,
+	) -> Result<Vec<RetainedResult<G, S, O>>>
+	where
+		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
+	{
+		if pending.is_empty() {
+			return Ok(Vec::new());
+		}
+		let unnumbered: Vec<usize> = pending
+			.iter()
+			.enumerate()
+			.filter(|(_, emit)| emit.header.count > 0 && emit.header.row.is_none())
+			.map(|(index, _)| index)
+			.collect();
+		let mut assigned: HashMap<usize, (RowNumber, bool)> = HashMap::with_capacity(unnumbered.len());
+		if !unnumbered.is_empty() {
+			let groups: Vec<GroupId> = unnumbered.iter().map(|&index| pending[index].group_id).collect();
+			let surviving = store.get_row_numbers_for_groups(&groups)?;
+			reifydb_assertions! {
+				let requested = groups.len();
+				let returned = surviving.len();
+				assert!(
+					returned == requested,
+					"the identity lookup must answer every unnumbered window; a short answer leaves a \
+					 publishing window without a row (requested={requested}, returned={returned})"
+				);
+			}
+			let fresh = surviving.iter().filter(|row| row.is_none()).count();
+			let mut next = match fresh {
+				0 => 0,
+				count => store.mint_row_numbers(count)?.0,
+			};
+			for (&index, row) in unnumbered.iter().zip(surviving) {
+				let numbered = match row {
+					Some(row) => (row, false),
+					None => {
+						let row = RowNumber(next);
+						next += 1;
+						(row, true)
+					}
+				};
+				assigned.insert(index, numbered);
+			}
+		}
+
+		let due: Vec<(GroupId, u64)> = pending
+			.iter()
+			.filter(|emit| emit.header.count > 0)
+			.map(|emit| (emit.group_id, emit.header.count))
+			.collect();
+		let mut read = self.load_entries(store, &due)?;
+
+		let mut withdrawn: Vec<GroupId> = Vec::new();
+		let mut headers: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity(pending.len());
+		let mut results: Vec<RetainedResult<G, S, O>> = Vec::with_capacity(pending.len());
+		for (index, emit) in pending.into_iter().enumerate() {
+			let PendingEmit {
+				group_id,
+				group,
+				span,
+				header_key,
+				mut header,
+			} = emit;
+			let prior = header.last_output.take();
+			if header.count == 0 {
+				let Some(row_number) = header.row else {
+					return internal_err!(
+						"a retained window holding published entries must already own its row; \
+						 withdrawing it without one would leave its published row behind (group={:?})",
+						group_id
+					);
+				};
+				withdrawn.push(group_id);
+				results.push(RetainedResult {
+					row_number,
+					group,
+					group_id,
+					span,
+					kind: EmitKind::Remove,
+					value: None,
+					prior,
+					first_time: header.first_time,
+				});
+				continue;
+			}
+			let (row_number, kind) = match (header.row, assigned.remove(&index)) {
+				(Some(row_number), _) => (row_number, EmitKind::Update),
+				(None, Some((row_number, true))) => (row_number, EmitKind::Insert),
+				(None, Some((row_number, false))) => (row_number, EmitKind::Update),
+				(None, None) => {
+					return internal_err!(
+						"a publishing retained window was left without a row (group={:?})",
+						group_id
+					);
+				}
+			};
+			let Some(entries) = read.remove(&group_id) else {
+				return internal_err!(
+					"the entry read skipped publishing retained window {:?}",
+					group_id
+				);
+			};
+			let value = build_output(&group, span, &entries);
+			header.row = Some(row_number);
+			header.last_output = value.clone();
+			headers.push((header_key, header.encode_state()?));
+			results.push(RetainedResult {
+				row_number,
+				group,
+				group_id,
+				span,
+				kind,
+				value,
+				prior,
+				first_time: header.first_time,
+			});
+		}
+		if !headers.is_empty() {
+			store.state_set(headers)?;
+		}
+		if !withdrawn.is_empty() {
+			store.remove_row_number_for_group(&withdrawn)?;
+		}
 		Ok(results)
 	}
 
@@ -274,28 +444,6 @@ where
 		Ok(read)
 	}
 
-	pub fn window_counts(&self, store: &mut dyn StateStore, windows: &[(GroupId, EncodedKey)]) -> Result<Vec<u64>> {
-		if windows.is_empty() {
-			return Ok(Vec::new());
-		}
-		let keys: Vec<GroupStateKey> = windows
-			.iter()
-			.map(|(group, slot)| {
-				(&WindowStateKey::new(KeyspaceFamily::Guest, *group, slot.clone()))
-					.into_group_state_key()
-			})
-			.collect();
-		let mut counts = Vec::with_capacity(keys.len());
-		for row in store.state_get(&keys)? {
-			let count = match row {
-				Some(row) => decode::<RetainedHeader>(&row)?.count,
-				None => 0,
-			};
-			counts.push(count);
-		}
-		Ok(counts)
-	}
-
 	fn entry_key(group: GroupId, key: &K) -> Result<RetainedEntryKey> {
 		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
 	}
@@ -323,9 +471,9 @@ where
 				continue;
 			};
 			let header = keys.len();
-			keys.push(
-				(&WindowStateKey::new(KeyspaceFamily::Guest, *id, key.clone())).into_group_state_key()
-			);
+			let header_key =
+				(&WindowStateKey::new(KeyspaceFamily::Guest, *id, key.clone())).into_group_state_key();
+			keys.push(header_key.clone());
 			let mut entries: BTreeMap<K, usize> = BTreeMap::new();
 			for event in events {
 				let (AccumulatorEvent::Add((k, _)) | AccumulatorEvent::Remove((k, _))) = event;
@@ -340,6 +488,7 @@ where
 				WindowSlots {
 					group: *id,
 					header,
+					header_key,
 					entries,
 				},
 			);
@@ -405,8 +554,15 @@ where
 		batch: &mut StateBatch,
 		slots: &WindowSlots<K>,
 		events: Vec<AccumulatorEvent<(K, V)>>,
-	) -> Result<(u64, u64)> {
-		let mut header: RetainedHeader = slot_value(batch, slots.header)?.unwrap_or_default();
+		first_time: DateTime,
+	) -> Result<(u64, RetainedHeader<O>)> {
+		let mut header: RetainedHeader<O> =
+			slot_value(batch, slots.header)?.unwrap_or_else(|| RetainedHeader {
+				count: 0,
+				row: None,
+				first_time,
+				last_output: None,
+			});
 		let before = header.count;
 		let mut folded: BTreeMap<K, Option<V>> = BTreeMap::new();
 		for event in events {
@@ -442,12 +598,10 @@ where
 				None => batch.remove(slot),
 			}
 		}
-		let after = header.count;
-		match after == 0 {
-			true => batch.remove(slots.header),
-			false => batch.set(slots.header, header.encode_state()?),
+		if header.count == 0 {
+			batch.remove(slots.header);
 		}
-		Ok((before, after))
+		Ok((before, header))
 	}
 
 	fn apply_events(
@@ -456,8 +610,9 @@ where
 		session: &mut RetainedSession<G, S, K>,
 		mut buckets: TumblingBuckets<G, S, (K, V)>,
 		order: &[(G, WindowSpan<S>)],
-	) -> Result<Vec<RetainedResult<G, S>>> {
-		let mut pending: Vec<PendingEmit<G, S>> = Vec::new();
+	) -> Result<Vec<PendingEmit<G, S, O>>> {
+		let now = store.batch_time();
+		let mut pending: Vec<PendingEmit<G, S, O>> = Vec::new();
 
 		for ordered in order {
 			let Some(events) = buckets.remove(ordered) else {
@@ -473,14 +628,16 @@ where
 			let Some(slots) = session.windows.get(ordered) else {
 				continue;
 			};
-			let (before, after) = Self::fold_window(&mut session.batch, slots, events)?;
+			let first_time = span.start.as_time().unwrap_or(now);
+			let (before, header) = Self::fold_window(&mut session.batch, slots, events, first_time)?;
 
-			if before > 0 || after > 0 {
+			if before > 0 || header.count > 0 {
 				pending.push(PendingEmit {
 					group_id: slots.group,
 					group,
 					span,
-					count: after,
+					header_key: slots.header_key.clone(),
+					header,
 				});
 			}
 		}
@@ -492,57 +649,7 @@ where
 				buckets.len()
 			);
 		}
-
-		if pending.is_empty() {
-			return Ok(Vec::new());
-		}
-		let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
-		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
-		reifydb_assertions! {
-			let requested = groups.len();
-			let returned = rows.len();
-			assert!(
-				returned == requested,
-				"the identity batch must return one row per publishing window; a short batch makes the \
-				 zip below drop the tail, so those windows publish nothing while their entries \
-				 already advanced (requested={requested}, returned={returned})"
-			);
-		}
-
-		let mut withdrawn: Vec<GroupId> = Vec::new();
-		let mut results: Vec<RetainedResult<G, S>> = Vec::with_capacity(pending.len());
-		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
-			let kind = if emit.count == 0 {
-				reifydb_assertions! {
-					let group_id = emit.group_id;
-					assert!(
-						!is_new,
-						"a window holding published entries must already own its mapping; minting \
-						 one here means the identity was released while the row it addresses \
-						 was still live, and this withdrawal names a row no sink can find \
-						 (group={group_id:?}, row={row_number:?})"
-					);
-				}
-				withdrawn.push(emit.group_id);
-				EmitKind::Remove
-			} else if is_new {
-				EmitKind::Insert
-			} else {
-				EmitKind::Update
-			};
-			results.push(RetainedResult {
-				row_number,
-				group: emit.group,
-				group_id: emit.group_id,
-				span: emit.span,
-				kind,
-				count: emit.count,
-			});
-		}
-		if !withdrawn.is_empty() {
-			store.remove_row_number_for_group(&withdrawn)?;
-		}
-		Ok(results)
+		Ok(pending)
 	}
 
 	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, S>>> {
@@ -587,7 +694,10 @@ mod tests {
 	use std::{collections::BTreeMap, slice::from_ref};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::operator::state::GroupId;
+	use reifydb_core::{
+		key::operator::state::{GroupId, KeyspaceMask},
+		state::timer::StateStore,
+	};
 	use reifydb_value::{Result, util::hash::Hash128};
 
 	use super::{RetainedHeader, RetainedResult, RetainedTumblingEngine};
@@ -596,7 +706,7 @@ mod tests {
 		operator::{
 			state::{
 				mock::MockStore,
-				reaper::{StoreReaper, enqueue, reap_group},
+				reaper::{Reaper, StoreReaper, enqueue, reap_group},
 				seal::coord::Coord,
 			},
 			state_access::get,
@@ -610,11 +720,12 @@ mod tests {
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
-			span::WindowSpan,
+			span::{WindowAnchor, WindowSpan},
 		},
 	};
 
-	type Engine = RetainedTumblingEngine<u32, DateTimeCoord, u64, i64>;
+	type Out = BTreeMap<u64, i64>;
+	type Engine = RetainedTumblingEngine<u32, DateTimeCoord, u64, i64, Out>;
 	type Blob = TumblingEngine<u32, DateTimeCoord, RetainedAccumulator<u64, i64>>;
 	type Event = AccumulatorEvent<(u64, i64)>;
 
@@ -634,10 +745,10 @@ mod tests {
 		engine: &mut Engine,
 		store: &mut MockStore,
 		events: Vec<Event>,
-	) -> Vec<RetainedResult<u32, DateTimeCoord>> {
+	) -> Vec<RetainedResult<u32, DateTimeCoord, Out>> {
 		let buckets = bucket(events);
 		let order: Vec<_> = buckets.keys().cloned().collect();
-		engine.apply(store, buckets, &order, group_slot).expect("apply")
+		engine.apply(store, buckets, &order, group_slot, |_, _, entries| Some(entries.clone())).expect("apply")
 	}
 
 	fn apply_blob(
@@ -650,13 +761,15 @@ mod tests {
 		engine.apply(store, buckets, &order, group_slot, RetainedAccumulator::default).expect("apply")
 	}
 
-	fn kinds(results: &[RetainedResult<u32, DateTimeCoord>]) -> Vec<EmitKind> {
+	fn kinds(results: &[RetainedResult<u32, DateTimeCoord, Out>]) -> Vec<EmitKind> {
 		results.iter().map(|r| r.kind).collect()
 	}
 
 	fn stored(engine: &Engine, store: &mut MockStore, window: (GroupId, EncodedKey)) -> Result<BTreeMap<u64, i64>> {
-		let id = window.0;
-		let count = engine.window_counts(store, &[window])?[0];
+		let (id, slot) = window;
+		let header: Option<RetainedHeader<Out>> =
+			get(store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, id, slot)))?.remove(0);
+		let count = header.map_or(0, |header| header.count);
 		Ok(engine.load_entries(store, &[(id, count)])?.remove(&id).expect("a read window always answers"))
 	}
 
@@ -680,6 +793,11 @@ mod tests {
 			assert_eq!(theirs.len(), 1, "step {step}: one window publishes");
 			assert_eq!(ours[0].row_number, theirs[0].row_number, "step {step}");
 			assert_eq!(ours[0].kind, theirs[0].kind, "step {step}");
+			assert_eq!(
+				ours[0].value,
+				(theirs[0].kind != EmitKind::Remove).then(|| theirs[0].value.clone()),
+				"step {step}"
+			);
 			let expected = match theirs[0].kind {
 				EmitKind::Remove => BTreeMap::new(),
 				_ => theirs[0].value.clone(),
@@ -738,8 +856,9 @@ mod tests {
 	}
 
 	#[test]
-	fn apply_never_range_reads() {
-		// A range read per batch brings back the whole-window cost this engine exists to remove.
+	fn apply_reads_only_the_publishing_windows_own_entries() {
+		// A range read past the window's own entries brings back the whole-window cost this engine exists to
+		// remove.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		apply(&mut engine, &mut store, vec![Add((1, 10)), Add((2, 20)), Add((3, 30))]);
@@ -750,7 +869,84 @@ mod tests {
 		);
 		let visited = store.rows_visited();
 		apply(&mut engine, &mut store, vec![Add((4, 40)), Remove((1, 10))]);
-		assert_eq!(store.rows_visited(), visited, "apply must touch entries by point reads only");
+		assert_eq!(
+			store.rows_visited(),
+			visited + 3,
+			"apply reads only the publishing window's own entries, once"
+		);
+	}
+
+	#[test]
+	fn a_retained_update_carries_the_output_published_before_it_as_prior() {
+		// The driver emits prior as the update's pre-image, so a lost or stale prior corrupts every retained
+		// sink row.
+		let mut store = MockStore::default();
+		let mut engine = Engine::new(test_config());
+		let start = event_coord_at_millis(0).as_time().unwrap();
+
+		let inserted = apply(&mut engine, &mut store, vec![Add((1, 10))]);
+		let updated = apply(&mut engine, &mut store, vec![Add((2, 20))]);
+		let removed = apply(&mut engine, &mut store, vec![Remove((1, 10)), Remove((2, 20))]);
+
+		assert_eq!(kinds(&inserted), vec![EmitKind::Insert]);
+		assert_eq!(inserted[0].prior, None, "an insert has no pre-image");
+		assert_eq!(inserted[0].value, Some(BTreeMap::from([(1, 10)])));
+
+		assert_eq!(kinds(&updated), vec![EmitKind::Update]);
+		assert_eq!(updated[0].prior, Some(BTreeMap::from([(1, 10)])));
+		assert_eq!(updated[0].value, Some(BTreeMap::from([(1, 10), (2, 20)])));
+
+		assert_eq!(kinds(&removed), vec![EmitKind::Remove]);
+		assert_eq!(
+			removed[0].prior,
+			Some(BTreeMap::from([(1, 10), (2, 20)])),
+			"a remove withdraws what was published"
+		);
+		assert_eq!(removed[0].value, None);
+
+		for (step, result) in [&inserted[0], &updated[0], &removed[0]].into_iter().enumerate() {
+			assert_eq!(
+				result.first_time, start,
+				"step {step}: the first time is fixed at the window start"
+			);
+			assert_eq!(
+				result.row_number, inserted[0].row_number,
+				"step {step}: one row for the window's life"
+			);
+		}
+	}
+
+	#[test]
+	fn a_reaped_retained_window_hands_its_row_to_its_mapping() {
+		// Phase 1 erases the header that holds the row; without the move a window woken before phase 2 inserts
+		// a duplicate.
+		let mut store = MockStore::default();
+		let mut engine = Engine::new(test_config());
+		let published = apply(&mut engine, &mut store, vec![Add((1, 10))]);
+		let (group, slot) = group_slot(&1, event_coord_at_millis(0));
+		assert!(!store.contains_row_mapping(group), "precondition: the hot path writes no mapping");
+		engine.reindex_windows(
+			&mut store,
+			&[WindowReindex {
+				group: &1,
+				window_start: event_coord_at_millis(0),
+				id: group,
+				slot_key: &slot,
+				prior: None,
+				new: Some(10),
+			}],
+		)
+		.unwrap();
+		assert_eq!(engine.expire(&mut store, 10).unwrap().len(), 1, "precondition: the window expires");
+
+		let swept = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data()).unwrap().rows;
+		assert!(!swept.is_empty(), "precondition: the window holds data to reap");
+		Reaper::reap(&mut engine, &mut store, &swept).unwrap();
+
+		assert!(store.contains_row_mapping(group), "the reap must move the header's row into the mapping");
+		let woken = apply(&mut engine, &mut store, vec![Add((3, 30))]);
+		assert_eq!(kinds(&woken), vec![EmitKind::Update], "the sink still holds the row, so this is an update");
+		assert_eq!(woken[0].row_number, published[0].row_number, "the woken window keeps the row it published");
 	}
 
 	#[test]
@@ -789,7 +985,7 @@ mod tests {
 			BTreeMap::new(),
 			"every entry is reaped"
 		);
-		let header: Option<RetainedHeader> =
+		let header: Option<RetainedHeader<Out>> =
 			get(&mut store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, group, slot)))
 				.unwrap()
 				.remove(0);

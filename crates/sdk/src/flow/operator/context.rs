@@ -310,6 +310,9 @@ pub trait GuestEmitContext {
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
 	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber>;
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;

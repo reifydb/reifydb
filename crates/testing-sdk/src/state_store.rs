@@ -134,6 +134,23 @@ impl StateStore for MemoryStateStore {
 		Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 	}
 
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+		let first = self.next_row + 1;
+		self.next_row += count as u64;
+		Ok(RowNumber(first))
+	}
+
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		Ok(groups.iter().map(|group| self.rows.get(&(*group, Vec::new())).map(|rn| RowNumber(*rn))).collect())
+	}
+
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		for (group, row) in rows {
+			self.rows.insert((*group, Vec::new()), row.0);
+		}
+		Ok(())
+	}
+
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		Ok(keys.iter()
 			.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|rn| RowNumber(*rn)))

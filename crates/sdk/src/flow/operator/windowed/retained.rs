@@ -16,22 +16,18 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_flow_async::{
-	operator::{
-		state::{
-			reaper::{drain, drain_groups, enqueue, enqueue_retired},
-			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
-		},
-		state_access::batch,
+	operator::state::{
+		reaper::{drain, drain_groups, enqueue, enqueue_retired},
+		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
-			publish::PublishState,
-			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
+			AccumulatorEvent, EmitKind, WindowReindex,
+			tumbling_retained::{RetainedEntry, RetainedHeader, RetainedTumblingEngine},
 		},
 		settings::WindowSettings,
-		span::{WindowAnchor, WindowSpan, window_row_key},
+		span::{WindowSpan, window_row_key},
 	},
 };
 use reifydb_value::{
@@ -54,7 +50,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Emit, Extracted, WindowedOperator, extract_rows},
-			publish::{Emitted, UpdateRow, publish_row},
+			publish::{Emitted, UpdateRow},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -62,14 +58,15 @@ use crate::{
 
 const SEAL_REAP_BATCH: usize = 256;
 
-enum Decision {
-	Remove,
-	Due,
-}
-
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = Routing<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
-type Engine<A, K, V> = RetainedTumblingEngine<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, K, V>;
+type Engine<A, K, V> = RetainedTumblingEngine<
+	<A as WindowedOperator>::GroupKey,
+	<A as WindowedOperator>::Coord,
+	K,
+	V,
+	<A as WindowedOperator>::Output,
+>;
 
 pub struct RetainedDriver<A, K, V>
 where
@@ -94,6 +91,7 @@ where
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync,
 	RetainedEntry<K, V>: OperatorState,
+	RetainedHeader<A::Output>: OperatorState,
 	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -219,7 +217,6 @@ where
 		ctx: &mut C,
 		routing: Buckets<A, K, V>,
 	) -> Result<Emitted<A>> {
-		let now = ctx.batch_time();
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
@@ -256,9 +253,13 @@ where
 
 		let results = {
 			let mut store = GuestAsHost(ctx);
-			engine.apply(&mut store, buckets, &order, |group, window_start| {
-				group_of(&groups, group, window_start)
-			})?
+			engine.apply(
+				&mut store,
+				buckets,
+				&order,
+				|group, window_start| group_of(&groups, group, window_start),
+				|group, span, entries| aggregator.build_output(group, span, entries),
+			)?
 		};
 
 		if seal_span.is_some() {
@@ -281,48 +282,14 @@ where
 			engine.reindex_windows(&mut GuestAsHost(ctx), &entries)?;
 		}
 
-		if results.is_empty() {
-			return Ok(emitted);
-		}
-		let mut store = GuestAsHost(ctx);
-		let keys: Vec<PublishKey> = results
-			.iter()
-			.map(|r| {
-				let (_, key) = group_of(&groups, &r.group, r.span.start);
-				PublishKey::new(r.group_id, key)
-			})
-			.collect();
-		let mut session = batch::<_, PublishState<A::Output>>(&mut store, &keys)?;
-		let mut decided = Vec::with_capacity(results.len());
-		let mut due_windows: Vec<(GroupId, u64)> = Vec::new();
-		for (slot, r) in results.into_iter().enumerate() {
-			let state = session.value(slot)?.unwrap_or_default();
-			let decision = if r.kind == EmitKind::Remove {
-				Decision::Remove
-			} else {
-				due_windows.push((r.group_id, r.count));
-				Decision::Due
-			};
-			decided.push((slot, r, state, decision));
-		}
-		let mut read = engine.load_entries(&mut store, &due_windows)?;
-		for (slot, r, mut state, decision) in decided {
-			let time = r.span.start.as_time().unwrap_or(now);
-			match decision {
-				Decision::Remove => {
-					publish_row::<A>(r.row_number, time, None, &mut state, &mut emitted)?
-				}
-				Decision::Due => {
-					let entries = read
-						.remove(&r.group_id)
-						.expect("the entry read answers every due window");
-					let out = aggregator.build_output(&r.group, r.span, &entries);
-					publish_row::<A>(r.row_number, time, out, &mut state, &mut emitted)?;
-				}
+		for r in results {
+			match (r.value, r.prior) {
+				(Some(out), None) => emitted.0.push((r.row_number, r.first_time, out)),
+				(Some(out), Some(pre)) => emitted.1.push((r.row_number, r.first_time, Some(pre), out)),
+				(None, Some(pre)) => emitted.2.push((r.row_number, r.first_time, pre)),
+				(None, None) => {}
 			}
-			session.set(slot, &state)?;
 		}
-		session.commit(&mut store)?;
 		Ok(emitted)
 	}
 
@@ -376,6 +343,7 @@ where
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync + 'static,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync + 'static,
 	RetainedEntry<K, V>: OperatorState,
+	RetainedHeader<A::Output>: OperatorState,
 	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {

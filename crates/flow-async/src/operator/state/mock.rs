@@ -55,6 +55,7 @@ pub(crate) struct MockStore {
 	next_row: u64,
 	timers: Option<Vec<RecordedTimer>>,
 	flow_watermark: Option<DateTime>,
+	batch_time: Option<DateTime>,
 	rows_visited: usize,
 }
 
@@ -64,6 +65,10 @@ impl MockStore {
 			timers: Some(Vec::new()),
 			..Self::default()
 		}
+	}
+
+	pub(crate) fn set_batch_time(&mut self, at: DateTime) {
+		self.batch_time = Some(at);
 	}
 
 	pub(crate) fn with_flow_watermark(mut self, watermark: DateTime) -> Self {
@@ -271,6 +276,23 @@ impl StateStore for MockStore {
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 	}
+
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+		let first = self.next_row + 1;
+		self.next_row += count as u64;
+		Ok(RowNumber(first))
+	}
+
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		Ok(groups.iter().map(|group| self.rows.get(&(*group, Vec::new())).map(|rn| RowNumber(*rn))).collect())
+	}
+
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		for (group, row) in rows {
+			self.rows.insert((*group, Vec::new()), row.0);
+		}
+		Ok(())
+	}
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		Ok(keys.iter()
 			.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|rn| RowNumber(*rn)))
@@ -318,6 +340,6 @@ impl StateStore for MockStore {
 	}
 
 	fn batch_time(&self) -> DateTime {
-		DateTime::EPOCH
+		self.batch_time.unwrap_or(DateTime::EPOCH)
 	}
 }

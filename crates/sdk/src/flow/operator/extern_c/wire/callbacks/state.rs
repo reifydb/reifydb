@@ -130,6 +130,26 @@ pub struct StateCallbacks {
 		groups_len: usize,
 	) -> i32,
 
+	pub mint_row_numbers:
+		extern "C" fn(operator_id: u64, ctx: *mut ExternCContextRaw, count: u64, first_out: *mut u64) -> i32,
+
+	pub get_row_numbers_for_groups: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		groups: *const ExternCGroupId,
+		groups_len: usize,
+		row_numbers_out: *mut u64,
+		present_out: *mut u8,
+	) -> i32,
+
+	pub set_row_numbers_for_groups: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		groups: *const ExternCGroupId,
+		row_numbers: *const u64,
+		len: usize,
+	) -> i32,
+
 	pub arm_timer: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,

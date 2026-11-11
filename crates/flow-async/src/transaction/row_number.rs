@@ -224,6 +224,21 @@ pub trait RowNumberExtension: FlowTransaction {
 		self.state_remove(operator, &keys)
 	}
 
+	fn mint_row_numbers(&mut self, operator: OperatorId, count: usize) -> Result<RowNumber> {
+		Ok(RowNumber(mint(self, operator, count as u64)?))
+	}
+
+	fn set_row_numbers_for_groups(&mut self, operator: OperatorId, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		if rows.is_empty() {
+			return Ok(());
+		}
+		let encoded = rows
+			.iter()
+			.map(|(group, row)| Ok((group_mapping_key(*group), row.0.encode_state()?)))
+			.collect::<Result<Vec<_>>>()?;
+		self.state_set(operator, encoded)
+	}
+
 	fn remove_join_row_numbers(&mut self, operator: OperatorId, keys: &[JoinRowMappingKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());

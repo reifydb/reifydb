@@ -442,37 +442,6 @@ impl IntoGroupStateKey for &RetainedEntryKey {
 	}
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub struct PublishKey {
-	pub group: GroupId,
-	pub slot: EncodedKey,
-}
-
-impl PublishKey {
-	pub fn new(group: GroupId, slot: EncodedKey) -> Self {
-		Self {
-			group,
-			slot,
-		}
-	}
-}
-
-impl HeapSize for PublishKey {
-	fn heap_size(&self) -> usize {
-		self.slot.heap_size()
-	}
-}
-
-impl IntoGroupStateKey for &PublishKey {
-	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
-			self.group,
-			KeyspaceId::GUEST_WINDOW_PUBLISH,
-			KeyspaceFamily::Guest.suffix(&self.slot),
-		)
-	}
-}
-
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct EmitKey {
 	pub group: GroupId,

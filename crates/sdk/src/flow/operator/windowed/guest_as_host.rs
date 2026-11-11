@@ -159,6 +159,18 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.remove_row_number_for_group(groups)?)
 	}
 
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+		Ok(self.0.mint_row_numbers(count)?)
+	}
+
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		Ok(self.0.get_row_numbers_for_groups(groups)?)
+	}
+
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		Ok(self.0.set_row_numbers_for_groups(rows)?)
+	}
+
 	fn batch_time(&self) -> DateTime {
 		self.0.batch_time()
 	}

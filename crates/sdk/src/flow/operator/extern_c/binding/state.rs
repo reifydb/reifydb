@@ -698,3 +698,85 @@ pub(crate) fn remove_row_number_for_group(ctx: &mut ExternCContext, groups: &[Gr
 		}
 	}
 }
+
+pub(crate) fn mint_row_numbers(ctx: &mut ExternCContext, count: usize) -> Result<RowNumber> {
+	let mut first = 0u64;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
+	// and aligned for the whole guest call; first is a local stack slot.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.mint_row_numbers)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			count as u64,
+			&mut first,
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_mint_row_numbers failed with code {}", result)));
+		}
+	}
+
+	Ok(RowNumber(first))
+}
+
+pub(crate) fn get_row_numbers_for_groups(
+	ctx: &mut ExternCContext,
+	groups: &[GroupId],
+) -> Result<Vec<Option<RowNumber>>> {
+	if groups.is_empty() {
+		return Ok(Vec::new());
+	}
+	let group_ids: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
+	let mut row_numbers = vec![0u64; groups.len()];
+	let mut present = vec![0u8; groups.len()];
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; group_ids is a live array of exactly groups.len() wire group ids the callback
+	// only reads, and row_numbers and present are live, initialised arrays of exactly groups.len() slots each.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.get_row_numbers_for_groups)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group_ids.as_ptr(),
+			group_ids.len(),
+			row_numbers.as_mut_ptr(),
+			present.as_mut_ptr(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!(
+				"host_get_row_numbers_for_groups failed with code {}",
+				result
+			)));
+		}
+	}
+
+	Ok(row_numbers.into_iter().zip(present).map(|(rn, present)| (present != 0).then_some(RowNumber(rn))).collect())
+}
+
+pub(crate) fn set_row_numbers_for_groups(ctx: &mut ExternCContext, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+	if rows.is_empty() {
+		return Ok(());
+	}
+	let group_ids: Vec<ExternCGroupId> = rows.iter().map(|(group, _)| wire_group(*group)).collect();
+	let row_numbers: Vec<u64> = rows.iter().map(|(_, row)| row.0).collect();
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; group_ids and row_numbers are live arrays of exactly rows.len() slots each the
+	// callback only reads.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.set_row_numbers_for_groups)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group_ids.as_ptr(),
+			row_numbers.as_ptr(),
+			rows.len(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!(
+				"host_set_row_numbers_for_groups failed with code {}",
+				result
+			)));
+		}
+	}
+	Ok(())
+}
