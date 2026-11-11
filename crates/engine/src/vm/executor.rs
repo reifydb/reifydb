@@ -792,7 +792,7 @@ impl Executor {
 			plan => plan,
 		};
 
-		let partitions = scan_partitions(&plan, tx.layout(), &symbols);
+		let partitions = scan_partitions(&plan, &self.catalog, &mut tx, &symbols)?;
 		let sub_service = self.ioc.resolve::<SubscriptionServiceRef>()?;
 		let id = sub_service.next_id();
 		let flow_dag = compile_subscription_flow_ephemeral(

@@ -292,6 +292,12 @@ impl RingBufferScan {
 		self
 	}
 
+	pub(crate) fn exhausted(mut self) -> Self {
+		self.partitions = Vec::new();
+		self.initialized = true;
+		self
+	}
+
 	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
@@ -310,14 +316,16 @@ impl RingBufferScan {
 	}
 
 	fn list_partitions(&self, txn: &mut Transaction<'_>, ctx: &QueryContext) -> Result<Vec<PartitionedMetadata>> {
-		let mut listed: Vec<PartitionedMetadata> = ctx
-			.services
-			.catalog
-			.list_ringbuffer_partitions(txn, self.source.storage)?
-			.into_iter()
-			.filter(|listed| !listed.metadata.is_empty())
-			.filter(|listed| self.source.only.is_none() || listed.partition == self.source.only)
-			.collect();
+		let catalog = &ctx.services.catalog;
+		let found = match self.source.only {
+			Some(partition) => catalog
+				.find_ringbuffer_partition(txn, self.source.storage, partition)?
+				.into_iter()
+				.collect(),
+			None => catalog.list_ringbuffer_partitions(txn, self.source.storage)?,
+		};
+		let mut listed: Vec<PartitionedMetadata> =
+			found.into_iter().filter(|listed| !listed.metadata.is_empty()).collect();
 		if let Some(object) = self.source.registry
 			&& listed.len() > 1
 		{

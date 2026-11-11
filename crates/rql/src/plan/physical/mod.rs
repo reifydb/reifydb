@@ -1021,6 +1021,23 @@ impl<'bump> Compiler<'bump> {
 							input: self.bump_box(pruned),
 						}));
 					}
+					if !def.partition_by.is_empty()
+						&& let Some(keys) = extract_partition_keys(
+							&filter.condition,
+							&def.columns,
+							&def.partition_by,
+						) {
+						let pruned = PhysicalPlan::PartitionParameterScan(
+							PartitionParameterScanNode {
+								keys,
+								scan: self.bump_box(input),
+							},
+						);
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
 				}
 
 				if let PhysicalPlan::ViewScan(ref scan) = input {

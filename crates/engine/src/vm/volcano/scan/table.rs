@@ -199,6 +199,12 @@ impl TableScanNode {
 		self
 	}
 
+	pub(crate) fn exhausted(mut self) -> Self {
+		self.partition = None;
+		self.pending = Some(VecDeque::new());
+		self
+	}
+
 	fn get_or_load_shape<'a>(
 		&mut self,
 		rx: &mut Transaction<'a>,

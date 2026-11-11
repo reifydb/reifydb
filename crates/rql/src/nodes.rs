@@ -704,6 +704,10 @@ pub enum PartitionKey {
 		variable: VariableExpression,
 		ty: ValueType,
 	},
+	Dictionary {
+		dictionary: DictionaryId,
+		key: Box<PartitionKey>,
+	},
 }
 
 #[derive(Debug, Clone)]

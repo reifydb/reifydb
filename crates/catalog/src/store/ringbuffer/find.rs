@@ -77,6 +77,21 @@ impl CatalogStore {
 			.collect()
 	}
 
+	pub(crate) fn find_ringbuffer_partition(
+		rx: &mut Transaction<'_>,
+		storage: StorageId,
+		partition: Partition,
+	) -> Result<Option<PartitionedMetadata>> {
+		let key = RingBufferMetadataKey::of(storage, Some(partition)).into();
+		let Some(multi) = rx.get(&[key])?.pop().flatten() else {
+			return Ok(None);
+		};
+		Ok(Some(PartitionedMetadata {
+			metadata: decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?,
+			partition: Some(partition),
+		}))
+	}
+
 	pub(crate) fn list_ringbuffer_partitions(
 		rx: &mut Transaction<'_>,
 		storage: StorageId,
@@ -136,13 +151,16 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::id::{NamespaceId, RingBufferId},
+		interface::catalog::{
+			id::{NamespaceId, RingBufferId},
+			ringbuffer::{PartitionedMetadata, RingBufferMetadata},
+		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, value_type::ValueType},
+		value::{constraint::TypeConstraint, partition::Partition, value_type::ValueType},
 	};
 
 	use crate::{
@@ -154,6 +172,44 @@ pub mod tests {
 		},
 		test_utils::{ensure_test_namespace, ensure_test_ringbuffer},
 	};
+
+	#[test]
+	fn a_point_partition_read_answers_what_the_listed_partition_answers() {
+		// A scan pruned to one partition reads it by key instead of listing every partition; any
+		// difference would make a pruned scan see other metadata than the full listing does.
+		let mut txn = create_test_admin_transaction();
+		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let filled = RingBufferMetadata {
+			base_rn: 40,
+			next_sequence: 7,
+			count: 5,
+			filled: 5,
+			head: 2,
+		};
+		let emptied = RingBufferMetadata::reserved(80);
+		let mut tx = Transaction::Admin(&mut txn);
+		CatalogStore::save_partition_metadata(
+			&mut tx,
+			&ringbuffer,
+			&[(Some(Partition(9)), filled), (Some(Partition(3)), emptied)],
+		)
+		.unwrap();
+		let listed = CatalogStore::list_ringbuffer_partitions(&mut tx, ringbuffer.id.into()).unwrap();
+
+		for partition in [Partition(9), Partition(3), Partition(8)] {
+			let point = CatalogStore::find_ringbuffer_partition(&mut tx, ringbuffer.id.into(), partition)
+				.unwrap();
+			let from_list = listed.iter().find(|entry| entry.partition == Some(partition)).cloned();
+			assert_eq!(point, from_list, "{partition:?}");
+		}
+		assert_eq!(
+			CatalogStore::find_ringbuffer_partition(&mut tx, ringbuffer.id.into(), Partition(9)).unwrap(),
+			Some(PartitionedMetadata {
+				metadata: filled,
+				partition: Some(Partition(9)),
+			})
+		);
+	}
 
 	#[test]
 	fn test_find_ringbuffer_exists() {

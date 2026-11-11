@@ -27,6 +27,7 @@ pub enum ScanPartitions {
 	All,
 	One(Partition),
 	Many(Vec<Partition>),
+	Nothing,
 }
 
 impl From<u128> for Partition {

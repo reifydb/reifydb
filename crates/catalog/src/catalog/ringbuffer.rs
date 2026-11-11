@@ -309,6 +309,16 @@ impl Catalog {
 		CatalogStore::list_ringbuffer_partitions(txn, storage)
 	}
 
+	#[instrument(name = "catalog::ringbuffer::find_partition", level = "trace", skip(self, txn))]
+	pub fn find_ringbuffer_partition(
+		&self,
+		txn: &mut Transaction<'_>,
+		storage: StorageId,
+		partition: Partition,
+	) -> Result<Option<PartitionedMetadata>> {
+		CatalogStore::find_ringbuffer_partition(txn, storage, partition)
+	}
+
 	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]
 	pub fn find_partition_metadata(
 		&self,

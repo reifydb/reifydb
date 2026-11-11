@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, hash_map::Entry},
-	slice,
-};
+use std::collections::{HashMap, hash_map::Entry};
 
 use postcard::from_bytes;
-use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, store::SingleVersionGet},
-	internal_error,
-	key::catalog::DictionaryEntryIndexKey,
-};
+use reifydb_core::{interface::catalog::dictionary::Dictionary, internal_error};
 use reifydb_value::{
 	Result,
 	value::{Value, dictionary::DictionaryEntryId},
@@ -29,23 +22,7 @@ impl Transaction<'_> {
 			Transaction::Command(cmd) => get_from_registry(cmd.dictionary_allocators(), dictionary, ids),
 			Transaction::Admin(admin) => get_from_registry(admin.dictionary_allocators(), dictionary, ids),
 			Transaction::Test(t) => get_from_registry(t.inner.dictionary_allocators(), dictionary, ids),
-			Transaction::Query(_) => {
-				ids.iter().map(|id| self.get_from_single_store(dictionary, *id)).collect()
-			}
-		}
-	}
-
-	fn get_from_single_store(&self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let single = self.single();
-		let store = single.read_store();
-		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
-		match SingleVersionGet::get(&store, self.context(), slice::from_ref(&index_key))?.pop().flatten() {
-			Some(v) => {
-				let value: Value = from_bytes(&v.bytes)
-					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
-				Ok(Some(value))
-			}
-			None => Ok(None),
+			Transaction::Query(query) => get_from_registry(query.dictionary_allocators(), dictionary, ids),
 		}
 	}
 }

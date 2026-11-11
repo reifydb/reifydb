@@ -553,6 +553,9 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				PhysicalPlan::ViewScan(scan) => {
 					(scan.source.name().to_string(), scan.source.def().partition_by().to_vec())
 				}
+				PhysicalPlan::RingBufferScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by.clone())
+				}
 				_ => (String::new(), Vec::new()),
 			};
 			let keys = columns
@@ -664,6 +667,10 @@ fn partition_key_text(key: &PartitionKey) -> String {
 			variable,
 			..
 		} => format!("in {}", variable.fragment.text()),
+		PartitionKey::Dictionary {
+			key,
+			..
+		} => format!("dictionary({})", partition_key_text(key)),
 	}
 }
 

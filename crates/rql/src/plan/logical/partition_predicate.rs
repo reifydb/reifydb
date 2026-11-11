@@ -60,28 +60,36 @@ pub fn extract_partition_keys(
 
 	if let [col_name] = partition_by {
 		let col = columns.iter().find(|c| c.name == *col_name)?;
-		if col.dictionary_id.is_none() {
-			let value_type = col.constraint.get_type();
-			let equality = conjuncts.iter().any(|e| eq_key_for(e, col_name, &value_type).is_some());
-			if !equality
-				&& let Some(key) = conjuncts.iter().find_map(|e| in_key_for(e, col_name, &value_type))
-			{
-				return Some(vec![key]);
-			}
+		let value_type = col.constraint.get_type();
+		let equality = conjuncts.iter().any(|e| eq_key_for(e, col_name, &value_type).is_some());
+		if !equality && let Some(key) = conjuncts.iter().find_map(|e| in_key_for(e, col_name, &value_type)) {
+			return Some(vec![through_dictionary(col, key)]);
 		}
 	}
 
 	let mut keys = Vec::with_capacity(partition_by.len());
 	for col_name in partition_by {
 		let col = columns.iter().find(|c| c.name == *col_name)?;
-		if col.dictionary_id.is_some() {
-			return None;
-		}
 		let value_type = col.constraint.get_type();
-		keys.push(conjuncts.iter().find_map(|e| eq_key_for(e, col_name, &value_type))?);
+		keys.push(through_dictionary(
+			col,
+			conjuncts.iter().find_map(|e| eq_key_for(e, col_name, &value_type))?,
+		));
 	}
 
-	keys.iter().any(|key| matches!(key, PartitionKey::Variable { .. })).then_some(keys)
+	keys.iter()
+		.any(|key| matches!(key, PartitionKey::Variable { .. } | PartitionKey::Dictionary { .. }))
+		.then_some(keys)
+}
+
+fn through_dictionary(col: &Column, key: PartitionKey) -> PartitionKey {
+	match col.dictionary_id {
+		Some(dictionary) => PartitionKey::Dictionary {
+			dictionary,
+			key: Box::new(key),
+		},
+		None => key,
+	}
 }
 
 fn eq_key_for(expr: &Expression, col_name: &str, value_type: &ValueType) -> Option<PartitionKey> {
@@ -260,8 +268,8 @@ fn partition_value(value_type: &ValueType, fragment: Fragment) -> Option<Value> 
 mod tests {
 	use reifydb_core::{
 		expression::{
-			AndExpression, CastExpression, EqExpression, GreaterThanExpression, OrExpression,
-			TypeExpression,
+			AndExpression, CastExpression, EqExpression, GreaterThanExpression, InExpression,
+			ListExpression, OrExpression, TypeExpression,
 		},
 		interface::{
 			catalog::{
@@ -586,5 +594,91 @@ mod tests {
 		let columns = vec![col("region", ValueType::Utf8)];
 		let condition = eq(column_ref("region"), text("east"));
 		assert_eq!(extract_partition(&condition, &columns, &[]), None);
+	}
+
+	fn dictionary_col(name: &str) -> Column {
+		let mut column = col(name, ValueType::Utf8);
+		column.dictionary_id = Some(DictionaryId(7));
+		column
+	}
+
+	fn variable(name: &str) -> Expression {
+		Expression::Variable(VariableExpression {
+			fragment: Fragment::internal(name),
+		})
+	}
+
+	fn in_list(value: Expression, items: Vec<Expression>) -> Expression {
+		Expression::In(InExpression {
+			value: Box::new(value),
+			list: Box::new(Expression::List(ListExpression {
+				expressions: items,
+				fragment: Fragment::internal("list"),
+			})),
+			negated: false,
+			fragment: Fragment::internal("in"),
+		})
+	}
+
+	fn through_seven(key: PartitionKey) -> PartitionKey {
+		PartitionKey::Dictionary {
+			dictionary: DictionaryId(7),
+			key: Box::new(key),
+		}
+	}
+
+	#[test]
+	fn a_dictionary_constant_takes_the_run_time_key_path() {
+		// The writer hashes the interned id, which only a run-time lookup can know, so a constant must not
+		// be hashed at plan time and must not be dropped either.
+		let columns = vec![dictionary_col("pool")];
+		let condition = eq(column_ref("pool"), text("pool-a"));
+
+		assert_eq!(extract_partition(&condition, &columns, &by(&["pool"])), None);
+		assert_eq!(
+			extract_partition_keys(&condition, &columns, &by(&["pool"])),
+			Some(vec![through_seven(PartitionKey::Constant(Value::Utf8("pool-a".to_string())))])
+		);
+	}
+
+	#[test]
+	fn a_dictionary_variable_is_wrapped_with_its_dictionary() {
+		// Without the dictionary on the key, the run-time chooser would hash the text the writer never hashed.
+		let columns = vec![dictionary_col("pool")];
+		let condition = eq(column_ref("pool"), variable("$key"));
+
+		assert_eq!(
+			extract_partition_keys(&condition, &columns, &by(&["pool"])),
+			Some(vec![through_seven(PartitionKey::Variable {
+				variable: VariableExpression {
+					fragment: Fragment::internal("$key"),
+				},
+				ty: ValueType::Utf8,
+			})])
+		);
+	}
+
+	#[test]
+	fn a_dictionary_in_list_is_wrapped_as_one_key() {
+		// The lookup must cover every listed value, so the whole list sits under one dictionary key.
+		let columns = vec![dictionary_col("pool")];
+		let condition = in_list(column_ref("pool"), vec![text("a"), text("b")]);
+
+		assert_eq!(
+			extract_partition_keys(&condition, &columns, &by(&["pool"])),
+			Some(vec![through_seven(PartitionKey::In(vec![
+				PartitionKey::Constant(Value::Utf8("a".to_string())),
+				PartitionKey::Constant(Value::Utf8("b".to_string())),
+			]))])
+		);
+	}
+
+	#[test]
+	fn a_plain_constant_still_hashes_at_plan_time_only() {
+		// A non-dictionary constant keeps its plan-time partition; also offering it as a key would plan twice.
+		let columns = vec![col("region", ValueType::Utf8)];
+		let condition = eq(column_ref("region"), text("east"));
+
+		assert_eq!(extract_partition_keys(&condition, &columns, &by(&["region"])), None);
 	}
 }

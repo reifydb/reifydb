@@ -84,6 +84,7 @@ pub(crate) struct ViewScanNode {
 	shape: Option<RowShape>,
 	resume: Resume,
 	exhausted: bool,
+	nothing: bool,
 	sorted: bool,
 	partitioned: bool,
 	series: bool,
@@ -141,6 +142,7 @@ impl ViewScanNode {
 			shape: None,
 			resume,
 			exhausted: false,
+			nothing: false,
 			sorted,
 			partitioned,
 			series,
@@ -159,6 +161,11 @@ impl ViewScanNode {
 
 	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
 		self.keep_dictionary_ids = true;
+		self
+	}
+
+	pub(crate) fn exhausted(mut self) -> Self {
+		self.nothing = true;
 		self
 	}
 
@@ -325,6 +332,12 @@ impl QueryNode for ViewScanNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
+		}
+		if self.nothing {
+			self.nothing = false;
+			self.exhausted = true;
+			let user = user_pairs(&empty_for(self.view.columns())?);
+			return Ok(Some(empty_scan(user, &self.system_columns)?));
 		}
 		let stored_ctx = self.context.as_ref().unwrap();
 

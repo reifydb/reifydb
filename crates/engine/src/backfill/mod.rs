@@ -114,6 +114,9 @@ impl<'a> TransactionScan<'a> {
 					ScanPartitions::Many(listed) => {
 						TableScanNode::with_partitions(table, listed, Arc::clone(context), tx)?
 					}
+					ScanPartitions::Nothing => {
+						TableScanNode::new(table, None, Arc::clone(context), tx)?.exhausted()
+					}
 				}
 				.oldest_first()
 				.keep_dictionary_ids();
@@ -121,19 +124,30 @@ impl<'a> TransactionScan<'a> {
 			}
 			ObjectId::View(id) => {
 				let view = catalog.resolve_view(tx, id)?;
+				let nothing = partitions == ScanPartitions::Nothing;
 				let partition = match partitions {
 					ScanPartitions::One(partition) => Some(partition),
-					ScanPartitions::All | ScanPartitions::Many(_) => None,
+					ScanPartitions::All | ScanPartitions::Many(_) | ScanPartitions::Nothing => None,
 				};
 				if view.def().storage_kind() == ViewStorageKind::RingBuffer {
 					let node = RingBufferScan::for_view(view, partition, Arc::clone(context), tx)?
 						.oldest_first()
 						.keep_dictionary_ids();
+					let node = if nothing {
+						node.exhausted()
+					} else {
+						node
+					};
 					return Ok((Box::new(node), false));
 				}
 				let node = ViewScanNode::new(view, partition, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();
+				let node = if nothing {
+					node.exhausted()
+				} else {
+					node
+				};
 				Ok((Box::new(node), false))
 			}
 			ObjectId::RingBuffer(id) => {

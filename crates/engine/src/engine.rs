@@ -158,6 +158,7 @@ impl StandardEngine {
 		let context = self.transaction_context(id, identity);
 		let mut txn = QueryTransaction::new(self.multi.begin_query(id)?, self.single.clone(), context);
 		txn.set_executor(Arc::new(self.executor.clone()));
+		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		Ok(txn)
 	}
 
@@ -541,6 +542,7 @@ impl StandardEngine {
 			context,
 		);
 		txn.set_executor(Arc::new(self.executor.clone()));
+		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		Ok(txn)
 	}
 

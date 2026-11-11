@@ -1,22 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::catalog::series::SeriesKey,
 	value::batch::{is_scalar, scalar_value},
 };
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::nodes::{PartitionKey, SeriesBound};
-use reifydb_transaction::transaction::ScanLayout;
-use reifydb_value::value::{Value, partition::Partition};
+use reifydb_transaction::transaction::{ScanLayout, Transaction};
+use reifydb_value::value::{
+	Value,
+	partition::{Partition, ScanPartitions},
+};
 
-use crate::vm::volcano::partition_parameter::choose_partition;
+use crate::{Result, vm::volcano::partition_parameter::choose_partition};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SeriesRange {
 	pub partition: Option<Partition>,
 	pub start: Option<u64>,
 	pub end: Option<u64>,
+	pub nothing: bool,
 }
 
 pub(crate) fn choose_series_range(
@@ -24,14 +29,26 @@ pub(crate) fn choose_series_range(
 	ends: &[SeriesBound],
 	partition_keys: Option<&[PartitionKey]>,
 	key: &SeriesKey,
-	layout: ScanLayout,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Option<SeriesRange> {
-	if layout == ScanLayout::Column {
-		return None;
+) -> Result<Option<SeriesRange>> {
+	if txn.layout() == ScanLayout::Column {
+		return Ok(None);
 	}
 	let partition = match partition_keys {
-		Some(keys) => Some(choose_partition(keys, layout, symbols)?),
+		Some(keys) => match choose_partition(keys, catalog, txn, symbols)? {
+			ScanPartitions::One(partition) => Some(partition),
+			ScanPartitions::Nothing => {
+				return Ok(Some(SeriesRange {
+					partition: None,
+					start: None,
+					end: None,
+					nothing: true,
+				}));
+			}
+			ScanPartitions::All | ScanPartitions::Many(_) => return Ok(None),
+		},
 		None => None,
 	};
 	let start = starts.iter().filter_map(|bound| resolve_series_bound(bound, key, symbols)).max();
@@ -39,11 +56,12 @@ pub(crate) fn choose_series_range(
 		.iter()
 		.filter_map(|bound| resolve_series_bound(bound, key, symbols).and_then(|value| value.checked_add(1)))
 		.min();
-	Some(SeriesRange {
+	Ok(Some(SeriesRange {
 		partition,
 		start,
 		end,
-	})
+		nothing: false,
+	}))
 }
 
 fn resolve_series_bound(bound: &SeriesBound, key: &SeriesKey, symbols: &SymbolTable) -> Option<u64> {
@@ -84,7 +102,12 @@ fn resolve_series_bound(bound: &SeriesBound, key: &SeriesKey, symbols: &SymbolTa
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_core::{expression::VariableExpression, interface::catalog::series::TimestampPrecision};
+	use reifydb_runtime::context::transaction::TransactionContext;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::query::QueryTransaction;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{datetime::DateTime, value_type::ValueType},
@@ -106,6 +129,33 @@ mod tests {
 		symbols
 	}
 
+	fn ranged(
+		starts: &[SeriesBound],
+		ends: &[SeriesBound],
+		partition_keys: Option<&[PartitionKey]>,
+		key: &SeriesKey,
+		layout: ScanLayout,
+		symbols: &SymbolTable,
+	) -> Option<SeriesRange> {
+		let admin = create_test_admin_transaction();
+		let mut query = QueryTransaction::new(
+			admin.multi.begin_query(admin.multi.generate_transaction_id()).unwrap(),
+			admin.single.clone(),
+			Arc::new(TransactionContext::system(admin.context().runtime.clone())),
+		);
+		query.layout = layout;
+		choose_series_range(
+			starts,
+			ends,
+			partition_keys,
+			key,
+			&Catalog::testing(),
+			&mut Transaction::Query(&mut query),
+			symbols,
+		)
+		.unwrap()
+	}
+
 	fn integer_key() -> SeriesKey {
 		SeriesKey::Integer {
 			column: "ts".to_string(),
@@ -117,6 +167,7 @@ mod tests {
 			partition: None,
 			start,
 			end,
+			nothing: false,
 		})
 	}
 
@@ -124,14 +175,7 @@ mod tests {
 	fn variable_bounds_narrow_to_a_start_and_an_exclusive_end() {
 		// The end is exclusive, so a bound of 9 must stop after key 9, never at it.
 		let values = symbols(vec![("1", Value::Int4(3)), ("2", Value::Uint8(9))]);
-		let chosen = choose_series_range(
-			&[bound("$1")],
-			&[bound("$2")],
-			None,
-			&integer_key(),
-			ScanLayout::Row,
-			&values,
-		);
+		let chosen = ranged(&[bound("$1")], &[bound("$2")], None, &integer_key(), ScanLayout::Row, &values);
 
 		assert_eq!(chosen, range(Some(3), Some(10)));
 	}
@@ -140,7 +184,7 @@ mod tests {
 	fn the_tightest_of_several_bounds_wins() {
 		// Every bound holds at once, so the range must be the largest start and the smallest end.
 		let values = symbols(vec![("1", Value::Int4(3)), ("2", Value::Int4(20))]);
-		let chosen = choose_series_range(
+		let chosen = ranged(
 			&[bound("$1"), SeriesBound::Constant(5)],
 			&[bound("$2"), SeriesBound::Constant(30)],
 			None,
@@ -157,7 +201,7 @@ mod tests {
 		// A dropped bound only widens the scan; a wrong-type or negative bound must never narrow it.
 		let starts = [bound("$1")];
 		for value in [Value::Int4(-1), Value::Utf8("3".to_string()), Value::none(), Value::float8(3.0)] {
-			let chosen = choose_series_range(
+			let chosen = ranged(
 				&starts,
 				&[],
 				None,
@@ -167,7 +211,7 @@ mod tests {
 			);
 			assert_eq!(chosen, range(None, None), "{value:?}");
 		}
-		let max_end = choose_series_range(
+		let max_end = ranged(
 			&[],
 			&[bound("$1")],
 			None,
@@ -188,11 +232,10 @@ mod tests {
 		let at = DateTime::from_nanos(1_500_000_000);
 		let values = symbols(vec![("1", Value::DateTime(at)), ("2", Value::Int4(1))]);
 
-		let chosen = choose_series_range(&[bound("$1")], &[bound("$1")], None, &key, ScanLayout::Row, &values);
+		let chosen = ranged(&[bound("$1")], &[bound("$1")], None, &key, ScanLayout::Row, &values);
 		assert_eq!(chosen, range(Some(1), Some(2)));
 
-		let integer_on_datetime =
-			choose_series_range(&[bound("$2")], &[], None, &key, ScanLayout::Row, &values);
+		let integer_on_datetime = ranged(&[bound("$2")], &[], None, &key, ScanLayout::Row, &values);
 		assert_eq!(integer_on_datetime, range(None, None));
 	}
 
@@ -208,13 +251,7 @@ mod tests {
 		}];
 		let values = symbols(vec![("1", Value::Int4(3))]);
 
-		assert_eq!(
-			choose_series_range(&[bound("$1")], &[], Some(&keys), &integer_key(), ScanLayout::Row, &values),
-			None
-		);
-		assert_eq!(
-			choose_series_range(&[bound("$1")], &[], None, &integer_key(), ScanLayout::Column, &values),
-			None
-		);
+		assert_eq!(ranged(&[bound("$1")], &[], Some(&keys), &integer_key(), ScanLayout::Row, &values), None);
+		assert_eq!(ranged(&[bound("$1")], &[], None, &integer_key(), ScanLayout::Column, &values), None);
 	}
 }

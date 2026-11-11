@@ -75,6 +75,7 @@ use crate::{
 		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
 		TransactionalViewChanges, TransactionalWindowedViewGroupChanges,
 	},
+	dictionary::DictionaryAllocatorRegistry,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
 	transaction::{RqlExecutor, ScanLayout, Transaction},
@@ -88,6 +89,7 @@ pub struct QueryTransaction {
 	pub layout: ScanLayout,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
+	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 }
 
 impl QueryTransaction {
@@ -99,6 +101,7 @@ impl QueryTransaction {
 			context,
 			layout: ScanLayout::Row,
 			executor: None,
+			dictionary_allocators: None,
 		}
 	}
 
@@ -112,6 +115,14 @@ impl QueryTransaction {
 
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
+	}
+
+	pub fn set_dictionary_allocators(&mut self, registry: DictionaryAllocatorRegistry) {
+		self.dictionary_allocators = Some(registry);
+	}
+
+	pub fn dictionary_allocators(&self) -> Option<DictionaryAllocatorRegistry> {
+		self.dictionary_allocators.clone()
 	}
 
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {

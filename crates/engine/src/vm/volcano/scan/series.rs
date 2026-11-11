@@ -62,6 +62,7 @@ pub struct SeriesScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<TaggedKey>,
 	exhausted: bool,
+	nothing: bool,
 	system_columns: Vec<SystemColumn>,
 	oldest_first: bool,
 	merge: Option<PartitionMerge>,
@@ -103,6 +104,7 @@ impl SeriesScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
+			nothing: false,
 			system_columns,
 			oldest_first: false,
 			keep_dictionary_ids: false,
@@ -118,6 +120,11 @@ impl SeriesScanNode {
 
 	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
 		self.keep_dictionary_ids = true;
+		self
+	}
+
+	pub(crate) fn exhausted(mut self) -> Self {
+		self.nothing = true;
 		self
 	}
 
@@ -316,6 +323,11 @@ impl QueryNode for SeriesScanNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "SeriesScanNode::next() called before initialize()");
+		}
+		if self.nothing {
+			self.nothing = false;
+			self.exhausted = true;
+			return Ok(Some(empty_scan(empty_series_columns(self.series.def()), &self.system_columns)?));
 		}
 		let stored_ctx = self.context.as_ref().unwrap();
 

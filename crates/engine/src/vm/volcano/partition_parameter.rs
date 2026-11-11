@@ -3,37 +3,44 @@
 
 use std::{collections::BTreeMap, slice::from_ref};
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
+	internal_error,
 	value::batch::{is_scalar, scalar_value},
 };
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_flow::compiler::child_plans;
 use reifydb_rql::{nodes::PartitionKey, query::QueryPlan};
-use reifydb_transaction::transaction::ScanLayout;
+use reifydb_transaction::transaction::{ScanLayout, Transaction};
 use reifydb_value::value::{
 	Value,
+	dictionary::DictionaryId,
 	partition::{Partition, ScanPartitions},
 	value_type::ValueType,
 };
 
+use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
+
 pub(crate) fn scan_partitions(
 	plan: &QueryPlan,
-	layout: ScanLayout,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> BTreeMap<ObjectId, ScanPartitions> {
+) -> Result<BTreeMap<ObjectId, ScanPartitions>> {
 	let mut partitions = BTreeMap::new();
-	collect_partitions(plan, None, layout, symbols, &mut partitions);
-	partitions
+	collect_partitions(plan, None, catalog, txn, symbols, &mut partitions)?;
+	Ok(partitions)
 }
 
 fn collect_partitions(
 	plan: &QueryPlan,
 	parameter: Option<ScanPartitions>,
-	layout: ScanLayout,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
 	partitions: &mut BTreeMap<ObjectId, ScanPartitions>,
-) {
+) -> Result<()> {
 	let mut record = |source: ObjectId, partition: ScanPartitions| {
 		partitions
 			.entry(source)
@@ -58,47 +65,96 @@ fn collect_partitions(
 				Some(chosen) => chosen,
 			},
 		),
-		QueryPlan::PartitionParameterScan(node) => collect_partitions(
-			&node.scan,
-			choose_partitions(&node.keys, layout, symbols)
-				.map(ScanPartitions::Many)
-				.or_else(|| choose_partition(&node.keys, layout, symbols).map(ScanPartitions::One)),
-			layout,
-			symbols,
-			partitions,
-		),
+		QueryPlan::PartitionParameterScan(node) => {
+			let chosen = match choose_partitions(&node.keys, catalog, txn, symbols)? {
+				Some(chosen) => chosen,
+				None => choose_partition(&node.keys, catalog, txn, symbols)?,
+			};
+			let parameter = match chosen {
+				ScanPartitions::All => None,
+				chosen => Some(chosen),
+			};
+			collect_partitions(&node.scan, parameter, catalog, txn, symbols, partitions)?;
+		}
 		other => {
 			for child in child_plans(other) {
-				collect_partitions(child, None, layout, symbols, partitions);
+				collect_partitions(child, None, catalog, txn, symbols, partitions)?;
 			}
 		}
 	}
+	Ok(())
 }
 
-pub(crate) fn choose_partition(keys: &[PartitionKey], layout: ScanLayout, symbols: &SymbolTable) -> Option<Partition> {
-	match layout {
-		ScanLayout::Row => {
-			let values = keys
-				.iter()
-				.map(|key| resolve_partition_key(key, symbols))
-				.collect::<Option<Vec<_>>>()?;
-			Some(Partition::of(&values))
-		}
-		ScanLayout::Column => None,
+enum Resolved {
+	Value(Value),
+	Unknown,
+	Missing,
+}
+
+pub(crate) fn choose_partition(
+	keys: &[PartitionKey],
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	symbols: &SymbolTable,
+) -> Result<ScanPartitions> {
+	if txn.layout() == ScanLayout::Column {
+		return Ok(ScanPartitions::All);
 	}
+	let mut values = Vec::with_capacity(keys.len());
+	let mut unknown = false;
+	for key in keys {
+		match resolve_key(key, catalog, txn, symbols)? {
+			Resolved::Value(value) => values.push(value),
+			Resolved::Unknown => unknown = true,
+			Resolved::Missing => return Ok(ScanPartitions::Nothing),
+		}
+	}
+	if unknown {
+		return Ok(ScanPartitions::All);
+	}
+	Ok(ScanPartitions::One(Partition::of(&values)))
 }
 
 pub(crate) fn choose_partitions(
 	keys: &[PartitionKey],
-	layout: ScanLayout,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Option<Vec<Partition>> {
-	let (ScanLayout::Row, [key]) = (layout, keys) else {
-		return None;
+) -> Result<Option<ScanPartitions>> {
+	let (ScanLayout::Row, [key]) = (txn.layout(), keys) else {
+		return Ok(None);
 	};
-	let values = match key {
+	let (dictionary, key) = match key {
+		PartitionKey::Dictionary {
+			dictionary,
+			key,
+		} => (Some(*dictionary), key.as_ref()),
+		other => (None, other),
+	};
+	let Some(values) = in_values(key, symbols) else {
+		return Ok(None);
+	};
+	let values = match dictionary {
+		Some(dictionary) => {
+			let found: Vec<Value> =
+				lookup(catalog, txn, dictionary, values)?.into_iter().flatten().collect();
+			if found.is_empty() {
+				return Ok(Some(ScanPartitions::Nothing));
+			}
+			found
+		}
+		None => values,
+	};
+	let mut partitions: Vec<Partition> = values.iter().map(|value| Partition::of(from_ref(value))).collect();
+	partitions.sort_unstable_by(|a, b| b.cmp(a));
+	partitions.dedup();
+	Ok(Some(ScanPartitions::Many(partitions)))
+}
+
+fn in_values(key: &PartitionKey, symbols: &SymbolTable) -> Option<Vec<Value>> {
+	match key {
 		PartitionKey::In(items) => {
-			items.iter().map(|item| resolve_partition_key(item, symbols)).collect::<Option<Vec<_>>>()?
+			items.iter().map(|item| resolve_partition_key(item, symbols)).collect::<Option<Vec<_>>>()
 		}
 		PartitionKey::InList {
 			variable,
@@ -107,16 +163,49 @@ pub(crate) fn choose_partitions(
 			.into_iter()
 			.filter(|value| !matches!(value, Value::None { .. }))
 			.map(|value| exact_partition_value(value, ty))
-			.collect::<Option<Vec<_>>>()?,
+			.collect::<Option<Vec<_>>>(),
 		PartitionKey::Constant(_)
 		| PartitionKey::Variable {
 			..
-		} => return None,
+		}
+		| PartitionKey::Dictionary {
+			..
+		} => None,
+	}
+}
+
+fn resolve_key(
+	key: &PartitionKey,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	symbols: &SymbolTable,
+) -> Result<Resolved> {
+	let PartitionKey::Dictionary {
+		dictionary,
+		key,
+	} = key
+	else {
+		return Ok(resolve_partition_key(key, symbols).map_or(Resolved::Unknown, Resolved::Value));
 	};
-	let mut partitions: Vec<Partition> = values.iter().map(|value| Partition::of(from_ref(value))).collect();
-	partitions.sort_unstable_by(|a, b| b.cmp(a));
-	partitions.dedup();
-	Some(partitions)
+	let Some(value) = resolve_partition_key(key, symbols) else {
+		return Ok(Resolved::Unknown);
+	};
+	Ok(match lookup(catalog, txn, *dictionary, vec![value])?.pop().flatten() {
+		Some(id) => Resolved::Value(id),
+		None => Resolved::Missing,
+	})
+}
+
+fn lookup(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	dictionary: DictionaryId,
+	values: Vec<Value>,
+) -> Result<Vec<Option<Value>>> {
+	let found = catalog.find_dictionary(txn, dictionary)?.ok_or_else(|| {
+		internal_error!("dictionary {:?} of a partition key is not in the catalog", dictionary)
+	})?;
+	Ok(txn.find_in_dictionary(&found, &values)?.into_iter().map(|id| id.map(Value::DictionaryId)).collect())
 }
 
 fn list_items(name: &str, symbols: &SymbolTable) -> Option<Vec<Value>> {
@@ -148,6 +237,9 @@ fn resolve_partition_key(key: &PartitionKey, symbols: &SymbolTable) -> Option<Va
 		} => (variable, ty),
 		PartitionKey::In(_)
 		| PartitionKey::InList {
+			..
+		}
+		| PartitionKey::Dictionary {
 			..
 		} => return None,
 	};
@@ -218,8 +310,20 @@ fn integer_as(integer: i128, ty: &ValueType) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::expression::VariableExpression;
-	use reifydb_value::fragment::Fragment;
+	use std::sync::Arc;
+
+	use postcard::to_stdvec;
+	use reifydb_catalog::catalog::{dictionary::DictionaryToCreate, namespace::NamespaceToCreate};
+	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_core::{
+		expression::VariableExpression,
+		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
+		key::catalog::DictionaryEntryKey,
+	};
+	use reifydb_runtime::context::transaction::TransactionContext;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
+	use reifydb_value::{fragment::Fragment, util::hash::xxh3_128};
 
 	use super::*;
 
@@ -240,8 +344,51 @@ mod tests {
 		symbols
 	}
 
-	fn chosen(keys: &[PartitionKey], values: Vec<(&str, Value)>) -> Option<Partition> {
-		choose_partition(keys, ScanLayout::Row, &symbols(values))
+	fn chosen(keys: &[PartitionKey], values: Vec<(&str, Value)>) -> ScanPartitions {
+		let mut admin = create_test_admin_transaction();
+		choose_partition(keys, &Catalog::testing(), &mut Transaction::Admin(&mut admin), &symbols(values))
+			.unwrap()
+	}
+
+	fn dictionary_fixture() -> (Catalog, AdminTransaction, Dictionary) {
+		let catalog = Catalog::testing();
+		let mut admin = create_test_admin_transaction();
+		let namespace = catalog
+			.create_namespace(
+				&mut admin,
+				NamespaceToCreate {
+					namespace_fragment: None,
+					name: "ns".to_string(),
+					local_name: "ns".to_string(),
+					parent_id: NamespaceId::ROOT,
+					grpc: None,
+					token: None,
+				},
+			)
+			.unwrap();
+		let dictionary = catalog
+			.create_dictionary(
+				&mut admin,
+				DictionaryToCreate {
+					name: Fragment::internal("pools"),
+					namespace: namespace.id(),
+					value_type: ValueType::Utf8,
+					id_type: ValueType::Uint4,
+				},
+			)
+			.unwrap();
+		(catalog, admin, dictionary)
+	}
+
+	fn through(dictionary: &Dictionary, key: PartitionKey) -> PartitionKey {
+		PartitionKey::Dictionary {
+			dictionary: dictionary.id,
+			key: Box::new(key),
+		}
+	}
+
+	fn utf8(text: &str) -> Value {
+		Value::Utf8(text.to_string())
 	}
 
 	#[test]
@@ -249,9 +396,18 @@ mod tests {
 		// The writer hashes the declared-type value, so any other width would name a partition no row is in.
 		let keys = [key("$1", ValueType::Int4)];
 
-		assert_eq!(chosen(&keys, vec![("1", Value::Int8(3))]), Some(Partition::of(&[Value::Int4(3)])));
-		assert_eq!(chosen(&keys, vec![("1", Value::Uint1(3))]), Some(Partition::of(&[Value::Int4(3)])));
-		assert_ne!(chosen(&keys, vec![("1", Value::Int8(3))]), Some(Partition::of(&[Value::Int8(3)])));
+		assert_eq!(
+			chosen(&keys, vec![("1", Value::Int8(3))]),
+			ScanPartitions::One(Partition::of(&[Value::Int4(3)]))
+		);
+		assert_eq!(
+			chosen(&keys, vec![("1", Value::Uint1(3))]),
+			ScanPartitions::One(Partition::of(&[Value::Int4(3)]))
+		);
+		assert_ne!(
+			chosen(&keys, vec![("1", Value::Int8(3))]),
+			ScanPartitions::One(Partition::of(&[Value::Int8(3)]))
+		);
 	}
 
 	#[test]
@@ -260,12 +416,12 @@ mod tests {
 		let int4 = [key("$1", ValueType::Int4)];
 		let utf8 = [key("$1", ValueType::Utf8)];
 
-		assert_eq!(chosen(&int4, vec![("1", Value::Int8(5_000_000_000))]), None);
-		assert_eq!(chosen(&int4, vec![("1", Value::Utf8("3".to_string()))]), None);
-		assert_eq!(chosen(&int4, vec![("1", Value::float8(3.0))]), None);
-		assert_eq!(chosen(&int4, vec![("1", Value::none())]), None);
-		assert_eq!(chosen(&int4, vec![]), None);
-		assert_eq!(chosen(&utf8, vec![("1", Value::Int4(3))]), None);
+		assert_eq!(chosen(&int4, vec![("1", Value::Int8(5_000_000_000))]), ScanPartitions::All);
+		assert_eq!(chosen(&int4, vec![("1", Value::Utf8("3".to_string()))]), ScanPartitions::All);
+		assert_eq!(chosen(&int4, vec![("1", Value::float8(3.0))]), ScanPartitions::All);
+		assert_eq!(chosen(&int4, vec![("1", Value::none())]), ScanPartitions::All);
+		assert_eq!(chosen(&int4, vec![]), ScanPartitions::All);
+		assert_eq!(chosen(&utf8, vec![("1", Value::Int4(3))]), ScanPartitions::All);
 	}
 
 	#[test]
@@ -275,7 +431,10 @@ mod tests {
 
 		assert_eq!(
 			chosen(&keys, vec![("tier", Value::Utf8("gold".to_string()))]),
-			Some(Partition::of(&[Value::Utf8("eu".to_string()), Value::Utf8("gold".to_string())]))
+			ScanPartitions::One(Partition::of(&[
+				Value::Utf8("eu".to_string()),
+				Value::Utf8("gold".to_string())
+			]))
 		);
 	}
 
@@ -283,7 +442,123 @@ mod tests {
 	fn a_column_layout_never_prunes() {
 		// A column layout refuses partitioned row-store reads, so the scan there must stay unpruned.
 		let keys = [key("$1", ValueType::Int4)];
+		let admin = create_test_admin_transaction();
+		let mut query = QueryTransaction::new(
+			admin.multi.begin_query(admin.multi.generate_transaction_id()).unwrap(),
+			admin.single.clone(),
+			Arc::new(TransactionContext::system(admin.context().runtime.clone())),
+		);
+		query.layout = ScanLayout::Column;
 
-		assert_eq!(choose_partition(&keys, ScanLayout::Column, &symbols(vec![("1", Value::Int4(3))])), None);
+		assert_eq!(
+			choose_partition(
+				&keys,
+				&Catalog::testing(),
+				&mut Transaction::Query(&mut query),
+				&symbols(vec![("1", Value::Int4(3))])
+			)
+			.unwrap(),
+			ScanPartitions::All
+		);
+	}
+
+	#[test]
+	fn a_stored_dictionary_key_hashes_as_its_id_like_the_writer() {
+		// The writer hashes the interned id, so hashing the text would name a partition no row is in.
+		let (catalog, mut admin, dictionary) = dictionary_fixture();
+		let id = admin.intern_values(&dictionary, vec![utf8("pool-a")]).unwrap()[0];
+		let constant = [through(&dictionary, PartitionKey::Constant(utf8("pool-a")))];
+		let variable = [through(&dictionary, key("$pool", ValueType::Utf8))];
+		let symbols = symbols(vec![("pool", utf8("pool-a"))]);
+		let mut txn = Transaction::Admin(&mut admin);
+
+		let expected = ScanPartitions::One(Partition::of(&[Value::DictionaryId(id)]));
+		assert_eq!(choose_partition(&constant, &catalog, &mut txn, &symbols).unwrap(), expected);
+		assert_eq!(choose_partition(&variable, &catalog, &mut txn, &symbols).unwrap(), expected);
+		assert_ne!(expected, ScanPartitions::One(Partition::of(&[utf8("pool-a")])));
+	}
+
+	#[test]
+	fn a_dictionary_key_never_stored_scans_nothing_not_everything() {
+		// No row can carry a value that was never interned, so a miss must prune to nothing; falling back
+		// to every partition is the full scan this pruning exists to avoid.
+		let (catalog, mut admin, dictionary) = dictionary_fixture();
+		admin.intern_values(&dictionary, vec![utf8("pool-a")]).unwrap();
+		let miss = [through(&dictionary, key("$pool", ValueType::Utf8))];
+		let with_other = [through(&dictionary, key("$pool", ValueType::Utf8)), key("$tier", ValueType::Int4)];
+		let symbols = symbols(vec![("pool", utf8("never")), ("tier", Value::Int8(5_000_000_000))]);
+		let mut txn = Transaction::Admin(&mut admin);
+
+		assert_eq!(choose_partition(&miss, &catalog, &mut txn, &symbols).unwrap(), ScanPartitions::Nothing);
+		assert_eq!(
+			choose_partition(&with_other, &catalog, &mut txn, &symbols).unwrap(),
+			ScanPartitions::Nothing
+		);
+	}
+
+	#[test]
+	fn an_unresolved_dictionary_key_reads_every_partition() {
+		// A key with no usable value says nothing about the rows, so it must not prune at all.
+		let (catalog, mut admin, dictionary) = dictionary_fixture();
+		let keys = [through(&dictionary, key("$pool", ValueType::Utf8))];
+		let mut txn = Transaction::Admin(&mut admin);
+
+		assert_eq!(choose_partition(&keys, &catalog, &mut txn, &symbols(vec![])).unwrap(), ScanPartitions::All);
+		assert_eq!(
+			choose_partition(&keys, &catalog, &mut txn, &symbols(vec![("pool", Value::Int4(3))])).unwrap(),
+			ScanPartitions::All
+		);
+	}
+
+	#[test]
+	fn a_dictionary_in_list_keeps_its_hits_and_drops_its_misses() {
+		// Each hit must be read and a miss adds no partition; an all-miss list must scan nothing, because an
+		// empty partition list is not the same thing to every scan.
+		let (catalog, mut admin, dictionary) = dictionary_fixture();
+		let ids = admin.intern_values(&dictionary, vec![utf8("pool-a"), utf8("pool-b")]).unwrap();
+		let some = [through(
+			&dictionary,
+			PartitionKey::In(vec![
+				PartitionKey::Constant(utf8("pool-a")),
+				PartitionKey::Constant(utf8("never")),
+				PartitionKey::Constant(utf8("pool-b")),
+			]),
+		)];
+		let none_found = [through(&dictionary, PartitionKey::In(vec![PartitionKey::Constant(utf8("never"))]))];
+		let mut txn = Transaction::Admin(&mut admin);
+
+		let mut expected: Vec<Partition> =
+			ids.iter().map(|id| Partition::of(&[Value::DictionaryId(id.clone())])).collect();
+		expected.sort_unstable_by(|a, b| b.cmp(a));
+		assert_eq!(
+			choose_partitions(&some, &catalog, &mut txn, &symbols(vec![])).unwrap(),
+			Some(ScanPartitions::Many(expected))
+		);
+		assert_eq!(
+			choose_partitions(&none_found, &catalog, &mut txn, &symbols(vec![])).unwrap(),
+			Some(ScanPartitions::Nothing)
+		);
+	}
+
+	#[test]
+	fn a_dictionary_hash_collision_fails_instead_of_pruning() {
+		// A slot holding other bytes is corruption; answering it as all or nothing would hide it.
+		let (catalog, mut admin, dictionary) = dictionary_fixture();
+		let forged = utf8("forged");
+		let hash = xxh3_128(&to_stdvec(&forged).unwrap()).0.to_be_bytes();
+		let mut poisoned = Vec::with_capacity(16 + 5);
+		poisoned.extend_from_slice(&7u128.to_be_bytes());
+		poisoned.extend_from_slice(b"other");
+		let ctx = Arc::new(TransactionContext::system(admin.context().runtime.clone()));
+		let mut write =
+			admin.single.begin_command(&ctx, [&DictionaryEntryKey::encoded(dictionary.id, hash)]).unwrap();
+		write.set(vec![(DictionaryEntryKey::new(dictionary.id, hash), EncodedPodRow::new(&poisoned))]).unwrap();
+		write.commit().unwrap();
+		drop(write);
+		let keys = [through(&dictionary, PartitionKey::Constant(forged))];
+
+		let err = choose_partition(&keys, &catalog, &mut Transaction::Admin(&mut admin), &symbols(vec![]))
+			.unwrap_err();
+		assert!(err.to_string().to_lowercase().contains("collision"), "got: {err}");
 	}
 }

@@ -31,6 +31,10 @@ impl Subscription {
 		self.id
 	}
 
+	pub fn overrun(&self) -> Option<u16> {
+		self.store.overrun(&self.id)
+	}
+
 	/// Each frame carries its op on `Frame::op` (Insert=1, Update=2, Remove=3). Batches come back
 	/// in delivery order and are removed from the buffer, hydration-snapshot ones ahead of
 	/// forward commit log ones.

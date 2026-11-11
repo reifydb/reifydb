@@ -13,11 +13,11 @@ use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
 		InlineDataNode as RqlInlineDataNode, PartitionParameterScanNode as RqlPartitionParameterScanNode,
-		RowListLookupNode as RqlRowListLookupNode, RowParameterLookupNode as RqlRowParameterLookupNode,
-		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
-		SeriesParameterScanNode as RqlSeriesParameterScanNode, SeriesScanNode as RqlSeriesScanNode,
-		SortNode as RqlSortNode, TableScanNode as RqlTableScanNode, TakeLimit, TakeNode as RqlTakeNode,
-		ViewScanNode as RqlViewScanNode,
+		RingBufferScanNode as RqlRingBufferScanNode, RowListLookupNode as RqlRowListLookupNode,
+		RowParameterLookupNode as RqlRowParameterLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
+		RowRangeScanNode as RqlRowRangeScanNode, SeriesParameterScanNode as RqlSeriesParameterScanNode,
+		SeriesScanNode as RqlSeriesScanNode, SortNode as RqlSortNode, TableScanNode as RqlTableScanNode,
+		TakeLimit, TakeNode as RqlTakeNode, ViewScanNode as RqlViewScanNode,
 	},
 	plan::logical::row_predicate::RowPredicate,
 	query::QueryPlan as RqlQueryPlan,
@@ -25,7 +25,7 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{column_view::ColumnView, system_columns::user_columns},
+	value::{column_view::ColumnView, partition::ScanPartitions, system_columns::user_columns},
 };
 use tracing::instrument;
 
@@ -331,30 +331,90 @@ pub(crate) fn compile<'a>(
 			keys,
 			scan,
 		}) => {
-			if let Some(partitions) = choose_partitions(&keys, rx.layout(), &context.symbols)
-				&& let RqlQueryPlan::TableScan(node) = scan.as_ref()
-			{
-				return Box::new(
+			let source = extract_source_name_from_query(&scan)
+				.map_or_else(String::new, |name| name.text().to_string());
+			let chosen = choose_partitions(&keys, &context.services.catalog, rx, &context.symbols)
+				.and_then(|many| match many {
+					Some(chosen) => Ok(chosen),
+					None => {
+						choose_partition(&keys, &context.services.catalog, rx, &context.symbols)
+					}
+				})
+				.unwrap_or_else(|e| panic!("partition key lookup failed for '{source}': {e}"));
+			match (*scan, chosen) {
+				(RqlQueryPlan::TableScan(node), ScanPartitions::Many(partitions)) => Box::new(
 					TableScanNode::with_partitions(node.source.clone(), partitions, context, rx)
 						.unwrap(),
-				);
-			}
-			let scan = match (*scan, choose_partition(&keys, rx.layout(), &context.symbols)) {
-				(RqlQueryPlan::TableScan(node), Some(partition)) => {
+				),
+				(RqlQueryPlan::TableScan(node), ScanPartitions::One(partition)) => compile(
 					RqlQueryPlan::TableScan(RqlTableScanNode {
 						partition: Some(partition),
 						..node
-					})
-				}
-				(RqlQueryPlan::ViewScan(node), Some(partition)) => {
+					}),
+					rx,
+					context,
+				),
+				(RqlQueryPlan::ViewScan(node), ScanPartitions::One(partition)) => compile(
 					RqlQueryPlan::ViewScan(RqlViewScanNode {
 						partition: Some(partition),
 						..node
-					})
+					}),
+					rx,
+					context,
+				),
+				(RqlQueryPlan::RingBufferScan(node), ScanPartitions::One(partition)) => compile(
+					RqlQueryPlan::RingBufferScan(RqlRingBufferScanNode {
+						partition: Some(partition),
+						..node
+					}),
+					rx,
+					context,
+				),
+				(RqlQueryPlan::RingBufferScan(node), ScanPartitions::Nothing) => {
+					MarkSumtypeTagsNode::wrap(
+						Box::new(
+							RingBufferScan::new(node.source.clone(), None, context, rx)
+								.unwrap()
+								.exhausted(),
+						),
+						node.source.columns(),
+					)
 				}
-				(scan, _) => scan,
-			};
-			compile(scan, rx, context)
+				(RqlQueryPlan::TableScan(node), ScanPartitions::Nothing) => MarkSumtypeTagsNode::wrap(
+					Box::new(
+						TableScanNode::new(node.source.clone(), None, context, rx)
+							.unwrap()
+							.exhausted(),
+					),
+					node.source.columns(),
+				),
+				(RqlQueryPlan::ViewScan(node), ScanPartitions::Nothing)
+					if node.source.def().storage_kind() == ViewStorageKind::RingBuffer =>
+				{
+					MarkSumtypeTagsNode::wrap(
+						Box::new(
+							RingBufferScan::for_view(
+								node.source.clone(),
+								None,
+								context,
+								rx,
+							)
+							.unwrap()
+							.exhausted(),
+						),
+						node.source.columns(),
+					)
+				}
+				(RqlQueryPlan::ViewScan(node), ScanPartitions::Nothing) => MarkSumtypeTagsNode::wrap(
+					Box::new(
+						ViewScanNode::new(node.source.clone(), None, context, rx)
+							.unwrap()
+							.exhausted(),
+					),
+					node.source.columns(),
+				),
+				(scan, _) => compile(scan, rx, context),
+			}
 		}
 		RqlQueryPlan::SeriesParameterScan(RqlSeriesParameterScanNode {
 			starts,
@@ -368,9 +428,32 @@ pub(crate) fn compile<'a>(
 					&ends,
 					partition_keys.as_deref(),
 					&node.source.def().key,
-					rx.layout(),
+					&context.services.catalog,
+					rx,
 					&context.symbols,
-				) {
+				)
+				.unwrap_or_else(|e| {
+					panic!("partition key lookup failed for '{}': {e}", node.source.def().name)
+				}) {
+					Some(range) if range.nothing => {
+						let columns = node.source.columns().to_vec();
+						return MarkSumtypeTagsNode::wrap_series(
+							Box::new(
+								VolcanoSeriesScanNode::new(
+									node.source.clone(),
+									node.key_range_start,
+									node.key_range_end,
+									node.variant_tag,
+									None,
+									context,
+								)
+								.unwrap()
+								.exhausted(),
+							),
+							&columns,
+							node.source.def().tag,
+						);
+					}
 					Some(range) => RqlQueryPlan::SeriesScan(RqlSeriesScanNode {
 						key_range_start: node.key_range_start.max(range.start),
 						key_range_end: match (node.key_range_end, range.end) {

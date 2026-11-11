@@ -69,7 +69,9 @@ pub fn backfill_partitioned<S: Scan>(
 ) -> Result<()> {
 	let version = ChangeVersion::from(scan.version());
 	for (&source, partitions) in sources {
-		if matches!(partitions, ScanPartitions::Many(listed) if listed.is_empty()) {
+		if matches!(partitions, ScanPartitions::Nothing)
+			|| matches!(partitions, ScanPartitions::Many(listed) if listed.is_empty())
+		{
 			continue;
 		}
 		scan.open_partition(source, partitions.clone(), batch_size)?;

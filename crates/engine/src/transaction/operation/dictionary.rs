@@ -154,9 +154,7 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, values),
 			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, values),
 			Transaction::Test(t) => t.inner.find_in_dictionary(dictionary, values),
-			Transaction::Query(_) => {
-				Err(internal_error!("Cannot find in a dictionary during a query transaction"))
-			}
+			Transaction::Query(query) => find_through(query.dictionary_allocators(), dictionary, values),
 		}
 	}
 }
@@ -165,14 +163,22 @@ impl DictionaryOperations for Transaction<'_> {
 pub mod tests {
 	use std::{slice, sync::Arc};
 
-	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
+	use postcard::to_stdvec;
+	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_core::{
+		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
+		key::catalog::DictionaryEntryKey,
+	};
 	use reifydb_runtime::context::transaction::TransactionContext;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-	use reifydb_value::value::{
-		Value,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		value_type::ValueType,
+	use reifydb_value::{
+		util::hash::xxh3_128,
+		value::{
+			Value,
+			dictionary::{DictionaryEntryId, DictionaryId},
+			value_type::ValueType,
+		},
 	};
 
 	use super::DictionaryOperations;
@@ -322,20 +328,42 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_find_in_a_query_transaction_fails_instead_of_answering_an_unchecked_id() {
-		// The query read trusted the hash alone, so a collision would answer another value's id.
+	fn a_find_in_a_query_transaction_answers_through_the_checked_registry() {
+		// A query find must resolve a stored value, miss a never-stored one, and refuse a hash slot
+		// holding other bytes; trusting the hash alone would answer another value's id.
 		let mut txn = create_test_admin_transaction();
 		let dict = test_dictionary();
-		let value = Value::Utf8("a".to_string());
-		txn.intern_values(&dict, vec![value.clone()]).unwrap();
+		let stored = Value::Utf8("a".to_string());
+		let never_stored = Value::Utf8("never".to_string());
+		let forged = Value::Utf8("forged".to_string());
+		let id = txn.intern_values(&dict, vec![stored.clone()]).unwrap()[0];
+
+		let ctx = Arc::new(TransactionContext::system(txn.context().runtime.clone()));
+		let hash = xxh3_128(&to_stdvec(&forged).unwrap()).0.to_be_bytes();
+		let mut poisoned = Vec::with_capacity(16 + 5);
+		poisoned.extend_from_slice(&7u128.to_be_bytes());
+		poisoned.extend_from_slice(b"other");
+		let slot = DictionaryEntryKey::new(dict.id, hash);
+		let mut write = txn.single.begin_command(&ctx, [&DictionaryEntryKey::encoded(dict.id, hash)]).unwrap();
+		write.set(vec![(slot.clone(), EncodedPodRow::new(&poisoned))]).unwrap();
+		write.commit().unwrap();
+		drop(write);
+
 		let mut query = QueryTransaction::new(
 			txn.multi.begin_query(txn.multi.generate_transaction_id()).unwrap(),
 			txn.single.clone(),
-			Arc::new(TransactionContext::system(txn.context().runtime.clone())),
+			ctx,
 		);
+		query.set_dictionary_allocators(txn.dictionary_allocators().unwrap());
 
-		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, slice::from_ref(&value)).is_err());
-		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, &[value]).is_err());
+		let found = Transaction::Query(&mut query).find_in_dictionary(&dict, &[stored, never_stored]).unwrap();
+		assert_eq!(found, vec![Some(id), None]);
+
+		let err = Transaction::Query(&mut query).find_in_dictionary(&dict, &[forged]).unwrap_err();
+		assert!(
+			err.to_string().to_lowercase().contains("collision"),
+			"a hash slot holding different bytes must raise a collision, got: {err}"
+		);
 	}
 
 	#[test]
@@ -354,6 +382,7 @@ pub mod tests {
 			txn.single.clone(),
 			Arc::new(TransactionContext::system(txn.context().runtime.clone())),
 		);
+		query.set_dictionary_allocators(txn.dictionary_allocators().unwrap());
 
 		let answered = Transaction::Query(&mut query).get_from_dictionary(&dict, &probe).unwrap();
 
