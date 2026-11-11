@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::BTreeMap;
+
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_test_harness::engine::create_test_admin_transaction;
 use reifydb_transaction::transaction::Transaction;
@@ -8,7 +10,7 @@ use reifydb_value::{params::Params, value::column_view::ColumnView};
 
 use super::{
 	authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
-	bindings::{grpc::SystemBindingGrpc, http::SystemBindingHttp, ws::SystemBindingWs},
+	bindings::{grpc::SystemBindingGrpc, http::SystemBindingHttp, list::SystemBindings, ws::SystemBindingWs},
 	column_properties::SystemColumnProperties,
 	columns::SystemColumnsTable,
 	configs::SystemConfigs,
@@ -21,6 +23,7 @@ use super::{
 	flow_units::SystemFlowUnits,
 	flow_watermarks::SystemFlowWatermarks,
 	flows::SystemFlowFlows,
+	functions::{FunctionRow, SystemFunctions},
 	granted_roles::SystemGrantedRoles,
 	handlers::SystemHandlers,
 	identities::SystemIdentities,
@@ -40,8 +43,12 @@ use super::{
 	primary_keys::SystemPrimaryKeys,
 	procedures::{
 		extern_c::SystemProcedureExternC, extern_wasm::SystemProcedureExternWasm,
-		in_process::SystemProcedureInProcess, rql::SystemProcedureRql, test::SystemProcedureTest,
+		in_process::SystemProcedureInProcess, list::SystemProcedures, rql::SystemProcedureRql,
+		test::SystemProcedureTest,
 	},
+	queue_partitions::SystemQueuePartitions,
+	queues::SystemQueueQueues,
+	relationships::SystemRelationships,
 	ringbuffers::SystemRingBuffers,
 	roles::SystemRoles,
 	row_shape_fields::SystemRowShapeFields,
@@ -56,10 +63,12 @@ use super::{
 	versions::SystemVersions,
 	views::SystemViews,
 	virtual_table_columns::SystemVirtualTableColumns,
+	windowed_view_group_members::SystemWindowedViewGroupMembers,
+	windowed_view_groups::SystemWindowedViewGroups,
 };
 use crate::{
 	catalog::Catalog,
-	vtable::{BaseVTable, VTableContext},
+	vtable::{BaseVTable, VTableContext, VTableRegistry},
 };
 
 fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
@@ -120,6 +129,22 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemBindingHttp::new()),
 		Box::new(SystemBindingGrpc::new()),
 		Box::new(SystemBindingWs::new()),
+		Box::new(SystemProcedures::new(catalog.clone())),
+		Box::new(SystemBindings::new()),
+		Box::new(SystemQueueQueues::new()),
+		Box::new(SystemQueuePartitions::new()),
+		Box::new(SystemRelationships::new()),
+		Box::new(SystemWindowedViewGroups::new()),
+		Box::new(SystemWindowedViewGroupMembers::new()),
+		Box::new(SystemFunctions::new(vec![FunctionRow {
+			name: "math::total".to_string(),
+			namespace: Some("math".to_string()),
+			kind: "aggregate",
+			min_args: 1,
+			max_args: Some(2),
+			description: Some("sum alias".to_string()),
+			alias_of: Some("math::sum".to_string()),
+		}])),
 	];
 
 	result
@@ -184,7 +209,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 52, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 60, "expected every system vtable handler to be exercised");
 }
 
 #[test]
@@ -227,4 +252,21 @@ fn every_system_vtable_emits_the_types_its_schema_declares() {
 	}
 
 	assert!(failures.is_empty(), "system vtable type drift:\n  {}", failures.join("\n  "));
+}
+
+#[test]
+fn every_system_vtable_handler_is_listed_in_system_virtual_tables() {
+	let mut txn = create_test_admin_transaction();
+	let mut txn = Transaction::Admin(&mut txn);
+
+	let handlers: BTreeMap<u64, String> =
+		all_system_vtables().iter().map(|h| (h.vtable().id.0, h.vtable().name.clone())).collect();
+	let listed_vtables = VTableRegistry::list_vtables(&mut txn).expect("list_vtables must succeed");
+	let listed: BTreeMap<u64, String> = listed_vtables.iter().map(|v| (v.id.0, v.name.clone())).collect();
+
+	assert_eq!(listed_vtables.len(), listed.len(), "a vtable id is listed twice");
+	let missing: Vec<_> = handlers.iter().filter(|(id, _)| !listed.contains_key(id)).collect();
+	let unhandled: Vec<_> = listed.iter().filter(|(id, _)| !handlers.contains_key(id)).collect();
+	assert!(missing.is_empty(), "handlers not listed in system::virtual_tables: {missing:?}");
+	assert!(unhandled.is_empty(), "listed without a conformance handler: {unhandled:?}");
 }

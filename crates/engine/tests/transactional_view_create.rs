@@ -27,7 +27,7 @@ fn create_transactional_view_stores_the_view_and_its_flow() {
 	let views = t.query("from system::views filter {name == 'v'}");
 	let kind = views[0].column("kind").unwrap().unwrap().get_value(0);
 	assert_eq!(kind.to_string(), "transactional");
-	assert_eq!(TestEngine::row_count(&t.query("from system::flow::flows filter {name == 'v'}")), 1);
+	assert_eq!(TestEngine::row_count(&t.query("from system::flows filter {name == 'v'}")), 1);
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn series_storage_is_refused_with_flow_084() {
 	assert_eq!(code, "FLOW_084", "got: {message}");
 	assert!(message.contains("series storage"), "got: {message}");
 	assert_eq!(view_count(&t), 0);
-	assert_eq!(TestEngine::row_count(&t.query("from system::flow::flows filter {name == 'v'}")), 0);
+	assert_eq!(TestEngine::row_count(&t.query("from system::flows filter {name == 'v'}")), 0);
 }
 
 #[test]

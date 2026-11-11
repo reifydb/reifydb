@@ -152,6 +152,21 @@ impl VTableRegistry {
 			SystemCatalog::get_system_authentication_credentials_table(),
 			SystemCatalog::get_system_authentication_methods_table(),
 			SystemCatalog::get_configs_table(),
+			SystemCatalog::get_system_procedures_table(),
+			SystemCatalog::get_system_bindings_table(),
+			SystemCatalog::get_system_functions_table(),
+			SystemCatalog::get_system_procedures_rql_table(),
+			SystemCatalog::get_system_procedures_test_table(),
+			SystemCatalog::get_system_procedures_in_process_table(),
+			SystemCatalog::get_system_procedures_extern_c_table(),
+			SystemCatalog::get_system_procedures_extern_wasm_table(),
+			SystemCatalog::get_system_bindings_http_table(),
+			SystemCatalog::get_system_bindings_grpc_table(),
+			SystemCatalog::get_system_bindings_ws_table(),
+			SystemCatalog::get_system_flow_units_table(),
+			SystemCatalog::get_system_flow_watermarks_table(),
+			SystemCatalog::get_system_subscriptions_table(),
+			SystemCatalog::get_system_subscription_watermarks_table(),
 		])
 	}
 }

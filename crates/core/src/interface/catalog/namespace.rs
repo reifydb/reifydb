@@ -59,6 +59,16 @@ impl NamespaceId {
 	pub const SYSTEM_FLOW_OPERATOR: NamespaceId = NamespaceId(56);
 	pub const SYSTEM_FLOW_OPERATOR_LIBRARY: NamespaceId = NamespaceId(57);
 	pub const SYSTEM_AUTHENTICATION: NamespaceId = NamespaceId(58);
+	pub const SYSTEM_ENUM: NamespaceId = NamespaceId(5);
+	pub const SYSTEM_EVENT: NamespaceId = NamespaceId(6);
+	pub const SYSTEM_VIRTUAL_TABLE: NamespaceId = NamespaceId(34);
+	pub const SYSTEM_ROW_SHAPE: NamespaceId = NamespaceId(35);
+	pub const SYSTEM_POLICY: NamespaceId = NamespaceId(36);
+	pub const SYSTEM_SUBSCRIPTION: NamespaceId = NamespaceId(45);
+	pub const SYSTEM_PRIMARY_KEY: NamespaceId = NamespaceId(48);
+	pub const SYSTEM_COLUMN: NamespaceId = NamespaceId(49);
+	pub const SYSTEM_IDENTITY: NamespaceId = NamespaceId(50);
+	pub const SYSTEM_WINDOWED_VIEW_GROUP: NamespaceId = NamespaceId(51);
 }
 
 #[derive(Debug, Clone, PartialEq)]

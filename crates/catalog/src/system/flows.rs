@@ -18,7 +18,7 @@ pub fn flows() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: FLOWS,
-			namespace: NamespaceId::SYSTEM_FLOW,
+			namespace: NamespaceId::SYSTEM,
 			name: "flows".to_string(),
 			columns: vec![
 				Column {

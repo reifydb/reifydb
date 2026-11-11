@@ -5,7 +5,7 @@ replicate
 ---
 version: 2
 
-query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+query 'FROM system::identity::attributes FILTER {name == "org_id"}'
 ---
 +---------+----------+--------------+
 |   id    |   name   |  value_type  |

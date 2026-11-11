@@ -21,8 +21,8 @@ pub fn identity_attribute_values() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: IDENTITY_ATTRIBUTE_VALUES,
-			namespace: NamespaceId::SYSTEM,
-			name: "identity_attribute_values".to_string(),
+			namespace: NamespaceId::SYSTEM_IDENTITY,
+			name: "attribute_values".to_string(),
 			columns: vec![
 				Column {
 					id: IDENTITY_ID,

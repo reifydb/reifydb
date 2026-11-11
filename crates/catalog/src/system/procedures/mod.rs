@@ -4,5 +4,6 @@
 pub mod extern_c;
 pub mod extern_wasm;
 pub mod in_process;
+pub mod list;
 pub mod rql;
 pub mod test;

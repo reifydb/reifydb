@@ -86,7 +86,7 @@ fn table_object(db: &TestDb, name: &str) -> ObjectId {
 }
 
 fn checkpoint(db: &TestDb, view: &str) -> Option<CommitVersion> {
-	let flow = FlowId(catalog_id(db, "flow::flows", view));
+	let flow = FlowId(catalog_id(db, "flows", view));
 	db.engine()
 		.operator_state()
 		.checkpoint_get(flow)
@@ -216,9 +216,9 @@ fn the_flow_units_table_lists_every_member_under_its_head_and_no_unfused_flow() 
 	}
 	let mut db = open(&path, true);
 	settle(&db);
-	let head = catalog_id(&db, "flow::flows", "a");
+	let head = catalog_id(&db, "flows", "a");
 	let mut want: Vec<(u64, u64)> =
-		["a", "b", "c"].iter().map(|flow| (catalog_id(&db, "flow::flows", flow), head)).collect();
+		["a", "b", "c"].iter().map(|flow| (catalog_id(&db, "flows", flow), head)).collect();
 	want.sort_unstable();
 	assert_eq!(units(&db), want, "the unit table must list a, b and c under a, and never side");
 	db.stop();
@@ -352,8 +352,8 @@ fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids()
 		db.stop();
 	}
 	let mut db = open_with_sym_ids(&path);
-	let head = catalog_id(&db, "flow::flows", "a");
-	let b = catalog_id(&db, "flow::flows", "b");
+	let head = catalog_id(&db, "flows", "a");
+	let b = catalog_id(&db, "flows", "b");
 	let units = await_units(&db, b, head);
 	assert!(units.contains(&(b, head)), "b must run fused under a for this test to mean anything: {units:?}");
 	settle(&db);
@@ -384,8 +384,8 @@ fn a_fused_child_of_a_series_view_reads_its_dictionary_column_as_entry_ids() {
 		db.stop();
 	}
 	let mut db = open_with_sym_ids(&path);
-	let head = catalog_id(&db, "flow::flows", "a");
-	let b = catalog_id(&db, "flow::flows", "b");
+	let head = catalog_id(&db, "flows", "a");
+	let b = catalog_id(&db, "flows", "b");
 	let units = await_units(&db, b, head);
 	assert!(
 		units.contains(&(b, head)),
@@ -402,11 +402,11 @@ fn a_fused_child_of_a_series_view_reads_its_dictionary_column_as_entry_ids() {
 }
 
 fn ids(db: &TestDb, flows: &[&str]) -> Vec<u64> {
-	flows.iter().map(|flow| catalog_id(db, "flow::flows", flow)).collect()
+	flows.iter().map(|flow| catalog_id(db, "flows", flow)).collect()
 }
 
 fn under(db: &TestDb, head: &str, flows: &[&str]) -> Vec<(u64, u64)> {
-	let head = catalog_id(db, "flow::flows", head);
+	let head = catalog_id(db, "flows", head);
 	let mut want: Vec<(u64, u64)> = ids(db, flows).into_iter().map(|flow| (flow, head)).collect();
 	want.sort_unstable();
 	want
@@ -627,7 +627,7 @@ fn a_chain_built_unfused_fuses_on_the_next_restart() {
 		// A member can already sit past head + 1, and a checkpoint set below it fails as a backward move.
 		let raised = CommitVersion(head.0 + 1);
 		for member in ["b", "c"] {
-			let flow = FlowId(catalog_id(&db, "flow::flows", member));
+			let flow = FlowId(catalog_id(&db, "flows", member));
 			let at = checkpoint(&db, member).map_or(raised, |at| at.max(raised));
 			db.engine()
 				.operator_state()
@@ -678,7 +678,7 @@ fn a_member_behind_its_head_restarts_unfused_and_catches_up() {
 		stop_without_flow(&mut db);
 	}
 	let mut db = open(&path, true);
-	let b = catalog_id(&db, "flow::flows", "b");
+	let b = catalog_id(&db, "flows", "b");
 	assert!(
 		!units(&db).iter().any(|(flow, _)| *flow == b),
 		"b starts behind a, so it must not be fused at bootstrap: {:?}",

@@ -43,7 +43,7 @@ fn only_uint8(frames: &[Frame], name: &str) -> u64 {
 }
 
 fn queue_row(t: &TestEngine, name: &str) -> Vec<Frame> {
-	t.query(&format!(r#"FROM system::queue::queues filter {{ name == "{name}" }}"#))
+	t.query(&format!(r#"FROM system::queues filter {{ name == "{name}" }}"#))
 }
 
 fn partition_rows(t: &TestEngine, queue_id: u64) -> Vec<Frame> {

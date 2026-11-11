@@ -30,7 +30,7 @@ fn main() {
 	);
 
 	info!("Both jobs are waiting, but oldest_due_at shows only one of them is claimable...");
-	query(&db, r#"FROM system::queue::queues FILTER { name == "reminders" } MAP { name, depth, oldest_due_at }"#);
+	query(&db, r#"FROM system::queues FILTER { name == "reminders" } MAP { name, depth, oldest_due_at }"#);
 
 	info!("A worker asking for both gets only the one that is due...");
 	let now = command(&db, r#"CALL queue::claim("worker-1", "jobs::reminders", 10, duration::seconds(30))"#);

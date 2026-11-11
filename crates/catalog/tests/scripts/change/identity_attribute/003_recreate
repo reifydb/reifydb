@@ -6,7 +6,7 @@ replicate
 ---
 version: 2
 
-query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+query 'FROM system::identity::attributes FILTER {name == "org_id"}'
 ---
 +---------+----------+--------------+
 |   id    |   name   |  value_type  |
@@ -20,7 +20,7 @@ replicate
 ---
 version: 3
 
-query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+query 'FROM system::identity::attributes FILTER {name == "org_id"}'
 ---
 +---------+----------+--------------+
 |   id    |   name   |  value_type  |
@@ -28,7 +28,7 @@ query 'FROM system::identity_attributes FILTER {name == "org_id"}'
 |  16386  |  org_id  |     Utf8     |
 +---------+----------+--------------+
 
-query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+query 'FROM system::identity::attribute_values MAP {attribute: attribute, value: value}'
 ---
 +-------------+---------+
 |  attribute  |  value  |

@@ -18,8 +18,8 @@ pub fn column_properties() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: COLUMN_PROPERTIES,
-			namespace: NamespaceId::SYSTEM,
-			name: "column_properties".to_string(),
+			namespace: NamespaceId::SYSTEM_COLUMN,
+			name: "properties".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

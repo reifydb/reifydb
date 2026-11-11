@@ -18,8 +18,8 @@ pub fn policy_operations() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: POLICY_OPERATIONS,
-			namespace: NamespaceId::SYSTEM,
-			name: "policy_operations".to_string(),
+			namespace: NamespaceId::SYSTEM_POLICY,
+			name: "operations".to_string(),
 			columns: vec![
 				Column {
 					id: POLICY_ID,

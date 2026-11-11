@@ -39,7 +39,7 @@ fn main() {
 	);
 
 	info!("blocked_keys counts accounts with work parked behind an earlier job - here, just a...");
-	query(&db, r#"FROM system::queue::queues FILTER { name == "updates" } MAP { name, depth, blocked_keys }"#);
+	query(&db, r#"FROM system::queues FILTER { name == "updates" } MAP { name, depth, blocked_keys }"#);
 
 	info!("A worker asks for four jobs but can only get two - one per account...");
 	let claimed = command(&db, r#"CALL queue::claim("worker-1", "jobs::updates", 4, duration::seconds(30))"#);

@@ -18,7 +18,7 @@ pub fn queues() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: QUEUES,
-			namespace: NamespaceId::SYSTEM_QUEUE,
+			namespace: NamespaceId::SYSTEM,
 			name: "queues".to_string(),
 			columns: vec![
 				Column {

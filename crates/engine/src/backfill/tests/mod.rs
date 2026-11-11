@@ -23,8 +23,9 @@ use reifydb_flow::{
 	backfill::Scan,
 	operator::sink::{SourceRowEncoder, shape_field_columns},
 };
+use reifydb_runtime::context::transaction::TransactionContext;
 #[cfg(feature = "testing")]
-use reifydb_runtime::{context::transaction::TransactionContext, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::create_test_admin_transaction;
 use reifydb_transaction::{
 	dictionary::DictionaryAllocatorRegistry,

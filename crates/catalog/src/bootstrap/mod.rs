@@ -140,6 +140,86 @@ pub fn bootstrap_root_namespaces(
 		"flow",
 		NamespaceId::SYSTEM,
 	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_ENUM,
+		"system::enum",
+		"enum",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_EVENT,
+		"system::event",
+		"event",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_VIRTUAL_TABLE,
+		"system::virtual_table",
+		"virtual_table",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_ROW_SHAPE,
+		"system::row_shape",
+		"row_shape",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_POLICY,
+		"system::policy",
+		"policy",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_SUBSCRIPTION,
+		"system::subscription",
+		"subscription",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_PRIMARY_KEY,
+		"system::primary_key",
+		"primary_key",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_COLUMN,
+		"system::column",
+		"column",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_IDENTITY,
+		"system::identity",
+		"identity",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_WINDOWED_VIEW_GROUP,
+		"system::windowed_view_group",
+		"windowed_view_group",
+		NamespaceId::SYSTEM,
+	)?;
 	admin.commit()?;
 	Ok(())
 }

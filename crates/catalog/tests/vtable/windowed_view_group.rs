@@ -47,7 +47,7 @@ fn vtables_list_one_group_row_and_one_row_per_member_in_declaration_order() {
 	assert_eq!(column(frame, "name").as_string(0), "ohlcv");
 	assert_eq!(column(frame, "flow_id").as_string(0), "42");
 
-	let frames = t.query("from system::windowed_view_group_members");
+	let frames = t.query("from system::windowed_view_group::members");
 	let frame = frames.first().expect("expected at least one frame");
 	let group_ids = column(frame, "group_id");
 	let view_ids = column(frame, "view_id");

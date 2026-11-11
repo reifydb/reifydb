@@ -86,7 +86,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_queues_filters_by_namespace() {
-		// Leaking a sibling namespace's queue would show foreign definitions in system::queue::queues.
+		// Leaking a sibling namespace's queue would show foreign definitions in system::queues.
 		let mut txn = create_test_admin_transaction();
 		let first = ensure_test_namespace(&mut txn);
 		let second = CatalogStore::create_namespace(

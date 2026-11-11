@@ -43,7 +43,7 @@ help:
 	@echo "  make queue-partitions    - partition by: two workers claiming side by side"
 	@echo "  make queue-deduplication - deduplicate: a retrying producer enqueues once"
 	@echo "  make queue-delayed       - not_before: a job invisible to claim until it comes due"
-	@echo "  make queue-introspection - system::queue::queues and system::queue::partitions for operators"
+	@echo "  make queue-introspection - system::queues and system::queue::partitions for operators"
 	@echo "  make queue-long-poll     - claim_wait: a worker parks until a producer inserts"
 	@echo ""
 	@echo "Interceptor Examples:"

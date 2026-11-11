@@ -18,8 +18,8 @@ pub fn event_variants() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: EVENT_VARIANTS,
-			namespace: NamespaceId::SYSTEM,
-			name: "event_variants".to_string(),
+			namespace: NamespaceId::SYSTEM_EVENT,
+			name: "variants".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

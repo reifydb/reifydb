@@ -19,6 +19,7 @@ pub mod flow_edges;
 pub mod flow_units;
 pub mod flow_watermarks;
 pub mod flows;
+pub mod functions;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;
@@ -57,7 +58,7 @@ pub mod windowed_view_group_members;
 pub mod windowed_view_groups;
 
 use authentication::{credentials::authentication_credentials, methods::authentication_methods};
-use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
+use bindings::{grpc::bindings_grpc, http::bindings_http, list::bindings, ws::bindings_ws};
 use column_properties::column_properties;
 use columns::columns;
 use configs::configs;
@@ -70,6 +71,7 @@ use flow_edges::flow_edges;
 use flow_units::flow_units;
 use flow_watermarks::flow_watermarks;
 use flows::flows;
+use functions::functions;
 use granted_roles::granted_roles;
 use handlers::handlers;
 use identities::identities;
@@ -88,7 +90,7 @@ use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use procedures::{
 	extern_c::procedures_extern_c, extern_wasm::procedures_extern_wasm, in_process::procedures_in_process,
-	rql::procedures_rql, test::procedures_test,
+	list::procedures, rql::procedures_rql, test::procedures_test,
 };
 use relationships::relationships;
 use roles::roles;
@@ -261,6 +263,17 @@ pub mod ids {
 		}
 
 		pub mod procedures {
+			pub mod list {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const KIND: ColumnId = ColumnId(4);
+
+				pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
+			}
+
 			pub mod rql {
 				use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -339,6 +352,19 @@ pub mod ids {
 		}
 
 		pub mod bindings {
+			pub mod list {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const FORMAT: ColumnId = ColumnId(5);
+				pub const KIND: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, FORMAT, KIND];
+			}
+
 			pub mod http {
 				use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -379,6 +405,21 @@ pub mod ids {
 
 				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
 			}
+		}
+
+		pub mod functions {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const NAME: ColumnId = ColumnId(1);
+			pub const NAMESPACE: ColumnId = ColumnId(2);
+			pub const KIND: ColumnId = ColumnId(3);
+			pub const MIN_ARGS: ColumnId = ColumnId(4);
+			pub const MAX_ARGS: ColumnId = ColumnId(5);
+			pub const DESCRIPTION: ColumnId = ColumnId(6);
+			pub const ALIAS_OF: ColumnId = ColumnId(7);
+
+			pub const ALL: [ColumnId; 7] =
+				[NAME, NAMESPACE, KIND, MIN_ARGS, MAX_ARGS, DESCRIPTION, ALIAS_OF];
 		}
 
 		pub mod series {
@@ -943,6 +984,9 @@ pub mod ids {
 		pub const AUTHENTICATION_METHODS: VTableId = VTableId(66);
 		pub const WINDOWED_VIEW_GROUPS: VTableId = VTableId(67);
 		pub const WINDOWED_VIEW_GROUP_MEMBERS: VTableId = VTableId(68);
+		pub const PROCEDURES: VTableId = VTableId(69);
+		pub const BINDINGS: VTableId = VTableId(70);
+		pub const FUNCTIONS: VTableId = VTableId(71);
 
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -1182,6 +1226,18 @@ impl SystemCatalog {
 
 	pub fn get_system_event_variants_table() -> Arc<VTable> {
 		event_variants()
+	}
+
+	pub fn get_system_procedures_table() -> Arc<VTable> {
+		procedures()
+	}
+
+	pub fn get_system_bindings_table() -> Arc<VTable> {
+		bindings()
+	}
+
+	pub fn get_system_functions_table() -> Arc<VTable> {
+		functions()
 	}
 
 	pub fn get_system_procedures_rql_table() -> Arc<VTable> {

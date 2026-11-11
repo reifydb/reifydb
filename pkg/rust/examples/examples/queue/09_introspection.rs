@@ -39,14 +39,11 @@ fn main() {
 	);
 	command(&db, r#"CALL queue::claim("worker-1", "jobs::webhooks", 1, duration::seconds(30))"#);
 
-	info!("system::queue::queues is the shape of every queue - how it dispatches, retries and dedups...");
+	info!("system::queues is the shape of every queue - how it dispatches, retries and dedups...");
+	query(&db, r#"FROM system::queues FILTER { name == "webhooks" } MAP { name, partition_by, ordered_by }"#);
 	query(
 		&db,
-		r#"FROM system::queue::queues FILTER { name == "webhooks" } MAP { name, partition_by, ordered_by }"#,
-	);
-	query(
-		&db,
-		r#"FROM system::queue::queues FILTER { name == "webhooks" } MAP { name, deduplicate_by, deduplicate_ttl }"#,
+		r#"FROM system::queues FILTER { name == "webhooks" } MAP { name, deduplicate_by, deduplicate_ttl }"#,
 	);
 
 	info!("The same row also carries the live counters an operator watches...");
@@ -54,16 +51,14 @@ fn main() {
 	info!("and oldest_due_at is the age of the backlog - a stalled queue shows it drifting into the past.");
 	query(
 		&db,
-		r#"FROM system::queue::queues FILTER { name == "webhooks" } MAP { depth, in_flight, blocked_keys, oldest_due_at }"#,
+		r#"FROM system::queues FILTER { name == "webhooks" } MAP { depth, in_flight, blocked_keys, oldest_due_at }"#,
 	);
 
 	info!("system::queue::partitions breaks the same counters down per partition...");
 	info!("An even total hiding one hot partition is invisible in the summary above.");
-	let queue_id = uint8_column(
-		&query(&db, r#"FROM system::queue::queues FILTER { name == "webhooks" } MAP { id }"#),
-		"id",
-	)
-	.remove(0);
+	let queue_id =
+		uint8_column(&query(&db, r#"FROM system::queues FILTER { name == "webhooks" } MAP { id }"#), "id")
+			.remove(0);
 	query(
 		&db,
 		&format!(
@@ -72,9 +67,8 @@ fn main() {
 	);
 
 	info!("Both are ordinary tables, so an alert is just a query...");
-	query(&db, "FROM system::queue::queues FILTER { depth > 0 } MAP { name, depth, blocked_keys }");
+	query(&db, "FROM system::queues FILTER { depth > 0 } MAP { name, depth, blocked_keys }");
 
-	let stuck =
-		utf8_column(&query(&db, "FROM system::queue::queues FILTER { in_flight > 0 } MAP { name }"), "name");
+	let stuck = utf8_column(&query(&db, "FROM system::queues FILTER { in_flight > 0 } MAP { name }"), "name");
 	info!("queues with work in flight right now: {stuck:?}");
 }

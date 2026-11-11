@@ -18,8 +18,8 @@ pub fn virtual_table_columns() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: VIRTUAL_TABLE_COLUMNS,
-			namespace: NamespaceId::SYSTEM,
-			name: "virtual_table_columns".to_string(),
+			namespace: NamespaceId::SYSTEM_VIRTUAL_TABLE,
+			name: "columns".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

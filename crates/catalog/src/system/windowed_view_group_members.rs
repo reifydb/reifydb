@@ -18,8 +18,8 @@ pub fn windowed_view_group_members() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: WINDOWED_VIEW_GROUP_MEMBERS,
-			namespace: NamespaceId::SYSTEM,
-			name: "windowed_view_group_members".to_string(),
+			namespace: NamespaceId::SYSTEM_WINDOWED_VIEW_GROUP,
+			name: "members".to_string(),
 			columns: vec![
 				Column {
 					id: GROUP_ID,

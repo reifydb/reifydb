@@ -18,8 +18,8 @@ pub fn granted_roles() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: GRANTED_ROLES,
-			namespace: NamespaceId::SYSTEM,
-			name: "granted_roles".to_string(),
+			namespace: NamespaceId::SYSTEM_IDENTITY,
+			name: "roles".to_string(),
 			columns: vec![
 				Column {
 					id: IDENTITY_ID,

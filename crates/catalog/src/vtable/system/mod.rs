@@ -17,6 +17,7 @@ pub mod flow_edges;
 pub mod flow_units;
 pub mod flow_watermarks;
 pub mod flows;
+pub mod functions;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;

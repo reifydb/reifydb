@@ -7,7 +7,7 @@ replicate
 ---
 version: 2
 
-query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+query 'FROM system::identity::attribute_values MAP {attribute: attribute, value: value}'
 ---
 +--------------+---------+
 |  attribute   |  value  |
@@ -21,7 +21,7 @@ replicate
 ---
 version: 3
 
-query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+query 'FROM system::identity::attribute_values MAP {attribute: attribute, value: value}'
 ---
 +--------------+---------+
 |  attribute   |  value  |

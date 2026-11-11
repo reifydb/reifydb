@@ -159,7 +159,7 @@ export function CatalogBrowser({ executor, namespaces, expandedPaths, onSelect }
         queryRows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::columns MAP { object_id, object_kind, name, type, position }'),
-        queryRows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
+        queryRows(executor, 'FROM system::virtual_table::columns MAP { vtable_id, name, type, position }'),
         Promise.all(
           procedureKinds.map((kind) =>
             queryRows(executor, `FROM system::procedure::${kind} MAP { id, namespace_id, name }`),

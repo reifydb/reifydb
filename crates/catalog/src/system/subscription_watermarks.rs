@@ -18,8 +18,8 @@ pub fn subscription_watermarks() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: SUBSCRIPTION_WATERMARKS,
-			namespace: NamespaceId::SYSTEM,
-			name: "subscription_watermarks".to_string(),
+			namespace: NamespaceId::SYSTEM_SUBSCRIPTION,
+			name: "watermarks".to_string(),
 			columns: vec![
 				Column {
 					id: SUBSCRIPTION_ID,

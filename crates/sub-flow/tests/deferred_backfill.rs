@@ -276,7 +276,7 @@ fn count(engine: &StandardEngine, rql: &str) -> Result<usize, String> {
 
 fn only_flow(db: &TestDb) -> FlowId {
 	let ids: Vec<u64> = db
-		.query("FROM system::flow::flows")
+		.query("FROM system::flows")
 		.iter()
 		.flat_map(|frame| frame.rows())
 		.map(|row| row.get::<u64>("id").expect("the flow id column reads").expect("a flow id"))
@@ -305,7 +305,7 @@ fn catalog_id(db: &TestDb, system: &str, name: &str) -> u64 {
 }
 
 fn flow_named(db: &TestDb, name: &str) -> FlowId {
-	FlowId(catalog_id(db, "flow::flows", name))
+	FlowId(catalog_id(db, "flows", name))
 }
 
 fn table_object(db: &TestDb, name: &str) -> ObjectId {

@@ -18,7 +18,7 @@ pub fn authentication_credentials() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: AUTHENTICATION_CREDENTIALS,
-			namespace: NamespaceId::SYSTEM_AUTHENTICATION,
+			namespace: NamespaceId::SYSTEM_IDENTITY,
 			name: "credentials".to_string(),
 			columns: vec![
 				Column {

@@ -222,6 +222,8 @@ mod shutdown;
 mod sort_key_order;
 #[path = "sort_unorderable.rs"]
 mod sort_unorderable;
+#[path = "system_catalog_names.rs"]
+mod system_catalog_names;
 #[path = "system_column_reserved.rs"]
 mod system_column_reserved;
 #[path = "system_columns_named_or_needed.rs"]

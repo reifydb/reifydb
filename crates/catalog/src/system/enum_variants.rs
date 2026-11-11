@@ -18,8 +18,8 @@ pub fn enum_variants() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: ENUM_VARIANTS,
-			namespace: NamespaceId::SYSTEM,
-			name: "enum_variants".to_string(),
+			namespace: NamespaceId::SYSTEM_ENUM,
+			name: "variants".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

@@ -6,7 +6,7 @@ replicate
 ---
 version: 2
 
-query 'FROM system::queue::queues FILTER {name == "jobs"}'
+query 'FROM system::queues FILTER {name == "jobs"}'
 ---
 +---------+----------------+--------+----------------+--------------+------------------+-------------------+--------+------+---------+-------------+----------------+-----------------+
 |   id    |  namespace_id  |  name  |  partition_by  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |  time  |  ts  |  depth  |  in_flight  |  blocked_keys  |  oldest_due_at  |
@@ -22,7 +22,7 @@ replicate
 ---
 version: 3
 
-query 'FROM system::queue::queues FILTER {name == "plain"}'
+query 'FROM system::queues FILTER {name == "plain"}'
 ---
 +---------+----------------+---------+----------------+--------------+------------------+-------------------+--------+------+---------+-------------+----------------+-----------------+
 |   id    |  namespace_id  |  name   |  partition_by  |  ordered_by  |  deduplicate_by  |  deduplicate_ttl  |  time  |  ts  |  depth  |  in_flight  |  blocked_keys  |  oldest_due_at  |

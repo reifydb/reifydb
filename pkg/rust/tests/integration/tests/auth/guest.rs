@@ -85,7 +85,7 @@ fn a_guest_credential_cannot_be_created() {
 
 	let err = db.try_admin("CREATE AUTHENTICATION FOR alice { method: guest }").unwrap_err();
 	assert_eq!(err.diagnostic().code, "AU_019");
-	assert_eq!(db.row_count("FROM system::authentication::credentials"), 0);
+	assert_eq!(db.row_count("FROM system::identity::credentials"), 0);
 }
 
 #[test]

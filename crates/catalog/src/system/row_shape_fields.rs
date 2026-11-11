@@ -18,8 +18,8 @@ pub fn row_shape_fields() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: SHAPE_FIELDS,
-			namespace: NamespaceId::SYSTEM,
-			name: "row_shape_fields".to_string(),
+			namespace: NamespaceId::SYSTEM_ROW_SHAPE,
+			name: "fields".to_string(),
 			columns: vec![
 				Column {
 					id: SHAPE_FINGERPRINT,

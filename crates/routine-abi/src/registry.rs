@@ -30,6 +30,7 @@ impl Routines {
 	pub fn builder() -> RoutinesConfigurator {
 		RoutinesConfigurator {
 			functions: HashMap::new(),
+			function_aliases: HashMap::new(),
 			procedures: HashMap::new(),
 			deferred_handlers: Vec::new(),
 		}
@@ -46,6 +47,7 @@ impl Deref for Routines {
 
 pub struct RoutinesInner {
 	functions: HashMap<String, Arc<dyn Function>>,
+	function_aliases: HashMap<String, String>,
 	procedures: HashMap<String, Arc<dyn Procedure>>,
 	builtin_function_namespaces: HashSet<String>,
 	builtin_procedure_namespaces: HashSet<String>,
@@ -84,6 +86,20 @@ impl RoutinesInner {
 
 	pub fn has_function(&self, name: &str) -> bool {
 		self.get_function(name).is_some()
+	}
+
+	pub fn list_functions(&self) -> Vec<FunctionEntry> {
+		self.functions
+			.iter()
+			.map(|(key, function)| FunctionEntry {
+				name: display_name(key).to_string(),
+				function: function.clone(),
+				alias_of: self
+					.function_aliases
+					.get(key)
+					.map(|canonical| display_name(canonical).to_string()),
+			})
+			.collect()
 	}
 
 	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<dyn Function>> {
@@ -127,6 +143,7 @@ impl RoutinesInner {
 
 pub struct RoutinesConfigurator {
 	functions: HashMap<String, Arc<dyn Function>>,
+	function_aliases: HashMap<String, String>,
 	procedures: HashMap<String, Arc<dyn Procedure>>,
 	deferred_handlers: Vec<(String, Arc<dyn Procedure>)>,
 }
@@ -162,7 +179,8 @@ impl RoutinesConfigurator {
 		let canonical_key = format!("{BUILTIN_FUNCTION_PREFIX}{canonical}");
 		let alias_key = format!("{BUILTIN_FUNCTION_PREFIX}{alias}");
 		if let Some(routine) = self.functions.get(&canonical_key).cloned() {
-			self.functions.insert(alias_key, routine);
+			self.functions.insert(alias_key.clone(), routine);
+			self.function_aliases.insert(alias_key, canonical_key);
 		}
 		self
 	}
@@ -174,6 +192,7 @@ impl RoutinesConfigurator {
 			collect_builtin_namespaces(self.procedures.keys(), BUILTIN_PROCEDURE_PREFIX);
 		Routines(Arc::new(RoutinesInner {
 			functions: self.functions,
+			function_aliases: self.function_aliases,
 			procedures: self.procedures,
 			builtin_function_namespaces,
 			builtin_procedure_namespaces,
@@ -183,6 +202,16 @@ impl RoutinesConfigurator {
 			}),
 		}))
 	}
+}
+
+pub struct FunctionEntry {
+	pub name: String,
+	pub function: Arc<dyn Function>,
+	pub alias_of: Option<String>,
+}
+
+fn display_name(key: &str) -> &str {
+	key.strip_prefix(BUILTIN_FUNCTION_PREFIX).unwrap_or(key)
 }
 
 fn collect_builtin_namespaces<'a, I: Iterator<Item = &'a String>>(keys: I, prefix: &str) -> HashSet<String> {

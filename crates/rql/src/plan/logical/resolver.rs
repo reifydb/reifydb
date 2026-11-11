@@ -116,6 +116,16 @@ fn probe_object_in_namespace(
 			| NamespaceId::SYSTEM_BINDING
 			| NamespaceId::SYSTEM_QUEUE
 			| NamespaceId::SYSTEM_AUTHENTICATION
+			| NamespaceId::SYSTEM_ENUM
+			| NamespaceId::SYSTEM_EVENT
+			| NamespaceId::SYSTEM_VIRTUAL_TABLE
+			| NamespaceId::SYSTEM_ROW_SHAPE
+			| NamespaceId::SYSTEM_POLICY
+			| NamespaceId::SYSTEM_SUBSCRIPTION
+			| NamespaceId::SYSTEM_PRIMARY_KEY
+			| NamespaceId::SYSTEM_COLUMN
+			| NamespaceId::SYSTEM_IDENTITY
+			| NamespaceId::SYSTEM_WINDOWED_VIEW_GROUP
 	) {
 		let def = VTable {
 			id: VTableId(0),

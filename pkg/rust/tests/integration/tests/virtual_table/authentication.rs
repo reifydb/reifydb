@@ -53,10 +53,7 @@ fn credentials_moved_under_the_authentication_namespace() {
 	db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'secret' }");
 
-	assert_eq!(
-		single(&db, "FROM system::authentication::credentials", "method"),
-		Value::Utf8("password".to_string())
-	);
+	assert_eq!(single(&db, "FROM system::identity::credentials", "method"), Value::Utf8("password".to_string()));
 }
 
 #[test]
@@ -67,13 +64,18 @@ fn the_old_credentials_name_no_longer_resolves() {
 }
 
 #[test]
-fn both_tables_are_listed_in_the_authentication_namespace() {
+fn credentials_are_listed_under_identity_and_methods_under_authentication() {
+	// Credentials belong to an identity; listing them under authentication would break the naming rule.
 	let db = new_db();
-	let listed = "FROM system::virtual_tables FILTER { namespace_id == 58 }";
-	let names = column_values(db.query(listed).first().expect("no frame"), "name");
-	let ids = column_values(db.query(listed).first().expect("no frame"), "id");
+	let authentication = "FROM system::virtual_tables FILTER { namespace_id == 58 }";
+	let names = column_values(db.query(authentication).first().expect("no frame"), "name");
+	let ids = column_values(db.query(authentication).first().expect("no frame"), "id");
+	assert_eq!(names, vec![Value::Utf8("methods".to_string())], "{names:?}");
+	assert_eq!(ids, vec![Value::Uint8(66)], "{ids:?}");
 
+	let identity = "FROM system::virtual_tables FILTER { namespace_id == 50 }";
+	let names = column_values(db.query(identity).first().expect("no frame"), "name");
+	let ids = column_values(db.query(identity).first().expect("no frame"), "id");
 	assert!(names.contains(&Value::Utf8("credentials".to_string())), "{names:?}");
-	assert!(names.contains(&Value::Utf8("methods".to_string())), "{names:?}");
-	assert!(ids.contains(&Value::Uint8(44)) && ids.contains(&Value::Uint8(66)), "{ids:?}");
+	assert!(ids.contains(&Value::Uint8(44)), "{ids:?}");
 }

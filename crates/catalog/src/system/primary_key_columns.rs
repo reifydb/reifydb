@@ -18,8 +18,8 @@ pub fn primary_key_columns() -> Arc<VTable> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
 			id: PRIMARY_KEY_COLUMNS,
-			namespace: NamespaceId::SYSTEM,
-			name: "primary_key_columns".to_string(),
+			namespace: NamespaceId::SYSTEM_PRIMARY_KEY,
+			name: "columns".to_string(),
 			columns: vec![
 				Column {
 					id: PRIMARY_KEY_ID,

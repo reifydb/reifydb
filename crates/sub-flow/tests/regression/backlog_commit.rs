@@ -481,7 +481,7 @@ fn a_view_two_flows_above_the_right_of_an_emit_off_lookup_reads_each_left_row_at
 fn fused_member_of(db: &TestDb, member: &str, head: &str) -> bool {
 	let flow_id = |name: &str| -> u64 {
 		let ids: Vec<u64> = db
-			.query(&format!("FROM system::flow::flows FILTER {{ name == '{name}' }}"))
+			.query(&format!("FROM system::flows FILTER {{ name == '{name}' }}"))
 			.iter()
 			.flat_map(|frame| frame.rows())
 			.map(|row| row.get::<u64>("id").expect("the id column reads").expect("an id"))

@@ -15,7 +15,7 @@ query 'FROM system::roles FILTER {name == "editors"}'
 |  16385  |  editors  |
 +---------+-----------+
 
-query 'FROM system::granted_roles'
+query 'FROM system::identity::roles'
 ---
 +----------------------------------------+-----------+
 |                identity                |  role_id  |

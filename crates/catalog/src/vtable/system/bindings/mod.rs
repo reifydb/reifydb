@@ -3,6 +3,7 @@
 
 pub mod grpc;
 pub mod http;
+pub mod list;
 pub mod ws;
 
 use arrow_array::ArrayRef;

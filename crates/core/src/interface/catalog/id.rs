@@ -2006,7 +2006,7 @@ impl<'de> Deserialize<'de> for WindowedViewGroupId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 50] = [
+const RESERVED_NAMESPACE_IDS: [u64; 60] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
@@ -2057,6 +2057,16 @@ const RESERVED_NAMESPACE_IDS: [u64; 50] = [
 	NamespaceId::SYSTEM_FLOW_OPERATOR.0,
 	NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY.0,
 	NamespaceId::SYSTEM_AUTHENTICATION.0,
+	NamespaceId::SYSTEM_ENUM.0,
+	NamespaceId::SYSTEM_EVENT.0,
+	NamespaceId::SYSTEM_VIRTUAL_TABLE.0,
+	NamespaceId::SYSTEM_ROW_SHAPE.0,
+	NamespaceId::SYSTEM_POLICY.0,
+	NamespaceId::SYSTEM_SUBSCRIPTION.0,
+	NamespaceId::SYSTEM_PRIMARY_KEY.0,
+	NamespaceId::SYSTEM_COLUMN.0,
+	NamespaceId::SYSTEM_IDENTITY.0,
+	NamespaceId::SYSTEM_WINDOWED_VIEW_GROUP.0,
 ];
 
 const RESERVED_SOURCE_IDS: [u64; 13] = [

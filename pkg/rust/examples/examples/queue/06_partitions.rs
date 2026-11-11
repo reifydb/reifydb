@@ -24,9 +24,8 @@ fn main() {
 		(1..=12).map(|i| format!(r#"{{ tenant: "tenant-{}", image: "photo-{i}.jpg" }}"#, i % 4)).collect();
 	command(&db, &format!("INSERT jobs::thumbs [{}]", rows.join(", ")));
 
-	let queue_id =
-		uint8_column(&query(&db, r#"FROM system::queue::queues FILTER { name == "thumbs" } MAP { id }"#), "id")
-			.remove(0);
+	let queue_id = uint8_column(&query(&db, r#"FROM system::queues FILTER { name == "thumbs" } MAP { id }"#), "id")
+		.remove(0);
 
 	info!("Each item lands in the FIFO of its tenant, so no single FIFO holds them all...");
 	partitions(&db, queue_id);
