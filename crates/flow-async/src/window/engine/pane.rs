@@ -55,33 +55,83 @@ pub enum PaneFold {
 	Queue,
 }
 
-pub enum PaneEvent<C, X> {
-	Insert(C, u64, X),
-	Remove(C, u64, X),
-	Update {
-		row: u64,
-		pre: (C, X),
-		post: (C, X),
-	},
-	Leave(C, u64, X),
-	Join(C, u64, X),
-	Held(C, u64),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneOp {
+	Insert,
+	Remove,
+	UpdatePre,
+	UpdatePost,
+	Leave,
+	Join,
+	Held,
 }
 
-impl<C: Copy, X> PaneEvent<C, X> {
-	pub fn panes(&self) -> Vec<C> {
-		match self {
-			Self::Insert(pane, _, _)
-			| Self::Remove(pane, _, _)
-			| Self::Leave(pane, _, _)
-			| Self::Join(pane, _, _)
-			| Self::Held(pane, _) => vec![*pane],
-			Self::Update {
-				pre,
-				post,
-				..
-			} => vec![pre.0, post.0],
+pub struct PaneEvents<C, X> {
+	ops: Vec<PaneOp>,
+	panes: Vec<C>,
+	rows: Vec<u64>,
+	xs: Vec<X>,
+}
+
+impl<C, X> Default for PaneEvents<C, X> {
+	fn default() -> Self {
+		Self {
+			ops: Vec::new(),
+			panes: Vec::new(),
+			rows: Vec::new(),
+			xs: Vec::new(),
 		}
+	}
+}
+
+impl<C, X> PaneEvents<C, X> {
+	fn push(&mut self, op: PaneOp, pane: C, row: u64, x: X) {
+		self.ops.push(op);
+		self.panes.push(pane);
+		self.rows.push(row);
+		self.xs.push(x);
+	}
+
+	pub fn insert(&mut self, pane: C, row: u64, x: X) {
+		self.push(PaneOp::Insert, pane, row, x);
+	}
+
+	pub fn remove(&mut self, pane: C, row: u64, x: X) {
+		self.push(PaneOp::Remove, pane, row, x);
+	}
+
+	pub fn update(&mut self, row: u64, pre: (C, X), post: (C, X)) {
+		self.push(PaneOp::UpdatePre, pre.0, row, pre.1);
+		self.push(PaneOp::UpdatePost, post.0, row, post.1);
+	}
+
+	pub fn leave(&mut self, pane: C, row: u64, x: X) {
+		self.push(PaneOp::Leave, pane, row, x);
+	}
+
+	pub fn join(&mut self, pane: C, row: u64, x: X) {
+		self.push(PaneOp::Join, pane, row, x);
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.ops.is_empty()
+	}
+
+	fn drop_leaves(&mut self) {
+		let mut kept = 0;
+		for at in 0..self.ops.len() {
+			if self.ops[at] != PaneOp::Leave {
+				self.ops.swap(kept, at);
+				self.panes.swap(kept, at);
+				self.rows.swap(kept, at);
+				self.xs.swap(kept, at);
+				kept += 1;
+			}
+		}
+		self.ops.truncate(kept);
+		self.panes.truncate(kept);
+		self.rows.truncate(kept);
+		self.xs.truncate(kept);
 	}
 }
 
@@ -216,7 +266,7 @@ impl<E> Default for PaneApplied<E> {
 	}
 }
 
-pub type PaneGroups<G, C, X> = BTreeMap<G, (GroupId, Vec<PaneEvent<C, X>>)>;
+pub type PaneGroups<G, C, X> = BTreeMap<G, (GroupId, PaneEvents<C, X>)>;
 
 pub trait PanePublisher<G, C, A> {
 	type Published: Clone;
@@ -532,8 +582,7 @@ where
 		let mut keys = Vec::new();
 		for (group_id, events) in groups.values() {
 			keys.push((&RollingMetaKey(*group_id)).into_group_state_key());
-			let panes: BTreeSet<u64> =
-				events.iter().flat_map(PaneEvent::panes).map(Coord::to_order).collect();
+			let panes: BTreeSet<u64> = events.panes.iter().copied().map(Coord::to_order).collect();
 			for pane in panes {
 				keys.push((&PaneKey::new(*group_id, pane)).into_group_state_key());
 			}
@@ -663,12 +712,12 @@ where
 	{
 		let mut sides: BTreeMap<u64, (Option<(GroupId, u64)>, Option<(GroupId, u64)>)> = BTreeMap::new();
 		for (group_id, events) in groups.values() {
-			for event in events {
-				match event {
-					PaneEvent::Leave(pane, row, _) => {
+			for ((op, pane), row) in events.ops.iter().zip(&events.panes).zip(&events.rows) {
+				match op {
+					PaneOp::Leave => {
 						sides.entry(*row).or_default().0 = Some((*group_id, pane.to_order()))
 					}
-					PaneEvent::Join(pane, row, _) => {
+					PaneOp::Join => {
 						sides.entry(*row).or_default().1 = Some((*group_id, pane.to_order()))
 					}
 					_ => {}
@@ -724,19 +773,19 @@ where
 			return Ok(groups);
 		}
 		for (_, events) in groups.values_mut() {
-			*events = take(events)
-				.into_iter()
-				.filter_map(|event| match event {
-					PaneEvent::Leave(pane, row, contribution) => {
-						admitted[&row].then_some(PaneEvent::Remove(pane, row, contribution))
-					}
-					PaneEvent::Join(pane, row, contribution) => Some(match admitted[&row] {
-						true => PaneEvent::Insert(pane, row, contribution),
-						false => PaneEvent::Held(pane, row),
-					}),
-					other => Some(other),
-				})
-				.collect();
+			let mut refused = false;
+			for (op, row) in events.ops.iter_mut().zip(&events.rows) {
+				match op {
+					PaneOp::Leave if admitted[row] => *op = PaneOp::Remove,
+					PaneOp::Leave => refused = true,
+					PaneOp::Join if admitted[row] => *op = PaneOp::Insert,
+					PaneOp::Join => *op = PaneOp::Held,
+					_ => {}
+				}
+			}
+			if refused {
+				events.drop_leaves();
+			}
 		}
 		groups.retain(|_, (_, events)| !events.is_empty());
 		Ok(groups)
@@ -747,7 +796,7 @@ where
 		store: &mut dyn StateStore,
 		group: &G,
 		group_id: GroupId,
-		events: Vec<PaneEvent<C, Contribution<A>>>,
+		events: PaneEvents<C, Contribution<A>>,
 		cutoff: Option<u64>,
 		new_accumulator: &dyn Fn() -> A,
 		publisher: &P,
@@ -771,9 +820,32 @@ where
 		let mut held = stored.as_mut().map(|row| take(&mut row.held)).unwrap_or_default();
 		let mut held_changed = false;
 		let mut panes: BTreeMap<u64, AccumulatorEvents<A::Contributions>> = BTreeMap::new();
-		for event in events {
-			match event {
-				PaneEvent::Insert(pane, row_number, contribution) => {
+		let PaneEvents {
+			ops,
+			panes: coords,
+			rows,
+			xs,
+		} = events;
+		let mut pending: Option<(C, Contribution<A>)> = None;
+		for (((op, pane), row_number), contribution) in ops.into_iter().zip(coords).zip(rows).zip(xs) {
+			match (op, pending.take()) {
+				(PaneOp::UpdatePre, None) => pending = Some((pane, contribution)),
+				(PaneOp::UpdatePost, None)
+				| (
+					PaneOp::Insert
+					| PaneOp::Remove
+					| PaneOp::UpdatePre
+					| PaneOp::Leave
+					| PaneOp::Join
+					| PaneOp::Held,
+					Some(_),
+				) => {
+					return internal_err!(
+						"a rolling update in group {group_id:?} must be an update pre followed right \
+						 away by its update post"
+					);
+				}
+				(PaneOp::Insert, None) => {
 					let pane = pane.to_order();
 					if PaneLines::admits(lines.as_ref(), admission, pane, false) {
 						panes.entry(pane).or_default().add(contribution);
@@ -791,7 +863,7 @@ where
 						}
 					}
 				}
-				PaneEvent::Held(pane, row_number) => {
+				(PaneOp::Held, None) => {
 					let pane = pane.to_order();
 					applied.sealed_drops += 1;
 					if PaneLines::admits(lines.as_ref(), admission, pane, true) {
@@ -804,12 +876,12 @@ where
 						held_changed = true;
 					}
 				}
-				PaneEvent::Leave(..) | PaneEvent::Join(..) => {
+				(PaneOp::Leave | PaneOp::Join, None) => {
 					return internal_err!(
 						"a rolling move reached group {group_id:?} before it was resolved"
 					);
 				}
-				PaneEvent::Remove(pane, row_number, contribution) => {
+				(PaneOp::Remove, None) => {
 					let pane = pane.to_order();
 					if !PaneLines::admits(lines.as_ref(), admission, pane, true) {
 						applied.stale_retractions += 1;
@@ -824,12 +896,8 @@ where
 						panes.entry(pane).or_default().remove(contribution);
 					}
 				}
-				PaneEvent::Update {
-					row: row_number,
-					pre,
-					post,
-				} => {
-					let (pre_pane, post_pane) = (pre.0.to_order(), post.0.to_order());
+				(PaneOp::UpdatePost, Some(pre)) => {
+					let (pre_pane, post_pane) = (pre.0.to_order(), pane.to_order());
 					if !PaneLines::admits(lines.as_ref(), admission, pre_pane, true) {
 						applied.stale_retractions += 1;
 						held.entry(row_number)
@@ -866,10 +934,13 @@ where
 							}
 							None => panes.entry(pre_pane).or_default().remove(pre.1),
 						}
-						panes.entry(post_pane).or_default().add(post.1);
+						panes.entry(post_pane).or_default().add(contribution);
 					}
 				}
 			}
+		}
+		if pending.is_some() {
+			return internal_err!("a rolling update pre in group {group_id:?} has no update post");
 		}
 		if panes.is_empty() {
 			if let Some(mut row) = stored.filter(|_| held_changed) {
@@ -1094,7 +1165,7 @@ mod tests {
 	};
 
 	use super::{
-		EmitKind, PaneEngine, PaneEvent, PaneGroups, PaneSpans, RollingEmit, RollingPane, pane_of, pane_range,
+		EmitKind, PaneEngine, PaneEvents, PaneGroups, PaneSpans, RollingEmit, RollingPane, pane_of, pane_range,
 	};
 	use crate::{
 		operator::state::mock::MockStore,
@@ -1265,17 +1336,17 @@ mod tests {
 			let mut admitted: Vec<(u32, u64, u64, i64, bool)> = Vec::new();
 			let mut round_dropped = 0u64;
 			let mut push = |model: &Model, group: u32, pane: u64, row: u64, value: i64, add: bool| {
-				let event = if add {
-					PaneEvent::Insert(ms(pane), row, (row, value))
-				} else {
-					PaneEvent::Remove(ms(pane), row, (row, value))
-				};
-				groups.entry(group)
+				let events = &mut groups
+					.entry(group)
 					.or_insert_with(|| {
-						(GroupId::hashed(Hash128(1_000 + group as u128)), Vec::new())
+						(GroupId::hashed(Hash128(1_000 + group as u128)), PaneEvents::default())
 					})
-					.1
-					.push(event);
+					.1;
+				if add {
+					events.insert(ms(pane), row, (row, value));
+				} else {
+					events.remove(ms(pane), row, (row, value));
+				}
 				if model.admits(shape, group, pane, cutoff, !add) {
 					admitted.push((group, pane, row, value, add));
 				} else {
@@ -1435,7 +1506,9 @@ mod tests {
 			let mut visited = Vec::new();
 			for pane in 1_000..3_000u64 {
 				let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
-				groups.insert(1, (group, vec![PaneEvent::Insert(ms(pane), pane, (pane, 1))]));
+				let mut events = PaneEvents::default();
+				events.insert(ms(pane), pane, (pane, 1));
+				groups.insert(1, (group, events));
 				let before = store.rows_visited();
 				let order: Vec<_> = groups.keys().cloned().collect();
 				engine.apply(
@@ -1529,13 +1602,9 @@ mod tests {
 		let mut rng = Lcg(5);
 		let (mut partials, mut raw_queued) = (0usize, 0usize);
 		for pane in 1_000..1_400u64 {
-			let mut events = Vec::new();
+			let mut events = PaneEvents::default();
 			for row in 0..=rng.below(3) {
-				events.push(PaneEvent::Insert(
-					ms(pane),
-					pane * 10 + row,
-					(pane * 10 + row, rng.below(50) as i64),
-				));
+				events.insert(ms(pane), pane * 10 + row, (pane * 10 + row, rng.below(50) as i64));
 			}
 			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 			groups.insert(1, (group, events));
@@ -1603,7 +1672,9 @@ mod tests {
 		zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>>,
 	) -> Emits {
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
-		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Insert(ms(pane), pane, (pane, value))]));
+		let mut events = PaneEvents::default();
+		events.insert(ms(pane), pane, (pane, value));
+		groups.insert(1, (GroupId::hashed(Hash128(1)), events));
 		let order: Vec<_> = groups.keys().cloned().collect();
 		engine.apply(
 			store,
@@ -1688,7 +1759,9 @@ mod tests {
 		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
 		let row = inserted.post.as_ref().expect("the first trade inserts").row_number;
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
-		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Remove(ms(1_000), 1_000, (1_000, 5))]));
+		let mut events = PaneEvents::default();
+		events.remove(ms(1_000), 1_000, (1_000, 5));
+		groups.insert(1, (GroupId::hashed(Hash128(1)), events));
 		let order: Vec<_> = groups.keys().cloned().collect();
 		let retracted = engine
 			.apply(
@@ -1738,8 +1811,11 @@ mod tests {
 		let mut engine = tally_engine();
 		let mut store = MockStore::default();
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
-		groups.insert(1, (GroupId::hashed(Hash128(1)), vec![PaneEvent::Insert(ms(1_000), 1, (1_000, 5))]));
-		groups.insert(2, (GroupId::hashed(Hash128(2)), vec![PaneEvent::Insert(ms(1_000), 2, (1_000, 7))]));
+		let (mut first, mut second) = (PaneEvents::default(), PaneEvents::default());
+		first.insert(ms(1_000), 1, (1_000, 5));
+		second.insert(ms(1_000), 2, (1_000, 7));
+		groups.insert(1, (GroupId::hashed(Hash128(1)), first));
+		groups.insert(2, (GroupId::hashed(Hash128(2)), second));
 		let emits = engine
 			.apply(
 				&mut store,

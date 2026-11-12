@@ -265,7 +265,7 @@ mod tests {
 		},
 		window::engine::{
 			config::WindowEngineConfig,
-			pane::{PaneEvent, PaneGroups},
+			pane::{PaneEvents, PaneGroups},
 			publish::RowPublisher,
 		},
 	};
@@ -652,15 +652,15 @@ mod tests {
 			let mut round_dropped = 0u64;
 			for (group, (ms, seq), value, is_add) in &plan {
 				let contribution = (WindowSlotKey::new(millis(*ms), *seq), inputs(kinds, *value));
-				let event = if *is_add {
-					PaneEvent::Insert(millis(*ms), *seq, contribution)
+				let events = &mut groups
+					.entry(*group)
+					.or_insert_with(|| (GroupId::hashed(*group), PaneEvents::default()))
+					.1;
+				if *is_add {
+					events.insert(millis(*ms), *seq, contribution);
 				} else {
-					PaneEvent::Remove(millis(*ms), *seq, contribution)
-				};
-				groups.entry(*group)
-					.or_insert_with(|| (GroupId::hashed(*group), Vec::new()))
-					.1
-					.push(event);
+					events.remove(millis(*ms), *seq, contribution);
+				}
 				if frame.admits(group, *ms, cutoff, !*is_add) {
 					admitted.push((*group, (*ms, *seq), *value, *is_add));
 				} else {

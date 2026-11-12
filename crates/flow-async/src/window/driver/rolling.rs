@@ -31,7 +31,7 @@ use crate::{
 		},
 		engine::{
 			pane::{
-				PaneEngine, PaneEvent, PaneGroups, PanePublisher, RollingEmit, RollingGroup,
+				PaneEngine, PaneEvents, PaneGroups, PanePublisher, RollingEmit, RollingGroup,
 				RollingIndexEntry, RollingPane,
 			},
 			publish::RowPublisher,
@@ -48,11 +48,11 @@ pub struct RoutedPanes<G, C, X> {
 }
 
 impl<G: Clone + Ord, C, X> RoutedPanes<G, C, X> {
-	fn push(&mut self, group: &G, group_id: &dyn Fn(&G) -> GroupId, event: PaneEvent<C, X>) {
+	fn events(&mut self, group: &G, group_id: &dyn Fn(&G) -> GroupId) -> &mut PaneEvents<C, X> {
 		if !self.groups.contains_key(group) {
 			self.order.push(group.clone());
 		}
-		self.groups.entry(group.clone()).or_insert_with(|| (group_id(group), Vec::new())).1.push(event);
+		&mut self.groups.entry(group.clone()).or_insert_with(|| (group_id(group), PaneEvents::default())).1
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -157,15 +157,21 @@ where
 			WindowDiff::Insert(post) => {
 				for row in 0..post.len() {
 					let (at, number) = located(&post, row, pane)?;
-					let event = PaneEvent::Insert(at, number, post.contributions()[row].clone());
-					routed.push(&post.groups()[row], group_id, event);
+					routed.events(&post.groups()[row], group_id).insert(
+						at,
+						number,
+						post.contributions()[row].clone(),
+					);
 				}
 			}
 			WindowDiff::Remove(pre) => {
 				for row in 0..pre.len() {
 					let (at, number) = located(&pre, row, pane)?;
-					let event = PaneEvent::Remove(at, number, pre.contributions()[row].clone());
-					routed.push(&pre.groups()[row], group_id, event);
+					routed.events(&pre.groups()[row], group_id).remove(
+						at,
+						number,
+						pre.contributions()[row].clone(),
+					);
 				}
 			}
 			WindowDiff::Retract(_) => {
@@ -188,39 +194,36 @@ where
 					let group = &post.groups()[row];
 					let contribution = post.contributions()[row].clone();
 					let Some(prior) = before.remove(&post.index()[row]) else {
-						routed.push(
-							group,
-							group_id,
-							PaneEvent::Insert(post_at, number, contribution),
-						);
+						routed.events(group, group_id).insert(post_at, number, contribution);
 						continue;
 					};
 					let (pre_at, pre_number) = located(&pre, prior, pane)?;
 					let pre_group = &pre.groups()[prior];
 					let pre_contribution = pre.contributions()[prior].clone();
 					if pre_group == group {
-						let event = PaneEvent::Update {
-							row: number,
-							pre: (pre_at, pre_contribution),
-							post: (post_at, contribution),
-						};
-						routed.push(group, group_id, event);
-					} else {
-						let leave = PaneEvent::Leave(pre_at, pre_number, pre_contribution);
-						routed.push(pre_group, group_id, leave);
-						routed.push(
-							group,
-							group_id,
-							PaneEvent::Join(post_at, number, contribution),
+						routed.events(group, group_id).update(
+							number,
+							(pre_at, pre_contribution),
+							(post_at, contribution),
 						);
+					} else {
+						routed.events(pre_group, group_id).leave(
+							pre_at,
+							pre_number,
+							pre_contribution,
+						);
+						routed.events(group, group_id).join(post_at, number, contribution);
 					}
 				}
 				let mut removed: Vec<usize> = before.into_values().collect();
 				removed.sort_unstable();
 				for prior in removed {
 					let (at, number) = located(&pre, prior, pane)?;
-					let event = PaneEvent::Remove(at, number, pre.contributions()[prior].clone());
-					routed.push(&pre.groups()[prior], group_id, event);
+					routed.events(&pre.groups()[prior], group_id).remove(
+						at,
+						number,
+						pre.contributions()[prior].clone(),
+					);
 				}
 			}
 		}
