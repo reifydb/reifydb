@@ -1708,6 +1708,8 @@ mod tests {
 			[
 				KeyspaceId::EMIT,
 				KeyspaceId::ROLLING_EXPIRY,
+				KeyspaceId::ROW_INDEX,
+				KeyspaceId::SESSION,
 				KeyspaceId::ROLLING_META,
 				KeyspaceId::ENGINE_META,
 				KeyspaceId::WINDOW_META,
@@ -1718,6 +1720,7 @@ mod tests {
 				KeyspaceId::GUEST_RUNNING,
 				KeyspaceId::TUMBLING_EXPIRY,
 				KeyspaceId::GUEST_RETAINED_ENTRY,
+				KeyspaceId::SESSION_MEMBER,
 				KeyspaceId::ROLLING_PANE,
 				KeyspaceId::GUEST_ROW_MAPPING,
 			]
