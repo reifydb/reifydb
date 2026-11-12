@@ -220,7 +220,8 @@ check-code-quality:
 .PHONY: check-workspace
 check-workspace:
 	@echo "🔍 Checking repository status..."
-	@if ! git diff-index --quiet HEAD --; then \
+	@git update-index -q --refresh
+	@if ! git diff-index --quiet HEAD -- . ':!Cargo.lock'; then \
 		echo "❌ Error: You have uncommitted changes. Please commit or stash them before pushing."; \
 		exit 1; \
 	fi
