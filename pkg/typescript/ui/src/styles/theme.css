@@ -5,6 +5,7 @@
   --color-bg-primary: #fbfbfe;
   --color-bg-secondary: #ffffff;
   --color-bg-tertiary: #f4f3fb;
+  --color-bg-tint: #faf8ff;
   --color-bg-elevated: #e9e7f4;
 
   --color-text-primary: #1b1840;
@@ -15,6 +16,16 @@
   --color-primary: #7e85f2;
   --color-primary-light: #6366f1;
   --color-primary-dark: #2e39df;
+
+  --color-accent-pink: #eb4fc0;
+  --color-accent-yellow: #fafd6f;
+  --color-accent-sky: #a9e5f2;
+  --color-core: #262a8f;
+
+  --color-state-insert: var(--color-accent-yellow);
+  --color-state-update: var(--color-accent-sky);
+  --color-state-delete: var(--color-accent-pink);
+  --color-state-path: var(--color-primary-dark);
 
   /* Forest Green - Secondary CTA */
   --color-forest: #166534;
@@ -60,7 +71,7 @@
   --radius-xl: 14px;
   --radius-pill: 9999px;
 
-  --font-display: 'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Monaco, monospace;
 

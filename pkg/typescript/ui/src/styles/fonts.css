@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Copyright (c) 2026 ReifyDB */
 
-/* Fonts (Archivo Black, IBM Plex Sans, JetBrains Mono) are the consuming
+/* Fonts (Archivo, IBM Plex Sans, JetBrains Mono) are the consuming
    app's responsibility - loaded via @fontsource in the website's main.tsx.
    The design tokens in theme.css reference them by family name only. */

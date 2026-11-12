@@ -7,8 +7,8 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "forest" | "danger" | "
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-text-primary font-semibold border-primary-dark shadow-soft hover:brightness-90",
-  secondary: "bg-bg-secondary text-text-primary border-border-light font-semibold hover:bg-bg-elevated",
+  primary: "bg-[#4b52d6] text-white font-semibold border-[#4b52d6] hover:bg-primary-dark hover:border-primary-dark",
+  secondary: "bg-bg-secondary text-text-primary border-text-primary font-semibold hover:bg-bg-tertiary",
   ghost:
     "text-text-secondary border-transparent hover:bg-bg-tertiary hover:text-text-primary",
   forest: "bg-forest text-white font-semibold border-forest-border hover:brightness-90",
@@ -35,8 +35,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={`inline-flex items-center justify-center font-semibold transition-colors duration-150
-          rounded-md border
+        className={`inline-flex items-center justify-center font-display font-semibold uppercase tracking-[0.06em] transition-colors duration-150
+          rounded-none border
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
           disabled:pointer-events-none disabled:opacity-50
           ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
