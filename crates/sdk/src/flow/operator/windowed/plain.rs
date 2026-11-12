@@ -110,7 +110,7 @@ where
 				}
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
-					post.first_time,
+					prior.first_time,
 					post.first_time,
 					Some(prior.last_value),
 					post.last_value,
