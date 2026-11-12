@@ -390,10 +390,8 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
-const WINDOWED_KEYSPACES: [KeyspaceId; 17] = [
+const WINDOWED_KEYSPACES: [KeyspaceId; 15] = [
 	KeyspaceId::GUEST_ACCUMULATOR,
-	KeyspaceId::GUEST_BUFFER,
-	KeyspaceId::GUEST_RUNNING,
 	KeyspaceId::EMIT,
 	KeyspaceId::WINDOW_META,
 	KeyspaceId::SEAL_LEDGER,
@@ -1716,8 +1714,6 @@ mod tests {
 				KeyspaceId::SEAL_LEDGER,
 				KeyspaceId::REAP_QUEUE,
 				KeyspaceId::GUEST_ACCUMULATOR,
-				KeyspaceId::GUEST_BUFFER,
-				KeyspaceId::GUEST_RUNNING,
 				KeyspaceId::TUMBLING_EXPIRY,
 				KeyspaceId::GUEST_RETAINED_ENTRY,
 				KeyspaceId::SESSION_MEMBER,
