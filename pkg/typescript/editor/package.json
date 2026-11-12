@@ -1,6 +1,6 @@
 {
   "name": "@reifydb/editor",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Database editor and embeddable snippet component for ReifyDB",
   "type": "module",
   "main": "dist/index.js",
