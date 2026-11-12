@@ -214,7 +214,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x2F;
+	pub const HIGHEST_DATA: u8 = 0x28;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -240,77 +240,77 @@ impl KeyspaceId {
 
 	pub const ROLLING_EXPIRY: Self = Self(0x04);
 
-	pub const ROW_INDEX: Self = Self(0x06);
+	pub const ROW_INDEX: Self = Self(0x05);
 
-	pub const SESSION: Self = Self(0x07);
+	pub const SESSION: Self = Self(0x06);
 
-	pub const ROLLING_META: Self = Self(0x08);
+	pub const ROLLING_META: Self = Self(0x07);
 
-	pub const ENGINE_META: Self = Self(0x09);
+	pub const ENGINE_META: Self = Self(0x08);
 
-	pub const DISTINCT_ENTRY: Self = Self(0x0A);
+	pub const DISTINCT_ENTRY: Self = Self(0x09);
 
-	pub const WINDOW_META: Self = Self(0x0B);
+	pub const WINDOW_META: Self = Self(0x0A);
 
-	pub const JOIN_LEFT: Self = Self(0x0C);
+	pub const JOIN_LEFT: Self = Self(0x0B);
 
-	pub const JOIN_RIGHT: Self = Self(0x0D);
+	pub const JOIN_RIGHT: Self = Self(0x0C);
 
-	pub const JOIN_SCHEMA: Self = Self(0x0E);
+	pub const JOIN_SCHEMA: Self = Self(0x0D);
 
-	pub const RINGBUFFER_FORWARD: Self = Self(0x0F);
+	pub const RINGBUFFER_FORWARD: Self = Self(0x0E);
 
-	pub const RINGBUFFER_ENTRY: Self = Self(0x10);
+	pub const RINGBUFFER_ENTRY: Self = Self(0x0F);
 
-	pub const GATE_VISIBILITY: Self = Self(0x11);
+	pub const GATE_VISIBILITY: Self = Self(0x10);
 
-	pub const DISTINCT_LAYOUT: Self = Self(0x12);
+	pub const DISTINCT_LAYOUT: Self = Self(0x11);
 
-	pub const RINGBUFFER_TTL_ARM: Self = Self(0x14);
+	pub const RINGBUFFER_TTL_ARM: Self = Self(0x12);
 
-	pub const SEAL_LEDGER: Self = Self(0x15);
+	pub const SEAL_LEDGER: Self = Self(0x13);
 
-	pub const JOIN_PUBLISHED: Self = Self(0x16);
+	pub const JOIN_PUBLISHED: Self = Self(0x14);
 
-	pub const JOIN_PIN: Self = Self(0x17);
+	pub const JOIN_PIN: Self = Self(0x15);
 
-	pub const RINGBUFFER_META: Self = Self(0x18);
+	pub const RINGBUFFER_META: Self = Self(0x16);
 
-	pub const REAP_QUEUE: Self = Self(0x19);
+	pub const REAP_QUEUE: Self = Self(0x17);
 
-	pub const JOIN_ROW_EXPIRY: Self = Self(0x1A);
+	pub const JOIN_ROW_EXPIRY: Self = Self(0x18);
 
-	pub const GUEST_ACCUMULATOR: Self = Self(0x1B);
+	pub const GUEST_ACCUMULATOR: Self = Self(0x19);
 
-	pub const TUMBLING_EXPIRY: Self = Self(0x1E);
+	pub const TUMBLING_EXPIRY: Self = Self(0x1A);
 
-	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1F);
+	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1B);
 
-	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x21);
+	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x1C);
 
-	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x22);
+	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x1D);
 
-	pub const CUSTOM_UNMANAGED: Self = Self(0x23);
+	pub const CUSTOM_UNMANAGED: Self = Self(0x1E);
 
-	pub const JOIN_EXPIRY_DUE: Self = Self(0x24);
+	pub const JOIN_EXPIRY_DUE: Self = Self(0x1F);
 
-	pub const CUSTOM_MANAGED: Self = Self(0x25);
+	pub const CUSTOM_MANAGED: Self = Self(0x20);
 
-	pub const CUSTOM_MANAGED_DUE: Self = Self(0x26);
+	pub const CUSTOM_MANAGED_DUE: Self = Self(0x21);
 
-	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x27);
+	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x22);
 
-	pub const GUEST_RETAINED_ENTRY: Self = Self(0x29);
+	pub const GUEST_RETAINED_ENTRY: Self = Self(0x23);
 
-	pub const LOOKUP_READ: Self = Self(0x2A);
+	pub const LOOKUP_READ: Self = Self(0x24);
 
-	pub const SESSION_MEMBER: Self = Self(0x2B);
+	pub const SESSION_MEMBER: Self = Self(0x25);
 
-	pub const ROLLING_PANE: Self = Self(0x2D);
+	pub const ROLLING_PANE: Self = Self(0x26);
 
-	pub const TAKE_ROW: Self = Self(0x2E);
+	pub const TAKE_ROW: Self = Self(0x27);
 
-	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x2F);
+	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x28);
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
