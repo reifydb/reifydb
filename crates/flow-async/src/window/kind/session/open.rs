@@ -45,23 +45,12 @@ impl<S: Coord> OpenSession<S> {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionIds {
-	StartTime,
-}
-
-impl SessionIds {
-	fn mint<S: Coord>(&mut self, start: S, taken: &[OpenSession<S>]) -> u64 {
-		match self {
-			SessionIds::StartTime => {
-				let mut id = start.to_order();
-				while taken.iter().any(|session| session.id == id) {
-					id += 1;
-				}
-				id
-			}
-		}
+fn mint<S: Coord>(start: S, taken: &[OpenSession<S>]) -> u64 {
+	let mut id = start.to_order();
+	while taken.iter().any(|session| session.id == id) {
+		id += 1;
 	}
+	id
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,20 +77,18 @@ pub enum Removal<S> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenSessions<S: Coord> {
 	gap: S::Span,
-	ids: SessionIds,
 	sessions: Vec<OpenSession<S>>,
 	sealed_last: Option<S>,
 }
 
 impl<S: Coord> OpenSessions<S> {
-	pub fn new(gap: S::Span, ids: SessionIds) -> Self {
-		Self::resumed(gap, ids, Vec::new(), None)
+	pub fn new(gap: S::Span) -> Self {
+		Self::resumed(gap, Vec::new(), None)
 	}
 
-	pub fn resumed(gap: S::Span, ids: SessionIds, sessions: Vec<OpenSession<S>>, sealed_last: Option<S>) -> Self {
+	pub fn resumed(gap: S::Span, sessions: Vec<OpenSession<S>>, sealed_last: Option<S>) -> Self {
 		Self {
 			gap,
-			ids,
 			sessions,
 			sealed_last,
 		}
@@ -127,7 +114,7 @@ impl<S: Coord> OpenSessions<S> {
 		};
 		match reached.as_slice() {
 			[] => {
-				let id = self.ids.mint(at, &self.sessions);
+				let id = mint(at, &self.sessions);
 				self.place(OpenSession::of(id, vec![member]));
 				Insertion::Opened(id)
 			}
@@ -188,7 +175,7 @@ impl<S: Coord> OpenSessions<S> {
 				let mut kept = members;
 				let tail = kept.split_off(at);
 				self.sessions[index] = OpenSession::of(id, kept);
-				let moved = OpenSession::of(self.ids.mint(tail[0].at, &self.sessions), tail);
+				let moved = OpenSession::of(mint(tail[0].at, &self.sessions), tail);
 				self.place(moved.clone());
 				Ok(Some(Removal::Split {
 					kept: id,
@@ -234,14 +221,14 @@ mod tests {
 		value::{duration::Duration, row_number::RowNumber},
 	};
 
-	use super::{Insertion, Member, OpenSession, OpenSessions, Removal, SessionIds};
+	use super::{Insertion, Member, OpenSession, OpenSessions, Removal};
 	use crate::{
 		factory::coord::event_coord_at_millis, operator::state::seal::coord::Coord,
 		window::coord::DateTimeCoord,
 	};
 
 	fn sessions() -> OpenSessions<DateTimeCoord> {
-		OpenSessions::new(Duration::from_milliseconds_const(1_000), SessionIds::StartTime)
+		OpenSessions::new(Duration::from_milliseconds_const(1_000))
 	}
 
 	fn id(millis: i64) -> u64 {
@@ -529,7 +516,7 @@ mod tests {
 	#[test]
 	fn a_zero_gap_puts_every_distinct_instant_in_its_own_session() {
 		// A zero gap is the group-by-instant case: a repeated instant joins, the next instant must not.
-		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0), SessionIds::StartTime);
+		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0));
 
 		assert_eq!(
 			open.insert(event_coord_at_millis(5_000), RowNumber(1), far_past()),
@@ -578,7 +565,7 @@ mod tests {
 	fn with_a_zero_gap_removing_one_of_several_rows_at_one_instant_shrinks_rather_than_splits() {
 		// A repeated instant joins its session, so a split between equal instants publishes two rows at one
 		// end.
-		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0), SessionIds::StartTime);
+		let mut open = OpenSessions::new(Duration::from_milliseconds_const(0));
 		open.insert(event_coord_at_millis(1), RowNumber(4), far_past());
 		open.insert(event_coord_at_millis(1), RowNumber(18), far_past());
 		open.insert(event_coord_at_millis(1), RowNumber(25), far_past());

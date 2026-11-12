@@ -31,7 +31,7 @@ use crate::{
 			rows::{WindowColumns, WindowDiff, WindowRows},
 		},
 		engine::{EmitKind, ExpiryAnchor, WindowReindex, tumbling::TumblingEngine},
-		kind::session::open::{Insertion, Member, OpenSession, OpenSessions, Removal, SessionIds},
+		kind::session::open::{Insertion, Member, OpenSession, OpenSessions, Removal},
 		meta::{
 			EngineMeta, EngineMetaKey, OpenSessionsState, RowIndexKey, SessionKey, SessionMemberKey,
 			SessionState, WindowMeta,
@@ -214,7 +214,7 @@ pub fn load_open_sessions<C: Coord>(
 
 fn open_sessions_of<C: Coord>(gap: C::Span, state: Option<OpenSessionsState>) -> OpenSessions<C> {
 	let Some(state) = state else {
-		return OpenSessions::new(gap, SessionIds::StartTime);
+		return OpenSessions::new(gap);
 	};
 	let sessions = state
 		.sessions
@@ -235,7 +235,7 @@ fn open_sessions_of<C: Coord>(gap: C::Span, state: Option<OpenSessionsState>) ->
 			}
 		})
 		.collect();
-	OpenSessions::resumed(gap, SessionIds::StartTime, sessions, state.sealed_last.map(C::from_order))
+	OpenSessions::resumed(gap, sessions, state.sealed_last.map(C::from_order))
 }
 
 pub fn open_sessions_state<C: Coord>(open: &OpenSessions<C>) -> OpenSessionsState {
