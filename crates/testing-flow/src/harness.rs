@@ -10,31 +10,28 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, operator::state::decode, pod::EncodedPodRow},
-};
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_codec::row::{operator::state::decode, pod::EncodedPodRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	commit::tracker::WriteTracker,
 	common::{ChangeVersion, CommitVersion},
 	delta::RemoveVisibility,
 	interface::change::Change,
-	internal_err,
 	key::{
 		any::TaggedKey,
-		operator::{
-			keyspace::timer::TimerWheelKey,
-			state::{KeyspaceId, OperatorStateKey},
-		},
+		operator::state::{KeyspaceId, OperatorStateKey},
 	},
-	state::{timer::TimerKind, typed::SuffixBytes},
+	state::timer::TimerKind,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	operator_with::ApplyWith,
 };
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use reifydb_core::{internal_err, key::operator::keyspace::timer::TimerWheelKey, state::typed::SuffixBytes};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_flow_async::operator::apply::ApplyOperator;
 use reifydb_flow_async::{
@@ -58,6 +55,7 @@ use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_testing_sdk::in_process::harness::ArmedTimer;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -320,6 +318,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(items)
 	}
 
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn armed_timers(&mut self) -> Result<Vec<ArmedTimer>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
