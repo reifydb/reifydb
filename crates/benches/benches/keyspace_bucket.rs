@@ -18,7 +18,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::{
 				KEYSPACES, KeyspaceVisitor, columns_width, dispatch, join::JoinLeft, timer::TimerIndex,
-				window::GuestBuffer,
+				window::GuestAccumulator,
 			},
 			state::GroupId,
 			traits::Keyspace,
@@ -332,7 +332,7 @@ fn main() {
 	let mut report = BenchReport::new("keyspace_bucket");
 	for keys in sizes {
 		bench_keyspace::<JoinLeft>(&mut report, keys, repeats);
-		bench_keyspace::<GuestBuffer>(&mut report, keys, repeats);
+		bench_keyspace::<GuestAccumulator>(&mut report, keys, repeats);
 		bench_keyspace::<TimerIndex>(&mut report, keys, repeats);
 	}
 	report.save();

@@ -90,18 +90,6 @@ pub struct GuestAccumulatorKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct GuestBufferKey {
-	pub group: Desc<GroupId>,
-	pub slot: Asc<[u8; 16]>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct GuestRunningKey {
-	pub group: Desc<GroupId>,
-	pub slot: Asc<[u8; 16]>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GuestRetainedEntryKey {
 	pub group: Desc<GroupId>,
 	pub slot: Asc<[u8; 16]>,
@@ -376,52 +364,6 @@ impl Keyspace for GuestAccumulator {
 
 	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		GuestAccumulatorKey {
-			group: Desc(group),
-			slot: suffix,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GuestBuffer;
-
-impl Keyspace for GuestBuffer {
-	const ID: KeyspaceId = KeyspaceId::GUEST_BUFFER;
-	const NAME: &'static str = "GUEST_BUFFER";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = GuestBufferKey;
-	type Suffix = Asc<[u8; 16]>;
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, key.slot)
-	}
-
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		GuestBufferKey {
-			group: Desc(group),
-			slot: suffix,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GuestRunning;
-
-impl Keyspace for GuestRunning {
-	const ID: KeyspaceId = KeyspaceId::GUEST_RUNNING;
-	const NAME: &'static str = "GUEST_RUNNING";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = GuestRunningKey;
-	type Suffix = Asc<[u8; 16]>;
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, key.slot)
-	}
-
-	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
-		GuestRunningKey {
 			group: Desc(group),
 			slot: suffix,
 		}

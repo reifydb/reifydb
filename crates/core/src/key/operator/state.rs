@@ -282,10 +282,6 @@ impl KeyspaceId {
 
 	pub const GUEST_ACCUMULATOR: Self = Self(0x1B);
 
-	pub const GUEST_BUFFER: Self = Self(0x1C);
-
-	pub const GUEST_RUNNING: Self = Self(0x1D);
-
 	pub const TUMBLING_EXPIRY: Self = Self(0x1E);
 
 	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1F);
@@ -352,8 +348,6 @@ impl KeyspaceId {
 			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
 			Self::JOIN_EXPIRY_DUE => "JOIN_EXPIRY_DUE",
 			Self::GUEST_ACCUMULATOR => "GUEST_ACCUMULATOR",
-			Self::GUEST_BUFFER => "GUEST_BUFFER",
-			Self::GUEST_RUNNING => "GUEST_RUNNING",
 			Self::TUMBLING_EXPIRY => "TUMBLING_EXPIRY",
 			Self::PARTITIONED_RINGBUFFER_ENTRY => "PARTITIONED_RINGBUFFER_ENTRY",
 			Self::PARTITIONED_RINGBUFFER_TTL_ARM => "PARTITIONED_RINGBUFFER_TTL_ARM",
@@ -1008,7 +1002,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 50] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 48] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1043,8 +1037,6 @@ mod tests {
 		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, true),
 		("JOIN_EXPIRY_DUE", KeyspaceId::JOIN_EXPIRY_DUE, Phase::Data, true),
 		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, true),
-		("GUEST_BUFFER", KeyspaceId::GUEST_BUFFER, Phase::Data, true),
-		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, true),
 		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_ENTRY", KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY, Phase::Data, true),
 		("PARTITIONED_RINGBUFFER_TTL_ARM", KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM, Phase::Data, true),

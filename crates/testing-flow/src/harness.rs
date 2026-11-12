@@ -69,13 +69,7 @@ use reifydb_value::{
 };
 use reifydb_wal::lsn::Lsn;
 
-const SESSION_KEYSPACES: [KeyspaceId; 5] = [
-	KeyspaceId::SESSION,
-	KeyspaceId::SESSION_MEMBER,
-	KeyspaceId::ROW_INDEX,
-	KeyspaceId::GUEST_RUNNING,
-	KeyspaceId::GUEST_BUFFER,
-];
+const SESSION_KEYSPACES: [KeyspaceId; 3] = [KeyspaceId::SESSION, KeyspaceId::SESSION_MEMBER, KeyspaceId::ROW_INDEX];
 
 pub struct Harness<O> {
 	engine: TestEngine,

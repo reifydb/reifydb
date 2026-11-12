@@ -40,9 +40,9 @@ use crate::{
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
-					Accumulator, Buffer, Emit, EngineMeta, GuestAccumulator, GuestBuffer,
-					GuestRetainedEntry, GuestRunning, RollingMeta, RollingPane, RowIndex, Running,
-					Session, SessionMember, WindowMeta,
+					Accumulator, Buffer, Emit, EngineMeta, GuestAccumulator, GuestRetainedEntry,
+					RollingMeta, RollingPane, RowIndex, Running, Session, SessionMember,
+					WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -171,8 +171,6 @@ catalogue!(
 	SessionMember,
 	WindowMeta,
 	GuestAccumulator,
-	GuestBuffer,
-	GuestRunning,
 	GuestRetainedEntry,
 	JoinLeft,
 	JoinRight,
@@ -235,8 +233,6 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::ROW_INDEX
 		| KeyspaceId::WINDOW_META
 		| KeyspaceId::GUEST_ACCUMULATOR
-		| KeyspaceId::GUEST_BUFFER
-		| KeyspaceId::GUEST_RUNNING
 		| KeyspaceId::GUEST_RETAINED_ENTRY
 		| KeyspaceId::JOIN_LEFT
 		| KeyspaceId::JOIN_RIGHT => RootSibling::OwnerCleared,
@@ -491,7 +487,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 50, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 48, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -515,12 +511,12 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			50,
+			48,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
 			group_scoped_keyspaces(),
-			27,
+			25,
 			"a keyspace changed group scope; confirm its key layout meant to"
 		);
 	}
