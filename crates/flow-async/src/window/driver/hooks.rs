@@ -12,7 +12,7 @@ use crate::window::{accumulator::WindowAccumulator, span::WindowSpan};
 
 pub struct WindowEmits<Row> {
 	pub inserts: Vec<(RowNumber, DateTime, Row)>,
-	pub updates: Vec<(RowNumber, DateTime, Row, Row)>,
+	pub updates: Vec<(RowNumber, DateTime, DateTime, Row, Row)>,
 	pub removes: Vec<(RowNumber, DateTime, Row)>,
 }
 

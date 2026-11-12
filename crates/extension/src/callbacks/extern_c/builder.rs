@@ -581,6 +581,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	pre_row_count: usize,
 	pre_row_numbers_ptr: *const u64,
 	pre_row_numbers_len: usize,
+	pre_times_ptr: *const i64,
+	pre_times_len: usize,
 	post_handles_ptr: *const *mut ColumnBufferHandle,
 	post_name_ptrs: *const *const u8,
 	post_name_lens: *const usize,
@@ -588,8 +590,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	post_row_count: usize,
 	post_row_numbers_ptr: *const u64,
 	post_row_numbers_len: usize,
-	times_ptr: *const i64,
-	times_len: usize,
+	post_times_ptr: *const i64,
+	post_times_len: usize,
 ) -> i32 {
 	let Some(registry) = current_registry() else {
 		return EXTERN_C_ERROR_INTERNAL;
@@ -623,8 +625,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		pre_row_count,
 		pre_row_numbers_ptr,
 		pre_row_numbers_len,
-		times_ptr,
-		times_len,
+		pre_times_ptr,
+		pre_times_len,
 		now,
 	) {
 		Ok(c) => c,
@@ -641,8 +643,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		post_row_count,
 		post_row_numbers_ptr,
 		post_row_numbers_len,
-		times_ptr,
-		times_len,
+		post_times_ptr,
+		post_times_len,
 		now,
 	) {
 		Ok(c) => c,
@@ -1125,6 +1127,8 @@ mod tests {
 					pre_rows.len(),
 					pre_rows.as_ptr(),
 					pre_rows.len(),
+					times.as_ptr(),
+					times.len(),
 					&post,
 					&name,
 					&len,

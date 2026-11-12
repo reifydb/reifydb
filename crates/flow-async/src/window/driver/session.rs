@@ -743,7 +743,13 @@ where
 
 	let mut emits = WindowEmits::default();
 	for (r, (pre_span, now_span)) in results.into_iter().zip(spans) {
-		let Some(time) = now_span.start.as_time() else {
+		let Some(pre_time) = pre_span.start.as_time() else {
+			return internal_err!(
+				"session of group {:?} was published at a coordinate with no time",
+				r.group
+			);
+		};
+		let Some(post_time) = now_span.start.as_time() else {
 			return internal_err!("session of group {:?} starts at a coordinate with no time", r.group);
 		};
 		let pre = r.prior.as_ref().and_then(|prior| hooks.build(&r.group, pre_span, prior));
@@ -751,7 +757,7 @@ where
 			EmitKind::Remove => None,
 			EmitKind::Insert | EmitKind::Update => hooks.build(&r.group, now_span, &r.value),
 		};
-		publish(&mut emits, r.row_number, time, pre, post);
+		publish(&mut emits, r.row_number, pre_time, post_time, pre, post);
 	}
 	hooks.emit(emits)
 }

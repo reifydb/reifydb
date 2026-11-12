@@ -8,14 +8,15 @@ use crate::window::driver::hooks::WindowEmits;
 pub fn publish<Row>(
 	emits: &mut WindowEmits<Row>,
 	row_number: RowNumber,
-	time: DateTime,
+	pre_time: DateTime,
+	post_time: DateTime,
 	pre: Option<Row>,
 	post: Option<Row>,
 ) {
 	match (pre, post) {
-		(None, Some(post)) => emits.inserts.push((row_number, time, post)),
-		(Some(pre), Some(post)) => emits.updates.push((row_number, time, pre, post)),
-		(Some(pre), None) => emits.removes.push((row_number, time, pre)),
+		(None, Some(post)) => emits.inserts.push((row_number, post_time, post)),
+		(Some(pre), Some(post)) => emits.updates.push((row_number, pre_time, post_time, pre, post)),
+		(Some(pre), None) => emits.removes.push((row_number, pre_time, pre)),
 		(None, None) => {}
 	}
 }

@@ -166,7 +166,7 @@ where
 			EmitKind::Remove => None,
 			EmitKind::Insert | EmitKind::Update => hooks.build(&r.group, r.span, &r.value),
 		};
-		publish(&mut emits, r.row_number, time, pre, post);
+		publish(&mut emits, r.row_number, time, time, pre, post);
 	}
 	hooks.emit(emits)
 }

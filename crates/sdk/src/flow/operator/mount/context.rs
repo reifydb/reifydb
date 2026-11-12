@@ -133,9 +133,9 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 	fn post(&mut self) -> &mut InProcessRowSink {
 		&mut self.post
 	}
-	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
-		let pre_columns = self.pre.finish(row_numbers.to_vec(), times)?;
-		let post_columns = self.post.finish(row_numbers.to_vec(), times)?;
+	fn finish(self, row_numbers: &[RowNumber], pre_times: &[DateTime], post_times: &[DateTime]) -> SdkResult<()> {
+		let pre_columns = self.pre.finish(row_numbers.to_vec(), pre_times)?;
+		let post_columns = self.post.finish(row_numbers.to_vec(), post_times)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
 		Ok(())
 	}

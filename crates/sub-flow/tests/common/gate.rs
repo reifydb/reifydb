@@ -125,12 +125,8 @@ impl UnmanagedOperator for GatedPassThrough {
 				DiffType::Update => {
 					let (pre, numbers) = key_values(&diff.pre().expect("an update has a pre"))?;
 					let (post, _) = key_values(&diff.post().expect("an update has a post"))?;
-					ctx.emit_update(
-						&pre,
-						&post,
-						&numbers,
-						&vec![ctx.batch_time(); (&numbers).len()],
-					)?;
+					let times = vec![ctx.batch_time(); (&numbers).len()];
+					ctx.emit_update(&pre, &post, &numbers, &times, &times)?;
 				}
 				DiffType::Remove => {
 					let (rows, numbers) = key_values(&diff.pre().expect("a remove has a pre"))?;
@@ -238,7 +234,7 @@ impl UnmanagedOperator for GatedPassThroughTimed {
 						key_value_times(&diff.pre().expect("an update has a pre"))?;
 					let (post, _, times) =
 						key_value_times(&diff.post().expect("an update has a post"))?;
-					ctx.emit_update(&pre, &post, &numbers, &times)?;
+					ctx.emit_update(&pre, &post, &numbers, &times, &times)?;
 				}
 				DiffType::Remove => {
 					let (rows, numbers, times) =

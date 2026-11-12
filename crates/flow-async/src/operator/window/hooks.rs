@@ -101,8 +101,11 @@ impl WindowHooks for BuiltinHooks<'_> {
 			inserts.push(self.emit_row(row_number, time, row)?);
 		}
 		let mut updates = Vec::with_capacity(emits.updates.len());
-		for (row_number, time, pre, post) in emits.updates {
-			updates.push((self.emit_row(row_number, time, pre)?, self.emit_row(row_number, time, post)?));
+		for (row_number, pre_time, post_time, pre, post) in emits.updates {
+			updates.push((
+				self.emit_row(row_number, pre_time, pre)?,
+				self.emit_row(row_number, post_time, post)?,
+			));
 		}
 		let mut removes = Vec::with_capacity(emits.removes.len());
 		for (row_number, time, row) in emits.removes {

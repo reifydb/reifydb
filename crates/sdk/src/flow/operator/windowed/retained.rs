@@ -286,7 +286,9 @@ where
 		for r in results {
 			match (r.value, r.prior) {
 				(Some(out), None) => emitted.0.push((r.row_number, r.first_time, out)),
-				(Some(out), Some(pre)) => emitted.1.push((r.row_number, r.first_time, Some(pre), out)),
+				(Some(out), Some(pre)) => {
+					emitted.1.push((r.row_number, r.first_time, r.first_time, Some(pre), out))
+				}
 				(None, Some(pre)) => emitted.2.push((r.row_number, r.first_time, pre)),
 				(None, None) => {}
 			}
@@ -306,12 +308,14 @@ where
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
+		let pre_times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
+		let post_times: Vec<DateTime> = updates.iter().map(|(_, _, time, ..)| *time).collect();
 		ctx.emit_update(
 			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
-			&times,
+			&pre_times,
+			&post_times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();

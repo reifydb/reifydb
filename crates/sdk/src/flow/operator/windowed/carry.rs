@@ -172,6 +172,7 @@ where
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
 			&times,
+			&times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();

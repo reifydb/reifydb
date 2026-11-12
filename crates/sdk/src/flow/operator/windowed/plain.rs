@@ -111,6 +111,7 @@ where
 				(Some(prior), Some(post)) => emitted.1.push((
 					RowNumber(post.row_number),
 					post.first_time,
+					post.first_time,
 					Some(prior.last_value),
 					post.last_value,
 				)),
@@ -180,7 +181,7 @@ where
 		emitted.1 = emits
 			.updates
 			.into_iter()
-			.map(|(number, time, pre, post)| (number, time, Some(pre), post))
+			.map(|(number, pre_time, post_time, pre, post)| (number, pre_time, post_time, Some(pre), post))
 			.collect();
 		emitted.2 = emits.removes;
 		Ok(emitted)
@@ -211,7 +212,7 @@ where
 		emitted.1 = emits
 			.updates
 			.into_iter()
-			.map(|(number, time, pre, post)| (number, time, Some(pre), post))
+			.map(|(number, pre_time, post_time, pre, post)| (number, pre_time, post_time, Some(pre), post))
 			.collect();
 		emitted.2 = emits.removes;
 		Ok(emitted)
@@ -229,12 +230,14 @@ where
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
 		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
-		let times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
+		let pre_times: Vec<DateTime> = updates.iter().map(|(_, time, ..)| *time).collect();
+		let post_times: Vec<DateTime> = updates.iter().map(|(_, _, time, ..)| *time).collect();
 		ctx.emit_update(
 			updates.iter().map(|(.., pre, post)| pre.as_ref().unwrap_or(post)),
 			updates.iter().map(|(.., post)| post),
 			&row_numbers,
-			&times,
+			&pre_times,
+			&post_times,
 		)?;
 		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = removes.iter().map(|(_, time, _)| *time).collect();
