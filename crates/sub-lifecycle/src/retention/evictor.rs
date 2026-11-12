@@ -1991,7 +1991,8 @@ mod tests {
 
 	#[test]
 	fn a_view_group_member_registers_its_own_persistent_flag() {
-		// Without this a member's `persistent: false` could be dropped on the way to the catalog and its rows would silently hit disk.
+		// Without this a member's `persistent: false` could be dropped on the way to the catalog and its rows
+		// would silently hit disk.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::events { id: int4, ts: datetime } with { time: event(ts) }");

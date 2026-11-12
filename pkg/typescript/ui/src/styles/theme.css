@@ -20,6 +20,7 @@
   --color-accent-pink: #eb4fc0;
   --color-accent-yellow: #fafd6f;
   --color-accent-sky: #a9e5f2;
+  --color-accent-ink: #4b52d6;
   --color-core: #262a8f;
 
   --color-state-insert: var(--color-accent-yellow);
@@ -35,6 +36,7 @@
   --color-border-light: #1b18401f;
   --color-border-subtle: #1b184033;
   --color-border-ghost: rgba(126, 133, 242, 0.3);
+  --color-rule: #e3e5f4;
   --color-grid: #eceefb;
 
   /* Form inputs - fields blend into the page */

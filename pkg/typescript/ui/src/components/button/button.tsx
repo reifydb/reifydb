@@ -7,7 +7,7 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "forest" | "danger" | "
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary: "bg-[#4b52d6] text-white font-semibold border-[#4b52d6] hover:bg-primary-dark hover:border-primary-dark",
+  primary: "bg-accent-ink text-white font-semibold border-accent-ink hover:bg-primary-dark hover:border-primary-dark",
   secondary: "bg-bg-secondary text-text-primary border-text-primary font-semibold hover:bg-bg-tertiary",
   ghost:
     "text-text-secondary border-transparent hover:bg-bg-tertiary hover:text-text-primary",
