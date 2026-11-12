@@ -41,6 +41,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			set_row_numbers_for_groups: state::host_set_row_numbers_for_groups,
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,
+			rearm_timers: state::host_rearm_timers,
 			flow_watermark: state::host_flow_watermark,
 			reclaim_group_identities: state::host_reclaim_group_identities,
 		},

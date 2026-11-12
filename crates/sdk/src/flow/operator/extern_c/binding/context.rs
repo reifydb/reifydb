@@ -11,7 +11,10 @@ use reifydb_core::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
-	state::{batch::StateBatch, timer::TimerKind},
+	state::{
+		batch::StateBatch,
+		timer::{TimerKind, TimerMove},
+	},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
@@ -37,8 +40,9 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_groups, get_row_numbers,
-					get_row_numbers_for_groups, mint_row_numbers, reclaim_group_identities,
-					remove_row_number, remove_row_number_for_group, set_row_numbers_for_groups,
+					get_row_numbers_for_groups, mint_row_numbers, rearm_timers,
+					reclaim_group_identities, remove_row_number, remove_row_number_for_group,
+					set_row_numbers_for_groups,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -146,6 +150,10 @@ impl ExternCContext {
 
 	pub fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		disarm_timer(self, due, kind, key)
+	}
+
+	pub fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		rearm_timers(self, kind, moves)
 	}
 
 	pub fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
@@ -366,6 +374,9 @@ impl GuestEmitContext for ExternCContext {
 	}
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		ExternCContext::disarm_timer(self, due, kind, key)
+	}
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		ExternCContext::rearm_timers(self, kind, moves)
 	}
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {

@@ -7,7 +7,10 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	key::operator::state::{GroupId, KeyspaceId, KeyspaceMask},
-	state::{batch::StateBatch, timer::TimerKind},
+	state::{
+		batch::StateBatch,
+		timer::{TimerKind, TimerMove},
+	},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::{
@@ -33,6 +36,7 @@ use crate::{
 				state::{
 					EXTERN_C_BATCH_OP_NONE, EXTERN_C_BATCH_OP_REMOVE, EXTERN_C_BATCH_OP_SET,
 					ExternCBatchSlot, ExternCGroupId, ExternCStateEntry, ExternCStateSlice,
+					ExternCTimerMove,
 				},
 			},
 		},
@@ -489,6 +493,46 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind
 		);
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!("host_arm_timer failed with code {}", result)));
+		}
+	}
+
+	Ok(())
+}
+
+pub(crate) fn rearm_timers(ctx: &mut ExternCContext, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+	if moves.is_empty() {
+		return Ok(());
+	}
+	let wire: Vec<ExternCTimerMove> = moves
+		.iter()
+		.map(|timer| {
+			let bytes = timer.key.as_bytes();
+			ExternCTimerMove {
+				key: ExternCKeyRef {
+					ptr: bytes.as_ptr(),
+					len: bytes.len(),
+				},
+				before: timer.before.map_or(0, |before| before.to_order()),
+				before_present: u8::from(timer.before.is_some()),
+				after: timer.after.map_or(0, |after| after.to_order()),
+				after_present: u8::from(timer.after.is_some()),
+			}
+		})
+		.collect();
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; wire holds exactly moves.len() entries whose keys borrow moves, and both
+	// outlive the callback, which only reads them.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.rearm_timers)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			kind as u8,
+			wire.as_ptr(),
+			wire.len(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_rearm_timers failed with code {}", result)));
 		}
 	}
 

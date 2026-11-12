@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 	state::{
 		batch::StateBatch,
-		timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
+		timer::{GroupSweep, StateStore, TimerKind, TimerMove, TimerStore, sweep_order},
 	},
 };
 use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -49,6 +49,14 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.0.disarm_timer(due, kind, key)?;
+		Ok(())
+	}
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		if moves.is_empty() {
+			return Ok(());
+		}
+		self.0.rearm_timers(kind, moves)?;
 		Ok(())
 	}
 

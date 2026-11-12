@@ -6,7 +6,7 @@ use crate::{
 	flow::operator::extern_c::wire::{
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
-		state::{ExternCBatchSlot, ExternCGroupId, ExternCStateEntry},
+		state::{ExternCBatchSlot, ExternCGroupId, ExternCStateEntry, ExternCTimerMove},
 	},
 };
 
@@ -166,6 +166,14 @@ pub struct StateCallbacks {
 		kind: u8,
 		key: *const u8,
 		key_len: usize,
+	) -> i32,
+
+	pub rearm_timers: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		kind: u8,
+		moves: *const ExternCTimerMove,
+		moves_len: usize,
 	) -> i32,
 
 	pub flow_watermark: extern "C" fn(

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use crate::common::extern_c::wire::key_ref::ExternCKeyRef;
+
 pub const EXTERN_C_GROUP_WIDTH: usize = 24;
 
 #[repr(C)]
@@ -46,4 +48,14 @@ pub struct ExternCStateUsage {
 	pub row_number_bytes: u64,
 	pub memory_present: u8,
 	pub row_number_cache_present: u8,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ExternCTimerMove {
+	pub key: ExternCKeyRef,
+	pub before: u64,
+	pub before_present: u8,
+	pub after: u64,
+	pub after_present: u8,
 }

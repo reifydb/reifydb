@@ -12,7 +12,10 @@ use reifydb_core::{
 	common::OperatorClass,
 	delta::RemoveVisibility,
 	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, guest_may_address},
-	state::{batch::StateBatch, timer::TimerKind},
+	state::{
+		batch::StateBatch,
+		timer::{TimerKind, TimerMove},
+	},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -28,7 +31,7 @@ use reifydb_sdk::{
 		iterators::ExternCStateIterator,
 		state::{
 			EXTERN_C_BATCH_OP_NONE, EXTERN_C_BATCH_OP_REMOVE, EXTERN_C_BATCH_OP_SET, ExternCBatchSlot,
-			ExternCGroupId, ExternCStateEntry, ExternCStateSlice,
+			ExternCGroupId, ExternCStateEntry, ExternCStateSlice, ExternCTimerMove,
 		},
 	},
 };
@@ -859,6 +862,56 @@ pub(super) extern "C" fn host_arm_timer(
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
 		match host.arm_timer(DateTime::from_order(due_bits), kind, &key) {
+			Ok(()) => EXTERN_C_OK,
+			Err(err) => stash_failure(&*ctx, err),
+		}
+	}
+}
+
+pub(super) extern "C" fn host_rearm_timers(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	kind: u8,
+	moves: *const ExternCTimerMove,
+	moves_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if moves_len > 0 && moves.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	let Some(kind) = TimerKind::from_u8(kind).filter(|kind| *kind != TimerKind::Reclaim) else {
+		return EXTERN_C_ERROR_INTERNAL;
+	};
+
+	// SAFETY: `ctx` is null-checked above, as is `moves` whenever `moves_len` is non-zero; the guest must
+	// pass back the ExternCContextRaw the host handed it for this call (discharging get_host_mut), `moves`
+	// valid and aligned for `moves_len` reads, and each key valid for reads of its `len` bytes, which a
+	// zero-length key never touches and a null pointer with a non-zero length is refused before reading.
+	unsafe {
+		let wire = if moves_len == 0 {
+			&[][..]
+		} else {
+			from_raw_parts(moves, moves_len)
+		};
+		let mut timers = Vec::with_capacity(wire.len());
+		for timer in wire {
+			let key = if timer.key.len == 0 {
+				EncodedKey::new(Vec::new())
+			} else if timer.key.ptr.is_null() {
+				return EXTERN_C_ERROR_NULL_PTR;
+			} else {
+				EncodedKey::new(from_raw_parts(timer.key.ptr, timer.key.len))
+			};
+			timers.push(TimerMove {
+				key,
+				before: (timer.before_present != 0).then(|| DateTime::from_order(timer.before)),
+				after: (timer.after_present != 0).then(|| DateTime::from_order(timer.after)),
+			});
+		}
+		let host = get_host_mut(&mut *ctx);
+		match host.rearm_timers(kind, &timers) {
 			Ok(()) => EXTERN_C_OK,
 			Err(err) => stash_failure(&*ctx, err),
 		}

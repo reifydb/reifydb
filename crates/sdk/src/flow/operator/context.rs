@@ -15,7 +15,10 @@ use reifydb_core::{
 		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey, guest_may_address,
 		is_class_framed_inner,
 	},
-	state::{batch::StateBatch, timer::TimerKind},
+	state::{
+		batch::StateBatch,
+		timer::{TimerKind, TimerMove},
+	},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
@@ -315,6 +318,7 @@ pub trait GuestEmitContext {
 	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
 	fn dictionary_find(
 		&mut self,

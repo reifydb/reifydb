@@ -12,7 +12,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
-	state::{batch::StateBatch, timer::TimerKind},
+	state::{
+		batch::StateBatch,
+		timer::{TimerKind, TimerMove},
+	},
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_value::{
@@ -321,6 +324,12 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).disarm_timer(due, kind, key) }.map_err(to_sdk_err)
+	}
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> SdkResult<()> {
+		reject_reserved_kind(kind)?;
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).rearm_timers(kind, moves) }.map_err(to_sdk_err)
 	}
 
 	fn flow_watermark(&mut self) -> SdkResult<Option<DateTime>> {
