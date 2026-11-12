@@ -639,7 +639,7 @@ fn digest_measures(
 					metric
 				));
 			};
-			measures.push(level_duration(metric, value));
+			measures.push(level_duration(metric, value.min(p100)));
 		}
 		measures.push(level_duration(p100_metric, p100));
 	}
@@ -653,7 +653,7 @@ fn digest_measures(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator::state::KeyspaceId;
+	use reifydb_core::{key::operator::state::KeyspaceId, marker::LATENCY_DIGEST_ACCURACY_PPM};
 	use reifydb_store::tier::range::RangeMetrics;
 
 	use super::*;
@@ -768,5 +768,40 @@ mod tests {
 		assert!(!smaps_due(Some(start), at(interval - 1)));
 		assert!(smaps_due(Some(start), at(interval)));
 		assert!(smaps_due(Some(start), at(interval + 10)));
+	}
+
+	#[test]
+	fn a_digest_percentile_never_reads_above_the_exact_p100() {
+		// with nine samples p90 lands on the largest one, which the digest returns as its bucket middle, above the exact max.
+		// mutation: dropping the clamp to p100 in digest_measures makes p90 read 54.33ms against a p100 of 54.13ms.
+		let samples_ms = [3.1, 5.4, 9.8, 12.6, 13.0, 18.2, 27.5, 41.0, 54.133166];
+		let mut digest = Digest::new(ValueType::Duration, LATENCY_DIGEST_ACCURACY_PPM).unwrap();
+		for ms in samples_ms {
+			digest.add_value(&Value::Duration(Duration::from_nanoseconds((ms * 1e6) as i64).unwrap())).unwrap();
+		}
+		let p100 = Duration::from_nanoseconds(54_133_166).unwrap();
+		let Value::Duration(raw_p90) = digest.percentile_value(0.9).unwrap() else {
+			panic!("a duration digest must read back a duration");
+		};
+		assert!(raw_p90 > p100, "the case needs a digest p90 above the exact max, got {raw_p90:?} vs {p100:?}");
+
+		let measures = latency_measures(ViewLatency {
+			view: ViewId(1),
+			n: samples_ms.len() as u64,
+			p100,
+			end_to_end: digest.clone(),
+			hop_p100: p100,
+			hop: digest,
+		})
+		.unwrap();
+		let read = |metric: &str| match measures.iter().find(|m| m.metric == metric).map(|m| &m.reading) {
+			Some(Reading::Duration(d)) => *d,
+			other => panic!("{metric} must be a duration measure, got {other:?}"),
+		};
+		for [p50, p90, top] in [["p50", "p90", "p100"], ["hop_p50", "hop_p90", "hop_p100"]] {
+			assert!(read(p50) <= read(p90), "{p50} must not exceed {p90}");
+			assert!(read(p90) <= read(top), "{p90} must not exceed the exact {top}");
+			assert_eq!(read(p90), p100, "{p90} on the largest sample must read the exact max, not its bucket middle");
+		}
 	}
 }
