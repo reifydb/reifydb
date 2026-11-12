@@ -1165,7 +1165,8 @@ mod tests {
 	};
 
 	use super::{
-		EmitKind, PaneEngine, PaneEvents, PaneGroups, PaneSpans, RollingEmit, RollingPane, pane_of, pane_range,
+		EmitKind, PaneEngine, PaneEvents, PaneGroups, PaneOp, PaneSpans, RollingEmit, RollingPane, pane_of,
+		pane_range,
 	};
 	use crate::{
 		operator::state::mock::MockStore,
@@ -1839,5 +1840,48 @@ mod tests {
 		numbered.sort();
 		let by_number: Vec<u32> = numbered.into_iter().map(|(_, group)| group).collect();
 		assert_eq!(by_number, vec![2, 1], "group 2 arrived first, so it must hold the lower row number");
+	}
+
+	#[test]
+	fn an_update_pre_without_its_adjacent_post_fails_loud() {
+		// Without the pair check, a lone pre retracts a value with nothing added and a lone post adds one with
+		// nothing retracted.
+		let paired = "must be an update pre followed right away by its update post";
+		let broken: [(&[PaneOp], &str); 3] = [
+			(&[PaneOp::UpdatePre], "has no update post"),
+			(&[PaneOp::UpdatePost], paired),
+			(&[PaneOp::UpdatePre, PaneOp::Insert], paired),
+		];
+		for (ops, expected) in broken {
+			let mut engine = tally_engine();
+			let mut store = MockStore::default();
+			let mut events = PaneEvents::default();
+			for op in ops {
+				events.push(*op, ms(1_000), 1, (1_000, 5));
+			}
+			let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
+			groups.insert(1, (GroupId::hashed(Hash128(1)), events));
+			let applied = engine.apply(
+				&mut store,
+				groups,
+				&[1],
+				None,
+				&Tally::default,
+				&RowPublisher {
+					key: Some(&|_: &u32| Ok(NoKey)),
+					finalize: &|_: &u32, _: DateTimeCoord, t: &Tally| t.finalize(),
+					on_empty: OnEmpty::Remove,
+					empty: &|_| Ok(None),
+				},
+			);
+			let Err(error) = applied else {
+				panic!("{ops:?}: a broken update pair must fail the apply");
+			};
+			let message = format!("{error:?}");
+			assert!(
+				message.contains(expected),
+				"{ops:?}: the apply must fail with {expected:?}, got {message}"
+			);
+		}
 	}
 }
