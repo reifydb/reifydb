@@ -132,13 +132,11 @@ fn flow_latency_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("samples", ValueType::Uint8),
 		series_col("p50", ValueType::Duration),
 		series_col("p90", ValueType::Duration),
-		series_col("p99", ValueType::Duration),
-		series_col("max", ValueType::Duration),
+		series_col("p100", ValueType::Duration),
 		series_col("digest", latency_digest_type()),
 		series_col("hop_p50", ValueType::Duration),
 		series_col("hop_p90", ValueType::Duration),
-		series_col("hop_p99", ValueType::Duration),
-		series_col("hop_max", ValueType::Duration),
+		series_col("hop_p100", ValueType::Duration),
 		series_col("hop_digest", latency_digest_type()),
 	]
 }

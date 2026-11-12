@@ -31,6 +31,5 @@ fn statement_stats_concurrent_record() {
 	assert_eq!(s.calls(), total);
 	assert_eq!(s.total_rows(), total);
 	assert_eq!(s.errors(), 0);
-	assert_eq!(s.min_duration(), Duration::from_micros_infallible(0));
 	assert_eq!(s.max_duration(), Duration::from_micros_infallible(total - 1));
 }

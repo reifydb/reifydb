@@ -203,9 +203,9 @@ fn empty_latency(view: ViewId) -> ViewLatency {
 	ViewLatency {
 		view,
 		n: 0,
-		max: Duration::zero(),
+		p100: Duration::zero(),
 		end_to_end: empty_digest(),
-		hop_max: Duration::zero(),
+		hop_p100: Duration::zero(),
 		hop: empty_digest(),
 	}
 }
@@ -222,11 +222,11 @@ fn record_samples(tally: &mut ViewLatency, lags: impl Iterator<Item = StdDuratio
 		let lag = Duration::from_std(lag);
 		add_sample(&mut tally.end_to_end, lag);
 		tally.n += 1;
-		tally.max = tally.max.max(lag);
+		tally.p100 = tally.p100.max(lag);
 	}
 	let hop = Duration::from_std(hop);
 	add_sample(&mut tally.hop, hop);
-	tally.hop_max = tally.hop_max.max(hop);
+	tally.hop_p100 = tally.hop_p100.max(hop);
 }
 
 fn add_sample(digest: &mut Digest, sample: Duration) {

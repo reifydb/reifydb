@@ -305,7 +305,7 @@ mod tests {
 		let registry = MetricsRegistry::new();
 		instruments.register_into(&registry);
 		let samples = registry.read_reporters();
-		assert_eq!(samples.len(), ALL_CATEGORIES.len() * 6 + 3);
+		assert_eq!(samples.len(), ALL_CATEGORIES.len() * 5 + 3);
 	}
 
 	#[test]

@@ -126,7 +126,6 @@ fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("p90", ValueType::Duration),
 		series_col("p95", ValueType::Duration),
 		series_col("p98", ValueType::Duration),
-		series_col("p99", ValueType::Duration),
 		series_col("p100", ValueType::Duration),
 		series_col("input_rows", ValueType::Uint8),
 		series_col("output_rows", ValueType::Uint8),

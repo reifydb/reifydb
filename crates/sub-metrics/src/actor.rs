@@ -455,7 +455,6 @@ fn statement_metrics_batch(
 		factory::duration("total", snapshot.iter().map(|(_, aggregate)| aggregate.total_duration())),
 		factory::duration("mean", snapshot.iter().map(|(_, aggregate)| aggregate.mean_duration())),
 		factory::duration("max", snapshot.iter().map(|(_, aggregate)| aggregate.max_duration())),
-		factory::duration("min", snapshot.iter().map(|(_, aggregate)| aggregate.min_duration())),
 		factory::uint8("total_rows", snapshot.iter().map(|(_, aggregate)| aggregate.total_rows())),
 		factory::uint8("errors", snapshot.iter().map(|(_, aggregate)| aggregate.errors())),
 	])

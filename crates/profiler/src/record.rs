@@ -145,7 +145,7 @@ mod tests {
 		assert_eq!(agg.histogram.total_count(), 3);
 		let p = agg.histogram.percentiles();
 		assert!(p.p50 <= p.p90, "p50 should not exceed p90");
-		assert!(p.p90 <= p.p99, "p90 should not exceed p99");
+		assert!(p.p90 <= p.p100, "p90 should not exceed p100");
 	}
 
 	#[test]

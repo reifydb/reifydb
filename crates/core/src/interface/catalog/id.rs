@@ -31,7 +31,6 @@ impl ColumnId {
 	pub const STATEMENT_STATS_TOTAL_DURATION: ColumnId = ColumnId(13);
 	pub const STATEMENT_STATS_MEAN_DURATION: ColumnId = ColumnId(14);
 	pub const STATEMENT_STATS_MAX_DURATION: ColumnId = ColumnId(15);
-	pub const STATEMENT_STATS_MIN_DURATION: ColumnId = ColumnId(16);
 	pub const STATEMENT_STATS_TOTAL_ROWS: ColumnId = ColumnId(17);
 	pub const STATEMENT_STATS_ERRORS: ColumnId = ColumnId(18);
 
@@ -71,7 +70,6 @@ impl ColumnId {
 	pub const PROFILER_SPANS_SNAPSHOTS_P90: ColumnId = ColumnId(1058);
 	pub const PROFILER_SPANS_SNAPSHOTS_P95: ColumnId = ColumnId(1059);
 	pub const PROFILER_SPANS_SNAPSHOTS_P98: ColumnId = ColumnId(1060);
-	pub const PROFILER_SPANS_SNAPSHOTS_P99: ColumnId = ColumnId(1061);
 	pub const PROFILER_SPANS_SNAPSHOTS_P100: ColumnId = ColumnId(1062);
 	pub const PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS: ColumnId = ColumnId(1063);
 	pub const PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS: ColumnId = ColumnId(1064);
@@ -125,13 +123,11 @@ impl ColumnId {
 	pub const FLOW_LATENCY_SNAPSHOTS_N: ColumnId = ColumnId(1148);
 	pub const FLOW_LATENCY_SNAPSHOTS_P50: ColumnId = ColumnId(1149);
 	pub const FLOW_LATENCY_SNAPSHOTS_P90: ColumnId = ColumnId(1150);
-	pub const FLOW_LATENCY_SNAPSHOTS_P99: ColumnId = ColumnId(1151);
-	pub const FLOW_LATENCY_SNAPSHOTS_MAX: ColumnId = ColumnId(1152);
+	pub const FLOW_LATENCY_SNAPSHOTS_P100: ColumnId = ColumnId(1152);
 	pub const FLOW_LATENCY_SNAPSHOTS_DIGEST: ColumnId = ColumnId(1153);
 	pub const FLOW_LATENCY_SNAPSHOTS_HOP_P50: ColumnId = ColumnId(1154);
 	pub const FLOW_LATENCY_SNAPSHOTS_HOP_P90: ColumnId = ColumnId(1155);
-	pub const FLOW_LATENCY_SNAPSHOTS_HOP_P99: ColumnId = ColumnId(1156);
-	pub const FLOW_LATENCY_SNAPSHOTS_HOP_MAX: ColumnId = ColumnId(1157);
+	pub const FLOW_LATENCY_SNAPSHOTS_HOP_P100: ColumnId = ColumnId(1157);
 	pub const FLOW_LATENCY_SNAPSHOTS_HOP_DIGEST: ColumnId = ColumnId(1158);
 
 	pub const RUNTIME_MEMORY_SNAPSHOTS_COLUMNS: [ColumnId; 6] = [
@@ -170,7 +166,7 @@ impl ColumnId {
 		Self::INSTRUMENTS_SNAPSHOTS_KIND,
 	];
 
-	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 17] = [
+	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 16] = [
 		Self::PROFILER_SPANS_SNAPSHOTS_TS,
 		Self::PROFILER_SPANS_SNAPSHOTS_CATEGORY,
 		Self::PROFILER_SPANS_SNAPSHOTS_SPAN_NAME,
@@ -183,7 +179,6 @@ impl ColumnId {
 		Self::PROFILER_SPANS_SNAPSHOTS_P90,
 		Self::PROFILER_SPANS_SNAPSHOTS_P95,
 		Self::PROFILER_SPANS_SNAPSHOTS_P98,
-		Self::PROFILER_SPANS_SNAPSHOTS_P99,
 		Self::PROFILER_SPANS_SNAPSHOTS_P100,
 		Self::PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS,
 		Self::PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS,
@@ -233,20 +228,18 @@ impl ColumnId {
 	pub const SOURCE_COMPLETENESS_COLUMNS: [ColumnId; 2] =
 		[Self::SOURCE_COMPLETENESS_OBJECT_ID, Self::SOURCE_COMPLETENESS_COMPLETE_THROUGH];
 
-	pub const FLOW_LATENCY_SNAPSHOTS_COLUMNS: [ColumnId; 14] = [
+	pub const FLOW_LATENCY_SNAPSHOTS_COLUMNS: [ColumnId; 12] = [
 		Self::FLOW_LATENCY_SNAPSHOTS_TS,
 		Self::FLOW_LATENCY_SNAPSHOTS_VIEW,
 		Self::FLOW_LATENCY_SNAPSHOTS_NAME,
 		Self::FLOW_LATENCY_SNAPSHOTS_N,
 		Self::FLOW_LATENCY_SNAPSHOTS_P50,
 		Self::FLOW_LATENCY_SNAPSHOTS_P90,
-		Self::FLOW_LATENCY_SNAPSHOTS_P99,
-		Self::FLOW_LATENCY_SNAPSHOTS_MAX,
+		Self::FLOW_LATENCY_SNAPSHOTS_P100,
 		Self::FLOW_LATENCY_SNAPSHOTS_DIGEST,
 		Self::FLOW_LATENCY_SNAPSHOTS_HOP_P50,
 		Self::FLOW_LATENCY_SNAPSHOTS_HOP_P90,
-		Self::FLOW_LATENCY_SNAPSHOTS_HOP_P99,
-		Self::FLOW_LATENCY_SNAPSHOTS_HOP_MAX,
+		Self::FLOW_LATENCY_SNAPSHOTS_HOP_P100,
 		Self::FLOW_LATENCY_SNAPSHOTS_HOP_DIGEST,
 	];
 
@@ -2085,7 +2078,7 @@ const RESERVED_SOURCE_IDS: [u64; 13] = [
 	TableId::SOURCE_COMPLETENESS.0,
 ];
 
-const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
+const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 17] = [
 	ColumnId::REQUEST_HISTORY_TIMESTAMP,
 	ColumnId::REQUEST_HISTORY_OPERATION,
 	ColumnId::REQUEST_HISTORY_FINGERPRINT,
@@ -2101,7 +2094,6 @@ const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
 	ColumnId::STATEMENT_STATS_TOTAL_DURATION,
 	ColumnId::STATEMENT_STATS_MEAN_DURATION,
 	ColumnId::STATEMENT_STATS_MAX_DURATION,
-	ColumnId::STATEMENT_STATS_MIN_DURATION,
 	ColumnId::STATEMENT_STATS_TOTAL_ROWS,
 	ColumnId::STATEMENT_STATS_ERRORS,
 ];
@@ -2275,7 +2267,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 17 + 7 + 10 + 14, "expected exactly 72 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 16 + 7 + 10 + 14, "expected exactly 71 reserved system column ids");
 	}
 
 	#[test]
@@ -2286,7 +2278,7 @@ mod reserved_id_tests {
 		for array in &arrays[..4] {
 			assert_eq!(array.len(), 6, "long-format snapshot series must declare 6 column ids");
 		}
-		assert_eq!(arrays[4].len(), 17, "spans snapshot series must declare 17 column ids");
+		assert_eq!(arrays[4].len(), 16, "spans snapshot series must declare 16 column ids");
 		assert_eq!(arrays[5].len(), 7, "epoch snapshot series must declare 7 column ids");
 		assert_eq!(arrays[6].len(), 10, "lifecycle snapshot series must declare 10 column ids");
 		assert_eq!(arrays[7].len(), 14, "storage snapshot series must declare 14 column ids");

@@ -47,9 +47,9 @@ pub trait LatencyReader: Send + Sync + 'static {
 pub struct ViewLatency {
 	pub view: ViewId,
 	pub n: u64,
-	pub max: Duration,
+	pub p100: Duration,
 	pub end_to_end: Digest,
-	pub hop_max: Duration,
+	pub hop_p100: Duration,
 	pub hop: Digest,
 }
 

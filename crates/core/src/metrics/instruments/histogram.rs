@@ -47,7 +47,6 @@ pub struct Percentiles {
 	pub p96: f64,
 	pub p97: f64,
 	pub p98: f64,
-	pub p99: f64,
 	pub p100: f64,
 }
 
@@ -146,7 +145,6 @@ impl Histogram {
 		out.push(MetricsSample::cumulative(self.name, "sum", self.kind.reading(self.sum())));
 		out.push(MetricsSample::distribution(self.name, "p50", self.kind.reading(percentiles.p50)));
 		out.push(MetricsSample::distribution(self.name, "p95", self.kind.reading(percentiles.p95)));
-		out.push(MetricsSample::distribution(self.name, "p99", self.kind.reading(percentiles.p99)));
 		out.push(MetricsSample::distribution(self.name, "p100", self.kind.reading(percentiles.p100)));
 	}
 }
@@ -166,7 +164,7 @@ fn raise(slot: &AtomicU64, value: f64) {
 
 const QUANTILES: &[f64] = &[
 	0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90,
-	0.95, 0.96, 0.97, 0.98, 0.99,
+	0.95, 0.96, 0.97, 0.98,
 ];
 
 fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64], max: f64) -> Percentiles {
@@ -176,8 +174,8 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64], max: f64
 
 	let targets: Vec<u64> = QUANTILES.iter().map(|&q| (count as f64 * q).ceil() as u64).collect();
 
-	let mut result = [0.0f64; 23];
-	let mut found = [false; 23];
+	let mut result = [0.0f64; 22];
+	let mut found = [false; 22];
 	let mut cumulative = 0u64;
 
 	for (i, &bucket_count) in buckets.iter().enumerate() {
@@ -219,7 +217,6 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64], max: f64
 		p96: result[19],
 		p97: result[20],
 		p98: result[21],
-		p99: result[22],
 		p100: max,
 	}
 }
@@ -250,7 +247,6 @@ mod tests {
 		// Quantiles resolve to the 20.0 bucket upper bound; p100 is the observed value itself.
 		let p = h.percentiles();
 		assert_eq!(p.p5, 20.0);
-		assert_eq!(p.p99, 20.0);
 		assert_eq!(p.p100, 15.0);
 	}
 
@@ -278,7 +274,7 @@ mod tests {
 		let mut out = Vec::new();
 		h.read_window(&mut out);
 		assert_eq!(out[2].reading.as_f64(), 200.0, "p50 in the overflow bucket must report the window max");
-		assert_eq!(out[4].reading.as_f64(), 200.0, "p99 in the overflow bucket must report the window max");
+		assert_eq!(out[4].reading.as_f64(), 200.0, "p100 in the overflow bucket must report the window max");
 	}
 
 	#[test]
@@ -317,7 +313,6 @@ mod tests {
 		}
 		let p = h.percentiles();
 		assert_eq!(p.p50, 50.0);
-		assert_eq!(p.p99, 99.0);
 		assert_eq!(p.p100, 99.5);
 		assert_eq!(p.p5, 5.0);
 		assert_eq!(p.p95, 95.0);
@@ -332,7 +327,6 @@ mod tests {
 		let p = h.percentiles();
 		assert_eq!(p.p5, 20.0);
 		assert_eq!(p.p50, 20.0);
-		assert_eq!(p.p99, 20.0);
 		assert_eq!(p.p100, 15.0);
 	}
 
@@ -354,16 +348,16 @@ mod tests {
 	}
 
 	#[test]
-	fn read_flattens_to_six_uniform_samples() {
-		// read() is the sole export: six scalars typed by the declared ReadingKind; full
+	fn read_flattens_to_five_uniform_samples() {
+		// read() is the sole export: five scalars typed by the declared ReadingKind; full
 		// quantile detail stays in-process.
 		let h = Histogram::new("profiler.query.duration_us", "h", ReadingKind::Duration, SIMPLE_BOUNDS);
 		h.observe(15.0);
 		let mut out = Vec::new();
 		h.read(&mut out);
-		assert_eq!(out.len(), 6);
+		assert_eq!(out.len(), 5);
 		let metrics: Vec<&str> = out.iter().map(|s| s.metric).collect();
-		assert_eq!(metrics, vec!["count", "sum", "p50", "p95", "p99", "p100"]);
+		assert_eq!(metrics, vec!["count", "sum", "p50", "p95", "p100"]);
 		assert!(out.iter().all(|s| s.scope == "profiler.query.duration_us"));
 		assert_eq!(out[0].reading.as_f64(), 1.0, "count must be the observation count");
 		assert!(

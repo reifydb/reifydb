@@ -34,7 +34,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 	let mut p90 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
 	let mut p95 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
 	let mut p98 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
-	let mut p99 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
 	let mut p100 = ColumnBuilder::with_capacity(ValueType::Duration, capacity);
 	let mut input_rows = ColumnBuilder::with_capacity(ValueType::Uint8, capacity);
 	let mut output_rows = ColumnBuilder::with_capacity(ValueType::Uint8, capacity);
@@ -60,7 +59,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 		p90.push(percentiles.p90);
 		p95.push(percentiles.p95);
 		p98.push(percentiles.p98);
-		p99.push(percentiles.p99);
 		p100.push(percentiles.p100);
 		let extras = record.extras();
 		input_rows.push(extras[0]);
@@ -81,7 +79,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<R
 		p90.finish("p90"),
 		p95.finish("p95"),
 		p98.finish("p98"),
-		p99.finish("p99"),
 		p100.finish("p100"),
 		input_rows.finish("input_rows"),
 		output_rows.finish("output_rows"),

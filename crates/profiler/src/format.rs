@@ -166,7 +166,7 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		let p = r.histogram.percentiles();
 		let _ = writeln!(
 			out,
-			"    {}  total={} self={} calls={} p50={} p75={} p90={} p95={} p99={} p100={}",
+			"    {}  total={} self={} calls={} p50={} p75={} p90={} p95={} p100={}",
 			span_name,
 			fmt_us(r.total_us),
 			fmt_us(r.self_us),
@@ -175,7 +175,6 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 			fmt_us(p.p75 as u64),
 			fmt_us(p.p90 as u64),
 			fmt_us(p.p95 as u64),
-			fmt_us(p.p99 as u64),
 			fmt_us(p.p100 as u64),
 		);
 		return;
@@ -211,7 +210,7 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		let p = r.histogram.percentiles();
 		let _ = write!(
 			out,
-			"      {:<width$}  total={} self={} calls={} p50={} p75={} p90={} p95={} p99={} p100={}",
+			"      {:<width$}  total={} self={} calls={} p50={} p75={} p90={} p95={} p100={}",
 			labels[i],
 			fmt_us(r.total_us),
 			fmt_us(r.self_us),
@@ -220,7 +219,6 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 			fmt_us(p.p75 as u64),
 			fmt_us(p.p90 as u64),
 			fmt_us(p.p95 as u64),
-			fmt_us(p.p99 as u64),
 			fmt_us(p.p100 as u64),
 			width = max_label_width,
 		);

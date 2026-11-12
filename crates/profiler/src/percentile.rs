@@ -94,7 +94,6 @@ impl PercentileHistogram {
 			p90: self.percentile(0.90),
 			p95: self.percentile(0.95),
 			p98: self.percentile(0.98),
-			p99: self.percentile(0.99),
 			p100: self.percentile(1.00),
 		}
 	}
@@ -107,7 +106,6 @@ impl PercentileHistogram {
 			p90: Duration::from_micros_infallible(raw.p90 as u64),
 			p95: Duration::from_micros_infallible(raw.p95 as u64),
 			p98: Duration::from_micros_infallible(raw.p98 as u64),
-			p99: Duration::from_micros_infallible(raw.p99 as u64),
 			p100: Duration::from_micros_infallible(raw.p100 as u64),
 		}
 	}
@@ -120,7 +118,6 @@ pub struct Percentiles {
 	pub p90: u32,
 	pub p95: u32,
 	pub p98: u32,
-	pub p99: u32,
 	pub p100: u32,
 }
 
@@ -131,7 +128,6 @@ pub struct ProfilerPercentiles {
 	pub p90: Duration,
 	pub p95: Duration,
 	pub p98: Duration,
-	pub p99: Duration,
 	pub p100: Duration,
 }
 
@@ -204,8 +200,7 @@ mod tests {
 		assert!(p.p75 <= p.p90);
 		assert!(p.p90 <= p.p95);
 		assert!(p.p95 <= p.p98);
-		assert!(p.p98 <= p.p99);
-		assert!(p.p99 <= p.p100);
+		assert!(p.p98 <= p.p100);
 	}
 
 	#[test]

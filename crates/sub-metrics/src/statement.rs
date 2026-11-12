@@ -10,7 +10,6 @@ pub struct StatementMetricsAggregate {
 	calls: AtomicU64,
 	total_duration: AtomicU64,
 	max_duration: AtomicU64,
-	min_duration: AtomicU64,
 	total_compute: AtomicU64,
 	total_rows: AtomicU64,
 	errors: AtomicU64,
@@ -23,7 +22,6 @@ impl StatementMetricsAggregate {
 			calls: AtomicU64::new(0),
 			total_duration: AtomicU64::new(0),
 			max_duration: AtomicU64::new(0),
-			min_duration: AtomicU64::new(u64::MAX),
 			total_compute: AtomicU64::new(0),
 			total_rows: AtomicU64::new(0),
 			errors: AtomicU64::new(0),
@@ -55,19 +53,6 @@ impl StatementMetricsAggregate {
 				Err(actual) => current = actual,
 			}
 		}
-
-		let mut current = self.min_duration.load(Ordering::Relaxed);
-		while duration_micros < current {
-			match self.min_duration.compare_exchange_weak(
-				current,
-				duration_micros,
-				Ordering::Relaxed,
-				Ordering::Relaxed,
-			) {
-				Ok(_) => break,
-				Err(actual) => current = actual,
-			}
-		}
 	}
 
 	pub fn normalized_rql(&self) -> &str {
@@ -84,10 +69,6 @@ impl StatementMetricsAggregate {
 
 	pub fn max_duration(&self) -> Duration {
 		Duration::from_micros_infallible(self.max_duration.load(Ordering::Relaxed))
-	}
-
-	pub fn min_duration(&self) -> Duration {
-		Duration::from_micros_infallible(self.min_duration.load(Ordering::Relaxed))
 	}
 
 	pub fn total_compute(&self) -> Duration {
@@ -126,7 +107,6 @@ mod tests {
 		assert_eq!(s.calls(), 0);
 		assert_eq!(s.total_duration(), Duration::zero());
 		assert_eq!(s.max_duration(), Duration::zero());
-		assert_eq!(s.min_duration(), micros(u64::MAX));
 		assert_eq!(s.errors(), 0);
 		assert_eq!(s.normalized_rql(), "SELECT 1");
 	}
@@ -140,7 +120,6 @@ mod tests {
 		assert_eq!(s.total_compute(), micros(50));
 		assert_eq!(s.total_rows(), 10);
 		assert_eq!(s.max_duration(), micros(100));
-		assert_eq!(s.min_duration(), micros(100));
 		assert_eq!(s.errors(), 0);
 	}
 
@@ -150,7 +129,6 @@ mod tests {
 		s.record(micros(100), Duration::zero(), 0, true);
 		s.record(micros(50), Duration::zero(), 0, true);
 		s.record(micros(200), Duration::zero(), 0, true);
-		assert_eq!(s.min_duration(), micros(50));
 		assert_eq!(s.max_duration(), micros(200));
 	}
 

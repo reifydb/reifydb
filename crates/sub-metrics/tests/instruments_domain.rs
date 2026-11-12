@@ -21,7 +21,7 @@ fn instruments_current_serves_every_registered_reporter() {
 			.expect("build"),
 	);
 
-	let expected = ALL_CATEGORIES.len() * 6 + 3;
+	let expected = ALL_CATEGORIES.len() * 5 + 3;
 	let all = db.await_row_count("from system::metric::instrument::current", expected, TIMEOUT);
 	assert_eq!(all, expected, "every instrument must appear; a missing one silently vanishes from the surface");
 
@@ -29,7 +29,7 @@ fn instruments_current_serves_every_registered_reporter() {
 		db.row_count(
 			"from system::metric::instrument::current filter { scope == \"profiler.query.duration_us\" }"
 		),
-		6,
-		"one histogram must serve exactly count/sum/p50/p95/p99/max rows",
+		5,
+		"one histogram must serve exactly count/sum/p50/p95/p100 rows",
 	);
 }

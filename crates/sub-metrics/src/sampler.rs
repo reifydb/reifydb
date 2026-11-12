@@ -608,13 +608,13 @@ fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
 
 fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>> {
 	let mut measures = vec![level_count("samples", latency.n)];
-	digest_measures(&mut measures, ["p50", "p90", "p99"], "max", "digest", latency.max, latency.end_to_end)?;
+	digest_measures(&mut measures, ["p50", "p90"], "p100", "digest", latency.p100, latency.end_to_end)?;
 	digest_measures(
 		&mut measures,
-		["hop_p50", "hop_p90", "hop_p99"],
-		"hop_max",
+		["hop_p50", "hop_p90"],
+		"hop_p100",
 		"hop_digest",
-		latency.hop_max,
+		latency.hop_p100,
 		latency.hop,
 	)?;
 	Ok(measures)
@@ -622,14 +622,14 @@ fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>> {
 
 fn digest_measures(
 	measures: &mut Vec<Measure>,
-	percentiles: [&'static str; 3],
-	max_metric: &'static str,
+	percentiles: [&'static str; 2],
+	p100_metric: &'static str,
 	digest_metric: &'static str,
-	max: Duration,
+	p100: Duration,
 	digest: Digest,
 ) -> Result<()> {
 	if digest.count() > 0 {
-		for (metric, p) in percentiles.into_iter().zip([0.5, 0.9, 0.99]) {
+		for (metric, p) in percentiles.into_iter().zip([0.5, 0.9]) {
 			let Value::Duration(value) = digest.percentile_value(p).map_err(|cause| {
 				internal_error!("reading {} of a latency digest: {}", metric, cause)
 			})?
@@ -641,7 +641,7 @@ fn digest_measures(
 			};
 			measures.push(level_duration(metric, value));
 		}
-		measures.push(level_duration(max_metric, max));
+		measures.push(level_duration(p100_metric, p100));
 	}
 	measures.push(Measure {
 		metric: digest_metric,
