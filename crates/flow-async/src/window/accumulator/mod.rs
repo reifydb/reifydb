@@ -281,10 +281,13 @@ impl<A: WindowAccumulator> CountedAccumulator<A> {
 	}
 
 	fn remove_run(&mut self, run: Slice<'_, A>) -> Applied {
-		let cut = run.len().min(usize::try_from(self.live).unwrap_or(usize::MAX));
+		let cut = match self.acc.rows() {
+			Some(_) if self.live > 0 => run.len(),
+			_ => run.len().min(usize::try_from(self.live).unwrap_or(usize::MAX)),
+		};
 		if cut > 0 {
 			self.acc.remove(run.range(0..cut));
-			self.sync(self.live - cut as u64);
+			self.sync(self.live.saturating_sub(cut as u64));
 		}
 		Applied {
 			touched: cut > 0,
