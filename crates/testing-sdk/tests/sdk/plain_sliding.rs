@@ -124,15 +124,15 @@ fn a_late_row_is_dropped_only_from_its_sealed_windows() {
 }
 
 #[test]
-fn a_row_arms_the_seal_timer_for_its_newest_window() {
-	// a timer set for the oldest window fires before the newest seals and leaves its state behind
+fn a_row_arms_the_seal_timer_for_its_earliest_window() {
+	// a timer set for the newest window keeps every older window open past its close
 	let mut h = harness!(SumTumblingOnly, sliding(10, 5, 30)).expect("harness");
 
 	h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 107, 1.0)).build()).expect("apply");
 
 	let seals: Vec<(DateTime, TimerKind)> =
 		h.armed_timers().into_iter().filter(|t| t.key == b"").map(|t| (t.due, t.kind)).collect();
-	assert_eq!(seals, vec![(DateTime::from_millis(146), TimerKind::Seal)]);
+	assert_eq!(seals, vec![(DateTime::from_millis(141), TimerKind::Seal)]);
 }
 
 #[test]
