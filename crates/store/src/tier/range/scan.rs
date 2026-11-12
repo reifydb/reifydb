@@ -1147,7 +1147,7 @@ mod tests {
 		// persistent tier for a span the claim already proved empty, which is both a wasted read and, once
 		// the claim is the only proof, a different answer.
 		let tier = roomy();
-		let top = KeyspaceId::BUFFER;
+		let top = KeyspaceId::EMIT;
 		let bottom = KeyspaceId::ACCUMULATOR;
 		let range = across(top, bottom);
 

@@ -770,14 +770,14 @@ mod tests {
 		// write path pass frees a byte, and every materialize is refused for want of headroom, so
 		// coverage is never re-proven. The reserve pass is the only thing that breaks that cycle.
 		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
-		let hot = key(KeyspaceId::BUFFER, b"b");
+		let hot = key(KeyspaceId::EMIT, b"b");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
 		let hot_rows = vec![(hot.clone(), Entry::row(row("v")))];
 		let total = (cost(&cold_rows) + cost(&hot_rows)) as u64;
 		let tier = tier(total, 1);
 
 		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
-		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
+		seed(&tier, part(KeyspaceId::EMIT), hot_rows.clone());
 		assert_eq!(
 			tier.resident_bytes(),
 			ByteSize::from_bytes(total),
@@ -896,7 +896,7 @@ mod tests {
 	#[test]
 	fn eviction_releases_exactly_the_bytes_the_insert_charged() {
 		// A tally that drifts from the budget wedges the shard over its limit or lets it grow unbounded.
-		let hot = key(KeyspaceId::BUFFER, b"b");
+		let hot = key(KeyspaceId::EMIT, b"b");
 		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("aaaaaaaa")))];
 		let hot_rows = vec![(hot.clone(), Entry::row(row("b")))];
@@ -904,7 +904,7 @@ mod tests {
 		let tier = tier(total as u64 - 1, 1);
 
 		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows.clone());
-		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
+		seed(&tier, part(KeyspaceId::EMIT), hot_rows.clone());
 
 		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total as u64));
 		assert_eq!(tier.tallied_bytes(), tier.resident_bytes());
@@ -926,13 +926,13 @@ mod tests {
 		// eviction and the index then grows without bound. The survivor keeps answering from ram
 		// and only forfeits its proven-absence claim until the next scan re-claims the span.
 		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
-		let hot = key(KeyspaceId::BUFFER, b"b");
+		let hot = key(KeyspaceId::EMIT, b"b");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
 		let hot_rows = vec![(hot.clone(), Entry::row(row("v")))];
 		let tier = tier((cost(&cold_rows) + cost(&hot_rows)) as u64 - 1, 1);
 
 		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
-		seed(&tier, part(KeyspaceId::BUFFER), hot_rows);
+		seed(&tier, part(KeyspaceId::EMIT), hot_rows);
 		assert_eq!(tier.intervals(), 1, "two touching partitions must coalesce into one claim");
 
 		tier.evict_to_capacity(0);

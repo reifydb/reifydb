@@ -1125,10 +1125,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{
-		operator::state::iter::StateIterator,
-		transaction::{deferred::StorageCounts, mock::FlowTxn, scope::scoped_key, substrate::persist},
-	};
+	use crate::transaction::{deferred::StorageCounts, mock::FlowTxn, scope::scoped_key, substrate::persist};
 
 	const RB: StorageId = StorageId::View(ViewId(1));
 	const T0: i64 = 1_000_000_000_000;
@@ -1339,7 +1336,7 @@ mod tests {
 			start,
 			end,
 		};
-		StateIterator::new(txn.range(range.for_operator(op.operator), RangeScope::All, 1024))
+		txn.range(range.for_operator(op.operator), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>>>()
 			.unwrap()
 			.len()

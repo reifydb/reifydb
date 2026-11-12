@@ -86,21 +86,6 @@ impl Moments {
 	pub fn is_empty(&self) -> bool {
 		self.n == 0
 	}
-
-	pub fn mean(&self) -> Option<f64> {
-		(self.n > 0).then(|| self.sum / self.n as f64)
-	}
-
-	pub fn variance_pop(&self) -> Option<f64> {
-		(self.n > 0).then(|| {
-			let mean = self.sum / self.n as f64;
-			(self.sum_sq / self.n as f64 - mean * mean).max(0.0)
-		})
-	}
-
-	pub fn stddev_pop(&self) -> Option<f64> {
-		self.variance_pop().map(f64::sqrt)
-	}
 }
 
 impl HeapSize for Moments {
@@ -170,25 +155,21 @@ mod tests {
 		assert_eq!(m.count(), 0);
 		assert_eq!(m.sum(), 0.0, "fully drained accumulator resets sum to exact zero");
 		assert!(m.is_empty());
-		assert_eq!(m.mean(), None);
-		assert_eq!(m.variance_pop(), None);
 	}
 
 	#[test]
-	fn moments_mean_and_variance() {
+	fn moments_count_and_sum() {
 		let mut m = Moments::default();
 		for x in [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0] {
 			m.add(x);
 		}
 		assert_eq!(m.count(), 8);
-		assert_eq!(m.mean(), Some(5.0));
-		assert_eq!(m.variance_pop(), Some(4.0));
-		assert_eq!(m.stddev_pop(), Some(2.0));
+		assert_eq!(m.sum(), 40.0);
 	}
 
 	#[test]
-	fn moments_variance_is_zero_for_a_lone_survivor_of_large_values() {
-		// sum_sq carries the rounding error of every value ever added, and one observation has no spread.
+	fn moments_lone_survivor_of_large_values_keeps_its_exact_sum() {
+		// Retracting large values must leave exactly the survivor's sum, never residue from the removed ones.
 		let mut m = Moments::default();
 		m.add(1.0e8);
 		m.add(1.0e8 + 1.0);
@@ -197,8 +178,7 @@ mod tests {
 		m.remove(1.0e8 + 2.0);
 
 		assert_eq!(m.count(), 1);
-		assert_eq!(m.variance_pop(), Some(0.0));
-		assert_eq!(m.stddev_pop(), Some(0.0));
+		assert_eq!(m.sum(), 1.0e8);
 	}
 
 	#[test]

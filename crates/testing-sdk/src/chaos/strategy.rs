@@ -6,10 +6,7 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 use rand::{RngExt, rngs::StdRng};
 use reifydb_codec::row::shape::RowShape;
 use reifydb_testing_chaos::operator::event::Row;
-use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
-	value_type::ValueType,
-};
+use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use super::schema::ChaosSchema;
 #[cfg(test)]
@@ -111,10 +108,6 @@ impl ColumnRegistry {
 
 	pub fn set_constraint(&mut self, constraint: RowConstraint) {
 		self.constraint = Some(constraint);
-	}
-
-	pub fn has_sampler(&self, name: &str) -> bool {
-		self.samplers.contains_key(name)
 	}
 
 	pub(crate) fn validate(&self, input_shape: &RowShape) -> Result<(), Vec<String>> {
@@ -235,26 +228,6 @@ pub mod samplers {
 		})
 	}
 
-	pub fn date_range(range: Range<Date>) -> ColumnSampler {
-		let start_days = range.start.to_days_since_epoch();
-		let end_days = range.end.to_days_since_epoch();
-		assert!(start_days < end_days, "date_range start must be < end");
-		Arc::new(move |rng| {
-			let days = rng.random_range(start_days..end_days);
-			Value::date(Date::from_days_since_epoch(days).expect("date_range bounds must be valid"))
-		})
-	}
-
-	pub fn time_range(range: Range<Time>) -> ColumnSampler {
-		let start_nanos = range.start.to_nanos_since_midnight();
-		let end_nanos = range.end.to_nanos_since_midnight();
-		assert!(start_nanos < end_nanos, "time_range start must be < end");
-		Arc::new(move |rng| {
-			let nanos = rng.random_range(start_nanos..end_nanos);
-			Value::time(Time::from_nanos_since_midnight(nanos).expect("time_range bounds must be valid"))
-		})
-	}
-
 	pub fn f64_range(range: Range<f64>) -> ColumnSampler {
 		assert!(range.start.is_finite() && range.end.is_finite(), "f64_range bounds must be finite");
 		assert!(range.start < range.end, "f64_range start must be < end");
@@ -278,10 +251,6 @@ pub mod samplers {
 	pub fn constant(value: Value) -> ColumnSampler {
 		Arc::new(move |_rng| value.clone())
 	}
-
-	pub fn always_none(field_type: ValueType) -> ColumnSampler {
-		Arc::new(move |_rng| Value::none_of(field_type.clone()))
-	}
 }
 
 #[cfg(test)]
@@ -290,6 +259,7 @@ mod tests {
 
 	use rand::SeedableRng;
 	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -501,37 +471,6 @@ mod tests {
 				other => panic!("expected Duration, got {other:?}"),
 			};
 			assert!((0..3_600).contains(&secs), "out of range: {secs}");
-		}
-	}
-
-	#[test]
-	fn samplers_date_range_is_in_bounds() {
-		let s = samplers::date_range(
-			Date::from_days_since_epoch(0).unwrap()..Date::from_days_since_epoch(1_000).unwrap(),
-		);
-		let mut rng = StdRng::seed_from_u64(0);
-		for _ in 0..1000 {
-			let days = match s(&mut rng) {
-				Value::Date(d) => d.to_days_since_epoch(),
-				other => panic!("expected Date, got {other:?}"),
-			};
-			assert!((0..1_000).contains(&days), "out of range: {days}");
-		}
-	}
-
-	#[test]
-	fn samplers_time_range_is_in_bounds() {
-		let range = 0..3_600_000_000_000u64;
-		let time_range = Time::from_nanos_since_midnight(range.start).unwrap()
-			..Time::from_nanos_since_midnight(range.end).unwrap();
-		let s = samplers::time_range(time_range);
-		let mut rng = StdRng::seed_from_u64(0);
-		for _ in 0..1000 {
-			let nanos = match s(&mut rng) {
-				Value::Time(t) => t.to_nanos_since_midnight(),
-				other => panic!("expected Time, got {other:?}"),
-			};
-			assert!(range.contains(&nanos), "out of range: {nanos}");
 		}
 	}
 

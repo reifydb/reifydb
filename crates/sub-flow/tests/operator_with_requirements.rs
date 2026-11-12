@@ -12,7 +12,6 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_flow_async::window::{
-	accumulator::invertible::last_value::LastValue,
 	coord::{DateTimeCoord, U8Coord},
 	settings::WindowSettings,
 	span::WindowSpan,
@@ -34,6 +33,7 @@ use reifydb_sdk::{
 };
 use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::assert::column_values;
+use reifydb_testing_sdk::last_value::LastValue;
 use reifydb_value::{
 	config::ExtensionParams,
 	error::Error as ValueError,

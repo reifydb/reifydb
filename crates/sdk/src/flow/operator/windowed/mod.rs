@@ -167,21 +167,3 @@ pub(crate) fn rolling_output<A: Emit>(
 	let span = WindowSpan::new(end.saturating_sub_span(settings.fixed_size()), end);
 	aggregator.build_output(group, span, &value)
 }
-
-#[cfg(test)]
-mod tests {
-	use reifydb_core::key::operator::state::{GroupId, group_data_of_inner, unmanaged_key};
-
-	#[test]
-	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
-		// A key built without a group must carry ROOT, never another group id, or reclaiming that group frees
-		// it.
-		let key = unmanaged_key(&[]).expect("an empty id fits the keyspace");
-
-		assert_eq!(
-			group_data_of_inner(key.as_ref().as_slice()),
-			Some(GroupId::ROOT),
-			"state addressed without a group must belong to the ROOT group"
-		);
-	}
-}

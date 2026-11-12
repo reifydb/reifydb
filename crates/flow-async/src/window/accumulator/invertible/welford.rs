@@ -39,10 +39,6 @@ impl Welford {
 		self.n
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.n == 0
-	}
-
 	pub fn mean(&self) -> Option<f64> {
 		(self.n > 0).then_some(self.mean)
 	}

@@ -306,10 +306,6 @@ impl WindowStateKey {
 			slot,
 		}
 	}
-
-	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
-		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
-	}
 }
 
 impl HeapSize for WindowStateKey {
@@ -404,7 +400,6 @@ pub fn meta_key_for(group: Hash128) -> MetaKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpiryAnchor {
-	Unindexed,
 	WindowStart,
 	LastEvent,
 }
@@ -412,7 +407,6 @@ pub enum ExpiryAnchor {
 impl ExpiryAnchor {
 	pub fn of(&self, window_start: u64, last_event: Option<u64>) -> Option<u64> {
 		match self {
-			ExpiryAnchor::Unindexed => None,
 			ExpiryAnchor::WindowStart => Some(window_start),
 			ExpiryAnchor::LastEvent => last_event,
 		}

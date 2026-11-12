@@ -8,10 +8,7 @@ use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::{
 	framework::workload::WindowRow,
-	operators::{
-		percentile::{MEDIAN, MEDIAN_NEXT_TO_MIN, median, no_rows},
-		window::immutable_line::ImmutableLine,
-	},
+	operators::percentile::{MEDIAN, MEDIAN_NEXT_TO_MIN, median},
 };
 
 /// How a window's contributions collapse into the value it publishes.
@@ -66,8 +63,6 @@ pub struct GridOracle<G: Grid> {
 	ledger: u64,
 	contributions: Vec<Contribution>,
 	fold: Fold,
-	immutable_ms: Option<u64>,
-	immutable_lines: BTreeMap<(i32, i64), ImmutableLine>,
 }
 
 struct Contribution {
@@ -86,8 +81,6 @@ impl<G: Grid> GridOracle<G> {
 			ledger: 0,
 			contributions: Vec::new(),
 			fold: Fold::Sum,
-			immutable_ms: None,
-			immutable_lines: BTreeMap::new(),
 		}
 	}
 
@@ -95,16 +88,6 @@ impl<G: Grid> GridOracle<G> {
 	/// non-sum sweep opts in here.
 	pub fn with_fold(mut self, fold: Fold) -> Self {
 		self.fold = fold;
-		self
-	}
-
-	pub fn with_immutable(mut self, immutable_ms: u64) -> Self {
-		assert_eq!(
-			self.fold,
-			Fold::PercentileNextToMin,
-			"only a percentile next to a min is modelled under immutable"
-		);
-		self.immutable_ms = Some(immutable_ms);
 		self
 	}
 
@@ -121,16 +104,10 @@ impl<G: Grid> GridOracle<G> {
 	}
 
 	fn folded(&self) -> Vec<Vec<Value>> {
-		let grouped = self.grouped();
-		let frozen = self
-			.immutable_lines
-			.iter()
-			.filter(|(key, line)| line.holds_a_frozen_row() && !grouped.contains_key(*key))
-			.map(|((group, _), _)| vec![Value::Int4(*group), no_rows()]);
-		let mut out: Vec<Vec<Value>> = grouped
+		let mut out: Vec<Vec<Value>> = self
+			.grouped()
 			.iter()
 			.map(|((group, _), values)| vec![Value::Int4(*group), self.fold.apply(values)])
-			.chain(frozen)
 			.collect();
 		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		out
@@ -166,13 +143,6 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 				value,
 				live: true,
 			});
-			if let Some(immutable_ms) = self.immutable_ms {
-				self.immutable_lines.entry((group, window)).or_default().push(
-					coord_ms,
-					row,
-					immutable_ms,
-				);
-			}
 			admitted = true;
 		}
 		admitted
@@ -201,9 +171,6 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 					 is meaningless"
 				);
 				c.live = false;
-				if let Some(line) = self.immutable_lines.get_mut(&(group, window)) {
-					line.remove(coord_ms, row);
-				}
 			}
 		}
 	}
@@ -225,11 +192,4 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 	fn after_drain(&self) -> KeyedMultiset {
 		self.all()
 	}
-}
-
-pub fn render(entries: impl Iterator<Item = ((i32, u64), i64)>) -> Vec<Vec<Value>> {
-	let mut out: Vec<Vec<Value>> =
-		entries.map(|((group, _), total)| vec![Value::Int4(group), Value::Int16(total as i128)]).collect();
-	out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
-	out
 }

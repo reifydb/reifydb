@@ -82,10 +82,6 @@ impl DecayedSum {
 	pub fn count(&self) -> u64 {
 		self.count
 	}
-
-	pub fn is_empty(&self) -> bool {
-		self.count == 0
-	}
 }
 
 impl HeapSize for DecayedSum {
@@ -159,7 +155,6 @@ mod tests {
 	#[test]
 	fn an_empty_sum_is_zero_and_merges_as_identity() {
 		let mut empty = DecayedSum::new(halflife());
-		assert!(empty.is_empty());
 		assert_eq!(empty.value_at(at(0)), 0.0);
 		let one = pushed(&[(10, 7.0)]);
 		empty.merge(&one);

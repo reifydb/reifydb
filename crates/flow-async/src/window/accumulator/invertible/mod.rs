@@ -5,7 +5,6 @@ pub mod decayed;
 pub mod ends;
 pub mod folded;
 pub mod keyed;
-pub mod last_value;
 pub mod moments;
 pub mod multiset;
 pub mod ordf64;

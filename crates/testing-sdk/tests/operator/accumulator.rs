@@ -12,14 +12,12 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::{
 			WindowAccumulator,
-			invertible::{
-				keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments,
-				multiset::Multiset, ordf64::OrdF64,
-			},
+			invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments, ordf64::OrdF64},
 		},
 		coord::DateTimeCoord,
 	},
 };
+use reifydb_testing_sdk::last_value::LastValue;
 use reifydb_value::factory::time::{at_millis, millis};
 
 use super::common::{assert_add_remove_is_inverse, assert_order_independent};
@@ -71,47 +69,22 @@ fn immutable_endpoint_late_middle_arrival_keeps_open() {
 }
 
 #[test]
-fn moments_single_element_has_zero_variance() {
+fn moments_single_element_count_and_sum() {
 	let mut m = Moments::default();
 	m.add(5.0);
 	assert_eq!(m.count(), 1);
-	assert_eq!(m.mean(), Some(5.0));
-	assert_eq!(m.variance_pop(), Some(0.0), "a single observation has zero population variance");
-	assert_eq!(m.stddev_pop(), Some(0.0));
+	assert_eq!(m.sum(), 5.0);
 }
 
 #[test]
-fn moments_variance_is_never_negative_under_cancellation() {
-	// Cancellation in sum_sq/n - mean^2 can go slightly negative on identical large values, so
-	// the accumulator has to clamp.
+fn moments_identical_large_values_sum_exactly() {
+	// Identical large values must count and sum exactly, or a published total drifts from the rows.
 	let mut m = Moments::default();
 	for _ in 0..5 {
 		m.add(1.0e8);
 	}
-	let var = m.variance_pop().expect("non-empty");
-	assert!(var >= 0.0, "population variance must never be negative, got {var}");
-	assert!(var < 1.0, "variance of identical values must be ~0, got {var}");
-}
-
-#[test]
-fn multiset_quantile_clamps_out_of_range_probes() {
-	let mut ms: Multiset<u64> = Multiset::default();
-	for v in [10u64, 20, 30] {
-		ms.add(v);
-	}
-	assert_eq!(ms.quantile(-1.0), Some(&10), "q below 0 clamps to the minimum");
-	assert_eq!(ms.quantile(2.0), Some(&30), "q above 1 clamps to the maximum");
-}
-
-#[test]
-fn multiset_empty_accessors_are_none() {
-	let ms: Multiset<u64> = Multiset::default();
-	assert!(ms.is_empty());
-	assert_eq!(ms.min(), None);
-	assert_eq!(ms.max(), None);
-	assert_eq!(ms.mode(), None);
-	assert_eq!(ms.median(), None);
-	assert_eq!(ms.quantile(0.5), None);
+	assert_eq!(m.count(), 5);
+	assert_eq!(m.sum(), 5.0e8);
 }
 
 #[test]

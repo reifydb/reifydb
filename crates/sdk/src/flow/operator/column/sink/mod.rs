@@ -71,62 +71,17 @@ pub trait RowSink {
 	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
 		self.u8_column(col)?.push(&v)
 	}
-	fn push_u16(&mut self, col: usize, v: u16) -> Result<(), SdkError> {
-		self.u16_column(col)?.push(&v)
-	}
-	fn push_u32(&mut self, col: usize, v: u32) -> Result<(), SdkError> {
-		self.u32_column(col)?.push(&v)
-	}
 	fn push_u64(&mut self, col: usize, v: u64) -> Result<(), SdkError> {
 		self.u64_column(col)?.push(&v)
 	}
-	fn push_u128(&mut self, col: usize, v: u128) -> Result<(), SdkError> {
-		self.u128_column(col)?.push(&v)
-	}
-	fn push_i8(&mut self, col: usize, v: i8) -> Result<(), SdkError> {
-		self.i8_column(col)?.push(&v)
-	}
-	fn push_i16(&mut self, col: usize, v: i16) -> Result<(), SdkError> {
-		self.i16_column(col)?.push(&v)
-	}
-	fn push_i32(&mut self, col: usize, v: i32) -> Result<(), SdkError> {
-		self.i32_column(col)?.push(&v)
-	}
-	fn push_i64(&mut self, col: usize, v: i64) -> Result<(), SdkError> {
-		self.i64_column(col)?.push(&v)
-	}
-	fn push_i128(&mut self, col: usize, v: i128) -> Result<(), SdkError> {
-		self.i128_column(col)?.push(&v)
-	}
-	fn push_f32(&mut self, col: usize, v: f32) -> Result<(), SdkError> {
-		self.f32_column(col)?.push(&v)
-	}
 	fn push_f64(&mut self, col: usize, v: f64) -> Result<(), SdkError> {
 		self.f64_column(col)?.push(&v)
-	}
-	fn push_date(&mut self, col: usize, v: Date) -> Result<(), SdkError> {
-		self.date_column(col)?.push(&v)
-	}
-	fn push_datetime(&mut self, col: usize, v: DateTime) -> Result<(), SdkError> {
-		self.datetime_column(col)?.push(&v)
-	}
-	fn push_time(&mut self, col: usize, v: Time) -> Result<(), SdkError> {
-		self.time_column(col)?.push(&v)
-	}
-	fn push_duration(&mut self, col: usize, v: Duration) -> Result<(), SdkError> {
-		self.duration_column(col)?.push(&v)
 	}
 	fn push_bool(&mut self, col: usize, v: bool) -> Result<(), SdkError> {
 		self.bool_column(col)?.push(&v)
 	}
 	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {
 		self.utf8_column(col)?.push(v)
-	}
-	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
-		self.blob_column(col)?.push(v)
-	}
-	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
-		self.decimal_column(col)?.push(v)
 	}
 }
 

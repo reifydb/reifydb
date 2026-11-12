@@ -60,13 +60,6 @@ impl Slot for WindowSlotKey {
 	fn order_key(&self) -> DateTimeCoord {
 		self.coord
 	}
-
-	fn from_order_key(coord: DateTimeCoord) -> Self {
-		WindowSlotKey {
-			coord,
-			seq: 0,
-		}
-	}
 }
 
 #[operator_state]
@@ -697,22 +690,6 @@ impl RowAccumulator {
 			slot.apply(index, adding, slice);
 		}
 	}
-
-	pub fn invertible(kinds: &[SlotKind], immutable: Option<Duration>) -> bool {
-		kinds.iter().all(|kind| match kind {
-			SlotKind::Count {
-				..
-			}
-			| SlotKind::Sum
-			| SlotKind::Avg => true,
-			SlotKind::Min | SlotKind::Max | SlotKind::WindowLast => immutable.is_none(),
-			SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowDuration => true,
-			SlotKind::First | SlotKind::Last => false,
-			SlotKind::Digest {
-				..
-			} => true,
-		})
-	}
 }
 
 impl WindowAccumulator for RowAccumulator {
@@ -1147,23 +1124,6 @@ mod tests {
 		b.add(one_row((at_time(40, 2), slot_row(vec![Some(dt(40))]))).slice());
 		a.merge(&b);
 		assert_eq!(a.finalize(), Some(vec![dt(40)]));
-	}
-
-	#[test]
-	fn a_span_slot_is_invertible_and_window_last_is_invertible_only_without_an_immutable_span() {
-		// invertible() lets a rolling window unmerge expired rows; claiming it for a slot that cannot unmerge
-		// leaves a stale value.
-		assert!(RowAccumulator::invertible(&[SlotKind::WindowStart], None));
-		assert!(RowAccumulator::invertible(&[SlotKind::WindowEnd], None));
-		assert!(RowAccumulator::invertible(&[SlotKind::WindowDuration], None));
-		assert!(
-			RowAccumulator::invertible(&[SlotKind::WindowLast], None),
-			"a plain window last counts each event time, so it unmerges like max"
-		);
-		assert!(
-			!RowAccumulator::invertible(&[SlotKind::WindowLast], Some(Duration::from_seconds(60).unwrap())),
-			"an immutable window last folds old times into one value and cannot give them back"
-		);
 	}
 
 	#[test]
@@ -1632,23 +1592,6 @@ mod tests {
 		remove(&mut a, 0, vec![i4(5)]);
 	}
 
-	#[test]
-	fn invertible_gate_matches_slot_capabilities() {
-		// This predicate picks the engine, so a wrong answer either loses the optimization or
-		// runs unmerge on kinds that cannot support it.
-		let count = SlotKind::Count {
-			count_star: true,
-		};
-		assert!(RowAccumulator::invertible(&[count, SlotKind::Sum, SlotKind::Avg], None));
-		assert!(RowAccumulator::invertible(&[SlotKind::Min, SlotKind::Max], None));
-		assert!(
-			!RowAccumulator::invertible(&[SlotKind::Min], Some(Duration::from_seconds(60).unwrap())),
-			"an immutable span turns Min/Max into immutable slots, which cannot unmerge"
-		);
-		assert!(!RowAccumulator::invertible(&[SlotKind::Sum, SlotKind::First], None));
-		assert!(!RowAccumulator::invertible(&[SlotKind::Last], None));
-	}
-
 	const PPM: u32 = 10_000;
 
 	fn digest_kind(accuracy: Option<u32>) -> SlotKind {
@@ -1844,17 +1787,6 @@ mod tests {
 		};
 		assert_eq!(digest.inner(), &ValueType::Duration);
 		assert_eq!(**digest, oracle(ValueType::Duration, 1_000, &values[1..]));
-	}
-
-	#[test]
-	fn a_digest_slot_is_invertible_with_or_without_an_immutable_span() {
-		// A digest keeps no per-row history, so the immutable path cannot fold it; refusing the running path
-		// costs every frame.
-		let immutable = Some(Duration::from_seconds(60).unwrap());
-		assert!(RowAccumulator::invertible(&[digest_kind(Some(PPM))], None));
-		assert!(RowAccumulator::invertible(&[digest_kind(None)], immutable));
-		assert!(!RowAccumulator::invertible(&[digest_kind(Some(PPM)), SlotKind::First], None));
-		assert!(!RowAccumulator::invertible(&[digest_kind(Some(PPM)), SlotKind::Max], immutable));
 	}
 
 	#[test]

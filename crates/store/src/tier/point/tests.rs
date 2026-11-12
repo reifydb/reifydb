@@ -322,12 +322,12 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let tier = roomy();
 	let accumulator = key(group_a(), CACHED, b"a");
-	let buffer = key(group_a(), KeyspaceId::BUFFER, b"a");
+	let emit = key(group_a(), KeyspaceId::EMIT, b"a");
 
 	assert!(tier.get(OP_A, &accumulator).is_none());
 	fill(&tier, OP_A, accumulator.clone(), row("v"));
 	assert!(tier.get(OP_A, &accumulator).is_some());
-	assert!(tier.get(OP_A, &buffer).is_none());
+	assert!(tier.get(OP_A, &emit).is_none());
 
 	let reported = tier.bucket_metrics();
 	assert_eq!(reported.len(), 2, "only the two keyspaces that were touched may be reported");
@@ -337,10 +337,10 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert_eq!(accumulator.counters.misses, 1);
 	assert_eq!(accumulator.entries, 1);
 
-	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
-	assert_eq!(buffer.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
-	assert_eq!(buffer.counters.misses, 1);
-	assert_eq!(buffer.entries, 0, "a keyspace with no resident entry is still reported once a counter moved");
+	let emit = keyspace_row(&tier, KeyspaceId::EMIT);
+	assert_eq!(emit.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
+	assert_eq!(emit.counters.misses, 1);
+	assert_eq!(emit.entries, 0, "a keyspace with no resident entry is still reported once a counter moved");
 
 	assert_eq!(tier.metrics().hits, 1, "the per shard aggregate must survive alongside the keyspace table");
 	assert_eq!(tier.metrics().misses, 2);
@@ -356,16 +356,16 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	for group in [group_a(), group_b()] {
 		fill(&tier, OP_A, key(group, CACHED, b"a"), sample_row.clone());
 	}
-	let buffer_key = key(group_a(), KeyspaceId::BUFFER, b"a");
-	fill(&tier, OP_A, buffer_key.clone(), sample_row.clone());
+	let emit_key = key(group_a(), KeyspaceId::EMIT, b"a");
+	fill(&tier, OP_A, emit_key.clone(), sample_row.clone());
 
 	let accumulator = keyspace_row(&tier, CACHED);
 	assert_eq!(accumulator.entries, 2);
 	assert_eq!(accumulator.used, ByteSize::from_bytes(per_entry * 2));
 
-	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
-	assert_eq!(buffer.entries, 1);
-	assert_eq!(buffer.used, ByteSize::from_bytes(per_entry));
+	let emit = keyspace_row(&tier, KeyspaceId::EMIT);
+	assert_eq!(emit.entries, 1);
+	assert_eq!(emit.used, ByteSize::from_bytes(per_entry));
 
 	let total: u64 = tier.bucket_metrics().iter().map(|row| row.used.as_bytes()).sum();
 	assert_eq!(ByteSize::from_bytes(total), tier.tallied_bytes(), "every resident byte belongs to one keyspace");
@@ -408,7 +408,7 @@ fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	let tier = tier(per_entry);
 
 	fill(&tier, OP_A, key(group_a(), CACHED, b"a"), sample_row.clone());
-	fill(&tier, OP_A, key(group_a(), KeyspaceId::BUFFER, b"a"), sample_row.clone());
+	fill(&tier, OP_A, key(group_a(), KeyspaceId::EMIT, b"a"), sample_row.clone());
 
 	assert_eq!(tier.evictions(), 1, "the fixture must actually evict, or the attribution below proves nothing");
 
@@ -416,9 +416,9 @@ fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	assert_eq!(accumulator.counters.evictions, 1);
 	assert_eq!(accumulator.entries, 0, "the evicted entry must be gone from its keyspace's resident state");
 
-	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
-	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
-	assert_eq!(buffer.entries, 1);
+	let emit = keyspace_row(&tier, KeyspaceId::EMIT);
+	assert_eq!(emit.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
+	assert_eq!(emit.entries, 1);
 }
 
 #[test]

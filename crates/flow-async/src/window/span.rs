@@ -43,8 +43,6 @@ pub trait Slot: Copy + Ord + Debug + StateCodec {
 	type Coord: Coord;
 
 	fn order_key(&self) -> Self::Coord;
-
-	fn from_order_key(coord: Self::Coord) -> Self;
 }
 
 impl Slot for DateTimeCoord {
@@ -52,10 +50,6 @@ impl Slot for DateTimeCoord {
 
 	fn order_key(&self) -> DateTimeCoord {
 		*self
-	}
-
-	fn from_order_key(coord: DateTimeCoord) -> Self {
-		coord
 	}
 }
 

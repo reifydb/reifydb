@@ -215,26 +215,6 @@ impl WindowMeta {
 		set(store, vec![(key, state)])
 	}
 
-	pub fn store_row_indexes(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: GroupId,
-		row_number: RowNumber,
-		window_ids: &[u64],
-	) -> Result<()> {
-		if window_ids.is_empty() {
-			return Ok(());
-		}
-		let key = RowIndexKey(group, row_number);
-		let mut state: RowIndexState = get(store, from_ref(&key))?.remove(0).unwrap_or_default();
-		for window_id in window_ids {
-			if !state.window_ids.contains(window_id) {
-				state.window_ids.push(*window_id);
-			}
-		}
-		set(store, vec![(key, state)])
-	}
-
 	pub fn withdraw_row_index(
 		&mut self,
 		store: &mut dyn StateStore,

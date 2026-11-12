@@ -5,9 +5,8 @@ use std::fmt::Debug;
 
 use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
+use reifydb_flow_async::window::accumulator::{MergeAccumulator, WindowAccumulator};
 use reifydb_macro::operator_state;
-
-use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]

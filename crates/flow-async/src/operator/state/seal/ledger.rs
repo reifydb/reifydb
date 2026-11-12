@@ -46,10 +46,6 @@ impl FiredAt {
 pub struct SealLedger;
 
 impl SealLedger {
-	pub fn read(store: &mut dyn StateStore) -> Result<Option<SealedThrough>> {
-		Ok(Self::read_order(store)?.map(SealedThrough::from_order))
-	}
-
 	pub fn advance(store: &mut dyn StateStore, fired: FiredAt) -> Result<SealedThrough> {
 		let fired_order = fired.at().to_order();
 		let current = Self::read_order(store)?.unwrap_or(0);
@@ -107,7 +103,7 @@ mod tests {
 
 		let sealed = SealLedger::advance(&mut store, FiredAt::of(&timer(5_000))).unwrap();
 
-		assert_eq!(sealed.at(), DateTime::from_millis(5_000));
+		assert_eq!(sealed, SealedThrough::from_order(DateTime::from_millis(5_000).to_order()));
 	}
 
 	#[test]
@@ -142,7 +138,7 @@ mod tests {
 		// no seal clamp, the epoch would mean everything is sealed and let reclaim erase live state.
 		let mut store = MockStore::default();
 
-		assert!(SealLedger::read(&mut store).unwrap().is_none());
+		assert!(SealLedger::read_order(&mut store).unwrap().is_none());
 	}
 
 	#[test]
@@ -155,8 +151,8 @@ mod tests {
 		SealLedger::advance(&mut store, FiredAt::of(&timer(9_000))).unwrap();
 		let after_earlier = SealLedger::advance(&mut store, FiredAt::of(&timer(3_000))).unwrap();
 
-		assert_eq!(after_earlier.at(), DateTime::from_millis(9_000));
-		assert_eq!(SealLedger::read(&mut store).unwrap().unwrap().at(), DateTime::from_millis(9_000));
+		assert_eq!(after_earlier, SealedThrough::from_order(DateTime::from_millis(9_000).to_order()));
+		assert_eq!(SealLedger::read_order(&mut store).unwrap(), Some(DateTime::from_millis(9_000).to_order()));
 	}
 
 	#[test]

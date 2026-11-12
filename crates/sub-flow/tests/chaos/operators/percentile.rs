@@ -17,10 +17,6 @@ pub fn median(values: &[i64]) -> Value {
 	bucketed(sorted[rank - 1])
 }
 
-pub fn no_rows() -> Value {
-	Value::none_of(ValueType::Float8)
-}
-
 pub fn bucketed(value: i64) -> Value {
 	// One value in a fresh digest reads back its bucket representative with no merge, unmerge or remove.
 	let mut one = Digest::new(ValueType::Int8, PPM).expect("the oracle accuracy is in range");

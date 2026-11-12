@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod grid;
-pub mod immutable_line;
 pub mod rolling;
 pub mod session;
 pub mod sliding;

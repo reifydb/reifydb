@@ -580,14 +580,6 @@ impl<'a> DiffView for ExternCDiffView<'a> {
 }
 
 impl<'a> ChangeView for ExternCChangeView<'a> {
-	fn version(&self) -> u64 {
-		self.change.version()
-	}
-
-	fn changed_at_nanos(&self) -> i64 {
-		self.change.changed_at_nanos()
-	}
-
 	fn diff_count(&self) -> usize {
 		self.change.diff_count()
 	}

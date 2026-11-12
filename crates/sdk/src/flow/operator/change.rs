@@ -53,14 +53,6 @@ impl<'a> BorrowedChange<'a> {
 		self.extern_c.origin
 	}
 
-	pub fn version(&self) -> u64 {
-		self.extern_c.version
-	}
-
-	pub fn changed_at_nanos(&self) -> i64 {
-		self.extern_c.changed_at
-	}
-
 	pub fn diff_count(&self) -> usize {
 		self.extern_c.diff_count
 	}

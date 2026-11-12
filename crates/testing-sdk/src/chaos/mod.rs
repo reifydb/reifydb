@@ -148,12 +148,6 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 		self
 	}
 
-	pub fn with_supported_ops(mut self, ops: SupportedOps) -> Self {
-		self.supported_ops = ops;
-		self.scenario = self.scenario.with_ops(ops);
-		self
-	}
-
 	pub fn with_node_id(mut self, operator_id: OperatorId) -> Self {
 		self.operator_id = operator_id;
 		self
@@ -410,16 +404,6 @@ mod tests {
 			}
 		);
 		assert!(builder.scenario.remove_pct > 0 && builder.scenario.update_pct > 0);
-	}
-
-	#[test]
-	fn supported_ops_reshapes_the_scenario_mix_in_place() {
-		// If the preset stopped writing through to the mix, a suite asking to isolate inserts
-		// would still generate removes.
-		let builder = ChaosHarness::<NostateMount<NoOpOperator>>::builder()
-			.with_supported_ops(SupportedOps::insert_only());
-		assert_eq!(builder.scenario.remove_pct, 0);
-		assert_eq!(builder.scenario.update_pct, 0);
 	}
 
 	#[test]

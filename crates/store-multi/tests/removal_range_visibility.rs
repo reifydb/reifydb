@@ -58,7 +58,7 @@ fn memory_store() -> StandardMultiStore {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> TaggedKey {
-	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::BUFFER, suffix).into()
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::EMIT, suffix).into()
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {

@@ -2016,7 +2016,8 @@ fn window_row(number: u64, value: i64, at_ms: i64) -> Row {
 
 #[test]
 fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable_min_beside_it() {
-	// The digest applies every retraction, while a min folded past immutable drops it and keeps the row alive.
+	// The digest applies every retraction, while a min folded past immutable keeps its value until the last live
+	// row goes.
 	let specs = [
 		(
 			"tumbling",
@@ -2068,14 +2069,7 @@ fn a_retraction_older_than_immutable_leaves_the_percentile_but_not_the_immutable
 		let out = harness
 			.apply(generator::remove(vec![window_row(2, 20, 2_000), window_row(3, 30, 10_000)]))
 			.expect("apply must succeed");
-		for (total, lo) in totals_and_mins(&out) {
-			assert_eq!(
-				total,
-				percentile::no_rows(),
-				"{kind}: a window with no live rows has no percentile"
-			);
-			assert_eq!(lo, Value::Int8(10), "{kind}: the immutable min keeps the window row alive");
-		}
+		assert!(out.diffs.iter().all(|d| d.post().is_none()), "{kind}: zero live rows withdraw the window row");
 	}
 }
 

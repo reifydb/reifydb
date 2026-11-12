@@ -28,7 +28,6 @@ use reifydb_value::value::{
 	diff_type::DiffType,
 	row_number::RowNumber,
 	system_columns::{SystemColumn, stamp_system_columns},
-	value_type::ValueType,
 };
 
 pub struct TestRowBuilder {
@@ -181,11 +180,6 @@ impl TestChangeBuilder {
 		}
 	}
 
-	pub fn changed_by_object(mut self, object: ObjectId) -> Self {
-		self.origin = ChangeOrigin::Object(object);
-		self
-	}
-
 	pub fn with_version(mut self, version: CommitVersion) -> Self {
 		self.version = version;
 		self
@@ -322,43 +316,6 @@ fn glued(batches: &[RecordBatch]) -> RecordBatch {
 	}
 }
 
-pub struct TestLayoutBuilder {
-	fields: Vec<RowShapeField>,
-}
-
-impl Default for TestLayoutBuilder {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-impl TestLayoutBuilder {
-	pub fn new() -> Self {
-		Self {
-			fields: Vec::new(),
-		}
-	}
-
-	pub fn add_type(mut self, ty: ValueType) -> Self {
-		let field_name = format!("field{}", self.fields.len());
-		self.fields.push(RowShapeField::unconstrained(field_name, ty));
-		self
-	}
-
-	pub fn add_field(mut self, name: impl Into<String>, ty: ValueType) -> Self {
-		self.fields.push(RowShapeField::unconstrained(name, ty));
-		self
-	}
-
-	pub fn build(self) -> RowShape {
-		RowShape::new(RowFamily::Table, self.fields)
-	}
-
-	pub fn build_named(self) -> RowShape {
-		self.build()
-	}
-}
-
 pub mod helpers {
 	use reifydb_core::interface::change::Change;
 	use reifydb_value::value::row_number::RowNumber;
@@ -367,12 +324,6 @@ pub mod helpers {
 
 	pub fn int_row(row_number: impl Into<RowNumber>, value: i8) -> Row {
 		TestRowBuilder::new(row_number).with_values(vec![Value::Int8(value as i64)]).build()
-	}
-
-	pub fn key_value_row(row_number: impl Into<RowNumber>, key: &str, value: i8) -> Row {
-		TestRowBuilder::new(row_number)
-			.with_values(vec![Value::Utf8(key.into()), Value::Int8(value as i64)])
-			.build()
 	}
 
 	pub fn insert_change(row: Row) -> Change {
@@ -390,11 +341,8 @@ pub mod helpers {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		common::{ChangeVersion, CommitVersion},
-		interface::{catalog::object::ObjectId, change::ChangeOrigin},
-	};
-	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
+	use reifydb_core::common::{ChangeVersion, CommitVersion};
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{helpers::*, *};
 
@@ -412,7 +360,6 @@ pub mod tests {
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestChangeBuilder::new()
-			.changed_by_object(ObjectId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -421,29 +368,6 @@ pub mod tests {
 
 		assert_eq!(change.version, ChangeVersion::from(CommitVersion(5)));
 		assert_eq!(change.diffs.len(), 3);
-
-		match &change.origin {
-			ChangeOrigin::Object(object) => {
-				assert_eq!(*object, ObjectId::table(100));
-			}
-			_ => panic!("Expected external origin"),
-		}
-	}
-
-	#[test]
-	fn test_layout_builder() {
-		let unnamed = TestLayoutBuilder::new().add_type(ValueType::Int8).add_type(ValueType::Utf8).build();
-
-		assert_eq!(unnamed.field_count(), 2);
-
-		let named = TestLayoutBuilder::new()
-			.add_field("count", ValueType::Int8)
-			.add_field("name", ValueType::Utf8)
-			.build_named();
-
-		assert_eq!(named.field_count(), 2);
-		assert_eq!(named.get_field(0).unwrap().name, "count");
-		assert_eq!(named.get_field(1).unwrap().name, "name");
 	}
 
 	#[test]
@@ -451,13 +375,7 @@ pub mod tests {
 		let row = int_row(1, 42);
 		assert_eq!(row.number, RowNumber(1));
 
-		let kv_row = key_value_row(2, "test", 100);
-		assert_eq!(kv_row.number, RowNumber(2));
-
 		let change = insert_change(row.clone());
 		assert_eq!(change.diffs.len(), 1);
-
-		let batch = batch_insert_change(vec![row.clone(), kv_row.clone()]);
-		assert_eq!(batch.diffs.len(), 2);
 	}
 }

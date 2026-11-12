@@ -9,10 +9,7 @@ use reifydb_core::{
 	state::timer::TimerMove,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	operator::state::seal::{
@@ -80,16 +77,6 @@ impl IsZero for RowSpan {
 #[operator_state]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct U8Coord(pub u64);
-
-impl U8Coord {
-	pub fn from_row_number(row_number: RowNumber) -> Self {
-		Self(row_number.0)
-	}
-
-	pub fn value(self) -> u64 {
-		self.0
-	}
-}
 
 impl HeapSize for U8Coord {
 	fn heap_size(&self) -> usize {
@@ -225,10 +212,6 @@ impl Slot for U8Coord {
 
 	fn order_key(&self) -> U8Coord {
 		*self
-	}
-
-	fn from_order_key(coord: U8Coord) -> Self {
-		coord
 	}
 }
 
@@ -378,16 +361,6 @@ mod tests {
 	}
 
 	#[test]
-	fn both_ways_to_build_a_u8_coord_produce_the_same_value() {
-		// A row number and a bare value must land in one domain type, or each source would need its own driver.
-		let minted = U8Coord(7);
-		let from_row = U8Coord::from_row_number(RowNumber(7));
-
-		assert_eq!(minted, from_row);
-		assert_eq!(minted.value(), 7);
-	}
-
-	#[test]
 	fn the_ordinal_settings_read_counts_and_default_lateness_to_zero_rows() {
 		// a slot-domain window is sized in rows; an omitted lateness must be zero rows and an omitted
 		// immutable none, or a plain window would silently start refusing retractions
@@ -523,7 +496,6 @@ mod tests {
 		let coord = U8Coord(7);
 
 		assert_eq!(coord.order_key(), coord);
-		assert_eq!(U8Coord::from_order_key(coord), coord);
 	}
 
 	#[test]

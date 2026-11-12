@@ -59,6 +59,10 @@ pub fn drive_immutable(seed: u64, params: Params, immutable_ms: u64) -> Corpus {
 }
 
 fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) -> Corpus {
+	assert!(
+		immutable_ms.is_none() || fold == Fold::PercentileNextToMin,
+		"only a percentile next to a min is modelled under immutable"
+	);
 	let size_ms = params.size_secs * 1_000;
 	let lateness_ms = params.lateness_secs * 1_000;
 
@@ -85,9 +89,6 @@ fn drive_with(seed: u64, params: Params, fold: Fold, immutable_ms: Option<u64>) 
 		lateness_ms,
 	)
 	.with_fold(fold);
-	if let Some(immutable_ms) = immutable_ms {
-		model = model.with_immutable(immutable_ms);
-	}
 
 	driver::drive(
 		seed,

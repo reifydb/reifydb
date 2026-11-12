@@ -9,7 +9,6 @@ pub mod seal;
 pub mod sweep;
 
 #[cfg(feature = "runtime")]
-pub mod iter;
 #[cfg(feature = "runtime")]
 pub mod store;
 

@@ -48,10 +48,6 @@ impl SealedThrough {
 	pub fn from_order(order: u64) -> Self {
 		Self(DateTime::from_order(order))
 	}
-
-	pub fn at(self) -> DateTime {
-		self.0
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

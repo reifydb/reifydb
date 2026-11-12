@@ -482,7 +482,7 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 
 	one_row_partition(&tier, OP_A, group_a(), KeyspaceId::ACCUMULATOR);
 	one_row_partition(&tier, OP_A, group_b(), KeyspaceId::ACCUMULATOR);
-	one_row_partition(&tier, OP_A, group_a(), KeyspaceId::BUFFER);
+	one_row_partition(&tier, OP_A, group_a(), KeyspaceId::EMIT);
 
 	let accumulator = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
 	assert_eq!(accumulator.partitions, 2);
@@ -490,11 +490,11 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	assert_eq!(accumulator.entries, 2);
 	assert_eq!(accumulator.used, ByteSize::from_bytes(per_partition * 2));
 
-	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
-	assert_eq!(buffer.partitions, 1);
-	assert_eq!(buffer.intervals, 1);
-	assert_eq!(buffer.entries, 1);
-	assert_eq!(buffer.used, ByteSize::from_bytes(per_partition));
+	let emit = keyspace_row(&tier, KeyspaceId::EMIT);
+	assert_eq!(emit.partitions, 1);
+	assert_eq!(emit.intervals, 1);
+	assert_eq!(emit.entries, 1);
+	assert_eq!(emit.used, ByteSize::from_bytes(per_partition));
 
 	let total: u64 = tier.bucket_metrics().iter().map(|row| row.used.as_bytes()).sum();
 	assert_eq!(
@@ -514,13 +514,13 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 	let tier = tier(per_partition_bytes() * 2);
 	let accumulator = key(group_a(), KeyspaceId::ACCUMULATOR, b"a");
-	let buffer = key(group_a(), KeyspaceId::BUFFER, b"a");
+	let emit = key(group_a(), KeyspaceId::EMIT, b"a");
 	materialize(&tier, OP_A, group_a(), KeyspaceId::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
-	materialize(&tier, OP_A, group_a(), KeyspaceId::BUFFER, &[(buffer.clone(), row("v"))]);
+	materialize(&tier, OP_A, group_a(), KeyspaceId::EMIT, &[(emit.clone(), row("v"))]);
 
 	tier.overwrite_run(
-		TestPartition::of(OP_A, &buffer),
-		vec![(buffer.clone(), row("a very much longer row body than the one it replaces"))],
+		TestPartition::of(OP_A, &emit),
+		vec![(emit.clone(), row("a very much longer row body than the one it replaces"))],
 	);
 
 	assert_eq!(tier.metrics().evictions, 1, "the fixture must evict, or the attribution below proves nothing");
@@ -528,9 +528,9 @@ fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 	assert_eq!(accumulator.counters.evictions, 1);
 	assert_eq!(accumulator.partitions, 0, "the evicted partition must be gone from its keyspace's resident state");
 
-	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
-	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
-	assert_eq!(buffer.partitions, 1);
+	let emit = keyspace_row(&tier, KeyspaceId::EMIT);
+	assert_eq!(emit.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
+	assert_eq!(emit.partitions, 1);
 }
 
 #[test]

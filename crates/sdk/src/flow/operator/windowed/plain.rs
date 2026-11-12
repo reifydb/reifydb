@@ -503,15 +503,14 @@ mod tests {
 		operator_with::WithSpan,
 	};
 	use reifydb_flow_async::window::{
-		accumulator::{
-			MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::last_value::LastValue,
-		},
+		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
 		coord::{DateTimeCoord, RowSpan, U8Coord},
 		driver::rolling::rolling_cutoff,
 		engine::pane::PaneFold,
 		span::WindowSpan,
 	};
 	use reifydb_runtime::sync::mutex::Mutex;
+	use reifydb_testing_sdk::last_value::LastValue;
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;

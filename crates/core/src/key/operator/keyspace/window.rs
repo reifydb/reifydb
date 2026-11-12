@@ -24,19 +24,9 @@ pub struct AccumulatorKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct BufferKey {
-	pub group: Desc<GroupId>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RollingPaneKey {
 	pub group: Desc<GroupId>,
 	pub pane: Asc<u64>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
-pub struct RunningKey {
-	pub group: Desc<GroupId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
@@ -118,28 +108,6 @@ impl Keyspace for Accumulator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Buffer;
-
-impl Keyspace for Buffer {
-	const ID: KeyspaceId = KeyspaceId::BUFFER;
-	const NAME: &'static str = "BUFFER";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = BufferKey;
-	type Suffix = ();
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, ())
-	}
-
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
-		BufferKey {
-			group: Desc(group),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RollingPane;
 
 impl Keyspace for RollingPane {
@@ -158,28 +126,6 @@ impl Keyspace for RollingPane {
 		RollingPaneKey {
 			group: Desc(group),
 			pane: suffix,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Running;
-
-impl Keyspace for Running {
-	const ID: KeyspaceId = KeyspaceId::RUNNING;
-	const NAME: &'static str = "RUNNING";
-	const RANGE_CACHED: bool = true;
-
-	type GroupedKey = RunningKey;
-	type Suffix = ();
-
-	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, ())
-	}
-
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
-		RunningKey {
-			group: Desc(group),
 		}
 	}
 }

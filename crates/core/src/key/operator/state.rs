@@ -27,15 +27,12 @@ use crate::{
 		operator::{
 			keyspace::{
 				KEYSPACES, KeyspaceVisitor, REGISTERED, dispatch,
-				root::{
-					CustomManagedSuffix, CustomUnmanagedSuffix, NodeCounter, NodeCounterKey,
-					NodeCounterKind,
-				},
+				root::{CustomManagedSuffix, CustomUnmanagedSuffix, NodeCounter, NodeCounterKey},
 				suffix_width_of,
 			},
 			traits::Keyspace,
 		},
-		typed::{BoundedKey, layout::KeyLayout},
+		typed::{BoundedKey, direction::Asc, layout::KeyLayout},
 	},
 	metrics::heap::HeapSize,
 	state::typed::{SuffixBytes, typed_key},
@@ -200,21 +197,11 @@ impl GroupSet {
 	}
 }
 
-pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
-	let mut de = KeyDeserializer::from_bytes(inner);
-	let group = GroupId::from_bytes(de.read_fixed().ok()?);
-	let keyspace = KeyspaceId(de.read_u8().ok()?);
-	if !keyspace.is_data() {
-		return None;
-	}
-	inner.starts_with(&group_inner_prefix(group)).then_some(group)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x28;
+	pub const HIGHEST_DATA: u8 = 0x26;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -232,85 +219,81 @@ impl KeyspaceId {
 
 	pub const ACCUMULATOR: Self = Self(0x00);
 
-	pub const BUFFER: Self = Self(0x01);
+	pub const EMIT: Self = Self(0x01);
 
-	pub const RUNNING: Self = Self(0x02);
+	pub const ROLLING_EXPIRY: Self = Self(0x02);
 
-	pub const EMIT: Self = Self(0x03);
+	pub const ROW_INDEX: Self = Self(0x03);
 
-	pub const ROLLING_EXPIRY: Self = Self(0x04);
+	pub const SESSION: Self = Self(0x04);
 
-	pub const ROW_INDEX: Self = Self(0x05);
+	pub const ROLLING_META: Self = Self(0x05);
 
-	pub const SESSION: Self = Self(0x06);
+	pub const ENGINE_META: Self = Self(0x06);
 
-	pub const ROLLING_META: Self = Self(0x07);
+	pub const DISTINCT_ENTRY: Self = Self(0x07);
 
-	pub const ENGINE_META: Self = Self(0x08);
+	pub const WINDOW_META: Self = Self(0x08);
 
-	pub const DISTINCT_ENTRY: Self = Self(0x09);
+	pub const JOIN_LEFT: Self = Self(0x09);
 
-	pub const WINDOW_META: Self = Self(0x0A);
+	pub const JOIN_RIGHT: Self = Self(0x0A);
 
-	pub const JOIN_LEFT: Self = Self(0x0B);
+	pub const JOIN_SCHEMA: Self = Self(0x0B);
 
-	pub const JOIN_RIGHT: Self = Self(0x0C);
+	pub const RINGBUFFER_FORWARD: Self = Self(0x0C);
 
-	pub const JOIN_SCHEMA: Self = Self(0x0D);
+	pub const RINGBUFFER_ENTRY: Self = Self(0x0D);
 
-	pub const RINGBUFFER_FORWARD: Self = Self(0x0E);
+	pub const GATE_VISIBILITY: Self = Self(0x0E);
 
-	pub const RINGBUFFER_ENTRY: Self = Self(0x0F);
+	pub const DISTINCT_LAYOUT: Self = Self(0x0F);
 
-	pub const GATE_VISIBILITY: Self = Self(0x10);
+	pub const RINGBUFFER_TTL_ARM: Self = Self(0x10);
 
-	pub const DISTINCT_LAYOUT: Self = Self(0x11);
+	pub const SEAL_LEDGER: Self = Self(0x11);
 
-	pub const RINGBUFFER_TTL_ARM: Self = Self(0x12);
+	pub const JOIN_PUBLISHED: Self = Self(0x12);
 
-	pub const SEAL_LEDGER: Self = Self(0x13);
+	pub const JOIN_PIN: Self = Self(0x13);
 
-	pub const JOIN_PUBLISHED: Self = Self(0x14);
+	pub const RINGBUFFER_META: Self = Self(0x14);
 
-	pub const JOIN_PIN: Self = Self(0x15);
+	pub const REAP_QUEUE: Self = Self(0x15);
 
-	pub const RINGBUFFER_META: Self = Self(0x16);
+	pub const JOIN_ROW_EXPIRY: Self = Self(0x16);
 
-	pub const REAP_QUEUE: Self = Self(0x17);
+	pub const GUEST_ACCUMULATOR: Self = Self(0x17);
 
-	pub const JOIN_ROW_EXPIRY: Self = Self(0x18);
+	pub const TUMBLING_EXPIRY: Self = Self(0x18);
 
-	pub const GUEST_ACCUMULATOR: Self = Self(0x19);
+	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x19);
 
-	pub const TUMBLING_EXPIRY: Self = Self(0x1A);
+	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x1A);
 
-	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x1B);
+	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x1B);
 
-	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x1C);
+	pub const CUSTOM_UNMANAGED: Self = Self(0x1C);
 
-	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x1D);
+	pub const JOIN_EXPIRY_DUE: Self = Self(0x1D);
 
-	pub const CUSTOM_UNMANAGED: Self = Self(0x1E);
+	pub const CUSTOM_MANAGED: Self = Self(0x1E);
 
-	pub const JOIN_EXPIRY_DUE: Self = Self(0x1F);
+	pub const CUSTOM_MANAGED_DUE: Self = Self(0x1F);
 
-	pub const CUSTOM_MANAGED: Self = Self(0x20);
+	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x20);
 
-	pub const CUSTOM_MANAGED_DUE: Self = Self(0x21);
+	pub const GUEST_RETAINED_ENTRY: Self = Self(0x21);
 
-	pub const CUSTOM_MANAGED_LATEST: Self = Self(0x22);
+	pub const LOOKUP_READ: Self = Self(0x22);
 
-	pub const GUEST_RETAINED_ENTRY: Self = Self(0x23);
+	pub const SESSION_MEMBER: Self = Self(0x23);
 
-	pub const LOOKUP_READ: Self = Self(0x24);
+	pub const ROLLING_PANE: Self = Self(0x24);
 
-	pub const SESSION_MEMBER: Self = Self(0x25);
+	pub const TAKE_ROW: Self = Self(0x25);
 
-	pub const ROLLING_PANE: Self = Self(0x26);
-
-	pub const TAKE_ROW: Self = Self(0x27);
-
-	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x28);
+	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x26);
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
@@ -322,8 +305,6 @@ impl KeyspaceId {
 			Self::GROUP_ROW_MAPPING => "GROUP_ROW_MAPPING",
 			Self::GUEST_ROW_MAPPING => "GUEST_ROW_MAPPING",
 			Self::ACCUMULATOR => "ACCUMULATOR",
-			Self::BUFFER => "BUFFER",
-			Self::RUNNING => "RUNNING",
 			Self::EMIT => "EMIT",
 			Self::ROLLING_EXPIRY => "ROLLING_EXPIRY",
 			Self::ROW_INDEX => "ROW_INDEX",
@@ -529,10 +510,6 @@ impl OperatorStateKey {
 	}
 
 	pub const KEYSPACE_INNER_OFFSET: u32 = GroupId::WIDTH as u32;
-
-	pub fn decode_keyspace(stored: u8) -> KeyspaceId {
-		KeyspaceId(KeyDeserializer::from_bytes(&[stored]).read_u8().expect("a single byte decodes as u8"))
-	}
 
 	pub fn inner_encoded(group: GroupId, keyspace: KeyspaceId, suffix: impl AsRef<[u8]>) -> GroupStateKey {
 		let suffix = suffix.as_ref();
@@ -844,12 +821,13 @@ pub fn managed_key_in(group: GroupId, id: &[u8]) -> Option<ManagedKey> {
 	})
 }
 
-pub fn node_counter_key(kind: NodeCounterKind) -> GroupStateKey {
-	typed_key::<NodeCounter>(GroupId::ROOT, &NodeCounterKey::of(kind))
-}
-
 pub fn row_number_counter_key() -> GroupStateKey {
-	node_counter_key(NodeCounterKind::RowNumber)
+	typed_key::<NodeCounter>(
+		GroupId::ROOT,
+		&NodeCounterKey {
+			kind: Asc(0),
+		},
+	)
 }
 
 pub fn group_data_inner_range(group: GroupId) -> EncodedKeyRange {
@@ -975,10 +953,10 @@ mod tests {
 
 	use super::{
 		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, GroupStateRange, KeySerializer,
-		KeyspaceId, OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
-		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		guest_may_address, is_class_framed_inner, is_framed_inner, keyspace_range, managed_key_in, node_prefix,
-		node_range, suffix_width_of, unmanaged_key_in,
+		KeyspaceId, OperatorStateKey, group_data_range, group_identity_inner_range, group_identity_range,
+		group_inner_prefix, group_inner_range, group_range, guest_may_address, is_class_framed_inner,
+		is_framed_inner, keyspace_range, managed_key_in, node_prefix, node_range, suffix_width_of,
+		unmanaged_key_in,
 	};
 	use crate::{common::OperatorClass, interface::catalog::flow::OperatorId, key::operator::keyspace::KEYSPACES};
 
@@ -986,8 +964,8 @@ mod tests {
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
 	const DATA_KEYSPACES: [KeyspaceId; 5] = [
 		KeyspaceId::ACCUMULATOR,
-		KeyspaceId::BUFFER,
-		KeyspaceId::RUNNING,
+		KeyspaceId::EMIT,
+		KeyspaceId::ROLLING_EXPIRY,
 		KeyspaceId::CUSTOM_UNMANAGED,
 		KeyspaceId::CUSTOM_MANAGED,
 	];
@@ -1002,7 +980,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 48] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 46] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1011,8 +989,6 @@ mod tests {
 		("GROUP_ROW_MAPPING", KeyspaceId::GROUP_ROW_MAPPING, Phase::Identity, true),
 		("GUEST_ROW_MAPPING", KeyspaceId::GUEST_ROW_MAPPING, Phase::Identity, true),
 		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, true),
-		("BUFFER", KeyspaceId::BUFFER, Phase::Data, true),
-		("RUNNING", KeyspaceId::RUNNING, Phase::Data, true),
 		("EMIT", KeyspaceId::EMIT, Phase::Data, true),
 		("ROLLING_EXPIRY", KeyspaceId::ROLLING_EXPIRY, Phase::Data, true),
 		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, true),
@@ -1432,20 +1408,20 @@ mod tests {
 		// a keyspace range must isolate exactly one keyspace of one group, or scans mix incompatible payloads
 		let operator = OperatorId(17);
 		let group = GroupId::hashed(Hash128(42));
-		let range = keyspace_range(operator, group, KeyspaceId::BUFFER).encode();
+		let range = keyspace_range(operator, group, KeyspaceId::EMIT).encode();
 
-		let inside = OperatorStateKey::new(operator, group, KeyspaceId::BUFFER, vec![1]).encode();
+		let inside = OperatorStateKey::new(operator, group, KeyspaceId::EMIT, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::RUNNING, KeyspaceId::GUEST_ROW_MAPPING] {
+		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::ROLLING_EXPIRY, KeyspaceId::GUEST_ROW_MAPPING] {
 			let key = OperatorStateKey::new(operator, group, other, vec![1]).encode();
-			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
+			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the emit range");
 		}
 
 		let other_group =
-			OperatorStateKey::new(operator, GroupId::hashed(Hash128(43)), KeyspaceId::BUFFER, vec![1])
+			OperatorStateKey::new(operator, GroupId::hashed(Hash128(43)), KeyspaceId::EMIT, vec![1])
 				.encode();
-		assert!(!contains(&range, other_group.as_slice()), "another group's buffer leaked into the range");
+		assert!(!contains(&range, other_group.as_slice()), "another group's emit key leaked into the range");
 	}
 
 	#[test]
@@ -1482,7 +1458,7 @@ mod tests {
 		let key = OperatorStateKey::new(
 			OperatorId(17),
 			GroupId::hashed(Hash128(42)),
-			KeyspaceId::BUFFER,
+			KeyspaceId::EMIT,
 			vec![9, 9],
 		);
 
@@ -1578,71 +1554,6 @@ mod tests {
 
 		assert_eq!(hashed.as_slice().len(), short.as_slice().len(), "group key length must not reach the key");
 		assert!(hashed.as_slice().len() * 2 < long.len() + 8, "and must stay far below embedding the bytes");
-	}
-
-	#[test]
-	fn the_ram_predicate_and_the_disk_range_agree_on_every_key() {
-		// the RAM predicate and the disk range must agree on every key, or a phase-1 delete ghosts or strands a
-		// row
-		for group in GROUPS.map(|group| GroupId::hashed(Hash128(group))) {
-			let range = group_data_inner_range(group);
-			for other in GROUPS.map(|group| GroupId::hashed(Hash128(group))) {
-				for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
-					let key = OperatorStateKey::inner_encoded(other, *keyspace, vec![7, 7]);
-					let in_range = contains(&range, key.as_slice());
-					let in_predicate = group_data_of_inner(key.as_slice()) == Some(group);
-					assert_eq!(
-						in_range, in_predicate,
-						"disk range and RAM predicate disagree for group {group:?} on a \
-						 {keyspace:?} key of group {other:?}"
-					);
-				}
-			}
-		}
-	}
-
-	#[test]
-	fn the_ram_predicate_refuses_identity_keyspaces() {
-		// the RAM predicate must never report an identity keyspace as reclaimable group data
-		for keyspace in IDENTITY_KEYSPACES {
-			let key = OperatorStateKey::inner_encoded(GroupId::hashed(Hash128(9)), keyspace, vec![1]);
-			assert_eq!(
-				group_data_of_inner(key.as_slice()),
-				None,
-				"{keyspace:?} must not be reported as reclaimable group data"
-			);
-		}
-	}
-
-	#[test]
-	fn a_key_too_short_to_carry_a_keyspace_is_refused() {
-		// a key without both a group and a keyspace byte must not decode as group data
-		assert_eq!(group_data_of_inner(&[]), None);
-		assert_eq!(group_data_of_inner(&[0xAB]), None, "a group with no keyspace byte must not decode");
-	}
-
-	#[test]
-	fn the_predicate_agrees_with_the_disk_range_on_arbitrary_bytes() {
-		// the predicate and the disk range must agree even on arbitrary bytes no encoder produced
-		let mut seed = 0x2545F4914F6CDD1Du64;
-		let mut next = move || {
-			seed ^= seed << 13;
-			seed ^= seed >> 7;
-			seed ^= seed << 17;
-			seed
-		};
-
-		for _ in 0..2000 {
-			let len = (next() % 12) as usize;
-			let key: Vec<u8> = (0..len).map(|_| (next() % 256) as u8).collect();
-			let Some(group) = group_data_of_inner(&key) else {
-				continue;
-			};
-			assert!(
-				contains(&group_data_inner_range(group), &key),
-				"predicate attributed {key:?} to {group:?} but the disk range excludes it"
-			);
-		}
 	}
 
 	#[test]

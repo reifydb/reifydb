@@ -17,7 +17,10 @@ pub mod tests {
 	use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{GroupStateRange, OperatorStateKey},
+		key::{
+			any::TaggedKey,
+			operator::state::{GroupStateRange, OperatorStateKey},
+		},
 		state::timer::StateStore,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -28,7 +31,7 @@ pub mod tests {
 	use crate::{
 		operator::{
 			host::{HostContext, TxnHostContext},
-			state::{iter::StateIterator, test_utils::test::*},
+			state::test_utils::test::*,
 		},
 		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
@@ -51,7 +54,13 @@ pub mod tests {
 
 	fn scan_all(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
 		// production reads are all keyspace-scoped; an unscoped sweep must exist only in tests
-		StateIterator::new(txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024))
+		txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+			.map(|row| {
+				row.map(|multi| match &multi.key {
+					TaggedKey::OperatorState(state_key) => (state_key.inner(), multi.bytes),
+					_ => (multi.key.encode(), multi.bytes),
+				})
+			})
 			.collect::<Result<Vec<_>>>()
 			.unwrap()
 	}

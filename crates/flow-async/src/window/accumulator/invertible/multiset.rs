@@ -99,39 +99,6 @@ impl<V: Ord + Clone> Multiset<V> {
 	pub fn is_empty(&self) -> bool {
 		self.total == 0
 	}
-
-	pub fn mode(&self) -> Option<&V> {
-		self.counts
-			.iter()
-			.reduce(|best, current| {
-				if current.1 > best.1 {
-					current
-				} else {
-					best
-				}
-			})
-			.map(|(v, _)| v)
-	}
-
-	pub fn quantile(&self, q: f64) -> Option<&V> {
-		if self.total == 0 {
-			return None;
-		}
-		let q = q.clamp(0.0, 1.0);
-		let rank = ((q * self.total as f64).ceil() as u64).clamp(1, self.total);
-		let mut cumulative = 0u64;
-		for (value, count) in &self.counts {
-			cumulative += count;
-			if cumulative >= rank {
-				return Some(value);
-			}
-		}
-		None
-	}
-
-	pub fn median(&self) -> Option<&V> {
-		self.quantile(0.5)
-	}
 }
 
 impl<V: Ord + HeapSize> HeapSize for Multiset<V> {
@@ -216,27 +183,6 @@ mod tests {
 		ms.remove(&1);
 		assert_eq!(ms.min(), Some(&5), "last occurrence of 1 removed, min rises");
 		assert_eq!(ms.distinct(), 2);
-	}
-
-	#[test]
-	fn multiset_quantile_and_median_nearest_rank() {
-		let mut ms: Multiset<u64> = Multiset::default();
-		for v in [1u64, 2, 3, 4, 5] {
-			ms.add(v);
-		}
-		assert_eq!(ms.quantile(0.0), Some(&1));
-		assert_eq!(ms.median(), Some(&3));
-		assert_eq!(ms.quantile(1.0), Some(&5));
-		assert_eq!(ms.quantile(0.5), Some(&3));
-	}
-
-	#[test]
-	fn multiset_mode_breaks_ties_to_smallest_value() {
-		let mut ms: Multiset<u64> = Multiset::default();
-		for v in [7u64, 7, 3, 3, 9] {
-			ms.add(v);
-		}
-		assert_eq!(ms.mode(), Some(&3), "3 and 7 tie at count 2; smallest wins deterministically");
 	}
 
 	#[test]

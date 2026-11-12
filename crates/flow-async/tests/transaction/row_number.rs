@@ -10,10 +10,7 @@ use reifydb_core::{
 	commit::tracker::WriteTracker,
 	interface::catalog::flow::OperatorId,
 	key::{
-		operator::{
-			keyspace::{join::JoinRowMappingKey, root::NodeCounterKind},
-			state::{GroupId, node_counter_key},
-		},
+		operator::{keyspace::join::JoinRowMappingKey, state::GroupId},
 		typed::direction::{Asc, Desc},
 	},
 };
@@ -331,24 +328,6 @@ fn dropping_one_left_reclaims_every_join_mapping_under_it() {
 		txn.get_join_row_numbers(NODE, &[kept]).unwrap().remove(0),
 		Some(kept_rn),
 		"a neighbouring left survives"
-	);
-}
-
-#[test]
-fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
-	// Both counters live in the root group's NODE_COUNTER keyspace and must not alias.
-	let group_counter = node_counter_key(NodeCounterKind::Group);
-	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
-	assert_ne!(
-		guest_mapping_key(group(), &key("x")).unwrap(),
-		counter_key(),
-		"a guest mapping key must never equal the counter key"
-	);
-	assert_ne!(group_mapping_key(group()), counter_key(), "a group mapping key must never equal the counter key");
-	assert_ne!(
-		join_mapping_key(&join_key(1, 1)),
-		counter_key(),
-		"a join mapping key must never equal the counter key"
 	);
 }
 

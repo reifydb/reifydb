@@ -471,14 +471,6 @@ impl<'a> InProcessChangeView<'a> {
 }
 
 impl<'a> ChangeView for InProcessChangeView<'a> {
-	fn version(&self) -> u64 {
-		self.change.version.source.0
-	}
-
-	fn changed_at_nanos(&self) -> i64 {
-		self.change.changed_at.to_nanos()
-	}
-
 	fn diff_count(&self) -> usize {
 		self.change.diffs.len()
 	}

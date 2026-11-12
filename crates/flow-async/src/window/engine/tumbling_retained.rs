@@ -680,10 +680,6 @@ where
 		Ok(out)
 	}
 
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.expiry.earliest(store)
-	}
-
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}

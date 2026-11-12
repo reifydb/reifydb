@@ -3,40 +3,9 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::state::timer::{TimerKind, TimerMove, TimerStore};
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, value::duration::Duration};
 
-use crate::{
-	operator::state::seal::rule::{EvictionRule, SealRule, SealedThrough},
-	window::coord::DateTimeCoord,
-};
-
-pub struct SealGate {
-	rule: SealRule,
-	frontier: DateTimeCoord,
-}
-
-impl SealGate {
-	pub fn new(rule: SealRule, ledger: Option<SealedThrough>, watermark: Option<DateTime>) -> Self {
-		let ledger = ledger.map_or_else(DateTime::default, SealedThrough::at);
-		Self {
-			rule,
-			frontier: DateTimeCoord(watermark.map_or(ledger, |watermark| ledger.max(watermark))),
-		}
-	}
-
-	pub fn admits(&self, horizon: u64) -> bool {
-		self.rule.seal_instant_from_order(horizon).at() > self.frontier.0
-	}
-
-	pub fn horizon(&self) -> DateTimeCoord {
-		DateTimeCoord(self.rule.horizon_at(self.frontier).map_or_else(DateTime::default, |horizon| {
-			horizon.0.saturating_add(Duration::from_nanoseconds_const(1))
-		}))
-	}
-}
+use crate::operator::state::seal::rule::{EvictionRule, SealRule};
 
 pub fn rearm_seal(
 	store: &mut dyn TimerStore,
@@ -94,14 +63,6 @@ impl EvictionGate {
 		}
 		Ok(())
 	}
-
-	pub fn eviction_move(&self, key: EncodedKey, before: Option<u64>, after: Option<u64>) -> TimerMove {
-		TimerMove {
-			key,
-			before: before.map(|order| self.rule.eviction_instant_from_order(order).at()),
-			after: after.map(|order| self.rule.eviction_instant_from_order(order).at()),
-		}
-	}
 }
 
 #[cfg(test)]
@@ -109,10 +70,7 @@ mod tests {
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::operator::state::{
-		mock::{MockStore, RecordedTimer},
-		seal::coord::Coord,
-	};
+	use crate::operator::state::mock::{MockStore, RecordedTimer};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
@@ -128,32 +86,6 @@ mod tests {
 
 	fn order(millis: i64) -> u64 {
 		at_millis(millis).to_order()
-	}
-
-	#[test]
-	fn the_horizon_is_the_first_instant_the_gate_still_admits() {
-		// A horizon one step off refuses a row the engine admits, or admits one it seals.
-		let gate = SealGate::new(rule(), None, Some(at_millis(5_000)));
-		let horizon = gate.horizon();
-		let just_before = horizon.0.saturating_sub(Duration::from_nanoseconds_const(1));
-
-		assert!(gate.admits(horizon.to_order()));
-		assert!(!gate.admits(just_before.to_order()));
-	}
-
-	fn sealed_through(millis: i64) -> SealedThrough {
-		SealedThrough::from_order(order(millis))
-	}
-
-	#[test]
-	fn a_window_is_admitted_until_the_watermark_passes_its_whole_seal_span() {
-		// The gate is strict: a window whose seal instant lands exactly on the frontier is still
-		// open, because the wheel fires inclusively at that instant and has not fired yet. Sealing
-		// one millisecond early drops rows that were still legitimately late.
-		let gate = SealGate::new(rule(), Some(sealed_through(6_201)), None);
-
-		assert!(!gate.admits(order(5_000)), "5_000 + 1_200 + 1 == the frontier, so it is sealed");
-		assert!(gate.admits(order(5_001)), "one millisecond later the seal instant is past the frontier");
 	}
 
 	#[test]

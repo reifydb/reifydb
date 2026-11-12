@@ -21,6 +21,7 @@ reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-flow = { workspace = true }
 reifydb-flow-async = { workspace = true }
+reifydb-macro = { workspace = true }
 reifydb-runtime.workspace = true
 reifydb-sdk = { workspace = true, features = ["mount"] }
 reifydb-store-operator = { workspace = true }
@@ -36,7 +37,6 @@ chaos = []
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
-reifydb-macro = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 
 [[test]]

@@ -501,7 +501,7 @@ mod tests {
 	const OP_A: OperatorId = OperatorId(1);
 	const OP_B: OperatorId = OperatorId(2);
 	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
-	const OTHER: KeyspaceId = KeyspaceId::BUFFER;
+	const OTHER: KeyspaceId = KeyspaceId::EMIT;
 	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_UNMANAGED;
 
 	fn group_a() -> GroupId {

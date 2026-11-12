@@ -226,8 +226,8 @@ mod tests {
 	}
 
 	#[test]
-	fn immutable_min_never_drains_to_empty_once_a_row_has_folded() {
-		// An immutable minimum cannot be retracted, so the immutable arm's state is never reclaimable.
+	fn immutable_min_closes_at_zero_live_rows_though_the_fold_holds_its_minimum() {
+		// The window must close at zero live rows even though the immutable fold still holds its minimum.
 		let ops = [
 			Op::Add((event_coord_at_millis(0), 5i64)),
 			Op::Add((event_coord_at_millis(50), 8)),
@@ -242,8 +242,9 @@ mod tests {
 		drive(&mut plain, &ops);
 
 		assert!(plain.is_empty(), "with nothing folded every row stays retractable");
-		assert!(!immutable.is_empty(), "the immutable minimum outlives both retractions");
-		assert_eq!(immutable.finalize(), Some(5));
+		assert!(immutable.is_empty(), "zero live rows close the window whatever the fold holds");
+		assert_eq!(immutable.finalize(), None);
+		assert_eq!(immutable.inner().min(), Some(5), "the immutable fold keeps the minimum it folded");
 	}
 
 	#[test]

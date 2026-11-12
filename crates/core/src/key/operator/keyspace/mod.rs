@@ -40,9 +40,8 @@ use crate::{
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
-					Accumulator, Buffer, Emit, EngineMeta, GuestAccumulator, GuestRetainedEntry,
-					RollingMeta, RollingPane, RowIndex, Running, Session, SessionMember,
-					WindowMeta,
+					Accumulator, Emit, EngineMeta, GuestAccumulator, GuestRetainedEntry,
+					RollingMeta, RollingPane, RowIndex, Session, SessionMember, WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -161,8 +160,6 @@ macro_rules! catalogue {
 
 catalogue!(
 	Accumulator,
-	Buffer,
-	Running,
 	Session,
 	RollingMeta,
 	EngineMeta,
@@ -223,9 +220,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		KeyspaceId::SESSION_MEMBER => session_member_sibling(group, suffix),
 
 		KeyspaceId::ACCUMULATOR
-		| KeyspaceId::BUFFER
 		| KeyspaceId::ROLLING_PANE
-		| KeyspaceId::RUNNING
 		| KeyspaceId::SESSION
 		| KeyspaceId::ROLLING_META
 		| KeyspaceId::ENGINE_META
@@ -487,7 +482,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 48, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 46, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -511,12 +506,12 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			48,
+			46,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
 			group_scoped_keyspaces(),
-			25,
+			23,
 			"a keyspace changed group scope; confirm its key layout meant to"
 		);
 	}

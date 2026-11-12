@@ -4,10 +4,7 @@
 use reifydb_core::{key::operator::state::GroupId, state::timer::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::window::{
-	coord::{DateTimeCoord, TimeStamped},
-	meta::WindowMeta,
-};
+use crate::window::meta::WindowMeta;
 
 pub struct Mint<'a> {
 	meta: &'a mut WindowMeta,
@@ -18,10 +15,6 @@ impl<'a> Mint<'a> {
 		Self {
 			meta,
 		}
-	}
-
-	pub fn event(row: &impl TimeStamped) -> DateTimeCoord {
-		DateTimeCoord::of(row)
 	}
 
 	pub fn membership(
@@ -41,16 +34,6 @@ impl<'a> Mint<'a> {
 		window_id: u64,
 	) -> Result<()> {
 		self.meta.store_row_index(store, group, row_number, window_id)
-	}
-
-	pub fn record_memberships(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: GroupId,
-		row_number: RowNumber,
-		window_ids: &[u64],
-	) -> Result<()> {
-		self.meta.store_row_indexes(store, group, row_number, window_ids)
 	}
 
 	pub fn withdraw_membership(
@@ -75,7 +58,7 @@ impl<'a> Mint<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::{util::hash::Hash128, value::datetime::DateTime};
+	use reifydb_value::util::hash::Hash128;
 
 	use super::*;
 	use crate::operator::state::mock::MockStore;
@@ -90,14 +73,6 @@ mod tests {
 
 	fn meta() -> WindowMeta {
 		WindowMeta::new()
-	}
-
-	#[test]
-	fn an_event_coordinate_is_minted_from_the_row_time() {
-		// A coordinate from anything but the row's own time puts rows in windows the seal cannot reason about.
-		let row = DateTime::from_millis(5_000);
-
-		assert_eq!(Mint::event(&row).0, DateTime::from_millis(5_000));
 	}
 
 	#[test]

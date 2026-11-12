@@ -7,8 +7,6 @@ pub const OPERATOR_MAGIC: u32 = 231123;
 
 pub const OPERATOR_ABI_TAG: u32 = 0x2810;
 
-pub type ExternCOperatorMagicFn = extern "C" fn() -> u32;
-
 pub type ExternCOperatorCreateFn = extern "C" fn(
 	params: *const u8,
 	params_len: usize,

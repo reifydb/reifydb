@@ -31,37 +31,6 @@ pub struct NodeCounterKey {
 	pub kind: Asc<u8>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum NodeCounterKind {
-	RowNumber,
-	Group,
-}
-
-impl NodeCounterKind {
-	pub fn tag(&self) -> u8 {
-		match self {
-			Self::RowNumber => 0,
-			Self::Group => 1,
-		}
-	}
-
-	pub fn from_tag(tag: u8) -> Option<Self> {
-		match tag {
-			0 => Some(Self::RowNumber),
-			1 => Some(Self::Group),
-			_ => None,
-		}
-	}
-}
-
-impl NodeCounterKey {
-	pub fn of(kind: NodeCounterKind) -> Self {
-		Self {
-			kind: Asc(kind.tag()),
-		}
-	}
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GateVisibilityKey {
 	pub row: Asc<RowNumber>,
