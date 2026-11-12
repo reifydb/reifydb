@@ -240,6 +240,7 @@ where
 		let mut pass = SessionPass::<_, C, HookContributions<H>>::new(&identities, horizon, gap);
 		{
 			let mut prefetched = Prefetched::read(store, keys)?;
+			pass.load(&mut prefetched)?;
 			for op in ops {
 				match op {
 					SessionOp::Admit {

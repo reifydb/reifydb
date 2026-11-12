@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet, hash_map::Entry},
+	collections::{HashMap, HashSet},
 	fmt::Debug,
 	hash::Hash,
 	mem::replace,
@@ -254,6 +254,7 @@ pub fn open_sessions_state<C: Coord>(open: &OpenSessions<C>) -> OpenSessionsStat
 struct GroupSessions<C: Coord> {
 	loaded_due: Option<u64>,
 	open: OpenSessions<C>,
+	touched: bool,
 }
 
 struct IndexEvent<G> {
@@ -308,11 +309,35 @@ where
 		}
 	}
 
-	fn group(&mut self, store: &mut dyn StateStore, hash: Hash128) -> Result<&mut OpenSessions<C>> {
-		if let Entry::Vacant(entry) = self.groups.entry(hash) {
-			let mut open = load_open_sessions::<C>(store, from_ref(&hash), self.gap)?.remove(0);
+	pub(crate) fn load(&mut self, store: &mut dyn StateStore) -> Result<()> {
+		let mut hashes: Vec<Hash128> = self.identities.values().map(|(hash, _)| *hash).collect();
+		hashes.sort();
+		hashes.dedup();
+		if hashes.is_empty() {
+			return Ok(());
+		}
+		let loaded = load_open_sessions::<C>(store, &hashes, self.gap)?;
+		for (hash, open) in hashes.into_iter().zip(loaded) {
 			let loaded_due = earliest_due(&open, self.gap);
-			for closed in open.close(self.horizon) {
+			self.groups.insert(
+				hash,
+				GroupSessions {
+					loaded_due,
+					open,
+					touched: false,
+				},
+			);
+		}
+		Ok(())
+	}
+
+	fn group(&mut self, store: &mut dyn StateStore, hash: Hash128) -> Result<&mut OpenSessions<C>> {
+		let Some(group) = self.groups.get_mut(&hash) else {
+			return internal_err!("session group {hash:?} was not loaded before the batch touched it");
+		};
+		if !group.touched {
+			group.touched = true;
+			for closed in group.open.close(self.horizon) {
 				for member in &closed.members {
 					self.meta.drop_session_member(
 						store,
@@ -327,12 +352,8 @@ where
 					)?;
 				}
 			}
-			entry.insert(GroupSessions {
-				loaded_due,
-				open,
-			});
 		}
-		Ok(&mut self.groups.get_mut(&hash).expect("the group was loaded above").open)
+		Ok(&mut group.open)
 	}
 
 	pub(crate) fn indexed(&mut self, store: &mut dyn StateStore, group: &G, row: RowNumber) -> Result<bool> {
@@ -496,7 +517,7 @@ where
 			emptied: Vec::new(),
 			bounds: HashMap::new(),
 		};
-		for (hash, group) in &self.groups {
+		for (hash, group) in self.groups.iter().filter(|(_, group)| group.touched) {
 			for session in group.open.sessions() {
 				passed.bounds.insert((*hash, session.id), (session.start, session.last));
 			}
