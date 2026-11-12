@@ -51,9 +51,7 @@ pub enum SessionOp<G, C, X> {
 	},
 	Retract {
 		group: G,
-		at: C,
 		row: RowNumber,
-		contribution: X,
 	},
 	Revise {
 		row: RowNumber,
@@ -68,7 +66,7 @@ pub struct SessionRows<G, C, X> {
 }
 
 impl<G: Clone, C: Copy, X: Clone> SessionRows<G, C, X> {
-	fn single(&mut self, columns: &WindowColumns<G, C, X>, admit: bool) {
+	fn admit(&mut self, columns: &WindowColumns<G, C, X>) {
 		for row in 0..columns.len() {
 			let Some(at) = columns.coords()[row] else {
 				continue;
@@ -77,21 +75,24 @@ impl<G: Clone, C: Copy, X: Clone> SessionRows<G, C, X> {
 				self.refused += 1;
 				continue;
 			};
-			let group = columns.groups()[row].clone();
-			let contribution = columns.contributions()[row].clone();
-			self.ops.push(match admit {
-				true => SessionOp::Admit {
-					group,
-					at,
-					row: number,
-					contribution,
-				},
-				false => SessionOp::Retract {
-					group,
-					at,
-					row: number,
-					contribution,
-				},
+			self.ops.push(SessionOp::Admit {
+				group: columns.groups()[row].clone(),
+				at,
+				row: number,
+				contribution: columns.contributions()[row].clone(),
+			});
+		}
+	}
+
+	fn retract(&mut self, rows: &[Option<RowNumber>], groups: &[G]) {
+		for (number, group) in rows.iter().zip(groups) {
+			let Some(row) = *number else {
+				self.refused += 1;
+				continue;
+			};
+			self.ops.push(SessionOp::Retract {
+				group: group.clone(),
+				row,
 			});
 		}
 	}
@@ -133,11 +134,9 @@ impl<G: Clone, C: Copy, X: Clone> SessionRows<G, C, X> {
 					pre,
 					post,
 				}),
-				(Some((group, at, contribution)), None) => self.ops.push(SessionOp::Retract {
+				(Some((group, ..)), None) => self.ops.push(SessionOp::Retract {
 					group,
-					at,
 					row,
-					contribution,
 				}),
 				(None, Some((group, at, contribution))) => self.ops.push(SessionOp::Admit {
 					group,
@@ -167,8 +166,9 @@ where
 	};
 	for diff in 0..rows.diff_count() {
 		match rows.diff(diff)? {
-			WindowDiff::Insert(post) => routed.single(&post, true),
-			WindowDiff::Remove(pre) => routed.single(&pre, false),
+			WindowDiff::Insert(post) => routed.admit(&post),
+			WindowDiff::Remove(pre) => routed.retract(pre.rows(), pre.groups()),
+			WindowDiff::Retract(pre) => routed.retract(pre.rows(), pre.groups()),
 			WindowDiff::Update {
 				pre,
 				post,
@@ -356,6 +356,22 @@ where
 		Ok(&mut group.open)
 	}
 
+	pub(crate) fn member_keys(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(&G, RowNumber)],
+	) -> Result<Vec<GroupStateKey>> {
+		let mut keys = Vec::new();
+		for (group, row) in rows {
+			let hash = self.hash(group)?;
+			for session in Mint::new(&mut self.meta).membership(store, GroupId::hashed(hash), *row)? {
+				keys.push((&SessionMemberKey(GroupId::window(hash, session), *row))
+					.into_group_state_key());
+			}
+		}
+		Ok(keys)
+	}
+
 	pub(crate) fn indexed(&mut self, store: &mut dyn StateStore, group: &G, row: RowNumber) -> Result<bool> {
 		let hash = self.hash(group)?;
 		Ok(!Mint::new(&mut self.meta).membership(store, GroupId::hashed(hash), row)?.is_empty())
@@ -425,21 +441,16 @@ where
 		Ok(true)
 	}
 
-	pub(crate) fn retract(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: &G,
-		at: C,
-		row: RowNumber,
-		contribution: X::Item,
-	) -> Result<()> {
+	pub(crate) fn retract(&mut self, store: &mut dyn StateStore, group: &G, row: RowNumber) -> Result<()> {
 		let hash = self.hash(group)?;
 		let partition = GroupId::hashed(hash);
 		for session in Mint::new(&mut self.meta).membership(store, partition, row)? {
 			let Some(removal) = self.group(store, hash)?.remove(session, row)? else {
 				continue;
 			};
-			self.push(AccumulatorOp::Remove, group, session, at, &contribution);
+			let contribution: X::Item =
+				self.meta.load_session_member(store, GroupId::window(hash, session), row)?;
+			self.routing.retract_span(group, session_span(session), &contribution);
 			self.events.push(IndexEvent {
 				group: group.clone(),
 				hash,

@@ -168,6 +168,11 @@ where
 					routed.push(&pre.groups()[row], group_id, event);
 				}
 			}
+			WindowDiff::Retract(_) => {
+				return internal_err!(
+					"diff {diff} is a session retract, which a rolling window cannot route"
+				);
+			}
 			WindowDiff::Update {
 				pre,
 				post,

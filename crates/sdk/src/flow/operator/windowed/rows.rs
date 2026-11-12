@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow_async::window::driver::rows::{WindowColumns, WindowDiff, WindowRows};
+use reifydb_flow_async::window::driver::rows::{RetractRows, WindowColumns, WindowDiff, WindowRows};
 use reifydb_value::{Result, error::Error, value::diff_type::DiffType};
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
 			all_rows,
-			operator::{Contribution, WindowedOperator, extract_rows},
+			operator::{Contribution, WindowedOperator, batch_len, extract_rows},
 		},
 	},
 };
@@ -20,6 +20,7 @@ pub struct SdkRows<'a, A, C, V> {
 	aggregator: &'a A,
 	ctx: &'a mut C,
 	change: &'a V,
+	sessions: bool,
 }
 
 impl<'a, A, C, V> SdkRows<'a, A, C, V>
@@ -33,6 +34,14 @@ where
 			aggregator,
 			ctx,
 			change,
+			sessions: false,
+		}
+	}
+
+	pub fn sessions(aggregator: &'a A, ctx: &'a mut C, change: &'a V) -> Self {
+		Self {
+			sessions: true,
+			..Self::new(aggregator, ctx, change)
 		}
 	}
 }
@@ -59,6 +68,25 @@ fn columns<A: WindowedOperator>(
 	WindowColumns::new(index, rows, groups, coords, contributions)
 }
 
+fn retracts<A: WindowedOperator>(
+	aggregator: &A,
+	ctx: &mut impl GuestContext,
+	cols: &impl ColumnsView,
+) -> Result<RetractRows<A::GroupKey>> {
+	let all = all_rows(cols);
+	let extracted = batch_len::<A, _>(aggregator.extract(ctx, cols, &all)?, all.len(), "extract_batch")?;
+	let numbers = cols.row_numbers();
+	let mut rows = Vec::with_capacity(extracted.len());
+	let mut groups = Vec::with_capacity(extracted.len());
+	for (row, extracted) in all.into_iter().zip(extracted) {
+		if let Some((group, _)) = extracted {
+			rows.push(numbers.get(row).copied());
+			groups.push(group);
+		}
+	}
+	RetractRows::new(rows, groups)
+}
+
 fn missing_side(index: usize, kind: DiffType, side: &str) -> Error {
 	SdkError::Other(format!("diff {index} is {kind:?} but carries no {side} columns")).into()
 }
@@ -77,7 +105,7 @@ where
 		self.change.diff_count()
 	}
 
-	fn diff(&mut self, index: usize) -> Result<WindowDiff<WindowColumns<A::GroupKey, A::Coord, Contribution<A>>>> {
+	fn diff(&mut self, index: usize) -> Result<WindowDiff<A::GroupKey, A::Coord, Contribution<A>>> {
 		let change = self.change;
 		let Some(diff) = change.diff(index) else {
 			return Err(SdkError::Other(format!(
@@ -102,7 +130,10 @@ where
 			}
 			DiffType::Remove => {
 				let pre = diff.pre().ok_or_else(|| missing_side(index, kind, "pre"))?;
-				Ok(WindowDiff::Remove(columns(self.aggregator, self.ctx, &pre)?))
+				match self.sessions {
+					true => Ok(WindowDiff::Retract(retracts(self.aggregator, self.ctx, &pre)?)),
+					false => Ok(WindowDiff::Remove(columns(self.aggregator, self.ctx, &pre)?)),
+				}
 			}
 		}
 	}

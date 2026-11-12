@@ -71,13 +71,52 @@ impl<G, C, X> WindowColumns<G, C, X> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum WindowDiff<B> {
-	Insert(B),
+pub struct RetractRows<G> {
+	rows: Vec<Option<RowNumber>>,
+	groups: Vec<G>,
+}
+
+impl<G> RetractRows<G> {
+	pub fn new(rows: Vec<Option<RowNumber>>, groups: Vec<G>) -> Result<Self> {
+		if rows.len() != groups.len() {
+			return internal_err!(
+				"retract rows must share one length (rows={}, groups={})",
+				rows.len(),
+				groups.len()
+			);
+		}
+		Ok(Self {
+			rows,
+			groups,
+		})
+	}
+
+	pub fn len(&self) -> usize {
+		self.rows.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.rows.is_empty()
+	}
+
+	pub fn rows(&self) -> &[Option<RowNumber>] {
+		&self.rows
+	}
+
+	pub fn groups(&self) -> &[G] {
+		&self.groups
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WindowDiff<G, C, X> {
+	Insert(WindowColumns<G, C, X>),
 	Update {
-		pre: B,
-		post: B,
+		pre: WindowColumns<G, C, X>,
+		post: WindowColumns<G, C, X>,
 	},
-	Remove(B),
+	Remove(WindowColumns<G, C, X>),
+	Retract(RetractRows<G>),
 }
 
 pub trait WindowRows {
@@ -87,8 +126,5 @@ pub trait WindowRows {
 
 	fn diff_count(&self) -> usize;
 
-	fn diff(
-		&mut self,
-		index: usize,
-	) -> Result<WindowDiff<WindowColumns<Self::Group, Self::Coord, Self::Contribution>>>;
+	fn diff(&mut self, index: usize) -> Result<WindowDiff<Self::Group, Self::Coord, Self::Contribution>>;
 }

@@ -81,6 +81,23 @@ where
 		span: WindowSpan<C>,
 		contribution: &X::Item,
 	) {
+		let (_, events, latest) = self.window(group, span);
+		if op == AccumulatorOp::Add {
+			*latest = Some(latest.map_or(coord, |latest| latest.max(coord)));
+		}
+		events.push(op, contribution.clone());
+	}
+
+	pub(crate) fn retract_span(&mut self, group: &G, span: WindowSpan<C>, contribution: &X::Item) {
+		let (_, events, _) = self.window(group, span);
+		events.push(AccumulatorOp::Remove, contribution.clone());
+	}
+
+	fn window(
+		&mut self,
+		group: &G,
+		span: WindowSpan<C>,
+	) -> &mut ((G, WindowSpan<C>), AccumulatorEvents<X>, Option<C>) {
 		let key = (group.clone(), span);
 		let at = match self.index.entry(key.clone()) {
 			Entry::Occupied(slot) => *slot.get(),
@@ -89,11 +106,7 @@ where
 				*slot.insert(self.windows.len() - 1)
 			}
 		};
-		let (_, events, latest) = &mut self.windows[at];
-		if op == AccumulatorOp::Add {
-			*latest = Some(latest.map_or(coord, |latest| latest.max(coord)));
-		}
-		events.push(op, contribution.clone());
+		&mut self.windows[at]
 	}
 
 	fn push_row(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>, row: usize) -> Result<()> {
@@ -241,6 +254,11 @@ where
 				pre,
 				post,
 			} => routing.push_update(diff, &pre, &post)?,
+			WindowDiff::Retract(_) => {
+				return internal_err!(
+					"diff {diff} is a session retract, which a tumbling or sliding window cannot route"
+				);
+			}
 		}
 	}
 	Ok(routing.finish())

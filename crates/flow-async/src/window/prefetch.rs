@@ -23,6 +23,7 @@ pub struct Prefetched<'a> {
 	batch: StateBatch,
 	slots: HashMap<GroupStateKey, usize>,
 	blind: BTreeMap<GroupStateKey, Option<EncodedPodRow>>,
+	ahead: HashMap<GroupStateKey, Option<EncodedPodRow>>,
 }
 
 impl<'a> Prefetched<'a> {
@@ -41,7 +42,26 @@ impl<'a> Prefetched<'a> {
 			batch,
 			slots,
 			blind: BTreeMap::new(),
+			ahead: HashMap::new(),
 		})
+	}
+
+	pub fn read_ahead(&mut self, keys: Vec<GroupStateKey>) -> Result<()> {
+		let mut distinct = Vec::with_capacity(keys.len());
+		for key in keys {
+			if !self.slots.contains_key(&key) && !self.blind.contains_key(&key) && !distinct.contains(&key)
+			{
+				distinct.push(key);
+			}
+		}
+		if distinct.is_empty() {
+			return Ok(());
+		}
+		let batch = self.store.state_batch(distinct)?;
+		for slot in 0..batch.len() {
+			self.ahead.insert(batch.key(slot).clone(), batch.value(slot).cloned());
+		}
+		Ok(())
 	}
 
 	pub fn write(self) -> Result<()> {
@@ -78,7 +98,7 @@ impl StateStore for Prefetched<'_> {
 					}) => None,
 					None => self.batch.value(slot).cloned(),
 				}),
-				None => self.blind.get(key).cloned(),
+				None => self.blind.get(key).or_else(|| self.ahead.get(key)).cloned(),
 			};
 			if answer.is_none() {
 				missed.push(index);

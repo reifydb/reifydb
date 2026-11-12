@@ -196,7 +196,7 @@ where
 		change: &V,
 	) -> Result<Emitted<A>> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		let mut rows = SdkRows::new(aggregator, ctx, change);
+		let mut rows = SdkRows::sessions(aggregator, ctx, change);
 		let routed = route_session(&mut rows)?;
 		drop(rows);
 		if routed.ops.is_empty() && routed.refused == 0 {

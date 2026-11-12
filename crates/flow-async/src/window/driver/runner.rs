@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::TimerKind,
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -241,6 +241,25 @@ where
 		{
 			let mut prefetched = Prefetched::read(store, keys)?;
 			pass.load(&mut prefetched)?;
+			let retracted: Vec<(&H::Group, RowNumber)> = ops
+				.iter()
+				.filter_map(|op| match op {
+					SessionOp::Admit {
+						..
+					} => None,
+					SessionOp::Retract {
+						group,
+						row,
+					} => Some((group, *row)),
+					SessionOp::Revise {
+						row,
+						pre,
+						post,
+					} => (pre.0 != post.0 || pre.1 != post.1).then_some((&pre.0, *row)),
+				})
+				.collect();
+			let members = pass.member_keys(&mut prefetched, &retracted)?;
+			prefetched.read_ahead(members)?;
 			for op in ops {
 				match op {
 					SessionOp::Admit {
@@ -255,10 +274,8 @@ where
 					}
 					SessionOp::Retract {
 						group,
-						at,
 						row,
-						contribution,
-					} => pass.retract(&mut prefetched, &group, at, row, contribution)?,
+					} => pass.retract(&mut prefetched, &group, row)?,
 					SessionOp::Revise {
 						row,
 						pre: (pre_group, pre_at, pre),
@@ -270,7 +287,7 @@ where
 							continue;
 						}
 						if indexed {
-							pass.retract(&mut prefetched, &pre_group, pre_at, row, pre)?;
+							pass.retract(&mut prefetched, &pre_group, row)?;
 						}
 						if !pass.admit(&mut prefetched, &post_group, at, row, post)? {
 							refused += 1;
