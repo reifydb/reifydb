@@ -95,28 +95,8 @@ impl MockStore {
 			.count()
 	}
 
-	pub(crate) fn tumbling_index_entry_count(&mut self) -> usize {
-		self.keyspace_count(KeyspaceId::TUMBLING_EXPIRY)
-	}
-
 	pub(crate) fn pane_count(&mut self) -> usize {
 		self.keyspace_count(KeyspaceId::ROLLING_PANE)
-	}
-
-	pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
-		let keys: Vec<Vec<u8>> = self
-			.data
-			.keys()
-			.filter(|k| {
-				OperatorStateKey::decode_inner(k)
-					.is_some_and(|(_, found, _)| found == KeyspaceId::ACCUMULATOR)
-			})
-			.cloned()
-			.collect();
-		for key in &keys {
-			self.data.remove(key);
-		}
-		keys.len()
 	}
 
 	pub(crate) fn contains_row_mapping(&self, group: GroupId) -> bool {

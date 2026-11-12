@@ -3,10 +3,7 @@
 
 use std::slice::from_ref;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::StateCodec,
-};
+use reifydb_codec::{key::encoded::IntoEncodedKey, row::operator::state::StateCodec};
 use reifydb_core::{
 	common::{OnEmpty, WindowKind, WindowRequirements, WindowSizeDomain},
 	error::CoreError,
@@ -33,7 +30,6 @@ use reifydb_flow_async::{
 		kind::sliding::fits_slide,
 		meta::NoKey,
 		settings::WindowSettings,
-		span::window_row_key,
 	},
 };
 use reifydb_value::{
@@ -93,17 +89,6 @@ where
 	sessions: bool,
 	seal_span: Option<SealSpan<A>>,
 	settings: WindowSettings<A::Coord>,
-}
-
-impl<A> PlainDriver<A>
-where
-	A: Emit,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	fn row_key(group: &A::GroupKey, window_start: A::Coord) -> EncodedKey {
-		window_row_key(group.into_encoded_key(), window_start)
-	}
 }
 
 impl<A> PlainDriver<A>
@@ -510,7 +495,6 @@ where
 mod tests {
 	use std::marker::PhantomData;
 
-	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::{OnEmpty, WindowKind, WindowSize, WindowSizeDomain},
 		operator_with::WithSpan,
@@ -651,18 +635,6 @@ mod tests {
 	}
 
 	#[test]
-	fn the_row_key_is_the_group_bytes_then_the_coordinate() {
-		// The driver owns the row key: a group bytes prefix keeps one group's windows together, and the
-		// coordinate must follow it, or two windows of one group collide or two groups interleave.
-		let start = DateTimeCoord(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
-
-		let key = PlainDriver::<TimeProbe>::row_key(&7u32, start);
-
-		assert_eq!(key, EncodedKey::builder().u32(7u32).datetime(&start.0).build());
-		assert_ne!(key, PlainDriver::<TimeProbe>::row_key(&8u32, start));
-	}
-
-	#[test]
 	fn the_span_is_the_declared_size_aligned_down_from_the_coordinate() {
 		// The engine builds the span from the size in the with clause; a hard-coded or ignored size would give
 		// every operator the same window.
@@ -699,16 +671,6 @@ mod tests {
 		assert_eq!(*declared.aggregator.settings_seen.lock(), vec![Some(secs(15))]);
 		assert_eq!(*omitted.aggregator.settings_seen.lock(), vec![None]);
 		assert_eq!(declared.settings.lateness, secs(20));
-	}
-
-	#[test]
-	fn a_slot_row_key_carries_the_group_slot_and_the_coordinate() {
-		// The slot operators keep the slot in the group key and in the coordinate; the row key must hold both,
-		// so two slots never share a key.
-		let key = PlainDriver::<SlotProbe>::row_key(&5u64, U8Coord(5));
-
-		assert_eq!(key, EncodedKey::builder().u64(5u64).u64(5u64).build());
-		assert_ne!(key, PlainDriver::<SlotProbe>::row_key(&6u64, U8Coord(6)));
 	}
 
 	#[test]

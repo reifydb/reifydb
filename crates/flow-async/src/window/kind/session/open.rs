@@ -48,9 +48,6 @@ impl<S: Coord> OpenSession<S> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionIds {
 	StartTime,
-	Counter {
-		next: u64,
-	},
 }
 
 impl SessionIds {
@@ -61,13 +58,6 @@ impl SessionIds {
 				while taken.iter().any(|session| session.id == id) {
 					id += 1;
 				}
-				id
-			}
-			SessionIds::Counter {
-				next,
-			} => {
-				let id = *next;
-				*next += 1;
 				id
 			}
 		}
@@ -123,10 +113,6 @@ impl<S: Coord> OpenSessions<S> {
 
 	pub fn sealed_last(&self) -> Option<S> {
 		self.sealed_last
-	}
-
-	pub fn ids(&self) -> SessionIds {
-		self.ids
 	}
 
 	pub fn insert(&mut self, at: S, row: RowNumber, horizon: S) -> Insertion<S> {
@@ -480,25 +466,6 @@ mod tests {
 			bounds(&open),
 			vec![(id(12_000), event_coord_at_millis(12_000), event_coord_at_millis(12_000), 1)]
 		);
-	}
-
-	#[test]
-	fn counter_ids_number_opened_and_split_sessions_in_order() {
-		// The sdk path numbers sessions by counter, so a split must mint the next number, not a start time.
-		let mut open = OpenSessions::new(
-			Duration::from_milliseconds_const(1_000),
-			SessionIds::Counter {
-				next: 0,
-			},
-		);
-		assert_eq!(open.insert(event_coord_at_millis(10_000), RowNumber(1), far_past()), Insertion::Opened(0));
-		open.insert(event_coord_at_millis(10_800), RowNumber(2), far_past());
-		open.insert(event_coord_at_millis(11_600), RowNumber(3), far_past());
-
-		let removal = open.remove(0, RowNumber(2)).unwrap();
-
-		assert!(matches!(removal, Some(Removal::Split { kept: 0, moved }) if moved.id == 1));
-		assert_eq!(open.insert(event_coord_at_millis(20_000), RowNumber(4), far_past()), Insertion::Opened(2));
 	}
 
 	#[test]

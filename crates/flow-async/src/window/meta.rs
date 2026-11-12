@@ -26,10 +26,7 @@ use reifydb_value::{
 };
 use serde::de::DeserializeOwned;
 
-use crate::operator::{
-	state::seal::ledger::seal_ledger_key,
-	state_access::{get, get_classified, remove, set},
-};
+use crate::operator::state_access::{get, get_classified, remove, set};
 
 #[operator_state]
 #[derive(Clone, Default)]
@@ -105,21 +102,6 @@ pub struct NoKey;
 impl HeapSize for NoKey {
 	fn heap_size(&self) -> usize {
 		0
-	}
-}
-
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct SealLedgerKey;
-
-impl HeapSize for SealLedgerKey {
-	fn heap_size(&self) -> usize {
-		0
-	}
-}
-
-impl IntoGroupStateKey for &SealLedgerKey {
-	fn into_group_state_key(self) -> GroupStateKey {
-		seal_ledger_key()
 	}
 }
 
@@ -313,14 +295,6 @@ impl WindowMeta {
 		}
 	}
 
-	pub fn load_open_sessions(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: GroupId,
-	) -> Result<Option<OpenSessionsState>> {
-		Ok(get_classified::<_, OpenSessionsState>(store, from_ref(&SessionKey(group)))?.remove(0))
-	}
-
 	pub fn load_open_sessions_of(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -368,10 +342,9 @@ mod tests {
 	use reifydb_core::key::operator::state::{
 		GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range,
 	};
-	use reifydb_value::{factory::time::at_millis, util::hash::Hash128, value::row_number::RowNumber};
+	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
-	use super::{OpenSessionsState, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
-	use crate::operator::state::mock::MockStore;
+	use super::{RowIndexKey, SessionKey};
 
 	fn group_id() -> GroupId {
 		GroupId::hashed(Hash128(42))
@@ -406,42 +379,5 @@ mod tests {
 			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
 			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
 		}
-	}
-
-	#[test]
-	fn the_seal_ledger_stays_out_of_every_group_range() {
-		// The seal ledger is per operator, one entry for the whole operator. Under a real group id,
-		// reclaiming that group would reset it and every later event would look seal_span again.
-		let key = (&SealLedgerKey).into_group_state_key();
-		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
-		assert_eq!(group, GroupId::ROOT);
-		assert!(!contains(&group_data_inner_range(group_id()), key.as_bytes()));
-	}
-
-	#[test]
-	fn a_group_whose_only_session_started_at_the_epoch_reloads_with_that_session() {
-		// Openness is the state row's presence, so a session at time zero must reload as a session.
-		let mut meta = WindowMeta::new();
-		let mut store = MockStore::default();
-		let epoch = at_millis(0).to_order();
-
-		assert!(meta.load_open_sessions(&mut store, group_id()).unwrap().is_none());
-
-		meta.save_open_sessions(
-			&mut store,
-			vec![(
-				group_id(),
-				OpenSessionsState {
-					sessions: vec![(epoch, vec![(epoch, 1)])],
-					sealed_last: None,
-				},
-			)],
-		)
-		.unwrap();
-
-		let reloaded =
-			meta.load_open_sessions(&mut store, group_id()).unwrap().expect("the saved state reloads");
-		assert_eq!(reloaded.sessions, vec![(epoch, vec![(epoch, 1)])]);
-		assert_eq!(reloaded.sealed_last, None);
 	}
 }

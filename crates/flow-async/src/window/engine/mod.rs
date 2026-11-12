@@ -5,7 +5,6 @@ pub mod config;
 pub mod daba;
 pub mod pane;
 pub mod publish;
-pub mod session;
 pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;
@@ -253,43 +252,6 @@ impl KeyspaceFamily {
 	}
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub struct RunningKey {
-	pub family: KeyspaceFamily,
-	pub group: GroupId,
-	pub slot: EncodedKey,
-}
-
-impl RunningKey {
-	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
-		Self {
-			family,
-			group,
-			slot,
-		}
-	}
-
-	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
-		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
-	}
-}
-
-impl HeapSize for RunningKey {
-	fn heap_size(&self) -> usize {
-		self.slot.heap_size()
-	}
-}
-
-impl IntoGroupStateKey for &RunningKey {
-	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
-			self.group,
-			self.family.keyspace(KeyspaceId::RUNNING, KeyspaceId::GUEST_RUNNING),
-			self.family.suffix(&self.slot),
-		)
-	}
-}
-
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct PaneKey {
 	pub group: GroupId,
@@ -361,43 +323,6 @@ impl IntoGroupStateKey for &WindowStateKey {
 		OperatorStateKey::inner_encoded(
 			self.group,
 			self.family.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR),
-			self.family.suffix(&self.slot),
-		)
-	}
-}
-
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub struct BufferKey {
-	pub family: KeyspaceFamily,
-	pub group: GroupId,
-	pub slot: EncodedKey,
-}
-
-impl BufferKey {
-	pub fn new(family: KeyspaceFamily, group: GroupId, slot: EncodedKey) -> Self {
-		Self {
-			family,
-			group,
-			slot,
-		}
-	}
-
-	pub fn of_row(family: KeyspaceFamily, group: GroupId, row: RowNumber) -> Self {
-		Self::new(family, group, EncodedKey::new(encode_u64_asc(row.0)))
-	}
-}
-
-impl HeapSize for BufferKey {
-	fn heap_size(&self) -> usize {
-		self.slot.heap_size()
-	}
-}
-
-impl IntoGroupStateKey for &BufferKey {
-	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
-			self.group,
-			self.family.keyspace(KeyspaceId::BUFFER, KeyspaceId::GUEST_BUFFER),
 			self.family.suffix(&self.slot),
 		)
 	}

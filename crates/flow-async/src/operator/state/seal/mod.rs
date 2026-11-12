@@ -6,4 +6,3 @@ pub mod domain;
 pub mod gate;
 pub mod ledger;
 pub mod rule;
-pub mod sweep;

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	state::timer::TimerKind,
@@ -13,7 +12,7 @@ use crate::{
 	operator::{
 		aggregation::accumulator::RowAccumulator,
 		host::HostContext,
-		state::seal::{gate::rearm_seal, ledger::FiredAt, rule::SealRule},
+		state::seal::{ledger::FiredAt, rule::SealRule},
 	},
 	timer::Timer,
 	window::{
@@ -81,20 +80,6 @@ fn with_engine<T>(
 	let out = run(&mut engine);
 	*operator.core.tumbling_engine_slot() = Some(engine);
 	out
-}
-
-fn engine_earliest_expiry(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<Option<u64>> {
-	with_engine(operator, |engine| engine.earliest_expiry(host))
-}
-
-fn rearm_engine_seal(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	rule: SealRule,
-	before: Option<u64>,
-) -> Result<()> {
-	let after = engine_earliest_expiry(operator, host)?;
-	rearm_seal(host, rule, &EncodedKey::new(Vec::new()), before, after)
 }
 
 pub fn forget_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
@@ -211,6 +196,7 @@ mod tests {
 mod reap_tests {
 	use std::sync::Arc;
 
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::{CommitVersion, WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
@@ -325,7 +311,7 @@ mod reap_tests {
 mod seal_arm_tests {
 	use std::{collections::HashMap, sync::Arc};
 
-	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::{CommitVersion, WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
@@ -344,7 +330,7 @@ mod seal_arm_tests {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+		value::{datetime::DateTime, duration::Duration},
 	};
 
 	use super::*;
@@ -359,7 +345,7 @@ mod seal_arm_tests {
 			state::{seal::coord::Coord, test_utils::test::whole_keyspace},
 			window::operator::{WindowConfig, WindowOperator},
 		},
-		timer::{Timer, wheel::TimerWheel},
+		timer::Timer,
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
@@ -370,7 +356,6 @@ mod seal_arm_tests {
 			accumulator::{AccumulatorEvents, AccumulatorOp},
 			driver::{route::Routed as DriverRouted, session::tracker_key, tumbling::finish_tumbling},
 			engine::{ExpiryAnchor, WindowReindex},
-			kind::session::open::{Member, OpenSession, OpenSessions, SessionIds},
 			span::WindowSpan,
 		},
 	};
@@ -393,10 +378,6 @@ mod seal_arm_tests {
 			ctx: Arc::new(FlowContext::default()),
 		})
 		.expect("the window operator must build")
-	}
-
-	fn rule() -> SealRule {
-		SealRule::tumbling(Duration::from_milliseconds(SIZE_MS as i64).unwrap(), Duration::zero())
 	}
 
 	fn txn_at(engine: &TestEngine, coordinate: u64) -> DeferredTransaction {
@@ -457,20 +438,6 @@ mod seal_arm_tests {
 			.collect();
 		engine.reindex_windows(host, &entries).unwrap();
 		*operator.core.tumbling_engine_slot() = Some(engine);
-	}
-
-	fn take_one_due(txn: &mut DeferredTransaction, operator: OperatorId, watermark: u64) -> Timer {
-		let mut timers = TimerWheel::take_due(
-			operator,
-			txn,
-			at_millis(i64::try_from(watermark).expect("test watermark fits in i64 milliseconds")),
-			16,
-			None,
-		)
-		.unwrap()
-		.timers;
-		assert_eq!(timers.len(), 1, "exactly one timer may stand for the whole operator");
-		timers.remove(0)
 	}
 
 	fn session_window() -> WindowOperator {
@@ -581,54 +548,6 @@ mod seal_arm_tests {
 	}
 
 	#[test]
-	fn a_seal_run_keeps_a_group_with_a_session_ahead_of_the_output_watermark_and_forgets_one_behind_it() {
-		// Retiring a group whose session is still ahead of the horizon drops a live session and its later rows.
-		let engine = TestEngine::new();
-		let mut operator = session_window();
-		let id = operator.core.operator;
-		let mut txn = txn_at(&engine, 100);
-		let (alive, closing) = (Hash128::from(1u128), Hash128::from(2u128));
-		let gap = Duration::from_milliseconds_const(1_000);
-		let one_session = |millis: i64| {
-			let at = DateTimeCoord(at_millis(millis));
-			OpenSessions::resumed(
-				gap,
-				SessionIds::StartTime,
-				vec![OpenSession {
-					id: at.to_order(),
-					start: at,
-					last: at,
-					members: vec![Member {
-						at,
-						row: RowNumber(1),
-					}],
-				}],
-				None,
-			)
-		};
-		let mut host = TxnHostContext::new(&mut txn, id);
-		let (alive_sessions, closing_sessions) = (one_session(2_500), one_session(1_100));
-		operator.save_open_sessions(&mut host, &[(alive, &alive_sessions), (closing, &closing_sessions)])
-			.unwrap();
-
-		seal_session_engines(
-			&mut operator,
-			&mut host,
-			&[tracker_timer(alive, 3_001), tracker_timer(closing, 3_101)],
-		)
-		.unwrap();
-
-		let alive_left = operator.load_open_sessions(&mut host, alive).unwrap();
-		let closing_left = operator.load_open_sessions(&mut host, closing).unwrap();
-		assert_eq!(alive_left.sessions().len(), 1, "a session ahead of the horizon must survive the seal run");
-		assert!(
-			closing_left.sessions().is_empty(),
-			"a session behind the horizon must close and its group retire"
-		);
-		assert_eq!(closing_left.sealed_last(), None, "a retired group keeps no state behind");
-	}
-
-	#[test]
 	fn a_seal_run_closes_one_expire_budget_of_windows_per_timer_it_carries() {
 		// A run capped at one budget closes fewer windows than its timers would alone, leaving late rows
 		// admitted.
@@ -656,77 +575,6 @@ mod seal_arm_tests {
 			seal_timers(&mut txn, id).is_empty(),
 			"a run of two timers must close two budgets of due windows in its one pass"
 		);
-	}
-
-	#[test]
-	fn a_batch_of_many_windows_leaves_exactly_one_seal_timer() {
-		// The sweep discards the timer key entirely, so any row past the earliest buys nothing.
-		let engine = TestEngine::new();
-		let mut operator = window();
-		let id = operator.core.operator;
-		let mut txn = txn_at(&engine, 100);
-		let starts: Vec<u64> = (0..64).map(|n| n * SIZE_MS).collect();
-		{
-			let mut host = TxnHostContext::new(&mut txn, id);
-			index_windows(&mut operator, &mut host, &starts);
-			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
-		}
-
-		assert_eq!(
-			seal_timers(&mut txn, id),
-			vec![at_millis(
-				i64::try_from(SIZE_MS + 1).expect("test window bound fits in i64 milliseconds")
-			)],
-			"64 indexed windows must leave one seal timer, armed at the earliest window's seal instant"
-		);
-	}
-
-	#[test]
-	fn a_sweep_rearms_for_the_windows_it_left_behind() {
-		// The wheel consumes the fired row, so without a re-arm every window left behind stays open.
-		let engine = TestEngine::new();
-		let mut operator = window();
-		let id = operator.core.operator;
-		let mut txn = txn_at(&engine, 100);
-		{
-			let mut host = TxnHostContext::new(&mut txn, id);
-			index_windows(&mut operator, &mut host, &[0, SIZE_MS, 2 * SIZE_MS]);
-			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
-		}
-		let timer = take_one_due(&mut txn, id, SIZE_MS + 1);
-		{
-			let mut host = TxnHostContext::new(&mut txn, id);
-			seal_engine_windows(&mut operator, &mut host, FiredAt::of(&timer)).unwrap();
-		}
-
-		assert_eq!(
-			seal_timers(&mut txn, id),
-			vec![at_millis(
-				i64::try_from(2 * SIZE_MS + 1).expect("test window bound fits in i64 milliseconds"),
-			)],
-			"the sweep took the window at 0 and must leave the window at one span armed, not nothing"
-		);
-	}
-
-	#[test]
-	fn an_index_drained_to_empty_leaves_no_seal_timer_behind() {
-		// A timer on an empty index fires forever, advancing the seal ledger past windows nothing holds.
-		let engine = TestEngine::new();
-		let mut operator = window();
-		let id = operator.core.operator;
-		let mut txn = txn_at(&engine, 100);
-		{
-			let mut host = TxnHostContext::new(&mut txn, id);
-			index_windows(&mut operator, &mut host, &[0]);
-			rearm_engine_seal(&mut operator, &mut host, rule(), None).unwrap();
-		}
-		let timer = take_one_due(&mut txn, id, SIZE_MS + 1);
-		{
-			let mut host = TxnHostContext::new(&mut txn, id);
-			seal_engine_windows(&mut operator, &mut host, FiredAt::of(&timer)).unwrap();
-		}
-
-		assert!(seal_timers(&mut txn, id).is_empty(), "an empty expiry index must hold no seal timer");
 	}
 
 	fn accumulators(txn: &mut DeferredTransaction, operator: OperatorId, group: GroupId) -> usize {

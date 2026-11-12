@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod apply;
-pub mod bind;
 pub mod hooks;
 pub mod operator;
 pub mod rolling;

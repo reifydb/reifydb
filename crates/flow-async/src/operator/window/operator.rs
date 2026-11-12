@@ -43,7 +43,7 @@ use crate::{
 	timer::Timer,
 	window::{
 		coord::DateTimeCoord, driver::runner::WindowRunner, engine::config::WindowEngineConfig,
-		kind::sliding::fits_slide, meta::WindowMeta,
+		kind::sliding::fits_slide,
 	},
 };
 
@@ -70,7 +70,6 @@ pub struct WindowOperator {
 	pub immutable: Option<Duration>,
 	rolling: Option<Box<BuiltinRolling>>,
 	pub(super) runner: Option<WindowRunner<DateTimeCoord>>,
-	meta: WindowMeta,
 }
 
 impl WindowOperator {
@@ -143,12 +142,7 @@ impl WindowOperator {
 			immutable: config.immutable,
 			rolling: None,
 			runner,
-			meta: WindowMeta::new(),
 		})
-	}
-
-	pub(super) fn meta_slot(&mut self) -> &mut WindowMeta {
-		&mut self.meta
 	}
 
 	pub(crate) fn rolling_slot(&mut self) -> &mut Option<Box<BuiltinRolling>> {
