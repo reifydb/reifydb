@@ -772,12 +772,13 @@ mod tests {
 
 	#[test]
 	fn a_digest_percentile_never_reads_above_the_exact_p100() {
-		// with nine samples p90 lands on the largest one, which the digest returns as its bucket middle, above the exact max.
-		// mutation: dropping the clamp to p100 in digest_measures makes p90 read 54.33ms against a p100 of 54.13ms.
+		// nine samples put p90 on the largest one, which the digest reads as its bucket middle above the max.
+		// mutation: without the clamp in digest_measures p90 reads 54.33ms against a p100 of 54.13ms.
 		let samples_ms = [3.1, 5.4, 9.8, 12.6, 13.0, 18.2, 27.5, 41.0, 54.133166];
 		let mut digest = Digest::new(ValueType::Duration, LATENCY_DIGEST_ACCURACY_PPM).unwrap();
 		for ms in samples_ms {
-			digest.add_value(&Value::Duration(Duration::from_nanoseconds((ms * 1e6) as i64).unwrap())).unwrap();
+			digest.add_value(&Value::Duration(Duration::from_nanoseconds((ms * 1e6) as i64).unwrap()))
+				.unwrap();
 		}
 		let p100 = Duration::from_nanoseconds(54_133_166).unwrap();
 		let Value::Duration(raw_p90) = digest.percentile_value(0.9).unwrap() else {
@@ -801,7 +802,11 @@ mod tests {
 		for [p50, p90, top] in [["p50", "p90", "p100"], ["hop_p50", "hop_p90", "hop_p100"]] {
 			assert!(read(p50) <= read(p90), "{p50} must not exceed {p90}");
 			assert!(read(p90) <= read(top), "{p90} must not exceed the exact {top}");
-			assert_eq!(read(p90), p100, "{p90} on the largest sample must read the exact max, not its bucket middle");
+			assert_eq!(
+				read(p90),
+				p100,
+				"{p90} on the largest sample must read the exact max, not its bucket middle"
+			);
 		}
 	}
 }

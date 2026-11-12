@@ -39,7 +39,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
-use reifydb_wal::lsn::Lsn;
+use reifydb_wal::{lsn::Lsn, sync::WalMode};
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
@@ -631,6 +631,10 @@ where
 				CommitRecord::stamp(&mut buf, commit_version, source);
 				buf
 			}
+			None if self.wal.mode() == WalMode::Off => {
+				self.resolve_unknown_pres(deltas, commit_version)?;
+				Vec::new()
+			}
 			None => {
 				self.resolve_unknown_pres(deltas, commit_version)?;
 				let persistent: Vec<&Delta> =
@@ -816,13 +820,20 @@ mod tests {
 		thread::sleep,
 	};
 
-	use reifydb_core::testing::ProfileConfig;
+	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::{interface::store::MultiVersionGet, testing::ProfileConfig};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_value::value::{Value, duration::Duration};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{Value, duration::Duration},
+	};
 
 	use super::*;
-	use crate::{multi::transaction::version::VersionProvider, wal::memory_wal};
+	use crate::{
+		multi::transaction::version::VersionProvider,
+		wal::{memory_wal, nop_wal},
+	};
 
 	#[derive(Debug, Clone)]
 	struct MockVersionProvider {
@@ -1733,6 +1744,54 @@ mod tests {
 			index.capacity() <= 2 * WINDOW_KEY_CAPACITY_MAX,
 			"a presize of four ceilings reserved {} slots, past the ceiling",
 			index.capacity()
+		);
+	}
+
+	#[test]
+	fn a_wal_off_commit_never_builds_a_log_record() {
+		// with the log off no record is read, so a row larger than a segment must still commit.
+		// mutation: without the wal off arm the record is encoded and rejected as too large.
+		let segment = ByteSize::from_bytes(4096);
+		let time = Clock::Mock(MockClock::from_millis(1000));
+		let oracle = Oracle::new(
+			MockVersionProvider::new(0),
+			ActorSystem::testing(Clock::Real).spawner(),
+			MultiStore::testing_memory(),
+			time.clone(),
+			VersionEpoch::new(),
+			Rng::seeded(42),
+			Arc::new(ProfileConfig),
+			nop_wal(segment).unwrap(),
+			VecDeque::new(),
+		);
+		assert_eq!(oracle.wal.mode(), WalMode::Off, "the case needs a commit log that is switched off");
+
+		let key = create_test_key("larger-than-a-segment");
+		let bytes = EncodedBytes(CowVec::new(vec![7u8; 2 * segment.as_bytes() as usize]));
+		let deltas = CowVec::new(vec![Delta::Set {
+			key: key.clone(),
+			bytes: bytes.clone(),
+			pre: SetPre::Absent,
+		}]);
+
+		let (result, _) = oracle
+			.advance_unchecked(CommitVersion(0), deltas, None, None, OperatorSection::default(), Vec::new())
+			.expect("a wal off commit must never be rejected for a record the log does not keep");
+		let CreateCommitResult::Success {
+			version,
+			lsn,
+			..
+		} = result
+		else {
+			panic!("an unchecked commit must succeed");
+		};
+		assert_eq!(lsn, Lsn::FIRST, "the switched off log must still hand out the next lsn");
+
+		let read = oracle.store.get(&oracle.system_context(), &[key], version).unwrap();
+		assert_eq!(
+			read.into_iter().next().flatten().map(|row| row.bytes),
+			Some(bytes),
+			"the row must be installed at the commit version even though no record was built"
 		);
 	}
 }
