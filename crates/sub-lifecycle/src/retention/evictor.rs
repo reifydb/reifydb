@@ -1990,6 +1990,28 @@ mod tests {
 	}
 
 	#[test]
+	fn a_view_group_member_registers_its_own_persistent_flag() {
+		// Without this a member's `persistent: false` could be dropped on the way to the catalog and its rows would silently hit disk.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::events { id: int4, ts: datetime } with { time: event(ts) }");
+		test.admin(
+			"create deferred windowed view group test::g { c: int8 } with { members: [ { view: test::g1, duration: 1s, row: { ttl: 1h, persistent: false } }, { view: test::g2, duration: 1m, row: { ttl: 2h } } ] } as { from test::events window tumbling { c: math::count(id) } }",
+		);
+
+		let registered = registered_row_ttls(&test);
+
+		assert!(
+			registered.contains(&(HOUR_NANOS, false)),
+			"the member declaring `persistent: false` must register as non-persistent, got {registered:?}"
+		);
+		assert!(
+			registered.contains(&(2 * HOUR_NANOS, true)),
+			"the member declaring only `row: {{ ttl }}` must stay persistent, got {registered:?}"
+		);
+	}
+
+	#[test]
 	fn a_cold_catalog_cache_recovers_a_declared_row_ttl_from_storage() {
 		// A row-settings entry that reaches storage but not the rehydrated cache leaves the object
 		// silently perpetual for the life of the process. A fresh cache over the same store is
