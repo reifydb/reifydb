@@ -3,7 +3,6 @@
 
 use std::{
 	collections::{BTreeMap, HashMap},
-	result::Result as StdResult,
 	sync::Arc,
 };
 
@@ -81,7 +80,7 @@ pub enum SubscriptionWorkerMessage {
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,
-		reply: Box<dyn FnOnce(StdResult<HydrateOutcome, HydrateError>) + Send>,
+		reply: Box<dyn FnOnce(Result<HydrateOutcome, HydrateError>) + Send>,
 	},
 }
 

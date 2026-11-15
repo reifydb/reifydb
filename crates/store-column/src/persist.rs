@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{path::Path, result::Result as StdResult, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use arrow_array::new_empty_array;
 use postcard::{from_bytes, to_stdvec};
@@ -270,7 +270,7 @@ fn align_up(offset: usize, align: usize) -> usize {
 	offset.div_ceil(align) * align
 }
 
-fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> StdResult<bool, FsError> {
+fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> Result<bool, FsError> {
 	let mut read = 0;
 	while read < buf.len() {
 		let n = file.pread(offset, &mut buf[read..])?;
@@ -283,7 +283,7 @@ fn read_exact<R: Pread>(file: &R, mut offset: u64, buf: &mut [u8]) -> StdResult<
 	Ok(true)
 }
 
-pub(crate) fn write_all<W: Pwrite>(file: &W, path: &Path, mut offset: u64, buf: &[u8]) -> StdResult<(), FsError> {
+pub(crate) fn write_all<W: Pwrite>(file: &W, path: &Path, mut offset: u64, buf: &[u8]) -> Result<(), FsError> {
 	let mut written = 0;
 	while written < buf.len() {
 		let n = file.pwrite(offset, &buf[written..])?;

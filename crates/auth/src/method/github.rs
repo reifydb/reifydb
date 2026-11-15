@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	result::Result as StdResult,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider, MethodSettingError};
 use reifydb_runtime::context::rng::Rng;
@@ -35,7 +32,7 @@ impl AuthenticationProvider for GithubProvider {
 	fn configure_method(
 		&self,
 		props: &BTreeMap<String, String>,
-	) -> StdResult<BTreeMap<String, String>, MethodSettingError> {
+	) -> Result<BTreeMap<String, String>, MethodSettingError> {
 		if let Some(key) = props.keys().find(|key| !GITHUB_METHOD_KEYS.contains(&key.as_str())) {
 			return Err(MethodSettingError::Unknown {
 				key: key.clone(),

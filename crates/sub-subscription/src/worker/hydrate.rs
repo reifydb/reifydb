@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, num::NonZeroU64, result::Result as StdResult, sync::Arc};
+use std::{collections::HashMap, mem, num::NonZeroU64, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
@@ -52,7 +52,7 @@ impl SubscriptionWorkerActor {
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,
-	) -> StdResult<HydrateOutcome, HydrateError> {
+	) -> Result<HydrateOutcome, HydrateError> {
 		let hydrate_start = self.engine.clock().instant();
 		let Some(flow_state) = state.flows.get(&flow_id).filter(|flow_state| flow_state.identity == identity)
 		else {

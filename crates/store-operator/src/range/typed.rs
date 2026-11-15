@@ -3,7 +3,7 @@
 
 use std::{
 	borrow::Cow,
-	fmt::{Debug, Formatter, Result as FmtResult},
+	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
 };
 
@@ -29,7 +29,7 @@ impl<K: Keyspace> Clone for TypedDomain<K> {
 impl<K: Keyspace> Copy for TypedDomain<K> {}
 
 impl<K: Keyspace> Debug for TypedDomain<K> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		f.write_str(K::NAME)
 	}
 }

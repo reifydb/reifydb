@@ -5,7 +5,6 @@ use std::{
 	cmp, fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
-	result::Result as StdResult,
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
@@ -204,7 +203,7 @@ impl From<u64> for DictionaryId {
 }
 
 impl Serialize for DictionaryId {
-	fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
@@ -213,7 +212,7 @@ impl Serialize for DictionaryId {
 }
 
 impl<'de> Deserialize<'de> for DictionaryId {
-	fn deserialize<D>(deserializer: D) -> StdResult<DictionaryId, D::Error>
+	fn deserialize<D>(deserializer: D) -> Result<DictionaryId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
@@ -226,7 +225,7 @@ impl<'de> Deserialize<'de> for DictionaryId {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(self, value: u64) -> StdResult<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(DictionaryId(value))
 			}
 		}

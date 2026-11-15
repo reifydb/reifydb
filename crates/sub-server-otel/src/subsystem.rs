@@ -4,7 +4,6 @@
 use std::{
 	any::Any,
 	error,
-	result::Result as StdResult,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -108,7 +107,7 @@ impl OtelSubsystem {
 	}
 
 	#[cfg(feature = "otlp")]
-	fn build_otlp_tracer_provider(&self) -> StdResult<SdkTracerProvider, Box<dyn error::Error>> {
+	fn build_otlp_tracer_provider(&self) -> Result<SdkTracerProvider, Box<dyn error::Error>> {
 		let resource = Resource::builder()
 			.with_service_name(self.config.service_name.clone())
 			.with_attributes([KeyValue::new("service.version", self.config.service_version.clone())])

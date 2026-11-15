@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	result::Result as StdResult,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_runtime::context::rng::Rng;
 use reifydb_value::error::ValueError;
@@ -51,7 +48,7 @@ pub trait AuthenticationProvider: Send + Sync {
 	fn configure_method(
 		&self,
 		props: &BTreeMap<String, String>,
-	) -> StdResult<BTreeMap<String, String>, MethodSettingError> {
+	) -> Result<BTreeMap<String, String>, MethodSettingError> {
 		match props.keys().next() {
 			Some(key) => Err(MethodSettingError::Unknown {
 				key: key.clone(),

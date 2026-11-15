@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, result::Result as StdResult, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use arrow_array::{
 	Array, ArrayRef, ArrowPrimitiveType, GenericByteArray, PrimitiveArray, RecordBatch, RecordBatchOptions,
@@ -277,7 +277,7 @@ pub fn filter(batch: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch, 
 		.columns()
 		.iter()
 		.map(|column| predicate.filter(column.as_ref()))
-		.collect::<StdResult<Vec<_>, _>>()
+		.collect::<Result<Vec<_>, _>>()
 		.map_err(frame_error)?;
 	RecordBatch::try_new_with_options(
 		batch.schema(),
@@ -375,7 +375,7 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch, 
 		.columns()
 		.iter()
 		.map(|column| take(column.as_ref(), &indices, None))
-		.collect::<StdResult<Vec<_>, _>>()
+		.collect::<Result<Vec<_>, _>>()
 		.map_err(frame_error)?;
 	RecordBatch::try_new_with_options(
 		batch.schema(),

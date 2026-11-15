@@ -28,7 +28,7 @@ use reifydb_value::{
 };
 use reifydb_wal::lsn::Lsn;
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction,
+	Connection, Error as SqliteError, Error::QueryReturnedNoRows, ToSql, Transaction as SqliteTransaction,
 	TransactionBehavior, params,
 };
 use tracing::{instrument, warn};
@@ -602,7 +602,7 @@ fn insert_entries_in_tx(
 	tx: &SqliteTransaction,
 	table_name: &str,
 	entries: &[(EncodedKey, Option<CowVec<u8>>)],
-) -> SqliteResult<()> {
+) -> Result<(), SqliteError> {
 	let mut upsert =
 		tx.prepare_cached(&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name))?;
 	let mut delete = tx.prepare_cached(&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name))?;

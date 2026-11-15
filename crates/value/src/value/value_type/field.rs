@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{result::Result as StdResult, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::ArrayRef;
 use arrow_schema::{ArrowError, DataType, Field, FieldRef, IntervalUnit, TimeUnit, extension::ExtensionType};
@@ -260,11 +260,11 @@ macro_rules! tag {
 				$write(&self.0)
 			}
 
-			fn deserialize_metadata(metadata: Option<&str>) -> StdResult<Self::Metadata, ArrowError> {
+			fn deserialize_metadata(metadata: Option<&str>) -> Result<Self::Metadata, ArrowError> {
 				$read(Self::NAME, metadata)
 			}
 
-			fn supports_data_type(&self, data_type: &DataType) -> StdResult<(), ArrowError> {
+			fn supports_data_type(&self, data_type: &DataType) -> Result<(), ArrowError> {
 				let expected = $data_type;
 				if *data_type == expected {
 					Ok(())
@@ -276,7 +276,7 @@ macro_rules! tag {
 				}
 			}
 
-			fn try_new(data_type: &DataType, metadata: Self::Metadata) -> StdResult<Self, ArrowError> {
+			fn try_new(data_type: &DataType, metadata: Self::Metadata) -> Result<Self, ArrowError> {
 				let tag = Self(metadata);
 				tag.supports_data_type(data_type)?;
 				Ok(tag)
@@ -347,7 +347,7 @@ fn write_nothing(_: &()) -> Option<String> {
 	None
 }
 
-fn read_nothing(name: &str, metadata: Option<&str>) -> StdResult<(), ArrowError> {
+fn read_nothing(name: &str, metadata: Option<&str>) -> Result<(), ArrowError> {
 	match metadata {
 		None => Ok(()),
 		Some(text) => Err(ArrowError::InvalidArgumentError(format!("{name} takes no metadata, found {text}"))),
@@ -358,7 +358,7 @@ fn write_dictionary_id(dictionary_id: &Option<DictionaryId>) -> Option<String> {
 	dictionary_id.map(|id| json!({ "dictionary_id": id.0 }).to_string())
 }
 
-fn read_dictionary_id(name: &str, metadata: Option<&str>) -> StdResult<Option<DictionaryId>, ArrowError> {
+fn read_dictionary_id(name: &str, metadata: Option<&str>) -> Result<Option<DictionaryId>, ArrowError> {
 	metadata.map(|text| parse::<DictionaryMetadata>(name, text).map(|parsed| DictionaryId(parsed.dictionary_id)))
 		.transpose()
 }
@@ -367,7 +367,7 @@ fn write_max_bytes(max_bytes: &MaxBytes) -> Option<String> {
 	Some(json!({ "max_bytes": max_bytes.value() }).to_string())
 }
 
-fn read_max_bytes(name: &str, metadata: Option<&str>) -> StdResult<MaxBytes, ArrowError> {
+fn read_max_bytes(name: &str, metadata: Option<&str>) -> Result<MaxBytes, ArrowError> {
 	let text = metadata
 		.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its max_bytes metadata")))?;
 	parse::<MaxBytesMetadata>(name, text).map(|parsed| parsed.max_bytes)
@@ -377,7 +377,7 @@ fn write_optional_max_bytes(max_bytes: &Option<MaxBytes>) -> Option<String> {
 	max_bytes.as_ref().and_then(write_max_bytes)
 }
 
-fn read_optional_max_bytes(name: &str, metadata: Option<&str>) -> StdResult<Option<MaxBytes>, ArrowError> {
+fn read_optional_max_bytes(name: &str, metadata: Option<&str>) -> Result<Option<MaxBytes>, ArrowError> {
 	metadata.map(|text| read_max_bytes(name, Some(text))).transpose()
 }
 
@@ -385,7 +385,7 @@ fn write_declared_type(declared_type: &Option<ValueType>) -> Option<String> {
 	declared_type.as_ref().map(|declared_type| json!({ "declared_type": declared_type }).to_string())
 }
 
-fn read_declared_type(name: &str, metadata: Option<&str>) -> StdResult<Option<ValueType>, ArrowError> {
+fn read_declared_type(name: &str, metadata: Option<&str>) -> Result<Option<ValueType>, ArrowError> {
 	metadata.map(|text| parse::<DeclaredTypeMetadata>(name, text).map(|parsed| parsed.declared_type)).transpose()
 }
 
@@ -397,7 +397,7 @@ fn write_sumtype(id: &SumTypeId) -> Option<String> {
 	Some(json!({ "sumtype_id": id.0 }).to_string())
 }
 
-fn read_sumtype(name: &str, metadata: Option<&str>) -> StdResult<SumTypeId, ArrowError> {
+fn read_sumtype(name: &str, metadata: Option<&str>) -> Result<SumTypeId, ArrowError> {
 	let text = metadata
 		.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its sumtype_id metadata")))?;
 	parse::<SumTypeMetadata>(name, text).map(|parsed| SumTypeId(parsed.sumtype_id))
@@ -407,20 +407,20 @@ fn write_enum(enum_name: &String) -> Option<String> {
 	Some(json!({ "name": enum_name }).to_string())
 }
 
-fn read_enum(name: &str, metadata: Option<&str>) -> StdResult<String, ArrowError> {
+fn read_enum(name: &str, metadata: Option<&str>) -> Result<String, ArrowError> {
 	let text =
 		metadata.ok_or_else(|| ArrowError::InvalidArgumentError(format!("{name} needs its name metadata")))?;
 	parse::<EnumMetadata>(name, text).map(|parsed| parsed.name)
 }
 
-fn read_digest(name: &str, metadata: Option<&str>) -> StdResult<DigestMetadata, ArrowError> {
+fn read_digest(name: &str, metadata: Option<&str>) -> Result<DigestMetadata, ArrowError> {
 	let text = metadata.ok_or_else(|| {
 		ArrowError::InvalidArgumentError(format!("{name} needs its inner and accuracy metadata"))
 	})?;
 	parse::<DigestMetadata>(name, text)
 }
 
-fn parse<T: DeserializeOwned>(name: &str, text: &str) -> StdResult<T, ArrowError> {
+fn parse<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, ArrowError> {
 	from_str(text).map_err(|error| ArrowError::InvalidArgumentError(format!("{name} metadata {text}: {error}")))
 }
 

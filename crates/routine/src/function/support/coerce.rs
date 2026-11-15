@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Display, result::Result as StdResult};
+use std::fmt::Display;
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
@@ -16,11 +16,11 @@ use reifydb_value::{
 	},
 };
 
-pub(crate) fn read_i64(function: &Fragment, data: &ColumnView, row: usize) -> StdResult<Option<i64>, RoutineError> {
+pub(crate) fn read_i64(function: &Fragment, data: &ColumnView, row: usize) -> Result<Option<i64>, RoutineError> {
 	narrow(function, data, row, ValueType::Int8, |value| i64::try_from(value).ok())
 }
 
-pub(crate) fn read_i32(function: &Fragment, data: &ColumnView, row: usize) -> StdResult<Option<i32>, RoutineError> {
+pub(crate) fn read_i32(function: &Fragment, data: &ColumnView, row: usize) -> Result<Option<i32>, RoutineError> {
 	narrow(function, data, row, ValueType::Int4, |value| i32::try_from(value).ok())
 }
 
@@ -30,7 +30,7 @@ fn narrow<T>(
 	row: usize,
 	target: ValueType,
 	fit: impl Fn(i128) -> Option<T>,
-) -> StdResult<Option<T>, RoutineError> {
+) -> Result<Option<T>, RoutineError> {
 	let row = row_of(data.len(), row);
 	if let ViewData::Uint16(container) = &data.data {
 		return match wide_int_array::wide_at::<u128>(container, row) {
@@ -80,7 +80,7 @@ pub(crate) fn coerce_column(
 	data: &ColumnView,
 	target: ValueType,
 	mode: CoerceMode,
-) -> StdResult<(FieldRef, ArrayRef), RoutineError> {
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let fragment = &ctx.fragment;
 	let cast = match mode {
 		CoerceMode::Error => cast_column_data(

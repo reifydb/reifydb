@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, collections::HashMap, iter::repeat_n, mem::size_of, result::Result as StdResult, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, iter::repeat_n, mem::size_of, sync::Arc};
 
 use arrow_array::{
 	Array, ArrayRef, FixedSizeBinaryArray, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
@@ -247,7 +247,7 @@ struct StoredSlotRow {
 }
 
 impl Serialize for SlotRow {
-	fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
@@ -260,7 +260,7 @@ impl Serialize for SlotRow {
 }
 
 impl<'de> Deserialize<'de> for SlotRow {
-	fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
 	{

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter, ops::Deref, result::Result as StdResult, sync::Arc};
+use std::{iter, ops::Deref, sync::Arc};
 
 use arrow_array::Array;
 use bumpalo::Bump;
@@ -278,7 +278,7 @@ fn execute_compiled_units(
 	params: &Params,
 	mut symbols: SymbolTable,
 	compile_duration: Duration,
-) -> StdResult<CompiledUnitsResult, ExecutionFailure> {
+) -> Result<CompiledUnitsResult, ExecutionFailure> {
 	let compile_duration_per_unit = Duration::from_micros_infallible(
 		compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64,
 	);

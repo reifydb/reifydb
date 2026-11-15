@@ -3,7 +3,6 @@
 
 use std::{
 	collections::HashMap,
-	result::Result as StdResult,
 	sync::{Arc, mpsc},
 };
 
@@ -104,7 +103,7 @@ pub(super) struct SubscriptionServiceImpl {
 }
 
 impl SubscriptionServiceImpl {
-	fn resolve_flow_id(&self, sub_id: SubscriptionId) -> StdResult<FlowId, HydrateError> {
+	fn resolve_flow_id(&self, sub_id: SubscriptionId) -> Result<FlowId, HydrateError> {
 		self.state.subscription_flows.read().get(&sub_id).copied().ok_or(HydrateError::SubscriptionNotFound)
 	}
 
@@ -211,11 +210,11 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,
-	) -> StdResult<HydrateOutcome, HydrateError> {
+	) -> Result<HydrateOutcome, HydrateError> {
 		let flow_id = self.resolve_flow_id(sub_id)?;
 
 		let (tx, rx) = mpsc::channel();
-		let reply: Box<dyn FnOnce(StdResult<HydrateOutcome, HydrateError>) + Send> = Box::new(move |r| {
+		let reply: Box<dyn FnOnce(Result<HydrateOutcome, HydrateError>) + Send> = Box::new(move |r| {
 			let _ = tx.send(r);
 		});
 		if self.state

@@ -3,7 +3,7 @@
 
 use std::{
 	borrow::Cow,
-	fmt::{Display, Formatter, Result as FmtResult},
+	fmt::{self, Display, Formatter},
 	ops::Bound,
 };
 
@@ -155,7 +155,7 @@ impl GroupId {
 }
 
 impl Display for GroupId {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		for byte in self.0 {
 			write!(f, "{byte:02x}")?;
 		}

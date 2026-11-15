@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{self, Display, Formatter};
 
 use reifydb::engine::{engine::StandardEngine, session::Session};
 use reifydb_client::{GrpcClient, HttpClient, QueueClaimRequest, WireFormat, WsClient};
@@ -64,7 +64,7 @@ impl Transport {
 }
 
 impl Display for Transport {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		f.write_str(self.label())
 	}
 }
@@ -105,7 +105,7 @@ impl Identity {
 }
 
 impl Display for Identity {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		f.write_str(self.label())
 	}
 }

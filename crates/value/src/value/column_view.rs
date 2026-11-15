@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::type_name, result::Result as StdResult};
+use std::any::type_name;
 
 use arrow_array::{
 	Array, ArrayRef, BooleanArray, Date32Array, Decimal128Array, Decimal256Array, FixedSizeBinaryArray,
@@ -213,7 +213,7 @@ fn downcast<'a, T: 'static>(array: &'a ArrayRef, field: &Field) -> Result<&'a T,
 }
 
 pub trait FromColumnView: Sized {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason>;
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason>;
 }
 
 pub trait AsSlice<'a, T> {
@@ -744,14 +744,14 @@ impl_as_slice!(DateTime, DateTime typed datetimes);
 impl_as_slice!(Time, Time typed times);
 impl_as_slice!(Duration, Duration typed durations);
 
-fn wrong_type<T>() -> StdResult<Option<T>, ColumnReadReason> {
+fn wrong_type<T>() -> Result<Option<T>, ColumnReadReason> {
 	Err(ColumnReadReason::WrongType)
 }
 
 macro_rules! impl_from_column_view_widening {
 	($($t:ty => [$($variant:ident),*]),* $(,)?) => { $(
 		impl FromColumnView for $t {
-			fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+			fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 				match &view.data {
 					$(ViewData::$variant(c) => Ok(c.values().get(index).map(|&v| <$t>::from(v))),)*
 					_ => wrong_type(),
@@ -775,7 +775,7 @@ impl_from_column_view_widening!(
 );
 
 impl FromColumnView for i128 {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Int1(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
 			ViewData::Int2(c) => Ok(c.values().get(index).map(|&v| i128::from(v))),
@@ -788,7 +788,7 @@ impl FromColumnView for i128 {
 }
 
 impl FromColumnView for u128 {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Uint1(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
 			ViewData::Uint2(c) => Ok(c.values().get(index).map(|&v| u128::from(v))),
@@ -801,7 +801,7 @@ impl FromColumnView for u128 {
 }
 
 impl FromColumnView for bool {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Bool(c) => Ok((index < c.len()).then(|| c.value(index))),
 			_ => wrong_type(),
@@ -810,7 +810,7 @@ impl FromColumnView for bool {
 }
 
 impl FromColumnView for String {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Utf8 {
 				container,
@@ -822,7 +822,7 @@ impl FromColumnView for String {
 }
 
 impl FromColumnView for Vec<u8> {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Blob {
 				container,
@@ -834,7 +834,7 @@ impl FromColumnView for Vec<u8> {
 }
 
 impl FromColumnView for Date {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Date(c) => Ok(dates(c).get(index).copied()),
 			_ => wrong_type(),
@@ -843,7 +843,7 @@ impl FromColumnView for Date {
 }
 
 impl FromColumnView for DateTime {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::DateTime(c) => Ok(datetimes(c).get(index).copied()),
 			_ => wrong_type(),
@@ -852,7 +852,7 @@ impl FromColumnView for DateTime {
 }
 
 impl FromColumnView for Time {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Time(c) => Ok(times(c).get(index).copied()),
 			_ => wrong_type(),
@@ -861,7 +861,7 @@ impl FromColumnView for Time {
 }
 
 impl FromColumnView for Duration {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Duration(c) => Ok(durations(c).get(index).copied()),
 			_ => wrong_type(),
@@ -870,7 +870,7 @@ impl FromColumnView for Duration {
 }
 
 impl FromColumnView for Uuid4 {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Uuid4(c) => Ok(uuid4s(c).get(index).copied()),
 			_ => wrong_type(),
@@ -879,7 +879,7 @@ impl FromColumnView for Uuid4 {
 }
 
 impl FromColumnView for Uuid7 {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Uuid7(c) => Ok(uuid7s(c).get(index).copied()),
 			_ => wrong_type(),
@@ -888,7 +888,7 @@ impl FromColumnView for Uuid7 {
 }
 
 impl FromColumnView for Decimal {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::Decimal(d) => checked_decimal_at(d, index).ok_or(ColumnReadReason::DoesNotFit),
 			ViewData::Float4(c) => c
@@ -907,7 +907,7 @@ impl FromColumnView for Decimal {
 }
 
 impl FromColumnView for IdentityId {
-	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
+	fn from_column_view(view: &ColumnView<'_>, index: usize) -> Result<Option<Self>, ColumnReadReason> {
 		match &view.data {
 			ViewData::IdentityId(c) => Ok(identity_ids(c).get(index).copied()),
 			_ => wrong_type(),

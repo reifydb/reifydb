@@ -3,7 +3,7 @@
 
 use std::{
 	error::Error as StdError,
-	fmt::{Display, Formatter, Result as FmtResult},
+	fmt::{self, Display, Formatter},
 };
 
 use reifydb_core::{
@@ -33,7 +33,7 @@ pub enum StoreOperatorError {
 }
 
 impl Display for StoreOperatorError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		match self {
 			StoreOperatorError::Backend {
 				message,

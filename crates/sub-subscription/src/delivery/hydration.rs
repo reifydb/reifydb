@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, result::Result as StdResult};
+use std::collections::BTreeSet;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -13,7 +13,7 @@ use reifydb_engine::subscription::{HydrateError, HydrationBound};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-pub(crate) fn backfill_sources(flow: &FlowDag) -> StdResult<BTreeSet<ObjectId>, HydrateError> {
+pub(crate) fn backfill_sources(flow: &FlowDag) -> Result<BTreeSet<ObjectId>, HydrateError> {
 	let mut sources = BTreeSet::new();
 	for operator_id in flow.topological_order() {
 		let Some(operator) = flow.get_operator(operator_id) else {

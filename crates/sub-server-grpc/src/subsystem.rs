@@ -6,7 +6,6 @@ use std::{
 	io,
 	net::SocketAddr,
 	pin::Pin,
-	result::Result as StdResult,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -49,9 +48,9 @@ pub struct GrpcSubsystem {
 	state: AppState,
 	running: Arc<AtomicBool>,
 	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<StdResult<(), TonicError>>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<Result<(), TonicError>>>>,
 	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<StdResult<(), TonicError>>>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<Result<(), TonicError>>>>,
 	connection_semaphore: Arc<Semaphore>,
 	handle: Handle,
 	poll_batch_size: usize,
@@ -347,7 +346,7 @@ async fn serve_grpc(
 	semaphore: Arc<Semaphore>,
 	shutdown_rx: oneshot::Receiver<()>,
 	name: &'static str,
-) -> StdResult<(), TonicError> {
+) -> Result<(), TonicError> {
 	let incoming = limited_incoming(listener, semaphore, name);
 	Server::builder()
 		.add_service(ReifyDbServer::new(service))

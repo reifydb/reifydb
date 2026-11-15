@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, result::Result as StdResult, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -138,7 +138,7 @@ pub trait SubscriptionService: Send + Sync {
 		identity: IdentityId,
 		lease: VersionLeaseGuard,
 		max_rows: u64,
-	) -> StdResult<HydrateOutcome, HydrateError>;
+	) -> Result<HydrateOutcome, HydrateError>;
 }
 
 pub type SubscriptionServiceRef = Arc<dyn SubscriptionService>;

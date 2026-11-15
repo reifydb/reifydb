@@ -6,7 +6,7 @@ mod transport;
 
 use std::{
 	collections::{HashMap, HashSet},
-	fmt::{Display, Formatter, Result as FmtResult},
+	fmt::{self, Display, Formatter},
 	sync::{
 		Arc, Barrier,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -73,7 +73,7 @@ impl Claim {
 }
 
 impl Display for Claim {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		f.write_str(self.label())
 	}
 }
@@ -92,7 +92,7 @@ impl Mode {
 }
 
 impl Display for Mode {
-	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
 		f.write_str(self.label())
 	}
 }

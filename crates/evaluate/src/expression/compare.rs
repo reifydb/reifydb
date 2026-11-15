@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Display, result::Result as StdResult, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
 use arrow_array::{
 	Array, ArrayRef, ArrowPrimitiveType, BooleanArray, Datum, FixedSizeBinaryArray, PrimitiveArray, Scalar,
@@ -94,7 +94,7 @@ impl CompareOp for LessThanEqual {
 	}
 }
 
-fn arrow_result<E: Display>(result: StdResult<BooleanArray, E>) -> Result<BooleanArray, ValueError> {
+fn arrow_result<E: Display>(result: Result<BooleanArray, E>) -> Result<BooleanArray, ValueError> {
 	Ok(result.map_err(|err| CoreError::FrameError {
 		message: err.to_string(),
 	})?)

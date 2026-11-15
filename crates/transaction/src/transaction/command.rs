@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, ops::Bound, result::Result as StdResult, sync::Arc};
+use std::{mem::take, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -231,7 +231,7 @@ impl CommandTransaction {
 		self.pending_markers.as_deref_mut()
 	}
 
-	fn poison_on_marker_error(&mut self, attached: StdResult<(), TransactionError>) -> Result<(), ValueError> {
+	fn poison_on_marker_error(&mut self, attached: Result<(), TransactionError>) -> Result<(), ValueError> {
 		attached.map_err(|err| {
 			let err = ValueError::from(err);
 			self.poison(*err.0.clone());

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use napi::{Error as NapiError, Result as NapiResult};
+use napi::Error as NapiError;
 use napi_derive::napi;
 use reifydb::{WithSubsystem, embedded};
 use reifydb_canvas::{migration_path, routines};
 use reifydb_node::ReifydbNode;
 
 #[napi]
-pub fn create() -> NapiResult<ReifydbNode> {
+pub fn create() -> Result<ReifydbNode, NapiError> {
 	let db = embedded::memory()
 		.with_flow(|flow| flow)
 		.with_routines(routines)

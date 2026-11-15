@@ -54,7 +54,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
+	Connection, Error as SqliteError, Error::QueryReturnedNoRows, Row, ToSql, Transaction, TransactionBehavior,
 	params_from_iter,
 };
 use tracing::{instrument, warn};
@@ -756,7 +756,7 @@ impl SqlitePersistentStorage {
 		Ok(accepted)
 	}
 
-	fn create_table_if_needed(conn: &Connection, create_sql: &str) -> SqliteResult<()> {
+	fn create_table_if_needed(conn: &Connection, create_sql: &str) -> Result<(), SqliteError> {
 		conn.execute_batch(create_sql)?;
 		Ok(())
 	}
@@ -838,7 +838,7 @@ impl SqlitePersistentStorage {
 			})
 		}) {
 			Ok(rows) => rows
-				.collect::<SqliteResult<Vec<_>>>()
+				.collect::<Result<Vec<_>, SqliteError>>()
 				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.finish_with(RangeStop::AbsentTable);
@@ -946,7 +946,7 @@ impl SqlitePersistentStorage {
 			})
 		}) {
 			Ok(rows) => rows
-				.collect::<SqliteResult<Vec<_>>>()
+				.collect::<Result<Vec<_>, SqliteError>>()
 				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.finish_with(RangeStop::AbsentTable);
@@ -1048,7 +1048,7 @@ impl SqlitePersistentStorage {
 			})
 		}) {
 			Ok(rows) => rows
-				.collect::<SqliteResult<Vec<_>>>()
+				.collect::<Result<Vec<_>, SqliteError>>()
 				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.finish_with(RangeStop::AbsentTable);
@@ -1159,7 +1159,7 @@ impl SqlitePersistentStorage {
 					value: value.map(CowVec::new),
 				})
 			}) {
-				Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+				Ok(rows) => rows.collect::<Result<Vec<_>, SqliteError>>().map_err(|e| {
 					error!(internal(format!("Failed to read persistent row: {}", e)))
 				})?,
 				Err(e) if e.to_string().contains("no such table") => {
@@ -1251,7 +1251,7 @@ impl SqlitePersistentStorage {
 						value: value.map(CowVec::new),
 					})
 				}) {
-					Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+					Ok(rows) => rows.collect::<Result<Vec<_>, SqliteError>>().map_err(|e| {
 						error!(internal(format!("Failed to read persistent row: {}", e)))
 					})?,
 					Err(e) if e.to_string().contains("no such table") => {
@@ -1320,7 +1320,7 @@ impl SqlitePersistentStorage {
 						value: value.map(CowVec::new),
 					})
 				}) {
-					Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+					Ok(rows) => rows.collect::<Result<Vec<_>, SqliteError>>().map_err(|e| {
 						error!(internal(format!("Failed to read persistent row: {}", e)))
 					})?,
 					Err(e) if e.to_string().contains("no such table") => {
@@ -1404,14 +1404,14 @@ impl SqlitePersistentStorage {
 								value: value.map(CowVec::new),
 							})
 						}) {
-							Ok(rows) => {
-								rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+							Ok(rows) => rows
+								.collect::<Result<Vec<_>, SqliteError>>()
+								.map_err(|e| {
 									error!(internal(format!(
 										"Failed to read persistent row: {}",
 										e
 									)))
-								})?
-							}
+								})?,
 							Err(e) if e.to_string().contains("no such table") => {
 								cursor.finish_with(RangeStop::AbsentTable);
 								return Ok(RangeBatch::empty());
@@ -1495,14 +1495,14 @@ impl SqlitePersistentStorage {
 								value: value.map(CowVec::new),
 							})
 						}) {
-							Ok(rows) => {
-								rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+							Ok(rows) => rows
+								.collect::<Result<Vec<_>, SqliteError>>()
+								.map_err(|e| {
 									error!(internal(format!(
 										"Failed to read persistent row: {}",
 										e
 									)))
-								})?
-							}
+								})?,
 							Err(e) if e.to_string().contains("no such table") => {
 								cursor.finish_with(RangeStop::AbsentTable);
 								return Ok(RangeBatch::empty());
@@ -1616,7 +1616,7 @@ impl SqlitePersistentStorage {
 						value: value.map(CowVec::new),
 					})
 				}) {
-					Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+					Ok(rows) => rows.collect::<Result<Vec<_>, SqliteError>>().map_err(|e| {
 						error!(internal(format!("Failed to read persistent row: {}", e)))
 					})?,
 					Err(e) if e.to_string().contains("no such table") => {
@@ -1673,7 +1673,7 @@ fn any_current_row(conn: &Connection) -> bool {
 	let names: Vec<String> = stmt
 		.query_map([], |row| row.get::<_, String>(0))
 		.expect("persistent table listing failed")
-		.collect::<SqliteResult<Vec<String>>>()
+		.collect::<Result<Vec<String>, SqliteError>>()
 		.expect("persistent table name could not be read");
 	drop(stmt);
 
@@ -1698,7 +1698,7 @@ fn highest_current_version(conn: &Connection) -> u64 {
 	let names: Vec<String> = stmt
 		.query_map([], |row| row.get::<_, String>(0))
 		.expect("persistent table listing failed")
-		.collect::<SqliteResult<Vec<String>>>()
+		.collect::<Result<Vec<String>, SqliteError>>()
 		.expect("persistent table name could not be read");
 	drop(stmt);
 
@@ -1728,7 +1728,7 @@ fn read_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<(String
 	let rows = stmt
 		.query_map([], |row| Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?)))
 		.map_err(|e| error!(internal(format!("Failed to probe the layout of {}: {}", table_name, e))))?;
-	rows.collect::<SqliteResult<Vec<_>>>()
+	rows.collect::<Result<Vec<_>, SqliteError>>()
 		.map_err(|e| error!(internal(format!("Failed to read the layout of {}: {}", table_name, e))))
 }
 
@@ -1885,7 +1885,7 @@ fn key_ints(schema: SqliteSchema, key: &[u8]) -> Option<Vec<i64>> {
 	}
 }
 
-fn read_returned_key(schema: SqliteSchema, row: &Row) -> SqliteResult<ReturnedKey> {
+fn read_returned_key(schema: SqliteSchema, row: &Row) -> Result<ReturnedKey, SqliteError> {
 	match schema {
 		SqliteSchema::Blob => Ok(ReturnedKey::Blob(row.get::<_, Vec<u8>>(0)?)),
 		SqliteSchema::Row => Ok(ReturnedKey::Row(row.get::<_, i64>(0)?)),
