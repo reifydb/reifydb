@@ -649,6 +649,11 @@ fn a_latest_emit_off_join_matches_every_left_row_when_its_right_view_folds_a_bac
 		write_table(&db, "app::src", &k, round * 10, true);
 		write_table(&db, "app::t1", &k, round, true);
 	}
+	// The gate must open only after the drain frontiers passed the last round, otherwise the fold is cut short.
+	assert!(
+		poll_until(|| (db.row_count("FROM app::a") == ROUNDS).then_some(()), SETTLE).is_some(),
+		"view a never saw every round, so the drain frontiers never passed the backlog"
+	);
 	set_gate(gate_name, true);
 	settle(&db);
 
