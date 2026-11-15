@@ -35,12 +35,15 @@ pub use database::Database;
 pub use health::HealthMonitor;
 pub use reifydb_allocator as allocator;
 pub use reifydb_auth as auth;
+pub use reifydb_auth::error::AuthError;
 pub use reifydb_catalog as catalog;
+pub use reifydb_catalog::error::CatalogError;
 pub use reifydb_codec as codec;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
 pub use reifydb_core::actors::server::Operation;
 pub use reifydb_core::{
+	error::CoreError,
 	event::EventBus,
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
@@ -50,9 +53,16 @@ pub use reifydb_core::{
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
+pub use reifydb_engine::error::EngineError;
 pub use reifydb_export as export;
-pub use reifydb_export::options::{ExportOptions, ObjectKind};
+pub use reifydb_export::{
+	error::ExportError,
+	options::{ExportOptions, ObjectKind},
+};
 pub use reifydb_extension as extension;
+pub use reifydb_extension::error::ExtensionError;
+#[cfg(feature = "sub_flow")]
+pub use reifydb_flow_async::error::FlowAsyncError;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow_async::operator::state::{immutable, seal};
 #[cfg(feature = "sub_flow")]
@@ -61,16 +71,20 @@ pub use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator};
 pub use reifydb_flow_async::window;
 pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;
+pub use reifydb_policy::error::PolicyError;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;
 #[cfg(feature = "column")]
 pub use reifydb_store_column as column;
+#[cfg(feature = "column")]
+pub use reifydb_store_column::error::StoreColumnError;
 pub mod routine {
 	pub use reifydb_routine::{function, procedure};
 	pub use reifydb_routine_abi as abi;
 }
 pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
+pub use reifydb_rql::error::RqlError;
 pub use reifydb_runtime as runtime;
 pub use reifydb_runtime::{
 	Runtime, RuntimeConfig, RuntimeHandle,
@@ -82,10 +96,12 @@ pub use reifydb_runtime::{
 	pool::PoolConfig,
 };
 pub use reifydb_sdk as sdk;
+pub use reifydb_sdk::error::SdkError;
 pub use reifydb_sqlite as sqlite;
-pub use reifydb_sqlite::SqliteConfig;
+pub use reifydb_sqlite::{SqliteConfig, error::SqliteError};
 pub use reifydb_store_commit::store::CommitStore;
 pub use reifydb_store_multi as multi_storage;
+pub use reifydb_store_operator::error::StoreOperatorError;
 pub use reifydb_store_single as single_storage;
 pub mod sub {
 	#[cfg(feature = "sub_flow")]
@@ -97,6 +113,8 @@ pub use reifydb_sub_console as sub_console;
 pub use reifydb_sub_core as sub_core;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
+#[cfg(feature = "sub_flow")]
+pub use reifydb_sub_flow::error::SubFlowError;
 pub use reifydb_sub_metrics as sub_metrics;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
@@ -108,14 +126,20 @@ pub use reifydb_sub_server::interceptor::{
 pub use reifydb_sub_server_admin as sub_server_admin;
 #[cfg(feature = "sub_server_grpc")]
 pub use reifydb_sub_server_grpc as sub_server_grpc;
+#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
+pub use reifydb_sub_server_grpc::error::SubServerGrpcError;
 #[cfg(feature = "sub_server_http")]
 pub use reifydb_sub_server_http as sub_server_http;
+#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
+pub use reifydb_sub_server_http::error::SubServerHttpError;
 #[cfg(feature = "sub_server_otel")]
 pub use reifydb_sub_server_otel as sub_server_otel;
 #[cfg(feature = "sub_server_ws")]
 pub use reifydb_sub_server_ws as sub_server_ws;
 #[cfg(feature = "column")]
 pub use reifydb_sub_store as sub_store;
+#[cfg(feature = "column")]
+pub use reifydb_sub_store::column::error::SubStoreError;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_subscription as sub_subscription;
 #[cfg(not(reifydb_single_threaded))]
@@ -124,7 +148,7 @@ pub use reifydb_sub_task as sub_task;
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_subscription as subscription;
 pub use reifydb_wal as wal;
-pub use reifydb_wal::sync::WalMode;
+pub use reifydb_wal::{error::WalError, sync::WalMode};
 #[cfg(feature = "testing")]
 pub mod testing {
 	//! Test-only surface behind the `testing` feature. [`sdk`] here is `reifydb-testing-sdk`, a
@@ -139,7 +163,9 @@ pub mod testing {
 	pub use reifydb_testing_sdk as sdk;
 }
 pub use reifydb_transaction as transaction;
-pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
+pub use reifydb_transaction::{
+	error::TransactionError, multi::transaction::MultiTransaction, single::SingleTransaction,
+};
 pub use reifydb_value as value;
 pub use reifydb_value::{
 	Result,
