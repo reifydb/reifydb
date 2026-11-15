@@ -7,7 +7,7 @@ use std::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ScenarioError {
+pub enum TestingScenarioError {
 	NoQueries {
 		scenario: String,
 	},
@@ -32,24 +32,24 @@ pub enum ScenarioError {
 	},
 }
 
-impl Display for ScenarioError {
+impl Display for TestingScenarioError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		match self {
-			ScenarioError::NoQueries {
+			TestingScenarioError::NoQueries {
 				scenario,
 			} => write!(f, "scenario '{}' defines no queries", scenario),
-			ScenarioError::NoProfiles {
+			TestingScenarioError::NoProfiles {
 				scenario,
 			} => write!(f, "scenario '{}' defines no profiles", scenario),
-			ScenarioError::DuplicateQuery {
+			TestingScenarioError::DuplicateQuery {
 				scenario,
 				query,
 			} => write!(f, "scenario '{}' defines query '{}' more than once", scenario, query),
-			ScenarioError::DuplicateProfile {
+			TestingScenarioError::DuplicateProfile {
 				scenario,
 				profile,
 			} => write!(f, "scenario '{}' defines profile '{}' more than once", scenario, profile),
-			ScenarioError::ScaledProfileOnManualDataset {
+			TestingScenarioError::ScaledProfileOnManualDataset {
 				scenario,
 				profile,
 			} => write!(
@@ -57,7 +57,7 @@ impl Display for ScenarioError {
 				"scenario '{}' has a manually populated dataset, so profile '{}' cannot request a row scale",
 				scenario, profile
 			),
-			ScenarioError::FixedProfileOnGeneratedDataset {
+			TestingScenarioError::FixedProfileOnGeneratedDataset {
 				scenario,
 				profile,
 			} => write!(
@@ -69,4 +69,4 @@ impl Display for ScenarioError {
 	}
 }
 
-impl Error for ScenarioError {}
+impl Error for TestingScenarioError {}

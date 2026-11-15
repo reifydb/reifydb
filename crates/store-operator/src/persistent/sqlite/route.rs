@@ -20,7 +20,7 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
 	types::{OperatorStateCensus, RetiredRows},
 };
@@ -185,7 +185,7 @@ fn read_many<R: BatchRead>(
 			if let Some(expected) = suffix_width_of(keyspace)
 				&& expected != suffix.len()
 			{
-				return Err(OperatorError::SuffixWidth {
+				return Err(StoreOperatorError::SuffixWidth {
 					operator,
 					keyspace,
 					expected,

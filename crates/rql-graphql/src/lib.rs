@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::{compiler::compiler::CompilerError, parse::parser::ParserError, token::lexer::LexerError};
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum RqlGraphqlError {
 	#[error("Lexer error: {0}")]
 	Lexer(#[from] LexerError),
 	#[error("Parser error: {0}")]
@@ -21,4 +21,4 @@ pub enum Error {
 	Compiler(#[from] CompilerError),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, RqlGraphqlError>;

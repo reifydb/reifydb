@@ -13,7 +13,7 @@ use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWit
 use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 use reifydb_flow::error::FlowGraphError;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_flow_async::error::FlowStateError;
+use reifydb_flow_async::error::FlowAsyncError;
 use reifydb_flow_async::operator::{BoxedHostOperator, provider::OperatorProvider};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::builder::CustomOperators;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::{
-	error::ExternOperatorError, operator::extern_c::ExternCOperatorHandle,
+	error::SubFlowError, operator::extern_c::ExternCOperatorHandle,
 	operator::extern_rust::extern_rust_operator_loader,
 };
 
@@ -95,7 +95,7 @@ impl StandardOperatorProvider {
 
 		let named = Params::Named(Arc::new(params.iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
 		let params_bytes = encode_params(&named).map_err(|e| {
-			ValueError::from(FlowStateError::Encode {
+			ValueError::from(FlowAsyncError::Encode {
 				state: "operator params",
 				cause: e.to_string(),
 			})
@@ -107,7 +107,7 @@ impl StandardOperatorProvider {
 		let (descriptor, class, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
-				return Err(ValueError::from(ExternOperatorError::CreateFailed {
+				return Err(ValueError::from(SubFlowError::CreateFailed {
 					cause: format!("{:?}", e),
 				}));
 			}

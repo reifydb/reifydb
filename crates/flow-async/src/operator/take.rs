@@ -54,7 +54,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	operator::{HostOperator, host::HostContext, row_times},
 };
 
@@ -418,7 +418,7 @@ impl TakePlan {
 			return Ok(TakeState::default());
 		}
 		decode::<TakeState>(&row).map_err(|e| {
-			ValueError::from(FlowStateError::Decode {
+			ValueError::from(FlowAsyncError::Decode {
 				state: "TakeState",
 				cause: e.to_string(),
 			})
@@ -427,7 +427,7 @@ impl TakePlan {
 
 	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<()> {
 		let row = encode(state).map_err(|e| {
-			ValueError::from(FlowStateError::Encode {
+			ValueError::from(FlowAsyncError::Encode {
 				state: "TakeState",
 				cause: e.to_string(),
 			})

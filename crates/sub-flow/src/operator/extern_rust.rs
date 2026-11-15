@@ -18,7 +18,7 @@ use reifydb_flow_async::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, config::ExtensionParams, error::ValueError, value::constraint::TypeConstraint};
 
-use crate::error::ExternOperatorError;
+use crate::error::SubFlowError;
 
 pub const EXTERN_RUST_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
@@ -51,7 +51,7 @@ pub fn extern_rust_operator_magic() -> u32 {
 
 pub fn check_extern_rust_abi_tag(abi_tag: u32) -> Result<()> {
 	if abi_tag != EXTERN_RUST_ABI_TAG {
-		return Err(ValueError::from(ExternOperatorError::AbiTagMismatch {
+		return Err(ValueError::from(SubFlowError::AbiTagMismatch {
 			plugin: abi_tag,
 			host: EXTERN_RUST_ABI_TAG,
 		}));
@@ -96,7 +96,7 @@ impl ExternRustOperatorLoader {
 		self.cache
 			.check_magic(path, b"reifydb_extern_rust_operator_magic\0", EXTERN_RUST_OPERATOR_MAGIC)
 			.map_err(|e| {
-				ValueError::from(ExternOperatorError::LibraryLoadFailed {
+				ValueError::from(SubFlowError::LibraryLoadFailed {
 					path: path.display().to_string(),
 					cause: e.to_string(),
 				})
@@ -105,7 +105,7 @@ impl ExternRustOperatorLoader {
 
 	fn descriptor(&self, path: &Path) -> Result<ExternRustOperatorDescriptor> {
 		let library = self.cache.get(path).ok_or_else(|| {
-			ValueError::from(ExternOperatorError::LibraryNotLoaded {
+			ValueError::from(SubFlowError::LibraryNotLoaded {
 				path: path.display().to_string(),
 			})
 		})?;
@@ -116,7 +116,7 @@ impl ExternRustOperatorLoader {
 		let descriptor = unsafe {
 			let get_descriptor: Symbol<fn() -> ExternRustOperatorDescriptor> =
 				library.get(b"reifydb_extern_rust_operator_descriptor\0").map_err(|e| {
-					ValueError::from(ExternOperatorError::SymbolNotFound {
+					ValueError::from(SubFlowError::SymbolNotFound {
 						symbol: "reifydb_extern_rust_operator_descriptor",
 						cause: e.to_string(),
 					})
@@ -155,14 +155,14 @@ impl ExternRustOperatorLoader {
 			.operator_paths
 			.get(operator)
 			.ok_or_else(|| {
-				ValueError::from(ExternOperatorError::OperatorNotFound {
+				ValueError::from(SubFlowError::OperatorNotFound {
 					operator: operator.to_string(),
 				})
 			})?
 			.clone();
 
 		if !self.load_library(&path)? {
-			return Err(ValueError::from(ExternOperatorError::LibraryNotLoaded {
+			return Err(ValueError::from(SubFlowError::LibraryNotLoaded {
 				path: operator.to_string(),
 			}));
 		}
@@ -170,7 +170,7 @@ impl ExternRustOperatorLoader {
 		self.descriptor(&path)?;
 
 		let library = self.cache.library(&path).map_err(|_| {
-			ValueError::from(ExternOperatorError::LibraryNotLoaded {
+			ValueError::from(SubFlowError::LibraryNotLoaded {
 				path: operator.to_string(),
 			})
 		})?;
@@ -180,7 +180,7 @@ impl ExternRustOperatorLoader {
 		let create: ExternRustOperatorCreateFn = unsafe {
 			let create_symbol: Symbol<ExternRustOperatorCreateFn> =
 				library.get(b"reifydb_extern_rust_operator_create\0").map_err(|e| {
-					ValueError::from(ExternOperatorError::SymbolNotFound {
+					ValueError::from(SubFlowError::SymbolNotFound {
 						symbol: "reifydb_extern_rust_operator_create",
 						cause: e.to_string(),
 					})

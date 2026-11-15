@@ -24,7 +24,7 @@ use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	transaction::{
 		frontier::OutputFrontiers,
 		scope::{OperatorScope, operator_state_coordinates},
@@ -81,7 +81,7 @@ pub fn operator_section(
 			inner,
 		}) = operator_state_coordinates(key)
 		else {
-			return Err(FlowStateError::PendingStateKeyUndecodable {
+			return Err(FlowAsyncError::PendingStateKeyUndecodable {
 				key: key.clone(),
 			}
 			.into());

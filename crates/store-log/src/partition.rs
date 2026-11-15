@@ -25,7 +25,7 @@ use reifydb_value::{
 use crate::cursor::drain as drain_cursor;
 use crate::{
 	cursor::Cursor,
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	index::{Index, find_at, header, read},
 	reader::{clamp, floor, record, register, unregister, version_of},
 	segment::{STAGING_SUFFIX, Scan, Segment, Torn, parent, scan, sync_path},
@@ -108,7 +108,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		let opened_at = clock.now();
 		loop {
 			let Some(base) = bases.last().copied() else {
-				return Err(LogError::NotFound(dir.to_path_buf()));
+				return Err(StoreLogError::NotFound(dir.to_path_buf()));
 			};
 			let (mut segment, scan) = Segment::recover(&fs, &dir.join(log_name(base)))?;
 			if scan.records.is_empty() && segment.capacity() < config.segment_bytes {
@@ -159,7 +159,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		if let Some((index, _)) = self.tail()
 			&& record.index != after(index)
 		{
-			return Err(LogError::IndexGap {
+			return Err(StoreLogError::IndexGap {
 				dir: self.dir.clone(),
 				expected: after(index),
 				found: record.index,
@@ -168,7 +168,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		if let Some((_, term)) = self.tail()
 			&& record.term < term
 		{
-			return Err(LogError::TermRegression {
+			return Err(StoreLogError::TermRegression {
 				dir: self.dir.clone(),
 				last: term,
 				found: record.term,
@@ -188,7 +188,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 	pub fn truncate_from(&mut self, index: LogIndex) -> Result<()> {
 		let commit = self.commit_index();
 		if index <= commit {
-			return Err(LogError::TruncateCommitted {
+			return Err(StoreLogError::TruncateCommitted {
 				dir: self.dir.clone(),
 				commit,
 				found: index,
@@ -367,7 +367,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		let low = self.commit_index();
 		let high = self.last_index().unwrap_or(LogIndex::ZERO);
 		if index < low || index > high {
-			return Err(LogError::CommitOutOfRange {
+			return Err(StoreLogError::CommitOutOfRange {
 				dir: self.dir.clone(),
 				low,
 				high,
@@ -403,7 +403,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			None
 		};
 		let Some(record) = found else {
-			return Err(LogError::CompactOutOfRange {
+			return Err(StoreLogError::CompactOutOfRange {
 				dir: self.dir.clone(),
 				low,
 				high,
@@ -622,13 +622,13 @@ fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline:
 	}
 }
 
-pub(crate) fn rebuildable(error: &LogError) -> bool {
+pub(crate) fn rebuildable(error: &StoreLogError) -> bool {
 	matches!(
 		error,
-		LogError::NotFound(_)
-			| LogError::IndexShort { .. }
-			| LogError::IndexMagic { .. }
-			| LogError::IndexCorrupt(_)
+		StoreLogError::NotFound(_)
+			| StoreLogError::IndexShort { .. }
+			| StoreLogError::IndexMagic { .. }
+			| StoreLogError::IndexCorrupt(_)
 	)
 }
 
@@ -957,7 +957,7 @@ mod tests {
 
 		let error = partition.append(&in_term(501, 3)).unwrap_err();
 
-		assert!(matches!(error, LogError::TermRegression { last, found, .. }
+		assert!(matches!(error, StoreLogError::TermRegression { last, found, .. }
 			if last == Term::new(4) && found == Term::new(3)));
 		assert_eq!(partition.last_index(), Some(BASE_INDEX));
 		assert_eq!(partition.last_term(), Some(Term::new(4)));
@@ -989,7 +989,7 @@ mod tests {
 			Partition::<MemoryFs, Clock>::open(fs, Clock::Mock(mock), Path::new(DIR), config()).unwrap();
 		let error = reopened.append(&in_term(501, 1)).unwrap_err();
 
-		assert!(matches!(error, LogError::TermRegression { .. }));
+		assert!(matches!(error, StoreLogError::TermRegression { .. }));
 	}
 
 	fn rolled() -> (MemoryFs, MockClock, Partition<MemoryFs, Clock>) {
@@ -1147,7 +1147,7 @@ mod tests {
 
 		let error = partition.commit(LogIndex::new(2)).unwrap_err();
 
-		assert!(matches!(error, LogError::CommitOutOfRange { high, found, .. }
+		assert!(matches!(error, StoreLogError::CommitOutOfRange { high, found, .. }
 			if high == LogIndex::new(1) && found == LogIndex::new(2)));
 		assert_eq!(partition.commit_index(), LogIndex::ZERO);
 	}
@@ -1164,7 +1164,7 @@ mod tests {
 
 		let error = partition.commit(LogIndex::new(1)).unwrap_err();
 
-		assert!(matches!(error, LogError::CommitOutOfRange { low, .. } if low == LogIndex::new(3)));
+		assert!(matches!(error, StoreLogError::CommitOutOfRange { low, .. } if low == LogIndex::new(3)));
 		assert_eq!(partition.commit_index(), LogIndex::new(3));
 	}
 
@@ -1404,7 +1404,7 @@ mod tests {
 
 		let error = partition.truncate_from(LogIndex::new(6)).unwrap_err();
 
-		assert!(matches!(error, LogError::TruncateCommitted { .. }), "{error}");
+		assert!(matches!(error, StoreLogError::TruncateCommitted { .. }), "{error}");
 		assert_eq!(partition.last_index(), Some(LogIndex::new(8)));
 		assert_eq!(versions(&partition), (506..=507).collect::<Vec<_>>());
 	}
@@ -1481,8 +1481,8 @@ mod tests {
 		let at = partition.truncate_from(LogIndex::new(4)).unwrap_err();
 		let below = partition.truncate_from(LogIndex::new(3)).unwrap_err();
 
-		assert!(matches!(at, LogError::TruncateCommitted { .. }), "{at}");
-		assert!(matches!(below, LogError::TruncateCommitted { .. }), "{below}");
+		assert!(matches!(at, StoreLogError::TruncateCommitted { .. }), "{at}");
+		assert!(matches!(below, StoreLogError::TruncateCommitted { .. }), "{below}");
 		assert_eq!(versions(&partition), (500..=507).collect::<Vec<_>>());
 		partition.truncate_from(LogIndex::new(5)).unwrap();
 	}
@@ -1620,7 +1620,7 @@ mod tests {
 
 		let error = partition.compact_to(LogIndex::new(4)).unwrap_err();
 
-		assert!(matches!(error, LogError::CompactOutOfRange { low, high, found, .. }
+		assert!(matches!(error, StoreLogError::CompactOutOfRange { low, high, found, .. }
 			if low == LogIndex::ZERO && high == LogIndex::new(3) && found == LogIndex::new(4)));
 		assert_eq!(partition.vote().state().snapshot_index, LogIndex::ZERO);
 	}
@@ -1634,7 +1634,7 @@ mod tests {
 
 		let error = partition.compact_to(LogIndex::new(2)).unwrap_err();
 
-		assert!(matches!(error, LogError::CompactOutOfRange { low, found, .. }
+		assert!(matches!(error, StoreLogError::CompactOutOfRange { low, found, .. }
 			if low == LogIndex::new(3) && found == LogIndex::new(2)));
 		assert_eq!(partition.vote().state().snapshot_index, LogIndex::new(3));
 	}
@@ -1716,11 +1716,11 @@ mod tests {
 		partition.rebase(LogIndex::new(20), Term::new(5)).unwrap();
 
 		let error = partition.append(&at_index(600, 22)).unwrap_err();
-		assert!(matches!(error, LogError::IndexGap { expected, .. } if expected == LogIndex::new(21)));
+		assert!(matches!(error, StoreLogError::IndexGap { expected, .. } if expected == LogIndex::new(21)));
 		let mut stale = at_index(600, 21);
 		stale.term = Term::new(4);
 		let error = partition.append(&stale).unwrap_err();
-		assert!(matches!(error, LogError::TermRegression { last, .. } if last == Term::new(5)));
+		assert!(matches!(error, StoreLogError::TermRegression { last, .. } if last == Term::new(5)));
 
 		let mut next = at_index(600, 21);
 		next.term = Term::new(5);

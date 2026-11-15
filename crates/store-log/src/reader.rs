@@ -12,7 +12,7 @@ use reifydb_runtime::io::fs::{
 };
 
 use crate::{
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	segment::{STAGING_SUFFIX, discard, parent, read_exact, staging, write_all},
 };
 
@@ -27,7 +27,7 @@ pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlin
 	let path = path_of(dir, id)?;
 	make_dir(fs, &dir.join(DIR_NAME))?;
 	match fs.open(&path) {
-		Ok(_) => return Err(LogError::AlreadyExists(path)),
+		Ok(_) => return Err(StoreLogError::AlreadyExists(path)),
 		Err(FsError::NotFound(_)) => {}
 		Err(error) => return Err(error.into()),
 	}
@@ -47,7 +47,7 @@ pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	let path = path_of(dir, id)?;
 	match fs.open(&path) {
 		Ok(_) => {}
-		Err(FsError::NotFound(_)) => return Err(LogError::NotFound(path)),
+		Err(FsError::NotFound(_)) => return Err(StoreLogError::NotFound(path)),
 		Err(error) => return Err(error.into()),
 	}
 	publish(fs, &path, version)
@@ -118,7 +118,7 @@ pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + SyncDir + Unlink
 
 pub fn path_of(dir: &Path, id: &str) -> Result<PathBuf> {
 	if !valid(id) {
-		return Err(LogError::InvalidReaderId {
+		return Err(StoreLogError::InvalidReaderId {
 			dir: dir.to_path_buf(),
 			id: id.to_string(),
 		});
@@ -195,7 +195,7 @@ mod tests {
 		// writes the hint outside the partition, and an id ending in the staging suffix would be
 		// skipped by floor and pin nothing at all.
 		for id in ["", ".", "..", "a/b", "../escape", "flow 3", "x.staging"] {
-			assert!(matches!(path_of(dir(), id), Err(LogError::InvalidReaderId { .. })), "{id}");
+			assert!(matches!(path_of(dir(), id), Err(StoreLogError::InvalidReaderId { .. })), "{id}");
 		}
 		assert!(path_of(dir(), &"a".repeat(MAX_ID + 1)).is_err());
 
@@ -280,7 +280,7 @@ mod tests {
 		// silently holds the log forever.
 		let fs = fixture();
 
-		assert!(matches!(record(&fs, dir(), "flow-3", LogVersion::new(900)), Err(LogError::NotFound(_))));
+		assert!(matches!(record(&fs, dir(), "flow-3", LogVersion::new(900)), Err(StoreLogError::NotFound(_))));
 		assert_eq!(floor(&fs, dir()).unwrap(), None);
 	}
 
@@ -292,7 +292,7 @@ mod tests {
 		register(&fs, dir(), "flow-3").unwrap();
 		record(&fs, dir(), "flow-3", LogVersion::new(900)).unwrap();
 
-		assert!(matches!(register(&fs, dir(), "flow-3"), Err(LogError::AlreadyExists(_))));
+		assert!(matches!(register(&fs, dir(), "flow-3"), Err(StoreLogError::AlreadyExists(_))));
 		assert_eq!(floor(&fs, dir()).unwrap(), Some(LogVersion::new(900)));
 	}
 }

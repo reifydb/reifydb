@@ -30,7 +30,7 @@ use reifydb_runtime::{
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_log::{
 	cursor::Cursor,
-	error::LogError,
+	error::StoreLogError,
 	log::{Log, META_NAME},
 	partition::Config,
 	segment::{Scan, Stop},
@@ -190,12 +190,12 @@ impl Mark for CommitDevice {
 
 pub fn open_wal(fs: Fs, clock: Clock, dir: &Path, config: WalConfig) -> WalResult<CommitWal> {
 	let parent = dir.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
-	let exists = fs.read_dir(parent).map_err(LogError::from)?.iter().any(|entry| entry == dir);
-	let complete =
-		exists && fs.read_dir(dir).map_err(LogError::from)?.iter().any(|entry| entry == &dir.join(META_NAME));
+	let exists = fs.read_dir(parent).map_err(StoreLogError::from)?.iter().any(|entry| entry == dir);
+	let complete = exists
+		&& fs.read_dir(dir).map_err(StoreLogError::from)?.iter().any(|entry| entry == &dir.join(META_NAME));
 	if exists && !complete {
-		fs.remove_dir(dir).map_err(LogError::from)?;
-		fs.sync_dir(parent).map_err(LogError::from)?;
+		fs.remove_dir(dir).map_err(StoreLogError::from)?;
+		fs.sync_dir(parent).map_err(StoreLogError::from)?;
 	}
 	if !complete {
 		if config.segment_bytes.as_bytes() <= HEADER_BYTES as u64 {
@@ -730,7 +730,7 @@ impl CommitLog for WalCommitLog {
 		for replayed in records {
 			let replayed = match replayed {
 				Ok(replayed) => replayed,
-				Err(WalError::Log(LogError::Purged {
+				Err(WalError::Log(StoreLogError::Purged {
 					requested,
 					oldest,
 					..

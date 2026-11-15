@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
 #[derive(Debug, thiserror::Error)]
-pub enum FlowStateError {
+pub enum FlowAsyncError {
 	#[error("failed to serialize flow operator state '{state}': {cause}")]
 	Encode {
 		state: &'static str,
@@ -41,33 +41,33 @@ pub enum FlowStateError {
 	},
 }
 
-impl IntoDiagnostic for FlowStateError {
+impl IntoDiagnostic for FlowAsyncError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			FlowStateError::Encode {
+			FlowAsyncError::Encode {
 				state,
 				cause,
 			} => flow_state_encode_failed(state, cause),
-			FlowStateError::Decode {
+			FlowAsyncError::Decode {
 				state,
 				cause,
 			} => flow_state_decode_failed(state, cause),
-			FlowStateError::GuestKeyTooWide {
+			FlowAsyncError::GuestKeyTooWide {
 				len,
 			} => flow_guest_key_too_wide(len),
-			FlowStateError::StateKeyUnframed {
+			FlowAsyncError::StateKeyUnframed {
 				operator,
 				key,
 			} => flow_state_key_unframed(operator, &key),
-			FlowStateError::PendingStateKeyUndecodable {
+			FlowAsyncError::PendingStateKeyUndecodable {
 				key,
 			} => flow_pending_state_key_undecodable(&key),
 		}
 	}
 }
 
-impl From<FlowStateError> for ValueError {
-	fn from(err: FlowStateError) -> Self {
+impl From<FlowAsyncError> for ValueError {
+	fn from(err: FlowAsyncError) -> Self {
 		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

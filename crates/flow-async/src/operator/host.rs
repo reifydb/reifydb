@@ -52,7 +52,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	operator::state::{
 		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
 		reaper::IdentityReclaim,
@@ -698,7 +698,7 @@ fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateK
 	{
 		return Ok(inner);
 	}
-	Err(FlowStateError::StateKeyUnframed {
+	Err(FlowAsyncError::StateKeyUnframed {
 		operator,
 		key: key.encode(),
 	}

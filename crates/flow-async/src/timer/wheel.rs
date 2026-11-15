@@ -26,7 +26,7 @@ use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	timer::{Timer, TimerDue},
 	transaction::{
 		FlowTransaction,
@@ -177,7 +177,7 @@ impl TimerWheel {
 			};
 			let batch = store.range_batch(wheel.for_operator(operator), 1)?;
 			if let Some((key, _)) = batch.items.first() {
-				let unframed = || FlowStateError::StateKeyUnframed {
+				let unframed = || FlowAsyncError::StateKeyUnframed {
 					operator,
 					key: key.as_encoded().clone(),
 				};
@@ -193,7 +193,7 @@ impl TimerWheel {
 				return Ok(None);
 			};
 			let (_, _, suffix) = OperatorStateKey::decode_inner(resume.as_slice()).ok_or_else(|| {
-				FlowStateError::StateKeyUnframed {
+				FlowAsyncError::StateKeyUnframed {
 					operator,
 					key: resume.as_encoded().clone(),
 				}

@@ -8,7 +8,7 @@ use reifydb_runtime::{
 	actor::system::{ActorHandle, ActorSpawner},
 	sync::{Arc, mutex::Mutex},
 };
-use reifydb_store_log::{error::LogError, segment::Scan};
+use reifydb_store_log::{error::StoreLogError, segment::Scan};
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
@@ -129,7 +129,7 @@ impl<T, L: Mark> Wal<T, L> {
 	fn position_of(&self, name: &str) -> Result<Option<Lsn>> {
 		match self.0.device.register(name) {
 			Ok(()) => return Ok(None),
-			Err(WalError::Log(LogError::AlreadyExists(_))) => {}
+			Err(WalError::Log(StoreLogError::AlreadyExists(_))) => {}
 			Err(error) => return Err(error),
 		}
 		let stored = self.0.device.readers()?.into_iter().find(|(id, _)| id == name).map(|(_, hint)| hint);
@@ -194,7 +194,7 @@ impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
 		};
 		match self.0.device.read_from(at.into()) {
 			Ok(cursor) => Ok(Replay::new(cursor)),
-			Err(WalError::Log(LogError::Purged {
+			Err(WalError::Log(StoreLogError::Purged {
 				oldest,
 				..
 			})) => Err(WalError::Purged {

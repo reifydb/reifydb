@@ -12,7 +12,7 @@ use reifydb_runtime::io::fs::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-use crate::error::{LogError, Result};
+use crate::error::{Result, StoreLogError};
 
 pub const STAGING_SUFFIX: &str = ".staging";
 
@@ -53,7 +53,7 @@ impl<F: Filesystem> Segment<F> {
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
 		match fs.open(path) {
-			Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+			Ok(_) => return Err(StoreLogError::AlreadyExists(path.to_path_buf())),
 			Err(FsError::NotFound(_)) => {}
 			Err(error) => return Err(error.into()),
 		}
@@ -101,7 +101,7 @@ impl<F: Filesystem> Segment<F> {
 		let needed = bytes.len() as u64;
 		let remaining = self.capacity.as_bytes() - self.head.as_u64();
 		if remaining < needed {
-			return Err(LogError::SegmentFull {
+			return Err(StoreLogError::SegmentFull {
 				path: self.path.clone(),
 				needed,
 				remaining,
@@ -240,7 +240,7 @@ fn walk<H: Pread>(
 			continue;
 		}
 		if header.reserved != RESERVED {
-			return Err(LogError::SegmentFormat {
+			return Err(StoreLogError::SegmentFormat {
 				path: path.to_path_buf(),
 				position,
 				reserved: header.reserved,
@@ -279,7 +279,7 @@ fn clean(records: Vec<Record>, position: Position, stop: Stop, first_corrupt: Op
 
 fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan>> {
 	first_corrupt.map(|first| {
-		Err(LogError::SegmentCorrupt {
+		Err(StoreLogError::SegmentCorrupt {
 			path: path.to_path_buf(),
 			position: first,
 		})
@@ -304,7 +304,7 @@ pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: 
 	while written < buf.len() {
 		let n = file.pwrite(offset, &buf[written..])?;
 		if n == 0 {
-			return Err(LogError::Io {
+			return Err(StoreLogError::Io {
 				path: path.to_path_buf(),
 				message: format!("write made no progress at offset {offset}"),
 			});

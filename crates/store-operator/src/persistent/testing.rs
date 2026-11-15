@@ -26,7 +26,7 @@ use reifydb_value::byte_size::ByteSize;
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::{Apply, Checkpoint, Enumerate, Fetch, Measure, Page, Persistent, memory::MemoryPersistent},
 	types::{Applied, FlushBatch, OperatorBatch, OperatorStateCensus},
 };
@@ -36,7 +36,7 @@ pub enum ApplyOutcome {
 	Land,
 	Partial(usize),
 	Lost,
-	Err(OperatorError),
+	Err(StoreOperatorError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,7 @@ pub enum ReadOutcome {
 	Clean,
 	Absent,
 	Short(usize),
-	Err(OperatorError),
+	Err(StoreOperatorError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -10,7 +10,7 @@ use rusqlite::params;
 use tracing::instrument;
 
 use crate::{
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::sqlite::{
 		SqlitePersistent,
 		sql::{
@@ -25,7 +25,7 @@ impl SqlitePersistent {
 	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let mut stmt = conn.prepare_cached(CHECKPOINT_GET_SQL)?;
 		let mut rows = stmt.query(params![flow.0 as i64])?;
@@ -42,7 +42,7 @@ impl SqlitePersistent {
 	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let mut stmt = conn.prepare_cached(CHECKPOINT_FLOOR_SQL)?;
 		let mut rows = stmt.query([])?;
@@ -57,7 +57,7 @@ impl SqlitePersistent {
 	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let mut stmt = conn.prepare_cached(CHECKPOINT_LSN_FLOOR_SQL)?;
 		let mut rows = stmt.query([])?;
@@ -72,7 +72,7 @@ impl SqlitePersistent {
 	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let mut stmt = conn.prepare_cached(CHECKPOINT_LIST_SQL)?;
 		let mut rows = stmt.query([])?;
@@ -87,7 +87,7 @@ impl SqlitePersistent {
 	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let mut stmt = conn.prepare_cached(SAVED_LSN_GET_SQL)?;
 		let mut rows = stmt.query([])?;
@@ -95,7 +95,7 @@ impl SqlitePersistent {
 			return Ok(None);
 		};
 		let bytes = row.get::<_, Vec<u8>>(0)?;
-		let bytes: [u8; 8] = bytes.as_slice().try_into().map_err(|_| OperatorError::Backend {
+		let bytes: [u8; 8] = bytes.as_slice().try_into().map_err(|_| StoreOperatorError::Backend {
 			message: format!("operator.db saved lsn holds {} bytes, expected 8", bytes.len()),
 		})?;
 		Ok(Some(Lsn::new(u64::from_le_bytes(bytes))))

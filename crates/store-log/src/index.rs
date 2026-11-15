@@ -17,7 +17,7 @@ use reifydb_runtime::io::fs::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	partition::index_base_of,
 	segment::{Scan, discard, read_exact, scan_from, staging, write_all},
 };
@@ -49,7 +49,7 @@ impl<F: Filesystem> Index<F> {
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
 		match fs.open(path) {
-			Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+			Ok(_) => return Err(StoreLogError::AlreadyExists(path.to_path_buf())),
 			Err(FsError::NotFound(_)) => {}
 			Err(error) => return Err(error.into()),
 		}
@@ -204,29 +204,29 @@ fn at_or_before(at: usize, entries: &[Entry]) -> Position {
 
 fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
 	if len < HEADER_BYTES as u64 {
-		return Err(LogError::IndexShort {
+		return Err(StoreLogError::IndexShort {
 			path: path.to_path_buf(),
 			len,
 		});
 	}
 	let mut raw = [0u8; HEADER_BYTES];
 	if !read_exact(file, 0, &mut raw)? {
-		return Err(LogError::IndexShort {
+		return Err(StoreLogError::IndexShort {
 			path: path.to_path_buf(),
 			len,
 		});
 	}
 	let found = u32::from_le_bytes(raw[0..4].try_into().unwrap());
 	if found != MAGIC {
-		return Err(LogError::IndexMagic {
+		return Err(StoreLogError::IndexMagic {
 			path: path.to_path_buf(),
 			found,
 		});
 	}
-	let header = Header::decode(&raw).ok_or_else(|| LogError::IndexCorrupt(path.to_path_buf()))?;
+	let header = Header::decode(&raw).ok_or_else(|| StoreLogError::IndexCorrupt(path.to_path_buf()))?;
 	let named = path.file_name().and_then(|name| name.to_str()).and_then(index_base_of);
 	if named.is_some_and(|named| named != header.base_version) {
-		return Err(LogError::IndexCorrupt(path.to_path_buf()));
+		return Err(StoreLogError::IndexCorrupt(path.to_path_buf()));
 	}
 	Ok(header)
 }

@@ -156,7 +156,7 @@ mod tests {
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::{compress::Compressor, error::ColumnError, session::new_session};
+	use crate::{compress::Compressor, error::StoreColumnError, session::new_session};
 
 	const KEY: BlockFileKey = BlockFileKey {
 		dir: 1,
@@ -171,7 +171,7 @@ mod tests {
 	}
 
 	fn injected() -> ValueError {
-		ColumnError::Fs {
+		StoreColumnError::Fs {
 			operation: "remove",
 			source: FsError::Io {
 				path: PathBuf::from("/column/1/00000000000000000001.borg"),

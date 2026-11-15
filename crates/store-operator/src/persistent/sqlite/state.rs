@@ -14,7 +14,7 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::sqlite::{SqlitePersistent, route},
 	types::OperatorBatch,
 };
@@ -28,7 +28,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(route::sizes_many(conn, operator, tables, keys)?
 			.into_iter()
@@ -44,7 +44,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(route::get(conn, operator, tables, keys)?.into_iter().map(|bytes| bytes.map(decode_row)).collect())
 	}
@@ -83,7 +83,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let rows = route::bounded_in(
 			conn,
@@ -115,7 +115,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let rows = route::bounded(conn, operator, tables, &range, batch_size.saturating_add(1), reverse);
 		record_page(rows.len() as u64, 0);
@@ -139,7 +139,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(route::keys_after(conn, operator, tables, keyspace, after, limit))
 	}

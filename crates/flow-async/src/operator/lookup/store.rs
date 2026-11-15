@@ -26,7 +26,7 @@ use reifydb_value::{
 	value::{partition::Partition, row_number::RowNumber},
 };
 
-use crate::{error::FlowStateError, operator::host::HostContext};
+use crate::{error::FlowAsyncError, operator::host::HostContext};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
@@ -138,7 +138,7 @@ impl ReadLedger {
 
 fn encode_read(read: &StoredRead) -> Result<EncodedPodRow> {
 	encode(read).map_err(|e| {
-		FlowStateError::Encode {
+		FlowAsyncError::Encode {
 			state: "LookupRead",
 			cause: e.to_string(),
 		}
@@ -148,7 +148,7 @@ fn encode_read(read: &StoredRead) -> Result<EncodedPodRow> {
 
 pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<StoredRead> {
 	decode(stored).map_err(|e| {
-		FlowStateError::Decode {
+		FlowAsyncError::Decode {
 			state: "LookupRead",
 			cause: e.to_string(),
 		}

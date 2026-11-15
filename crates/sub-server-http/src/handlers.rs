@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use tracing::{debug_span, instrument};
 
-use crate::{error::AppError, state::HttpServerState};
+use crate::{error::SubServerHttpError, state::HttpServerState};
 
 #[derive(Debug, Deserialize)]
 pub struct StatementRequest {
@@ -113,7 +113,7 @@ pub async fn handle_authenticate(
 	State(state): State<HttpServerState>,
 	headers: HeaderMap,
 	Json(request): Json<AuthenticateRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	let caller = extract_identity(&state, &headers)?;
 	let auth_response = send_authenticate(&state, request, caller).await?;
 
@@ -196,7 +196,7 @@ async fn send_authenticate(
 	state: &HttpServerState,
 	request: AuthenticateRequest,
 	caller: IdentityId,
-) -> Result<ServerAuthResponse, AppError> {
+) -> Result<ServerAuthResponse, SubServerHttpError> {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
@@ -207,12 +207,15 @@ async fn send_authenticate(
 			reply,
 		})
 		.ok()
-		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
+		.ok_or_else(|| SubServerHttpError::Internal("actor mailbox closed".into()))?;
 
-	receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))
+	receiver.recv().await.map_err(|_| SubServerHttpError::Internal("actor stopped".into()))
 }
 
-pub async fn handle_logout(State(state): State<HttpServerState>, headers: HeaderMap) -> Result<Response, AppError> {
+pub async fn handle_logout(
+	State(state): State<HttpServerState>,
+	headers: HeaderMap,
+) -> Result<Response, SubServerHttpError> {
 	let token = extract_bearer_token(&headers)?;
 	let logout_response = send_logout(&state, token).await?;
 
@@ -224,25 +227,26 @@ pub async fn handle_logout(State(state): State<HttpServerState>, headers: Header
 			}),
 		)
 			.into_response()),
-		ServerLogoutResponse::InvalidToken => Err(AppError::Auth(AuthError::InvalidToken)),
-		ServerLogoutResponse::Error(reason) => Err(AppError::Internal(reason)),
+		ServerLogoutResponse::InvalidToken => Err(SubServerHttpError::Auth(AuthError::InvalidToken)),
+		ServerLogoutResponse::Error(reason) => Err(SubServerHttpError::Internal(reason)),
 	}
 }
 
 #[inline]
-fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, AppError> {
-	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
-	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
-	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
+fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, SubServerHttpError> {
+	let auth_header =
+		headers.get("authorization").ok_or(SubServerHttpError::Auth(AuthError::MissingCredentials))?;
+	let auth_str = auth_header.to_str().map_err(|_| SubServerHttpError::Auth(AuthError::InvalidHeader))?;
+	let token = auth_str.strip_prefix("Bearer ").ok_or(SubServerHttpError::Auth(AuthError::InvalidHeader))?.trim();
 
 	if token.is_empty() {
-		return Err(AppError::Auth(AuthError::InvalidToken));
+		return Err(SubServerHttpError::Auth(AuthError::InvalidToken));
 	}
 	Ok(token)
 }
 
 #[inline]
-async fn send_logout(state: &HttpServerState, token: &str) -> Result<ServerLogoutResponse, AppError> {
+async fn send_logout(state: &HttpServerState, token: &str) -> Result<ServerLogoutResponse, SubServerHttpError> {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
@@ -251,9 +255,9 @@ async fn send_logout(state: &HttpServerState, token: &str) -> Result<ServerLogou
 			reply,
 		})
 		.ok()
-		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
+		.ok_or_else(|| SubServerHttpError::Internal("actor mailbox closed".into()))?;
 
-	receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))
+	receiver.recv().await.map_err(|_| SubServerHttpError::Internal("actor stopped".into()))
 }
 
 fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
@@ -272,7 +276,7 @@ pub async fn handle_query(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	execute_and_respond(&state, Operation::Query, &headers, request, &format_params).await
 }
 
@@ -282,7 +286,7 @@ pub async fn handle_admin(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	execute_and_respond(&state, Operation::Admin, &headers, request, &format_params).await
 }
 
@@ -292,7 +296,7 @@ pub async fn handle_command(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	execute_and_respond(&state, Operation::Command, &headers, request, &format_params).await
 }
 
@@ -302,10 +306,10 @@ pub async fn handle_queue_claim(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<WireClaimRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	let identity = extract_identity(&state, &headers)?;
 	let metadata = build_metadata(&headers);
-	let request = request.into_claim_request().map_err(AppError::BadRequest)?;
+	let request = request.into_claim_request().map_err(SubServerHttpError::BadRequest)?;
 
 	let (frames, metrics) = dispatch_claim(&state, identity, request, metadata).await?;
 
@@ -321,7 +325,7 @@ async fn execute_and_respond(
 	headers: &HeaderMap,
 	request: StatementRequest,
 	format_params: &FormatParams,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	let ctx = build_request_context(state, operation, headers, request)?;
 
 	let (frames, metrics) = dispatch(state, ctx).await?;
@@ -337,12 +341,12 @@ fn build_request_context(
 	operation: Operation,
 	headers: &HeaderMap,
 	request: StatementRequest,
-) -> Result<RequestContext, AppError> {
+) -> Result<RequestContext, SubServerHttpError> {
 	let identity = extract_identity(state, headers)?;
 	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
-		Some(wp) => wp.into_params().map_err(AppError::InvalidParams)?,
+		Some(wp) => wp.into_params().map_err(SubServerHttpError::InvalidParams)?,
 	};
 	Ok(RequestContext {
 		identity,
@@ -354,7 +358,7 @@ fn build_request_context(
 }
 
 #[inline]
-fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Result<Response, AppError> {
+fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Result<Response, SubServerHttpError> {
 	let _encode_span =
 		debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len()).entered();
 	match format_params.format {
@@ -363,20 +367,21 @@ fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Re
 				Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
 					.into_response())
 			}
-			Err(e) => Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
+			Err(e) => Err(SubServerHttpError::BadRequest(format!("RBCF encode error: {}", e))),
 		},
 		WireFormat::Json => {
 			let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-				.map_err(AppError::BadRequest)?;
+				.map_err(SubServerHttpError::BadRequest)?;
 			Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body)
 				.into_response())
 		}
 		WireFormat::Frames => {
 			let body = to_string(&QueryResponse {
-				frames: convert_frames(&frames)
-					.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?,
+				frames: convert_frames(&frames).map_err(|e| {
+					SubServerHttpError::BadRequest(format!("JSON encode error: {}", e))
+				})?,
 			})
-			.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
+			.map_err(|e| SubServerHttpError::BadRequest(format!("JSON encode error: {}", e)))?;
 			Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
 				.into_response())
 		}
@@ -384,11 +389,12 @@ fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Re
 }
 
 #[instrument(name = "http::extract_identity", level = "trace", skip_all)]
-fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
+fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, SubServerHttpError> {
 	if let Some(auth_header) = headers.get("authorization") {
-		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
+		let auth_str = auth_header.to_str().map_err(|_| SubServerHttpError::Auth(AuthError::InvalidHeader))?;
 
-		return extract_identity_from_auth_header(state.auth_service(), auth_str).map_err(AppError::Auth);
+		return extract_identity_from_auth_header(state.auth_service(), auth_str)
+			.map_err(SubServerHttpError::Auth);
 	}
 
 	Ok(IdentityId::anonymous())
@@ -400,7 +406,7 @@ pub async fn handle_binding(
 	method: Method,
 	Query(query_params): Query<HashMap<String, String>>,
 	headers: HeaderMap,
-) -> Result<Response, AppError> {
+) -> Result<Response, SubServerHttpError> {
 	let http_method = resolve_http_method(&method)?;
 	let request_path = format!("/{}", path);
 
@@ -420,14 +426,14 @@ pub async fn handle_binding(
 }
 
 #[inline]
-fn resolve_http_method(method: &Method) -> Result<HttpMethod, AppError> {
+fn resolve_http_method(method: &Method) -> Result<HttpMethod, SubServerHttpError> {
 	match method.as_str() {
 		"GET" => Ok(HttpMethod::Get),
 		"POST" => Ok(HttpMethod::Post),
 		"PUT" => Ok(HttpMethod::Put),
 		"PATCH" => Ok(HttpMethod::Patch),
 		"DELETE" => Ok(HttpMethod::Delete),
-		_ => Err(AppError::MethodNotAllowed(format!("method `{}` is not supported", method))),
+		_ => Err(SubServerHttpError::MethodNotAllowed(format!("method `{}` is not supported", method))),
 	}
 }
 
@@ -437,7 +443,7 @@ fn resolve_binding(
 	http_method: HttpMethod,
 	method: &Method,
 	request_path: &str,
-) -> Result<(Binding, HashMap<String, String>), AppError> {
+) -> Result<(Binding, HashMap<String, String>), SubServerHttpError> {
 	let bindings = state.engine().catalog().cache().list_http_bindings();
 	let mut any_path_match = false;
 	let mut matched: Option<(Binding, HashMap<String, String>)> = None;
@@ -459,21 +465,27 @@ fn resolve_binding(
 	}
 	match matched {
 		Some(m) => Ok(m),
-		None if any_path_match => Err(AppError::MethodNotAllowed(format!(
+		None if any_path_match => Err(SubServerHttpError::MethodNotAllowed(format!(
 			"no binding for method `{}` at `{}`",
 			method, request_path
 		))),
-		None => Err(AppError::NotFound(format!("no binding for `{}`", request_path))),
+		None => Err(SubServerHttpError::NotFound(format!("no binding for `{}`", request_path))),
 	}
 }
 
 #[inline]
-fn find_binding_targets(state: &HttpServerState, binding: &Binding) -> Result<(Procedure, Namespace), AppError> {
+fn find_binding_targets(
+	state: &HttpServerState,
+	binding: &Binding,
+) -> Result<(Procedure, Namespace), SubServerHttpError> {
 	let procedure = state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(|| {
-		AppError::Internal(format!("binding references missing procedure id {:?}", binding.procedure_id))
+		SubServerHttpError::Internal(format!(
+			"binding references missing procedure id {:?}",
+			binding.procedure_id
+		))
 	})?;
 	let namespace = state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
-		AppError::Internal(format!("binding references missing namespace id {:?}", binding.namespace))
+		SubServerHttpError::Internal(format!("binding references missing namespace id {:?}", binding.namespace))
 	})?;
 	Ok((procedure, namespace))
 }
@@ -483,14 +495,17 @@ fn coerce_binding_params(
 	procedure: &Procedure,
 	path_captures: &HashMap<String, String>,
 	query_params: &HashMap<String, String>,
-) -> Result<Params, AppError> {
+) -> Result<Params, SubServerHttpError> {
 	let param_names: Vec<&str> = procedure.params().iter().map(|p| p.name.as_str()).collect();
 	for key in query_params.keys() {
 		if !param_names.contains(&key.as_str()) {
-			return Err(AppError::BadRequest(format!("unknown parameter `{}`", key)));
+			return Err(SubServerHttpError::BadRequest(format!("unknown parameter `{}`", key)));
 		}
 		if path_captures.contains_key(key) {
-			return Err(AppError::BadRequest(format!("parameter `{}` given in both path and query", key)));
+			return Err(SubServerHttpError::BadRequest(format!(
+				"parameter `{}` given in both path and query",
+				key
+			)));
 		}
 	}
 
@@ -499,11 +514,14 @@ fn coerce_binding_params(
 		let raw = match path_captures.get(&p.name).or_else(|| query_params.get(&p.name)) {
 			Some(v) => v,
 			None => {
-				return Err(AppError::BadRequest(format!("missing required parameter `{}`", p.name)));
+				return Err(SubServerHttpError::BadRequest(format!(
+					"missing required parameter `{}`",
+					p.name
+				)));
 			}
 		};
 		let value = coerce_str_to_value(raw, p.param_type.get_type()).map_err(|e| {
-			AppError::BadRequest(format!(
+			SubServerHttpError::BadRequest(format!(
 				"parameter `{}`: cannot coerce `{}` to {:?}: {}",
 				p.name,
 				raw,
@@ -573,23 +591,23 @@ fn coerce_str_to_value(s: &str, ty: ValueType) -> Result<Value, String> {
 	}
 }
 
-fn encode_binding_response(frames: Vec<Frame>, format: BindingFormat) -> Result<Response, AppError> {
+fn encode_binding_response(frames: Vec<Frame>, format: BindingFormat) -> Result<Response, SubServerHttpError> {
 	match format {
 		BindingFormat::Rbcf => match encode_frames_rbcf(&frames) {
 			Ok(bytes) => {
 				Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
 					.into_response())
 			}
-			Err(e) => Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
+			Err(e) => Err(SubServerHttpError::BadRequest(format!("RBCF encode error: {}", e))),
 		},
 		BindingFormat::Json => {
-			let resolved = resolve_response_json(frames, false).map_err(AppError::BadRequest)?;
+			let resolved = resolve_response_json(frames, false).map_err(SubServerHttpError::BadRequest)?;
 			Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body)
 				.into_response())
 		}
 		BindingFormat::Frames => Ok(Json(QueryResponse {
 			frames: convert_frames(&frames)
-				.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?,
+				.map_err(|e| SubServerHttpError::BadRequest(format!("JSON encode error: {}", e)))?,
 		})
 		.into_response()),
 	}

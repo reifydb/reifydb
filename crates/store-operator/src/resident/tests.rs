@@ -43,7 +43,7 @@ use reifydb_wal::lsn::Lsn;
 use super::{LOCAL_LOW_WATER_PERCENT, STARVATION_FLUSHES};
 use crate::{
 	actor::Waker,
-	error::OperatorError,
+	error::StoreOperatorError,
 	persistent::{
 		Fetch, PersistentTier,
 		testing::{ApplyOutcome, NoFaults, PersistentHooks, TestingPersistent},
@@ -1129,7 +1129,7 @@ struct RefuseApply;
 
 impl PersistentHooks for RefuseApply {
 	fn on_apply(&self, _batch: &FlushBatch) -> ApplyOutcome {
-		ApplyOutcome::Err(OperatorError::Backend {
+		ApplyOutcome::Err(StoreOperatorError::Backend {
 			message: "apply refused".to_string(),
 		})
 	}

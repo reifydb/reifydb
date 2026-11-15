@@ -10,7 +10,7 @@ use reifydb_codec::log::{
 use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, SyncData, SyncDir};
 
 use crate::{
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	segment::{read_exact, write_all},
 };
 
@@ -120,11 +120,11 @@ fn pick<H: Pread + Len>(files: &[H; SLOTS], dir: &Path) -> Result<(State, VoteSe
 	}
 	match (best, short) {
 		(Some(found), _) => Ok(found),
-		(None, Some(len)) => Err(LogError::VoteShort {
+		(None, Some(len)) => Err(StoreLogError::VoteShort {
 			path: dir.to_path_buf(),
 			len,
 		}),
-		(None, None) => Err(LogError::VoteCorrupt {
+		(None, None) => Err(StoreLogError::VoteCorrupt {
 			path: dir.to_path_buf(),
 		}),
 	}
@@ -265,7 +265,7 @@ mod tests {
 		poke(&fs, &slot_path(&dir, 0), 12, &[0xff; 4]);
 		poke(&fs, &slot_path(&dir, 1), 12, &[0xff; 4]);
 
-		assert!(matches!(read(&fs, &dir), Err(LogError::VoteCorrupt { .. })));
+		assert!(matches!(read(&fs, &dir), Err(StoreLogError::VoteCorrupt { .. })));
 	}
 
 	#[test]
@@ -288,7 +288,7 @@ mod tests {
 		fs.create(&slot_path(&dir, 0), 8).unwrap();
 		fs.create(&slot_path(&dir, 1), 8).unwrap();
 
-		assert!(matches!(read(&fs, &dir), Err(LogError::VoteShort { .. })));
+		assert!(matches!(read(&fs, &dir), Err(StoreLogError::VoteShort { .. })));
 	}
 
 	#[test]

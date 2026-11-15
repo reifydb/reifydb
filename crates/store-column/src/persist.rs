@@ -31,7 +31,7 @@ use vortex_session::{
 use crate::{
 	block::{BlockData, BlockEncodingHeader, ColumnChunks},
 	convert::to_vortex,
-	error::{ColumnError, fs, vortex},
+	error::{StoreColumnError, fs, vortex},
 };
 
 const MAGIC: &[u8; 4] = b"BORG";
@@ -128,10 +128,10 @@ pub fn serialize_block(data: &BlockData, session: &VortexSession) -> Result<Vec<
 		columns,
 		block_encoding: data.block_encoding.clone(),
 	};
-	let header = to_stdvec(&header).map_err(|err| ColumnError::PersistSerialize {
+	let header = to_stdvec(&header).map_err(|err| StoreColumnError::PersistSerialize {
 		reason: err.to_string(),
 	})?;
-	let header_len = u32::try_from(header.len()).map_err(|_| ColumnError::PersistSerialize {
+	let header_len = u32::try_from(header.len()).map_err(|_| StoreColumnError::PersistSerialize {
 		reason: format!("header of {} bytes does not fit u32", header.len()),
 	})?;
 	let mut out = Vec::with_capacity(PREFIX + header.len() + body.len());
@@ -160,7 +160,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 		}
 		let version = u16::from_le_bytes([prefix[4], prefix[5]]);
 		if version != VERSION {
-			return Err(ColumnError::PersistVersionUnsupported {
+			return Err(StoreColumnError::PersistVersionUnsupported {
 				version,
 			}
 			.into());
@@ -174,9 +174,10 @@ impl<R: Pread + Len> BlockHandle<R> {
 		if !read_exact(&file, PREFIX as u64, &mut header).map_err(fs("open"))? {
 			return Err(corrupt("header runs past the end of the block"));
 		}
-		let header: BlockFileHeader = from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
-			reason: err.to_string(),
-		})?;
+		let header: BlockFileHeader =
+			from_bytes(&header).map_err(|err| StoreColumnError::PersistDeserialize {
+				reason: err.to_string(),
+			})?;
 		let align = header.align as u64;
 		if !align.is_power_of_two() {
 			return Err(corrupt("alignment is not a power of two"));
@@ -209,7 +210,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 				.iter()
 				.find(|name| !self.header.columns.iter().any(|column| column.name == **name))
 		{
-			return Err(ColumnError::ColumnNotInSchema {
+			return Err(StoreColumnError::ColumnNotInSchema {
 				operation: "read",
 				name: missing.to_string(),
 			}
@@ -227,7 +228,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 				.map_err(vortex("persist"))?;
 			let expected = expected_dtype(&self.session, &column.name, &column.field_type)?;
 			if stored != expected {
-				return Err(ColumnError::DTypeMismatch {
+				return Err(StoreColumnError::DTypeMismatch {
 					column: column.name.clone(),
 					stored: stored.to_string(),
 					expected: expected.to_string(),
@@ -300,7 +301,7 @@ pub(crate) fn write_all<W: Pwrite>(file: &W, path: &Path, mut offset: u64, buf: 
 }
 
 fn corrupt(reason: &str) -> ValueError {
-	ColumnError::PersistDeserialize {
+	StoreColumnError::PersistDeserialize {
 		reason: reason.to_string(),
 	}
 	.into()

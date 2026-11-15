@@ -33,7 +33,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::state::JoinSide;
-use crate::{error::FlowStateError, operator::host::HostContext};
+use crate::{error::FlowAsyncError, operator::host::HostContext};
 
 pub(crate) fn body_bytes(row: &EncodedPodRow) -> EncodedBytes {
 	EncodedBytes(CowVec::new(row.body().to_vec()))
@@ -236,7 +236,7 @@ impl Store {
 				}
 				let fields: Vec<RowShapeField> =
 					decode_body::<Vec<RowShapeField>>(&row).map_err(|e| {
-						ValueError::from(FlowStateError::Decode {
+						ValueError::from(FlowAsyncError::Decode {
 							state: "row shape",
 							cause: e.to_string(),
 						})
@@ -259,7 +259,7 @@ impl Store {
 			return Ok(());
 		}
 		let row = encode(&shape.fields().to_vec()).map_err(|e| {
-			ValueError::from(FlowStateError::Encode {
+			ValueError::from(FlowAsyncError::Encode {
 				state: "row shape",
 				cause: e.to_string(),
 			})

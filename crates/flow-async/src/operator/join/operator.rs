@@ -68,7 +68,7 @@ use super::{
 	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
 };
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	operator::{
 		HostOperator, InputOrder, TimedOutput,
 		host::HostContext,
@@ -290,7 +290,7 @@ impl JoinOperator {
 
 	fn side_of(tag: u8) -> Result<JoinSide> {
 		JoinSide::from_tag(tag).ok_or_else(|| {
-			ValueError::from(FlowStateError::Decode {
+			ValueError::from(FlowAsyncError::Decode {
 				state: "join expiry key",
 				cause: format!("unknown join side tag {tag}"),
 			})

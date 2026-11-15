@@ -15,10 +15,10 @@ use reifydb_value::error::ValueError;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::Error as RusqliteError;
 
-pub type Result<T> = std::result::Result<T, OperatorError>;
+pub type Result<T> = std::result::Result<T, StoreOperatorError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OperatorError {
+pub enum StoreOperatorError {
 	Backend {
 		message: String,
 	},
@@ -34,17 +34,17 @@ pub enum OperatorError {
 	},
 }
 
-impl Display for OperatorError {
+impl Display for StoreOperatorError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
 		match self {
-			OperatorError::Backend {
+			StoreOperatorError::Backend {
 				message,
 			} => write!(f, "operator state backend failed: {message}"),
-			OperatorError::CheckpointOutOfRange {
+			StoreOperatorError::CheckpointOutOfRange {
 				flow,
 			} => write!(f, "flow {} moved its checkpoint backwards", flow.0),
-			OperatorError::Closed => write!(f, "operator state backend is closed"),
-			OperatorError::SuffixWidth {
+			StoreOperatorError::Closed => write!(f, "operator state backend is closed"),
+			StoreOperatorError::SuffixWidth {
 				operator,
 				keyspace,
 				expected,
@@ -58,19 +58,19 @@ impl Display for OperatorError {
 	}
 }
 
-impl StdError for OperatorError {}
+impl StdError for StoreOperatorError {}
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl From<RusqliteError> for OperatorError {
+impl From<RusqliteError> for StoreOperatorError {
 	fn from(err: RusqliteError) -> Self {
-		OperatorError::Backend {
+		StoreOperatorError::Backend {
 			message: err.to_string(),
 		}
 	}
 }
 
-impl From<OperatorError> for ValueError {
-	fn from(err: OperatorError) -> Self {
+impl From<StoreOperatorError> for ValueError {
+	fn from(err: StoreOperatorError) -> Self {
 		ValueError(Box::new(internal(err.to_string())))
 	}
 }

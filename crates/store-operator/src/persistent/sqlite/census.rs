@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::sqlite::{SqlitePersistent, route, typed},
 	types::OperatorStateCensus,
 };
@@ -49,7 +49,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		let state: u64 = route::census(conn, &tables)
 			.iter()
@@ -64,7 +64,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(route::occupied_keyspaces(conn, operator, tables))
 	}
@@ -74,7 +74,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(tables
 			.into_iter()
@@ -88,7 +88,7 @@ impl SqlitePersistent {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
+			return Err(StoreOperatorError::Closed);
 		};
 		Ok(route::census(conn, &tables))
 	}

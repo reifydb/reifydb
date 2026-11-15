@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::{
 	dataset::{DEFAULT_INSERT_BATCH, Dataset},
-	error::ScenarioError,
+	error::TestingScenarioError,
 	profile::{Profile, Scale},
 	query::{NamedQuery, OperationKind},
 	render::insert_statements,
@@ -82,15 +82,15 @@ impl Scenario {
 			.collect()
 	}
 
-	pub fn validate(&self) -> Result<(), ScenarioError> {
+	pub fn validate(&self) -> Result<(), TestingScenarioError> {
 		if self.queries.is_empty() {
-			return Err(ScenarioError::NoQueries {
+			return Err(TestingScenarioError::NoQueries {
 				scenario: self.name.to_string(),
 			});
 		}
 
 		if self.profiles.is_empty() {
-			return Err(ScenarioError::NoProfiles {
+			return Err(TestingScenarioError::NoProfiles {
 				scenario: self.name.to_string(),
 			});
 		}
@@ -98,7 +98,7 @@ impl Scenario {
 		let mut seen_queries = HashSet::new();
 		for query in &self.queries {
 			if !seen_queries.insert(query.name) {
-				return Err(ScenarioError::DuplicateQuery {
+				return Err(TestingScenarioError::DuplicateQuery {
 					scenario: self.name.to_string(),
 					query: query.name.to_string(),
 				});
@@ -108,7 +108,7 @@ impl Scenario {
 		let mut seen_profiles = HashSet::new();
 		for profile in &self.profiles {
 			if !seen_profiles.insert(profile.name.as_str()) {
-				return Err(ScenarioError::DuplicateProfile {
+				return Err(TestingScenarioError::DuplicateProfile {
 					scenario: self.name.to_string(),
 					profile: profile.name.clone(),
 				});
@@ -116,13 +116,13 @@ impl Scenario {
 
 			match (self.dataset.is_manual(), profile.scale) {
 				(true, Scale::Rows(_)) => {
-					return Err(ScenarioError::ScaledProfileOnManualDataset {
+					return Err(TestingScenarioError::ScaledProfileOnManualDataset {
 						scenario: self.name.to_string(),
 						profile: profile.name.clone(),
 					});
 				}
 				(false, Scale::Fixed) => {
-					return Err(ScenarioError::FixedProfileOnGeneratedDataset {
+					return Err(TestingScenarioError::FixedProfileOnGeneratedDataset {
 						scenario: self.name.to_string(),
 						profile: profile.name.clone(),
 					});
@@ -141,7 +141,7 @@ mod tests {
 
 	use crate::{
 		dataset::{Dataset, RowCount, TableSeed},
-		error::ScenarioError,
+		error::TestingScenarioError,
 		profile::{Profile, StopCondition},
 		query::{NamedQuery, OperationKind, QueryTemplate},
 		scenario::Scenario,
@@ -222,7 +222,7 @@ mod tests {
 
 		assert_eq!(
 			scenario.validate(),
-			Err(ScenarioError::ScaledProfileOnManualDataset {
+			Err(TestingScenarioError::ScaledProfileOnManualDataset {
 				scenario: "test".to_string(),
 				profile: "t1_1m".to_string(),
 			})
@@ -237,7 +237,7 @@ mod tests {
 
 		assert_eq!(
 			scenario.validate(),
-			Err(ScenarioError::FixedProfileOnGeneratedDataset {
+			Err(TestingScenarioError::FixedProfileOnGeneratedDataset {
 				scenario: "test".to_string(),
 				profile: "t1".to_string(),
 			})
@@ -258,7 +258,7 @@ mod tests {
 
 		assert_eq!(
 			scenario.validate(),
-			Err(ScenarioError::DuplicateProfile {
+			Err(TestingScenarioError::DuplicateProfile {
 				scenario: "test".to_string(),
 				profile: "t1_10k".to_string(),
 			})

@@ -7,7 +7,7 @@ use reifydb_codec::log::{LogVersion, Position, record::Record};
 use reifydb_runtime::io::fs::{Filesystem, Len, Open, ReadDir};
 
 use crate::{
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	index::{position_of, read},
 	partition::{bases_in, index_name, log_name, rebuildable},
 	segment::{Stop, Torn, scan_upto},
@@ -29,12 +29,12 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 	pub fn open(fs: &'a F, dir: &Path, after: Option<LogVersion>, torn: Option<Torn>) -> Result<Self> {
 		let bases = bases_in(fs, dir)?;
 		let Some(oldest) = bases.first().copied() else {
-			return Err(LogError::NotFound(dir.to_path_buf()));
+			return Err(StoreLogError::NotFound(dir.to_path_buf()));
 		};
 		if let Some(after) = after
 			&& after.as_u64() + 1 < oldest.as_u64()
 		{
-			return Err(LogError::Purged {
+			return Err(StoreLogError::Purged {
 				dir: dir.to_path_buf(),
 				requested: after,
 				oldest,
@@ -68,7 +68,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 			let from = self.torn.filter(|torn| torn.base == self.bases[self.at]).map(|torn| torn.from);
 			let scan = match scan_upto(self.fs, &path, self.position, self.last, max - out.len(), from) {
 				Ok(scan) => scan,
-				Err(LogError::NotFound(missing)) => return Err(self.reclaimed_or(missing)?),
+				Err(StoreLogError::NotFound(missing)) => return Err(self.reclaimed_or(missing)?),
 				Err(error) => return Err(error),
 			};
 			for record in &scan.records {
@@ -84,7 +84,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 					}
 					let len = self.fs.open(&path)?.len()?;
 					if self.position.as_u64() != len {
-						return Err(LogError::SegmentIncomplete {
+						return Err(StoreLogError::SegmentIncomplete {
 							end: self.position,
 							len,
 							path,
@@ -94,7 +94,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 					self.position = Position::ZERO;
 				}
 				Stop::Stale(_) if self.position == Position::ZERO && self.last.is_some() => {
-					return Err(LogError::SegmentOutOfOrder {
+					return Err(StoreLogError::SegmentOutOfOrder {
 						previous: self.last.expect("guarded above"),
 						found: first_version(self.fs, &path)?,
 						path,
@@ -102,7 +102,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 				}
 				Stop::Corrupt(_) | Stop::Stale(_) => {
 					if self.followed()? {
-						return Err(LogError::SegmentIncomplete {
+						return Err(StoreLogError::SegmentIncomplete {
 							end: scan.end,
 							len: self.fs.open(&path)?.len()?,
 							path,
@@ -127,13 +127,13 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		self.position
 	}
 
-	fn reclaimed_or(&self, missing: PathBuf) -> Result<LogError> {
+	fn reclaimed_or(&self, missing: PathBuf) -> Result<StoreLogError> {
 		let bases = bases_in(self.fs, &self.dir)?;
 		let base = self.bases[self.at];
 		if bases.contains(&base) {
-			return Ok(LogError::NotFound(missing));
+			return Ok(StoreLogError::NotFound(missing));
 		}
-		Ok(LogError::Purged {
+		Ok(StoreLogError::Purged {
 			dir: self.dir.clone(),
 			requested: self.last.unwrap_or(base),
 			oldest: bases.first().copied().unwrap_or(base),
@@ -147,7 +147,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		let bases = bases_in(self.fs, &self.dir)?;
 		let base = self.bases[self.at];
 		let Some(at) = bases.iter().position(|found| *found == base) else {
-			return Err(LogError::Purged {
+			return Err(StoreLogError::Purged {
 				dir: self.dir.clone(),
 				requested: self.last.unwrap_or(base),
 				oldest: bases.first().copied().unwrap_or(base),
@@ -175,7 +175,7 @@ pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Resul
 fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
 	match scan_upto(fs, path, Position::ZERO, None, 1, None)?.records.first() {
 		Some(record) => Ok(record.version),
-		None => Err(LogError::SegmentIncomplete {
+		None => Err(StoreLogError::SegmentIncomplete {
 			end: Position::ZERO,
 			len: fs.open(path)?.len()?,
 			path: path.to_path_buf(),
@@ -290,7 +290,7 @@ mod tests {
 		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
-		assert!(matches!(error, LogError::SegmentIncomplete { end, len: found, .. }
+		assert!(matches!(error, StoreLogError::SegmentIncomplete { end, len: found, .. }
 			if end.as_u64() == len && found == len + 64));
 	}
 
@@ -310,7 +310,7 @@ mod tests {
 		let mut cursor = Cursor::open(&fs, Path::new(DIR), None, None).unwrap();
 
 		let error = cursor.next_batch(1000).unwrap_err();
-		assert!(matches!(error, LogError::SegmentOutOfOrder { found, .. } if found == BASE));
+		assert!(matches!(error, StoreLogError::SegmentOutOfOrder { found, .. } if found == BASE));
 	}
 
 	#[test]
@@ -424,7 +424,7 @@ mod tests {
 		assert!(
 			matches!(
 				error,
-				LogError::Purged {
+				StoreLogError::Purged {
 					requested,
 					oldest,
 					..

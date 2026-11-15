@@ -739,7 +739,7 @@ mod commit_integration {
 	use reifydb_store_operator::{
 		actor::resident_flush::flush_now,
 		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
-		error::{OperatorError, Result as OperatorResult},
+		error::{Result as OperatorResult, StoreOperatorError},
 		persistent::{PersistentTier, testing::PersistentHooks},
 		resident::{Resident, ResidentLimits},
 		types::OperatorWrite,
@@ -1601,7 +1601,7 @@ mod commit_integration {
 			if operator != self.0 {
 				return Ok(());
 			}
-			Err(OperatorError::Backend {
+			Err(StoreOperatorError::Backend {
 				message: "the disk went away".to_string(),
 			})
 		}

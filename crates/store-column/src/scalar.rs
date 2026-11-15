@@ -17,12 +17,12 @@ use vortex_session::VortexSession;
 use crate::{
 	block::ColumnChunks,
 	convert::{to_arrow, to_vortex},
-	error::{ColumnError, vortex},
+	error::{StoreColumnError, vortex},
 };
 
 pub fn to_scalar(session: &VortexSession, name: &str, column: &ColumnChunks, value: &Value) -> Result<Scalar> {
 	let rejected = || -> ValueError {
-		ColumnError::PredicateValue {
+		StoreColumnError::PredicateValue {
 			column: name.to_string(),
 			ty: column.ty.to_string(),
 			value: value.to_string(),

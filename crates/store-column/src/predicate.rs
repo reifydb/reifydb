@@ -12,7 +12,7 @@ use vortex_session::VortexSession;
 
 use crate::{
 	block::{BlockData, ColumnChunks},
-	error::{ColumnError, vortex},
+	error::{StoreColumnError, vortex},
 	scalar::to_scalar,
 	selection::Selection,
 };
@@ -134,7 +134,7 @@ fn to_bits(mask: &Mask) -> BooleanBuffer {
 
 fn column<'a>(data: &'a BlockData, col: &ColRef) -> Result<&'a ColumnChunks> {
 	data.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
-		ColumnError::ColumnNotInSchema {
+		StoreColumnError::ColumnNotInSchema {
 			operation: "predicate::evaluate",
 			name: col.0.clone(),
 		}

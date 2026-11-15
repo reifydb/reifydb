@@ -9,7 +9,7 @@ use reifydb_value::{
 use vortex_error::VortexError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum ColumnError {
+pub enum StoreColumnError {
 	#[error("{operation}: column '{name}' not in schema")]
 	ColumnNotInSchema {
 		operation: &'static str,
@@ -58,16 +58,16 @@ pub enum ColumnError {
 	},
 }
 
-impl From<ColumnError> for ValueError {
-	fn from(err: ColumnError) -> Self {
+impl From<StoreColumnError> for ValueError {
+	fn from(err: StoreColumnError) -> Self {
 		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
-impl IntoDiagnostic for ColumnError {
+impl IntoDiagnostic for StoreColumnError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			ColumnError::ColumnNotInSchema {
+			StoreColumnError::ColumnNotInSchema {
 				operation,
 				name,
 			} => Diagnostic {
@@ -83,7 +83,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::PersistSerialize {
+			StoreColumnError::PersistSerialize {
 				reason,
 			} => Diagnostic {
 				code: "COL_018".to_string(),
@@ -98,7 +98,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::PersistDeserialize {
+			StoreColumnError::PersistDeserialize {
 				reason,
 			} => Diagnostic {
 				code: "COL_019".to_string(),
@@ -113,7 +113,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::PersistVersionUnsupported {
+			StoreColumnError::PersistVersionUnsupported {
 				version,
 			} => Diagnostic {
 				code: "COL_020".to_string(),
@@ -129,7 +129,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::Vortex {
+			StoreColumnError::Vortex {
 				operation,
 				reason,
 			} => Diagnostic {
@@ -145,7 +145,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::PredicateValue {
+			StoreColumnError::PredicateValue {
 				column,
 				ty,
 				value,
@@ -164,7 +164,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::DTypeMismatch {
+			StoreColumnError::DTypeMismatch {
 				column,
 				stored,
 				expected,
@@ -183,7 +183,7 @@ impl IntoDiagnostic for ColumnError {
 				operator_chain: None,
 			},
 
-			ColumnError::Fs {
+			StoreColumnError::Fs {
 				operation,
 				source,
 			} => Diagnostic {
@@ -204,7 +204,7 @@ impl IntoDiagnostic for ColumnError {
 
 pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> ValueError {
 	move |err| {
-		ColumnError::Vortex {
+		StoreColumnError::Vortex {
 			operation,
 			reason: err.to_string(),
 		}
@@ -214,7 +214,7 @@ pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> Val
 
 pub(crate) fn fs(operation: &'static str) -> impl FnOnce(FsError) -> ValueError {
 	move |source| {
-		ColumnError::Fs {
+		StoreColumnError::Fs {
 			operation,
 			source,
 		}

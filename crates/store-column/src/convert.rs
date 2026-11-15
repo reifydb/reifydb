@@ -26,7 +26,7 @@ use vortex_array::{ArrayRef, VortexSessionExecute};
 use vortex_arrow::ArrowSessionExt;
 use vortex_session::VortexSession;
 
-use crate::error::{ColumnError, vortex};
+use crate::error::{StoreColumnError, vortex};
 
 pub fn to_vortex(session: &VortexSession, column: &(FieldRef, ArrowArrayRef)) -> Result<ArrayRef> {
 	let (field, array) = column;
@@ -95,7 +95,7 @@ fn unshape(name: &str, array: &ArrowArrayRef, target: &DataType) -> Result<Arrow
 				bytes.values().clone(),
 				bytes.nulls().cloned(),
 			)
-			.map_err(|err| ColumnError::PersistDeserialize {
+			.map_err(|err| StoreColumnError::PersistDeserialize {
 				reason: format!("column '{name}' holds bytes that are not utf8: {err}"),
 			})?;
 			Arc::new(text)

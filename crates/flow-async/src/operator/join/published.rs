@@ -31,7 +31,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	operator::{
 		host::HostContext,
 		join::{
@@ -428,7 +428,7 @@ fn sort_entries(set: &mut PublishedSet) {
 
 fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
 	encode(set).map_err(|e| {
-		ValueError::from(FlowStateError::Encode {
+		ValueError::from(FlowAsyncError::Encode {
 			state: "snapshot published set",
 			cause: e.to_string(),
 		})
@@ -437,7 +437,7 @@ fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
 
 fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
 	decode::<PublishedSet>(row).map_err(|e| {
-		ValueError::from(FlowStateError::Decode {
+		ValueError::from(FlowAsyncError::Decode {
 			state: "snapshot published set",
 			cause: e.to_string(),
 		})
@@ -446,7 +446,7 @@ fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
 
 fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
 	encode(pin).map_err(|e| {
-		ValueError::from(FlowStateError::Encode {
+		ValueError::from(FlowAsyncError::Encode {
 			state: "snapshot pin",
 			cause: e.to_string(),
 		})
@@ -455,7 +455,7 @@ fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
 
 fn decode_pin(row: &EncodedPodRow) -> Result<Pin> {
 	decode::<Pin>(row).map_err(|e| {
-		ValueError::from(FlowStateError::Decode {
+		ValueError::from(FlowAsyncError::Decode {
 			state: "snapshot pin",
 			cause: e.to_string(),
 		})

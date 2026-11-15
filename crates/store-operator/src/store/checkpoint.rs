@@ -11,7 +11,7 @@ use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::{
-	error::{OperatorError, Result},
+	error::{Result, StoreOperatorError},
 	persistent::Checkpoint,
 	store::{OperatorStore, StandardOperatorStore},
 };
@@ -22,7 +22,7 @@ impl StandardOperatorStore {
 		if let Some(current) = self.checkpoint_get(flow)?
 			&& checkpoint.version < current.version
 		{
-			return Err(OperatorError::CheckpointOutOfRange {
+			return Err(StoreOperatorError::CheckpointOutOfRange {
 				flow,
 			});
 		}
@@ -36,7 +36,7 @@ impl StandardOperatorStore {
 			if let Some(current) = self.checkpoint_get(*flow)?
 				&& checkpoint.version < current.version
 			{
-				return Err(OperatorError::CheckpointOutOfRange {
+				return Err(StoreOperatorError::CheckpointOutOfRange {
 					flow: *flow,
 				});
 			}

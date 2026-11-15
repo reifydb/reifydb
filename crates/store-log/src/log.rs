@@ -15,7 +15,7 @@ use reifydb_value::{byte_size::ByteSize, clock::ClockNow, value::duration::Durat
 
 use crate::{
 	cursor::Cursor,
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	partition::{Config, Partition, sync},
 	reader::{readers, record, register, unregister, version_of},
 	segment::{Scan, discard, parent, staging, write_all},
@@ -51,7 +51,7 @@ where
 {
 	pub fn create_detached(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
 		if partitions == 0 {
-			return Err(LogError::MetaCorrupt(dir.join(META_NAME)));
+			return Err(StoreLogError::MetaCorrupt(dir.join(META_NAME)));
 		}
 		fs.mkdir(dir)?;
 		fs.sync_dir(parent(dir))?;
@@ -231,7 +231,7 @@ where
 	}
 
 	fn writer(&self, partition: u32) -> Result<&Writer<F, C>> {
-		self.writers.get(partition as usize).ok_or_else(|| LogError::NoSuchPartition {
+		self.writers.get(partition as usize).ok_or_else(|| StoreLogError::NoSuchPartition {
 			dir: self.dir.clone(),
 			requested: partition,
 			count: self.meta.partitions,
@@ -248,7 +248,7 @@ where
 	F::FileMut: SyncData,
 {
 	match fs.open(path) {
-		Ok(_) => return Err(LogError::AlreadyExists(path.to_path_buf())),
+		Ok(_) => return Err(StoreLogError::AlreadyExists(path.to_path_buf())),
 		Err(FsError::NotFound(_)) => {}
 		Err(error) => return Err(error.into()),
 	}
@@ -266,7 +266,7 @@ fn load<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Meta> {
 	let file = fs.open(path)?;
 	let len = file.len()?;
 	if len < META_BYTES as u64 {
-		return Err(LogError::MetaShort {
+		return Err(StoreLogError::MetaShort {
 			path: path.to_path_buf(),
 			len,
 		});
@@ -274,28 +274,28 @@ fn load<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Meta> {
 	let mut buf = [0u8; META_BYTES];
 	let read = file.pread(0, &mut buf)?;
 	if read < META_BYTES {
-		return Err(LogError::MetaShort {
+		return Err(StoreLogError::MetaShort {
 			path: path.to_path_buf(),
 			len: read as u64,
 		});
 	}
 	let found = u32::from_le_bytes(buf[0..4].try_into().unwrap());
 	if found != MAGIC {
-		return Err(LogError::MetaMagic {
+		return Err(StoreLogError::MetaMagic {
 			path: path.to_path_buf(),
 			found,
 		});
 	}
-	let meta = Meta::decode(&buf).ok_or_else(|| LogError::MetaCorrupt(path.to_path_buf()))?;
+	let meta = Meta::decode(&buf).ok_or_else(|| StoreLogError::MetaCorrupt(path.to_path_buf()))?;
 	if meta.version != FORMAT_VERSION {
-		return Err(LogError::MetaVersion {
+		return Err(StoreLogError::MetaVersion {
 			path: path.to_path_buf(),
 			found: meta.version,
 			expected: FORMAT_VERSION,
 		});
 	}
 	if meta.partitions == 0 {
-		return Err(LogError::MetaCorrupt(path.to_path_buf()));
+		return Err(StoreLogError::MetaCorrupt(path.to_path_buf()));
 	}
 	Ok(meta)
 }
@@ -487,7 +487,7 @@ mod tests {
 
 		let opened = Log::open_detached(fs, clock(), Path::new(DIR)).err();
 
-		assert!(matches!(opened, Some(LogError::MetaMagic { .. })), "got {opened:?}");
+		assert!(matches!(opened, Some(StoreLogError::MetaMagic { .. })), "got {opened:?}");
 	}
 
 	#[test]
@@ -503,7 +503,7 @@ mod tests {
 
 		let opened = Log::open_detached(fs, clock(), Path::new(DIR)).err();
 
-		assert!(matches!(opened, Some(LogError::MetaCorrupt(_))), "got {opened:?}");
+		assert!(matches!(opened, Some(StoreLogError::MetaCorrupt(_))), "got {opened:?}");
 	}
 
 	#[test]
@@ -515,7 +515,7 @@ mod tests {
 		assert!(
 			matches!(
 				appended,
-				Some(LogError::NoSuchPartition {
+				Some(StoreLogError::NoSuchPartition {
 					count: 2,
 					requested: 4,
 					..

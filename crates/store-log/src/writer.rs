@@ -18,7 +18,7 @@ use reifydb_runtime::{
 use reifydb_value::clock::ClockNow;
 
 use crate::{
-	error::{LogError, Result},
+	error::{Result, StoreLogError},
 	partition::{Partition, log_name},
 	segment::sync_path,
 };
@@ -83,7 +83,7 @@ where
 		if let Some(head) = state.partition.head()
 			&& record.version <= head
 		{
-			return Err(LogError::OutOfOrder {
+			return Err(StoreLogError::OutOfOrder {
 				dir: state.partition.dir().to_path_buf(),
 				head,
 				found: record.version,
@@ -144,7 +144,7 @@ where
 	}
 }
 
-fn terminate<F: Filesystem, C: ClockNow>(inner: &Inner<F, C>, path: &Path, error: LogError) {
+fn terminate<F: Filesystem, C: ClockNow>(inner: &Inner<F, C>, path: &Path, error: StoreLogError) {
 	let report = FatalReport::new(FatalKind::Error, format!("{error}"))
 		.component("log writer")
 		.with("segment", path.display().to_string());
@@ -162,8 +162,8 @@ where
 	partition.dir().join(log_name(partition.base()))
 }
 
-fn stopped_error<F: Filesystem, C: ClockNow>(state: &MutexGuard<'_, State<F, C>>) -> LogError {
-	LogError::Io {
+fn stopped_error<F: Filesystem, C: ClockNow>(state: &MutexGuard<'_, State<F, C>>) -> StoreLogError {
+	StoreLogError::Io {
 		path: state.active.clone(),
 		message: "the log writer stopped after a failed flush".to_string(),
 	}
@@ -259,8 +259,8 @@ mod tests {
 		let same = writer.commit(&record(3)).err().unwrap();
 		let below = writer.commit(&record(1)).err().unwrap();
 
-		assert!(matches!(same, LogError::OutOfOrder { .. }), "{same:?}");
-		assert!(matches!(below, LogError::OutOfOrder { .. }), "{below:?}");
+		assert!(matches!(same, StoreLogError::OutOfOrder { .. }), "{same:?}");
+		assert!(matches!(below, StoreLogError::OutOfOrder { .. }), "{below:?}");
 		assert_eq!(writer.written(), Some(LogVersion::new(BASE.as_u64() + 3)));
 	}
 

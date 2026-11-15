@@ -30,7 +30,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	transaction::{
 		FlowTransaction,
 		state::{StateExtension, StateRange},
@@ -54,7 +54,7 @@ pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateK
 	let bytes = key.as_slice();
 	if bytes.len() > GUEST_MAPPING_KEY_LEN {
 		return Err(ValueError(Box::new(
-			FlowStateError::GuestKeyTooWide {
+			FlowAsyncError::GuestKeyTooWide {
 				len: bytes.len(),
 			}
 			.into_diagnostic(),

@@ -47,7 +47,7 @@ use tracing::debug;
 
 use crate::{
 	convert::{proto_params_to_params, proto_subscribe_options},
-	error::{GrpcError, diagnostic_status, with_subscribe_index},
+	error::{SubServerGrpcError, diagnostic_status, with_subscribe_index},
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, CommandRequest,
 		CommandResponse, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
@@ -106,11 +106,13 @@ impl ReifyDbService {
 		caller.is_some_and(|caller| self.owners.lock().get(connection_id) == Some(&caller))
 	}
 
-	fn extract_identity<T>(&self, request: &Request<T>) -> Result<IdentityId, GrpcError> {
+	fn extract_identity<T>(&self, request: &Request<T>) -> Result<IdentityId, SubServerGrpcError> {
 		let metadata = request.metadata();
 
 		if let Some(auth) = metadata.get("authorization") {
-			let header = auth.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
+			let header = auth
+				.to_str()
+				.map_err(|_| SubServerGrpcError::Unauthenticated(AuthError::InvalidHeader))?;
 			return Ok(extract_identity_from_auth_header(self.state.auth_service(), header)?);
 		}
 
@@ -129,7 +131,7 @@ impl ReifyDbService {
 		meta
 	}
 
-	fn extract_params(params: Option<ProtoParams>) -> Result<Params, GrpcError> {
+	fn extract_params(params: Option<ProtoParams>) -> Result<Params, SubServerGrpcError> {
 		match params {
 			None => Ok(Params::None),
 			Some(p) => proto_params_to_params(p),
@@ -137,7 +139,7 @@ impl ReifyDbService {
 	}
 
 	#[inline]
-	fn admin_context(&self, request: Request<AdminRequest>) -> Result<RequestContext, GrpcError> {
+	fn admin_context(&self, request: Request<AdminRequest>) -> Result<RequestContext, SubServerGrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
@@ -162,7 +164,7 @@ impl ReifyDbService {
 	}
 
 	#[inline]
-	fn command_context(&self, request: Request<CommandRequest>) -> Result<RequestContext, GrpcError> {
+	fn command_context(&self, request: Request<CommandRequest>) -> Result<RequestContext, SubServerGrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
@@ -187,7 +189,7 @@ impl ReifyDbService {
 	}
 
 	#[inline]
-	fn query_context(&self, request: Request<QueryRequest>) -> Result<RequestContext, GrpcError> {
+	fn query_context(&self, request: Request<QueryRequest>) -> Result<RequestContext, SubServerGrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
@@ -373,19 +375,19 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::not_found("not found"));
 		}
 		let ctx = self.admin_context(request)?;
-		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(SubServerGrpcError::from)?;
 		Ok(Self::build_admin_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
 		let ctx = self.command_context(request)?;
-		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(SubServerGrpcError::from)?;
 		Ok(Self::build_command_response(encode_rbcf(frames)?, &metrics))
 	}
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
 		let ctx = self.query_context(request)?;
-		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(SubServerGrpcError::from)?;
 		Ok(Self::build_query_response(encode_rbcf(frames)?, &metrics))
 	}
 
@@ -409,14 +411,14 @@ impl ReifyDb for ReifyDbService {
 			.enumerate()
 			.map(|(index, subscription)| {
 				let options = proto_subscribe_options(subscription.options).map_err(|e| {
-					GrpcError::InvalidSubscribeOptions {
+					SubServerGrpcError::InvalidSubscribeOptions {
 						index,
 						message: format!("subscription {index}: {e}"),
 					}
 				})?;
 				Ok((subscription.rql, Params::None, options))
 			})
-			.collect::<Result<_, GrpcError>>()?;
+			.collect::<Result<_, SubServerGrpcError>>()?;
 		let host = self.state.subscribe_host(metadata);
 		match shared_subscribe(
 			&host,
@@ -580,7 +582,7 @@ impl ReifyDb for ReifyDbService {
 		let (frames, metrics) =
 			dispatch_binding(&self.state, namespace.name(), procedure.name(), params, identity, metadata)
 				.await
-				.map_err(GrpcError::from)?;
+				.map_err(SubServerGrpcError::from)?;
 		Ok(Self::build_call_response(encode_rbcf(frames)?, &metrics))
 	}
 
@@ -602,8 +604,9 @@ impl ReifyDb for ReifyDbService {
 		.into_claim_request()
 		.map_err(Status::invalid_argument)?;
 
-		let (frames, metrics) =
-			dispatch_claim(&self.state, identity, claim, metadata).await.map_err(GrpcError::from)?;
+		let (frames, metrics) = dispatch_claim(&self.state, identity, claim, metadata)
+			.await
+			.map_err(SubServerGrpcError::from)?;
 
 		let mut response = Response::new(QueueClaimResponse {
 			rbcf: encode_rbcf(frames)?,
@@ -625,7 +628,7 @@ fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 		SubscribeError::Create {
 			error: CreateSubscriptionError::Execute(e),
 			..
-		} => Status::from(GrpcError::from(e)),
+		} => Status::from(SubServerGrpcError::from(e)),
 		SubscribeError::RemoteConnect {
 			message,
 			..

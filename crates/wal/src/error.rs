@@ -6,7 +6,7 @@ use std::{
 	fmt::{self, Display, Formatter},
 };
 
-use reifydb_store_log::error::LogError;
+use reifydb_store_log::error::StoreLogError;
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 use crate::lsn::Lsn;
@@ -15,7 +15,7 @@ pub type Result<T> = std::result::Result<T, WalError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WalError {
-	Log(LogError),
+	Log(StoreLogError),
 	Decode {
 		lsn: Lsn,
 		kind: u32,
@@ -46,8 +46,8 @@ pub enum WalError {
 	},
 }
 
-impl From<LogError> for WalError {
-	fn from(error: LogError) -> Self {
+impl From<StoreLogError> for WalError {
+	fn from(error: StoreLogError) -> Self {
 		Self::Log(error)
 	}
 }

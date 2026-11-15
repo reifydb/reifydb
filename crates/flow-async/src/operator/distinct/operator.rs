@@ -35,7 +35,7 @@ use reifydb_value::{Result, error::ValueError, util::hash::Hash128, value::row_n
 use tracing::instrument;
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	operator::{
 		HostOperator,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState, SerializedRow},
@@ -125,7 +125,7 @@ impl DistinctPlan {
 			};
 			let number = RowNumber(decode_u64_asc(order));
 			let serialized: SerializedRow = decode(&row).map_err(|e| {
-				ValueError::from(FlowStateError::Decode {
+				ValueError::from(FlowAsyncError::Decode {
 					state: "SerializedRow",
 					cause: e.to_string(),
 				})
@@ -150,7 +150,7 @@ impl DistinctPlan {
 					return Ok(DistinctLayout::new());
 				}
 				decode(&row).map_err(|e| {
-					ValueError::from(FlowStateError::Decode {
+					ValueError::from(FlowAsyncError::Decode {
 						state: "DistinctLayout",
 						cause: e.to_string(),
 					})
@@ -175,7 +175,7 @@ impl DistinctPlan {
 			match state.entries.get(&hash).and_then(|entry| entry.rows.get(&number)) {
 				Some(serialized) => {
 					let row = serialized.encode_state().map_err(|e| {
-						ValueError::from(FlowStateError::Encode {
+						ValueError::from(FlowAsyncError::Encode {
 							state: "SerializedRow",
 							cause: e.to_string(),
 						})
@@ -191,7 +191,7 @@ impl DistinctPlan {
 		}
 		if take(&mut state.layout_changed) {
 			let layout_row = state.layout.encode_state().map_err(|e| {
-				ValueError::from(FlowStateError::Encode {
+				ValueError::from(FlowAsyncError::Encode {
 					state: "DistinctLayout",
 					cause: e.to_string(),
 				})

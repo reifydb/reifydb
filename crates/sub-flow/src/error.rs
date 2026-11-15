@@ -8,7 +8,7 @@ use reifydb_core::error::diagnostic::flow::{
 use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
 #[derive(Debug, thiserror::Error)]
-pub enum ExternOperatorError {
+pub enum SubFlowError {
 	#[error("extern operator ABI tag mismatch: plugin {plugin:#06x}, host {host:#06x}")]
 	AbiTagMismatch {
 		plugin: u32,
@@ -43,36 +43,36 @@ pub enum ExternOperatorError {
 	},
 }
 
-impl IntoDiagnostic for ExternOperatorError {
+impl IntoDiagnostic for SubFlowError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			ExternOperatorError::AbiTagMismatch {
+			SubFlowError::AbiTagMismatch {
 				plugin,
 				host,
 			} => extern_abi_tag_mismatch(plugin, host),
-			ExternOperatorError::LibraryNotLoaded {
+			SubFlowError::LibraryNotLoaded {
 				path,
 			} => extern_library_not_loaded(&path),
-			ExternOperatorError::LibraryLoadFailed {
+			SubFlowError::LibraryLoadFailed {
 				path,
 				cause,
 			} => extern_library_load_failed(&path, cause),
-			ExternOperatorError::SymbolNotFound {
+			SubFlowError::SymbolNotFound {
 				symbol,
 				cause,
 			} => extern_symbol_not_found(symbol, cause),
-			ExternOperatorError::OperatorNotFound {
+			SubFlowError::OperatorNotFound {
 				operator,
 			} => extern_operator_not_found(&operator),
-			ExternOperatorError::CreateFailed {
+			SubFlowError::CreateFailed {
 				cause,
 			} => extern_create_failed(cause),
 		}
 	}
 }
 
-impl From<ExternOperatorError> for ValueError {
-	fn from(err: ExternOperatorError) -> Self {
+impl From<SubFlowError> for ValueError {
+	fn from(err: SubFlowError) -> Self {
 		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

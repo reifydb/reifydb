@@ -11,20 +11,20 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::GrpcError,
+	error::SubServerGrpcError,
 	generated::{self, TypedValue, params::Params as ProtoParamsOneof},
 };
 
-pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcError> {
+pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, SubServerGrpcError> {
 	match proto.params {
 		None => Ok(Params::None),
 		Some(ProtoParamsOneof::Positional(pos)) => {
-			let values: Result<Vec<Value>, GrpcError> =
+			let values: Result<Vec<Value>, SubServerGrpcError> =
 				pos.values.into_iter().map(typed_value_to_value).collect();
 			Ok(Params::Positional(Arc::new(values?)))
 		}
 		Some(ProtoParamsOneof::Named(named)) => {
-			let map: Result<HashMap<String, Value>, GrpcError> = named
+			let map: Result<HashMap<String, Value>, SubServerGrpcError> = named
 				.values
 				.into_iter()
 				.map(|(k, tv)| typed_value_to_value(tv).map(|v| (k, v)))
@@ -34,7 +34,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 	}
 }
 
-fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
+fn typed_value_to_value(tv: TypedValue) -> Result<Value, SubServerGrpcError> {
 	Ok(decode_value(&tv.encoded)?)
 }
 

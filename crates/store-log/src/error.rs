@@ -11,10 +11,10 @@ use std::{
 use reifydb_codec::log::{LogIndex, LogVersion, Position, Term};
 use reifydb_runtime::io::fs::FsError;
 
-pub type Result<T> = std::result::Result<T, LogError>;
+pub type Result<T> = std::result::Result<T, StoreLogError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LogError {
+pub enum StoreLogError {
 	NotFound(PathBuf),
 	AlreadyExists(PathBuf),
 	NoSpace(PathBuf),
@@ -125,17 +125,17 @@ pub enum LogError {
 	},
 }
 
-impl From<FsError> for LogError {
+impl From<FsError> for StoreLogError {
 	fn from(err: FsError) -> Self {
 		match err {
-			FsError::NotFound(path) => LogError::NotFound(path),
-			FsError::AlreadyExists(path) => LogError::AlreadyExists(path),
-			FsError::NoSpace(path) => LogError::NoSpace(path),
-			FsError::NotADirectory(path) => LogError::NotADirectory(path),
+			FsError::NotFound(path) => StoreLogError::NotFound(path),
+			FsError::AlreadyExists(path) => StoreLogError::AlreadyExists(path),
+			FsError::NoSpace(path) => StoreLogError::NoSpace(path),
+			FsError::NotADirectory(path) => StoreLogError::NotADirectory(path),
 			FsError::Io {
 				path,
 				message,
-			} => LogError::Io {
+			} => StoreLogError::Io {
 				path,
 				message,
 			},
@@ -143,99 +143,99 @@ impl From<FsError> for LogError {
 	}
 }
 
-impl LogError {
+impl StoreLogError {
 	pub fn path(&self) -> &Path {
 		match self {
-			LogError::NotFound(path) => path,
-			LogError::AlreadyExists(path) => path,
-			LogError::NoSpace(path) => path,
-			LogError::NotADirectory(path) => path,
-			LogError::SegmentFull {
+			StoreLogError::NotFound(path) => path,
+			StoreLogError::AlreadyExists(path) => path,
+			StoreLogError::NoSpace(path) => path,
+			StoreLogError::NotADirectory(path) => path,
+			StoreLogError::SegmentFull {
 				path,
 				..
 			} => path,
-			LogError::IndexShort {
+			StoreLogError::IndexShort {
 				path,
 				..
 			} => path,
-			LogError::IndexMagic {
+			StoreLogError::IndexMagic {
 				path,
 				..
 			} => path,
-			LogError::IndexCorrupt(path) => path,
-			LogError::VoteShort {
+			StoreLogError::IndexCorrupt(path) => path,
+			StoreLogError::VoteShort {
 				path,
 				..
 			} => path,
-			LogError::VoteCorrupt {
+			StoreLogError::VoteCorrupt {
 				path,
 			} => path,
-			LogError::SegmentIncomplete {
-				path,
-				..
-			} => path,
-			LogError::SegmentCorrupt {
+			StoreLogError::SegmentIncomplete {
 				path,
 				..
 			} => path,
-			LogError::SegmentFormat {
+			StoreLogError::SegmentCorrupt {
 				path,
 				..
 			} => path,
-			LogError::SegmentOutOfOrder {
+			StoreLogError::SegmentFormat {
 				path,
 				..
 			} => path,
-			LogError::MetaShort {
+			StoreLogError::SegmentOutOfOrder {
 				path,
 				..
 			} => path,
-			LogError::MetaMagic {
+			StoreLogError::MetaShort {
 				path,
 				..
 			} => path,
-			LogError::MetaVersion {
+			StoreLogError::MetaMagic {
 				path,
 				..
 			} => path,
-			LogError::MetaCorrupt(path) => path,
-			LogError::NoSuchPartition {
+			StoreLogError::MetaVersion {
+				path,
+				..
+			} => path,
+			StoreLogError::MetaCorrupt(path) => path,
+			StoreLogError::NoSuchPartition {
 				dir,
 				..
 			} => dir,
-			LogError::InvalidReaderId {
+			StoreLogError::InvalidReaderId {
 				dir,
 				..
 			} => dir,
-			LogError::Purged {
+			StoreLogError::Purged {
 				dir,
 				..
 			} => dir,
-			LogError::OutOfOrder {
+			StoreLogError::OutOfOrder {
 				dir,
 				..
 			} => dir,
-			LogError::IndexGap {
+			StoreLogError::IndexGap {
 				dir,
 				..
 			} => dir,
-			LogError::TermRegression {
+			StoreLogError::TermRegression {
 				dir,
 				..
 			} => dir,
-			LogError::TruncateCommitted {
+			StoreLogError::TruncateCommitted {
 				dir,
 				..
 			} => dir,
-			LogError::CommitOutOfRange {
+			StoreLogError::CommitOutOfRange {
 				dir,
 				..
 			} => dir,
-			LogError::CompactOutOfRange {
+			StoreLogError::CompactOutOfRange {
 				dir,
 				..
 			} => dir,
-			LogError::Io {
+			StoreLogError::Io {
 				path,
 				..
 			} => path,
@@ -243,14 +243,16 @@ impl LogError {
 	}
 }
 
-impl Display for LogError {
+impl Display for StoreLogError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			LogError::NotFound(path) => write!(f, "log file not found: {}", path.display()),
-			LogError::AlreadyExists(path) => write!(f, "log file already exists: {}", path.display()),
-			LogError::NoSpace(path) => write!(f, "log device out of space: {}", path.display()),
-			LogError::NotADirectory(path) => write!(f, "log path is not a directory: {}", path.display()),
-			LogError::SegmentFull {
+			StoreLogError::NotFound(path) => write!(f, "log file not found: {}", path.display()),
+			StoreLogError::AlreadyExists(path) => write!(f, "log file already exists: {}", path.display()),
+			StoreLogError::NoSpace(path) => write!(f, "log device out of space: {}", path.display()),
+			StoreLogError::NotADirectory(path) => {
+				write!(f, "log path is not a directory: {}", path.display())
+			}
+			StoreLogError::SegmentFull {
 				path,
 				needed,
 				remaining,
@@ -261,27 +263,27 @@ impl Display for LogError {
 				needed,
 				remaining
 			),
-			LogError::IndexShort {
+			StoreLogError::IndexShort {
 				path,
 				len,
 			} => write!(f, "log index {} is shorter than its header: {} bytes", path.display(), len),
-			LogError::IndexMagic {
+			StoreLogError::IndexMagic {
 				path,
 				found,
 			} => write!(f, "log index {} has magic 0x{:08x}, not an index", path.display(), found),
-			LogError::IndexCorrupt(path) => {
+			StoreLogError::IndexCorrupt(path) => {
 				write!(f, "log index {} does not verify against its checksum", path.display())
 			}
-			LogError::VoteShort {
+			StoreLogError::VoteShort {
 				path,
 				len,
 			} => write!(f, "vote file {} is shorter than its two slots: {} bytes", path.display(), len),
-			LogError::SegmentIncomplete {
+			StoreLogError::SegmentIncomplete {
 				path,
 				end,
 				len,
 			} => write!(f, "sealed log segment {} stops at {} of {} bytes", path.display(), end, len),
-			LogError::SegmentOutOfOrder {
+			StoreLogError::SegmentOutOfOrder {
 				path,
 				previous,
 				found,
@@ -292,7 +294,7 @@ impl Display for LogError {
 				found,
 				previous
 			),
-			LogError::SegmentCorrupt {
+			StoreLogError::SegmentCorrupt {
 				path,
 				position,
 			} => write!(
@@ -301,7 +303,7 @@ impl Display for LogError {
 				path.display(),
 				position
 			),
-			LogError::SegmentFormat {
+			StoreLogError::SegmentFormat {
 				path,
 				position,
 				reserved,
@@ -312,22 +314,22 @@ impl Display for LogError {
 				position,
 				reserved
 			),
-			LogError::VoteCorrupt {
+			StoreLogError::VoteCorrupt {
 				path,
 			} => write!(
 				f,
 				"neither slot of vote file {} verifies, so the durable vote is lost",
 				path.display()
 			),
-			LogError::MetaShort {
+			StoreLogError::MetaShort {
 				path,
 				len,
 			} => write!(f, "log meta {} is shorter than its header: {} bytes", path.display(), len),
-			LogError::MetaMagic {
+			StoreLogError::MetaMagic {
 				path,
 				found,
 			} => write!(f, "log meta {} has magic 0x{:08x}, not a meta file", path.display(), found),
-			LogError::MetaVersion {
+			StoreLogError::MetaVersion {
 				path,
 				found,
 				expected,
@@ -338,15 +340,15 @@ impl Display for LogError {
 				found,
 				expected
 			),
-			LogError::MetaCorrupt(path) => {
+			StoreLogError::MetaCorrupt(path) => {
 				write!(f, "log meta {} does not verify against its checksum", path.display())
 			}
-			LogError::NoSuchPartition {
+			StoreLogError::NoSuchPartition {
 				dir,
 				requested,
 				count,
 			} => write!(f, "log {} has {} partitions, {} was requested", dir.display(), count, requested),
-			LogError::InvalidReaderId {
+			StoreLogError::InvalidReaderId {
 				dir,
 				id,
 			} => write!(
@@ -355,7 +357,7 @@ impl Display for LogError {
 				dir.display(),
 				id
 			),
-			LogError::Purged {
+			StoreLogError::Purged {
 				dir,
 				requested,
 				oldest,
@@ -366,7 +368,7 @@ impl Display for LogError {
 				requested.as_u64(),
 				oldest.as_u64()
 			),
-			LogError::OutOfOrder {
+			StoreLogError::OutOfOrder {
 				dir,
 				head,
 				found,
@@ -377,7 +379,7 @@ impl Display for LogError {
 				head.as_u64(),
 				found.as_u64()
 			),
-			LogError::IndexGap {
+			StoreLogError::IndexGap {
 				dir,
 				expected,
 				found,
@@ -388,7 +390,7 @@ impl Display for LogError {
 				expected.as_u64(),
 				found.as_u64()
 			),
-			LogError::TermRegression {
+			StoreLogError::TermRegression {
 				dir,
 				last,
 				found,
@@ -399,7 +401,7 @@ impl Display for LogError {
 				last.as_u64(),
 				found.as_u64()
 			),
-			LogError::TruncateCommitted {
+			StoreLogError::TruncateCommitted {
 				dir,
 				commit,
 				found,
@@ -410,7 +412,7 @@ impl Display for LogError {
 				commit.as_u64(),
 				found.as_u64()
 			),
-			LogError::CommitOutOfRange {
+			StoreLogError::CommitOutOfRange {
 				dir,
 				low,
 				high,
@@ -423,7 +425,7 @@ impl Display for LogError {
 				high.as_u64(),
 				found.as_u64()
 			),
-			LogError::CompactOutOfRange {
+			StoreLogError::CompactOutOfRange {
 				dir,
 				low,
 				high,
@@ -436,7 +438,7 @@ impl Display for LogError {
 				high.as_u64(),
 				found.as_u64()
 			),
-			LogError::Io {
+			StoreLogError::Io {
 				path,
 				message,
 			} => write!(f, "log io error on {}: {}", path.display(), message),
@@ -444,4 +446,4 @@ impl Display for LogError {
 	}
 }
 
-impl StdError for LogError {}
+impl StdError for StoreLogError {}

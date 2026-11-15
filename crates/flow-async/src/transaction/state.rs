@@ -36,7 +36,7 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
 use crate::{
-	error::FlowStateError,
+	error::FlowAsyncError,
 	transaction::{FlowTransaction, read::flow_merge_pending_iterator, scope::scoped_key},
 };
 
@@ -243,7 +243,7 @@ pub trait StateExtension: FlowTransaction {
 				.and_then(OperatorStateKey::decode_inner)
 				.filter(|(_, keyspace, _)| keyspace.is_known())
 			else {
-				return Err(FlowStateError::StateKeyUnframed {
+				return Err(FlowAsyncError::StateKeyUnframed {
 					operator: id,
 					key,
 				}

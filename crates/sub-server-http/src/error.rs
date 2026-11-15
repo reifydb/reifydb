@@ -35,7 +35,7 @@ pub struct DiagnosticResponse {
 }
 
 #[derive(Debug)]
-pub enum AppError {
+pub enum SubServerHttpError {
 	Auth(AuthError),
 
 	Execute(ExecuteError),
@@ -51,37 +51,37 @@ pub enum AppError {
 	Internal(String),
 }
 
-impl From<AuthError> for AppError {
+impl From<AuthError> for SubServerHttpError {
 	fn from(e: AuthError) -> Self {
-		AppError::Auth(e)
+		SubServerHttpError::Auth(e)
 	}
 }
 
-impl From<ExecuteError> for AppError {
+impl From<ExecuteError> for SubServerHttpError {
 	fn from(e: ExecuteError) -> Self {
-		AppError::Execute(e)
+		SubServerHttpError::Execute(e)
 	}
 }
 
-impl fmt::Display for AppError {
+impl fmt::Display for SubServerHttpError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			AppError::Auth(e) => write!(f, "Authentication error: {}", e),
-			AppError::Execute(e) => write!(f, "Execution error: {}", e),
-			AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
-			AppError::InvalidParams(msg) => write!(f, "Invalid params: {}", msg),
-			AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
-			AppError::MethodNotAllowed(msg) => write!(f, "Method not allowed: {}", msg),
-			AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
+			SubServerHttpError::Auth(e) => write!(f, "Authentication error: {}", e),
+			SubServerHttpError::Execute(e) => write!(f, "Execution error: {}", e),
+			SubServerHttpError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
+			SubServerHttpError::InvalidParams(msg) => write!(f, "Invalid params: {}", msg),
+			SubServerHttpError::NotFound(msg) => write!(f, "Not found: {}", msg),
+			SubServerHttpError::MethodNotAllowed(msg) => write!(f, "Method not allowed: {}", msg),
+			SubServerHttpError::Internal(msg) => write!(f, "Internal error: {}", msg),
 		}
 	}
 }
 
-impl error::Error for AppError {}
+impl error::Error for SubServerHttpError {}
 
-impl IntoResponse for AppError {
+impl IntoResponse for SubServerHttpError {
 	fn into_response(self) -> Response {
-		if let AppError::Execute(ExecuteError::Engine {
+		if let SubServerHttpError::Execute(ExecuteError::Engine {
 			diagnostic,
 			rql,
 		}) = self
@@ -103,63 +103,63 @@ impl IntoResponse for AppError {
 		}
 
 		let (status, code, message) = match &self {
-			AppError::Auth(AuthError::MissingCredentials) => {
+			SubServerHttpError::Auth(AuthError::MissingCredentials) => {
 				(StatusCode::UNAUTHORIZED, "AUTH_REQUIRED", "Authentication required")
 			}
-			AppError::Auth(AuthError::InvalidToken) => {
+			SubServerHttpError::Auth(AuthError::InvalidToken) => {
 				(StatusCode::UNAUTHORIZED, "INVALID_TOKEN", "Invalid authentication token")
 			}
-			AppError::Auth(AuthError::Expired) => {
+			SubServerHttpError::Auth(AuthError::Expired) => {
 				(StatusCode::UNAUTHORIZED, "TOKEN_EXPIRED", "Authentication token expired")
 			}
-			AppError::Auth(AuthError::InvalidHeader) => {
+			SubServerHttpError::Auth(AuthError::InvalidHeader) => {
 				(StatusCode::BAD_REQUEST, "INVALID_HEADER", "Malformed authorization header")
 			}
-			AppError::Auth(AuthError::InsufficientPermissions) => {
+			SubServerHttpError::Auth(AuthError::InsufficientPermissions) => {
 				(StatusCode::FORBIDDEN, "FORBIDDEN", "Insufficient permissions for this operation")
 			}
-			AppError::Auth(AuthError::Internal) => {
+			SubServerHttpError::Auth(AuthError::Internal) => {
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
-			AppError::Execute(ExecuteError::Timeout) => {
+			SubServerHttpError::Execute(ExecuteError::Timeout) => {
 				(StatusCode::GATEWAY_TIMEOUT, "QUERY_TIMEOUT", "Query execution timed out")
 			}
-			AppError::Execute(ExecuteError::Cancelled) => {
+			SubServerHttpError::Execute(ExecuteError::Cancelled) => {
 				(StatusCode::BAD_REQUEST, "QUERY_CANCELLED", "Query was cancelled")
 			}
-			AppError::Execute(ExecuteError::Disconnected) => {
+			SubServerHttpError::Execute(ExecuteError::Disconnected) => {
 				error!("Query stream disconnected unexpectedly");
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
-			AppError::Execute(ExecuteError::Rejected {
+			SubServerHttpError::Execute(ExecuteError::Rejected {
 				code,
 				message,
 			}) => {
 				let body = Json(ErrorResponse::new(code, message));
 				return (StatusCode::FORBIDDEN, body).into_response();
 			}
-			AppError::Execute(ExecuteError::Engine {
+			SubServerHttpError::Execute(ExecuteError::Engine {
 				..
 			}) => {
 				unreachable!()
 			}
-			AppError::BadRequest(msg) => {
+			SubServerHttpError::BadRequest(msg) => {
 				let body = Json(ErrorResponse::new("BAD_REQUEST", msg.clone()));
 				return (StatusCode::BAD_REQUEST, body).into_response();
 			}
-			AppError::InvalidParams(msg) => {
+			SubServerHttpError::InvalidParams(msg) => {
 				let body = Json(ErrorResponse::new("INVALID_PARAMS", msg.clone()));
 				return (StatusCode::BAD_REQUEST, body).into_response();
 			}
-			AppError::NotFound(msg) => {
+			SubServerHttpError::NotFound(msg) => {
 				let body = Json(ErrorResponse::new("NOT_FOUND", msg.clone()));
 				return (StatusCode::NOT_FOUND, body).into_response();
 			}
-			AppError::MethodNotAllowed(msg) => {
+			SubServerHttpError::MethodNotAllowed(msg) => {
 				let body = Json(ErrorResponse::new("METHOD_NOT_ALLOWED", msg.clone()));
 				return (StatusCode::METHOD_NOT_ALLOWED, body).into_response();
 			}
-			AppError::Internal(msg) => {
+			SubServerHttpError::Internal(msg) => {
 				error!("Internal error: {}", msg);
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
@@ -186,7 +186,7 @@ pub mod tests {
 
 	#[test]
 	fn test_app_error_display() {
-		let err = AppError::BadRequest("Invalid JSON".to_string());
+		let err = SubServerHttpError::BadRequest("Invalid JSON".to_string());
 		assert_eq!(err.to_string(), "Bad request: Invalid JSON");
 	}
 
@@ -194,17 +194,17 @@ pub mod tests {
 	fn storage_failure_answers_500_while_a_bad_token_answers_401() {
 		// A 401 tells the client its token is bad, so it retries forever and never sees the real fault.
 		assert_eq!(
-			AppError::Auth(AuthError::InvalidToken).into_response().status(),
+			SubServerHttpError::Auth(AuthError::InvalidToken).into_response().status(),
 			StatusCode::UNAUTHORIZED,
 			"a token that was never issued is the client's fault"
 		);
 		assert_eq!(
-			AppError::Auth(AuthError::Expired).into_response().status(),
+			SubServerHttpError::Auth(AuthError::Expired).into_response().status(),
 			StatusCode::UNAUTHORIZED,
 			"an expired token is the client's fault"
 		);
 		assert_eq!(
-			AppError::Auth(AuthError::Internal).into_response().status(),
+			SubServerHttpError::Auth(AuthError::Internal).into_response().status(),
 			StatusCode::INTERNAL_SERVER_ERROR,
 			"authentication that could not reach storage is the server's fault"
 		);
