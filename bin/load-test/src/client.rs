@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{HttpClient, WireFormat, WsClient};
+use reifydb_client::{HttpClient, WireFormat, WsClient, value::error::ValueError};
 use reqwest::Client as ReqwestClient;
 
 use crate::config::Protocol;
-
-pub type Error = reifydb_client::value::error::ValueError;
 
 pub enum Client {
 	Http(HttpClient),
@@ -28,7 +26,7 @@ impl Operation {
 }
 
 impl Client {
-	pub async fn connect(protocol: Protocol, url: &str, token: Option<&str>) -> Result<Self, Error> {
+	pub async fn connect(protocol: Protocol, url: &str, token: Option<&str>) -> Result<Self, ValueError> {
 		Self::connect_with_http_client(protocol, url, token, None).await
 	}
 
@@ -37,7 +35,7 @@ impl Client {
 		url: &str,
 		token: Option<&str>,
 		http_client: Option<ReqwestClient>,
-	) -> Result<Self, Error> {
+	) -> Result<Self, ValueError> {
 		match protocol {
 			Protocol::Http => {
 				let mut client = if let Some(inner) = http_client {
@@ -60,7 +58,7 @@ impl Client {
 		}
 	}
 
-	pub async fn execute(&self, operation: &Operation) -> Result<(), Error> {
+	pub async fn execute(&self, operation: &Operation) -> Result<(), ValueError> {
 		match (self, operation) {
 			(Client::Http(client), Operation::Query(rql)) => {
 				client.query(rql, None).await?;
@@ -84,7 +82,7 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn close(self) -> Result<(), Error> {
+	pub async fn close(self) -> Result<(), ValueError> {
 		if let Client::Ws(client) = self {
 			client.close().await?;
 		}
