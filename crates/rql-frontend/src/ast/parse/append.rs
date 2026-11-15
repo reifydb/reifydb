@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use super::{Parser, Precedence};
 use crate::{
@@ -20,7 +20,7 @@ impl<'bump> Parser<'bump> {
 			let with = self.parse_sub_query()?;
 			if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 				let fragment = self.current()?.fragment.to_owned();
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "no with-clause; append keeps no state to configure"
 							.to_string(),
@@ -38,7 +38,7 @@ impl<'bump> Parser<'bump> {
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
 			let fragment = variable_token.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "expected variable name starting with '$'".to_string(),
 				},

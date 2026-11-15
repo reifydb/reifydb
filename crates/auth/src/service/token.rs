@@ -13,14 +13,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{datetime::DateTime, identity::IdentityId},
 };
 
 use super::AuthService;
 
 impl AuthService {
-	pub fn validate_token(&self, token: &str) -> Result<Option<Token>, Error> {
+	pub fn validate_token(&self, token: &str) -> Result<Option<Token>, ValueError> {
 		let mut txn = self.engine.begin_query()?;
 
 		if let Some(def) = find_token_by_value(&mut Transaction::Query(&mut txn), token)? {
@@ -44,7 +44,7 @@ impl AuthService {
 		self.validate_catalog_token(token)
 	}
 
-	fn validate_catalog_token(&self, token: &str) -> Result<Option<Token>, Error> {
+	fn validate_catalog_token(&self, token: &str) -> Result<Option<Token>, ValueError> {
 		let Some(provider) = self.auth_registry.get("token") else {
 			return Ok(None);
 		};
@@ -76,7 +76,7 @@ impl AuthService {
 		Ok(None)
 	}
 
-	pub fn revoke_token(&self, token: &str) -> Result<bool, Error> {
+	pub fn revoke_token(&self, token: &str) -> Result<bool, ValueError> {
 		let Some(def) = self.find_token(token)? else {
 			return Ok(false);
 		};
@@ -84,7 +84,7 @@ impl AuthService {
 		Ok(true)
 	}
 
-	pub fn end_session(&self, token: &str) -> Result<bool, Error> {
+	pub fn end_session(&self, token: &str) -> Result<bool, ValueError> {
 		let Some(def) = self.find_token(token)? else {
 			return Ok(false);
 		};
@@ -96,13 +96,13 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn find_token(&self, token: &str) -> Result<Option<Token>, Error> {
+	fn find_token(&self, token: &str) -> Result<Option<Token>, ValueError> {
 		let mut txn = self.engine.begin_query()?;
 		find_token_by_value(&mut Transaction::Query(&mut txn), token)
 	}
 
 	#[inline]
-	fn drop_and_commit(&self, id: TokenId) -> Result<(), Error> {
+	fn drop_and_commit(&self, id: TokenId) -> Result<(), ValueError> {
 		RetryStrategy::default().retry(&self.rng, "auth::drop_token", || {
 			let mut admin = self.engine.begin_admin()?;
 			drop_token(&mut admin, id)?;
@@ -111,7 +111,7 @@ impl AuthService {
 		})
 	}
 
-	pub fn revoke_all(&self, identity: IdentityId) -> Result<(), Error> {
+	pub fn revoke_all(&self, identity: IdentityId) -> Result<(), ValueError> {
 		RetryStrategy::default().retry(&self.rng, "auth::revoke_all", || {
 			let mut admin = self.engine.begin_admin()?;
 			drop_tokens_by_identity(&mut admin, identity)?;
@@ -120,7 +120,7 @@ impl AuthService {
 		})
 	}
 
-	pub fn cleanup_expired(&self) -> Result<(), Error> {
+	pub fn cleanup_expired(&self) -> Result<(), ValueError> {
 		self.challenges.cleanup_expired();
 
 		RetryStrategy::default().retry(&self.rng, "auth::cleanup_expired", || {

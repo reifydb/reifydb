@@ -4,7 +4,7 @@
 use std::thread;
 
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{error::Error, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 use tracing::{debug, warn};
 
 use crate::execution::ExecutionResult;
@@ -41,9 +41,9 @@ impl RetryStrategy {
 		self.run(rng, rql, f, |result| result.error.as_ref().is_some_and(is_conflict))
 	}
 
-	pub fn retry<T, F>(&self, rng: &Rng, operation: &str, f: F) -> Result<T, Error>
+	pub fn retry<T, F>(&self, rng: &Rng, operation: &str, f: F) -> Result<T, ValueError>
 	where
-		F: FnMut() -> Result<T, Error>,
+		F: FnMut() -> Result<T, ValueError>,
 	{
 		self.run(rng, operation, f, |result| result.as_ref().is_err_and(is_conflict))
 	}
@@ -82,7 +82,7 @@ impl RetryStrategy {
 	}
 }
 
-pub fn is_conflict(err: &Error) -> bool {
+pub fn is_conflict(err: &ValueError) -> bool {
 	err.code == "TXN_001"
 }
 
@@ -115,7 +115,7 @@ mod retry_tests {
 
 	use reifydb_runtime::context::rng::Rng;
 	use reifydb_value::{
-		error::{Diagnostic, Error},
+		error::{Diagnostic, ValueError},
 		fragment::Fragment,
 		value::duration::Duration,
 	};
@@ -136,7 +136,7 @@ mod retry_tests {
 		ExecutionResult {
 			frames: vec![],
 			named_system_columns: vec![],
-			error: Some(Error(Box::new(Diagnostic {
+			error: Some(ValueError(Box::new(Diagnostic {
 				code: code.to_string(),
 				rql: None,
 				message: format!("{} test", code),

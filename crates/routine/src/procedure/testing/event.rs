@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{
 		Value,
@@ -80,7 +80,7 @@ fn extract_optional_string_param(params: &Params) -> Option<String> {
 	}
 }
 
-fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) -> Result<RecordBatch, Error> {
+fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) -> Result<RecordBatch, ValueError> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
@@ -157,7 +157,7 @@ fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) 
 	batch(columns)
 }
 
-fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, Error> {
+fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, ValueError> {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None

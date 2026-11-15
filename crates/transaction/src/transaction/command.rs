@@ -30,7 +30,7 @@ use reifydb_runtime::context::{
 };
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	params::Params,
 	reifydb_assertions,
 };
@@ -234,7 +234,7 @@ impl CommandTransaction {
 
 	fn poison_on_marker_error(&mut self, attached: StdResult<(), TransactionError>) -> Result<()> {
 		attached.map_err(|err| {
-			let err = Error::from(err);
+			let err = ValueError::from(err);
 			self.poison(*err.0.clone());
 			err
 		})

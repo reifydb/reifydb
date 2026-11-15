@@ -35,7 +35,7 @@ use reifydb_flow::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use crate::{node::Node, txn::Lookup};
 
@@ -180,7 +180,7 @@ pub fn build<T: Lookup>(
 
 fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&Node> {
 	nodes.iter().find(|(id, _)| *id == input).map(|(_, node)| node).ok_or_else(|| {
-		Error::from(FlowGraphError::ParentOperatorNotFound {
+		ValueError::from(FlowGraphError::ParentOperatorNotFound {
 			input: format!("{:?}", input),
 		})
 	})

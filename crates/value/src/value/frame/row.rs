@@ -5,14 +5,14 @@ use std::{collections::HashMap, rc::Rc};
 
 use super::{extract::FrameError, frame::Frame};
 use crate::{
-	error::Error,
+	error::ValueError,
 	value::{column_view::ColumnView, try_from::TryFromValue},
 };
 
 #[derive(Debug)]
 struct ColumnIndex<'a> {
 	by_name: HashMap<String, usize>,
-	views: Vec<Result<ColumnView<'a>, Error>>,
+	views: Vec<Result<ColumnView<'a>, ValueError>>,
 }
 
 impl<'a> ColumnIndex<'a> {
@@ -30,7 +30,7 @@ impl<'a> ColumnIndex<'a> {
 		}
 	}
 
-	fn get(&self, name: &str) -> Option<&Result<ColumnView<'a>, Error>> {
+	fn get(&self, name: &str) -> Option<&Result<ColumnView<'a>, ValueError>> {
 		self.by_name.get(name).map(|&idx| &self.views[idx])
 	}
 }

@@ -33,7 +33,7 @@ use reifydb_export::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{Value, constraint::Constraint, identity::IdentityId},
 };
@@ -43,12 +43,14 @@ use crate::Database;
 impl Database {
 	pub fn export(&self, options: &ExportOptions) -> Result<String> {
 		let model = self.build_export_model(options)?;
-		render_script(&model, options).map_err(|e| Error(Box::new(internal!("export rendering failed: {}", e))))
+		render_script(&model, options)
+			.map_err(|e| ValueError(Box::new(internal!("export rendering failed: {}", e))))
 	}
 
 	pub fn export_to_file(&self, options: &ExportOptions, path: impl AsRef<Path>) -> Result<()> {
 		let script = self.export(options)?;
-		fs::write(path, script).map_err(|e| Error(Box::new(internal!("failed to write export file: {}", e))))
+		fs::write(path, script)
+			.map_err(|e| ValueError(Box::new(internal!("failed to write export file: {}", e))))
 	}
 
 	pub fn import(&self, rql: &str) -> Result<()> {
@@ -57,7 +59,7 @@ impl Database {
 
 	pub fn import_from_file(&self, path: impl AsRef<Path>) -> Result<()> {
 		let rql = fs::read_to_string(path)
-			.map_err(|e| Error(Box::new(internal!("failed to read import file: {}", e))))?;
+			.map_err(|e| ValueError(Box::new(internal!("failed to read import file: {}", e))))?;
 		self.import(&rql)
 	}
 
@@ -191,7 +193,7 @@ impl Database {
 		if let Some(view) =
 			all_views.iter().find(|v| select_object(options, &resolver, v.namespace().0, v.name(), None))
 		{
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"{}",
 				ExportError::UnsupportedView {
 					view: qualify(&resolver, view.namespace().0, view.name()),
@@ -373,7 +375,7 @@ impl Database {
 		ring: bool,
 	) -> Result<ObjectRows> {
 		let ns = resolver.namespaces.get(&namespace_id).ok_or_else(|| {
-			Error(Box::new(internal!("namespace id {} not resolvable for export", namespace_id)))
+			ValueError(Box::new(internal!("namespace id {} not resolvable for export", namespace_id)))
 		})?;
 		let query = if ring {
 			format!("from {}::{} sort {{ #sequence: asc }}", ns, name)

@@ -6,7 +6,7 @@ use reqwest::Client as ReqwestClient;
 
 use crate::config::Protocol;
 
-pub type Error = reifydb_client::value::error::Error;
+pub type Error = reifydb_client::value::error::ValueError;
 
 pub enum Client {
 	Http(HttpClient),

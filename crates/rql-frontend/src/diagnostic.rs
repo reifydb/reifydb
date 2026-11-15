@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -844,8 +844,8 @@ impl IntoDiagnostic for AstError {
 	}
 }
 
-impl From<AstError> for Error {
+impl From<AstError> for ValueError {
 	fn from(err: AstError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	value::digest::DigestError,
 };
 
@@ -32,7 +32,7 @@ pub(crate) fn validate_flow_aggregations(
 	sink: Option<&View>,
 ) -> Result<()> {
 	if aggregations.is_empty() {
-		return Err(Error(Box::new(flow_unsupported_aggregate_expression("<none>"))));
+		return Err(ValueError(Box::new(flow_unsupported_aggregate_expression("<none>"))));
 	}
 	let mut slots = Vec::new();
 	let mut digests = DigestSlots::default();
@@ -40,15 +40,15 @@ pub(crate) fn validate_flow_aggregations(
 		let output = display_label(expr).text().to_string();
 		let first = slots.len();
 		let representable = rewrite_aggregates(routines, &mut expr.clone(), &mut slots, &mut digests, context)
-			.map_err(|error| Error(Box::new(aggregate_call_diagnostic(&output, error))))?;
+			.map_err(|error| ValueError(Box::new(aggregate_call_diagnostic(&output, error))))?;
 		if !representable {
-			return Err(Error(Box::new(flow_unsupported_aggregate_expression(&output))));
+			return Err(ValueError(Box::new(flow_unsupported_aggregate_expression(&output))));
 		}
 		let added = &slots[first..];
 		let needs_span = added.iter().any(|(kind, _)| kind.requires_span());
 		let needs_event_time = added.iter().any(|(kind, _)| kind.requires_event_time());
 		if (needs_span && !bounded_span(window)) || (needs_event_time && !time_based(window)) {
-			return Err(Error(Box::new(flow_window_span_unavailable(
+			return Err(ValueError(Box::new(flow_window_span_unavailable(
 				&output,
 				window.map(WindowKind::name).unwrap_or("grouped"),
 			))));
@@ -59,7 +59,10 @@ pub(crate) fn validate_flow_aggregations(
 				sink.and_then(|sink| sink.columns().iter().find(|column| column.name == output))
 			&& !column.constraint.get_type().is_option()
 		{
-			return Err(Error(Box::new(flow_rolling_zero_column_not_option(&output, slot_name(kind)))));
+			return Err(ValueError(Box::new(flow_rolling_zero_column_not_option(
+				&output,
+				slot_name(kind),
+			))));
 		}
 	}
 	Ok(())

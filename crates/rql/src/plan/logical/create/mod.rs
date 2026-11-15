@@ -36,7 +36,7 @@ use reifydb_core::{
 use reifydb_rql_frontend::ast::ast::{Ast, AstCreate, AstLiteral, AstViewStorageKind};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -134,12 +134,12 @@ pub(crate) fn reject_dictionary_on_decimal(column: &str, ty: &ValueType, fragmen
 	Ok(())
 }
 
-pub(crate) fn reject_column_default(value: &Ast<'_>) -> Error {
+pub(crate) fn reject_column_default(value: &Ast<'_>) -> ValueError {
 	invalid_column_property(value, "Column defaults are not supported".to_string())
 }
 
-fn invalid_column_property(value: &Ast<'_>, message: String) -> Error {
-	Error::from(TypeError::Ast {
+fn invalid_column_property(value: &Ast<'_>, message: String) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::InvalidColumnProperty,
 		message,
 		fragment: value.token().fragment.to_owned(),

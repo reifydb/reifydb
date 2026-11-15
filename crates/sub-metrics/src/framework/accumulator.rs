@@ -13,7 +13,7 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{Value, datetime::DateTime, digest::Digest, duration::Duration, value_type::ValueType},
 };
@@ -399,8 +399,8 @@ fn column_error(
 	surface: Surface,
 	role: &'static str,
 	name: &'static str,
-	cause: Error,
-) -> Error {
+	cause: ValueError,
+) -> ValueError {
 	internal_error!("metrics {:?} {:?} {} column {}: {}", domain, surface, role, name, cause)
 }
 

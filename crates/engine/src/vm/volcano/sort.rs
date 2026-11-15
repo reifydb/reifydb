@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		column_view::ColumnView,
@@ -112,7 +112,7 @@ impl SortNode {
 				if !is_system_field(view.field) {
 					ensure_sort_key_orderable(key, &view)?;
 				}
-				Ok::<_, Error>((view, key.direction.clone()))
+				Ok::<_, ValueError>((view, key.direction.clone()))
 			})
 			.collect::<Result<Vec<_>>>()?;
 

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::precision::Precision;
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 };
 
@@ -21,7 +21,7 @@ impl Scale {
 		Self(scale)
 	}
 
-	pub fn try_new_with_precision(scale: u8, precision: Precision) -> Result<Self, Error> {
+	pub fn try_new_with_precision(scale: u8, precision: Precision) -> Result<Self, ValueError> {
 		if scale > precision.value() {
 			return Err(TypeError::DecimalScaleExceedsPrecision {
 				scale,

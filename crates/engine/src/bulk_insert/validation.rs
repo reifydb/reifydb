@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::{batch::batch_with, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{
@@ -33,7 +33,7 @@ struct Segment<'a> {
 	coercer: &'a RowCoercer,
 }
 
-pub type CoercedTags = (Vec<Option<u8>>, Option<(usize, Error)>);
+pub type CoercedTags = (Vec<Option<u8>>, Option<(usize, ValueError)>);
 
 pub(super) fn coerce_columns(
 	rows: &[Params],
@@ -79,7 +79,7 @@ fn coerce_batch(
 	}
 
 	let views = segment.columns.iter().map(|col| column_view(batch, &col.name)).collect::<Result<Vec<_>>>()?;
-	let mut failure: Option<(usize, Error)> = None;
+	let mut failure: Option<(usize, ValueError)> = None;
 	for ((builder, column), view) in builders.iter_mut().zip(segment.columns).zip(&views) {
 		let limit = failure.as_ref().map_or(rows, |(row, _)| *row);
 		let Some(view) = view else {
@@ -155,7 +155,7 @@ fn coerce_cells(
 	first_row: usize,
 	limit: usize,
 	builder: &mut ColumnBuilder,
-) -> Option<(usize, Error)> {
+) -> Option<(usize, ValueError)> {
 	for row in 0..limit {
 		match segment.coercer.coerce(view.get_value(row), column, segment.source_name, first_row + row) {
 			Ok(value) => builder.push_value(value),

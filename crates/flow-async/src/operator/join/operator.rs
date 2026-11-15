@@ -43,7 +43,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result, error,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
@@ -290,7 +290,7 @@ impl JoinOperator {
 
 	fn side_of(tag: u8) -> Result<JoinSide> {
 		JoinSide::from_tag(tag).ok_or_else(|| {
-			Error::from(FlowStateError::Decode {
+			ValueError::from(FlowStateError::Decode {
 				state: "join expiry key",
 				cause: format!("unknown join side tag {tag}"),
 			})
@@ -1013,7 +1013,7 @@ impl HostOperator for JoinOperator {
 		while let Some(diff) = diffs.next() {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
-				Error::from(FlowGraphError::UnknownDiffOrigin {
+				ValueError::from(FlowGraphError::UnknownDiffOrigin {
 					operator: "Join",
 					origin: None,
 				})

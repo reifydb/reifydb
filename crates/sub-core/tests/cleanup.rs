@@ -17,7 +17,7 @@ use reifydb_sub_core::{
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
@@ -114,7 +114,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
 	Builder::new_current_thread().enable_all().build().expect("test runtime").block_on(future)
 }
 
-fn assert_names_subscription(error: &Error, subscription_id: u64) {
+fn assert_names_subscription(error: &ValueError, subscription_id: u64) {
 	let expected = format!("could not unregister subscription {subscription_id}");
 	assert!(error.0.message.contains(&expected), "expected `{expected}` in: {}", error.0.message);
 }

@@ -4,7 +4,7 @@
 use arrow_buffer::i256;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	value::{
 		Value,
 		blob::Blob,
@@ -262,7 +262,7 @@ impl KeySerializer {
 			} => {
 				self.buffer.push(ValueKind::None.byte());
 				if ValueKind::of_type(inner) == ValueKind::Digest {
-					return Err(Error::from(TypeError::SerdeKeycode {
+					return Err(ValueError::from(TypeError::SerdeKeycode {
 						message: format!(
 							"a none of type {inner} cannot be serialized in a key"
 						),
@@ -388,17 +388,17 @@ impl KeySerializer {
 				self.buffer.push(CONTAINER_END);
 			}
 			Value::Any(_) | Value::Type(_) => {
-				return Err(Error::from(TypeError::SerdeKeycode {
+				return Err(ValueError::from(TypeError::SerdeKeycode {
 					message: format!("a {} value cannot be serialized in a key", value.get_type()),
 				}));
 			}
 			Value::Digest(_) => {
-				return Err(Error::from(TypeError::SerdeKeycode {
+				return Err(ValueError::from(TypeError::SerdeKeycode {
 					message: "a digest value cannot be serialized in a key".to_string(),
 				}));
 			}
 			Value::Enum(_) => {
-				return Err(Error::from(TypeError::SerdeKeycode {
+				return Err(ValueError::from(TypeError::SerdeKeycode {
 					message: "an enum value cannot be serialized in a key".to_string(),
 				}));
 			}
@@ -448,8 +448,8 @@ impl ByteSink for KeySerializer {
 	}
 }
 
-fn key_error(message: String) -> Error {
-	Error::from(TypeError::SerdeKeycode {
+fn key_error(message: String) -> ValueError {
+	ValueError::from(TypeError::SerdeKeycode {
 		message,
 	})
 }

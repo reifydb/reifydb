@@ -25,7 +25,7 @@ use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Resolve};
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -45,14 +45,14 @@ pub enum Continue {
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
 	Land,
-	Err(Error),
+	Err(ValueError),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum LookupOutcome {
 	Clean,
 	Absent,
-	Err(Error),
+	Err(ValueError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -472,7 +472,7 @@ mod tests {
 	use reifydb_flow::txn::{Emit, FlowBatch, FlowGet, Intern, Resolve};
 	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
-		error::{Diagnostic, Error},
+		error::{Diagnostic, ValueError},
 		util::cowvec::CowVec,
 		value::{Value, dictionary::DictionaryId, value_type::ValueType},
 	};
@@ -484,8 +484,8 @@ mod tests {
 	const TABLE: TableId = TableId(5);
 	const SYMBOLS: DictionaryId = DictionaryId(7);
 
-	fn refused() -> Error {
-		Error(Box::new(Diagnostic {
+	fn refused() -> ValueError {
+		ValueError(Box::new(Diagnostic {
 			code: "TEST_REFUSED".to_string(),
 			..Default::default()
 		}))

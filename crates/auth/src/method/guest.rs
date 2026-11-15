@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use crate::error::AuthError;
 
@@ -17,7 +17,7 @@ impl AuthenticationProvider for GuestProvider {
 	}
 
 	fn create(&self, _rng: &Rng, _config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
-		Err(Error::from(AuthError::GuestHasNoCredentials))
+		Err(ValueError::from(AuthError::GuestHasNoCredentials))
 	}
 
 	fn authenticate(

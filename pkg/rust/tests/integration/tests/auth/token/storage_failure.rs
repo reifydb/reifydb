@@ -18,7 +18,7 @@ use reifydb::{
 	sub_server::auth::{AuthError, extract_identity_from_auth_header, extract_identity_from_ws_auth},
 	testing::db::TestDb,
 	transaction::transaction::{admin::AdminTransaction, query::QueryTransaction},
-	value::error::{Diagnostic, Error},
+	value::error::{Diagnostic, ValueError},
 };
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, password_credentials},
@@ -45,14 +45,14 @@ impl FaultyEngine {
 }
 
 impl AuthEngine for FaultyEngine {
-	fn begin_admin(&self) -> Result<AdminTransaction, Error> {
+	fn begin_admin(&self) -> Result<AdminTransaction, ValueError> {
 		if self.fail_admin.load(Ordering::SeqCst) {
 			return Err(storage_error());
 		}
 		AuthEngine::begin_admin(&self.inner)
 	}
 
-	fn begin_query(&self) -> Result<QueryTransaction, Error> {
+	fn begin_query(&self) -> Result<QueryTransaction, ValueError> {
 		if self.fail_query.load(Ordering::SeqCst) {
 			if self.healthy_queries.load(Ordering::SeqCst) == 0 {
 				return Err(storage_error());
@@ -67,9 +67,9 @@ impl AuthEngine for FaultyEngine {
 	}
 }
 
-fn storage_error() -> Error {
+fn storage_error() -> ValueError {
 	// A distinctive code so the assertions prove the original diagnostic survived the trip out.
-	Error(Box::new(Diagnostic {
+	ValueError(Box::new(Diagnostic {
 		code: "TEST_STORAGE".to_string(),
 		message: "storage is unavailable".to_string(),
 		..Default::default()

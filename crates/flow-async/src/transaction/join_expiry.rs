@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::Error as ValueError,
+	error::ValueError,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 

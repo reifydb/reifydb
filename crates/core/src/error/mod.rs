@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{Error, IntoDiagnostic, TypeError},
+	error::{IntoDiagnostic, TypeError, ValueError},
 	fragment::Fragment,
 	value::{duration::Duration, value_type::ValueType},
 };
@@ -175,8 +175,8 @@ pub enum CoreError {
 	},
 }
 
-impl From<CoreError> for Error {
+impl From<CoreError> for ValueError {
 	fn from(err: CoreError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

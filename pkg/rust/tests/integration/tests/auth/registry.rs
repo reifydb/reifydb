@@ -12,7 +12,7 @@ use reifydb::{
 	embedded,
 	runtime::context::rng::Rng,
 	testing::db::TestDb,
-	value::error::{Diagnostic, Error},
+	value::error::{Diagnostic, ValueError},
 };
 use reifydb_test_harness::{auth::AuthResponseAssert, engine::AsEngine};
 
@@ -23,7 +23,7 @@ impl AuthenticationProvider for PinProvider {
 		"pin"
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, Error> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, ValueError> {
 		let pin = config.get("pin").ok_or_else(pin_required)?;
 		Ok(BTreeMap::from([("pin".to_string(), pin.clone())]))
 	}
@@ -32,7 +32,7 @@ impl AuthenticationProvider for PinProvider {
 		&self,
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep, Error> {
+	) -> Result<AuthStep, ValueError> {
 		let expected = stored.get("pin").ok_or_else(pin_required)?;
 		let supplied = credentials.get("pin").ok_or_else(pin_required)?;
 		if expected == supplied {
@@ -43,8 +43,8 @@ impl AuthenticationProvider for PinProvider {
 	}
 }
 
-fn pin_required() -> Error {
-	Error(Box::new(Diagnostic {
+fn pin_required() -> ValueError {
+	ValueError(Box::new(Diagnostic {
 		code: "TEST_PIN_REQUIRED".to_string(),
 		message: "pin is required".to_string(),
 		..Default::default()

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 
@@ -152,8 +152,8 @@ impl IntoDiagnostic for PolicyError {
 	}
 }
 
-impl From<PolicyError> for Error {
+impl From<PolicyError> for ValueError {
 	fn from(err: PolicyError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

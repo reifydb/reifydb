@@ -19,7 +19,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_value::{
-	error::Error as ValueError,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,

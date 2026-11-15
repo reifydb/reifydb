@@ -131,10 +131,10 @@ macro_rules! internal {
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
-        reifydb_value::error::Error(Box::new($crate::internal!($reason)))
+        reifydb_value::error::ValueError(Box::new($crate::internal!($reason)))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        reifydb_value::error::Error(Box::new($crate::internal!($fmt, $($arg)*)))
+        reifydb_value::error::ValueError(Box::new($crate::internal!($fmt, $($arg)*)))
     };
 }
 
@@ -165,7 +165,7 @@ pub mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;
-	use crate::error::Error;
+	use crate::error::ValueError;
 
 	#[derive(Debug)]
 	#[allow(dead_code)]
@@ -214,7 +214,7 @@ pub mod tests {
 
 	#[test]
 	fn test_internal_err_literal_string() {
-		let result: Result<(), Error> = internal_err!("test error");
+		let result: Result<(), ValueError> = internal_err!("test error");
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -226,7 +226,7 @@ pub mod tests {
 	fn test_internal_err_with_format() {
 		let code = "ERR_123";
 		let line = 456;
-		let result: Result<(), Error> = internal_err!("Error code: {} at line {}", code, line);
+		let result: Result<(), ValueError> = internal_err!("Error code: {} at line {}", code, line);
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -262,7 +262,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_internal_error_in_function() {
-		fn test_function_literal() -> Result<(), Error> {
+		fn test_function_literal() -> Result<(), ValueError> {
 			return_internal_error!("function error");
 		}
 
@@ -275,7 +275,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_internal_error_with_format() {
-		fn test_function_format(val: u32) -> Result<(), Error> {
+		fn test_function_format(val: u32) -> Result<(), ValueError> {
 			return_internal_error!("Invalid value: {:#04x}", val);
 		}
 

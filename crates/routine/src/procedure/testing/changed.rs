@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{
 		Value,
@@ -124,7 +124,7 @@ struct MutationEntry {
 	diff: Diff,
 }
 
-fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ObjectId) -> Result<String, Error> {
+fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ObjectId) -> Result<String, ValueError> {
 	match id {
 		ObjectId::Table(table_id) => {
 			let table = catalog
@@ -175,7 +175,7 @@ fn resolve_object_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Object
 	}
 }
 
-fn build_output_columns(entries: &[MutationEntry]) -> Result<RecordBatch, Error> {
+fn build_output_columns(entries: &[MutationEntry]) -> Result<RecordBatch, ValueError> {
 	if entries.is_empty() {
 		return batch(vec![
 			ColumnBuilder::with_capacity(ValueType::Utf8, 0).finish("op"),
@@ -298,7 +298,7 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<RecordBatch, Error>
 	batch(columns)
 }
 
-fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, Error> {
+fn column_for_values(values: &[Value]) -> Result<ColumnBuilder, ValueError> {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None

@@ -20,7 +20,7 @@ use indexmap::{IndexMap, IndexSet};
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -295,7 +295,7 @@ impl GroupKeyDict {
 	}
 }
 
-fn key_out_of_range(target: &ValueType) -> Error {
+fn key_out_of_range(target: &ValueType) -> ValueError {
 	TypeError::NumberOutOfRange {
 		target: target.clone(),
 		fragment: Fragment::None,
@@ -409,7 +409,7 @@ fn rescaled(value: i256, from: u8, to: u8, precision: u8) -> Option<i256> {
 	(unscaled::digits(value) <= precision).then_some(value)
 }
 
-fn group_key_error(error: ArrowError) -> Error {
+fn group_key_error(error: ArrowError) -> ValueError {
 	internal_error!("Failed to build group keys: {}", error)
 }
 

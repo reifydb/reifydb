@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::{Result, error::Error, reifydb_assertions};
+use reifydb_value::{Result, error::ValueError, reifydb_assertions};
 use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{info, warn};
 
@@ -83,7 +83,7 @@ impl AdminSubsystem {
 		let addr = self.bind_addr.clone();
 		let handle = self.handle.clone();
 		handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
-			Error::from(CoreError::SubsystemBindFailed {
+			ValueError::from(CoreError::SubsystemBindFailed {
 				addr: addr.clone(),
 				reason: e.to_string(),
 			})
@@ -93,7 +93,7 @@ impl AdminSubsystem {
 	#[inline]
 	fn record_bound_addr(&self, listener: &TcpListener) -> Result<()> {
 		let actual_addr = listener.local_addr().map_err(|e| {
-			Error::from(CoreError::SubsystemAddressUnavailable {
+			ValueError::from(CoreError::SubsystemAddressUnavailable {
 				reason: e.to_string(),
 			})
 		})?;

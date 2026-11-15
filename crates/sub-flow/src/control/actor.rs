@@ -54,7 +54,7 @@ use reifydb_transaction::{error::TransactionError, multi::lease::VersionLeaseGua
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
@@ -568,7 +568,7 @@ impl FlowActor {
 				&reads,
 			)
 		}))
-		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))));
+		.unwrap_or_else(|payload| Err(ValueError(Box::new(flow_step_panicked(describe_payload(&payload))))));
 		let (version, lsn) = (snapshot.version, snapshot.lsn);
 		drop(snapshot);
 		match computed {
@@ -823,7 +823,7 @@ impl FlowActor {
 				&mut state.hold_cache,
 			)
 		}))
-		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))))
+		.unwrap_or_else(|payload| Err(ValueError(Box::new(flow_step_panicked(describe_payload(&payload))))))
 	}
 
 	fn apply_step(
@@ -3063,7 +3063,7 @@ mod tick_failures {
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		Result as ValueResult,
-		error::{Diagnostic, Error},
+		error::{Diagnostic, ValueError},
 		factory::time::at_millis,
 		value::{
 			container::temporal_array::datetime_array,
@@ -3111,7 +3111,7 @@ mod tick_failures {
 		}
 
 		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
-			Err(Error(Box::new(Diagnostic {
+			Err(ValueError(Box::new(Diagnostic {
 				code: "TEST_TIMER_HANDLER_FAILED".to_string(),
 				message: "the timer handler failed".to_string(),
 				..Default::default()

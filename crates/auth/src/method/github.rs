@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider, MethodSettingError};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 use subtle::ConstantTimeEq;
 
 use crate::error::GithubError;
@@ -59,10 +59,10 @@ impl AuthenticationProvider for GithubProvider {
 	}
 
 	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
-		let user_id = config.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
+		let user_id = config.get("user_id").ok_or_else(|| ValueError::from(GithubError::MissingUserId))?;
 
 		if user_id.is_empty() || !user_id.bytes().all(|b| b.is_ascii_digit()) {
-			return Err(Error::from(GithubError::InvalidUserId {
+			return Err(ValueError::from(GithubError::InvalidUserId {
 				reason: "expected the numeric github account id".to_string(),
 			}));
 		}
@@ -79,7 +79,7 @@ impl AuthenticationProvider for GithubProvider {
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
-		let stored_id = stored.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
+		let stored_id = stored.get("user_id").ok_or_else(|| ValueError::from(GithubError::MissingUserId))?;
 
 		let Some(verified_id) = credentials.get("github_user_id") else {
 			return Ok(AuthStep::Failed);

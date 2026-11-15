@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -426,7 +426,7 @@ impl From<&Expression> for JsonExpression {
 }
 
 impl TryFrom<JsonExpression> for Expression {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from(json: JsonExpression) -> Result<Self> {
 		Ok(match json {
@@ -687,7 +687,7 @@ impl TryFrom<JsonExpression> for Expression {
 					"+" => PrefixOperator::Plus(Fragment::None),
 					"not" => PrefixOperator::Not(Fragment::None),
 					_ => {
-						return Err(Error(Box::new(internal!(
+						return Err(ValueError(Box::new(internal!(
 							"Unknown prefix operator: {}",
 							operator
 						))));
@@ -815,7 +815,7 @@ fn parse_cast_type(s: &str) -> Result<(ValueType, Option<Constraint>)> {
 		let max = bytes
 			.trim()
 			.parse::<u32>()
-			.map_err(|_| Error(Box::new(internal!("Invalid type parameter: {}", s))))?;
+			.map_err(|_| ValueError(Box::new(internal!("Invalid type parameter: {}", s))))?;
 		let ty = if name == "utf8" {
 			ValueType::Utf8
 		} else {
@@ -831,7 +831,7 @@ fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
 		return Ok(None);
 	};
 	let param = |text: &str| -> Result<u8> {
-		text.trim().parse::<u8>().map_err(|_| Error(Box::new(internal!("Invalid type parameter: {}", s))))
+		text.trim().parse::<u8>().map_err(|_| ValueError(Box::new(internal!("Invalid type parameter: {}", s))))
 	};
 	Ok(match (name, params.split_once(',')) {
 		("decimal", Some((p, sc))) => {
@@ -878,7 +878,7 @@ fn parse_type(s: &str) -> Result<ValueType> {
 		"identityid" => ValueType::IdentityId,
 		"decimal" => ValueType::DECIMAL,
 		_ => {
-			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
+			return Err(ValueError(Box::new(internal!("Unknown type: {}", s))));
 		}
 	};
 
@@ -897,7 +897,7 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 
 pub fn from_json(json: &str) -> Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
-		Error::from(TypeError::SerdeDeserialize {
+		ValueError::from(TypeError::SerdeDeserialize {
 			message: e.to_string(),
 		})
 	})?;

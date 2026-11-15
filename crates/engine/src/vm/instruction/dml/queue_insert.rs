@@ -49,7 +49,7 @@ use reifydb_rql::nodes::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
@@ -600,7 +600,7 @@ fn statement_key_failure(
 		other => Some(Failure::after_columns(
 			pipeline,
 			row,
-			Error(Box::new(queue_deduplication_key_not_utf8(
+			ValueError(Box::new(queue_deduplication_key_not_utf8(
 				Fragment::internal(target.queue.name.clone()),
 				other.get_type().to_string().as_str(),
 			))),
@@ -652,7 +652,7 @@ fn read_not_before(
 			} => values.push(None),
 			Value::DateTime(instant) => values.push(Some(*instant)),
 			_ => {
-				let error = Error(Box::new(queue_not_before_not_datetime(
+				let error = ValueError(Box::new(queue_not_before_not_datetime(
 					Fragment::internal(target.queue.name.clone()),
 					value.get_type().to_string().as_str(),
 				)));

@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::{fmt, sync::Arc};
 
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 #[cfg(not(target_arch = "wasm32"))]
 use reqwest::{
 	blocking::Client,
@@ -132,15 +132,15 @@ impl GithubApi for HttpGithubApi {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn exchange_failed(reason: String) -> Error {
-	Error::from(GithubError::ExchangeFailed {
+fn exchange_failed(reason: String) -> ValueError {
+	ValueError::from(GithubError::ExchangeFailed {
 		reason,
 	})
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn api_failed(reason: String) -> Error {
-	Error::from(GithubError::ApiFailed {
+fn api_failed(reason: String) -> ValueError {
+	ValueError::from(GithubError::ApiFailed {
 		reason,
 	})
 }
@@ -160,8 +160,8 @@ impl GithubApi for UnsupportedGithubApi {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn unsupported() -> Error {
-	Error::from(GithubError::ApiFailed {
+fn unsupported() -> ValueError {
+	ValueError::from(GithubError::ApiFailed {
 		reason: "github authentication is not available in this build".to_string(),
 	})
 }

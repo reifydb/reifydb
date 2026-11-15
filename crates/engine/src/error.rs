@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::object::ObjectId;
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -474,8 +474,8 @@ impl IntoDiagnostic for EngineError {
 	}
 }
 
-impl From<EngineError> for Error {
+impl From<EngineError> for ValueError {
 	fn from(err: EngineError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

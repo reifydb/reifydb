@@ -7,7 +7,7 @@ use reifydb_codec::{
 	json::{excerpt, types::ResponseFrame},
 };
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, temporal::parse::duration::parse_duration},
@@ -90,7 +90,7 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, ValueError> {
 		let inner =
 			ReqwestClient::builder().timeout(Duration::from_seconds(30).unwrap().to_std()).build().unwrap(); // FIXME better error handling
 
@@ -104,7 +104,7 @@ impl HttpClient {
 		})
 	}
 
-	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, Error> {
+	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, ValueError> {
 		let base_url = url.trim_end_matches('/').to_string();
 		Ok(Self {
 			inner: client,
@@ -118,14 +118,18 @@ impl HttpClient {
 		self.token = Some(token.to_string());
 	}
 
-	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_password(
+		&mut self,
+		identifier: &str,
+		password: &str,
+	) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
 		credentials.insert("password".to_string(), password.to_string());
 		self.login("password", credentials).await
 	}
 
-	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("token".to_string(), token.to_string());
 		self.login("token", credentials).await
@@ -135,7 +139,7 @@ impl HttpClient {
 		&mut self,
 		method: &str,
 		credentials: HashMap<String, String>,
-	) -> Result<LoginResult, Error> {
+	) -> Result<LoginResult, ValueError> {
 		let body = json!({
 			"method": method,
 			"credentials": credentials
@@ -166,7 +170,7 @@ impl HttpClient {
 		}
 	}
 
-	pub async fn logout(&mut self) -> Result<(), Error> {
+	pub async fn logout(&mut self) -> Result<(), ValueError> {
 		let token = match self.token.as_ref() {
 			Some(t) => t.clone(),
 			None => return Ok(()),
@@ -185,11 +189,11 @@ impl HttpClient {
 		}
 	}
 
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, ValueError> {
 		let request = AdminRequest {
 			rql: rql.to_string(),
 			params: params.and_then(params_to_wire),
@@ -212,11 +216,11 @@ impl HttpClient {
 		parse_admin_response(ws_response)
 	}
 
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		let request = CommandRequest {
 			rql: rql.to_string(),
 			params: params.and_then(params_to_wire),
@@ -239,11 +243,11 @@ impl HttpClient {
 		parse_command_response(ws_response)
 	}
 
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, ValueError> {
 		let request = QueryRequest {
 			rql: rql.to_string(),
 			params: params.and_then(params_to_wire),
@@ -266,7 +270,7 @@ impl HttpClient {
 		parse_query_response(ws_response)
 	}
 
-	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
+	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, ValueError> {
 		let url = format!("{}/v1/admin?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
 
@@ -276,7 +280,7 @@ impl HttpClient {
 		}
 	}
 
-	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, Error> {
+	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, ValueError> {
 		let url = format!("{}/v1/command?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
 
@@ -286,7 +290,7 @@ impl HttpClient {
 		}
 	}
 
-	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, Error> {
+	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, ValueError> {
 		let url = format!("{}/v1/query?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
 
@@ -296,7 +300,7 @@ impl HttpClient {
 		}
 	}
 
-	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, ValueError> {
 		let budget = request.wait_for.as_deref().and_then(|raw| parse_duration(Fragment::internal(raw)).ok());
 		let timeout = budget.unwrap_or(Duration::zero()).try_add(Duration::from_seconds(30).unwrap())?;
 
@@ -311,7 +315,7 @@ impl HttpClient {
 		url: &str,
 		body: &T,
 		timeout: Duration,
-	) -> Result<(Vec<u8>, Option<ResponseMeta>), Error> {
+	) -> Result<(Vec<u8>, Option<ResponseMeta>), ValueError> {
 		let mut request = self.inner.post(url).timeout(timeout.to_std()).json(body);
 
 		if let Some(ref token) = self.token {
@@ -333,7 +337,7 @@ impl HttpClient {
 		&self,
 		path: &str,
 		body: &T,
-	) -> Result<(Vec<Frame>, Option<ResponseMeta>), Error> {
+	) -> Result<(Vec<Frame>, Option<ResponseMeta>), ValueError> {
 		let url = format!("{}{}?format=rbcf", self.base_url, path);
 		let (bytes, meta) = self.send_request_bytes(&url, body).await?;
 		let frames = decode_frames(&bytes)
@@ -345,7 +349,7 @@ impl HttpClient {
 		&self,
 		url: &str,
 		body: &T,
-	) -> Result<(String, Option<ResponseMeta>), Error> {
+	) -> Result<(String, Option<ResponseMeta>), ValueError> {
 		let mut request = self.inner.post(url).json(body);
 
 		if let Some(ref token) = self.token {
@@ -361,7 +365,7 @@ impl HttpClient {
 		&self,
 		url: &str,
 		body: &T,
-	) -> Result<(Vec<u8>, Option<ResponseMeta>), Error> {
+	) -> Result<(Vec<u8>, Option<ResponseMeta>), ValueError> {
 		let mut request = self.inner.post(url).json(body);
 
 		if let Some(ref token) = self.token {
@@ -379,25 +383,25 @@ impl HttpClient {
 		Ok((response.bytes().await.map_err(transport)?.to_vec(), meta))
 	}
 
-	fn parse_error_response(&self, body: &str) -> Error {
+	fn parse_error_response(&self, body: &str) -> ValueError {
 		if let Ok(http_err) = from_str::<HttpErrorResponse>(body) {
 			let diag = http_err.diagnostic.unwrap_or_else(|| Diagnostic {
 				code: http_err.code,
 				message: http_err.error,
 				..Default::default()
 			});
-			return Error(Box::new(diag));
+			return ValueError(Box::new(diag));
 		}
 
 		if let Ok(err_response) = from_str::<ErrResponse>(body) {
-			return Error(Box::new(err_response.diagnostic));
+			return ValueError(Box::new(err_response.diagnostic));
 		}
 
 		ClientError::Decode(format!("failed to parse response: {}", excerpt(body))).into()
 	}
 }
 
-fn transport(error: ReqwestError) -> Error {
+fn transport(error: ReqwestError) -> ValueError {
 	ClientError::Transport(error.to_string()).into()
 }
 

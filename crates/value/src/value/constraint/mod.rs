@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	error::{ConstraintKind, Error, TypeError},
+	error::{ConstraintKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		Value, constraint::bytes::MaxBytes, dictionary::DictionaryId, sumtype::SumTypeId, value_type::ValueType,
@@ -74,7 +74,7 @@ impl TypeConstraint {
 		&self.constraint
 	}
 
-	pub fn coerce(&self, value: &mut Value) -> Result<(), Error> {
+	pub fn coerce(&self, value: &mut Value) -> Result<(), ValueError> {
 		let value_type = value.get_type();
 		if !matches!(value, Value::None { .. }) && !same_family(&value_type, self.base_type.inner_type()) {
 			unimplemented!()
@@ -222,7 +222,7 @@ fn same_family(value_type: &ValueType, column_type: &ValueType) -> bool {
 	}
 }
 
-fn precision_violation(kind: ConstraintKind, name: &str, actual: u8, max: u8) -> Error {
+fn precision_violation(kind: ConstraintKind, name: &str, actual: u8, max: u8) -> ValueError {
 	TypeError::ConstraintViolation {
 		kind,
 		message: format!("{} value exceeds maximum precision: {} digits (max: {} digits)", name, actual, max),
@@ -317,7 +317,7 @@ pub mod tests {
 		ValueType::decimal(Precision::new(10), Scale::new(2))
 	}
 
-	fn coerce_decimal(column: ValueType, text: &str) -> Result<Value, Error> {
+	fn coerce_decimal(column: ValueType, text: &str) -> Result<Value, ValueError> {
 		let mut value = Value::Decimal(Decimal::from_str(text).unwrap());
 		TypeConstraint::unconstrained(column).coerce(&mut value)?;
 		Ok(value)

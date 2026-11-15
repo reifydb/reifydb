@@ -11,7 +11,7 @@ use reifydb_routine::function::stats::digest::StatsDigest;
 use reifydb_routine_abi::{Accumulator, Function, LiteralArgument, LiteralKind, context::FunctionContext};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, digest::Digest, identity::IdentityId, value_type::ValueType},
 };
@@ -64,9 +64,9 @@ fn digest(inner: ValueType, accuracy: u32, value: Value) -> Value {
 	Value::Digest(Box::new(digest))
 }
 
-fn merge(accumulator: &mut Box<dyn Accumulator>, digest: Value) -> Result<(), Error> {
+fn merge(accumulator: &mut Box<dyn Accumulator>, digest: Value) -> Result<(), ValueError> {
 	let column = from_many("x", digest, 1);
-	accumulator.update(&[column], &vec![(GroupId(0), vec![0])]).map_err(Error::from)
+	accumulator.update(&[column], &vec![(GroupId(0), vec![0])]).map_err(ValueError::from)
 }
 
 #[test]

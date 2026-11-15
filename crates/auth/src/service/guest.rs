@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_catalog::create_session_token;
 use reifydb_core::retry::RetryStrategy;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{duration::Duration, identity::IdentityKind, uuid::Uuid7},
 };
 
@@ -20,11 +20,11 @@ impl AuthService {
 		&self,
 		credentials: &HashMap<String, String>,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		if !credentials.is_empty() {
 			let mut keys: Vec<&str> = credentials.keys().map(String::as_str).collect();
 			keys.sort_unstable();
-			return Err(Error::from(AuthError::GuestTakesNoCredentials {
+			return Err(ValueError::from(AuthError::GuestTakesNoCredentials {
 				keys: keys.join(", "),
 			}));
 		}

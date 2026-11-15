@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use libm::{ceil, log, pow};
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	value::{Value, duration::Duration, value_type::ValueType},
 };
 
@@ -114,7 +114,7 @@ pub enum DigestError {
 	AccuracyNotWholePpm,
 
 	#[error(transparent)]
-	PercentileNotANumber(Error),
+	PercentileNotANumber(ValueError),
 
 	#[error("p must be between 0 and 1")]
 	PercentileOutOfRange,

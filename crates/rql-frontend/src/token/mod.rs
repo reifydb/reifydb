@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 pub mod cursor;
 pub mod identifier;
@@ -149,7 +149,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 					cursor.line(),
 					cursor.column()
 				);
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::TokenizeError {
 						message: message.clone(),
 					},

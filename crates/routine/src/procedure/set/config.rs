@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error as TypeError,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, value_type::ValueType},
@@ -106,7 +106,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 		};
 
 		let coerced_value = config_key.accept(value).map_err(|e| {
-			RoutineError::Wrapped(Box::new(TypeError::from(CatalogError::from((config_key, e)))))
+			RoutineError::Wrapped(Box::new(ValueError::from(CatalogError::from((config_key, e)))))
 		})?;
 
 		let value_clone = coerced_value.clone();

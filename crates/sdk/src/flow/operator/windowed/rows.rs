@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_flow_async::window::driver::rows::{RetractRows, WindowColumns, WindowDiff, WindowRows};
-use reifydb_value::{Result, error::Error, value::diff_type::DiffType};
+use reifydb_value::{Result, error::ValueError, value::diff_type::DiffType};
 
 use crate::{
 	error::SdkError,
@@ -87,7 +87,7 @@ fn retracts<A: WindowedOperator>(
 	RetractRows::new(rows, groups)
 }
 
-fn missing_side(index: usize, kind: DiffType, side: &str) -> Error {
+fn missing_side(index: usize, kind: DiffType, side: &str) -> ValueError {
 	SdkError::Other(format!("diff {index} is {kind:?} but carries no {side} columns")).into()
 }
 

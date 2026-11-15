@@ -8,7 +8,7 @@ use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature};
 use reifydb_core::{expression::Expression, value::column::factory};
 use reifydb_value::{
-	error::{Error, RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{Value, column_view::ColumnView},
 };
@@ -207,7 +207,7 @@ impl ScalarUDFImpl for ProjectionUdf {
 	}
 
 	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
-		let error: Error = TypeError::Runtime {
+		let error: ValueError = TypeError::Runtime {
 			kind: RuntimeErrorKind::ExpectedSingleColumn {
 				actual: self.columns,
 			},

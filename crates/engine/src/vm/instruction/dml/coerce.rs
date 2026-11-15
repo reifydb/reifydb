@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_rql::query::QueryPlan;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
@@ -121,7 +121,7 @@ pub(crate) fn series_key(series: &Series, value: &Value) -> Result<Option<u64>> 
 	}
 }
 
-pub(crate) fn key_out_of_range(key: &SeriesKey, value: &Value) -> Error {
+pub(crate) fn key_out_of_range(key: &SeriesKey, value: &Value) -> ValueError {
 	EngineError::SeriesKeyOutOfRange {
 		column: key.column().to_string(),
 		value: value.to_string(),

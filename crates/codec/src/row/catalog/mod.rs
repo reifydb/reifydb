@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use reifydb_value::{
 	byte_size::ByteSize,
-	error::{Error as ValueError, TypeError},
+	error::{TypeError, ValueError},
 	util::cowvec::CowVec,
 };
 use thiserror::Error;

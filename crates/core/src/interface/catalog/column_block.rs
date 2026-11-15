@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{Value, partition::Partition},
 };
 use serde::{Deserialize, Serialize, de};
@@ -27,7 +27,7 @@ impl From<ColumnBlockKind> for u8 {
 }
 
 impl TryFrom<u8> for ColumnBlockKind {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {

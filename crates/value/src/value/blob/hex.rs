@@ -3,13 +3,13 @@
 
 use super::Blob;
 use crate::{
-	error::{BlobEncodingKind, Error, TypeError},
+	error::{BlobEncodingKind, TypeError, ValueError},
 	fragment::Fragment,
 	util::hex::{decode, encode},
 };
 
 impl Blob {
-	pub fn from_hex(fragment: Fragment) -> Result<Self, Error> {
+	pub fn from_hex(fragment: Fragment) -> Result<Self, ValueError> {
 		let hex_str = fragment.text();
 		let clean_hex = if hex_str.starts_with("0x") || hex_str.starts_with("0X") {
 			&hex_str[2..]

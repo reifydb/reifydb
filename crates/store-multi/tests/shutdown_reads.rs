@@ -128,7 +128,7 @@ fn row_and_value(row: &reifydb_core::interface::store::MultiVersionRow<TaggedKey
 }
 
 /// A refusal must be debuggable from its message alone, so it names the condition and not just the failure.
-fn names_the_shutdown(error: &reifydb_value::error::Error) {
+fn names_the_shutdown(error: &reifydb_value::error::ValueError) {
 	let message = error.to_string();
 	assert!(message.contains("shut down"), "the error must name the shut-down store; got {message}");
 }

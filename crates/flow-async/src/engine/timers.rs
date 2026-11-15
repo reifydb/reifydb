@@ -272,7 +272,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		Result,
-		error::{Diagnostic, Error},
+		error::{Diagnostic, ValueError},
 		factory::time::at_millis,
 	};
 
@@ -318,7 +318,7 @@ mod tests {
 
 		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
 			if self.fails {
-				return Err(Error(Box::new(Diagnostic {
+				return Err(ValueError(Box::new(Diagnostic {
 					code: "TEST_TIMER_HANDLER_FAILED".to_string(),
 					message: "the timer handler failed".to_string(),
 					..Default::default()

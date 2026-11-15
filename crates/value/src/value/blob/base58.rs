@@ -3,13 +3,13 @@
 
 use super::Blob;
 use crate::{
-	error::{BlobEncodingKind, Error, TypeError},
+	error::{BlobEncodingKind, TypeError, ValueError},
 	fragment::Fragment,
 	util::base58,
 };
 
 impl Blob {
-	pub fn from_b58(fragment: Fragment) -> Result<Self, Error> {
+	pub fn from_b58(fragment: Fragment) -> Result<Self, ValueError> {
 		let b58_str = fragment.text();
 		match base58::decode(b58_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),

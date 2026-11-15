@@ -37,7 +37,7 @@ use reifydb_sdk::common::{
 	family::{cell_width, decode_family_column, family_params, is_family},
 };
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	util::kernel::shared_predicate,
 	value::{
@@ -70,7 +70,7 @@ struct RegistryInner {
 
 	next_id: u64,
 
-	failure: Option<Error>,
+	failure: Option<ValueError>,
 }
 
 enum BuilderSlot {
@@ -127,7 +127,7 @@ impl BuilderRegistry {
 		mem::take(&mut inner.accumulator)
 	}
 
-	pub fn take_failure(&self) -> Option<Error> {
+	pub fn take_failure(&self) -> Option<ValueError> {
 		self.inner.lock().failure.take()
 	}
 }
@@ -452,7 +452,7 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 }
 
 impl RegistryInner {
-	fn stash_failure(&mut self, err: Error) -> i32 {
+	fn stash_failure(&mut self, err: ValueError) -> i32 {
 		if self.failure.is_none() {
 			self.failure = Some(err);
 		}
@@ -800,7 +800,7 @@ fn is_var_len(type_code: ValueKind) -> bool {
 #[derive(Debug, PartialEq)]
 enum BuilderFailure {
 	Code(i32),
-	Engine(Error),
+	Engine(ValueError),
 }
 
 fn finalize_buffer(

@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	CatalogStore, Result,
@@ -56,7 +56,7 @@ impl CatalogStore {
 				let ty: OperatorDef =
 					from_bytes(operator::get_data(EncodedCatalogRow::view(&entry.bytes)).as_ref())
 						.map_err(|e| {
-							Error(Box::new(internal!(
+							ValueError(Box::new(internal!(
 								"Failed to deserialize OperatorDef: {}",
 								e
 							)))

@@ -9,7 +9,7 @@ use argon2::{
 };
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use crate::error::AuthError;
 
@@ -33,14 +33,14 @@ impl AuthenticationProvider for PasswordProvider {
 		let password = config
 			.get("password")
 			.filter(|p| !p.is_empty())
-			.ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
+			.ok_or_else(|| ValueError::from(AuthError::PasswordRequired))?;
 
 		let argon2 = argon2_instance();
 
 		let phc = argon2
 			.hash_password(password.as_bytes())
 			.map_err(|e| {
-				Error::from(AuthError::HashingFailed {
+				ValueError::from(AuthError::HashingFailed {
 					reason: e.to_string(),
 				})
 			})?
@@ -57,16 +57,16 @@ impl AuthenticationProvider for PasswordProvider {
 		let credential = credentials
 			.get("password")
 			.filter(|p| !p.is_empty())
-			.ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
+			.ok_or_else(|| ValueError::from(AuthError::PasswordRequired))?;
 
 		let phc_str = stored.get("phc").ok_or_else(|| {
-			Error::from(AuthError::InvalidHash {
+			ValueError::from(AuthError::InvalidHash {
 				reason: "missing 'phc' field".to_string(),
 			})
 		})?;
 
 		let parsed_hash = PasswordHash::new(phc_str).map_err(|e| {
-			Error::from(AuthError::InvalidHash {
+			ValueError::from(AuthError::InvalidHash {
 				reason: e.to_string(),
 			})
 		})?;
@@ -76,7 +76,7 @@ impl AuthenticationProvider for PasswordProvider {
 		match argon2.verify_password(credential.as_bytes(), &parsed_hash) {
 			Ok(()) => Ok(AuthStep::Authenticated),
 			Err(PasswordHashError::PasswordInvalid) => Ok(AuthStep::Failed),
-			Err(e) => Err(Error::from(AuthError::VerificationFailed {
+			Err(e) => Err(ValueError::from(AuthError::VerificationFailed {
 				reason: e.to_string(),
 			})),
 		}

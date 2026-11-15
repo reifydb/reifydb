@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::state::KeyspaceId,
 };
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::Error as RusqliteError;
 
@@ -69,8 +69,8 @@ impl From<RusqliteError> for OperatorError {
 	}
 }
 
-impl From<OperatorError> for Error {
+impl From<OperatorError> for ValueError {
 	fn from(err: OperatorError) -> Self {
-		Error(Box::new(internal(err.to_string())))
+		ValueError(Box::new(internal(err.to_string())))
 	}
 }

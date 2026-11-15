@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 	config::{AcceptError, ConfigKey},
 };
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	util::hash::Hash128,
 	value::{sumtype::SumTypeId, value_type::ValueType},
@@ -1724,8 +1724,8 @@ impl IntoDiagnostic for CatalogError {
 	}
 }
 
-impl From<CatalogError> for Error {
+impl From<CatalogError> for ValueError {
 	fn from(err: CatalogError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

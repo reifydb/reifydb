@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb::{
-	Database, Error, IdentityId, Value, WithSubsystem, server,
+	Database, IdentityId, Value, ValueError, WithSubsystem, server,
 	value::{
 		params::Params,
 		value::{
@@ -43,7 +43,7 @@ fn admin(db: &Database, rql: &str) {
 	}
 }
 
-fn query_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+fn query_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, ValueError> {
 	let r = db.engine().query_as(id, rql, params);
 	match r.error {
 		Some(e) => Err(e),
@@ -51,7 +51,7 @@ fn query_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<
 	}
 }
 
-fn command_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+fn command_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, ValueError> {
 	let r = db.engine().command_as(id, rql, params);
 	match r.error {
 		Some(e) => Err(e),
@@ -93,7 +93,7 @@ fn values(frames: &[Frame], name: &str) -> Vec<Value> {
 	(0..frame.row_count()).map(|i| col.get_value(i)).collect()
 }
 
-fn expect_error(result: Result<Vec<Frame>, Error>, code: &str, message: &str) {
+fn expect_error(result: Result<Vec<Frame>, ValueError>, code: &str, message: &str) {
 	match result {
 		Ok(frames) => panic!("expected a {code} error containing {message:?}, got {} frame(s)", frames.len()),
 		Err(e) => {

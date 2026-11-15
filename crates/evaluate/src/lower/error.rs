@@ -3,17 +3,17 @@
 
 use datafusion_common::DataFusionError;
 use reifydb_core::internal_error;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
-pub(super) fn into_external(error: Error) -> DataFusionError {
+pub(super) fn into_external(error: ValueError) -> DataFusionError {
 	DataFusionError::External(Box::new(error))
 }
 
-pub(super) fn from_datafusion(operator: &str, err: DataFusionError) -> Error {
+pub(super) fn from_datafusion(operator: &str, err: DataFusionError) -> ValueError {
 	if let DataFusionError::External(inner) = err.find_root()
-		&& let Some(ours) = inner.downcast_ref::<Error>()
+		&& let Some(ours) = inner.downcast_ref::<ValueError>()
 	{
-		return Error(ours.0.clone());
+		return ValueError(ours.0.clone());
 	}
 	internal_error!("{}: datafusion: {}", operator, err)
 }

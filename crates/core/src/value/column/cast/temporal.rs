@@ -5,7 +5,7 @@ use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -102,7 +102,7 @@ macro_rules! impl_to_temporal {
 							}
 						}
 
-						Error::from(CastError::InvalidTemporal {
+						ValueError::from(CastError::InvalidTemporal {
 							fragment: e.0.fragment.clone(),
 							target: $target_type,
 							cause: e.diagnostic(),

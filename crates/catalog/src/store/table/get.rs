@@ -6,14 +6,14 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn get_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Table> {
 		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				table
 			)))

@@ -31,7 +31,7 @@ use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::Error, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{Result, error::ValueError, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
@@ -125,7 +125,7 @@ impl DistinctPlan {
 			};
 			let number = RowNumber(decode_u64_asc(order));
 			let serialized: SerializedRow = decode(&row).map_err(|e| {
-				Error::from(FlowStateError::Decode {
+				ValueError::from(FlowStateError::Decode {
 					state: "SerializedRow",
 					cause: e.to_string(),
 				})
@@ -150,7 +150,7 @@ impl DistinctPlan {
 					return Ok(DistinctLayout::new());
 				}
 				decode(&row).map_err(|e| {
-					Error::from(FlowStateError::Decode {
+					ValueError::from(FlowStateError::Decode {
 						state: "DistinctLayout",
 						cause: e.to_string(),
 					})
@@ -175,7 +175,7 @@ impl DistinctPlan {
 			match state.entries.get(&hash).and_then(|entry| entry.rows.get(&number)) {
 				Some(serialized) => {
 					let row = serialized.encode_state().map_err(|e| {
-						Error::from(FlowStateError::Encode {
+						ValueError::from(FlowStateError::Encode {
 							state: "SerializedRow",
 							cause: e.to_string(),
 						})
@@ -191,7 +191,7 @@ impl DistinctPlan {
 		}
 		if take(&mut state.layout_changed) {
 			let layout_row = state.layout.encode_state().map_err(|e| {
-				Error::from(FlowStateError::Encode {
+				ValueError::from(FlowStateError::Encode {
 					state: "DistinctLayout",
 					cause: e.to_string(),
 				})

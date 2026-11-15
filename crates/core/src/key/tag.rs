@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key as keycode;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 use serde::{Deserialize, Serialize, de};
 
 #[repr(u8)]
@@ -122,7 +122,7 @@ impl From<KeyTag> for u8 {
 	}
 }
 impl TryFrom<u8> for KeyTag {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {

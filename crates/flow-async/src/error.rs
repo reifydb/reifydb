@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	interface::catalog::flow::OperatorId,
 };
-use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
+use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowStateError {
@@ -66,8 +66,8 @@ impl IntoDiagnostic for FlowStateError {
 	}
 }
 
-impl From<FlowStateError> for Error {
+impl From<FlowStateError> for ValueError {
 	fn from(err: FlowStateError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

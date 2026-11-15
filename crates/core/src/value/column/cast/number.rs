@@ -8,7 +8,7 @@ use arrow_buffer::i256;
 use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -180,7 +180,7 @@ macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_primitive_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
 			e.0.with_fragment($base_fragment.clone());
-			Error::from(CastError::InvalidNumber {
+			ValueError::from(CastError::InvalidNumber {
 				fragment: $base_fragment.clone(),
 				target: $target_type,
 				cause: e.diagnostic(),
@@ -191,7 +191,7 @@ macro_rules! parse_and_push {
 	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_primitive_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
 			e.0.with_fragment($base_fragment.clone());
-			Error::from(CastError::InvalidNumber {
+			ValueError::from(CastError::InvalidNumber {
 				fragment: $base_fragment.clone(),
 				target: $target_type,
 				cause: e.diagnostic(),
@@ -369,7 +369,7 @@ fn text_to_float(
 					ValueType::Float4 => out.push::<f32>(
 						parse_float::<f32>(temp_fragment.clone()).map_err(|mut e| {
 							e.0.with_fragment(base_fragment.clone());
-							Error::from(CastError::InvalidNumber {
+							ValueError::from(CastError::InvalidNumber {
 								fragment: base_fragment.clone(),
 								target: ValueType::Float4,
 								cause: e.diagnostic(),
@@ -380,7 +380,7 @@ fn text_to_float(
 					ValueType::Float8 => out.push::<f64>(
 						parse_float::<f64>(temp_fragment).map_err(|mut e| {
 							e.0.with_fragment(base_fragment.clone());
-							Error::from(CastError::InvalidNumber {
+							ValueError::from(CastError::InvalidNumber {
 								fragment: base_fragment.clone(),
 								target: ValueType::Float8,
 								cause: e.diagnostic(),
@@ -433,7 +433,7 @@ fn text_to_decimal(
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
 					e.0.with_fragment(base_fragment.clone());
-					Error::from(CastError::InvalidNumber {
+					ValueError::from(CastError::InvalidNumber {
 						fragment: base_fragment.clone(),
 						target: target.clone(),
 						cause: e.diagnostic(),

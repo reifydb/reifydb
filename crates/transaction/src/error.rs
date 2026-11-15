@@ -3,7 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, interface::catalog::id::ViewId};
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 use reifydb_wal::lsn::Lsn;
@@ -99,23 +99,23 @@ impl TransactionError {
 	pub const SHUTTING_DOWN: &'static str = "TXN_014";
 	pub const SNAPSHOT_EVICTED: &'static str = "TXN_012";
 
-	pub fn is_commit_log_purged(error: &Error) -> bool {
+	pub fn is_commit_log_purged(error: &ValueError) -> bool {
 		error.0.code == Self::COMMIT_LOG_PURGED
 	}
 
-	pub fn is_commit_too_large(error: &Error) -> bool {
+	pub fn is_commit_too_large(error: &ValueError) -> bool {
 		error.0.code == Self::COMMIT_TOO_LARGE
 	}
 
-	pub fn is_consumer_overtaken(error: &Error) -> bool {
+	pub fn is_consumer_overtaken(error: &ValueError) -> bool {
 		error.0.code == Self::CONSUMER_OVERTAKEN
 	}
 
-	pub fn is_snapshot_evicted(error: &Error) -> bool {
+	pub fn is_snapshot_evicted(error: &ValueError) -> bool {
 		error.0.code == Self::SNAPSHOT_EVICTED
 	}
 
-	pub fn is_shutting_down(error: &Error) -> bool {
+	pub fn is_shutting_down(error: &ValueError) -> bool {
 		error.0.code == Self::SHUTTING_DOWN
 	}
 }
@@ -386,13 +386,13 @@ impl IntoDiagnostic for TransactionError {
 	}
 }
 
-impl From<TransactionError> for Error {
+impl From<TransactionError> for ValueError {
 	fn from(err: TransactionError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
-impl From<DictionaryError> for Error {
+impl From<DictionaryError> for ValueError {
 	fn from(err: DictionaryError) -> Self {
 		TransactionError::from(err).into()
 	}

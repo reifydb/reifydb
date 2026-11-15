@@ -5,7 +5,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, TypeError};
+use crate::error::{TypeError, ValueError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
@@ -17,7 +17,7 @@ impl Precision {
 		Self(precision)
 	}
 
-	pub fn try_new(precision: u8) -> Result<Self, Error> {
+	pub fn try_new(precision: u8) -> Result<Self, ValueError> {
 		if !(Self::MIN.0..=Self::MAX.0).contains(&precision) {
 			return Err(TypeError::DecimalPrecisionInvalid {
 				precision,

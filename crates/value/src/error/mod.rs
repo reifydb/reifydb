@@ -588,9 +588,9 @@ impl NumberOutOfRangeDescriptor {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Error(pub Box<Diagnostic>);
+pub struct ValueError(pub Box<Diagnostic>);
 
-impl Deref for Error {
+impl Deref for ValueError {
 	type Target = Diagnostic;
 
 	fn deref(&self) -> &Self::Target {
@@ -598,28 +598,28 @@ impl Deref for Error {
 	}
 }
 
-impl DerefMut for Error {
+impl DerefMut for ValueError {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.0
 	}
 }
 
-impl Display for Error {
+impl Display for ValueError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let out = DefaultRenderer::render_string(&self.0);
 		f.write_str(out.as_str())
 	}
 }
 
-impl Error {
+impl ValueError {
 	pub fn diagnostic(self) -> Diagnostic {
 		*self.0
 	}
 }
 
-impl error::Error for Error {}
+impl error::Error for ValueError {}
 
-impl de::Error for Error {
+impl de::Error for ValueError {
 	fn custom<T: Display>(msg: T) -> Self {
 		TypeError::SerdeDeserialize {
 			message: msg.to_string(),
@@ -628,7 +628,7 @@ impl de::Error for Error {
 	}
 }
 
-impl ser::Error for Error {
+impl ser::Error for ValueError {
 	fn custom<T: Display>(msg: T) -> Self {
 		TypeError::SerdeSerialize {
 			message: msg.to_string(),
@@ -637,7 +637,7 @@ impl ser::Error for Error {
 	}
 }
 
-impl From<num::TryFromIntError> for Error {
+impl From<num::TryFromIntError> for ValueError {
 	fn from(err: num::TryFromIntError) -> Self {
 		TypeError::IntegerConversion {
 			message: err.to_string(),
@@ -646,7 +646,7 @@ impl From<num::TryFromIntError> for Error {
 	}
 }
 
-impl From<TryFromSliceError> for Error {
+impl From<TryFromSliceError> for ValueError {
 	fn from(err: TryFromSliceError) -> Self {
 		TypeError::ArrayConversion {
 			message: err.to_string(),
@@ -655,7 +655,7 @@ impl From<TryFromSliceError> for Error {
 	}
 }
 
-impl From<string::FromUtf8Error> for Error {
+impl From<string::FromUtf8Error> for ValueError {
 	fn from(err: string::FromUtf8Error) -> Self {
 		TypeError::Utf8Conversion {
 			message: err.to_string(),
@@ -664,15 +664,15 @@ impl From<string::FromUtf8Error> for Error {
 	}
 }
 
-impl From<TypeError> for Error {
+impl From<TypeError> for ValueError {
 	fn from(err: TypeError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
-impl From<Box<TypeError>> for Error {
+impl From<Box<TypeError>> for ValueError {
 	fn from(err: Box<TypeError>) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 

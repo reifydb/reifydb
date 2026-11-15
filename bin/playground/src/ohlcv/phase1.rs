@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb::{
-	Clock, Error,
+	Clock, ValueError,
 	arrow_array::{
 		ArrayRef,
 		cast::AsArray,
@@ -154,7 +154,7 @@ fn verify_transform(ds: &Dataset, layout: &Layout, restored: &[Vec<ArrayRef>], n
 }
 
 pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: CompressionProfile) -> Result<Row, String> {
-	let err = |e: Error| e.to_string();
+	let err = |e: ValueError| e.to_string();
 	let session = new_session();
 	let compressor = Compressor::with_profile(session.clone(), profile);
 	let store = ColumnStore::memory().map_err(err)?;

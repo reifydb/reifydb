@@ -16,7 +16,7 @@ use reifydb_rql_frontend::{
 	},
 	bump::{BumpBox, BumpFragment},
 };
-use reifydb_value::{error, error::Error, fragment::Fragment};
+use reifydb_value::{error, error::ValueError, fragment::Fragment};
 
 use crate::{
 	Result,
@@ -378,7 +378,7 @@ fn own_or_pipeline<'bump>(
 	}
 }
 
-fn missing_input(operator: &'static str) -> Error {
+fn missing_input(operator: &'static str) -> ValueError {
 	RqlError::MissingInput {
 		operator,
 		fragment: Fragment::internal(operator),

@@ -68,7 +68,7 @@ impl CatalogStore {
 use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 };
 
@@ -87,7 +87,7 @@ pub(crate) fn decode_view(
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
 		_ => {
-			return Err(Error(Box::new(Diagnostic {
+			return Err(ValueError(Box::new(Diagnostic {
 				code: "CA_026".to_string(),
 				rql: None,
 				message: format!("unknown view kind: {}", kind_raw),

@@ -28,7 +28,7 @@ use reifydb_flow_async::{
 use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
-	error::Error,
+	error::ValueError,
 	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -308,17 +308,17 @@ where
 				..
 			}
 		) {
-			return Err(Error::from(CoreError::OperatorRollingCarryUnsupported {
+			return Err(ValueError::from(CoreError::OperatorRollingCarryUnsupported {
 				operator: A::NAME,
 			})
 			.into());
 		}
 		let aggregator = A::create(operator_id, params, with)?;
 		let Some(pane) = settings.pane else {
-			return Err(Error::from(CoreError::OperatorWithPaneMissing).into());
+			return Err(ValueError::from(CoreError::OperatorWithPaneMissing).into());
 		};
 		if !<A::Kinds as KindSet<A>>::compacts(&aggregator.new_accumulator(&settings)) {
-			return Err(Error::from(CoreError::OperatorRollingUnbounded {
+			return Err(ValueError::from(CoreError::OperatorRollingUnbounded {
 				operator: A::NAME,
 			})
 			.into());

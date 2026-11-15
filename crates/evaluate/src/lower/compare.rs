@@ -11,7 +11,7 @@ use datafusion_expr::{
 };
 use reifydb_core::expression::{BetweenExpression, Expression, name::display_label};
 use reifydb_value::{
-	error::{BinaryOp, Diagnostic, Error, IntoDiagnostic, LogicalOp, TypeError},
+	error::{BinaryOp, Diagnostic, IntoDiagnostic, LogicalOp, TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -150,7 +150,7 @@ pub(super) fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, 
 	)
 }
 
-pub(super) fn not_applicable(operator: BinaryOp, left: ValueType, right: ValueType, fragment: Fragment) -> Error {
+pub(super) fn not_applicable(operator: BinaryOp, left: ValueType, right: ValueType, fragment: Fragment) -> ValueError {
 	TypeError::BinaryOperatorNotApplicable {
 		operator,
 		left,

@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	util::{cowvec::CowVec, hash::Hash128},
 	value::row_number::RowNumber,
 };
@@ -236,7 +236,7 @@ impl Store {
 				}
 				let fields: Vec<RowShapeField> =
 					decode_body::<Vec<RowShapeField>>(&row).map_err(|e| {
-						Error::from(FlowStateError::Decode {
+						ValueError::from(FlowStateError::Decode {
 							state: "row shape",
 							cause: e.to_string(),
 						})
@@ -259,7 +259,7 @@ impl Store {
 			return Ok(());
 		}
 		let row = encode(&shape.fields().to_vec()).map_err(|e| {
-			Error::from(FlowStateError::Encode {
+			ValueError::from(FlowStateError::Encode {
 				state: "row shape",
 				cause: e.to_string(),
 			})

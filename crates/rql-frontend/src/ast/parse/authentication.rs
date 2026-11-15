@@ -3,7 +3,7 @@
 
 use reifydb_core::error::diagnostic::query::duplicate_field;
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	return_error,
 };
 
@@ -81,7 +81,7 @@ impl<'bump> Parser<'bump> {
 			return Ok(());
 		}
 		let fragment = self.current()?.fragment.to_owned();
-		Err(Error::from(TypeError::Ast {
+		Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "'method'".to_string(),
 			},
@@ -97,7 +97,7 @@ impl<'bump> Parser<'bump> {
 
 		let Some(ttl) = settings.ttl else {
 			let fragment = name.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'ttl' is required for an authentication method".to_string(),
 				},
@@ -197,7 +197,7 @@ impl<'bump> Parser<'bump> {
 			return self.advance();
 		}
 		let fragment = current.fragment.to_owned();
-		Err(Error::from(TypeError::Ast {
+		Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "a string literal".to_string(),
 			},

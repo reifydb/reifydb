@@ -4,7 +4,7 @@
 use std::collections;
 
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::Duration,
 };
@@ -16,7 +16,7 @@ fn validate_component_order(
 	current_order: u8,
 	fragment: Fragment,
 	position: usize,
-) -> Result<(), Error> {
+) -> Result<(), ValueError> {
 	let key = if component == 'M' {
 		'M'
 	} else {
@@ -52,7 +52,7 @@ fn validate_component_order(
 	Ok(())
 }
 
-pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
+pub fn parse_duration(fragment: Fragment) -> Result<Duration, ValueError> {
 	let fragment_value = fragment.text();
 
 	if fragment_value.starts_with('P') {
@@ -62,7 +62,7 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	parse_human_duration(fragment)
 }
 
-fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
+fn parse_human_duration(fragment: Fragment) -> Result<Duration, ValueError> {
 	let input = fragment.text();
 	let bytes = input.as_bytes();
 	let len = bytes.len();
@@ -102,7 +102,7 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 		let num_str = &input[num_start..pos];
 		let value: i64 = num_str.parse().map_err(|_| {
 			let frag = fragment.sub_fragment(num_start, num_str.len());
-			Error::from(TypeError::Temporal {
+			ValueError::from(TypeError::Temporal {
 				kind: TemporalKind::InvalidDurationFormat,
 				message: "invalid duration format".into(),
 				fragment: frag,
@@ -175,7 +175,7 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 	Ok(Duration::new(months, days, nanos)?)
 }
 
-fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
+fn parse_iso_duration(fragment: Fragment) -> Result<Duration, ValueError> {
 	let fragment_value = fragment.text();
 
 	if fragment_value.len() == 1 || fragment_value == "PT" {
@@ -259,7 +259,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let years: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error::from(TypeError::Temporal {
+					ValueError::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'Y',
 						},
@@ -319,7 +319,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let value: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error::from(TypeError::Temporal {
+					ValueError::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'M',
 						},
@@ -384,7 +384,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let weeks: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error::from(TypeError::Temporal {
+					ValueError::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'W',
 						},
@@ -445,7 +445,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let day_value: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error::from(TypeError::Temporal {
+					ValueError::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'D',
 						},
@@ -509,7 +509,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let hours: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error::from(TypeError::Temporal {
+					ValueError::from(TypeError::Temporal {
 						kind: TemporalKind::InvalidDurationComponentValue {
 							unit: 'H',
 						},
@@ -560,7 +560,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let seconds_float: f64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						Error::from(TypeError::Temporal {
+						ValueError::from(TypeError::Temporal {
 							kind: TemporalKind::InvalidDurationComponentValue {
 								unit: 'S',
 							},
@@ -576,7 +576,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let seconds: i64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						Error::from(TypeError::Temporal {
+						ValueError::from(TypeError::Temporal {
 							kind: TemporalKind::InvalidDurationComponentValue {
 								unit: 'S',
 							},

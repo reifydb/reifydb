@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -162,7 +162,7 @@ pub fn decoded_schema(
 			continue;
 		};
 		let dictionary = dictionary(id)?.ok_or_else(|| {
-			Error::from(FlowSinkError::DictionaryNotFound {
+			ValueError::from(FlowSinkError::DictionaryNotFound {
 				dictionary_id: format!("{:?}", id),
 				column: field.name().clone(),
 			})
@@ -333,7 +333,7 @@ fn decode_dictionary_columns_where<T: Resolve + ?Sized>(
 		ids.into_iter()
 			.map(|(pos, id)| {
 				let dictionary = txn.dictionary(id)?.ok_or_else(|| {
-					Error::from(FlowSinkError::DictionaryNotFound {
+					ValueError::from(FlowSinkError::DictionaryNotFound {
 						dictionary_id: format!("{:?}", id),
 						column: columns.schema_ref().field(pos).name().clone(),
 					})

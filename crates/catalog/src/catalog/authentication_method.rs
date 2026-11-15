@@ -9,7 +9,7 @@ use reifydb_transaction::{
 	change::TransactionalAuthenticationMethodChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{error::Error, fragment::Fragment};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -182,7 +182,7 @@ impl Catalog {
 	}
 }
 
-fn not_found(name: &str) -> Error {
+fn not_found(name: &str) -> ValueError {
 	CatalogError::NotFound {
 		kind: CatalogObjectKind::AuthenticationMethod,
 		namespace: "system".to_string(),

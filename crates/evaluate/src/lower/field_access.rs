@@ -11,7 +11,7 @@ use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature};
 use reifydb_core::expression::{Expression, FieldAccessExpression, name::display_label};
 use reifydb_value::{
-	error::{Error, RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 };
 
@@ -43,7 +43,7 @@ pub(super) fn lower_field_access<'e>(
 	})
 }
 
-fn field_not_found(field: &str) -> Error {
+fn field_not_found(field: &str) -> ValueError {
 	TypeError::Runtime {
 		kind: RuntimeErrorKind::FieldNotFound {
 			variable: "<expression>".to_string(),

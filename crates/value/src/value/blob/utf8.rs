@@ -3,7 +3,7 @@
 
 use super::Blob;
 use crate::{
-	error::{BlobEncodingKind, Error, TypeError},
+	error::{BlobEncodingKind, TypeError, ValueError},
 	fragment::Fragment,
 };
 
@@ -13,7 +13,7 @@ impl Blob {
 		Blob::new(utf8_str.as_bytes().to_vec())
 	}
 
-	pub fn to_utf8(&self) -> Result<String, Error> {
+	pub fn to_utf8(&self) -> Result<String, ValueError> {
 		match str::from_utf8(self.as_bytes()) {
 			Ok(s) => Ok(s.to_string()),
 			Err(e) => Err(TypeError::BlobEncoding {

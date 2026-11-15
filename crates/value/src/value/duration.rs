@@ -12,7 +12,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, de::Error as DeserializeError};
 
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
 	value::temporal::parse::duration::parse_duration,
@@ -649,7 +649,7 @@ impl From<StdDuration> for Duration {
 }
 
 impl FromStr for Duration {
-	type Err = Error;
+	type Err = ValueError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		parse_duration(Fragment::internal(s.trim()))

@@ -19,7 +19,7 @@ use reifydb_core::{
 	operator_with::{JoinWith, LookupWith, WindowWith},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 fn declared_source_domain(
 	catalog: &Catalog,
@@ -28,7 +28,10 @@ fn declared_source_domain(
 	path: &mut HashSet<FlowId>,
 ) -> Result<TimeDomain> {
 	if !path.insert(flow.id) {
-		return Err(Error(Box::new(internal!("flow {} reaches itself through its own sources", flow.id.0))));
+		return Err(ValueError(Box::new(internal!(
+			"flow {} reaches itself through its own sources",
+			flow.id.0
+		))));
 	}
 
 	let mut resolved: Option<TimeDomain> = None;
@@ -74,7 +77,7 @@ fn declared_source_domain(
 
 fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag> {
 	let Some(def) = catalog.find_view(&mut txn.reborrow(), view)? else {
-		return Err(Error(Box::new(internal!("view {} has no catalog entry", view.0))));
+		return Err(ValueError(Box::new(internal!("view {} has no catalog entry", view.0))));
 	};
 
 	if let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? {
@@ -83,7 +86,10 @@ fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> 
 
 	let dags = catalog.list_flow_dags_asc(&mut txn.reborrow())?;
 	let Some(dag) = dags.into_iter().find(|dag| dag.sink_views().any(|sink| sink == view)) else {
-		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
+		return Err(ValueError(Box::new(internal!(
+			"view {} has no flow to supply its time domain",
+			def.name()
+		))));
 	};
 
 	Ok(dag)
@@ -129,7 +135,7 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 	}
 
 	if lagged && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
+		return Err(ValueError(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
 	}
 
 	Ok(())
@@ -174,12 +180,12 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 	}
 
 	if source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(Error(Box::new(flow_join_retention_requires_event_time(&flow_name))));
+		return Err(ValueError(Box::new(flow_join_retention_requires_event_time(&flow_name))));
 	}
 
 	for input in retained {
 		if !fed_by_event_time_only(catalog, txn, flow, input)? {
-			return Err(Error(Box::new(flow_join_retention_requires_event_time(&flow_name))));
+			return Err(ValueError(Box::new(flow_join_retention_requires_event_time(&flow_name))));
 		}
 	}
 
@@ -189,7 +195,7 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 fn side_input(operator: &FlowNode, side: usize) -> Result<OperatorId> {
 	match operator.inputs.get(side) {
 		Some(input) => Ok(*input),
-		None => Err(Error(Box::new(internal!("operator {} has no input {}", operator.id.0, side)))),
+		None => Err(ValueError(Box::new(internal!("operator {} has no input {}", operator.id.0, side)))),
 	}
 }
 
@@ -208,7 +214,11 @@ fn fed_by_event_time_only(
 			continue;
 		}
 		let Some(operator) = flow.get_operator(&operator_id) else {
-			return Err(Error(Box::new(internal!("flow {} has no operator {}", flow.id.0, operator_id.0))));
+			return Err(ValueError(Box::new(internal!(
+				"flow {} has no operator {}",
+				flow.id.0,
+				operator_id.0
+			))));
 		};
 		if !operator.ty.is_source() {
 			pending.extend(operator.inputs.iter().copied());
@@ -255,7 +265,10 @@ fn view_is_event(
 	let dag = view_flow_dag(catalog, txn, view)?;
 
 	if !path.insert(dag.id) {
-		return Err(Error(Box::new(internal!("flow {} reaches itself through its own sources", dag.id.0))));
+		return Err(ValueError(Box::new(internal!(
+			"flow {} reaches itself through its own sources",
+			dag.id.0
+		))));
 	}
 
 	let mut event = true;

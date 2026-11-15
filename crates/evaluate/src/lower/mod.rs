@@ -34,7 +34,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
-	error::{BinaryOp, Diagnostic, Error, LogicalOp},
+	error::{BinaryOp, Diagnostic, LogicalOp, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::ColumnView,
@@ -84,11 +84,11 @@ struct Node {
 
 enum Stop {
 	RowChanging,
-	Error(Error),
+	Error(ValueError),
 }
 
-impl From<Error> for Stop {
-	fn from(error: Error) -> Self {
+impl From<ValueError> for Stop {
+	fn from(error: ValueError) -> Self {
 		Stop::Error(error)
 	}
 }
@@ -149,7 +149,7 @@ impl LoweredExpr {
 			}
 			Plan::Direct(direct) => direct.evaluate(ctx),
 			Plan::Spliced(spliced) => spliced.evaluate(ctx),
-			Plan::Failed(diagnostic) => Err(Error(diagnostic.clone())),
+			Plan::Failed(diagnostic) => Err(ValueError(diagnostic.clone())),
 		}
 	}
 

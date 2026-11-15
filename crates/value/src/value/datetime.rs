@@ -13,7 +13,7 @@ use serde::{
 };
 
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{date::Date, duration::Duration, temporal::parse::datetime::parse_datetime, time::Time},
 };
@@ -390,7 +390,7 @@ impl<'de> Deserialize<'de> for DateTime {
 }
 
 impl FromStr for DateTime {
-	type Err = Error;
+	type Err = ValueError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		parse_datetime(Fragment::internal(s.trim()))

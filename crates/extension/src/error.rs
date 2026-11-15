@@ -4,7 +4,7 @@
 use std::{error::Error, io};
 
 use reifydb_sdk::error::SdkError;
-use reifydb_value::error::Error as TypeError;
+use reifydb_value::error::ValueError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {
@@ -36,7 +36,7 @@ pub enum ExtensionError {
 	Other(Box<dyn Error + Send + Sync>),
 }
 
-impl From<ExtensionError> for TypeError {
+impl From<ExtensionError> for ValueError {
 	fn from(err: ExtensionError) -> Self {
 		SdkError::Other(err.to_string()).into()
 	}

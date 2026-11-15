@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	Database, Error, IdentityId, Params, Result as ReifyResult,
+	Database, IdentityId, Params, Result as ReifyResult, ValueError,
 	core::interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
@@ -45,7 +45,7 @@ impl NodeSubscribeHost {
 }
 
 impl SubscribeHost for NodeSubscribeHost {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn context(&self) -> &SubscribeContext {
 		&self.context

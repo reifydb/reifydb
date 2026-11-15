@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{Value, duration::Duration, identity::IdentityId},
 };
@@ -21,7 +21,11 @@ use crate::error::AuthError;
 
 impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
-	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
+	pub fn authenticate(
+		&self,
+		method: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<AuthResponse, ValueError> {
 		self.authenticate_as(IdentityId::anonymous(), method, credentials)
 	}
 
@@ -31,7 +35,7 @@ impl AuthService {
 		caller: IdentityId,
 		method: &str,
 		credentials: HashMap<String, String>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		self.provider_for(method)?;
 		let Some(declared) = self.declared_method(method)? else {
 			return Ok(AuthResponse::MethodNotEnabled {
@@ -66,7 +70,7 @@ impl AuthService {
 		method: &str,
 		credentials: HashMap<String, String>,
 		declared: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let ttl = declared.ttl;
 		let identifier = credentials.get("identifier").map(|s| s.as_str()).unwrap_or("");
 		let mut txn = self.engine.begin_query()?;
@@ -96,7 +100,7 @@ impl AuthService {
 		catalog: &Catalog,
 		method: &str,
 		identifier: &str,
-	) -> Result<Option<Identity>, Error> {
+	) -> Result<Option<Identity>, ValueError> {
 		if let Some(u) = catalog.find_identity_by_name(&mut Transaction::Query(txn), identifier)? {
 			return Ok(Some(u));
 		}
@@ -116,7 +120,7 @@ impl AuthService {
 		catalog: &Catalog,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<Option<Authentication>, Error> {
+	) -> Result<Option<Authentication>, ValueError> {
 		catalog.find_authentication_by_identity_and_method(&mut Transaction::Query(txn), identity, method)
 	}
 
@@ -130,7 +134,7 @@ impl AuthService {
 		identifier: &str,
 		method: &str,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let provider = self.provider_for(method)?;
 		let step = provider.authenticate(&stored_auth.properties, credentials)?;
 		self.respond_to_initial_auth_step(caller, step, identity, identifier, method, ttl)
@@ -144,7 +148,7 @@ impl AuthService {
 		identifier: &str,
 		credentials: &HashMap<String, String>,
 		declared: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		if method == "solana"
 			&& let Some(public_key) = credentials.get("public_key").cloned()
 		{
@@ -166,7 +170,7 @@ impl AuthService {
 		identifier: &str,
 		method: &str,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		match step {
 			AuthStep::Authenticated => self.finalize_authentication(identity, ttl),
 			AuthStep::Failed => Ok(invalid_credentials()),
@@ -186,7 +190,7 @@ impl AuthService {
 		&self,
 		identity: IdentityId,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		reifydb_assertions! {
 			assert!(
 				identity != IdentityId::default(),
@@ -225,7 +229,7 @@ impl AuthService {
 		}
 	}
 
-	fn declared_method(&self, method: &str) -> Result<Option<AuthenticationMethod>, Error> {
+	fn declared_method(&self, method: &str) -> Result<Option<AuthenticationMethod>, ValueError> {
 		let mut txn = self.engine.begin_query()?;
 		Ok(self.engine
 			.catalog()
@@ -233,9 +237,9 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn provider_for(&self, method: &str) -> Result<&dyn AuthenticationProvider, Error> {
+	fn provider_for(&self, method: &str) -> Result<&dyn AuthenticationProvider, ValueError> {
 		self.auth_registry.get(method).ok_or_else(|| {
-			Error::from(AuthError::UnknownMethod {
+			ValueError::from(AuthError::UnknownMethod {
 				method: method.to_string(),
 			})
 		})
@@ -245,7 +249,7 @@ impl AuthService {
 		&self,
 		credentials: HashMap<String, String>,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let token_value = match credentials.get("token") {
 			Some(t) if !t.is_empty() => t,
 			_ => return Ok(invalid_credentials()),
@@ -264,7 +268,7 @@ impl AuthService {
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
 		declared: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let ttl = declared.ttl;
 		let Some(challenge) = self.challenges.consume(challenge_id) else {
 			return Ok(AuthResponse::Failed {
@@ -331,7 +335,7 @@ impl AuthService {
 		catalog: &Catalog,
 		identifier: &str,
 		method: &str,
-	) -> Result<Option<Identity>, Error> {
+	) -> Result<Option<Identity>, ValueError> {
 		let resolved = match catalog.find_identity_by_name(&mut Transaction::Query(txn), identifier)? {
 			Some(u) if u.enabled => Some(u),
 			Some(_) => None,
@@ -369,7 +373,7 @@ impl AuthService {
 		identity: IdentityId,
 		method: &str,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let provider = self.provider_for(method)?;
 		let step = provider.verify_challenge(&stored_auth.properties, challenge_payload, credentials)?;
 		respond_to_challenge_step(step, identity, ttl, self)
@@ -390,7 +394,7 @@ fn respond_to_challenge_step(
 	identity: IdentityId,
 	ttl: Option<Duration>,
 	service: &AuthService,
-) -> Result<AuthResponse, Error> {
+) -> Result<AuthResponse, ValueError> {
 	match step {
 		AuthStep::Authenticated => service.finalize_authentication(identity, ttl),
 		AuthStep::Failed => Ok(invalid_credentials()),

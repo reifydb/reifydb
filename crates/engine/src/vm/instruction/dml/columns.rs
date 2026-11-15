@@ -25,7 +25,7 @@ use reifydb_core::{
 use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	util::kernel::picked,
 	value::{
 		Value,
@@ -82,11 +82,11 @@ pub(crate) fn sumtype_variant_tags(
 pub(crate) struct Failure {
 	row: usize,
 	rank: usize,
-	error: Error,
+	error: ValueError,
 }
 
 impl Failure {
-	pub(crate) fn before_columns(row: usize, error: Error) -> Self {
+	pub(crate) fn before_columns(row: usize, error: ValueError) -> Self {
 		Self {
 			row,
 			rank: 0,
@@ -94,7 +94,7 @@ impl Failure {
 		}
 	}
 
-	pub(crate) fn after_columns(pipeline: &ColumnPipeline<'_>, row: usize, error: Error) -> Self {
+	pub(crate) fn after_columns(pipeline: &ColumnPipeline<'_>, row: usize, error: ValueError) -> Self {
 		Self {
 			row,
 			rank: pipeline.columns.len() + 1,
@@ -102,7 +102,7 @@ impl Failure {
 		}
 	}
 
-	pub(crate) fn after_key(pipeline: &ColumnPipeline<'_>, row: usize, error: Error) -> Self {
+	pub(crate) fn after_key(pipeline: &ColumnPipeline<'_>, row: usize, error: ValueError) -> Self {
 		Self {
 			row,
 			rank: pipeline.columns.len() + 2,
@@ -391,7 +391,7 @@ impl ColumnPipeline<'_> {
 		Ok(Some(cast))
 	}
 
-	fn tag_out_of_range(&self, column: &Column, value: &Value) -> Option<Error> {
+	fn tag_out_of_range(&self, column: &Column, value: &Value) -> Option<ValueError> {
 		let (Some(Constraint::SumType(id)), Value::Uint1(tag)) = (column.constraint.constraint(), value) else {
 			return None;
 		};
@@ -408,7 +408,7 @@ impl ColumnPipeline<'_> {
 		})
 	}
 
-	fn first_error(&self, checks: &Checks<'_, '_>) -> Option<(usize, bool, Error)> {
+	fn first_error(&self, checks: &Checks<'_, '_>) -> Option<(usize, bool, ValueError)> {
 		let column = checks.column;
 		let ident = self.fragments.column(&column.name);
 		for row in 0..checks.limit {

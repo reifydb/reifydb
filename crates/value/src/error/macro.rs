@@ -4,36 +4,36 @@
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
-		$crate::error::Error(Box::new($diagnostic))
+		$crate::error::ValueError(Box::new($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		$crate::error::Error(Box::new(diag))
+		$crate::error::ValueError(Box::new(diag))
 	}};
 }
 
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
-		return Err($crate::error::Error(Box::new($diagnostic)))
+		return Err($crate::error::ValueError(Box::new($diagnostic)))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		return Err($crate::error::Error(Box::new(diag)));
+		return Err($crate::error::ValueError(Box::new(diag)));
 	}};
 }
 
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
-		Err($crate::error::Error(Box::new($diagnostic)))
+		Err($crate::error::ValueError(Box::new($diagnostic)))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		Err($crate::error::Error(Box::new(diag)))
+		Err($crate::error::ValueError(Box::new(diag)))
 	}};
 }
 
@@ -42,7 +42,7 @@ pub mod tests {
 	use std::sync::Arc;
 
 	use crate::{
-		error::{Error, IntoDiagnostic, TypeError},
+		error::{IntoDiagnostic, TypeError, ValueError},
 		fragment::{Fragment, StatementColumn, StatementLine},
 	};
 
@@ -50,7 +50,7 @@ pub mod tests {
 	fn test_error_macro() {
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic());
 
-		assert!(matches!(err, Error(_)));
+		assert!(matches!(err, ValueError(_)));
 
 		let diagnostic = err.diagnostic();
 		assert!(diagnostic.message.contains("NaN"));
@@ -58,7 +58,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_error_macro() {
-		fn test_fn() -> Result<(), Error> {
+		fn test_fn() -> Result<(), ValueError> {
 			return_error!(TypeError::NanNotAllowed.into_diagnostic());
 		}
 
@@ -73,7 +73,7 @@ pub mod tests {
 
 	#[test]
 	fn test_err_macro() {
-		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic());
+		let result: Result<(), ValueError> = err!(TypeError::NanNotAllowed.into_diagnostic());
 
 		assert!(result.is_err());
 
@@ -95,7 +95,7 @@ pub mod tests {
 
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic(), fragment.clone());
 
-		assert!(matches!(err, Error(_)));
+		assert!(matches!(err, ValueError(_)));
 
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
@@ -113,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_error_macro_with_fragment() {
-		fn test_fn() -> Result<(), Error> {
+		fn test_fn() -> Result<(), ValueError> {
 			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
@@ -149,7 +149,7 @@ pub mod tests {
 			text: Arc::from("err fragment test"),
 		};
 
-		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
+		let result: Result<(), ValueError> = err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 
 		assert!(result.is_err());
 

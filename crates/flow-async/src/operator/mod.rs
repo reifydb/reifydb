@@ -37,7 +37,7 @@ use reifydb_value::{
 };
 #[cfg(feature = "runtime")]
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{container::temporal_array::datetimes, duration::Duration},
 };
 
@@ -233,9 +233,9 @@ pub(crate) fn time_at_or_after(batch: &RecordBatch, from: DateTime) -> Result<Bo
 		_ => None,
 	};
 	let threshold = Scalar::new(TimestampNanosecondArray::from(vec![from.to_nanos()]).with_timezone_opt(zone));
-	let open = gt_eq(times, &threshold).map_err(|err| Error(Box::new(internal!(err.to_string()))))?;
-	or(&open, &is_null(times).map_err(|err| Error(Box::new(internal!(err.to_string()))))?)
-		.map_err(|err| Error(Box::new(internal!(err.to_string()))))
+	let open = gt_eq(times, &threshold).map_err(|err| ValueError(Box::new(internal!(err.to_string()))))?;
+	or(&open, &is_null(times).map_err(|err| ValueError(Box::new(internal!(err.to_string()))))?)
+		.map_err(|err| ValueError(Box::new(internal!(err.to_string()))))
 }
 
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]

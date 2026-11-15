@@ -4,7 +4,7 @@
 use reifydb_core::{error::CoreError, util::ioc::IocContainer};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server_ws::acceptor::WsStreamAcceptor;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 use tokio::runtime::Handle;
 
 use crate::{
@@ -50,7 +50,7 @@ impl SubsystemFactory for ConsoleSubsystemFactory {
 	}
 }
 
-fn init_failed(reason: &str) -> Error {
+fn init_failed(reason: &str) -> ValueError {
 	CoreError::SubsystemInitFailed {
 		subsystem: "console".to_string(),
 		reason: reason.to_string(),

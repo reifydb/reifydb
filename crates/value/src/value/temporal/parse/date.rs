@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::Date,
 };
 
-pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
+pub fn parse_date(fragment: Fragment) -> Result<Date, ValueError> {
 	let value = fragment.text();
 	let parts: Vec<&str> = value.split('-').collect();
 
@@ -71,7 +71,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let year = year_str.parse::<i32>().map_err(|_| {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidYear,
 			message: format!("invalid year value '{}'", year_frag.text()),
 			fragment: year_frag,
@@ -91,7 +91,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let month = month_str.parse::<u32>().map_err(|_| {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidMonth,
 			message: format!("invalid month value '{}'", month_frag.text()),
 			fragment: month_frag,
@@ -111,7 +111,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	let day = day_str.parse::<u32>().map_err(|_| {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidDay,
 			message: format!("invalid day value '{}'", day_frag.text()),
 			fragment: day_frag,
@@ -119,7 +119,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 	})?;
 
 	Date::new(year, month, day).ok_or_else(|| {
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidDateValues,
 			message: "invalid date values".into(),
 			fragment,

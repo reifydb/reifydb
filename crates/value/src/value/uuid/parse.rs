@@ -4,7 +4,7 @@
 use ::uuid::Uuid;
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		identity::IdentityId,
@@ -12,7 +12,7 @@ use crate::{
 	},
 };
 
-pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
+pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, ValueError> {
 	let value = fragment.text().trim();
 
 	if let Ok(uuid) = Uuid::parse_str(value)
@@ -26,7 +26,7 @@ pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
 	.into())
 }
 
-pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
+pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, ValueError> {
 	let value = fragment.text().trim();
 	if let Ok(uuid) = Uuid::parse_str(value)
 		&& uuid.get_version_num() == 7
@@ -40,7 +40,7 @@ pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
 	.into())
 }
 
-pub fn parse_identity_id(fragment: Fragment) -> Result<IdentityId, Error> {
+pub fn parse_identity_id(fragment: Fragment) -> Result<IdentityId, ValueError> {
 	let uuid7 = parse_uuid7(fragment)?;
 	Ok(IdentityId(uuid7))
 }

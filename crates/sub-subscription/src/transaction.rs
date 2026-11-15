@@ -42,7 +42,7 @@ use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -255,7 +255,7 @@ impl Find for EphemeralTransaction {
 
 impl Intern for EphemeralTransaction {
 	fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
-		Err(Error::from(FlowGraphError::UnsupportedNode {
+		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DictionaryIntern",
 		}))
 	}
@@ -323,7 +323,7 @@ impl FlowTransaction for EphemeralTransaction {
 	}
 
 	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change> {
-		Err(Error::from(FlowGraphError::UnsupportedNode {
+		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DurableSink",
 		}))
 	}
@@ -333,7 +333,7 @@ impl FlowTransaction for EphemeralTransaction {
 		_sink: &mut dyn DurableSink,
 		_timer: Timer,
 	) -> Result<Option<TimedOutput>> {
-		Err(Error::from(FlowGraphError::UnsupportedNode {
+		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DurableSink",
 		}))
 	}

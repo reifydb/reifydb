@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_rql_frontend::bump::BumpBox;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{system_columns::SystemColumn, value_type::ValueType},
 };
@@ -143,7 +143,7 @@ fn statement(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Vec<SystemColumn>>
 		}) => {
 			let mut diagnostic = column_not_found(reference.fragment);
 			diagnostic.notes.push(note);
-			Err(Error(Box::new(diagnostic)))
+			Err(ValueError(Box::new(diagnostic)))
 		}
 	}
 }

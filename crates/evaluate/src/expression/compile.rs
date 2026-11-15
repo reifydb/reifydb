@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	error::{BinaryOp, Error, IntoDiagnostic, RuntimeErrorKind, TypeError},
+	error::{BinaryOp, IntoDiagnostic, RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -444,7 +444,7 @@ pub(crate) fn enforce_cast_constraint(
 	Ok(())
 }
 
-pub(crate) fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
+pub(crate) fn wrap_cast_error(err: ValueError, fragment: Fragment, target: &ValueType) -> ValueError {
 	if err.0.code.starts_with("CAST_") {
 		return err;
 	}
@@ -473,7 +473,7 @@ pub(crate) fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType
 			cause,
 		}
 	};
-	Error::from(wrapped)
+	ValueError::from(wrapped)
 }
 
 #[cfg(test)]

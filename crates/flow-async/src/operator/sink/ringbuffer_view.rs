@@ -77,7 +77,7 @@ use reifydb_flow::{
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		Value,
@@ -436,7 +436,7 @@ impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
 
 pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
 	encode(&value).map_err(|e| {
-		Error::from(FlowStateError::Encode {
+		ValueError::from(FlowStateError::Encode {
 			state,
 			cause: e.to_string(),
 		})
@@ -445,7 +445,7 @@ pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRo
 
 pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
 	decode(row).map_err(|e| {
-		Error::from(FlowStateError::Decode {
+		ValueError::from(FlowStateError::Decode {
 			state,
 			cause: e.to_string(),
 		})
@@ -454,7 +454,7 @@ pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64
 
 fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow> {
 	encode(&value).map_err(|e| {
-		Error::from(FlowStateError::Encode {
+		ValueError::from(FlowStateError::Encode {
 			state,
 			cause: e.to_string(),
 		})
@@ -463,7 +463,7 @@ fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow> {
 
 fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 	decode(row).map_err(|e| {
-		Error::from(FlowStateError::Decode {
+		ValueError::from(FlowStateError::Decode {
 			state,
 			cause: e.to_string(),
 		})
@@ -636,7 +636,7 @@ impl SinkRingBufferViewOperator {
 
 	fn timer_partition(&self, key: &EncodedKey) -> Result<Option<Partition>> {
 		RingBufferMetadataKey::decode(key).and_then(|decoded| decoded.partition()).ok_or_else(|| {
-			Error::from(FlowStateError::Decode {
+			ValueError::from(FlowStateError::Decode {
 				state: "RingBufferMetadataKey",
 				cause: "a RowTtl timer key must decode as ring buffer metadata".to_string(),
 			})

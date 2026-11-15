@@ -25,7 +25,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::{Error, IntoDiagnostic},
+	error::{IntoDiagnostic, ValueError},
 	value::row_number::RowNumber,
 };
 
@@ -53,7 +53,7 @@ pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateK
 	let mut id = [0u8; GUEST_MAPPING_KEY_LEN];
 	let bytes = key.as_slice();
 	if bytes.len() > GUEST_MAPPING_KEY_LEN {
-		return Err(Error(Box::new(
+		return Err(ValueError(Box::new(
 			FlowStateError::GuestKeyTooWide {
 				len: bytes.len(),
 			}

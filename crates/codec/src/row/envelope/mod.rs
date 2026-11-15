@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	encoding::LeBytes,
-	error::{Error as ValueError, TypeError},
+	error::{TypeError, ValueError},
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, partition::Partition},
 };

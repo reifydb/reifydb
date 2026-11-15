@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::JoinType;
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
 	Result,
@@ -215,7 +215,7 @@ impl<'bump> Parser<'bump> {
 						}))
 					} else {
 						let fragment = self.current()?.fragment.to_owned();
-						Err(Error::from(TypeError::Ast {
+						Err(ValueError::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "TESTS or TEST after RUN".to_string(),
 							},

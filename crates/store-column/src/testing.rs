@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, SyncDir, Unlink, testing::Continue},
 	sync::Arc,
 };
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 use vortex_session::VortexSession;
 
 use crate::{
@@ -23,20 +23,20 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum WriteOutcome {
 	Land,
-	LandThenErr(Error),
-	Err(Error),
+	LandThenErr(ValueError),
+	Err(ValueError),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum OpenOutcome {
 	Honest,
-	Err(Error),
+	Err(ValueError),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum RemoveOutcome {
 	Land,
-	Err(Error),
+	Err(ValueError),
 }
 
 pub trait ColumnHooks: Send + Sync {
@@ -170,7 +170,7 @@ mod tests {
 		BlockData::new(StdArc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column])
 	}
 
-	fn injected() -> Error {
+	fn injected() -> ValueError {
 		ColumnError::Fs {
 			operation: "remove",
 			source: FsError::Io {

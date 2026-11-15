@@ -13,7 +13,7 @@ use reifydb_codec::row::{
 };
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -337,9 +337,9 @@ impl IntoDiagnostic for PartitionError {
 	}
 }
 
-impl From<PartitionError> for Error {
+impl From<PartitionError> for ValueError {
 	fn from(err: PartitionError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 

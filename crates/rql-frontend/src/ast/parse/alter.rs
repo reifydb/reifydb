@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
 	Result,
@@ -119,7 +119,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		let fragment = self.current()?.fragment.to_owned();
-		Err(Error::from(TypeError::Ast {
+		Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "SEQUENCE, FLOW, TABLE, USER, or a policy target type after ALTER"
 					.to_string(),
@@ -133,7 +133,7 @@ impl<'bump> Parser<'bump> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
 			let fragment = token.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "table.column or namespace.table.column after ALTER SEQUENCE"
 						.to_string(),
@@ -217,7 +217,7 @@ impl<'bump> Parser<'bump> {
 			}
 		} else {
 			let fragment = self.current()?.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "ADD, DROP, or RENAME".to_string(),
 				},
@@ -266,7 +266,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "'grpc'".to_string(),
 						},
@@ -294,7 +294,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		let grpc = grpc.ok_or_else(|| {
-			Error::from(TypeError::Ast {
+			ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'grpc' key in WITH block".to_string(),
 				},

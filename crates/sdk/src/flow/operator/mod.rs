@@ -19,7 +19,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	operator_with::ApplyWith,
 };
-use reifydb_value::{config::ExtensionParams, error::Error as ValueError};
+use reifydb_value::{config::ExtensionParams, error::ValueError};
 
 use crate::{
 	error::Result,

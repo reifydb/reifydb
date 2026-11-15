@@ -25,7 +25,7 @@ use reifydb_engine::{
 use reifydb_subscription::delivery::DeliveryResult;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	reifydb_assertions,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
@@ -171,7 +171,7 @@ pub async fn handle_subscribe<S: WireSink, H: SubscribeHost>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
-) -> Result<Result<SubscribeAck, SubscribeError<H::Error>>, Error> {
+) -> Result<Result<SubscribeAck, SubscribeError<H::Error>>, ValueError> {
 	let (ack, hydration) = match register_subscribe(
 		host,
 		connection_id,
@@ -206,7 +206,7 @@ pub async fn register_subscribe<S: WireSink, H: SubscribeHost>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
-) -> Result<Result<(SubscribeAck, SubscribeHydration), SubscribeError<H::Error>>, Error> {
+) -> Result<Result<(SubscribeAck, SubscribeHydration), SubscribeError<H::Error>>, ValueError> {
 	if queries.is_empty() {
 		return Ok(Err(SubscribeError::Empty));
 	}
@@ -268,7 +268,7 @@ pub async fn hydrate_subscribe<S: WireSink, E>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	format: S::Format,
 	hydration: SubscribeHydration,
-) -> Result<Result<(), SubscribeError<E>>, Error> {
+) -> Result<Result<(), SubscribeError<E>>, ValueError> {
 	hydrate_locals(
 		ctx,
 		hydration.identity,
@@ -293,7 +293,7 @@ async fn resolve_subscriptions<S: WireSink, H: SubscribeHost>(
 	identity: IdentityId,
 	queries: &[(String, Params, SubscribeOptions)],
 	format: S::Format,
-) -> Result<Result<Resolved, SubscribeError<H::Error>>, Error> {
+) -> Result<Result<Resolved, SubscribeError<H::Error>>, ValueError> {
 	let ctx = host.context();
 	let mut resolved: Vec<ResolvedSubscription> = Vec::with_capacity(queries.len());
 	let mut local_hydrations: Vec<LocalHydration> = Vec::new();
@@ -516,7 +516,7 @@ async fn hydrate_locals<S: WireSink, E>(
 	local_hydrations: &[LocalHydration],
 	effective_max_rows: &HashMap<SubscriptionId, u64>,
 	server_cap: u64,
-) -> Result<Result<(), SubscribeError<E>>, Error> {
+) -> Result<Result<(), SubscribeError<E>>, ValueError> {
 	let hydrating: Vec<SubscriptionId> =
 		local_hydrations.iter().filter(|(_, _, h, _)| h.enabled).map(|(sub_id, _, _, _)| *sub_id).collect();
 	if !hydrating.is_empty() {
@@ -622,7 +622,7 @@ pub async fn handle_unsubscribe<S: WireSink>(
 	registry: &Arc<SubscriptionRegistry<S>>,
 	connection_id: ConnectionId,
 	subscription_ids: &[SubscriptionId],
-) -> Result<Vec<SubscriptionId>, Error> {
+) -> Result<Vec<SubscriptionId>, ValueError> {
 	let removed = registry.unsubscribe_owned(connection_id, subscription_ids);
 	for subscription_id in &removed {
 		#[cfg(not(reifydb_single_threaded))]
@@ -650,7 +650,7 @@ async fn run_remote_proxy<S: WireSink>(
 }
 
 #[cfg(not(reifydb_single_threaded))]
-fn end_remote_proxy(result: Result<(), Error>) {
+fn end_remote_proxy(result: Result<(), ValueError>) {
 	match result {
 		Ok(()) => {}
 		Err(error) if error.0.code == "CONNECTION_LOST" => {}
@@ -669,7 +669,7 @@ async fn run_subscription_hydrate<S: WireSink>(
 	lease: VersionLeaseGuard,
 	max_rows: u64,
 	format: S::Format,
-) -> Result<Result<(), SubscriptionHydrateError>, Error> {
+) -> Result<Result<(), SubscriptionHydrateError>, ValueError> {
 	let service: SubscriptionServiceRef = match ctx.engine().services().ioc.resolve() {
 		Ok(s) => s,
 		Err(e) => {
@@ -766,7 +766,7 @@ impl SubscriptionHydrateError {
 	}
 }
 
-async fn rollback_resolved(engine: &StandardEngine, resolved: &[ResolvedSubscription]) -> Result<(), Error> {
+async fn rollback_resolved(engine: &StandardEngine, resolved: &[ResolvedSubscription]) -> Result<(), ValueError> {
 	for subscription in resolved {
 		if let ResolvedSubscription::Local {
 			subscription_id,
@@ -785,7 +785,7 @@ async fn rollback_resolved(engine: &StandardEngine, resolved: &[ResolvedSubscrip
 async fn rollback_local_subscriptions(
 	engine: &StandardEngine,
 	local_hydrations: &[LocalHydration],
-) -> Result<(), Error> {
+) -> Result<(), ValueError> {
 	for (subscription_id, _, _, _) in local_hydrations {
 		#[cfg(not(reifydb_single_threaded))]
 		cleanup_subscription(engine, *subscription_id).await?;
@@ -799,7 +799,7 @@ async fn abort_warming<S: WireSink>(
 	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry<S>>,
 	subscription_id: SubscriptionId,
-) -> Result<(), Error> {
+) -> Result<(), ValueError> {
 	registry.unsubscribe(subscription_id);
 
 	#[cfg(not(reifydb_single_threaded))]
@@ -812,13 +812,13 @@ async fn abort_warming<S: WireSink>(
 #[cfg(all(test, not(reifydb_single_threaded)))]
 mod tests {
 	use reifydb_engine::subscription::HydrateError;
-	use reifydb_value::error::{Diagnostic, Error};
+	use reifydb_value::error::{Diagnostic, ValueError};
 
 	use super::{SubscribeError, end_remote_proxy};
 	use crate::errors::CreateSubscriptionError;
 
-	fn error_with_code(code: &str) -> Error {
-		Error(Box::new(Diagnostic {
+	fn error_with_code(code: &str) -> ValueError {
+		ValueError(Box::new(Diagnostic {
 			code: code.to_string(),
 			message: "remote stream ended".to_string(),
 			..Default::default()
@@ -839,7 +839,7 @@ mod tests {
 	#[test]
 	fn only_item_errors_name_an_index() {
 		// A whole-call error must name no item, or a client blames an innocent subscription.
-		let cases: Vec<(SubscribeError<Error>, Option<usize>)> = vec![
+		let cases: Vec<(SubscribeError<ValueError>, Option<usize>)> = vec![
 			(SubscribeError::Empty, None),
 			(
 				SubscribeError::Create {

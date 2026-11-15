@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use super::{
 	graph::DirectedGraph,
@@ -74,13 +74,13 @@ impl FlowBuilder {
 		let target = edge.target;
 
 		if self.graph.get_node(&source).is_none() {
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"Flow edge references missing source node {:?}",
 				source
 			))));
 		}
 		if self.graph.get_node(&target).is_none() {
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"Flow edge references missing target node {:?}",
 				target
 			))));

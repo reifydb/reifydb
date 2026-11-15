@@ -13,7 +13,7 @@ use arrow_select::{
 
 use crate::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	util::bitmap,
 };
 
@@ -47,7 +47,7 @@ where
 
 pub fn rows_in_range(indices: &[usize], len: usize) -> Result<()> {
 	match indices.iter().find(|&&index| index >= len) {
-		Some(index) => Err(Error(Box::new(Diagnostic {
+		Some(index) => Err(ValueError(Box::new(Diagnostic {
 			code: "INTERNAL_ERROR".to_string(),
 			message: format!("row index {index} out of range for a column of {len} rows"),
 			..Diagnostic::default()

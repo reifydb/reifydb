@@ -3,7 +3,7 @@
 
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	value::{
 		column_view::{ColumnView, ViewData},
 		container::{
@@ -29,7 +29,7 @@ use crate::row::bytes::RowBuilder;
 impl RowShape {
 	pub fn write_columns<B: RowBuilder>(&self, rows: &mut [B], columns: &[ColumnView]) -> Result<()> {
 		if columns.len() != self.fields().len() || columns.iter().any(|column| column.len() != rows.len()) {
-			return Err(Error(Box::new(Diagnostic {
+			return Err(ValueError(Box::new(Diagnostic {
 				code: "INTERNAL_ERROR".to_string(),
 				message: format!(
 					"cannot write columns of lengths {:?} into {} rows of a shape with {} fields",

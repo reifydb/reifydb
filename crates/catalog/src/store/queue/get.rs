@@ -6,14 +6,14 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn get_queue(rx: &mut Transaction<'_>, queue: QueueId) -> Result<Queue> {
 		Self::find_queue(rx, queue)?.ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"Queue with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				queue
 			)))

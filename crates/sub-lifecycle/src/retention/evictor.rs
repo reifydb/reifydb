@@ -45,7 +45,7 @@ use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
 		row_number::RowNumber,
@@ -77,7 +77,7 @@ impl EvictorState {
 		self.expiry_cursors.retain(|key, _| key.0 != storage);
 	}
 
-	fn record_failure(&mut self, storage: StorageId, error: &Error, budget: &mut u64, tally: &mut ClassTally) {
+	fn record_failure(&mut self, storage: StorageId, error: &ValueError, budget: &mut u64, tally: &mut ClassTally) {
 		if is_conflict(error) {
 			debug!(?storage, "retention eviction conflicted; retrying next tick");
 			self.forget(storage);
@@ -1417,11 +1417,11 @@ mod tests {
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
 	}
 
-	fn conflict() -> Error {
+	fn conflict() -> ValueError {
 		TransactionError::Conflict.into()
 	}
 
-	fn unexpected() -> Error {
+	fn unexpected() -> ValueError {
 		TransactionError::TooLarge.into()
 	}
 
@@ -1429,7 +1429,7 @@ mod tests {
 		StorageId::RingBuffer(RingBufferId(1))
 	}
 
-	fn fail(state: &mut EvictorState, error: Error) -> (u64, ClassTally) {
+	fn fail(state: &mut EvictorState, error: ValueError) -> (u64, ClassTally) {
 		let mut budget = 8;
 		let mut tally = ClassTally::default();
 		state.record_failure(storage(), &error, &mut budget, &mut tally);

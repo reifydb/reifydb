@@ -3,13 +3,13 @@
 
 use super::Blob;
 use crate::{
-	error::{BlobEncodingKind, Error, TypeError},
+	error::{BlobEncodingKind, TypeError, ValueError},
 	fragment::Fragment,
 	util::base64::engine::general_purpose,
 };
 
 impl Blob {
-	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
+	pub fn from_b64(fragment: Fragment) -> Result<Self, ValueError> {
 		let b64_str = fragment.text();
 
 		match general_purpose::STANDARD.decode(b64_str) {
@@ -26,7 +26,7 @@ impl Blob {
 		}
 	}
 
-	pub fn from_b64url(fragment: Fragment) -> Result<Self, Error> {
+	pub fn from_b64url(fragment: Fragment) -> Result<Self, ValueError> {
 		let b64url_str = fragment.text();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),

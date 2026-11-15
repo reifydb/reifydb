@@ -13,7 +13,7 @@ pub mod sink;
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{
-	Database, Error, IdentityId, Params, Result as ReifyResult,
+	Database, IdentityId, Params, Result as ReifyResult, ValueError,
 	core::{
 		interface::catalog::{id::SubscriptionId, subscription::SubscribeOptions},
 		internal,
@@ -61,7 +61,7 @@ impl Subscriptions {
 	pub fn new(db: &Database) -> ReifyResult<Self> {
 		let store = db
 			.subsystem::<SubscriptionSubsystem>()
-			.ok_or_else(|| Error(Box::new(internal!("the subscription subsystem is not running"))))?
+			.ok_or_else(|| ValueError(Box::new(internal!("the subscription subsystem is not running"))))?
 			.store()
 			.clone();
 		let (shutdown, _) = watch::channel(false);
@@ -81,7 +81,7 @@ impl Subscriptions {
 		&self,
 		identity: IdentityId,
 		queries: &[(String, Params, SubscribeOptions)],
-	) -> ReifyResult<Result<Vec<SubscriptionId>, SubscribeError<Error>>> {
+	) -> ReifyResult<Result<Vec<SubscriptionId>, SubscribeError<ValueError>>> {
 		let ack = match handle_subscribe(
 			&self.host,
 			self.connection_id,
@@ -142,7 +142,7 @@ impl Subscriptions {
 			}
 			pushes.extend(batch);
 		}
-		Err(Error(Box::new(internal!(
+		Err(ValueError(Box::new(internal!(
 			"the subscription store kept producing batches after {} drain passes, so a caller \
 			 that asked to be caught up could never be told it was; a poller that stages work \
 			 as fast as it is drained is the only thing that reads like this",

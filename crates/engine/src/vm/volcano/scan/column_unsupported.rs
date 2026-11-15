@@ -4,7 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::{error::diagnostic::query::unsupported_in_column_layout, value::column::headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	Result,
@@ -25,11 +25,11 @@ impl UnsupportedColumnScanNode {
 
 impl QueryNode for UnsupportedColumnScanNode {
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Err(Error(Box::new(unsupported_in_column_layout(&self.what))))
+		Err(ValueError(Box::new(unsupported_in_column_layout(&self.what))))
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
-		Err(Error(Box::new(unsupported_in_column_layout(&self.what))))
+		Err(ValueError(Box::new(unsupported_in_column_layout(&self.what))))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

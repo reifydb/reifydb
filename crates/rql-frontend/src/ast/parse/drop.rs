@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	value::identity::IdentityKind,
 };
 
@@ -143,7 +143,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		let fragment = self.current()?.fragment.to_owned();
-		Err(Error::from(TypeError::Ast {
+		Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, SINK, HANDLER, TEST, or BINDING"
 					.to_string(),

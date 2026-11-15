@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use crate::{
 	actors::pending::PendingWrite,
@@ -117,7 +117,7 @@ pub fn check_batch_keys(keys: &[GroupStateKey]) -> Result<()> {
 pub fn check_batch_key(key: &GroupStateKey) -> Result<()> {
 	let inner = key.as_slice();
 	if inner.is_empty() || !is_framed_inner(inner) {
-		return Err(Error(Box::new(flow_state_batch_key_unframed(inner.len()))));
+		return Err(ValueError(Box::new(flow_state_batch_key_unframed(inner.len()))));
 	}
 	Ok(())
 }

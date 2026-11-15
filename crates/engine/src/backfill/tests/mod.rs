@@ -36,7 +36,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{
 		Value,
@@ -412,8 +412,8 @@ fn six_rows(db: &Db) -> CommitVersion {
 	])
 }
 
-fn error(code: &str) -> Error {
-	Error(Box::new(Diagnostic {
+fn error(code: &str) -> ValueError {
+	ValueError(Box::new(Diagnostic {
 		code: code.to_string(),
 		..Default::default()
 	}))

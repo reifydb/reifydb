@@ -41,7 +41,7 @@ use reifydb_flow::{
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		Value,
@@ -138,7 +138,7 @@ impl SinkSeriesViewOperator {
 	fn series_key_at(&self, keys: &[Option<u64>], row_idx: usize) -> Result<u64> {
 		let key_column = self.key.column();
 		keys[row_idx].ok_or_else(|| {
-			Error::from(FlowSinkError::MissingSeriesKey {
+			ValueError::from(FlowSinkError::MissingSeriesKey {
 				view: self.view.def().name().to_string(),
 				column: if key_column.is_empty() {
 					SystemColumn::Time.name().to_string()

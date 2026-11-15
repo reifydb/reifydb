@@ -12,7 +12,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	util::float_format::format_f64,
 };
 
@@ -143,7 +143,7 @@ impl From<OrderedF64> for f64 {
 }
 
 impl TryFrom<f64> for OrderedF64 {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from(f: f64) -> Result<Self, Self::Error> {
 		if f.is_nan() {

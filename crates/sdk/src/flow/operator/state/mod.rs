@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	state::batch::{StateBatch, check_batch_keys},
 };
-use reifydb_value::error::Error as ValueError;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	error::{Result, SdkError},

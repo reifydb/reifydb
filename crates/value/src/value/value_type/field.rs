@@ -10,7 +10,7 @@ use serde_json::{from_str, json};
 
 use crate::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
@@ -236,8 +236,8 @@ pub fn is_sumtype_tag(field: &Field) -> bool {
 	field.extension_type_name() == Some(SumTypeTag::NAME)
 }
 
-pub(crate) fn field_error(message: String) -> Error {
-	Error(Box::new(Diagnostic {
+pub(crate) fn field_error(message: String) -> ValueError {
+	ValueError(Box::new(Diagnostic {
 		code: "INTERNAL_ERROR".to_string(),
 		message,
 		..Diagnostic::default()

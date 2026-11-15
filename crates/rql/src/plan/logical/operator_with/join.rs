@@ -15,7 +15,7 @@ use reifydb_rql_frontend::{
 	diagnostic::AstError,
 	token::{keyword::Keyword, token::Token},
 };
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
 	Result,
@@ -75,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 		if let Some(entry) = column_pick
 			&& join.retention.as_ref().is_some_and(|retention| retention.right.is_some())
 		{
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a pick by time, or a retention without 'right'".to_string(),
 				},

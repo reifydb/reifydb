@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{Function, Prepared, context::FunctionContext};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -53,7 +53,7 @@ pub(super) fn lower_call<'e>(
 ) -> Lowered<Node> {
 	let name = call.func.0.text();
 	assert!(ctx.symbols.get_function(name).is_none(), "UDF '{}' should have been hoisted to UdfEvalNode", name);
-	let function = ctx.routines.get_scalar_function(name).ok_or_else(|| -> Error {
+	let function = ctx.routines.get_scalar_function(name).ok_or_else(|| -> ValueError {
 		EvaluateError::UnknownFunction {
 			name: name.to_string(),
 			fragment: call.func.0.clone(),
@@ -74,7 +74,7 @@ pub(super) fn lower_call<'e>(
 			None => Err(Stop::RowChanging),
 		};
 	}
-	function.arity().check(&call.func.0, call.args.len()).map_err(Error::from)?;
+	function.arity().check(&call.func.0, call.args.len()).map_err(ValueError::from)?;
 	let type_positions = function.type_argument_positions();
 	let args = call
 		.args

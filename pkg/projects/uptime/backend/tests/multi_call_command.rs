@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb::{
-	Database, Error, IdentityId, Value, WithSubsystem, server,
+	Database, IdentityId, Value, ValueError, WithSubsystem, server,
 	value::{
 		params::Params,
 		value::{duration::Duration, frame::frame::Frame, into::IntoValue, uuid::Uuid7},
@@ -27,7 +27,7 @@ fn admin(db: &Database, rql: &str) {
 	}
 }
 
-fn command_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+fn command_as(db: &Database, id: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, ValueError> {
 	let r = db.engine().command_as(id, rql, params);
 	match r.error {
 		Some(e) => Err(e),

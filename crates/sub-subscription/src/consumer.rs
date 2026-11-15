@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, value::identity::IdentityId};
+use reifydb_value::{Result, error::ValueError, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -92,7 +92,7 @@ impl SubscriptionCommitLogConsumer {
 struct DispatchBarrier {
 	remaining: AtomicUsize,
 	reply: Mutex<Option<Reply>>,
-	error: Mutex<Option<Error>>,
+	error: Mutex<Option<ValueError>>,
 }
 
 impl DispatchBarrier {
@@ -339,7 +339,7 @@ mod tests {
 			error: Mutex::new(None),
 		});
 
-		barrier.complete_one(Err(Error(Box::new(internal!("dispatch failed")))));
+		barrier.complete_one(Err(ValueError(Box::new(internal!("dispatch failed")))));
 		barrier.complete_one(Ok(()));
 
 		let outcome = slot.lock().take().expect("the reply fires once the last worker completes");

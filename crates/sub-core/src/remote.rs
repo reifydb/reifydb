@@ -15,7 +15,7 @@ mod disabled {
 	use std::fmt;
 
 	use reifydb_client::{RawChangePayload, SubscriptionConfig, WireFormat};
-	use reifydb_value::error::Error;
+	use reifydb_value::error::ValueError;
 	use tokio::sync::watch;
 
 	#[derive(Debug)]
@@ -49,7 +49,7 @@ mod disabled {
 		remote_sub: RemoteSubscription,
 		_shutdown: watch::Receiver<bool>,
 		_sink: F,
-	) -> Result<(), Error>
+	) -> Result<(), ValueError>
 	where
 		F: FnMut(RawChangePayload) -> bool + Send + 'static,
 	{

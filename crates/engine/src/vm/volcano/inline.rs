@@ -40,7 +40,7 @@ pub(crate) use reifydb_rql::expression::variant::declared_sumtype_id;
 use reifydb_rql::expression::variant::{EnumOperand, check_enum, variant_by_name};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions, return_error,
 	value::{Value, column_view::ColumnView, sumtype::SumTypeId, value_type::ValueType},
@@ -888,7 +888,7 @@ impl InlineDataNode {
 		}
 
 		let mut casts: Vec<Option<Value>> = vec![None; all_values.len()];
-		let mut first_error: Option<(usize, Error)> = None;
+		let mut first_error: Option<(usize, ValueError)> = None;
 		for (value_type, rows) in groups {
 			let mut data = ColumnBuilder::with_capacity(value_type, rows.len());
 			for &row in &rows {
@@ -940,7 +940,7 @@ impl InlineDataNode {
 		wide: &ValueType,
 		name: &str,
 		casts: &mut [Option<Value>],
-		first_error: &mut Option<(usize, Error)>,
+		first_error: &mut Option<(usize, ValueError)>,
 	) -> Result<()> {
 		for &row in rows {
 			if first_error.as_ref().is_some_and(|(failed, _)| *failed < row) {

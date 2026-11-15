@@ -41,7 +41,7 @@ use reifydb_transaction::{
 	transaction::{Transaction, command::CommandTransaction},
 };
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value, column_view::ColumnView, constraint::Constraint, datetime::DateTime, identity::IdentityId,
@@ -311,8 +311,8 @@ fn check_rows<V: ValidationMode>(
 	rows: usize,
 ) -> Result<Checked> {
 	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
-	let mut failure: Option<(usize, Error)> = None;
-	let limit = |failure: &Option<(usize, Error)>| failure.as_ref().map_or(rows, |(row, _)| *row);
+	let mut failure: Option<(usize, ValueError)> = None;
+	let limit = |failure: &Option<(usize, ValueError)>| failure.as_ref().map_or(rows, |(row, _)| *row);
 
 	if V::VALIDATED {
 		for ((column, view), filled) in checks.columns.iter().zip(&views).zip(checks.filled) {
@@ -411,7 +411,7 @@ fn first_tag_failure(
 	view: &ColumnView<'_>,
 	variant_tags: &HashMap<SumTypeId, Vec<u8>>,
 	limit: usize,
-) -> Result<Option<(usize, Error)>> {
+) -> Result<Option<(usize, ValueError)>> {
 	let Some(Constraint::SumType(id)) = column.constraint.constraint() else {
 		return Ok(None);
 	};
@@ -432,7 +432,7 @@ fn first_tag_failure(
 	}))
 }
 
-fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -> Error {
+fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -> ValueError {
 	let mut error = match column.constraint.coerce(&mut value) {
 		Err(error) => error,
 		Ok(()) => internal_error!("bulk column {} passed the constraint its scan refused", column.name),
@@ -598,7 +598,7 @@ fn resolve_table(
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let table = catalog
 		.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?
-		.ok_or_else(|| -> Error {
+		.ok_or_else(|| -> ValueError {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Table,
 				namespace: pending.namespace.to_string(),
@@ -648,7 +648,7 @@ fn resolve_ringbuffer(
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let ringbuffer = catalog
 		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
-		.ok_or_else(|| -> Error {
+		.ok_or_else(|| -> ValueError {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::RingBuffer,
 				namespace: pending.namespace.to_string(),
@@ -817,7 +817,7 @@ fn resolve_series(
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let series = catalog
 		.find_series_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.series)?
-		.ok_or_else(|| -> Error {
+		.ok_or_else(|| -> ValueError {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Series,
 				namespace: pending.namespace.to_string(),

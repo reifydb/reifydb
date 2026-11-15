@@ -4,7 +4,7 @@
 use reifydb_core::value::column::builder::ColumnBuilder;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::ColumnView,
@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub fn to_scalar(session: &VortexSession, name: &str, column: &ColumnChunks, value: &Value) -> Result<Scalar> {
-	let rejected = || -> Error {
+	let rejected = || -> ValueError {
 		ColumnError::PredicateValue {
 			column: name.to_string(),
 			ty: column.ty.to_string(),

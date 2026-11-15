@@ -4,7 +4,7 @@
 use std::{any::TypeId, borrow::Cow, mem, num, num::IntErrorKind, ptr, str::FromStr};
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		is::{IsFloat, IsInt, IsUint},
@@ -12,7 +12,7 @@ use crate::{
 	},
 };
 
-pub fn parse_primitive_int<T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_primitive_int<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: IsInt + 'static,
 {
@@ -31,7 +31,7 @@ where
 	}
 }
 
-pub fn parse_primitive_uint<T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_primitive_uint<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: IsUint + 'static,
 {
@@ -50,7 +50,7 @@ where
 	}
 }
 
-pub fn parse_float<T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_float<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: IsFloat + 'static,
 {
@@ -168,7 +168,7 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<T>(fragment: Fragment) -> Result<T, Error>
+fn parse_signed_generic<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
@@ -265,7 +265,7 @@ where
 }
 
 #[inline]
-fn parse_unsigned_generic<T>(fragment: Fragment) -> Result<T, Error>
+fn parse_unsigned_generic<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
@@ -367,7 +367,7 @@ where
 }
 
 #[inline]
-fn parse_float_generic<T>(fragment: Fragment) -> Result<T, Error>
+fn parse_float_generic<T>(fragment: Fragment) -> Result<T, ValueError>
 where
 	T: FromStr<Err = num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
@@ -427,62 +427,62 @@ where
 }
 
 #[inline]
-fn parse_f32(fragment: Fragment) -> Result<f32, Error> {
+fn parse_f32(fragment: Fragment) -> Result<f32, ValueError> {
 	parse_float_generic::<f32>(fragment)
 }
 
 #[inline]
-fn parse_f64(fragment: Fragment) -> Result<f64, Error> {
+fn parse_f64(fragment: Fragment) -> Result<f64, ValueError> {
 	parse_float_generic::<f64>(fragment)
 }
 
 #[inline]
-fn parse_i8(fragment: Fragment) -> Result<i8, Error> {
+fn parse_i8(fragment: Fragment) -> Result<i8, ValueError> {
 	parse_signed_generic::<i8>(fragment)
 }
 
 #[inline]
-fn parse_i16(fragment: Fragment) -> Result<i16, Error> {
+fn parse_i16(fragment: Fragment) -> Result<i16, ValueError> {
 	parse_signed_generic::<i16>(fragment)
 }
 
 #[inline]
-fn parse_i32(fragment: Fragment) -> Result<i32, Error> {
+fn parse_i32(fragment: Fragment) -> Result<i32, ValueError> {
 	parse_signed_generic::<i32>(fragment)
 }
 
 #[inline]
-fn parse_i64(fragment: Fragment) -> Result<i64, Error> {
+fn parse_i64(fragment: Fragment) -> Result<i64, ValueError> {
 	parse_signed_generic::<i64>(fragment)
 }
 
 #[inline]
-fn parse_i128(fragment: Fragment) -> Result<i128, Error> {
+fn parse_i128(fragment: Fragment) -> Result<i128, ValueError> {
 	parse_signed_generic::<i128>(fragment)
 }
 
 #[inline]
-fn parse_u8(fragment: Fragment) -> Result<u8, Error> {
+fn parse_u8(fragment: Fragment) -> Result<u8, ValueError> {
 	parse_unsigned_generic::<u8>(fragment)
 }
 
 #[inline]
-fn parse_u16(fragment: Fragment) -> Result<u16, Error> {
+fn parse_u16(fragment: Fragment) -> Result<u16, ValueError> {
 	parse_unsigned_generic::<u16>(fragment)
 }
 
 #[inline]
-fn parse_u32(fragment: Fragment) -> Result<u32, Error> {
+fn parse_u32(fragment: Fragment) -> Result<u32, ValueError> {
 	parse_unsigned_generic::<u32>(fragment)
 }
 
 #[inline]
-fn parse_u64(fragment: Fragment) -> Result<u64, Error> {
+fn parse_u64(fragment: Fragment) -> Result<u64, ValueError> {
 	parse_unsigned_generic::<u64>(fragment)
 }
 
 #[inline]
-fn parse_u128(fragment: Fragment) -> Result<u128, Error> {
+fn parse_u128(fragment: Fragment) -> Result<u128, ValueError> {
 	parse_unsigned_generic::<u128>(fragment)
 }
 

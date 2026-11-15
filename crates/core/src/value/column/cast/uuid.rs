@@ -7,7 +7,7 @@ use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -89,7 +89,7 @@ macro_rules! impl_to_uuid {
 
 						e.0.with_fragment(proper_fragment.clone());
 
-						Error::from(CastError::InvalidUuid {
+						ValueError::from(CastError::InvalidUuid {
 							fragment: proper_fragment,
 							target: $target_type,
 							cause: *e.0,

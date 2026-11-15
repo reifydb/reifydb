@@ -3,7 +3,7 @@
 
 use std::{error, fmt};
 
-use reifydb_value::error::{Diagnostic, Error};
+use reifydb_value::error::{Diagnostic, ValueError};
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -44,10 +44,10 @@ impl fmt::Display for ClientError {
 
 impl error::Error for ClientError {}
 
-impl From<ClientError> for Error {
+impl From<ClientError> for ValueError {
 	fn from(err: ClientError) -> Self {
 		let diagnostic = match err {
-			ClientError::Server(diagnostic) => return Error(diagnostic),
+			ClientError::Server(diagnostic) => return ValueError(diagnostic),
 			ClientError::ConnectionLost => diag("CONNECTION_LOST", "Connection lost".to_string()),
 			ClientError::Timeout => diag("TIMEOUT", "Operation timed out".to_string()),
 			ClientError::NotAuthenticated(msg) => diag("AUTH_FAILED", msg),
@@ -57,12 +57,12 @@ impl From<ClientError> for Error {
 			ClientError::Encode(msg) => diag("ENCODE", msg),
 			ClientError::Transport(msg) => diag("TRANSPORT", msg),
 		};
-		Error(Box::new(diagnostic))
+		ValueError(Box::new(diagnostic))
 	}
 }
 
-impl From<Error> for ClientError {
-	fn from(err: Error) -> Self {
+impl From<ValueError> for ClientError {
+	fn from(err: ValueError) -> Self {
 		ClientError::Server(err.0)
 	}
 }
@@ -77,7 +77,7 @@ fn diag(code: &str, message: String) -> Diagnostic {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::error::{Diagnostic, Error};
+	use reifydb_value::error::{Diagnostic, ValueError};
 
 	use super::ClientError;
 
@@ -101,7 +101,7 @@ mod tests {
 		];
 
 		for (err, expected_code, expected_message) in cases {
-			let error: Error = err.into();
+			let error: ValueError = err.into();
 			assert_eq!(error.0.code, expected_code);
 			assert_eq!(error.0.message, expected_message);
 		}
@@ -119,7 +119,7 @@ mod tests {
 			..Default::default()
 		};
 
-		let round_tripped: Error = ClientError::from(Error(Box::new(original.clone()))).into();
+		let round_tripped: ValueError = ClientError::from(ValueError(Box::new(original.clone()))).into();
 
 		assert_eq!(*round_tripped.0, original);
 	}

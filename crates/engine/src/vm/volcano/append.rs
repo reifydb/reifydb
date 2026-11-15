@@ -4,7 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::{error::diagnostic::query::append_requires_deferred_view, value::column::headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, fragment::Fragment};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
 	Result,
@@ -25,11 +25,11 @@ impl UnsupportedAppendNode {
 
 impl QueryNode for UnsupportedAppendNode {
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		Err(Error(Box::new(append_requires_deferred_view(self.fragment.clone()))))
+		Err(ValueError(Box::new(append_requires_deferred_view(self.fragment.clone()))))
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
-		Err(Error(Box::new(append_requires_deferred_view(self.fragment.clone()))))
+		Err(ValueError(Box::new(append_requires_deferred_view(self.fragment.clone()))))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

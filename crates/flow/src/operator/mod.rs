@@ -12,7 +12,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::system_columns::{SystemColumn, is_system_field, keep_system_columns},
 };
 
@@ -71,5 +71,5 @@ pub fn with_system_columns_of(mut columns: Vec<(FieldRef, ArrayRef)>, from: &Rec
 }
 
 pub fn first_input(inputs: &[OperatorId]) -> Result<OperatorId> {
-	inputs.first().copied().ok_or_else(|| Error::from(FlowGraphError::MissingInputEdge))
+	inputs.first().copied().ok_or_else(|| ValueError::from(FlowGraphError::MissingInputEdge))
 }

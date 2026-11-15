@@ -3,7 +3,7 @@
 
 use reifydb_catalog::error::CatalogError;
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic, TypeError},
+	error::{Diagnostic, IntoDiagnostic, TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -125,9 +125,9 @@ impl IntoDiagnostic for QueueError {
 	}
 }
 
-impl From<QueueError> for Error {
+impl From<QueueError> for ValueError {
 	fn from(err: QueueError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -190,36 +190,36 @@ pub enum RoutineError {
 	},
 
 	#[error(transparent)]
-	Wrapped(Box<Error>),
+	Wrapped(Box<ValueError>),
 }
 
-impl From<Error> for RoutineError {
-	fn from(err: Error) -> Self {
+impl From<ValueError> for RoutineError {
+	fn from(err: ValueError) -> Self {
 		RoutineError::Wrapped(Box::new(err))
 	}
 }
 
 impl From<CatalogError> for RoutineError {
 	fn from(err: CatalogError) -> Self {
-		RoutineError::Wrapped(Box::new(Error::from(err)))
+		RoutineError::Wrapped(Box::new(ValueError::from(err)))
 	}
 }
 
 impl From<TypeError> for RoutineError {
 	fn from(err: TypeError) -> Self {
-		RoutineError::Wrapped(Box::new(Error::from(err)))
+		RoutineError::Wrapped(Box::new(ValueError::from(err)))
 	}
 }
 
 impl From<Box<TypeError>> for RoutineError {
 	fn from(err: Box<TypeError>) -> Self {
-		RoutineError::Wrapped(Box::new(Error::from(err)))
+		RoutineError::Wrapped(Box::new(ValueError::from(err)))
 	}
 }
 
-impl From<RoutineError> for Error {
+impl From<RoutineError> for ValueError {
 	fn from(err: RoutineError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -411,7 +411,7 @@ impl IntoDiagnostic for RoutineError {
 }
 
 impl RoutineError {
-	pub fn with_context(self, fragment: Fragment, is_procedure: bool) -> Error {
+	pub fn with_context(self, fragment: Fragment, is_procedure: bool) -> ValueError {
 		match self {
 			RoutineError::Wrapped(inner) => {
 				let name = fragment.text().to_string();
@@ -430,7 +430,7 @@ impl RoutineError {
 						"Check function arguments and data",
 					)
 				};
-				Error(Box::new(Diagnostic {
+				ValueError(Box::new(Diagnostic {
 					code: code.to_string(),
 					rql: None,
 					message,
@@ -448,7 +448,7 @@ impl RoutineError {
 				if diagnostic.fragment().is_none() {
 					diagnostic.with_fragment(fragment);
 				}
-				Error(Box::new(diagnostic))
+				ValueError(Box::new(diagnostic))
 			}
 		}
 	}

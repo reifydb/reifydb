@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::storage::StorageId, internal, row::RowSettings};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
@@ -11,7 +11,7 @@ impl CatalogStore {
 	#[allow(dead_code)]
 	pub fn get_row_settings(rx: &mut Transaction<'_>, storage: StorageId) -> Result<RowSettings> {
 		Self::find_row_settings(rx, storage)?.ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"row settings for storage {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				storage
 			)))

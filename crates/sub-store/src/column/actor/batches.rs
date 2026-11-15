@@ -228,7 +228,7 @@ mod tests {
 	use reifydb_store_column::session::new_session;
 	use reifydb_test_harness::block_encoding::{DELTA, DeltaEncoding};
 	use reifydb_value::{
-		error::Error,
+		error::ValueError,
 		value::{
 			Value, constraint::TypeConstraint, datetime::DateTime, sumtype::SumTypeId,
 			system_columns::stamp_system_columns,
@@ -419,7 +419,7 @@ mod tests {
 	}
 
 	fn error_of(result: Result<BlockData>) -> (String, String) {
-		let Err(Error(diagnostic)) = result else {
+		let Err(ValueError(diagnostic)) = result else {
 			panic!("expected the seal to fail");
 		};
 		(diagnostic.code.clone(), diagnostic.message.clone())

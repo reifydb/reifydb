@@ -37,7 +37,7 @@ use reifydb_transaction::transaction::{
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::error::Diagnostic;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{
 		Value, column_view::ColumnView, duration::Duration, frame::frame::Frame, identity::IdentityKind,
@@ -104,7 +104,7 @@ impl Executor {
 	fn try_forward_remote_query(
 		&self,
 		tx: &mut Transaction<'_>,
-		err: &Error,
+		err: &ValueError,
 		rql: &str,
 		params: Params,
 	) -> Result<Option<Vec<Frame>>> {
@@ -222,7 +222,7 @@ impl Emitted {
 }
 
 struct ExecutionFailure {
-	error: Error,
+	error: ValueError,
 	partial_metrics: Vec<StatementMetrics>,
 }
 
@@ -342,7 +342,7 @@ fn select_frames(saw_output: bool, output: Emitted, last: Emitted) -> Emitted {
 }
 
 #[inline]
-fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
+fn error_result(error: ValueError, metrics: ExecutionMetrics) -> ExecutionResult {
 	ExecutionResult {
 		frames: vec![],
 		named_system_columns: vec![],
@@ -425,7 +425,7 @@ impl Executor {
 	fn handle_rql_compile_error(
 		&self,
 		tx: &mut Transaction<'_>,
-		err: Error,
+		err: ValueError,
 		rql: &str,
 		params: Params,
 	) -> ExecutionResult {
@@ -471,7 +471,7 @@ impl Executor {
 	fn handle_admin_compile_error(
 		&self,
 		txn: &mut AdminTransaction,
-		err: Error,
+		err: ValueError,
 		rql: &str,
 		params: Params,
 	) -> ExecutionResult {
@@ -622,7 +622,7 @@ impl Executor {
 	fn handle_test_compile_error(
 		&self,
 		txn: &mut TestTransaction<'_>,
-		err: Error,
+		err: ValueError,
 		rql: &str,
 		params: Params,
 	) -> ExecutionResult {
@@ -745,18 +745,18 @@ impl Executor {
 		options: SubscribeOptions,
 	) -> Result<SubscribeOutcome> {
 		if options.hydration.max_rows == Some(0) {
-			return Err(Error(Box::new(subscription::hydration_max_rows_zero())));
+			return Err(ValueError(Box::new(subscription::hydration_max_rows_zero())));
 		}
 		if let Some(throttle) = options.throttle.filter(Duration::is_negative) {
-			return Err(Error(Box::new(subscription::negative_throttle(throttle))));
+			return Err(ValueError(Box::new(subscription::negative_throttle(throttle))));
 		}
 		if let Some(linger) = options.linger.filter(Duration::is_negative) {
-			return Err(Error(Box::new(subscription::negative_linger(linger))));
+			return Err(ValueError(Box::new(subscription::negative_linger(linger))));
 		}
 		let bump = Bump::new();
 		let mut statements = parse_str(&bump, query)?;
 		if statements.len() != 1 {
-			return Err(Error(Box::new(subscription::single_statement_required(
+			return Err(ValueError(Box::new(subscription::single_statement_required(
 				"Subscription endpoint requires exactly one statement",
 			))));
 		}
@@ -776,7 +776,7 @@ impl Executor {
 			inject_from_policies,
 		)?
 		else {
-			return Err(Error(Box::new(subscription::single_statement_required(
+			return Err(ValueError(Box::new(subscription::single_statement_required(
 				"Subscription endpoint requires exactly one statement",
 			))));
 		};
@@ -856,7 +856,7 @@ impl Executor {
 					return ExecutionResult {
 						frames: vec![],
 						named_system_columns: vec![],
-						error: Some(Error(Box::new(Diagnostic {
+						error: Some(ValueError(Box::new(Diagnostic {
 							code: "REMOTE_002".to_string(),
 							message: "Write operations on remote namespaces are not supported"
 								.to_string(),

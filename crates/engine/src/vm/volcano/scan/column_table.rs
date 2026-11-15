@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_store_column::{block::Schema, store::ColumnStore};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, value::system_columns::SystemColumn};
+use reifydb_value::{error::ValueError, value::system_columns::SystemColumn};
 
 use crate::{
 	Result,
@@ -60,11 +60,14 @@ impl ColumnTableScanNode {
 		let name = self.table.fully_qualified_name();
 
 		let block = services.catalog.find_latest_column_block_for_table(rx, self.table.def().id)?.ok_or_else(
-			|| Error(Box::new(no_column_block(self.table.identifier().clone(), "table", &name))),
+			|| ValueError(Box::new(no_column_block(self.table.identifier().clone(), "table", &name))),
 		)?;
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
-			Error(Box::new(internal(format!("column store is not registered, cannot read table {}", name))))
+			ValueError(Box::new(internal(format!(
+				"column store is not registered, cannot read table {}",
+				name
+			))))
 		})?;
 
 		Ok(ScanState::Reading {

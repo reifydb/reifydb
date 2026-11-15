@@ -16,7 +16,7 @@ use serde::{
 };
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -382,14 +382,14 @@ impl Display for Decimal {
 }
 
 impl FromStr for Decimal {
-	type Err = Error;
+	type Err = ValueError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Self::parse(s).map_err(|error| parse_error(error, Fragment::None))
 	}
 }
 
-pub(crate) fn parse_error(error: ParseError, fragment: Fragment) -> Error {
+pub(crate) fn parse_error(error: ParseError, fragment: Fragment) -> ValueError {
 	match error {
 		ParseError::Invalid => TypeError::InvalidNumberFormat {
 			target: ValueType::DECIMAL,

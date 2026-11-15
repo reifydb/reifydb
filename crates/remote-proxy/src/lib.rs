@@ -9,7 +9,7 @@ use std::fmt;
 
 use reifydb_client::{
 	GrpcClient, GrpcClientOptions, GrpcSubscription, RawChangePayload, ReconnectOptions, SubscribeItem,
-	SubscriptionConfig, WireFormat, value::error::Error,
+	SubscriptionConfig, WireFormat, value::error::ValueError,
 };
 use tokio::{select, sync::watch};
 
@@ -77,7 +77,7 @@ pub async fn proxy_remote_to_sink<F>(
 	mut remote_sub: RemoteSubscription,
 	mut shutdown: watch::Receiver<bool>,
 	mut sink: F,
-) -> Result<(), Error>
+) -> Result<(), ValueError>
 where
 	F: FnMut(RawChangePayload) -> bool + Send + 'static,
 {

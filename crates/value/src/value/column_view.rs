@@ -14,7 +14,7 @@ use arrow_schema::{Field, FieldRef};
 
 use crate::{
 	Result,
-	error::{ColumnReadReason, Error, TypeError},
+	error::{ColumnReadReason, TypeError, ValueError},
 	util::float_format::{format_f32, format_f64},
 	value::{
 		Value,
@@ -104,7 +104,7 @@ pub struct ColumnView<'a> {
 }
 
 impl<'a> TryFrom<(&'a ArrayRef, &'a Field)> for ColumnView<'a> {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from((array, field): (&'a ArrayRef, &'a Field)) -> Result<Self> {
 		if array.data_type() != field.data_type() {
@@ -123,7 +123,7 @@ impl<'a> TryFrom<(&'a ArrayRef, &'a Field)> for ColumnView<'a> {
 }
 
 impl<'a> TryFrom<&'a (FieldRef, ArrayRef)> for ColumnView<'a> {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from((field, array): &'a (FieldRef, ArrayRef)) -> Result<Self> {
 		ColumnView::try_from((array, field.as_ref()))

@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::Time,
 };
 
-pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
+pub fn parse_time(fragment: Fragment) -> Result<Time, ValueError> {
 	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 
@@ -120,7 +120,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	offset = 0;
 	let hour = time_fragment_parts[0].trim().parse::<u32>().map_err(|_| {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidHour,
 			message: format!("invalid hour value '{}'", sub_frag.text()),
 			fragment: sub_frag,
@@ -130,7 +130,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 
 	let minute = time_fragment_parts[1].trim().parse::<u32>().map_err(|_| {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidMinute,
 			message: format!("invalid minute value '{}'", sub_frag.text()),
 			fragment: sub_frag,
@@ -153,7 +153,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 
 		let second = second_parts[0].parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error::from(TypeError::Temporal {
+			ValueError::from(TypeError::Temporal {
 				kind: TemporalKind::InvalidSecond,
 				message: format!("invalid second value '{}'", sub_frag.text()),
 				fragment: sub_frag,
@@ -169,7 +169,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 
 		let nanosecond = padded_fraction.parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error::from(TypeError::Temporal {
+			ValueError::from(TypeError::Temporal {
 				kind: TemporalKind::InvalidFractionalSeconds,
 				message: format!("invalid fractional seconds value '{}'", sub_frag.text()),
 				fragment: sub_frag,
@@ -179,7 +179,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	} else {
 		let second = seconds_with_fraction.parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error::from(TypeError::Temporal {
+			ValueError::from(TypeError::Temporal {
 				kind: TemporalKind::InvalidSecond,
 				message: format!("invalid second value '{}'", sub_frag.text()),
 				fragment: sub_frag,
@@ -189,7 +189,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	};
 
 	Time::new(hour, minute, second, nanosecond).ok_or_else(|| {
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::InvalidTimeValues,
 			message: "invalid time values".into(),
 			fragment,

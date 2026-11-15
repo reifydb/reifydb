@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_store_column::{block::Schema, store::ColumnStore};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{partition::Partition, system_columns::SystemColumn},
 };
 
@@ -141,7 +141,7 @@ impl ColumnSeriesScanNode {
 		}
 
 		if pruned.is_empty() {
-			return Err(Error(Box::new(no_column_block(
+			return Err(ValueError(Box::new(no_column_block(
 				self.series.identifier().clone(),
 				"series",
 				&name,
@@ -150,7 +150,7 @@ impl ColumnSeriesScanNode {
 		pruned.sort_by_key(|b| Reverse(bucket_order(b)));
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
-			Error(Box::new(internal(format!(
+			ValueError(Box::new(internal(format!(
 				"column store is not registered, cannot read series {}",
 				name
 			))))

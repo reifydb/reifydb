@@ -15,7 +15,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
 	Result,
-	error::Error as TypeError,
+	error::ValueError,
 	params::Params,
 	value::{duration::Duration, identity::IdentityId, partition::ScanPartitions, system_columns::SystemColumn},
 };
@@ -55,12 +55,12 @@ pub enum HydrateError {
 		cap: u64,
 		bound: HydrationBound,
 	},
-	Engine(TypeError),
+	Engine(ValueError),
 	Internal(String),
 }
 
-impl From<TypeError> for HydrateError {
-	fn from(e: TypeError) -> Self {
+impl From<ValueError> for HydrateError {
+	fn from(e: ValueError) -> Self {
 		HydrateError::Engine(e)
 	}
 }

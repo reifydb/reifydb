@@ -8,12 +8,12 @@ use arrow_schema::FieldRef;
 use postcard::to_stdvec;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::{common::extern_wasm::marshal::unmarshal_columns_from_bytes, error::SdkError};
-use reifydb_value::{error::Error, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, value::value_type::ValueType};
 
 use crate::{error::ExtensionError, loader::extern_wasm::invoke_extern_wasm_module};
 
 fn ext_err(err: ExtensionError) -> RoutineError {
-	RoutineError::Wrapped(Box::new(Error::from(SdkError::Other(err.to_string()))))
+	RoutineError::Wrapped(Box::new(ValueError::from(SdkError::Other(err.to_string()))))
 }
 
 pub struct ExternWasmProcedure {

@@ -32,7 +32,7 @@ use reifydb_transaction::{
 	transaction::command::CommandTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{Result, error::Error, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{Result, error::ValueError, util::cowvec::CowVec, value::duration::Duration};
 
 struct Harness {
 	_actor_system: ActorSystem,
@@ -220,7 +220,7 @@ fn a_failed_apply_reports_its_error_to_its_own_completion() {
 	let h = harness();
 	let handle = CommitHandle::new(h.begin.clone());
 
-	let received: Arc<Mutex<Vec<Error>>> = Arc::new(Mutex::new(Vec::new()));
+	let received: Arc<Mutex<Vec<ValueError>>> = Arc::new(Mutex::new(Vec::new()));
 	let received_completion = Arc::clone(&received);
 	let done = Arc::new(WaiterHandle::new());
 	let done_completion = Arc::clone(&done);

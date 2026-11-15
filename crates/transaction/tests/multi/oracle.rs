@@ -25,7 +25,7 @@ fn make_bytes(s: &str) -> EncodedBytes {
 	EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 }
 
-fn is_conflict_error(err: &reifydb_value::error::Error) -> bool {
+fn is_conflict_error(err: &reifydb_value::error::ValueError) -> bool {
 	let msg = err.to_string();
 	msg.contains("Conflict") || msg.contains("conflict")
 }

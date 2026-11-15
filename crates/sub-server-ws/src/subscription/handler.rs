@@ -13,7 +13,7 @@ use reifydb_sub_server::{
 	interceptor::{Protocol, RequestMetadata},
 };
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	value::identity::IdentityId,
 };
 use tokio::spawn;
@@ -33,7 +33,7 @@ pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	req: SubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Result<Option<String>, Error> {
+) -> Result<Option<String>, ValueError> {
 	let identity: IdentityId = subscribe_identity(*conn.identity);
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
@@ -104,7 +104,7 @@ pub(crate) async fn handle_unsubscribe(
 	request_id: &str,
 	req: UnsubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
-) -> Result<Option<String>, Error> {
+) -> Result<Option<String>, ValueError> {
 	let subscription_ids = match req
 		.subscription_ids
 		.iter()

@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -216,7 +216,7 @@ impl DictionaryBinding {
 		let field = self.schema.field(position);
 		let id = from_field(field)?.dictionary_id.expect("a bound dictionary column carries its dictionary");
 		txn.dictionary(id)?.ok_or_else(|| {
-			Error::from(FlowSinkError::DictionaryNotFound {
+			ValueError::from(FlowSinkError::DictionaryNotFound {
 				dictionary_id: format!("{:?}", id),
 				column: field.name().clone(),
 			})

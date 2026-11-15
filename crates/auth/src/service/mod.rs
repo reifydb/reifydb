@@ -15,7 +15,7 @@ use reifydb_core::{interface::catalog::token::Token, retry::RetryStrategy};
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::instrument;
@@ -27,8 +27,8 @@ use crate::{
 };
 
 pub trait AuthEngine: Send + Sync {
-	fn begin_admin(&self) -> Result<AdminTransaction, Error>;
-	fn begin_query(&self) -> Result<QueryTransaction, Error>;
+	fn begin_admin(&self) -> Result<AdminTransaction, ValueError>;
+	fn begin_query(&self) -> Result<QueryTransaction, ValueError>;
 	fn catalog(&self) -> Catalog;
 }
 
@@ -160,11 +160,11 @@ impl AuthService {
 		&self.auth_registry
 	}
 
-	pub(super) fn now(&self) -> Result<DateTime, Error> {
+	pub(super) fn now(&self) -> Result<DateTime, ValueError> {
 		Ok(self.clock.now())
 	}
 
-	pub(super) fn expires_at(&self, ttl: Option<Duration>) -> Result<Option<DateTime>, Error> {
+	pub(super) fn expires_at(&self, ttl: Option<Duration>) -> Result<Option<DateTime>, ValueError> {
 		match ttl {
 			Some(ttl) => {
 				let ttl_nanos = ttl.as_nanos()?;
@@ -180,7 +180,7 @@ impl AuthService {
 		token: &str,
 		identity: IdentityId,
 		ttl: Option<Duration>,
-	) -> Result<Token, Error> {
+	) -> Result<Token, ValueError> {
 		RetryStrategy::default().retry(&self.rng, "auth::persist_token", || {
 			let mut admin = self.engine.begin_admin()?;
 
@@ -197,7 +197,7 @@ impl AuthService {
 		token: &str,
 		identity: IdentityId,
 		expires_at: Option<DateTime>,
-	) -> Result<Token, Error> {
+	) -> Result<Token, ValueError> {
 		RetryStrategy::default().retry(&self.rng, "auth::create_token", || {
 			let mut admin = self.engine.begin_admin()?;
 			let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
@@ -207,7 +207,7 @@ impl AuthService {
 	}
 
 	#[instrument(name = "auth::create_session", level = "debug", skip(self))]
-	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, Error> {
+	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, ValueError> {
 		self.persist_token(&generate_session_token(&self.rng), identity, ttl)
 	}
 
@@ -217,7 +217,7 @@ impl AuthService {
 		identity: IdentityId,
 		name: &str,
 		value: &str,
-	) -> Result<(), Error> {
+	) -> Result<(), ValueError> {
 		let catalog = self.engine.catalog();
 		let attribute =
 			match catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *admin), name)? {

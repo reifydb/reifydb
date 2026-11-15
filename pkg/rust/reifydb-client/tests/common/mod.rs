@@ -195,7 +195,7 @@ pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Bo
 			diagnostic,
 			..
 		} => {
-			let err = reifydb_value::error::Error(diagnostic);
+			let err = reifydb_value::error::ValueError(diagnostic);
 			Err(err.to_string().into())
 		}
 	}

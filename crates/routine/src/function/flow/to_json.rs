@@ -18,7 +18,7 @@ use reifydb_routine_abi::{
 };
 use reifydb_rql::expression::json::JsonExpression;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{
 		column_view::{ColumnView, ViewData},
 		container::varlen_array,
@@ -310,7 +310,7 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 						};
 
 						let node_type: OperatorDef = from_bytes(bytes).map_err(|e| {
-							Error(Box::new(internal!(
+							ValueError(Box::new(internal!(
 								"Failed to deserialize OperatorDef: {}",
 								e
 							)))
@@ -319,7 +319,7 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 						let json_node_type: JsonOperatorDef = (&node_type).into();
 
 						let json_value = to_value(&json_node_type).map_err(|e| {
-							Error(Box::new(internal!(
+							ValueError(Box::new(internal!(
 								"Failed to serialize OperatorDef to JSON: {}",
 								e
 							)))
@@ -336,7 +336,7 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 						};
 
 						let json = to_string(&inner_value).map_err(|e| {
-							Error(Box::new(internal!(
+							ValueError(Box::new(internal!(
 								"Failed to serialize OperatorDef to JSON: {}",
 								e
 							)))

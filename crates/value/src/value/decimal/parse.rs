@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		decimal::{Decimal, parse_error},
@@ -12,7 +12,7 @@ use crate::{
 	},
 };
 
-pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
+pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, ValueError> {
 	let fragment_owned = fragment.clone();
 	let raw_value = fragment.text();
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use super::{Parser, Precedence};
 use crate::{
@@ -29,7 +29,7 @@ impl<'bump> Parser<'bump> {
 
 			if self.is_eof() {
 				let fragment = token.fragment.to_owned();
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "expected '}' to close MATCH".to_string(),
 					},

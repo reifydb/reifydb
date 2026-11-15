@@ -43,7 +43,7 @@ use reifydb_flow::writer::series::{SeriesRowAddress, update_series_metadata_for_
 use reifydb_rql::nodes::InsertSeriesNode;
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
@@ -594,7 +594,7 @@ pub(crate) struct VariantTags<'a> {
 	sumtype: &'a SumType,
 	resolved: HashMap<Value, u8>,
 	tags: Vec<Option<u8>>,
-	failure: Option<(usize, Error)>,
+	failure: Option<(usize, ValueError)>,
 }
 
 impl<'a> VariantTags<'a> {
@@ -638,7 +638,7 @@ impl<'a> VariantTags<'a> {
 		self.tags.push(tag);
 	}
 
-	pub(crate) fn finish(self) -> (Vec<Option<u8>>, Option<(usize, Error)>) {
+	pub(crate) fn finish(self) -> (Vec<Option<u8>>, Option<(usize, ValueError)>) {
 		(self.tags, self.failure)
 	}
 }

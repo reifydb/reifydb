@@ -13,7 +13,7 @@ use futures_util::{
 	stream::{SplitSink, SplitStream},
 };
 use reifydb_codec::{frame::decode::decode_frames, json::from::frames_from_envelope};
-use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
+use reifydb_value::{error::ValueError, params::Params, value::frame::frame::Frame};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
@@ -108,11 +108,11 @@ pub struct WsClient {
 }
 
 impl WsClient {
-	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, ValueError> {
 		Self::connect_with_options(url, WsClientOptions::new(format)).await
 	}
 
-	pub async fn connect_with_options(url: &str, options: WsClientOptions) -> Result<Self, Error> {
+	pub async fn connect_with_options(url: &str, options: WsClientOptions) -> Result<Self, ValueError> {
 		let url = if !url.starts_with("ws://") && !url.starts_with("wss://") {
 			format!("ws://{}", url)
 		} else {
@@ -295,7 +295,7 @@ impl WsClient {
 		let Some(tx) = shared.pending.lock().await.remove(&id) else {
 			return;
 		};
-		let error: Error = ClientError::Decode(reason).into();
+		let error: ValueError = ClientError::Decode(reason).into();
 		let _ = tx.send(ClientResponse::Json(Box::new(Response {
 			id,
 			payload: ResponsePayload::Err(ErrResponse {
@@ -577,7 +577,7 @@ impl WsClient {
 		Some(self.format)
 	}
 
-	pub async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+	pub async fn authenticate(&mut self, token: &str) -> Result<(), ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -596,7 +596,7 @@ impl WsClient {
 				*self.token.lock().await = Some(token.to_string());
 				Ok(())
 			}
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			ResponsePayload::Err(err) => Err(ValueError(Box::new(err.diagnostic))),
 			_ => {
 				Err(ClientError::UnexpectedResponse("unexpected response type for auth".to_string())
 					.into())
@@ -604,14 +604,18 @@ impl WsClient {
 		}
 	}
 
-	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_password(
+		&mut self,
+		identifier: &str,
+		password: &str,
+	) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
 		credentials.insert("password".to_string(), password.to_string());
 		self.login("password", credentials).await
 	}
 
-	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("token".to_string(), token.to_string());
 		self.login("token", credentials).await
@@ -621,7 +625,7 @@ impl WsClient {
 		&mut self,
 		method: &str,
 		credentials: HashMap<String, String>,
-	) -> Result<LoginResult, Error> {
+	) -> Result<LoginResult, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -653,13 +657,13 @@ impl WsClient {
 					.into())
 				}
 			}
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			ResponsePayload::Err(err) => Err(ValueError(Box::new(err.diagnostic))),
 			_ => Err(ClientError::UnexpectedResponse("unexpected response type for login".to_string())
 				.into()),
 		}
 	}
 
-	pub async fn logout(&mut self) -> Result<(), Error> {
+	pub async fn logout(&mut self) -> Result<(), ValueError> {
 		if !self.is_authenticated {
 			return Ok(());
 		}
@@ -678,17 +682,17 @@ impl WsClient {
 				*self.token.lock().await = None;
 				Ok(())
 			}
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			ResponsePayload::Err(err) => Err(ValueError(Box::new(err.diagnostic))),
 			_ => Err(ClientError::UnexpectedResponse("unexpected response type for logout".to_string())
 				.into()),
 		}
 	}
 
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -708,11 +712,11 @@ impl WsClient {
 		}
 	}
 
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -732,11 +736,11 @@ impl WsClient {
 		}
 	}
 
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -756,11 +760,11 @@ impl WsClient {
 		}
 	}
 
-	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.call_with_meta(name, params).await?.frames)
 	}
 
-	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -780,7 +784,7 @@ impl WsClient {
 		}
 	}
 
-	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, ValueError> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -800,7 +804,7 @@ impl WsClient {
 		}
 	}
 
-	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<WsSubscription>, Error> {
+	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<WsSubscription>, ValueError> {
 		let call_id = self.call_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
 		let mut cids = Vec::with_capacity(items.len());
@@ -862,7 +866,7 @@ impl WsClient {
 			}
 			ResponsePayload::Err(err) => {
 				self.forget(&cids, &req_id).await;
-				Err(Error(Box::new(err.diagnostic)))
+				Err(ValueError(Box::new(err.diagnostic)))
 			}
 			_ => {
 				self.forget(&cids, &req_id).await;
@@ -886,7 +890,7 @@ impl WsClient {
 		}
 	}
 
-	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), ValueError> {
 		let mut targets = Vec::with_capacity(subscription_ids.len());
 		for subscription_id in subscription_ids {
 			let server_id = self.take_sub_server_id(subscription_id).await;
@@ -904,7 +908,7 @@ impl WsClient {
 		let response = self.send_request_json(request).await?;
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			ResponsePayload::Err(err) => Err(ValueError(Box::new(err.diagnostic))),
 			_ => Err(ClientError::UnexpectedResponse(
 				"unexpected response type for unsubscribe".to_string(),
 			)
@@ -921,7 +925,7 @@ impl WsClient {
 		entry.server_id
 	}
 
-	async fn send_request(&self, request: Request) -> Result<ClientResponse, Error> {
+	async fn send_request(&self, request: Request) -> Result<ClientResponse, ValueError> {
 		let (tx, rx) = oneshot::channel();
 
 		if self.request_tx.send((request, tx)).await.is_err() {
@@ -934,7 +938,7 @@ impl WsClient {
 		}
 	}
 
-	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
+	async fn send_request_json(&self, request: Request) -> Result<Response, ValueError> {
 		match self.send_request(request).await? {
 			ClientResponse::Json(resp) => Ok(*resp),
 			ClientResponse::Frames(_, _) => Err(ClientError::UnexpectedResponse(
@@ -944,7 +948,7 @@ impl WsClient {
 		}
 	}
 
-	pub async fn close(self) -> Result<(), Error> {
+	pub async fn close(self) -> Result<(), ValueError> {
 		let _ = self.shutdown_tx.send(()).await;
 		Ok(())
 	}
@@ -1028,7 +1032,8 @@ fn query_response_from_rbcf(id: String, rbcf: &[u8], meta: Option<ResponseMeta>)
 	match decode_frames(rbcf) {
 		Ok(frames) => ClientResponse::Frames(frames, meta),
 		Err(e) => {
-			let error: Error = ClientError::Decode(format!("failed to decode RBCF payload: {}", e)).into();
+			let error: ValueError =
+				ClientError::Decode(format!("failed to decode RBCF payload: {}", e)).into();
 			ClientResponse::Json(Box::new(Response {
 				id,
 				payload: ResponsePayload::Err(ErrResponse {
@@ -1105,55 +1110,58 @@ impl ReifyClient for WsClient {
 		WsClient::is_authenticated(self)
 	}
 
-	async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+	async fn authenticate(&mut self, token: &str) -> Result<(), ValueError> {
 		WsClient::authenticate(self, token).await
 	}
 
-	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, ValueError> {
 		WsClient::login_with_password(self, identifier, password).await
 	}
 
-	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, ValueError> {
 		WsClient::login_with_token(self, token).await
 	}
 
-	async fn logout(&mut self) -> Result<(), Error> {
+	async fn logout(&mut self) -> Result<(), ValueError> {
 		WsClient::logout(self).await
 	}
 
-	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		WsClient::admin(self, rql, params).await
 	}
 
-	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, ValueError> {
 		WsClient::admin_with_meta(self, rql, params).await
 	}
 
-	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		WsClient::command(self, rql, params).await
 	}
 
-	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		WsClient::command_with_meta(self, rql, params).await
 	}
 
-	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		WsClient::query(self, rql, params).await
 	}
 
-	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, ValueError> {
 		WsClient::query_with_meta(self, rql, params).await
 	}
 
-	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		WsClient::call(self, name, params).await
 	}
 
-	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		WsClient::call_with_meta(self, name, params).await
 	}
 
-	async fn subscribe<'a>(&self, items: &[SubscribeItem<'a>]) -> Result<Vec<Box<dyn ClientSubscription>>, Error> {
+	async fn subscribe<'a>(
+		&self,
+		items: &[SubscribeItem<'a>],
+	) -> Result<Vec<Box<dyn ClientSubscription>>, ValueError> {
 		Ok(WsClient::subscribe(self, items)
 			.await?
 			.into_iter()
@@ -1161,7 +1169,7 @@ impl ReifyClient for WsClient {
 			.collect())
 	}
 
-	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), ValueError> {
 		WsClient::unsubscribe(self, subscription_ids).await
 	}
 }

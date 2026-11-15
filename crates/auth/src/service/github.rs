@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		Value,
@@ -37,7 +37,7 @@ impl AuthService {
 		&self,
 		caller: IdentityId,
 		method: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let Some(github) = self.github_auth(method) else {
 			return Ok(not_configured());
 		};
@@ -69,7 +69,7 @@ impl AuthService {
 		challenge: &ChallengeInfo,
 		credentials: &HashMap<String, String>,
 		method: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let Some(github) = self.github_auth(method) else {
 			return Ok(not_configured());
 		};
@@ -127,13 +127,13 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn verify_github_user(&self, github: &GithubAuth, code: &str) -> Result<GithubUser, Error> {
+	fn verify_github_user(&self, github: &GithubAuth, code: &str) -> Result<GithubUser, ValueError> {
 		let access_token = github.api.exchange_code(&github.config, code)?;
 		github.api.fetch_user(&access_token)
 	}
 
 	#[inline]
-	fn find_github_identity(&self, user: &GithubUser) -> Result<Option<Identity>, Error> {
+	fn find_github_identity(&self, user: &GithubUser) -> Result<Option<Identity>, ValueError> {
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 		catalog.find_identity_by_attribute_value(
@@ -149,7 +149,7 @@ impl AuthService {
 		identity: IdentityId,
 		user: &GithubUser,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let stored_auth = {
 			let mut txn = self.engine.begin_query()?;
 			let catalog = self.engine.catalog();
@@ -179,7 +179,7 @@ impl AuthService {
 		guest: IdentityId,
 		user: &GithubUser,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let properties = self.github_properties(user)?;
 		let user_id = user.id.to_string();
 		let response = self.promote_guest(
@@ -194,7 +194,7 @@ impl AuthService {
 		Ok(response)
 	}
 
-	fn github_properties(&self, user: &GithubUser) -> Result<BTreeMap<String, String>, Error> {
+	fn github_properties(&self, user: &GithubUser) -> Result<BTreeMap<String, String>, ValueError> {
 		self.github_provider()?.create(
 			&self.rng,
 			&HashMap::from([
@@ -205,7 +205,7 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn auto_provision_github(&self, user: &GithubUser, ttl: Option<Duration>) -> Result<AuthResponse, Error> {
+	fn auto_provision_github(&self, user: &GithubUser, ttl: Option<Duration>) -> Result<AuthResponse, ValueError> {
 		let properties = self.github_properties(user)?;
 
 		let identity = self.create_github_identity(user, properties)?;
@@ -218,7 +218,7 @@ impl AuthService {
 		&self,
 		user: &GithubUser,
 		properties: BTreeMap<String, String>,
-	) -> Result<IdentityId, Error> {
+	) -> Result<IdentityId, ValueError> {
 		let catalog = self.engine.catalog();
 		let identifier = format!("github:{}", user.id);
 		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_github_identity", || {
@@ -251,7 +251,7 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn record_github_login(&self, identity: IdentityId, login: &str) -> Result<(), Error> {
+	fn record_github_login(&self, identity: IdentityId, login: &str) -> Result<(), ValueError> {
 		let catalog = self.engine.catalog();
 		RetryStrategy::default().retry(&self.rng, "auth::record_github_login", || {
 			let mut admin = self.engine.begin_admin()?;
@@ -272,9 +272,9 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn github_provider(&self) -> Result<&dyn AuthenticationProvider, Error> {
+	fn github_provider(&self) -> Result<&dyn AuthenticationProvider, ValueError> {
 		self.auth_registry.get("github").ok_or_else(|| {
-			Error::from(AuthError::UnknownMethod {
+			ValueError::from(AuthError::UnknownMethod {
 				method: "github".to_string(),
 			})
 		})

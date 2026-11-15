@@ -6,7 +6,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
@@ -25,7 +25,7 @@ impl CatalogStore {
 				ObjectId::Queue(_) => "Queue",
 			};
 
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				object_type,
 				object_id

@@ -19,7 +19,7 @@ use reifydb_codec::row::{
 };
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	util::kernel,
 	value::{
 		Value,
@@ -480,7 +480,7 @@ pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> 
 			.position(|field| field.name() == key)
 			.or_else(|| sumtype_tag_position(batch, key))
 			.ok_or_else(|| {
-				Error::from(CoreError::FrameError {
+				ValueError::from(CoreError::FrameError {
 					message: format!("Column '{}' not found", key),
 				})
 			})?;
@@ -601,7 +601,7 @@ pub fn views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
 		.collect()
 }
 
-pub(crate) fn frame_error(error: ArrowError) -> Error {
+pub(crate) fn frame_error(error: ArrowError) -> ValueError {
 	CoreError::FrameError {
 		message: error.to_string(),
 	}
@@ -671,8 +671,8 @@ fn unify(name: &str, views: &[ColumnView]) -> Result<(FieldRef, ArrayRef)> {
 	}
 }
 
-fn record_shape_error(param: &str, row: usize, detail: &str) -> Error {
-	Error(Box::new(Diagnostic {
+fn record_shape_error(param: &str, row: usize, detail: &str) -> ValueError {
+	ValueError(Box::new(Diagnostic {
 		code: "PARAM_001".to_string(),
 		message: format!("parameter `{param}` row {row} {detail}"),
 		label: Some("row shape mismatch".to_string()),

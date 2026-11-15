@@ -18,7 +18,7 @@ use reifydb_core::{
 	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId, internal,
 };
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
-use reifydb_value::{Result, error::Error, value::duration::Duration};
+use reifydb_value::{Result, error::ValueError, value::duration::Duration};
 
 use crate::Database;
 
@@ -150,7 +150,7 @@ struct SettleGuard;
 impl SettleGuard {
 	fn enter() -> Result<Self> {
 		if SETTLING.with(|flag| flag.replace(true)) {
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"settle_subscriptions was re-entered on a thread that is already settling; \
 				 it must be called from the thread that drives the actor system, never from \
 				 inside an actor handler"
@@ -209,7 +209,7 @@ impl Database {
 				});
 			}
 			if passes >= max_passes {
-				return Err(Error(Box::new(internal!(
+				return Err(ValueError(Box::new(internal!(
 					"settle_subscriptions did not reach quiescence within {} passes: {}, \
 					 staged_batches_before_last_pass={}",
 					max_passes,
@@ -312,7 +312,7 @@ impl Database {
 				return Ok(passes);
 			}
 			if passes >= DEFAULT_PASSES {
-				return Err(Error(Box::new(internal!(
+				return Err(ValueError(Box::new(internal!(
 					"caught_up did not reach version {} within {} passes: {}",
 					target.0,
 					DEFAULT_PASSES,
@@ -335,7 +335,7 @@ impl Database {
 		if self.engine().ioc().try_resolve::<FlowCaughtUpWatermark>().is_some()
 			&& !reader.wait_for_flow_caught_up(target, DEFAULT_WAIT)?
 		{
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"caught_up timed out waiting for deferred flows to materialize version {}: \
 				 flow_caught_up={}, released={}, subscription={}",
 				target.0,
@@ -345,7 +345,7 @@ impl Database {
 			))));
 		}
 		if !reader.wait_for_subscription(target, DEFAULT_WAIT) {
-			return Err(Error(Box::new(internal!(
+			return Err(ValueError(Box::new(internal!(
 				"caught_up timed out waiting for the subscription reader to reach version {}: \
 				 released={}, subscription={}",
 				target.0,
@@ -360,7 +360,7 @@ impl Database {
 fn refuse_lagged(store: &SubscriptionStore) -> Result<()> {
 	match lagged_subscriptions(store).first() {
 		None => Ok(()),
-		Some(id) => Err(Error(Box::new(subscription_lagged(
+		Some(id) => Err(ValueError(Box::new(subscription_lagged(
 			id.0,
 			store.capacity(id),
 			store.overrun(id).unwrap_or(0),

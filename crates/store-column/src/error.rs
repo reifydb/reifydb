@@ -3,7 +3,7 @@
 
 use reifydb_runtime::io::fs::FsError;
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 use vortex_error::VortexError;
@@ -58,9 +58,9 @@ pub enum ColumnError {
 	},
 }
 
-impl From<ColumnError> for Error {
+impl From<ColumnError> for ValueError {
 	fn from(err: ColumnError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -202,7 +202,7 @@ impl IntoDiagnostic for ColumnError {
 	}
 }
 
-pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> Error {
+pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> ValueError {
 	move |err| {
 		ColumnError::Vortex {
 			operation,
@@ -212,7 +212,7 @@ pub(crate) fn vortex(operation: &'static str) -> impl FnOnce(VortexError) -> Err
 	}
 }
 
-pub(crate) fn fs(operation: &'static str) -> impl FnOnce(FsError) -> Error {
+pub(crate) fn fs(operation: &'static str) -> impl FnOnce(FsError) -> ValueError {
 	move |source| {
 		ColumnError::Fs {
 			operation,

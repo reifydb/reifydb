@@ -7,7 +7,7 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{expression::CallExpression, value::column::factory::rename};
 use reifydb_routine_abi::{Function, context::FunctionContext};
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{Result, error::EvaluateError, expression::context::EvalContext};
 
@@ -27,7 +27,7 @@ pub(crate) fn call_builtin(
 		function_name
 	);
 
-	let routine = routine.ok_or_else(|| -> Error {
+	let routine = routine.ok_or_else(|| -> ValueError {
 		EvaluateError::UnknownFunction {
 			name: function_name.to_string(),
 			fragment: fn_fragment.clone(),

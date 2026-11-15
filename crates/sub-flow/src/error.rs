@@ -5,7 +5,7 @@ use reifydb_core::error::diagnostic::flow::{
 	extern_abi_tag_mismatch, extern_create_failed, extern_library_load_failed, extern_library_not_loaded,
 	extern_operator_not_found, extern_symbol_not_found,
 };
-use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
+use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExternOperatorError {
@@ -71,8 +71,8 @@ impl IntoDiagnostic for ExternOperatorError {
 	}
 }
 
-impl From<ExternOperatorError> for Error {
+impl From<ExternOperatorError> for ValueError {
 	fn from(err: ExternOperatorError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

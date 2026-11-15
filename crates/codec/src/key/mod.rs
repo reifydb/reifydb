@@ -25,7 +25,7 @@ use std::{f32, f64};
 
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 };
 
 use crate::key::buf::KeyBuf;
@@ -65,7 +65,7 @@ pub fn decode_bool(byte: u8) -> Result<bool> {
 	match byte {
 		0x00 => Ok(true),
 		0x01 => Ok(false),
-		b => Err(Error::from(TypeError::SerdeKeycode {
+		b => Err(ValueError::from(TypeError::SerdeKeycode {
 			message: format!("invalid boolean value {b}"),
 		})),
 	}
@@ -193,7 +193,7 @@ pub fn decode_u64(bytes: [u8; 8]) -> u64 {
 
 pub fn decode_u64_from(input: &mut &[u8]) -> Result<u64> {
 	if input.len() < 8 {
-		return Err(Error::from(TypeError::SerdeKeycode {
+		return Err(ValueError::from(TypeError::SerdeKeycode {
 			message: "unexpected end of key while decoding u64".to_string(),
 		}));
 	}
@@ -315,7 +315,7 @@ pub fn encode_u128_varint<B: ByteSink>(value: u128, output: &mut B) {
 
 pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 	if input.is_empty() {
-		return Err(Error::from(TypeError::SerdeKeycode {
+		return Err(ValueError::from(TypeError::SerdeKeycode {
 			message: "unexpected end of key while decoding u128 varint".to_string(),
 		}));
 	}
@@ -324,7 +324,7 @@ pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 	if prefix < 8 {
 		let len = prefix + 1;
 		if input.len() < len {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: "unexpected end of key while decoding u128 varint".to_string(),
 			}));
 		}
@@ -334,7 +334,7 @@ pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 		}
 		let mut slice = &buf[..len];
 		let v = varint::decode_u64_varint(&mut slice).ok_or_else(|| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: "failed to decode u128 varint".to_string(),
 			})
 		})?;
@@ -342,13 +342,13 @@ pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
 		Ok(v as u128)
 	} else {
 		if input.len() < 2 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: "unexpected end of key while decoding u128 varint length".to_string(),
 			}));
 		}
 		let len = (!input[1]) as usize;
 		if len == 0 || len > 16 || input.len() < 2 + len {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: "invalid u128 varint length".to_string(),
 			}));
 		}

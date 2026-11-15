@@ -19,7 +19,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_flow::compiler::compile_group_flow;
 use reifydb_rql::{error::RqlError, nodes::CreateDeferredWindowedViewGroupNode, query::QueryPlan};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error::Error, fragment::Fragment, return_error, value::Value};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error, value::Value};
 
 use super::{
 	check_flow_dag, count_windowed_nodes, extract_view_sort, prepare_flow_plan, split_at_windowed_node,
@@ -61,7 +61,7 @@ pub(crate) fn create_deferred_windowed_view_group(
 				}
 				.into());
 			}
-			Some(None) => return Err(Error(Box::new(flow_source_required()))),
+			Some(None) => return Err(ValueError(Box::new(flow_source_required()))),
 			Some(Some(member_prefix)) => member_prefix,
 		};
 		if prefix.is_none() {

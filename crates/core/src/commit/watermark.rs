@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::ValueError};
 
 use crate::{common::CommitVersion, error::diagnostic::flow::flow_error, interface::catalog::flow::FlowId};
 
@@ -69,7 +69,7 @@ impl FlowCaughtUpWatermark {
 		if !poisoned.is_empty() {
 			let flows: Vec<String> =
 				poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
-			return Err(Error(Box::new(flow_error(format!(
+			return Err(ValueError(Box::new(flow_error(format!(
 				"{} deferred flow(s) poisoned: {}",
 				poisoned.len(),
 				flows.join("; ")
@@ -78,7 +78,7 @@ impl FlowCaughtUpWatermark {
 		let stalled = self.stalled();
 		if !stalled.is_empty() {
 			let flows: Vec<String> = stalled.iter().map(|id| format!("flow {}", id.0)).collect();
-			return Err(Error(Box::new(flow_error(format!(
+			return Err(ValueError(Box::new(flow_error(format!(
 				"{} deferred flow(s) stalled with input pending: {}",
 				stalled.len(),
 				flows.join("; ")

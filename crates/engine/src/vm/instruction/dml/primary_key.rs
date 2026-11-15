@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		date::Date,
@@ -235,7 +235,7 @@ pub(crate) fn checked_primary_keys(
 			Violation::At(fragment) => (*fragment).clone(),
 			Violation::BulkRow(_) => Fragment::None,
 		};
-		let error = Error(Box::new(primary_key_violation(fragment, table.name.clone(), key_columns)));
+		let error = ValueError(Box::new(primary_key_violation(fragment, table.name.clone(), key_columns)));
 		return Err(match violation {
 			Violation::At(_) => error,
 			Violation::BulkRow(source) => with_row_note(error, source, index),

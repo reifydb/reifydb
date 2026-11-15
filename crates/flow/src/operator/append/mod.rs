@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		dictionary::DictionaryId,
@@ -58,7 +58,7 @@ fn check_lanes(first: &SchemaRef, second: &SchemaRef) -> Result<()> {
 		if let (Some(expected), Some(found)) = (lane_type(&from_field(field)?), lane_type(&from_field(other)?))
 			&& expected != found
 		{
-			return Err(Error::from(FlowGraphError::AppendLaneMismatch {
+			return Err(ValueError::from(FlowGraphError::AppendLaneMismatch {
 				column: field.name().clone(),
 				expected: describe(&expected),
 				found: describe(&found),
@@ -112,7 +112,7 @@ impl AppendOperator {
 		mut parent_schemas: Vec<Option<SchemaRef>>,
 	) -> Result<Self> {
 		if inputs.len() != 2 {
-			return Err(Error::from(FlowGraphError::NodeInputArity {
+			return Err(ValueError::from(FlowGraphError::NodeInputArity {
 				operator: "Append",
 				expected: "exactly 2",
 				found: inputs.len(),
@@ -158,7 +158,7 @@ impl AppendOperator {
 		for diff in change.diffs {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let parent_index = self.parent_index_for_origin(&diff_origin).ok_or_else(|| {
-				Error::from(FlowGraphError::UnknownDiffOrigin {
+				ValueError::from(FlowGraphError::UnknownDiffOrigin {
 					operator: "Append",
 					origin: Some(format!("{:?}", diff_origin)),
 				})

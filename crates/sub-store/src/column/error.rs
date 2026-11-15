@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::id::{ColumnBlockId, NamespaceId, SeriesId};
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	value::sumtype::SumTypeId,
 };
@@ -55,9 +55,9 @@ pub enum SubStoreError {
 	},
 }
 
-impl From<SubStoreError> for Error {
+impl From<SubStoreError> for ValueError {
 	fn from(err: SubStoreError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 

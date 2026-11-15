@@ -7,7 +7,7 @@ use reifydb_catalog::{create_session_token, drop_session_tokens_by_identity};
 use reifydb_core::retry::RetryStrategy;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{
 		duration::Duration,
 		identity::{IdentityId, IdentityKind},
@@ -17,7 +17,7 @@ use reifydb_value::{
 use super::{AuthResponse, AuthService, generate_session_token};
 
 impl AuthService {
-	pub(super) fn is_guest(&self, caller: IdentityId) -> Result<bool, Error> {
+	pub(super) fn is_guest(&self, caller: IdentityId) -> Result<bool, ValueError> {
 		if caller.is_anonymous() {
 			return Ok(false);
 		}
@@ -34,7 +34,7 @@ impl AuthService {
 		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		if self.is_guest(caller)? {
 			return self.promote_guest(caller, name, method, properties, lookup, ttl);
 		}
@@ -49,7 +49,7 @@ impl AuthService {
 		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let token = generate_session_token(&self.rng);
 		RetryStrategy::default().retry(&self.rng, "auth::promote_guest", || {
 			let mut admin = self.engine.begin_admin()?;
@@ -78,7 +78,7 @@ impl AuthService {
 		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let token = generate_session_token(&self.rng);
 		let identity = RetryStrategy::default().retry(&self.rng, "auth::sign_up", || {
 			let mut admin = self.engine.begin_admin()?;

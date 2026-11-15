@@ -37,7 +37,7 @@ use reifydb_sub_server::{
 	wire::WireParams,
 };
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
@@ -281,7 +281,7 @@ async fn cleanup_connection_subscriptions(
 	engine: &StandardEngine,
 	registry: &Arc<SubscriptionRegistry>,
 	connection_id: Uuid7,
-) -> Result<(), Error> {
+) -> Result<(), ValueError> {
 	let subscription_ids = registry.cleanup_connection(connection_id);
 	for subscription_id in subscription_ids {
 		cleanup_subscription(engine, subscription_id).await?;
@@ -307,7 +307,7 @@ pub(crate) struct ConnectionContext<'a> {
 	pub access: Access,
 }
 
-async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result<Option<WsResponse>, Error> {
+async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result<Option<WsResponse>, ValueError> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
 		Err(e) => {

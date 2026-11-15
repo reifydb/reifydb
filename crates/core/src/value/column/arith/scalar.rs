@@ -4,7 +4,7 @@
 use arrow_buffer::i256;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::LazyFragment,
 	value::{
 		constraint::precision::Precision,
@@ -44,7 +44,7 @@ impl ArithContext {
 		}
 	}
 
-	fn out_of_range(&self, target: ValueType, fragment: impl LazyFragment) -> Error {
+	fn out_of_range(&self, target: ValueType, fragment: impl LazyFragment) -> ValueError {
 		TypeError::NumberOutOfRange {
 			target,
 			fragment: fragment.fragment(),

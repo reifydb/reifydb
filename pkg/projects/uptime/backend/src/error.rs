@@ -8,7 +8,7 @@ use axum::{
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
-use reifydb::Error;
+use reifydb::ValueError;
 use serde_json::json;
 use tracing::error;
 
@@ -25,8 +25,8 @@ impl ApiError {
 	}
 }
 
-impl From<Error> for ApiError {
-	fn from(err: Error) -> Self {
+impl From<ValueError> for ApiError {
+	fn from(err: ValueError) -> Self {
 		ApiError::internal("database error", err)
 	}
 }

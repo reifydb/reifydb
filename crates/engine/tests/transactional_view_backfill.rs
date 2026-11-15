@@ -741,7 +741,7 @@ mod scan_hooks {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
-		error::{Diagnostic, Error},
+		error::{Diagnostic, ValueError},
 		params::Params,
 		value::identity::IdentityId,
 	};
@@ -782,15 +782,15 @@ mod scan_hooks {
 		}
 	}
 
-	fn refused() -> Error {
-		Error(Box::new(Diagnostic {
+	fn refused() -> ValueError {
+		ValueError(Box::new(Diagnostic {
 			code: REFUSED.to_string(),
 			message: "refused backfill scan".to_string(),
 			..Default::default()
 		}))
 	}
 
-	fn has_code(error: &Error, code: &str) -> bool {
+	fn has_code(error: &ValueError, code: &str) -> bool {
 		let mut diagnostic = Some(&**error);
 		while let Some(current) = diagnostic {
 			if current.code == code {

@@ -42,7 +42,7 @@ use reifydb_value::{
 	Result,
 	config::ExtensionParams,
 	error,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	value::value_type::{ValueType, field::from_field},
 };
@@ -241,7 +241,7 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		if inputs.len() != 2 {
-			return Err(Error::from(FlowGraphError::NodeInputArity {
+			return Err(ValueError::from(FlowGraphError::NodeInputArity {
 				operator: "Join",
 				expected: "exactly 2",
 				found: inputs.len(),
@@ -255,7 +255,7 @@ impl FlowEngineInner {
 			.operators
 			.get(&(flow_id, left_node))
 			.ok_or_else(|| {
-				Error::from(FlowGraphError::ParentOperatorNotFound {
+				ValueError::from(FlowGraphError::ParentOperatorNotFound {
 					input: "left parent".to_string(),
 				})
 			})?
@@ -267,7 +267,7 @@ impl FlowEngineInner {
 			.operators
 			.get(&(flow_id, right_node))
 			.ok_or_else(|| {
-				Error::from(FlowGraphError::ParentOperatorNotFound {
+				ValueError::from(FlowGraphError::ParentOperatorNotFound {
 					input: "right parent".to_string(),
 				})
 			})?
@@ -345,7 +345,7 @@ impl FlowEngineInner {
 			Emit::Off => 1,
 		};
 		if inputs.len() != expected {
-			return Err(Error::from(FlowGraphError::NodeInputArity {
+			return Err(ValueError::from(FlowGraphError::NodeInputArity {
 				operator: "Lookup",
 				expected: match with.emit {
 					Emit::On | Emit::After(_) => "exactly 2",
@@ -361,7 +361,7 @@ impl FlowEngineInner {
 			.operators
 			.get(&(flow_id, left_node))
 			.ok_or_else(|| {
-				Error::from(FlowGraphError::ParentOperatorNotFound {
+				ValueError::from(FlowGraphError::ParentOperatorNotFound {
 					input: "left parent".to_string(),
 				})
 			})?
@@ -491,7 +491,7 @@ impl FlowEngineInner {
 				.operators
 				.get(&(flow_id, *input_node_id))
 				.ok_or_else(|| {
-					Error::from(FlowGraphError::ParentOperatorNotFound {
+					ValueError::from(FlowGraphError::ParentOperatorNotFound {
 						input: format!("{:?}", input_node_id),
 					})
 				})?

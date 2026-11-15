@@ -66,7 +66,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
@@ -223,7 +223,7 @@ impl StandardEngine {
 		outcome
 	}
 
-	fn reject_request(&self, identity: IdentityId) -> Option<Error> {
+	fn reject_request(&self, identity: IdentityId) -> Option<ValueError> {
 		if let Err(e) = self.reject_if_read_only() {
 			return Some(e);
 		}
@@ -724,7 +724,7 @@ impl StandardEngine {
 
 	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
 		if self.is_read_only() {
-			return Err(Error(Box::new(read_only_rejection(Fragment::None))));
+			return Err(ValueError(Box::new(read_only_rejection(Fragment::None))));
 		}
 		Ok(())
 	}

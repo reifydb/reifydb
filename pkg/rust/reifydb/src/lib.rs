@@ -143,7 +143,7 @@ pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::Sing
 pub use reifydb_value as value;
 pub use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{
 		Value,

@@ -4,7 +4,7 @@
 use std::ops::Deref;
 
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{
 		frame::frame::Frame,
 		system_columns::{SystemColumn, keep_system_columns},
@@ -17,12 +17,12 @@ use crate::{internal_err, metrics::execution::ExecutionMetrics};
 pub struct ExecutionResult {
 	pub frames: Vec<Frame>,
 	pub named_system_columns: Vec<Vec<SystemColumn>>,
-	pub error: Option<Error>,
+	pub error: Option<ValueError>,
 	pub metrics: ExecutionMetrics,
 }
 
 impl ExecutionResult {
-	pub fn from_error(error: Error) -> Self {
+	pub fn from_error(error: ValueError) -> Self {
 		Self {
 			frames: vec![],
 			named_system_columns: vec![],
@@ -31,7 +31,7 @@ impl ExecutionResult {
 		}
 	}
 
-	pub fn strip_unnamed_system_columns(&mut self) -> Result<(), Error> {
+	pub fn strip_unnamed_system_columns(&mut self) -> Result<(), ValueError> {
 		if self.frames.len() != self.named_system_columns.len() {
 			return internal_err!(
 				"{} frames but {} named system column sets; every frame needs exactly one",
@@ -55,7 +55,7 @@ impl ExecutionResult {
 		self.error.is_some()
 	}
 
-	pub fn check(self) -> Result<Self, Error> {
+	pub fn check(self) -> Result<Self, ValueError> {
 		match self.error {
 			Some(e) => Err(e),
 			None => Ok(self),

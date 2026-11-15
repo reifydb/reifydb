@@ -38,7 +38,7 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{Error as ReifyError, FunctionErrorKind, ProcedureErrorKind, TypeError},
+	error::{FunctionErrorKind, ProcedureErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
@@ -271,7 +271,7 @@ pub(crate) fn check_arity(
 	.into())
 }
 
-fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ReifyError {
+fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ValueError {
 	TypeError::Procedure {
 		kind: ProcedureErrorKind::UndefinedProcedure {
 			name: func_name.to_string(),
@@ -419,7 +419,7 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 	) -> Result<()> {
 		let function = services.routines.get_function(func_name).ok_or_else(|| {
-			ReifyError::from(EngineError::UnknownCallable {
+			ValueError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),
 				fragment: name.clone(),
 			})
@@ -1120,7 +1120,7 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 	) -> Result<()> {
 		let function = ctx.services.routines.get_function(func_name).ok_or_else(|| {
-			ReifyError::from(EngineError::UnknownCallable {
+			ValueError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),
 				fragment: name.clone(),
 			})

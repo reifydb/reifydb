@@ -8,7 +8,7 @@ use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{Value, identity::IdentityKind},
 };
 
@@ -36,7 +36,7 @@ pub(crate) fn create_authentication(
 	}
 
 	let provider = services.auth_registry.get(method).ok_or_else(|| {
-		Error::from(AuthError::UnknownMethod {
+		ValueError::from(AuthError::UnknownMethod {
 			method: method.to_string(),
 		})
 	})?;

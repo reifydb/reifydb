@@ -66,7 +66,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
@@ -829,7 +829,7 @@ fn merge_order(series: &Series, columns: &[(String, ValueType, (FieldRef, ArrayR
 	lexsort_to_indices(&keys, None).map_err(arrow_error)
 }
 
-fn arrow_error(e: ArrowError) -> Error {
+fn arrow_error(e: ArrowError) -> ValueError {
 	SubStoreError::Arrow {
 		reason: e.to_string(),
 	}

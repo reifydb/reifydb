@@ -11,7 +11,7 @@ use reifydb_core::{
 	retry::RetryStrategy,
 };
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::identity::{IdentityId, IdentityKind},
 };
@@ -28,7 +28,7 @@ impl AuthService {
 		identifier: &str,
 		public_key: &str,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		if identifier != public_key {
 			return Ok(invalid_credentials());
 		}
@@ -68,7 +68,7 @@ impl AuthService {
 		challenge_payload: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
 		declared: &AuthenticationMethod,
-	) -> Result<AuthResponse, Error> {
+	) -> Result<AuthResponse, ValueError> {
 		let provider = self.solana_provider()?;
 		let properties = self.solana_properties(provider, public_key)?;
 
@@ -101,9 +101,9 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn solana_provider(&self) -> Result<&dyn AuthenticationProvider, Error> {
+	fn solana_provider(&self) -> Result<&dyn AuthenticationProvider, ValueError> {
 		self.auth_registry.get("solana").ok_or_else(|| {
-			Error::from(AuthError::UnknownMethod {
+			ValueError::from(AuthError::UnknownMethod {
 				method: "solana".to_string(),
 			})
 		})
@@ -114,7 +114,7 @@ impl AuthService {
 		&self,
 		provider: &dyn AuthenticationProvider,
 		public_key: &str,
-	) -> Result<BTreeMap<String, String>, Error> {
+	) -> Result<BTreeMap<String, String>, ValueError> {
 		provider.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))
 	}
 
@@ -124,7 +124,7 @@ impl AuthService {
 		identifier: &str,
 		public_key: &str,
 		properties: BTreeMap<String, String>,
-	) -> Result<IdentityId, Error> {
+	) -> Result<IdentityId, ValueError> {
 		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_solana_identity", || {
 			let mut admin = self.engine.begin_admin()?;
 			let catalog = self.engine.catalog();

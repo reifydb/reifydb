@@ -38,7 +38,7 @@ use reifydb_flow::operator::source::decode_change;
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{
@@ -418,7 +418,7 @@ impl TakePlan {
 			return Ok(TakeState::default());
 		}
 		decode::<TakeState>(&row).map_err(|e| {
-			Error::from(FlowStateError::Decode {
+			ValueError::from(FlowStateError::Decode {
 				state: "TakeState",
 				cause: e.to_string(),
 			})
@@ -427,7 +427,7 @@ impl TakePlan {
 
 	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<()> {
 		let row = encode(state).map_err(|e| {
-			Error::from(FlowStateError::Encode {
+			ValueError::from(FlowStateError::Encode {
 				state: "TakeState",
 				cause: e.to_string(),
 			})

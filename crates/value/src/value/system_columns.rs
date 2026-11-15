@@ -15,7 +15,7 @@ use arrow_schema::{ArrowError, Field, FieldRef, Schema};
 
 use crate::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		column_view::ColumnView,
 		container::{temporal_array::datetimes, wide_int_array::wides},
@@ -400,7 +400,7 @@ fn datetime_column(batch: &RecordBatch, column: SystemColumn) -> Result<&[DateTi
 	}
 }
 
-fn arrow_error(error: ArrowError) -> Error {
+fn arrow_error(error: ArrowError) -> ValueError {
 	field_error(error.to_string())
 }
 

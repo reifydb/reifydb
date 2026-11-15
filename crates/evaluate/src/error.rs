@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 
@@ -78,8 +78,8 @@ impl IntoDiagnostic for EvaluateError {
 	}
 }
 
-impl From<EvaluateError> for Error {
+impl From<EvaluateError> for ValueError {
 	fn from(err: EvaluateError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

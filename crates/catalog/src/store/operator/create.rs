@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::{error::Error, value::blob::Blob};
+use reifydb_value::{error::ValueError, value::blob::Blob};
 
 use crate::{
 	CatalogStore, Result,
@@ -19,7 +19,7 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn create_operator(txn: &mut AdminTransaction, flow: FlowId, node: &FlowNode) -> Result<()> {
 		let data = to_stdvec(&node.ty)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
+			.map_err(|e| ValueError(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 
 		let mut row = operator::allocate();
 		operator::set_id(&mut row, u64::from(node.id));

@@ -54,7 +54,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::ExtensionParams,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{Value, constraint::TypeConstraint, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
@@ -346,8 +346,8 @@ fn state_bytes(db: &TestDb, operators: &[OperatorId]) -> u64 {
 		.sum()
 }
 
-fn refused() -> Error {
-	Error(Box::new(Diagnostic {
+fn refused() -> ValueError {
+	ValueError(Box::new(Diagnostic {
 		code: REFUSED.to_string(),
 		message: "refused deferred backfill scan".to_string(),
 		..Default::default()

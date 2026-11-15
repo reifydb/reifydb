@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_rql_frontend::ast::identifier::UnresolvedObjectIdentifier;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, fragment::Fragment};
+use reifydb_value::{Result, error::ValueError, fragment::Fragment};
 
 use crate::error::{IdentifierError, ObjectNotFoundError};
 
@@ -165,7 +165,7 @@ fn probe_object_in_namespace(
 						reason,
 					} = &flow.status
 				{
-					return Err(Error(Box::new(flow_view_poisoned(
+					return Err(ValueError(Box::new(flow_view_poisoned(
 						ns_def.name(),
 						name_str,
 						reason,

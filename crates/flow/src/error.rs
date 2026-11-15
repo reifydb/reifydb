@@ -7,7 +7,7 @@ use reifydb_core::error::diagnostic::flow::{
 	flow_sink_missing_series_key, flow_sink_missing_system_column, flow_sink_not_a_source_family,
 	flow_span_on_unageable_node, flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator,
 };
-use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
+use reifydb_value::error::{Diagnostic, IntoDiagnostic, ValueError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowGraphError {
@@ -95,9 +95,9 @@ impl IntoDiagnostic for FlowGraphError {
 	}
 }
 
-impl From<FlowGraphError> for Error {
+impl From<FlowGraphError> for ValueError {
 	fn from(err: FlowGraphError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -161,8 +161,8 @@ impl IntoDiagnostic for FlowSinkError {
 	}
 }
 
-impl From<FlowSinkError> for Error {
+impl From<FlowSinkError> for ValueError {
 	fn from(err: FlowSinkError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

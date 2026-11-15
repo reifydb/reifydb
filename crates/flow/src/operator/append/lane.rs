@@ -7,7 +7,7 @@ use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::flow::OperatorId,
 };
-use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_value::{Result, error::ValueError, value::row_number::RowNumber};
 
 use crate::error::FlowGraphError;
 
@@ -99,7 +99,7 @@ fn chain_parent(dag: &FlowDag, node: OperatorId) -> Result<Option<OperatorId>> {
 				continue;
 			}
 			if parent.is_some_and(|existing| existing != *output) {
-				return Err(Error::from(FlowGraphError::NodeInputArity {
+				return Err(ValueError::from(FlowGraphError::NodeInputArity {
 					operator: "Append",
 					expected: "one append consumer per append chain",
 					found: 2,
@@ -139,7 +139,7 @@ fn walk(
 ) -> Result<()> {
 	let found = dag.get_operator(&node).ok_or_else(|| missing(node))?;
 	if found.inputs.len() != 2 {
-		return Err(Error::from(FlowGraphError::NodeInputArity {
+		return Err(ValueError::from(FlowGraphError::NodeInputArity {
 			operator: "Append",
 			expected: "exactly 2",
 			found: found.inputs.len(),
@@ -159,8 +159,8 @@ fn walk(
 	Ok(())
 }
 
-fn missing(node: OperatorId) -> Error {
-	Error::from(FlowGraphError::ParentOperatorNotFound {
+fn missing(node: OperatorId) -> ValueError {
+	ValueError::from(FlowGraphError::ParentOperatorNotFound {
 		input: format!("{:?}", node),
 	})
 }
@@ -169,7 +169,7 @@ pub fn assign_lanes(dag: &FlowDag, node: OperatorId) -> Result<AppendLanes> {
 	let root = chain_root(dag, node)?;
 	let leaves = count_leaves(dag, root)?;
 	if leaves > MAX_LANES {
-		return Err(Error::from(FlowGraphError::NodeInputArity {
+		return Err(ValueError::from(FlowGraphError::NodeInputArity {
 			operator: "Append",
 			expected: "at most 256 branches per append chain",
 			found: leaves as usize,

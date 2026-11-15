@@ -28,7 +28,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{
@@ -224,7 +224,7 @@ impl<'a> SourceRowEncoder<'a> {
 			RowFamily::Queue => {
 				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_queue()).collect())
 			}
-			other => Err(Error::from(FlowSinkError::NotASourceFamily {
+			other => Err(ValueError::from(FlowSinkError::NotASourceFamily {
 				family: format!("{:?}", other),
 			})),
 		}
@@ -237,13 +237,13 @@ impl<'a> SourceRowEncoder<'a> {
 			.enumerate()
 			.map(|(row_idx, mut encoded)| {
 				let created_at = self.created_at.get(row_idx).copied().ok_or_else(|| {
-					Error::from(FlowSinkError::MissingSystemColumn {
+					ValueError::from(FlowSinkError::MissingSystemColumn {
 						column: "created_at",
 						row_idx,
 					})
 				})?;
 				let updated_at = self.updated_at.get(row_idx).copied().ok_or_else(|| {
-					Error::from(FlowSinkError::MissingSystemColumn {
+					ValueError::from(FlowSinkError::MissingSystemColumn {
 						column: "updated_at",
 						row_idx,
 					})

@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::{arith::length_mismatch, factory::rename},
 };
 use reifydb_routine_abi::Function;
-use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -89,7 +89,7 @@ impl Direct {
 	}
 }
 
-fn nested(operator: &str) -> Error {
+fn nested(operator: &str) -> ValueError {
 	internal_error!("{}: a routine that changes the row count must be the whole expression", operator)
 }
 

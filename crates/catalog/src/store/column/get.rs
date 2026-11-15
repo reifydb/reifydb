@@ -15,7 +15,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 
@@ -24,7 +24,7 @@ use crate::{CatalogStore, Result, store::column::shape::column};
 impl CatalogStore {
 	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<Column> {
 		let multi = rx.get(&[ColumnsKey::new(column).into()])?.pop().flatten().ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
 			)))

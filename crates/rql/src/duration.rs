@@ -4,7 +4,7 @@
 use reifydb_rql_frontend::token::token::{Literal, Token, TokenKind};
 use reifydb_value::{
 	Result,
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	value::{duration::Duration, temporal::parse::duration::parse_duration},
 };
 
@@ -32,8 +32,8 @@ pub(crate) fn compile_duration(token: &Token<'_>, bound: DurationBound, context:
 	Ok(duration)
 }
 
-pub(crate) fn invalid_option(token: &Token<'_>, expected: &str) -> Error {
-	Error::from(TypeError::Ast {
+pub(crate) fn invalid_option(token: &Token<'_>, expected: &str) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: expected.to_string(),
 		},

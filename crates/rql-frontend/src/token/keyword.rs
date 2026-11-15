@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
 };
@@ -37,7 +37,7 @@ macro_rules! keyword {
         }
 
         impl TryFrom<&str> for Keyword {
-            type Error = Error;
+            type Error = ValueError;
 
             fn try_from(value: &str) -> Result<Self> {
                 reifydb_assertions! {
@@ -47,7 +47,7 @@ macro_rules! keyword {
                     $( $string => Ok(Keyword::$variant) ),*,
                     _ => {
                         let message = "not a keyword".to_string();
-                        Err(Error::from(TypeError::Ast {
+                        Err(ValueError::from(TypeError::Ast {
                             kind: AstErrorKind::TokenizeError { message: message.clone() },
                             message,
                             fragment: Fragment::None,

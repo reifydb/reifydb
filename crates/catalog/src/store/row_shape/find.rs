@@ -17,7 +17,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 use tracing::{Span, field, instrument};
 
 use super::shape::{shape_field, shape_header};
@@ -54,7 +54,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	for i in 0..field_count {
 		let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
 		let field_entry = txn.get(&[field_key.clone().into()])?.pop().flatten().ok_or_else(|| {
-			Error(Box::new(internal(format!(
+			ValueError(Box::new(internal(format!(
 				"RowShape field {} missing for fingerprint {:?}",
 				i, fingerprint
 			))))
@@ -101,7 +101,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 			let entry = entry?;
 
 			let TaggedKey::RowShape(shape_key) = &entry.key else {
-				return Err(Error(Box::new(internal("Failed to decode shape key"))));
+				return Err(ValueError(Box::new(internal("Failed to decode shape key"))));
 			};
 
 			let (family, field_count) = shape_header::decode(EncodedPodRow::view(&entry.bytes))?;
@@ -118,7 +118,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
 			let field_entry = rx.get(&[field_key.clone().into()])?.pop().flatten().ok_or_else(|| {
-				Error(Box::new(internal(format!(
+				ValueError(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint
 				))))

@@ -37,7 +37,7 @@ use reifydb_flow::{
 	time_domain::{check_join_retention_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, reifydb_assertions};
+use reifydb_value::{Result, error::ValueError, reifydb_assertions};
 use tracing::{info, instrument};
 
 use crate::{
@@ -236,35 +236,35 @@ impl FlowEngineInner {
 			SinkTableView {
 				..
 			} => {
-				return Err(Error::from(FlowGraphError::UnsupportedNode {
+				return Err(ValueError::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkTableView",
 				}));
 			}
 			SinkRingBufferView {
 				..
 			} => {
-				return Err(Error::from(FlowGraphError::UnsupportedNode {
+				return Err(ValueError::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkRingBufferView",
 				}));
 			}
 			SinkSeriesView {
 				..
 			} => {
-				return Err(Error::from(FlowGraphError::UnsupportedNode {
+				return Err(ValueError::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkSeriesView",
 				}));
 			}
 			SinkQueueView {
 				..
 			} => {
-				return Err(Error::from(FlowGraphError::UnsupportedNode {
+				return Err(ValueError::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkQueueView",
 				}));
 			}
 			SinkSubscription {
 				..
 			} => {
-				return Err(Error::from(FlowGraphError::UnsupportedNode {
+				return Err(ValueError::from(FlowGraphError::UnsupportedNode {
 					kind: "SinkSubscription",
 				}));
 			}
@@ -354,7 +354,7 @@ impl FlowEngineInner {
 
 	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator> {
 		self.operators.get(&(flow_id, input)).ok_or_else(|| {
-			Error::from(FlowGraphError::ParentOperatorNotFound {
+			ValueError::from(FlowGraphError::ParentOperatorNotFound {
 				input: format!("{:?}", input),
 			})
 		})

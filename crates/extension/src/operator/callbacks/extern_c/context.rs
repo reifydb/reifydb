@@ -10,12 +10,12 @@ use reifydb_sdk::{
 	common::extern_c::wire::status::EXTERN_C_ERROR_INTERNAL,
 	flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContextRaw},
 };
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 pub struct ExternCHostContext<'a> {
 	host: *mut (dyn HostContext + 'a),
 	class: OperatorClass,
-	failure: Option<Error>,
+	failure: Option<ValueError>,
 	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
 }
 
@@ -29,7 +29,7 @@ impl<'a> ExternCHostContext<'a> {
 		}
 	}
 
-	pub fn take_failure(&mut self) -> Option<Error> {
+	pub fn take_failure(&mut self) -> Option<ValueError> {
 		self.failure.take()
 	}
 
@@ -78,7 +78,7 @@ pub(crate) unsafe fn guest_class(ctx: &ExternCContextRaw) -> OperatorClass {
 ///
 /// Same contract as [`get_host_mut`]: `ctx.txn_ptr` must be the pointer stored by [`new_extern_c_context`] from an
 /// [`ExternCHostContext`] that is still alive, and no reference to that [`ExternCHostContext`] itself may be live.
-pub(crate) unsafe fn stash_failure(ctx: &ExternCContextRaw, err: Error) -> i32 {
+pub(crate) unsafe fn stash_failure(ctx: &ExternCContextRaw, err: ValueError) -> i32 {
 	// SAFETY: discharges this function's own contract; the place borrow covers only the `failure` field, which is
 	// disjoint from the HostContext a live get_host_mut borrow points at through the `host` field.
 	let failure = unsafe { &mut (*(ctx.txn_ptr as *mut ExternCHostContext<'_>)).failure };

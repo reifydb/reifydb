@@ -38,7 +38,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
@@ -112,7 +112,7 @@ fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'
 				},
 			) => {}
 			(Some(_), Value::Digest(_)) => {
-				return Err(Error(Box::new(flow_digest_accuracy_given_for_digest(
+				return Err(ValueError(Box::new(flow_digest_accuracy_given_for_digest(
 					function,
 					value.get_type(),
 				))));
@@ -127,15 +127,18 @@ fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'
 			}
 			(None, Value::Digest(_)) => {}
 			(None, value) => {
-				return Err(Error(Box::new(flow_digest_accuracy_required(function, value.get_type()))));
+				return Err(ValueError(Box::new(flow_digest_accuracy_required(
+					function,
+					value.get_type(),
+				))));
 			}
 		}
 	}
 	Ok(())
 }
 
-fn digest_input_error(function: &str, error: DigestError) -> Error {
-	Error(Box::new(flow_digest_input_rejected(function, error.to_string())))
+fn digest_input_error(function: &str, error: DigestError) -> ValueError {
+	ValueError(Box::new(flow_digest_input_rejected(function, error.to_string())))
 }
 
 fn bare_slot(output: &Expression, slot_count: usize) -> Option<usize> {
@@ -489,7 +492,7 @@ impl Aggregation {
 			let mut expr = aggregate.clone();
 			let representable = rewrite_aggregates(&routines, &mut expr, &mut slots, &mut digests, context)
 				.map_err(|error| {
-					Error(Box::new(aggregate_call_diagnostic(
+					ValueError(Box::new(aggregate_call_diagnostic(
 						display_label(aggregate).text(),
 						error,
 					)))
@@ -623,7 +626,7 @@ impl Aggregation {
 			let column = lowered_expr.evaluate(&exec_ctx)?;
 			let ty = ColumnView::try_from(&column)?.get_type();
 			if !ty.is_scalar() {
-				return Err(Error(Box::new(aggregate_group_by_unkeyable(
+				return Err(ValueError(Box::new(aggregate_group_by_unkeyable(
 					Fragment::internal(column.0.name()),
 					ty,
 				))));

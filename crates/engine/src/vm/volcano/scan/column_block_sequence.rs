@@ -9,7 +9,7 @@ use reifydb_extension::block_encoding::error::BlockEncodingError;
 use reifydb_store_column::{
 	block::Schema, device::BlockFileKey, predicate::Predicate, reader::BlockReader, store::ColumnStore,
 };
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	Result,
@@ -75,7 +75,7 @@ impl BlockSequenceReader {
 				.store
 				.open(&BlockFileKey::of(block))?
 				.ok_or_else(|| {
-					Error(Box::new(internal(format!(
+					ValueError(Box::new(internal(format!(
 						"column block {} is missing from the column store",
 						block.id
 					))))

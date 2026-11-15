@@ -10,7 +10,7 @@ use reifydb_client::{GrpcClient, WireFormat};
 use reifydb_runtime::sync::mutex::Mutex;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::error::Diagnostic;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 #[cfg(not(reifydb_single_threaded))]
@@ -39,9 +39,9 @@ impl RemoteRegistry {
 		*self.handle.lock() = None;
 	}
 
-	fn handle(&self) -> Result<Handle, Error> {
+	fn handle(&self) -> Result<Handle, ValueError> {
 		self.handle.lock().clone().ok_or_else(|| {
-			Error(Box::new(Diagnostic {
+			ValueError(Box::new(Diagnostic {
 				code: "REMOTE_003".to_string(),
 				message: "remote runtime has been shut down".to_string(),
 				..Default::default()
@@ -55,7 +55,7 @@ impl RemoteRegistry {
 		rql: &str,
 		params: Params,
 		token: Option<&str>,
-	) -> Result<Vec<Frame>, Error> {
+	) -> Result<Vec<Frame>, ValueError> {
 		let params_opt = match &params {
 			Params::None => None,
 			_ => Some(params),
@@ -73,7 +73,7 @@ impl RemoteRegistry {
 		}
 	}
 
-	fn run_query(&self, client: &GrpcClient, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	fn run_query(&self, client: &GrpcClient, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		let client = client.clone();
 		let rql = rql.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
@@ -84,7 +84,7 @@ impl RemoteRegistry {
 		});
 
 		rx.recv().map_err(|_| {
-			Error(Box::new(Diagnostic {
+			ValueError(Box::new(Diagnostic {
 				code: "REMOTE_003".to_string(),
 				message: "remote query channel closed".to_string(),
 				..Default::default()
@@ -92,7 +92,7 @@ impl RemoteRegistry {
 		})?
 	}
 
-	fn get_or_connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
+	fn get_or_connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, ValueError> {
 		let key = cache_key(address, token);
 		if let Some(c) = self.clients.lock().get(&key) {
 			return Ok(c.clone());
@@ -111,7 +111,7 @@ impl RemoteRegistry {
 		self.clients.lock().len()
 	}
 
-	fn connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
+	fn connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, ValueError> {
 		let address_owned = address.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
@@ -121,7 +121,7 @@ impl RemoteRegistry {
 		});
 
 		let mut client = rx.recv().map_err(|_| {
-			Error(Box::new(Diagnostic {
+			ValueError(Box::new(Diagnostic {
 				code: "REMOTE_003".to_string(),
 				message: "remote connect channel closed".to_string(),
 				..Default::default()
@@ -140,11 +140,11 @@ fn cache_key(address: &str, token: Option<&str>) -> CacheKey {
 }
 
 #[cfg(not(reifydb_single_threaded))]
-fn is_transport_error(err: &Error) -> bool {
+fn is_transport_error(err: &ValueError) -> bool {
 	matches!(err.0.code.as_str(), "CONNECTION_LOST" | "TRANSPORT")
 }
 
-pub fn is_remote_query(err: &Error) -> bool {
+pub fn is_remote_query(err: &ValueError) -> bool {
 	err.0.code == "REMOTE_001"
 }
 
@@ -155,8 +155,8 @@ mod tests {
 
 	use super::*;
 
-	fn make_remote_error(address: &str) -> Error {
-		Error(Box::new(Diagnostic {
+	fn make_remote_error(address: &str) -> ValueError {
+		ValueError(Box::new(Diagnostic {
 			code: "REMOTE_001".to_string(),
 			message: format!(
 				"Remote namespace 'remote_ns': source 'users' is on remote instance at {}",
@@ -179,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn test_is_remote_query_false() {
-		let err = Error(Box::new(Diagnostic {
+		let err = ValueError(Box::new(Diagnostic {
 			code: "CATALOG_001".to_string(),
 			message: "Table not found".to_string(),
 			fragment: Fragment::None,
@@ -190,14 +190,14 @@ mod tests {
 
 	#[test]
 	fn test_is_transport_error() {
-		let transport_err = Error(Box::new(Diagnostic {
+		let transport_err = ValueError(Box::new(Diagnostic {
 			code: "CONNECTION_LOST".to_string(),
 			message: "channel closed".to_string(),
 			..Default::default()
 		}));
 		assert!(is_transport_error(&transport_err));
 
-		let app_err = Error(Box::new(Diagnostic {
+		let app_err = ValueError(Box::new(Diagnostic {
 			code: "CATALOG_001".to_string(),
 			message: "Table not found".to_string(),
 			..Default::default()

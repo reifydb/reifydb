@@ -36,7 +36,7 @@ use reifydb_test_harness::assert::column_values;
 use reifydb_testing_sdk::last_value::LastValue;
 use reifydb_value::{
 	config::ExtensionParams,
-	error::Error as ValueError,
+	error::ValueError,
 	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 

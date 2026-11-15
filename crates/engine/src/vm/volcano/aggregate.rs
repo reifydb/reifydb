@@ -31,7 +31,7 @@ use reifydb_routine_abi::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
-	error::{Error, FunctionErrorKind, TypeError},
+	error::{FunctionErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -404,7 +404,7 @@ fn parse_keys_and_aggregates(
 	Ok((keys, projections, slots, inputs))
 }
 
-fn percentile_call_error(failure: PercentileCallError) -> Error {
+fn percentile_call_error(failure: PercentileCallError) -> ValueError {
 	match failure {
 		PercentileCallError::ArgumentCount {
 			function,
@@ -530,7 +530,7 @@ fn literal_arguments(call: &CallExpression, max_literals: usize) -> Result<Vec<L
 		.collect()
 }
 
-fn too_many_arguments(function: Fragment, max_args: usize, actual: usize) -> Error {
+fn too_many_arguments(function: Fragment, max_args: usize, actual: usize) -> ValueError {
 	let noun = if max_args == 1 {
 		"argument"
 	} else {

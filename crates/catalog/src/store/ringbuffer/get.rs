@@ -6,14 +6,14 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn get_ringbuffer(rx: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<RingBuffer> {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				ringbuffer
 			)))

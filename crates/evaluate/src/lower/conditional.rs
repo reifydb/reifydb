@@ -9,7 +9,7 @@ use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, Expr, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, expr::Case};
 use reifydb_core::expression::{Expression, IfExpression};
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::ColumnView,
@@ -62,7 +62,7 @@ pub(super) fn lower_if<'e>(
 	}
 	let (target, mismatches) = layout(&columns, &e.fragment)?;
 	if let Some(diagnostic) = mismatches.iter().flatten().next() {
-		return Err(Error(Box::new(diagnostic.clone())).into());
+		return Err(ValueError(Box::new(diagnostic.clone())).into());
 	}
 	let nullable = otherwise.is_none() || all.iter().any(|node| node.field.is_nullable());
 	let first = all[0].field.clone();

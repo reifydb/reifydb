@@ -5,7 +5,7 @@ use std::fmt;
 
 use reifydb_value::{
 	Result,
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 };
 
@@ -62,7 +62,7 @@ impl ShutdownErrors {
 			return Ok(());
 		}
 		let reason = format!("{} parts failed", self.failed.len());
-		Err(Error(Box::new(Diagnostic {
+		Err(ValueError(Box::new(Diagnostic {
 			notes: self.failed,
 			..shutdown_failed(self.owner, reason)
 		})))

@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
-use reifydb_value::{Result, error::Error, fragment::Fragment, value::duration::Duration};
+use reifydb_value::{Result, error::ValueError, fragment::Fragment, value::duration::Duration};
 
 pub mod operator;
 pub mod source;
@@ -205,7 +205,7 @@ impl FlowCompiler {
 		members: Vec<(QueryPlan, View)>,
 	) -> Result<FlowDag> {
 		if contains_sort(&prefix) {
-			return Err(Error(Box::new(flow_sort_must_be_terminal())));
+			return Err(ValueError(Box::new(flow_sort_must_be_terminal())));
 		}
 		let prefix_node = self.compile_plan(txn, prefix)?;
 		self.shared_input = Some(prefix_node);
@@ -250,7 +250,7 @@ impl FlowCompiler {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {
-			return Err(Error(Box::new(flow_source_required())));
+			return Err(ValueError(Box::new(flow_source_required())));
 		}
 		validate_temporal_operators(&flow)?;
 
@@ -278,7 +278,7 @@ impl FlowCompiler {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {
-			return Err(Error(Box::new(flow_source_required())));
+			return Err(ValueError(Box::new(flow_source_required())));
 		}
 		validate_temporal_operators(&flow)?;
 
@@ -343,13 +343,13 @@ impl FlowCompiler {
 				// TODO: Implement optimized row range scan for flow graphs
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
 			}
-			QueryPlan::DictionaryScan(_) => Err(Error(Box::new(flow_dictionary_source_unsupported()))),
-			QueryPlan::QueueScan(_) => Err(Error(Box::new(flow_queue_source_unsupported()))),
+			QueryPlan::DictionaryScan(_) => Err(ValueError(Box::new(flow_dictionary_source_unsupported()))),
+			QueryPlan::QueueScan(_) => Err(ValueError(Box::new(flow_queue_source_unsupported()))),
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
 			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
-			QueryPlan::RemoteScan(_) => Err(Error(Box::new(flow_remote_source_unsupported()))),
+			QueryPlan::RemoteScan(_) => Err(ValueError(Box::new(flow_remote_source_unsupported()))),
 			QueryPlan::RunTests(_) => {
 				panic!("RunTests is not supported in flow graphs");
 			}
@@ -386,10 +386,10 @@ fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
 		| QueryPlan::RingBufferScan(_)
 		| QueryPlan::SeriesScan(_)
 		| QueryPlan::InlineData(_) => Ok(()),
-		QueryPlan::Lookup(n) => {
-			Err(Error(Box::new(lookup_outside_deferred_view(n.alias.clone().unwrap_or(Fragment::None)))))
-		}
-		other => Err(Error(Box::new(subscription_operation_unsupported(other.name())))),
+		QueryPlan::Lookup(n) => Err(ValueError(Box::new(lookup_outside_deferred_view(
+			n.alias.clone().unwrap_or(Fragment::None),
+		)))),
+		other => Err(ValueError(Box::new(subscription_operation_unsupported(other.name())))),
 	}
 }
 
@@ -399,7 +399,7 @@ fn validate_sort_terminal(plan: &QueryPlan) -> Result<()> {
 		other => contains_sort(other),
 	};
 	if has_deeper_sort {
-		return Err(Error(Box::new(flow_sort_must_be_terminal())));
+		return Err(ValueError(Box::new(flow_sort_must_be_terminal())));
 	}
 	Ok(())
 }
@@ -462,7 +462,7 @@ fn has_window(flow: &FlowDag) -> bool {
 
 fn validate_temporal_operators(flow: &FlowDag) -> Result<()> {
 	if has_window(flow) && !flow.has_timed_source() {
-		return Err(Error(Box::new(flow_window_requires_a_timed_source())));
+		return Err(ValueError(Box::new(flow_window_requires_a_timed_source())));
 	}
 	Ok(())
 }

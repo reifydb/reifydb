@@ -3,12 +3,12 @@
 
 use super::{date::parse_date, time::parse_time};
 use crate::{
-	error::{Error, TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::DateTime,
 };
 
-pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
+pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, ValueError> {
 	let parts: Vec<&str> = fragment.text().split('T').collect();
 	if parts.len() != 2 {
 		return Err(TypeError::Temporal {
@@ -37,7 +37,7 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 		time.nanosecond(),
 	)
 	.ok_or_else(|| {
-		Error::from(TypeError::Temporal {
+		ValueError::from(TypeError::Temporal {
 			kind: TemporalKind::DateTimeOutOfRange,
 			message: "datetime out of representable range".into(),
 			fragment,

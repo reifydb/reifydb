@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::json::{excerpt, from::frames_from_envelope};
-use reifydb_value::{err, error::Error, value::frame::frame::Frame};
+use reifydb_value::{err, error::ValueError, value::frame::frame::Frame};
 use serde_json::Value as JsonValue;
 
 use crate::{AdminResult, CommandResult, QueryResult, Response, ResponsePayload, error::ClientError};
 
-fn unexpected_response(expected: &str, other: ResponsePayload) -> Error {
+fn unexpected_response(expected: &str, other: ResponsePayload) -> ValueError {
 	ClientError::UnexpectedResponse(format!(
 		"unexpected response to {expected}: {}",
 		excerpt(&format!("{other:?}"))
@@ -15,12 +15,12 @@ fn unexpected_response(expected: &str, other: ResponsePayload) -> Error {
 	.into()
 }
 
-fn envelope_frames(body: JsonValue) -> Result<Vec<Frame>, Error> {
+fn envelope_frames(body: JsonValue) -> Result<Vec<Frame>, ValueError> {
 	frames_from_envelope(body)
 		.map_err(|error| ClientError::Decode(format!("failed to decode frames envelope: {error}")).into())
 }
 
-pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
+pub fn parse_admin_response(response: Response) -> Result<AdminResult, ValueError> {
 	match response.payload {
 		ResponsePayload::Admin(admin_response) => Ok(AdminResult {
 			frames: envelope_frames(admin_response.body)?,
@@ -37,7 +37,7 @@ pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
 	}
 }
 
-pub fn parse_command_response(response: Response) -> Result<CommandResult, Error> {
+pub fn parse_command_response(response: Response) -> Result<CommandResult, ValueError> {
 	match response.payload {
 		ResponsePayload::Command(cmd_response) => Ok(CommandResult {
 			frames: envelope_frames(cmd_response.body)?,
@@ -50,7 +50,7 @@ pub fn parse_command_response(response: Response) -> Result<CommandResult, Error
 	}
 }
 
-pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
+pub fn parse_query_response(response: Response) -> Result<QueryResult, ValueError> {
 	match response.payload {
 		ResponsePayload::Query(query_response) => {
 			let frames = envelope_frames(query_response.body)?;
@@ -66,7 +66,7 @@ pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
 	}
 }
 
-pub fn parse_call_response(response: Response) -> Result<CommandResult, Error> {
+pub fn parse_call_response(response: Response) -> Result<CommandResult, ValueError> {
 	match response.payload {
 		ResponsePayload::Call(call_response) => Ok(CommandResult {
 			frames: envelope_frames(call_response.body)?,

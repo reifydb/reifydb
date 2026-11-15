@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::operator::key::OperatorKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result, store::operator::shape::operator};
 
@@ -23,7 +23,7 @@ impl CatalogStore {
 		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = OperatorId(operator::get_id(&bytes));
 		let ty: OperatorDef = from_bytes(operator::get_data(&bytes).as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize OperatorDef: {}", e))))?;
+			.map_err(|e| ValueError(Box::new(internal!("Failed to deserialize OperatorDef: {}", e))))?;
 
 		Ok(Some(FlowNode::new(id, ty)))
 	}

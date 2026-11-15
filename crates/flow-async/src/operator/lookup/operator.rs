@@ -39,7 +39,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{
 		datetime::DateTime,
@@ -750,7 +750,7 @@ impl LookupOperator {
 			}
 		}
 		if let Some(delay) = self.config.emit_after {
-			let due = host.wall_now().add_duration(&delay).map_err(|error| Error::from(*error))?;
+			let due = host.wall_now().add_duration(&delay).map_err(|error| ValueError::from(*error))?;
 			for partition in changed {
 				self.waiting.entry(partition).or_insert(due);
 			}
@@ -973,7 +973,7 @@ impl HostOperator for LookupOperator {
 				continue;
 			}
 			if !matches!(origin, ChangeOrigin::Flow(from_node) if from_node == self.config.left_node) {
-				return Err(Error::from(FlowGraphError::UnknownDiffOrigin {
+				return Err(ValueError::from(FlowGraphError::UnknownDiffOrigin {
 					operator: "Lookup",
 					origin: None,
 				}));

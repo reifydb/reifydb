@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	value::{Value, datetime::DateTime, frame::frame::Frame, system_columns::SystemColumn},
 };
 
@@ -10,7 +10,7 @@ pub trait ResultAssert<T> {
 	fn assert_error(self, code: &str) -> Diagnostic;
 }
 
-impl<T> ResultAssert<T> for Result<T, Error> {
+impl<T> ResultAssert<T> for Result<T, ValueError> {
 	#[track_caller]
 	fn assert_error(self, code: &str) -> Diagnostic {
 		match self {

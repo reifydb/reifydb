@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 pub use reifydb_codec::wire::RawChangePayload;
 use reifydb_codec::{frame::decode::decode_frames, value::encode_value};
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{Value, frame::frame::Frame},
 };
@@ -44,7 +44,7 @@ use crate::{
 	subscription::{SubscribeItem, SubscriptionConfig},
 };
 
-type RouteSender = mpsc::UnboundedSender<Result<RawChangePayload, Error>>;
+type RouteSender = mpsc::UnboundedSender<Result<RawChangePayload, ValueError>>;
 
 struct Route {
 	handle_id: String,
@@ -110,11 +110,11 @@ pub struct GrpcClient {
 }
 
 impl GrpcClient {
-	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, ValueError> {
 		Self::connect_with_options(url, GrpcClientOptions::new(format)).await
 	}
 
-	pub async fn connect_with_options(url: &str, options: GrpcClientOptions) -> Result<Self, Error> {
+	pub async fn connect_with_options(url: &str, options: GrpcClientOptions) -> Result<Self, ValueError> {
 		if options.format == WireFormat::Frames {
 			return Err(ClientError::UnsupportedWireFormat(
 				"WireFormat::Frames is not supported for GrpcClient".to_string(),
@@ -137,14 +137,18 @@ impl GrpcClient {
 		self.token = Some(token.to_string());
 	}
 
-	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_password(
+		&mut self,
+		identifier: &str,
+		password: &str,
+	) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
 		credentials.insert("password".to_string(), password.to_string());
 		self.login("password", credentials).await
 	}
 
-	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, ValueError> {
 		let mut credentials = HashMap::new();
 		credentials.insert("token".to_string(), token.to_string());
 		self.login("token", credentials).await
@@ -154,7 +158,7 @@ impl GrpcClient {
 		&mut self,
 		method: &str,
 		credentials: HashMap<String, String>,
-	) -> Result<LoginResult, Error> {
+	) -> Result<LoginResult, ValueError> {
 		let request = ProtoAuthenticateRequest {
 			method: method.to_string(),
 			credentials,
@@ -177,7 +181,7 @@ impl GrpcClient {
 		}
 	}
 
-	pub async fn logout(&mut self) -> Result<(), Error> {
+	pub async fn logout(&mut self) -> Result<(), ValueError> {
 		if self.token.is_none() {
 			return Ok(());
 		}
@@ -192,11 +196,11 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, ValueError> {
 		let request = ProtoAdminRequest {
 			rql: rql.to_string(),
 			params: params_to_proto(params.unwrap_or(Params::None))?,
@@ -215,11 +219,11 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		let request = ProtoCommandRequest {
 			rql: rql.to_string(),
 			params: params_to_proto(params.unwrap_or(Params::None))?,
@@ -238,11 +242,11 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, ValueError> {
 		let request = ProtoQueryRequest {
 			rql: rql.to_string(),
 			params: params_to_proto(params.unwrap_or(Params::None))?,
@@ -261,11 +265,11 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		Ok(self.call_with_meta(name, params).await?.frames)
 	}
 
-	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		let request = ProtoOperationRequest {
 			name: name.to_string(),
 			params: params_to_proto(params.unwrap_or(Params::None))?,
@@ -284,7 +288,7 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, ValueError> {
 		let mut client = self.inner.clone();
 		let mut req = Request::new(ProtoQueueClaimRequest {
 			queue: request.queue,
@@ -299,7 +303,7 @@ impl GrpcClient {
 		decode_rbcf(&response.into_inner().rbcf)
 	}
 
-	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<GrpcSubscription>, Error> {
+	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<GrpcSubscription>, ValueError> {
 		let items: Vec<ProtoSubscribeItem> = items
 			.iter()
 			.map(|item| {
@@ -308,7 +312,7 @@ impl GrpcClient {
 					options: Some(subscription_options_to_proto(&item.config)?),
 				})
 			})
-			.collect::<Result<_, Error>>()?;
+			.collect::<Result<_, ValueError>>()?;
 
 		let mut client = self.inner.clone();
 		let mut req = Request::new(ProtoSubscribeRequest {
@@ -357,7 +361,7 @@ impl GrpcClient {
 			.collect())
 	}
 
-	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), ValueError> {
 		let targets: Vec<String> = {
 			let mut routes = self.routes.lock().await;
 			subscription_ids
@@ -392,7 +396,7 @@ impl GrpcClient {
 	}
 }
 
-async fn open_channel(url: &str) -> Result<Channel, Error> {
+async fn open_channel(url: &str) -> Result<Channel, ValueError> {
 	let endpoint = Channel::from_shared(url.to_string())
 		.map_err(|e| ClientError::Transport(format!("Invalid gRPC url: {}", e)))?;
 	endpoint.tcp_nodelay(true)
@@ -410,7 +414,10 @@ fn attach_token<T>(request: &mut Request<T>, token: &Option<String>) {
 	}
 }
 
-async fn consume_subscribed(stream: &mut Streaming<SubscriptionEvent>, expected: usize) -> Result<Vec<String>, Error> {
+async fn consume_subscribed(
+	stream: &mut Streaming<SubscriptionEvent>,
+	expected: usize,
+) -> Result<Vec<String>, ValueError> {
 	let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
 		ClientError::UnexpectedResponse("Stream closed before receiving subscription IDs".to_string())
 	})?;
@@ -478,7 +485,7 @@ impl StreamReader {
 				}
 				None => {
 					let error = if self.reconnect.max_reconnect_attempts > 0 {
-						Some(Error::from(ClientError::ConnectionLost))
+						Some(ValueError::from(ClientError::ConnectionLost))
 					} else {
 						ended
 					};
@@ -531,13 +538,13 @@ impl StreamReader {
 		Some((stream, server_ids))
 	}
 
-	async fn end(&self, error: Option<Error>) {
+	async fn end(&self, error: Option<ValueError>) {
 		let mut routes = self.routes.lock().await;
 		for server_id in &self.server_ids {
 			if let Some(route) = routes.remove(server_id)
 				&& let Some(error) = &error
 			{
-				let _ = route.sender.send(Err(Error(error.0.clone())));
+				let _ = route.sender.send(Err(ValueError(error.0.clone())));
 			}
 		}
 	}
@@ -559,7 +566,7 @@ fn route_change_event(change: ChangeEvent, routes: &mut HashMap<String, Route>) 
 
 pub struct GrpcSubscription {
 	subscription_id: String,
-	rx: mpsc::UnboundedReceiver<Result<RawChangePayload, Error>>,
+	rx: mpsc::UnboundedReceiver<Result<RawChangePayload, ValueError>>,
 	_task: Arc<StreamTask>,
 }
 
@@ -576,16 +583,16 @@ impl GrpcSubscription {
 		}
 	}
 
-	pub async fn recv_raw(&mut self) -> Result<Option<RawChangePayload>, Error> {
+	pub async fn recv_raw(&mut self) -> Result<Option<RawChangePayload>, ValueError> {
 		self.rx.recv().await.transpose()
 	}
 }
 
-fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, Error> {
+fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, ValueError> {
 	decode_frames(bytes).map_err(|e| ClientError::Decode(format!("failed to decode RBCF payload: {}", e)).into())
 }
 
-fn params_to_proto(params: Params) -> Result<Option<ProtoParams>, Error> {
+fn params_to_proto(params: Params) -> Result<Option<ProtoParams>, ValueError> {
 	Ok(match params {
 		Params::None => None,
 		Params::Positional(values) => Some(ProtoParams {
@@ -593,7 +600,7 @@ fn params_to_proto(params: Params) -> Result<Option<ProtoParams>, Error> {
 				values: Arc::unwrap_or_clone(values)
 					.into_iter()
 					.map(value_to_typed_value)
-					.collect::<Result<_, Error>>()?,
+					.collect::<Result<_, ValueError>>()?,
 			})),
 		}),
 		Params::Named(map) => Some(ProtoParams {
@@ -601,13 +608,13 @@ fn params_to_proto(params: Params) -> Result<Option<ProtoParams>, Error> {
 				values: Arc::unwrap_or_clone(map)
 					.into_iter()
 					.map(|(k, v)| Ok((k, value_to_typed_value(v)?)))
-					.collect::<Result<_, Error>>()?,
+					.collect::<Result<_, ValueError>>()?,
 			})),
 		}),
 	})
 }
 
-fn subscription_options_to_proto(config: &SubscriptionConfig) -> Result<ProtoSubscribeOptions, Error> {
+fn subscription_options_to_proto(config: &SubscriptionConfig) -> Result<ProtoSubscribeOptions, ValueError> {
 	Ok(ProtoSubscribeOptions {
 		hydration: Some(ProtoHydrationOptions {
 			enabled: Some(config.hydration.enabled),
@@ -624,7 +631,7 @@ fn subscription_options_to_proto(config: &SubscriptionConfig) -> Result<ProtoSub
 	})
 }
 
-fn value_to_typed_value(value: Value) -> Result<TypedValue, Error> {
+fn value_to_typed_value(value: Value) -> Result<TypedValue, ValueError> {
 	Ok(TypedValue {
 		encoded: encode_value(&value)
 			.map_err(|e| ClientError::Encode(format!("failed to encode value: {}", e)))?,
@@ -653,9 +660,9 @@ impl ClientSubscription for GrpcSubscriptionAdapter {
 	}
 }
 
-fn status_to_error(status: Status) -> Error {
+fn status_to_error(status: Status) -> ValueError {
 	if let Ok(diag) = serde_json_from_str::<Diagnostic>(status.message()) {
-		return Error(Box::new(diag));
+		return ValueError(Box::new(diag));
 	}
 	if matches!(status.code(), Code::Unavailable | Code::Cancelled | Code::Unknown) {
 		return ClientError::ConnectionLost.into();
@@ -673,56 +680,59 @@ impl ReifyClient for GrpcClient {
 		self.token.is_some()
 	}
 
-	async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+	async fn authenticate(&mut self, token: &str) -> Result<(), ValueError> {
 		GrpcClient::authenticate(self, token);
 		Ok(())
 	}
 
-	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, ValueError> {
 		GrpcClient::login_with_password(self, identifier, password).await
 	}
 
-	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, ValueError> {
 		GrpcClient::login_with_token(self, token).await
 	}
 
-	async fn logout(&mut self) -> Result<(), Error> {
+	async fn logout(&mut self) -> Result<(), ValueError> {
 		GrpcClient::logout(self).await
 	}
 
-	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		GrpcClient::admin(self, rql, params).await
 	}
 
-	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, ValueError> {
 		GrpcClient::admin_with_meta(self, rql, params).await
 	}
 
-	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		GrpcClient::command(self, rql, params).await
 	}
 
-	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		GrpcClient::command_with_meta(self, rql, params).await
 	}
 
-	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		GrpcClient::query(self, rql, params).await
 	}
 
-	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, ValueError> {
 		GrpcClient::query_with_meta(self, rql, params).await
 	}
 
-	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, ValueError> {
 		GrpcClient::call(self, name, params).await
 	}
 
-	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, ValueError> {
 		GrpcClient::call_with_meta(self, name, params).await
 	}
 
-	async fn subscribe<'a>(&self, items: &[SubscribeItem<'a>]) -> Result<Vec<Box<dyn ClientSubscription>>, Error> {
+	async fn subscribe<'a>(
+		&self,
+		items: &[SubscribeItem<'a>],
+	) -> Result<Vec<Box<dyn ClientSubscription>>, ValueError> {
 		Ok(GrpcClient::subscribe(self, items)
 			.await?
 			.into_iter()
@@ -734,7 +744,7 @@ impl ReifyClient for GrpcClient {
 			.collect())
 	}
 
-	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), ValueError> {
 		GrpcClient::unsubscribe(self, subscription_ids).await
 	}
 }

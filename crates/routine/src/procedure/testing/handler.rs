@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
@@ -75,7 +75,7 @@ fn extract_optional_string_param(params: &Params) -> Option<String> {
 	}
 }
 
-fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&str>) -> Result<RecordBatch, Error> {
+fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&str>) -> Result<RecordBatch, ValueError> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {

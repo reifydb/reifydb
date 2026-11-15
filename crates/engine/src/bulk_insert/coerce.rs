@@ -20,7 +20,7 @@ use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, column_view::ColumnView},
@@ -86,7 +86,7 @@ impl RowCoercer {
 	}
 }
 
-pub(crate) fn with_row_note(mut error: Error, source_name: &str, row_idx: usize) -> Error {
+pub(crate) fn with_row_note(mut error: ValueError, source_name: &str, row_idx: usize) -> ValueError {
 	error.0.notes.push(format!("row {} of the bulk insert into `{}`", row_idx + 1, source_name));
 	error
 }

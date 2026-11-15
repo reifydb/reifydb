@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_flow::writer::table::TableRowAddress;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
+	error::ValueError,
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
@@ -59,7 +59,7 @@ fn check_or_register(
 	}
 }
 
-fn collision(object: ObjectId, partition: Partition) -> Error {
+fn collision(object: ObjectId, partition: Partition) -> ValueError {
 	PartitionError::PartitionHashCollision {
 		object,
 		hash: partition.0,

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_core::{interface::catalog::authentication::Authentication, key::identity::AuthenticationKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{
-	error::{Diagnostic, Error},
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	value::identity::IdentityId,
 };
@@ -27,7 +27,7 @@ impl CatalogStore {
 		let id = SystemSequence::next_authentication_id(txn)?;
 
 		let properties_json = to_string(&properties).map_err(|e| {
-			Error(Box::new(Diagnostic {
+			ValueError(Box::new(Diagnostic {
 				code: "CT_020".to_string(),
 				rql: None,
 				message: format!("failed to serialize authentication properties: {}", e),

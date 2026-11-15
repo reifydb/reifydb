@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::{
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	fragment::Fragment,
 };
 
-pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
+pub fn parse_bool(fragment: Fragment) -> Result<bool, ValueError> {
 	let value = fragment.text().trim();
 
 	if value.is_empty() {

@@ -14,7 +14,7 @@ use reifydb_rql_frontend::{
 	token::token::{Literal, Token, TokenKind},
 };
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{duration::Duration, number::parse::parse_primitive_uint},
 };
@@ -61,7 +61,7 @@ pub(crate) fn entries<'a, 'bump>(with: Option<&'a AstOperatorWith<'bump>>) -> &'
 	with.map(|with| with.entries.as_slice()).unwrap_or(&[])
 }
 
-pub(crate) fn unknown_key(entry: &AstOperatorWithEntry<'_>, expected: &str) -> Error {
+pub(crate) fn unknown_key(entry: &AstOperatorWithEntry<'_>, expected: &str) -> ValueError {
 	AstError::UnexpectedToken {
 		expected: expected.to_string(),
 		fragment: entry.key.fragment(),
@@ -109,7 +109,7 @@ pub(crate) fn exact_or_default(exact: Option<(bool, &AstOperatorWithEntry<'_>)>,
 		None => Ok(emit == Emit::Off),
 		Some((false, _)) => Ok(false),
 		Some((true, _)) if emit == Emit::Off => Ok(true),
-		Some((true, entry)) => Err(Error::from(TypeError::Ast {
+		Some((true, entry)) => Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "'exact: true' together with 'emit: false'".to_string(),
 			},

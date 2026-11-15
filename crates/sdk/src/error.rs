@@ -5,7 +5,7 @@ use std::{error, fmt};
 
 use reifydb_core::internal;
 use reifydb_value::{
-	error::{ColumnReadReason, Error},
+	error::{ColumnReadReason, ValueError},
 	value::value_type::ValueType,
 };
 
@@ -39,7 +39,7 @@ pub enum SdkError {
 
 	Other(String),
 
-	Engine(Error),
+	Engine(ValueError),
 }
 
 impl fmt::Display for SdkError {
@@ -72,17 +72,17 @@ impl fmt::Display for SdkError {
 
 impl error::Error for SdkError {}
 
-impl From<SdkError> for Error {
+impl From<SdkError> for ValueError {
 	fn from(err: SdkError) -> Self {
 		match err {
 			SdkError::Engine(err) => err,
-			other => Error(Box::new(internal!(format!("{}", other)))),
+			other => ValueError(Box::new(internal!(format!("{}", other)))),
 		}
 	}
 }
 
-impl From<Error> for SdkError {
-	fn from(err: Error) -> Self {
+impl From<ValueError> for SdkError {
+	fn from(err: ValueError) -> Self {
 		SdkError::Engine(err)
 	}
 }

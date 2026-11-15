@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_flow::error::FlowSinkError;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -57,7 +57,7 @@ pub(crate) fn build_shape(host: &mut dyn HostContext, columns: &RecordBatch) -> 
 				..
 			} => {
 				let dictionary = host.dictionary(*id)?.ok_or_else(|| {
-					Error::from(FlowSinkError::DictionaryNotFound {
+					ValueError::from(FlowSinkError::DictionaryNotFound {
 						dictionary_id: format!("{:?}", id),
 						column: field.name().clone(),
 					})
@@ -340,7 +340,7 @@ fn decode_run(
 ) -> Result<RecordBatch> {
 	let shape = store
 		.get_row_shape(host, fingerprint)?
-		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
+		.ok_or_else(|| ValueError(Box::new(internal!("Row shape not found in store"))))?;
 	let mut envelopes: Vec<&Envelope> = Vec::with_capacity(bytes_slice.len());
 	for bytes in bytes_slice {
 		envelopes.push(Envelope::try_view(EncodedPodRow::view(bytes))?);
@@ -425,7 +425,7 @@ fn refuse_partial_stamps(columns: &RecordBatch, column: SystemColumn) -> Result<
 	if nones == 0 || nones == array.len() {
 		return Ok(());
 	}
-	Err(Error(Box::new(internal!(
+	Err(ValueError(Box::new(internal!(
 		"{} of {} left rows have no {} stamp; a join side must stamp all of its rows or none",
 		nones,
 		array.len(),
@@ -570,9 +570,9 @@ pub(crate) fn decode_runs(
 	let mut run: Vec<EncodedBytes> = Vec::new();
 
 	for (id, row) in block {
-		let fingerprint = Envelope::try_view(EncodedPodRow::view(&row))?
-			.fingerprint()
-			.ok_or_else(|| Error(Box::new(internal!("Join state row carries no shape fingerprint"))))?;
+		let fingerprint = Envelope::try_view(EncodedPodRow::view(&row))?.fingerprint().ok_or_else(|| {
+			ValueError(Box::new(internal!("Join state row carries no shape fingerprint")))
+		})?;
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
 			runs.push(decode_run(host, store, run_fingerprint.unwrap(), &run_ids, &run)?);
 			run_ids.clear();

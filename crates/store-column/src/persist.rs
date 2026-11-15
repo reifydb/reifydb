@@ -8,7 +8,7 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_runtime::io::fs::{FsError, Len, Pread, Pwrite};
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	reifydb_assertions,
 	value::value_type::{
 		ValueType,
@@ -299,7 +299,7 @@ pub(crate) fn write_all<W: Pwrite>(file: &W, path: &Path, mut offset: u64, buf: 
 	Ok(())
 }
 
-fn corrupt(reason: &str) -> Error {
+fn corrupt(reason: &str) -> ValueError {
 	ColumnError::PersistDeserialize {
 		reason: reason.to_string(),
 	}

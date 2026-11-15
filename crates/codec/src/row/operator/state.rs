@@ -5,7 +5,7 @@ use std::{cell::RefCell, collections::BTreeMap, mem};
 
 use postcard::{from_bytes, to_extend};
 use reifydb_value::{
-	error::{Error as ValueError, TypeError},
+	error::{TypeError, ValueError},
 	value::datetime::DateTime,
 };
 use serde::{Serialize, de::DeserializeOwned};

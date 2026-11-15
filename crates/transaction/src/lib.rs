@@ -17,7 +17,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
-use reifydb_value::{error::Error, value::uuid::Uuid7};
+use reifydb_value::{error::ValueError, value::uuid::Uuid7};
 use uuid::{Builder, Uuid};
 
 pub mod accumulator;
@@ -58,7 +58,7 @@ impl TransactionId {
 }
 
 impl TryFrom<&[u8]> for TransactionId {
-	type Error = Error;
+	type Error = ValueError;
 
 	fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
 		if bytes.len() != 16 {

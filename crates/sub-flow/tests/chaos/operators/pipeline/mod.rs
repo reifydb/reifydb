@@ -171,7 +171,11 @@ impl HostOperator for Pipeline {
 		HostOperator::capabilities(&self.terminal)
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, reifydb_value::error::Error> {
+	fn apply(
+		&mut self,
+		host: &mut dyn HostContext,
+		change: Change,
+	) -> Result<Change, reifydb_value::error::ValueError> {
 		let staged = self.stage.apply(host, change)?;
 		self.terminal.apply(host, staged)
 	}

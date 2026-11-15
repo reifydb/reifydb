@@ -4,7 +4,7 @@
 use arrow_buffer::i256;
 use reifydb_value::{
 	Result,
-	error::{Error, TypeError},
+	error::{TypeError, ValueError},
 	value::{
 		Value,
 		blob::Blob,
@@ -65,7 +65,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	fn read_exact(&mut self, count: usize) -> Result<&'a [u8]> {
 		if self.remaining() < count {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"unexpected end of key at position {}: need {} bytes, have {}",
 					self.position,
@@ -160,7 +160,7 @@ impl<'a> KeyDeserializer<'a> {
 		let mut result = Vec::new();
 		loop {
 			if self.remaining() < 1 {
-				return Err(Error::from(TypeError::SerdeKeycode {
+				return Err(ValueError::from(TypeError::SerdeKeycode {
 					message: format!(
 						"unexpected end of key at position {}: bytes not terminated",
 						self.position
@@ -172,7 +172,7 @@ impl<'a> KeyDeserializer<'a> {
 
 			if byte == 0xff {
 				if self.remaining() < 1 {
-					return Err(Error::from(TypeError::SerdeKeycode {
+					return Err(ValueError::from(TypeError::SerdeKeycode {
 						message: format!(
 							"unexpected end of key at position {}: incomplete escape sequence",
 							self.position
@@ -187,7 +187,7 @@ impl<'a> KeyDeserializer<'a> {
 				} else if next_byte == 0xff {
 					break;
 				} else {
-					return Err(Error::from(TypeError::SerdeKeycode {
+					return Err(ValueError::from(TypeError::SerdeKeycode {
 						message: format!(
 							"invalid escape sequence at position {}: 0xff 0x{:02x}",
 							self.position - 1,
@@ -205,7 +205,7 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_str(&mut self) -> Result<String> {
 		let bytes = self.read_bytes()?;
 		String::from_utf8(bytes).map_err(|e| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid UTF-8 in key at position {}: {}", self.position, e),
 			})
 		})
@@ -214,7 +214,7 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_date(&mut self) -> Result<Date> {
 		let days = self.read_i32()?;
 		Date::from_days_since_epoch(days).ok_or_else(|| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"invalid date at position {}: {} days since epoch",
 					self.position, days
@@ -231,7 +231,7 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_time(&mut self) -> Result<Time> {
 		let nanos = self.read_u64()?;
 		Time::from_nanos_since_midnight(nanos).ok_or_else(|| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"invalid time at position {}: {} nanos since midnight",
 					self.position, nanos
@@ -250,13 +250,13 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_identity_id(&mut self) -> Result<IdentityId> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid IdentityId at position {}: {}", self.position, e),
 			})
 		})?;
 		let version = uuid.get_version_num();
 		if version != 7 && version != 0 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"invalid IdentityId version {} at position {}",
 					version, self.position
@@ -269,13 +269,13 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_uuid4(&mut self) -> Result<Uuid4> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid4 at position {}: {}", self.position, e),
 			})
 		})?;
 		let version = uuid.get_version_num();
 		if version != 4 && version != 0 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid4 version {} at position {}", version, self.position),
 			}));
 		}
@@ -285,13 +285,13 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_uuid7(&mut self) -> Result<Uuid7> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid7 at position {}: {}", self.position, e),
 			})
 		})?;
 		let version = uuid.get_version_num();
 		if version != 7 && version != 0 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid7 version {} at position {}", version, self.position),
 			}));
 		}
@@ -329,7 +329,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	fn at_container_end(&mut self) -> Result<bool> {
 		if self.remaining() < 1 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"unexpected end of key at position {}: container not terminated",
 					self.position
@@ -362,7 +362,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_value(&mut self) -> Result<Value> {
 		if self.remaining() < 1 {
-			return Err(Error::from(TypeError::SerdeKeycode {
+			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"unexpected end of key at position {}: cannot read value type",
 					self.position
@@ -374,7 +374,7 @@ impl<'a> KeyDeserializer<'a> {
 		self.position += 1;
 
 		let kind = ValueKind::from_byte(type_marker).ok_or_else(|| {
-			Error::from(TypeError::SerdeKeycode {
+			ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
 					"unknown value type marker 0x{:02x} at position {}",
 					type_marker,
@@ -392,7 +392,7 @@ impl<'a> KeyDeserializer<'a> {
 				self.position += 1;
 				let inner = TypeTag::from_byte(inner_marker)
 					.map_err(|e| {
-						Error::from(TypeError::SerdeKeycode {
+						ValueError::from(TypeError::SerdeKeycode {
 							message: format!(
 								"invalid none inner type byte 0x{:02x} at position {}: {}",
 								inner_marker,
@@ -403,7 +403,7 @@ impl<'a> KeyDeserializer<'a> {
 					})?
 					.to_type()
 					.map_err(|e| {
-						Error::from(TypeError::SerdeKeycode {
+						ValueError::from(TypeError::SerdeKeycode {
 							message: format!(
 								"invalid none inner type byte 0x{:02x} at position {}: {}",
 								inner_marker,
@@ -417,7 +417,7 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Float4 => {
 				let f = self.read_f32()?;
 				Ok(Value::Float4(OrderedF32::try_from(f).map_err(|e| {
-					Error::from(TypeError::SerdeKeycode {
+					ValueError::from(TypeError::SerdeKeycode {
 						message: format!("invalid f32 at position {}: {}", self.position, e),
 					})
 				})?))
@@ -425,7 +425,7 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Float8 => {
 				let f = self.read_f64()?;
 				Ok(Value::Float8(OrderedF64::try_from(f).map_err(|e| {
-					Error::from(TypeError::SerdeKeycode {
+					ValueError::from(TypeError::SerdeKeycode {
 						message: format!("invalid f64 at position {}: {}", self.position, e),
 					})
 				})?))
@@ -455,7 +455,7 @@ impl<'a> KeyDeserializer<'a> {
 			ValueKind::Tuple => Ok(Value::Tuple(self.read_container_items()?)),
 			ValueKind::Record => Ok(Value::Record(self.read_record_fields()?)),
 			ValueKind::Any | ValueKind::Type | ValueKind::Digest | ValueKind::Enum => {
-				Err(Error::from(TypeError::SerdeKeycode {
+				Err(ValueError::from(TypeError::SerdeKeycode {
 					message: format!(
 						"value kind {:?} cannot be deserialized from keys (position {})",
 						kind,
@@ -471,7 +471,7 @@ impl<'a> KeyDeserializer<'a> {
 					0x02 => Ok(Value::DictionaryId(DictionaryEntryId::U4(self.read_u32()?))),
 					0x03 => Ok(Value::DictionaryId(DictionaryEntryId::U8(self.read_u64()?))),
 					0x04 => Ok(Value::DictionaryId(DictionaryEntryId::U16(self.read_u128()?))),
-					_ => Err(Error::from(TypeError::SerdeKeycode {
+					_ => Err(ValueError::from(TypeError::SerdeKeycode {
 						message: format!(
 							"unknown DictionaryEntryId sub-marker 0x{:02x} at position {}",
 							sub,
@@ -488,8 +488,8 @@ impl<'a> KeyDeserializer<'a> {
 	}
 }
 
-fn unscaled_error(position: usize, error: DecodeError) -> Error {
-	Error::from(TypeError::SerdeKeycode {
+fn unscaled_error(position: usize, error: DecodeError) -> ValueError {
+	ValueError::from(TypeError::SerdeKeycode {
 		message: format!("invalid fixed-width number at position {position}: {error}"),
 	})
 }

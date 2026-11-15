@@ -3,7 +3,7 @@
 
 use std::future::Future;
 
-use reifydb_client::{HttpClient, QueueClaimRequest, WireFormat, value::error::Error};
+use reifydb_client::{HttpClient, QueueClaimRequest, WireFormat, value::error::ValueError};
 use rustls::crypto::ring::default_provider;
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
@@ -59,7 +59,7 @@ async fn read_request(stream: &mut TcpStream) {
 	}
 }
 
-async fn error_code<T: Send + 'static>(call: impl Future<Output = Result<T, Error>> + Send + 'static) -> String {
+async fn error_code<T: Send + 'static>(call: impl Future<Output = Result<T, ValueError>> + Send + 'static) -> String {
 	// A panic surfaces as a join error here, so only a returned error yields a code.
 	match spawn(call).await {
 		Ok(Err(error)) => error.0.code,

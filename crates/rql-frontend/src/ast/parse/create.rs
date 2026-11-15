@@ -10,7 +10,7 @@ use reifydb_core::{
 	sort::SortDirection,
 };
 use reifydb_value::{
-	error::{AstErrorKind, Error, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::identity::IdentityKind,
 };
@@ -72,8 +72,8 @@ const EVICTION_REASONS: &str = "'ttl'";
 const EVICTION_VALUES: &str = "'visible' or 'silent'";
 const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', 'eviction', or 'column'";
 
-fn unexpected_option(token: &Token<'_>, expected: &str) -> Error {
-	Error::from(TypeError::Ast {
+fn unexpected_option(token: &Token<'_>, expected: &str) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: expected.to_string(),
 		},
@@ -82,8 +82,8 @@ fn unexpected_option(token: &Token<'_>, expected: &str) -> Error {
 	})
 }
 
-fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
-	Error::from(TypeError::Ast {
+fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: expected.to_string(),
 		},
@@ -92,8 +92,8 @@ fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 	})
 }
 
-fn unsupported_queue_view_option(token: &Token<'_>, reason: &str) -> Error {
-	Error::from(TypeError::Ast {
+fn unsupported_queue_view_option(token: &Token<'_>, reason: &str) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: QUEUE_VIEW_OPTION_KEYS.to_string(),
 		},
@@ -102,8 +102,8 @@ fn unsupported_queue_view_option(token: &Token<'_>, reason: &str) -> Error {
 	})
 }
 
-fn missing_queue_view_dispatch(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn missing_queue_view_dispatch(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "'fifo'".to_string(),
 		},
@@ -113,8 +113,8 @@ fn missing_queue_view_dispatch(token: &Token<'_>) -> Error {
 	})
 }
 
-fn transactional_queue_view(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn transactional_queue_view(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "'create deferred queue view'".to_string(),
 		},
@@ -123,8 +123,8 @@ fn transactional_queue_view(token: &Token<'_>) -> Error {
 	})
 }
 
-fn missing_queue_dispatch(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn missing_queue_dispatch(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "'fifo'".to_string(),
 		},
@@ -133,8 +133,8 @@ fn missing_queue_dispatch(token: &Token<'_>) -> Error {
 	})
 }
 
-fn duplicate_queue_dispatch(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn duplicate_queue_dispatch(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "exactly one dispatch block".to_string(),
 		},
@@ -146,8 +146,8 @@ fn duplicate_queue_dispatch(token: &Token<'_>) -> Error {
 	})
 }
 
-fn duplicate_eviction(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn duplicate_eviction(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "a unique `eviction` key".to_string(),
 		},
@@ -156,8 +156,8 @@ fn duplicate_eviction(token: &Token<'_>) -> Error {
 	})
 }
 
-fn duplicate_run_as(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn duplicate_run_as(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "a unique `run_as` key".to_string(),
 		},
@@ -166,8 +166,8 @@ fn duplicate_run_as(token: &Token<'_>) -> Error {
 	})
 }
 
-fn duplicate_eviction_reason(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn duplicate_eviction_reason(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "a unique eviction reason".to_string(),
 		},
@@ -180,8 +180,8 @@ fn duplicate_eviction_reason(token: &Token<'_>) -> Error {
 	})
 }
 
-fn ttl_eviction_without_row_ttl(token: &Token<'_>) -> Error {
-	Error::from(TypeError::Ast {
+fn ttl_eviction_without_row_ttl(token: &Token<'_>) -> ValueError {
+	ValueError::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
 			expected: "a `row: { ttl: .. }` declaration".to_string(),
 		},
@@ -221,7 +221,7 @@ impl<'bump> Parser<'bump> {
 
 		if or_replace {
 			let fragment = self.current()?.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "FLOW after CREATE OR REPLACE".to_string(),
 				},
@@ -824,7 +824,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "'grpc' or 'token'".to_string(),
 						},
@@ -852,7 +852,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		let grpc = grpc.ok_or_else(|| {
-			Error::from(TypeError::Ast {
+			ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'grpc' key in WITH block".to_string(),
 				},
@@ -909,7 +909,7 @@ impl<'bump> Parser<'bump> {
 							}
 						}
 						_ => {
-							return Err(Error::from(TypeError::Ast {
+							return Err(ValueError::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: SERIES_WITH_KEYS.to_string(),
 								},
@@ -948,7 +948,7 @@ impl<'bump> Parser<'bump> {
 							"nanosecond" => AstTimestampPrecision::Nanosecond,
 							_ => {
 								let fragment = prec_token.fragment.to_owned();
-								return Err(Error::from(TypeError::Ast {
+								return Err(ValueError::from(TypeError::Ast {
 									kind: AstErrorKind::UnexpectedToken {
 										expected: "'second', 'millisecond', 'microsecond', or 'nanosecond'"
 											.to_string(),
@@ -989,7 +989,7 @@ impl<'bump> Parser<'bump> {
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
-						return Err(Error::from(TypeError::Ast {
+						return Err(ValueError::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: SERIES_WITH_KEYS.to_string(),
 							},
@@ -1022,7 +1022,7 @@ impl<'bump> Parser<'bump> {
 		let key_fragment = match key_field {
 			Some(k) => Some(k),
 			None => {
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "WITH block containing 'key' field".to_string(),
 					},
@@ -1261,7 +1261,7 @@ impl<'bump> Parser<'bump> {
 			},
 			ViewStorageKindHint::RingBuffer => {
 				let Some(capacity) = capacity else {
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "capacity".to_string(),
 						},
@@ -1628,7 +1628,7 @@ impl<'bump> Parser<'bump> {
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
-						return Err(Error::from(TypeError::Ast {
+						return Err(ValueError::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "'row', 'partition', 'time', or 'eviction'"
 									.to_string(),
@@ -1703,7 +1703,7 @@ impl<'bump> Parser<'bump> {
 						}
 					}
 					_ => {
-						return Err(Error::from(TypeError::Ast {
+						return Err(ValueError::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
 								expected:
 									"'capacity', 'eviction', 'partition', or 'row'"
@@ -1726,7 +1726,7 @@ impl<'bump> Parser<'bump> {
 					capacity =
 						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
 							let fragment = capacity_token.fragment.to_owned();
-							Error::from(TypeError::Ast {
+							ValueError::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: "valid capacity number".to_string(),
 								},
@@ -1756,7 +1756,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected:
 								"'capacity', 'eviction', 'partition', 'row', or 'time'"
@@ -1791,7 +1791,7 @@ impl<'bump> Parser<'bump> {
 				.ok()
 				.map(|t| t.fragment.to_owned())
 				.unwrap_or_else(|| Fragment::internal("end of input"));
-			Error::from(TypeError::Ast {
+			ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'capacity' is required for RINGBUFFER".to_string(),
 				},
@@ -2114,7 +2114,7 @@ impl<'bump> Parser<'bump> {
 			}
 			_ => {
 				let fragment = keyword.fragment.to_owned();
-				Err(Error::from(TypeError::Ast {
+				Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: TIME_VALUES.to_string(),
 					},
@@ -2155,7 +2155,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = inner_key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "'by'".to_string(),
 						},
@@ -2233,7 +2233,7 @@ impl<'bump> Parser<'bump> {
 
 		if columns.is_empty() {
 			let fragment = self.current()?.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "at least one column in primary key".to_string(),
 				},
@@ -2290,7 +2290,7 @@ impl<'bump> Parser<'bump> {
 				"default" => AstColumnPropertyKind::Default,
 				_ => {
 					let fragment = kind_token.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::InvalidPolicy,
 						message: format!("Invalid property token: {}", fragment.text()),
 						fragment,
@@ -2557,7 +2557,7 @@ impl<'bump> Parser<'bump> {
 					}
 					_ => {
 						let fragment = current.fragment.to_owned();
-						return Err(Error::from(TypeError::Ast {
+						return Err(ValueError::from(TypeError::Ast {
 							kind: AstErrorKind::InvalidColumnProperty,
 							message: format!(
 								"Invalid column property: {}",
@@ -2598,7 +2598,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_ => {
 					let fragment = key_token.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::InvalidColumnProperty,
 						message: format!("Invalid column property: {}", fragment.text()),
 						fragment,
@@ -2748,7 +2748,7 @@ impl<'bump> Parser<'bump> {
 			}
 			_ => {
 				let fragment = self.current()?.fragment.to_owned();
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "migration name as string literal".to_string(),
 					},
@@ -2768,7 +2768,7 @@ impl<'bump> Parser<'bump> {
 		while depth > 0 {
 			if self.is_eof() {
 				let fragment = self.tokens[body_start_pos].fragment.to_owned();
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "closing '}'".to_string(),
 					},
@@ -2812,7 +2812,7 @@ impl<'bump> Parser<'bump> {
 			while depth > 0 {
 				if self.is_eof() {
 					let fragment = self.tokens[rb_start_pos].fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "closing '}'".to_string(),
 						},
@@ -2902,7 +2902,7 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume(TokenKind::Literal(Literal::Number))?;
 		token.fragment.text().parse::<u64>().map_err(|_| {
 			let fragment = token.fragment.to_owned();
-			Error::from(TypeError::Ast {
+			ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "valid capacity number".to_string(),
 				},
@@ -2921,7 +2921,7 @@ impl<'bump> Parser<'bump> {
 			"nanosecond" => AstTimestampPrecision::Nanosecond,
 			_ => {
 				let fragment = token.fragment.to_owned();
-				return Err(Error::from(TypeError::Ast {
+				return Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "second, millisecond, microsecond, or nanosecond".to_string(),
 					},
@@ -2975,7 +2975,7 @@ impl<'bump> Parser<'bump> {
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
+							return Err(ValueError::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: "'capacity', 'eviction', 'partition', or 'row'"
 										.to_string(),
@@ -2995,7 +2995,7 @@ impl<'bump> Parser<'bump> {
 				self.consume_operator(Operator::CloseCurly)?;
 
 				let capacity = capacity.ok_or_else(|| {
-					Error::from(TypeError::Ast {
+					ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "capacity".to_string(),
 						},
@@ -3051,7 +3051,7 @@ impl<'bump> Parser<'bump> {
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
+							return Err(ValueError::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: "'key', 'precision', 'partition', 'row', or 'eviction'"
 										.to_string(),
@@ -3114,7 +3114,7 @@ impl<'bump> Parser<'bump> {
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "'eviction', 'partition', or 'row'".to_string(),
 						},
@@ -3296,7 +3296,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: ROW_CONFIG_KEYS.to_string(),
 						},
@@ -3328,7 +3328,7 @@ impl<'bump> Parser<'bump> {
 				.ok()
 				.map(|t| t.fragment.to_owned())
 				.unwrap_or_else(|| Fragment::internal("end of input"));
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'ttl' is required in row config".to_string(),
 				},
@@ -3341,7 +3341,7 @@ impl<'bump> Parser<'bump> {
 			&& let Some(orphan) = anchor
 		{
 			let fragment = orphan.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a 'ttl' alongside it".to_string(),
 				},
@@ -3354,7 +3354,7 @@ impl<'bump> Parser<'bump> {
 			&& !p.value && duration.is_none()
 		{
 			let fragment = p.token.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a 'ttl' alongside 'persistent: false'".to_string(),
 				},
@@ -3380,7 +3380,7 @@ impl<'bump> Parser<'bump> {
 			return self.advance();
 		}
 		let fragment = current.fragment.to_owned();
-		Err(Error::from(TypeError::Ast {
+		Err(ValueError::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "duration literal".to_string(),
 			},
@@ -3407,7 +3407,7 @@ impl<'bump> Parser<'bump> {
 			TokenKind::Literal(Literal::True) | TokenKind::Literal(Literal::False) => self.advance(),
 			_ => {
 				let fragment = current.fragment.to_owned();
-				Err(Error::from(TypeError::Ast {
+				Err(ValueError::from(TypeError::Ast {
 					kind: AstErrorKind::UnexpectedToken {
 						expected: "'true' or 'false'".to_string(),
 					},
@@ -3469,7 +3469,7 @@ impl<'bump> Parser<'bump> {
 						Some(c) => cardinality = Some(c),
 						None => {
 							let fragment = value.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
+							return Err(ValueError::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: "'1:1', 'N:1', '1:N', or 'N:M'"
 										.to_string(),
@@ -3485,7 +3485,7 @@ impl<'bump> Parser<'bump> {
 				}
 				_other => {
 					let fragment = key_token.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
+					return Err(ValueError::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
 							expected: "'cardinality'".to_string(),
 						},
@@ -3510,7 +3510,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		let cardinality = cardinality.ok_or_else(|| {
-			Error::from(TypeError::Ast {
+			ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "WITH { cardinality: '<value>' }".to_string(),
 				},
@@ -3520,7 +3520,7 @@ impl<'bump> Parser<'bump> {
 		})?;
 
 		if cardinality.requires_junction() && junction.is_none() {
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "THROUGH <table>(<src>, <tgt>)".to_string(),
 				},
@@ -3529,7 +3529,7 @@ impl<'bump> Parser<'bump> {
 			}));
 		}
 		if !cardinality.requires_junction() && junction.is_some() {
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "no THROUGH clause".to_string(),
 				},
@@ -3581,7 +3581,7 @@ impl<'bump> Parser<'bump> {
 
 		if cols.len() != count {
 			let fragment = table.name.to_owned();
-			return Err(Error::from(TypeError::Ast {
+			return Err(ValueError::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: format!("{} column name(s)", count),
 				},

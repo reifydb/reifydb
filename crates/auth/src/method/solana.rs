@@ -7,7 +7,7 @@ use bs58::decode as bs58_decode;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
-use reifydb_value::{Result, error::Error, reifydb_assertions};
+use reifydb_value::{Result, error::ValueError, reifydb_assertions};
 
 use crate::error::SolanaError;
 
@@ -37,16 +37,17 @@ impl AuthenticationProvider for SolanaProvider {
 	}
 
 	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
-		let public_key = config.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
+		let public_key =
+			config.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
 
 		let bytes = bs58_decode(public_key).into_vec().map_err(|e| {
-			Error::from(SolanaError::InvalidPublicKey {
+			ValueError::from(SolanaError::InvalidPublicKey {
 				reason: e.to_string(),
 			})
 		})?;
 
 		if bytes.len() != 32 {
-			return Err(Error::from(SolanaError::InvalidPublicKey {
+			return Err(ValueError::from(SolanaError::InvalidPublicKey {
 				reason: format!("expected 32 bytes, got {}", bytes.len()),
 			}));
 		}
@@ -60,7 +61,7 @@ impl AuthenticationProvider for SolanaProvider {
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let public_key_b58 =
-			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
+			stored.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
 
 		Ok(self.issue_signin_challenge(public_key_b58, credentials))
 	}
@@ -72,9 +73,10 @@ impl AuthenticationProvider for SolanaProvider {
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let public_key_b58 =
-			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
-		let message =
-			challenge.get("message").ok_or_else(|| Error::from(SolanaError::MissingChallengeMessage))?;
+			stored.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
+		let message = challenge
+			.get("message")
+			.ok_or_else(|| ValueError::from(SolanaError::MissingChallengeMessage))?;
 
 		let Some(signature_b58) = credentials.get("signature") else {
 			return Ok(AuthStep::Failed);
@@ -98,19 +100,19 @@ impl SolanaProvider {
 		let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
 			.into_vec()
 			.map_err(|e| {
-				Error::from(SolanaError::InvalidPublicKey {
+				ValueError::from(SolanaError::InvalidPublicKey {
 					reason: e.to_string(),
 				})
 			})?
 			.try_into()
 			.map_err(|_| {
-				Error::from(SolanaError::InvalidPublicKey {
+				ValueError::from(SolanaError::InvalidPublicKey {
 					reason: "expected 32 bytes".to_string(),
 				})
 			})?;
 
 		let verifying_key = VerifyingKey::from_bytes(&pk_bytes).map_err(|e| {
-			Error::from(SolanaError::InvalidPublicKey {
+			ValueError::from(SolanaError::InvalidPublicKey {
 				reason: e.to_string(),
 			})
 		})?;
@@ -118,13 +120,13 @@ impl SolanaProvider {
 		let sig_bytes: [u8; 64] = bs58_decode(signature_b58)
 			.into_vec()
 			.map_err(|e| {
-				Error::from(SolanaError::InvalidSignature {
+				ValueError::from(SolanaError::InvalidSignature {
 					reason: e.to_string(),
 				})
 			})?
 			.try_into()
 			.map_err(|_| {
-				Error::from(SolanaError::InvalidSignature {
+				ValueError::from(SolanaError::InvalidSignature {
 					reason: "expected 64 bytes".to_string(),
 				})
 			})?;

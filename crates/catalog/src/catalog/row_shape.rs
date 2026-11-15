@@ -15,7 +15,7 @@ use reifydb_core::{
 	key::row::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Error, value::constraint::TypeConstraint};
+use reifydb_value::{error::ValueError, value::constraint::TypeConstraint};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -99,7 +99,7 @@ impl Catalog {
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
 			let field_entry = txn.get(&[field_key.clone().into()])?.pop().flatten().ok_or_else(|| {
-				Error(Box::new(internal(format!(
+				ValueError(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint
 				))))

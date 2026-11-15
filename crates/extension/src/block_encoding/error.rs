@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::id::ColumnBlockId;
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 
@@ -76,9 +76,9 @@ pub enum BlockEncodingError {
 	},
 }
 
-impl From<BlockEncodingError> for Error {
+impl From<BlockEncodingError> for ValueError {
 	fn from(err: BlockEncodingError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 

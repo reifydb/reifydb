@@ -38,7 +38,7 @@ use reifydb_core::{
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	error::Error,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -278,7 +278,7 @@ impl TableSink {
 				}
 			};
 			let Some(stamp) = prior.or_else(|| incoming.get(row_idx).copied()) else {
-				return Err(Error::from(FlowSinkError::MissingSystemColumn {
+				return Err(ValueError::from(FlowSinkError::MissingSystemColumn {
 					column: "created_at",
 					row_idx,
 				}));
@@ -348,7 +348,7 @@ impl TableSink {
 				None => stored.next().flatten(),
 			};
 			let Some(stamp) = prior.or_else(|| incoming.get(row_idx).copied()) else {
-				return Err(Error::from(FlowSinkError::MissingSystemColumn {
+				return Err(ValueError::from(FlowSinkError::MissingSystemColumn {
 					column: "created_at",
 					row_idx,
 				}));
@@ -389,7 +389,7 @@ fn view_dictionaries<T: Intern + ?Sized>(txn: &mut T, view: &View) -> Result<Vec
 	for (pos, col) in view.columns().iter().enumerate() {
 		if let Some(dict_id) = col.dictionary_id {
 			let dictionary = txn.dictionary(dict_id)?.ok_or_else(|| {
-				Error::from(FlowSinkError::DictionaryNotFound {
+				ValueError::from(FlowSinkError::DictionaryNotFound {
 					dictionary_id: format!("{:?}", dict_id),
 					column: col.name.to_string(),
 				})
@@ -484,7 +484,7 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 			.into_iter()
 			.map(|id| {
 				id.ok_or_else(|| {
-					Error::from(FlowSinkError::DictionaryEntryNotFound {
+					ValueError::from(FlowSinkError::DictionaryEntryNotFound {
 						dictionary_id: format!("{:?}", dictionary.id),
 						column: view.columns()[*col_pos].name.to_string(),
 					})
@@ -533,7 +533,7 @@ fn value_sort_runs<T: Intern + ?Sized>(
 			continue;
 		};
 		let dictionary = txn.dictionary(id)?.ok_or_else(|| {
-			Error::from(FlowSinkError::DictionaryNotFound {
+			ValueError::from(FlowSinkError::DictionaryNotFound {
 				dictionary_id: format!("{:?}", id),
 				column: field.name().clone(),
 			})

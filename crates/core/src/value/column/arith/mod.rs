@@ -105,7 +105,7 @@ pub mod scalar;
 pub mod sub;
 
 use reifydb_value::{
-	error::{Error, RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		constraint::{precision::Precision, scale::Scale},
@@ -199,7 +199,7 @@ pub(crate) fn output_len(left: usize, right: usize) -> usize {
 	}
 }
 
-pub fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
+pub fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> ValueError {
 	TypeError::Runtime {
 		kind: RuntimeErrorKind::ColumnLengthMismatch {
 			left,

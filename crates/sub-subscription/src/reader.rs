@@ -37,7 +37,7 @@ use reifydb_runtime::{
 	},
 };
 use reifydb_transaction::error::TransactionError;
-use reifydb_value::{Result, byte_size::ByteSize, error::Error, value::duration::Duration};
+use reifydb_value::{Result, byte_size::ByteSize, error::ValueError, value::duration::Duration};
 use reifydb_wal::lsn::Lsn;
 
 use crate::consumer::SubscriptionCommitLogConsumer;
@@ -362,7 +362,7 @@ impl SubscriptionReader {
 		.backtrace(Backtrace::force_capture().to_string()))
 	}
 
-	fn abort_on_error(&self, err: Error) -> ! {
+	fn abort_on_error(&self, err: ValueError) -> ! {
 		fatal(FatalReport::new(FatalKind::Error, format!("{}", err))
 			.component("subscription reader")
 			.backtrace(Backtrace::force_capture().to_string()))

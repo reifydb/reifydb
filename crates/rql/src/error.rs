@@ -5,7 +5,7 @@ use std::{error, fmt};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
@@ -702,9 +702,9 @@ impl IntoDiagnostic for RqlError {
 	}
 }
 
-impl From<RqlError> for Error {
+impl From<RqlError> for ValueError {
 	fn from(err: RqlError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -743,7 +743,7 @@ impl fmt::Display for IdentifierError {
 
 impl error::Error for IdentifierError {}
 
-impl From<IdentifierError> for Error {
+impl From<IdentifierError> for ValueError {
 	fn from(err: IdentifierError) -> Self {
 		match err {
 			IdentifierError::SourceNotFound(ref e) => CatalogError::NotFound {
@@ -763,7 +763,7 @@ impl From<IdentifierError> for Error {
 					format!("Namespace '{}' is configured as a remote namespace", namespace),
 					format!("Remote gRPC address: {}", address),
 				];
-				Error(Box::new(Diagnostic {
+				ValueError(Box::new(Diagnostic {
 					code: "REMOTE_001".to_string(),
 					rql: None,
 					message: format!(

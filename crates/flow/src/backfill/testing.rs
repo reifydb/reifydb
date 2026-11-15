@@ -5,7 +5,7 @@ use std::{num::NonZeroU64, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{common::CommitVersion, interface::catalog::object::ObjectId};
-use reifydb_value::{Result, error::Error, value::partition::ScanPartitions};
+use reifydb_value::{Result, error::ValueError, value::partition::ScanPartitions};
 
 use crate::backfill::Scan;
 
@@ -18,7 +18,7 @@ pub enum Continue {
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
 	Land,
-	Err(Error),
+	Err(ValueError),
 }
 
 pub trait ScanHooks: Send + Sync {

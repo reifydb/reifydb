@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 };
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, ValueError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -257,9 +257,9 @@ impl IntoDiagnostic for AuthError {
 	}
 }
 
-impl From<AuthError> for Error {
+impl From<AuthError> for ValueError {
 	fn from(err: AuthError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -325,9 +325,9 @@ impl IntoDiagnostic for SolanaError {
 	}
 }
 
-impl From<SolanaError> for Error {
+impl From<SolanaError> for ValueError {
 	fn from(err: SolanaError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -396,8 +396,8 @@ impl IntoDiagnostic for GithubError {
 	}
 }
 
-impl From<GithubError> for Error {
+impl From<GithubError> for ValueError {
 	fn from(err: GithubError) -> Self {
-		Error(Box::new(err.into_diagnostic()))
+		ValueError(Box::new(err.into_diagnostic()))
 	}
 }

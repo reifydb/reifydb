@@ -6,7 +6,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, Result};
 
@@ -16,7 +16,7 @@ impl CatalogStore {
 		group: WindowedViewGroupId,
 	) -> Result<WindowedViewGroup> {
 		CatalogStore::find_windowed_view_group(rx, group)?.ok_or_else(|| {
-			Error(Box::new(internal!(
+			ValueError(Box::new(internal!(
 				"WindowedViewGroup with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				group
 			)))

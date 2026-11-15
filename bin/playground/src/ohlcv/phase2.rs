@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb::{
-	Clock, Database, Error, IdentityId, SqliteConfig,
+	Clock, Database, IdentityId, SqliteConfig, ValueError,
 	arrow_array::{
 		Array, ArrayRef,
 		cast::AsArray,
@@ -56,7 +56,7 @@ pub struct Run {
 
 const INSERT_CHUNK: usize = 50_000;
 
-fn err(e: Error) -> String {
+fn err(e: ValueError) -> String {
 	e.to_string()
 }
 

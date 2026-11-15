@@ -52,7 +52,7 @@ use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::Subscription
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 #[cfg(feature = "sub_flow")]
-use reifydb_value::error::Error;
+use reifydb_value::error::ValueError;
 use reifydb_value::{
 	Result,
 	params::Params,
@@ -72,20 +72,20 @@ use crate::{
 };
 
 #[cfg(feature = "sub_flow")]
-fn hydrate_error_to_error(e: HydrateError) -> Error {
+fn hydrate_error_to_error(e: HydrateError) -> ValueError {
 	match e {
 		HydrateError::Engine(err) => err,
 		HydrateError::SubscriptionNotFound => {
-			Error(Box::new(internal!("subscription not found at hydration time")))
+			ValueError(Box::new(internal!("subscription not found at hydration time")))
 		}
-		HydrateError::UnsupportedSourceType => Error(Box::new(internal!(
+		HydrateError::UnsupportedSourceType => ValueError(Box::new(internal!(
 			"hydration is not supported for this source type; subscribe with hydration disabled"
 		))),
 		HydrateError::RowCapExceeded {
 			cap,
 			bound,
-		} => Error(Box::new(hydration_row_cap_exceeded(cap, &bound.advice()))),
-		HydrateError::Internal(s) => Error(Box::new(internal!("subscription hydration failed: {}", s))),
+		} => ValueError(Box::new(hydration_row_cap_exceeded(cap, &bound.advice()))),
+		HydrateError::Internal(s) => ValueError(Box::new(internal!("subscription hydration failed: {}", s))),
 	}
 }
 
@@ -497,7 +497,7 @@ impl Database {
 			SubscribeOutcome::Remote {
 				..
 			} => {
-				return Err(Error(Box::new(internal!(
+				return Err(ValueError(Box::new(internal!(
 					"subscribe_as does not support remote subscriptions"
 				))));
 			}
@@ -516,7 +516,7 @@ impl Database {
 	#[inline]
 	fn resolve_subscription_store(&self) -> Result<Arc<SubscriptionStore>> {
 		Ok(self.subsystem::<SubscriptionSubsystem>()
-			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?
+			.ok_or_else(|| ValueError(Box::new(feature_disabled("subscription"))))?
 			.store()
 			.clone())
 	}
@@ -536,7 +536,7 @@ impl Database {
 			.engine
 			.ioc()
 			.try_resolve::<SubscriptionServiceRef>()
-			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
+			.ok_or_else(|| ValueError(Box::new(feature_disabled("subscription"))))?;
 		let (_, lease) = acquire_hand_off_lease(&self.engine, &[id])?;
 		let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
 		let outcome = service.hydrate(id, identity, lease, max_rows).map_err(hydrate_error_to_error)?;

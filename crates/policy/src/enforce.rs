@@ -15,7 +15,7 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{Result, error::ValueError, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
@@ -307,7 +307,7 @@ fn resolve_target_policies(
 }
 
 #[inline]
-fn no_policy_error(target: &PolicyTarget<'_>) -> Error {
+fn no_policy_error(target: &PolicyTarget<'_>) -> ValueError {
 	PolicyError::NoPolicyined {
 		operation: target.operation.to_string(),
 		target: format!("{}::{}", target.namespace, target.object),
