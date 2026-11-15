@@ -203,6 +203,7 @@ check-code-quality:
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
 	@./scripts/check-em-dashes.sh
+	@./scripts/check-result-aliases.sh
 	@./scripts/check-plan-refs.sh
 	@cargo hakari generate --diff
 	@cargo hakari manage-deps --dry-run
