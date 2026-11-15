@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::io::{self, Write};
+use std::{
+	error::Error,
+	io::{self, Write},
+};
 
 use reifydb_client::{
 	ColumnView, Frame, WireFormat, WsClient,
@@ -9,8 +12,6 @@ use reifydb_client::{
 };
 use rustyline::{DefaultEditor, error::ReadlineError};
 use terminal_size::{Width, terminal_size};
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Copy)]
 enum DisplayMode {
@@ -24,7 +25,7 @@ enum DotCommandResult {
 	Continue,
 }
 
-pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
+pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<(), Box<dyn Error>> {
 	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Frames)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;

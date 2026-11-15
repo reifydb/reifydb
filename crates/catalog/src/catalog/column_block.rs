@@ -10,14 +10,18 @@ use reifydb_transaction::{
 	change::TransactionalColumnBlockChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::column_block::create::ColumnBlockToCreate};
+use crate::{CatalogStore, catalog::Catalog, store::column_block::create::ColumnBlockToCreate};
 
 impl Catalog {
 	#[instrument(name = "catalog::column_block::find", level = "trace", skip(self, txn))]
-	pub fn find_column_block(&self, txn: &mut Transaction<'_>, id: ColumnBlockId) -> Result<Option<ColumnBlock>> {
+	pub fn find_column_block(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: ColumnBlockId,
+	) -> Result<Option<ColumnBlock>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(block) = self.cache.find_column_block_at(id, cmd.version()) {
@@ -78,7 +82,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Option<ColumnBlock>> {
+	) -> Result<Option<ColumnBlock>, ValueError> {
 		let version = match txn.reborrow() {
 			Transaction::Command(cmd) => cmd.version(),
 			Transaction::Admin(admin) => admin.version(),
@@ -94,7 +98,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::column_block::list", level = "trace", skip(self, txn))]
-	pub fn list_column_blocks(&self, txn: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>> {
+	pub fn list_column_blocks(&self, txn: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>, ValueError> {
 		CatalogStore::list_column_blocks(txn)
 	}
 
@@ -103,7 +107,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let version_opt = match txn.reborrow() {
 			Transaction::Command(cmd) => Some(cmd.version()),
 			Transaction::Admin(admin) => Some(admin.version()),
@@ -125,7 +129,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
 		partition: Partition,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let version_opt = match txn.reborrow() {
 			Transaction::Command(cmd) => Some(cmd.version()),
 			Transaction::Admin(admin) => Some(admin.version()),
@@ -147,7 +151,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let version_opt = match txn.reborrow() {
 			Transaction::Command(cmd) => Some(cmd.version()),
 			Transaction::Admin(admin) => Some(admin.version()),
@@ -168,14 +172,14 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: ColumnBlockToCreate,
-	) -> Result<ColumnBlock> {
+	) -> Result<ColumnBlock, ValueError> {
 		let block = CatalogStore::create_column_block(txn, to_create)?;
 		txn.track_column_block_created(block.clone())?;
 		Ok(block)
 	}
 
 	#[instrument(name = "catalog::column_block::drop", level = "info", skip(self, txn))]
-	pub fn drop_column_block(&self, txn: &mut AdminTransaction, id: ColumnBlockId) -> Result<()> {
+	pub fn drop_column_block(&self, txn: &mut AdminTransaction, id: ColumnBlockId) -> Result<(), ValueError> {
 		let pre = CatalogStore::find_column_block(&mut Transaction::Admin(&mut *txn), id)?;
 		CatalogStore::drop_column_block(txn, id)?;
 		if let Some(block) = pre {

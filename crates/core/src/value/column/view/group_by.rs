@@ -19,7 +19,6 @@ use arrow_select::take::take;
 use indexmap::{IndexMap, IndexSet};
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
@@ -189,9 +188,9 @@ impl GroupKeyDict {
 		column: usize,
 		declared: Option<ValueType>,
 		name: &str,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let parts = self.key_rows.get(column).map(Vec::as_slice).unwrap_or_default();
-		let views = parts.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let views = parts.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 		let first = views.iter().find_map(|view| {
 			(0..view.len())
 				.map(|index| view.get_value(index))
@@ -219,7 +218,7 @@ impl GroupKeyDict {
 		(GroupId(index as u32), true)
 	}
 
-	fn remember(&mut self, views: &[ColumnView<'_>], first_rows: &[usize]) -> Result<()> {
+	fn remember(&mut self, views: &[ColumnView<'_>], first_rows: &[usize]) -> Result<(), ValueError> {
 		if self.key_rows.len() < views.len() {
 			self.key_rows.resize_with(views.len(), Vec::new);
 		}
@@ -231,7 +230,7 @@ impl GroupKeyDict {
 		Ok(())
 	}
 
-	pub(crate) fn row_keys(&mut self, views: &[&ColumnView]) -> Result<Rows> {
+	pub(crate) fn row_keys(&mut self, views: &[&ColumnView]) -> Result<Rows, ValueError> {
 		let batch_types: Vec<ValueType> = views.iter().map(|view| view.get_type()).collect();
 		if self.converter.is_some() {
 			let targets: Vec<ValueType> = self
@@ -261,7 +260,7 @@ impl GroupKeyDict {
 		converter.convert_columns(&arrays).map_err(group_key_error)
 	}
 
-	fn rekey(&mut self, targets: Vec<ValueType>) -> Result<()> {
+	fn rekey(&mut self, targets: Vec<ValueType>) -> Result<(), ValueError> {
 		let old =
 			self.converter.take().ok_or_else(|| internal_error!("group keys rekeyed before any batch"))?;
 		let parser = old.parser();
@@ -452,7 +451,11 @@ fn canonical_floats(part: &(FieldRef, ArrayRef), view: &ColumnView) -> Option<(F
 	Some((part.0.clone(), array))
 }
 
-pub(crate) fn group_rows(views: &[ColumnView<'_>], row_count: usize, dict: &mut GroupKeyDict) -> Result<GroupRows> {
+pub(crate) fn group_rows(
+	views: &[ColumnView<'_>],
+	row_count: usize,
+	dict: &mut GroupKeyDict,
+) -> Result<GroupRows, ValueError> {
 	let row_columns: Vec<&ColumnView> = views.iter().filter(|view| row_format_matches_value_key(view)).collect();
 	let value_columns: Vec<&ColumnView> = views.iter().filter(|view| !row_format_matches_value_key(view)).collect();
 	let row_keys = match row_columns.is_empty() {

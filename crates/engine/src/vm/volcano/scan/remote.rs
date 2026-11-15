@@ -14,14 +14,12 @@ use reifydb_core::value::column::headers::ColumnHeaders;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_evaluate::stack::Variable;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{params::Params, value::Value};
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 #[allow(dead_code)]
 pub(crate) struct RemoteFetchNode {
@@ -48,7 +46,7 @@ impl RemoteFetchNode {
 
 impl QueryNode for RemoteFetchNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::remote::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		#[cfg(not(reifydb_single_threaded))]
 		{
 			if let Some(ref registry) = _ctx.services.remote_registry {
@@ -94,7 +92,11 @@ impl QueryNode for RemoteFetchNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::remote::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Ok(self.batches.pop_front())
 	}
 

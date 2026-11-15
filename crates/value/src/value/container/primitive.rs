@@ -6,7 +6,7 @@ use arrow_buffer::{BooleanBuffer, NullBuffer, ScalarBuffer};
 use arrow_select::filter::FilterPredicate;
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 	value::{Value, is::IsNumber, to_value::ToValue, value_type::get::GetType},
 };
@@ -68,7 +68,7 @@ where
 	PrimitiveArray::new(values, nulls).with_data_type(data_type)
 }
 
-pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> Result<PrimitiveArray<A>>
+pub fn reorder<A>(array: &PrimitiveArray<A>, indices: &[usize]) -> Result<PrimitiveArray<A>, ValueError>
 where
 	A: ArrowPrimitiveType,
 {

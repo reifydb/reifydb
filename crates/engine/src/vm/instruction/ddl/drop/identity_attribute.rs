@@ -6,15 +6,15 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropIdentityAttributeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_identity_attribute(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropIdentityAttributeNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 
 	let attribute = services.catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut *txn), name)?;

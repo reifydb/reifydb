@@ -13,13 +13,14 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
+	error::ValueError,
 	reifydb_assertions,
 	value::{Value, value_type::ValueType},
 };
 
 use super::generator::SequenceTransaction;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::sequence::generator::{
 		i8::GeneratorI8, i16::GeneratorI16, i32::GeneratorI32, i64::GeneratorI64, i128::GeneratorI128,
 		u8::GeneratorU8, u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64, u128::GeneratorU128,
@@ -34,7 +35,7 @@ impl ColumnSequence {
 		object: impl Into<ObjectId>,
 		column: ColumnId,
 		count: u64,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 		let key = ColumnSequenceKey::new(object, column.id);
 		let name = column.name.as_str();
@@ -63,7 +64,7 @@ impl ColumnSequence {
 		object: impl Into<ObjectId>,
 		column: ColumnId,
 		value: Value,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 
 		if !column.auto_increment {

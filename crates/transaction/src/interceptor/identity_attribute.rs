@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::identity::IdentityAttribute;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::interceptor::chain::InterceptorChain;
 
@@ -19,11 +19,11 @@ impl<'a> IdentityAttributePostCreateContext<'a> {
 }
 
 pub trait IdentityAttributePostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut IdentityAttributePostCreateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn IdentityAttributePostCreateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: IdentityAttributePostCreateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: IdentityAttributePostCreateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -33,14 +33,14 @@ impl InterceptorChain<dyn IdentityAttributePostCreateInterceptor + Send + Sync> 
 
 pub struct ClosureIdentityAttributePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureIdentityAttributePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -51,7 +51,7 @@ where
 
 impl<F> Clone for ClosureIdentityAttributePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -62,16 +62,20 @@ where
 
 impl<F> IdentityAttributePostCreateInterceptor for ClosureIdentityAttributePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut IdentityAttributePostCreateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn identity_attribute_post_create<F>(f: F) -> ClosureIdentityAttributePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut IdentityAttributePostCreateContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureIdentityAttributePostCreateInterceptor::new(f)
 }
@@ -89,11 +93,11 @@ impl<'a> IdentityAttributePreDeleteContext<'a> {
 }
 
 pub trait IdentityAttributePreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut IdentityAttributePreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn IdentityAttributePreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: IdentityAttributePreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: IdentityAttributePreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -103,14 +107,14 @@ impl InterceptorChain<dyn IdentityAttributePreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureIdentityAttributePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureIdentityAttributePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -121,7 +125,7 @@ where
 
 impl<F> Clone for ClosureIdentityAttributePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -132,16 +136,20 @@ where
 
 impl<F> IdentityAttributePreDeleteInterceptor for ClosureIdentityAttributePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut IdentityAttributePreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn identity_attribute_pre_delete<F>(f: F) -> ClosureIdentityAttributePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut IdentityAttributePreDeleteContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureIdentityAttributePreDeleteInterceptor::new(f)
 }

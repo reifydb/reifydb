@@ -3,15 +3,15 @@
 
 use reifydb_core::row::Ttl;
 use reifydb_rql_frontend::{ast::ast::AstTtl, diagnostic::AstError};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration},
 	plan::logical::Compiler,
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
+	pub(crate) fn compile_ttl(ast: AstTtl<'bump>) -> Result<Ttl, ValueError> {
 		let duration = compile_duration(&ast.duration, DurationBound::Positive, "a TTL")?;
 
 		if let Some(token) = &ast.anchor {
@@ -50,7 +50,7 @@ mod tests {
 		assert_eq!(ttl.duration.as_nanos().unwrap(), 50i64 * 3600 * 1_000_000_000);
 	}
 
-	fn compile(literal: &str) -> Result<Ttl> {
+	fn compile(literal: &str) -> Result<Ttl, ValueError> {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, literal).unwrap();
 		let duration = tokens.into_iter().next().unwrap();

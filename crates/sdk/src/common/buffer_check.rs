@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::error::{Result as SdkResult, SdkError};
+use crate::error::SdkError;
 
 pub(crate) fn malformed(reason: String) -> SdkError {
 	SdkError::InvalidInput(reason)
 }
 
-pub(crate) fn cell_range(offsets: &[u64], data_len: usize, index: usize, what: &str) -> SdkResult<(usize, usize)> {
+pub(crate) fn cell_range(
+	offsets: &[u64],
+	data_len: usize,
+	index: usize,
+	what: &str,
+) -> Result<(usize, usize), SdkError> {
 	let (Some(&start), Some(&end)) = (offsets.get(index), offsets.get(index + 1)) else {
 		return Err(malformed(format!("{what} cell {index} has no offsets among the {} sent", offsets.len())));
 	};
@@ -20,14 +25,14 @@ pub(crate) fn cell_range(offsets: &[u64], data_len: usize, index: usize, what: &
 	Ok((start, end))
 }
 
-pub(crate) fn fixed_len(data_len: usize, row_count: usize, width: usize, what: &str) -> SdkResult<()> {
+pub(crate) fn fixed_len(data_len: usize, row_count: usize, width: usize, what: &str) -> Result<(), SdkError> {
 	if row_count.checked_mul(width) == Some(data_len) {
 		return Ok(());
 	}
 	Err(malformed(format!("{what} holds {data_len} data bytes for {row_count} rows of {width} bytes each")))
 }
 
-pub(crate) fn bitvec_len(bitvec_len: usize, row_count: usize, what: &str) -> SdkResult<()> {
+pub(crate) fn bitvec_len(bitvec_len: usize, row_count: usize, what: &str) -> Result<(), SdkError> {
 	if bitvec_len >= row_count.div_ceil(8) {
 		return Ok(());
 	}

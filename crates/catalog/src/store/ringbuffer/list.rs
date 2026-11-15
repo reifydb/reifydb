@@ -11,16 +11,17 @@ use reifydb_core::{
 	key::{any::TaggedKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::ringbuffer::{decode_ringbuffer_time, shape::ringbuffer},
 };
 
 type RingBufferRow = (RingBufferId, NamespaceId, String, u64, Vec<String>, TimeSource);
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
+	pub(crate) fn list_ringbuffers(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>, ValueError> {
 		let mut result = Vec::new();
 
 		let mut ringbuffer_data: Vec<RingBufferRow> = Vec::new();

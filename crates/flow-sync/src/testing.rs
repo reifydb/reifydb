@@ -24,7 +24,6 @@ use reifydb_core::{
 use reifydb_flow::txn::{Emit, Find, FlowBatch, FlowGet, Intern, Resolve};
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{
 		Value,
@@ -147,13 +146,13 @@ impl<T: Changes> Changes for TestingTxn<T> {
 }
 
 impl<T: FlowGet> FlowGet for TestingTxn<T> {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		self.txn.get(keys)
 	}
 }
 
 impl<T: FlowBatch> FlowBatch for TestingTxn<T> {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		for (key, row) in keys.into_iter().zip(rows) {
 			self.call();
 			match self.hooks.on_write(&key) {
@@ -164,7 +163,7 @@ impl<T: FlowBatch> FlowBatch for TestingTxn<T> {
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		for key in keys {
 			self.call();
 			match self.hooks.on_write(&key) {
@@ -177,7 +176,7 @@ impl<T: FlowBatch> FlowBatch for TestingTxn<T> {
 }
 
 impl<T: Emit> Emit for TestingTxn<T> {
-	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<(), ValueError> {
 		self.call();
 		match self.hooks.on_emit(view) {
 			Outcome::Land => self.txn.emit(view, diff),
@@ -187,7 +186,7 @@ impl<T: Emit> Emit for TestingTxn<T> {
 }
 
 impl<T: Lookup> Lookup for TestingTxn<T> {
-	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
+	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>, ValueError> {
 		match self.hooks.on_lookup(LookupTarget::Flows) {
 			LookupOutcome::Clean => self.txn.transactional_flows(),
 			LookupOutcome::Absent => Ok(Vec::new()),
@@ -195,7 +194,7 @@ impl<T: Lookup> Lookup for TestingTxn<T> {
 		}
 	}
 
-	fn view(&mut self, id: ViewId) -> Result<View> {
+	fn view(&mut self, id: ViewId) -> Result<View, ValueError> {
 		match self.hooks.on_lookup(LookupTarget::View(id)) {
 			LookupOutcome::Clean => self.txn.view(id),
 			LookupOutcome::Absent => panic!("lookup of view {id} cannot be absent"),
@@ -203,20 +202,20 @@ impl<T: Lookup> Lookup for TestingTxn<T> {
 		}
 	}
 
-	fn table(&mut self, id: TableId) -> Result<Table> {
+	fn table(&mut self, id: TableId) -> Result<Table, ValueError> {
 		match self.hooks.on_lookup(LookupTarget::Table(id)) {
 			LookupOutcome::Clean => self.txn.table(id),
 			LookupOutcome::Absent => panic!("lookup of table {id} cannot be absent"),
 			LookupOutcome::Err(error) => Err(error),
 		}
 	}
-	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType, ValueError> {
 		self.txn.sumtype(id)
 	}
 }
 
 impl<T: Resolve> Resolve for TestingTxn<T> {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		match self.hooks.on_lookup(LookupTarget::Dictionary(id)) {
 			LookupOutcome::Clean => self.txn.dictionary(id),
 			LookupOutcome::Absent => Ok(None),
@@ -224,7 +223,11 @@ impl<T: Resolve> Resolve for TestingTxn<T> {
 		}
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		for _ in ids {
 			if let Outcome::Err(error) = self.hooks.on_resolve(dictionary.id) {
 				return Err(error);
@@ -235,7 +238,11 @@ impl<T: Resolve> Resolve for TestingTxn<T> {
 }
 
 impl<T: Find> Find for TestingTxn<T> {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		for _ in values {
 			if let Outcome::Err(error) = self.hooks.on_find(dictionary.id) {
 				return Err(error);
@@ -246,7 +253,7 @@ impl<T: Find> Find for TestingTxn<T> {
 }
 
 impl<T: Intern> Intern for TestingTxn<T> {
-	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		let mut ids = Vec::with_capacity(values.len());
 		for value in values {
 			self.call();
@@ -323,21 +330,21 @@ impl Changes for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl FlowGet for TestingTx {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		Ok(keys.iter().map(|key| self.rows.get(key).cloned()).collect())
 	}
 }
 
 #[cfg(any(test, feature = "testing"))]
 impl FlowBatch for TestingTx {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		for (key, row) in keys.into_iter().zip(rows) {
 			self.rows.insert(key, row);
 		}
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		for key in keys {
 			self.rows.remove(&key);
 		}
@@ -347,7 +354,7 @@ impl FlowBatch for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl Emit for TestingTx {
-	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<(), ValueError> {
 		self.entries.push((ObjectId::view(view), diff.clone()));
 		self.emitted.push((view, diff));
 		Ok(())
@@ -356,35 +363,39 @@ impl Emit for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl Lookup for TestingTx {
-	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
+	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>, ValueError> {
 		Ok(self.flows.clone())
 	}
 
-	fn view(&mut self, id: ViewId) -> Result<View> {
+	fn view(&mut self, id: ViewId) -> Result<View, ValueError> {
 		Ok(self.views
 			.get(&id)
 			.unwrap_or_else(|| panic!("view {} is not in the memory transaction", id))
 			.clone())
 	}
 
-	fn table(&mut self, id: TableId) -> Result<Table> {
+	fn table(&mut self, id: TableId) -> Result<Table, ValueError> {
 		Ok(self.tables
 			.get(&id)
 			.unwrap_or_else(|| panic!("table {} is not in the memory transaction", id))
 			.clone())
 	}
-	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType, ValueError> {
 		panic!("sumtype {} is not in the memory transaction", id)
 	}
 }
 
 #[cfg(any(test, feature = "testing"))]
 impl Resolve for TestingTx {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		Ok(self.dictionaries.get(&id).cloned())
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		Ok(ids.iter()
 			.map(|id| {
 				let offset = id.to_u128().checked_sub(1)?;
@@ -400,7 +411,11 @@ impl Resolve for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl Find for TestingTx {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		values.iter()
 			.map(|value| {
 				let Some(position) = self
@@ -418,7 +433,7 @@ impl Find for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl Intern for TestingTx {
-	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		let mut ids = Vec::with_capacity(values.len());
 		for value in values {
 			let known = self.dictionary_values.entry(dictionary.id).or_default();

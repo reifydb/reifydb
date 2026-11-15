@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -34,23 +34,20 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	vm::{services::Services, vm::Vm},
-};
+use crate::vm::{services::Services, vm::Vm};
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_make_list(&mut self, count: usize) -> Result<()> {
+	pub(crate) fn exec_make_list(&mut self, count: usize) -> Result<(), ValueError> {
 		let items = self.pop_scalars(count)?;
 		self.exec_push_const(&Value::List(items))
 	}
 
-	pub(crate) fn exec_make_record(&mut self, fields: &[String]) -> Result<()> {
+	pub(crate) fn exec_make_record(&mut self, fields: &[String]) -> Result<(), ValueError> {
 		let values = self.pop_scalars(fields.len())?;
 		self.exec_push_const(&Value::Record(fields.iter().cloned().zip(values).collect()))
 	}
 
-	fn pop_scalars(&mut self, count: usize) -> Result<Vec<Value>> {
+	fn pop_scalars(&mut self, count: usize) -> Result<Vec<Value>, ValueError> {
 		if self.batch_size != 1 {
 			return Err(internal_error!(
 				"list and record construction requires a scalar context, got a batch of {}",
@@ -69,7 +66,7 @@ impl<'a> Vm<'a> {
 		Ok(values)
 	}
 
-	pub(crate) fn exec_push_const(&mut self, value: &Value) -> Result<()> {
+	pub(crate) fn exec_push_const(&mut self, value: &Value) -> Result<(), ValueError> {
 		if self.batch_size != 1 {
 			let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
 			for _ in 0..self.batch_size {
@@ -82,7 +79,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_push_none(&mut self) -> Result<()> {
+	pub(crate) fn exec_push_none(&mut self) -> Result<(), ValueError> {
 		if self.batch_size != 1 {
 			self.stack.push(Variable::columns(batch(vec![factory::none("none", self.batch_size)])?));
 		} else {
@@ -91,12 +88,12 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_pop(&mut self) -> Result<()> {
+	pub(crate) fn exec_pop(&mut self) -> Result<(), ValueError> {
 		self.stack.pop()?;
 		Ok(())
 	}
 
-	pub(crate) fn exec_dup(&mut self) -> Result<()> {
+	pub(crate) fn exec_dup(&mut self) -> Result<(), ValueError> {
 		let value = self.stack.pop()?;
 		let cloned = value.clone();
 		self.stack.push(value);
@@ -109,7 +106,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		result: &mut Vec<Frame>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(value) = self.stack.pop().ok() else {
 			return Ok(());
 		};
@@ -131,7 +128,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<()> {
+	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<(), ValueError> {
 		let clean_name = strip_dollar_prefix(target.text());
 		let columns = match self.stack.pop()? {
 			Variable::Columns {
@@ -193,7 +190,11 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn register_enums(&mut self, services: &Arc<Services>, tx: &mut Transaction<'_>) -> Result<()> {
+	pub(crate) fn register_enums(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+	) -> Result<(), ValueError> {
 		let Some(Variable::Columns {
 			batch,
 		}) = self.stack.peek()
@@ -220,7 +221,7 @@ impl<'a> Vm<'a> {
 		self.scalar_enum_to_variant()
 	}
 
-	fn scalar_enum_to_variant(&mut self) -> Result<()> {
+	fn scalar_enum_to_variant(&mut self) -> Result<(), ValueError> {
 		let Some(Variable::Columns {
 			batch,
 		}) = self.stack.peek()
@@ -246,7 +247,11 @@ fn format_column_list(names: &[String]) -> String {
 	format!("[{}]", names.join(", "))
 }
 
-fn rebuild_enums(batch: RecordBatch, services: &Arc<Services>, tx: &mut Transaction<'_>) -> Result<RecordBatch> {
+fn rebuild_enums(
+	batch: RecordBatch,
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
@@ -270,7 +275,7 @@ fn enum_names(
 	value_type: Option<ValueType>,
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let sumtype = services.catalog.get_sumtype(tx, id)?;
 	let namespace = services.catalog.get_namespace(tx, sumtype.namespace)?;
 	let tags = array
@@ -291,7 +296,7 @@ fn enum_names(
 			})
 			.transpose()
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let r#enum = ValueType::Enum(format!("{}::{}", namespace.name(), sumtype.name));
 	let field_type = FieldType::from(match value_type {
 		Some(ValueType::Option(_)) => ValueType::Option(Box::new(r#enum)),
@@ -301,7 +306,7 @@ fn enum_names(
 	Ok((Arc::new(to_field(name, &field_type)), Arc::new(LargeStringArray::from(names))))
 }
 
-fn widened(batch: &RecordBatch, other: &RecordBatch) -> Result<RecordBatch> {
+fn widened(batch: &RecordBatch, other: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let other_schema = other.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());

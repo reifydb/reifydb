@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, QueueId},
 	queue::Queue,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackQueueChangeOperations for AdminTransaction {
-	fn track_queue_created(&mut self, queue: Queue) -> Result<()> {
+	fn track_queue_created(&mut self, queue: Queue) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(queue),
@@ -28,7 +28,7 @@ impl CatalogTrackQueueChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_queue_deleted(&mut self, queue: Queue) -> Result<()> {
+	fn track_queue_deleted(&mut self, queue: Queue) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(queue),
 			post: None,

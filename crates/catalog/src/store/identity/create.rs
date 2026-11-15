@@ -5,12 +5,13 @@ use reifydb_core::{interface::catalog::identity::Identity, key::identity::Identi
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::identity::{IdentityId, IdentityKind},
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::identity::shape::identity,
 };
@@ -21,7 +22,7 @@ impl CatalogStore {
 		name: &str,
 		id: IdentityId,
 		kind: IdentityKind,
-	) -> Result<Identity> {
+	) -> Result<Identity, ValueError> {
 		let mut row = identity::allocate();
 		identity::set_identity(&mut row, id);
 		identity::set_name(&mut row, name);
@@ -44,7 +45,7 @@ impl CatalogStore {
 		kind: IdentityKind,
 		clock: &Clock,
 		rng: &Rng,
-	) -> Result<Identity> {
+	) -> Result<Identity, ValueError> {
 		if (Self::find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some() {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Identity,

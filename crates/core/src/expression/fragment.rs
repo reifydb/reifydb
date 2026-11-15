@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -136,7 +136,7 @@ impl ConstantExpression {
 		}
 	}
 
-	pub fn to_value(&self) -> Result<Value> {
+	pub fn to_value(&self) -> Result<Value, ValueError> {
 		Ok(match self {
 			Self::None {
 				..
@@ -159,7 +159,7 @@ impl ConstantExpression {
 		})
 	}
 
-	fn parse_number(fragment: &Fragment) -> Result<Value> {
+	fn parse_number(fragment: &Fragment) -> Result<Value, ValueError> {
 		let text = fragment.text();
 		if text.contains('.') || text.contains('e') || text.contains('E') {
 			return Ok(Value::Decimal(parse_decimal(fragment.clone())?));

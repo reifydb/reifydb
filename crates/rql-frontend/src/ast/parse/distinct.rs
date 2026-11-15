@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{ast::AstDistinct, identifier::MaybeQualifiedColumnIdentifier, parse::Parser},
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_distinct(&mut self) -> Result<AstDistinct<'bump>> {
+	pub(crate) fn parse_distinct(&mut self) -> Result<AstDistinct<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
@@ -23,7 +24,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_identifiers(&mut self) -> Result<(Vec<MaybeQualifiedColumnIdentifier<'bump>>, bool)> {
+	fn parse_identifiers(&mut self) -> Result<(Vec<MaybeQualifiedColumnIdentifier<'bump>>, bool), ValueError> {
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Ok((vec![], false));
 		}

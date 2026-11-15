@@ -9,16 +9,16 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DropWindowedViewGroupNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 use super::dependent::find_flow_dependents;
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_windowed_view_group(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropWindowedViewGroupNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let group = services.catalog.find_windowed_view_group_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

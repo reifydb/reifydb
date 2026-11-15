@@ -3,7 +3,6 @@
 
 use arrow_buffer::i256;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	value::{
 		Value,
@@ -63,7 +62,7 @@ impl<'a> KeyDeserializer<'a> {
 		&self.buffer[self.position..]
 	}
 
-	fn read_exact(&mut self, count: usize) -> Result<&'a [u8]> {
+	fn read_exact(&mut self, count: usize) -> Result<&'a [u8], ValueError> {
 		if self.remaining() < count {
 			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
@@ -79,84 +78,84 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(&self.buffer[start..self.position])
 	}
 
-	pub fn read_bool(&mut self) -> Result<bool> {
+	pub fn read_bool(&mut self) -> Result<bool, ValueError> {
 		let bytes = self.read_exact(1)?;
 		decode_bool(bytes[0])
 	}
 
-	pub fn read_f32(&mut self) -> Result<f32> {
+	pub fn read_f32(&mut self) -> Result<f32, ValueError> {
 		let bytes = self.read_exact(4)?;
 		Ok(decode_f32(bytes.try_into()?))
 	}
 
-	pub fn read_f64(&mut self) -> Result<f64> {
+	pub fn read_f64(&mut self) -> Result<f64, ValueError> {
 		let bytes = self.read_exact(8)?;
 		Ok(decode_f64(bytes.try_into()?))
 	}
 
-	pub fn read_i8(&mut self) -> Result<i8> {
+	pub fn read_i8(&mut self) -> Result<i8, ValueError> {
 		let bytes = self.read_exact(1)?;
 		Ok(decode_i8(bytes.try_into()?))
 	}
 
-	pub fn read_i16(&mut self) -> Result<i16> {
+	pub fn read_i16(&mut self) -> Result<i16, ValueError> {
 		let bytes = self.read_exact(2)?;
 		Ok(decode_i16(bytes.try_into()?))
 	}
 
-	pub fn read_i32(&mut self) -> Result<i32> {
+	pub fn read_i32(&mut self) -> Result<i32, ValueError> {
 		let bytes = self.read_exact(4)?;
 		Ok(decode_i32(bytes.try_into()?))
 	}
 
-	pub fn read_i64(&mut self) -> Result<i64> {
+	pub fn read_i64(&mut self) -> Result<i64, ValueError> {
 		let bytes = self.read_exact(8)?;
 		Ok(decode_i64(bytes.try_into()?))
 	}
 
-	pub fn read_i128(&mut self) -> Result<i128> {
+	pub fn read_i128(&mut self) -> Result<i128, ValueError> {
 		let bytes = self.read_exact(16)?;
 		Ok(decode_i128(bytes.try_into()?))
 	}
 
-	pub fn read_u8(&mut self) -> Result<u8> {
+	pub fn read_u8(&mut self) -> Result<u8, ValueError> {
 		let bytes = self.read_exact(1)?;
 		Ok(decode_u8(bytes[0]))
 	}
 
-	pub fn read_u16(&mut self) -> Result<u16> {
+	pub fn read_u16(&mut self) -> Result<u16, ValueError> {
 		let bytes = self.read_exact(2)?;
 		Ok(decode_u16(bytes.try_into()?))
 	}
 
-	pub fn read_u32(&mut self) -> Result<u32> {
+	pub fn read_u32(&mut self) -> Result<u32, ValueError> {
 		let bytes = self.read_exact(4)?;
 		Ok(decode_u32(bytes.try_into()?))
 	}
 
-	pub fn read_u64(&mut self) -> Result<u64> {
+	pub fn read_u64(&mut self) -> Result<u64, ValueError> {
 		let bytes = self.read_exact(8)?;
 		Ok(decode_u64(bytes.try_into()?))
 	}
 
-	pub fn read_u128(&mut self) -> Result<u128> {
+	pub fn read_u128(&mut self) -> Result<u128, ValueError> {
 		let bytes = self.read_exact(16)?;
 		Ok(decode_u128(bytes.try_into()?))
 	}
 
-	pub fn read_fixed<const N: usize>(&mut self) -> Result<[u8; N]> {
+	pub fn read_fixed<const N: usize>(&mut self) -> Result<[u8; N], ValueError> {
 		let bytes = self.read_exact(N)?;
 		Ok(decode_fixed(bytes.try_into()?))
 	}
 
-	pub fn read_u128_varint(&mut self) -> Result<u128> {
+	pub fn read_u128_varint(&mut self) -> Result<u128, ValueError> {
 		let mut slice = &self.buffer[self.position..];
 		let u = decode_u128_varint(&mut slice)?;
 		self.position = self.buffer.len() - slice.len();
 		Ok(u)
 	}
 
-	pub fn read_bytes(&mut self) -> Result<Vec<u8>> {
+	pub fn read_bytes(&mut self) -> Result<Vec<u8>, ValueError> {
 		let mut result = Vec::new();
 		loop {
 			if self.remaining() < 1 {
@@ -202,7 +201,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(result)
 	}
 
-	pub fn read_str(&mut self) -> Result<String> {
+	pub fn read_str(&mut self) -> Result<String, ValueError> {
 		let bytes = self.read_bytes()?;
 		String::from_utf8(bytes).map_err(|e| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -211,7 +210,7 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_date(&mut self) -> Result<Date> {
+	pub fn read_date(&mut self) -> Result<Date, ValueError> {
 		let days = self.read_i32()?;
 		Date::from_days_since_epoch(days).ok_or_else(|| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -223,12 +222,12 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_datetime(&mut self) -> Result<DateTime> {
+	pub fn read_datetime(&mut self) -> Result<DateTime, ValueError> {
 		let nanos = self.read_i64()?;
 		Ok(DateTime::from_nanos(nanos))
 	}
 
-	pub fn read_time(&mut self) -> Result<Time> {
+	pub fn read_time(&mut self) -> Result<Time, ValueError> {
 		let nanos = self.read_u64()?;
 		Time::from_nanos_since_midnight(nanos).ok_or_else(|| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -240,14 +239,14 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_duration(&mut self) -> Result<Duration> {
+	pub fn read_duration(&mut self) -> Result<Duration, ValueError> {
 		let months = self.read_i32()?;
 		let days = self.read_i32()?;
 		let nanos = self.read_i64()?;
 		Ok(Duration::new(months, days, nanos)?)
 	}
 
-	pub fn read_identity_id(&mut self) -> Result<IdentityId> {
+	pub fn read_identity_id(&mut self) -> Result<IdentityId, ValueError> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -266,7 +265,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(IdentityId::from(Uuid7::from(uuid)))
 	}
 
-	pub fn read_uuid4(&mut self) -> Result<Uuid4> {
+	pub fn read_uuid4(&mut self) -> Result<Uuid4, ValueError> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -282,7 +281,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid4::from(uuid))
 	}
 
-	pub fn read_uuid7(&mut self) -> Result<Uuid7> {
+	pub fn read_uuid7(&mut self) -> Result<Uuid7, ValueError> {
 		let bytes = self.read_bytes()?;
 		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			ValueError::from(TypeError::SerdeKeycode {
@@ -298,19 +297,19 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid7::from(uuid))
 	}
 
-	pub fn read_blob(&mut self) -> Result<Blob> {
+	pub fn read_blob(&mut self) -> Result<Blob, ValueError> {
 		let bytes = self.read_bytes()?;
 		Ok(Blob::from(bytes))
 	}
 
-	pub fn read_decimal(&mut self) -> Result<Decimal> {
+	pub fn read_decimal(&mut self) -> Result<Decimal, ValueError> {
 		let precision = self.read_u8()?;
 		let scale = self.read_u8()?;
 		let unscaled = self.read_unscaled(ValueKind::Decimal, precision, scale)?;
 		Ok(Decimal::from_parts(unscaled, scale).expect("a checked unscaled value is within 76 digits"))
 	}
 
-	fn read_unscaled(&mut self, kind: ValueKind, precision: u8, scale: u8) -> Result<i256> {
+	fn read_unscaled(&mut self, kind: ValueKind, precision: u8, scale: u8) -> Result<i256, ValueError> {
 		let position = self.position;
 		let (precision, _) =
 			decode_params(precision, scale).map_err(|error| unscaled_error(position, error))?;
@@ -318,7 +317,7 @@ impl<'a> KeyDeserializer<'a> {
 		check_unscaled(kind, unscaled, precision).map_err(|error| unscaled_error(position, error))
 	}
 
-	fn read_payload(&mut self, precision: Precision) -> Result<i256> {
+	fn read_payload(&mut self, precision: Precision) -> Result<i256, ValueError> {
 		if width(precision) == NARROW {
 			Ok(i256::from_i128(self.read_i128()?))
 		} else {
@@ -327,7 +326,7 @@ impl<'a> KeyDeserializer<'a> {
 		}
 	}
 
-	fn at_container_end(&mut self) -> Result<bool> {
+	fn at_container_end(&mut self) -> Result<bool, ValueError> {
 		if self.remaining() < 1 {
 			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
@@ -343,7 +342,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(false)
 	}
 
-	fn read_container_items(&mut self) -> Result<Vec<Value>> {
+	fn read_container_items(&mut self) -> Result<Vec<Value>, ValueError> {
 		let mut items = Vec::new();
 		while !self.at_container_end()? {
 			items.push(self.read_value()?);
@@ -351,7 +350,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(items)
 	}
 
-	fn read_record_fields(&mut self) -> Result<Vec<(String, Value)>> {
+	fn read_record_fields(&mut self) -> Result<Vec<(String, Value)>, ValueError> {
 		let mut fields = Vec::new();
 		while !self.at_container_end()? {
 			let name = self.read_str()?;
@@ -360,7 +359,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(fields)
 	}
 
-	pub fn read_value(&mut self) -> Result<Value> {
+	pub fn read_value(&mut self) -> Result<Value, ValueError> {
 		if self.remaining() < 1 {
 			return Err(ValueError::from(TypeError::SerdeKeycode {
 				message: format!(
@@ -483,7 +482,7 @@ impl<'a> KeyDeserializer<'a> {
 		}
 	}
 
-	pub fn read_raw(&mut self, count: usize) -> Result<&'a [u8]> {
+	pub fn read_raw(&mut self, count: usize) -> Result<&'a [u8], ValueError> {
 		self.read_exact(count)
 	}
 }

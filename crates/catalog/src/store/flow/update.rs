@@ -6,11 +6,16 @@ use reifydb_core::{
 	key::flow::FlowKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::flow::shape::flow};
+use crate::{CatalogStore, store::flow::shape::flow};
 
 impl CatalogStore {
-	pub(crate) fn update_flow_name(txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
+	pub(crate) fn update_flow_name(
+		txn: &mut AdminTransaction,
+		flow_id: FlowId,
+		new_name: String,
+	) -> Result<(), ValueError> {
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		let mut row = flow::allocate();
@@ -27,7 +32,11 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	pub(crate) fn poison_flow(txn: &mut AdminTransaction, flow_id: FlowId, reason: String) -> Result<()> {
+	pub(crate) fn poison_flow(
+		txn: &mut AdminTransaction,
+		flow_id: FlowId,
+		reason: String,
+	) -> Result<(), ValueError> {
 		let Some(flow) = Self::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)? else {
 			return Ok(());
 		};

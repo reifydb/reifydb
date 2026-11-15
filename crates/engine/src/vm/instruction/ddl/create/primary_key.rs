@@ -14,17 +14,18 @@ use reifydb_core::{
 use reifydb_rql::nodes::CreatePrimaryKeyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	return_error,
 	value::{Value, constraint::Constraint, value_type::ValueType},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_primary_key(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreatePrimaryKeyNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 

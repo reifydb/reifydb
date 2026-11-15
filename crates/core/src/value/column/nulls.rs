@@ -7,7 +7,7 @@ use arrow_array::{Array, ArrayRef, make_array, new_null_array};
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType, FieldRef};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::bitmap,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -18,7 +18,7 @@ use reifydb_value::{
 
 use crate::value::batch::frame_error;
 
-pub fn split_nulls(column: (FieldRef, ArrayRef)) -> Result<((FieldRef, ArrayRef), Option<NullBuffer>)> {
+pub fn split_nulls(column: (FieldRef, ArrayRef)) -> Result<((FieldRef, ArrayRef), Option<NullBuffer>), ValueError> {
 	let (field, array) = column;
 	let keeps_own = {
 		let view = ColumnView::try_from((&array, field.as_ref()))?;
@@ -37,7 +37,7 @@ pub fn split_nulls(column: (FieldRef, ArrayRef)) -> Result<((FieldRef, ArrayRef)
 	Ok(((field, make_array(data)), nulls))
 }
 
-pub fn with_nulls(column: (FieldRef, ArrayRef), nulls: NullBuffer) -> Result<(FieldRef, ArrayRef)> {
+pub fn with_nulls(column: (FieldRef, ArrayRef), nulls: NullBuffer) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (field, array) = column;
 	let len = array.len();
 	assert_eq!(nulls.len(), len, "validity of {} rows does not match a column of {len} rows", nulls.len());

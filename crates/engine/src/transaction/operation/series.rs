@@ -21,10 +21,13 @@ use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
 	transaction::Transaction,
 };
-use reifydb_value::value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber},
+};
 use smallvec::smallvec;
 
-use crate::{Result, error::EngineError, transaction::operation::storage::DmlTransaction};
+use crate::{error::EngineError, transaction::operation::storage::DmlTransaction};
 
 pub(crate) struct SeriesRows<'a> {
 	pub keys: Vec<TaggedKey>,
@@ -37,7 +40,7 @@ pub(crate) fn write_series_rows(
 	series: &Series,
 	shape: &RowShape,
 	write: SeriesRows<'_>,
-) -> Result<Vec<EncodedBytes>> {
+) -> Result<Vec<EncodedBytes>, ValueError> {
 	let SeriesRows {
 		keys,
 		partitions,
@@ -111,7 +114,7 @@ pub(crate) fn moved_series_partitions(
 	shape: &RowShape,
 	partitions: &[Partition],
 	rows: &[EncodedBytes],
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	if series.partition_by.is_empty() {
 		return Ok(false);
 	}
@@ -132,7 +135,7 @@ pub(crate) fn remove_series_rows(
 	series: &Series,
 	ids: &[RowNumber],
 	removals: Vec<(TaggedKey, EncodedBytes)>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	assert_eq!(ids.len(), removals.len(), "ids/removals length mismatch");
 	if ids.is_empty() {
 		return Ok(());

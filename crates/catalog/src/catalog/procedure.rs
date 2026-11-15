@@ -14,12 +14,13 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, sumtype::VariantRef},
 };
 use tracing::instrument;
 
-use crate::{CatalogStore, Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
+use crate::{CatalogStore, cache::CatalogCache, catalog::Catalog, error::CatalogError};
 
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
@@ -83,7 +84,11 @@ impl ProcedureToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::procedure::find", level = "trace", skip(self, txn))]
-	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
+	pub fn find_procedure(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: ProcedureId,
+	) -> Result<Option<Procedure>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) = self.cache.find_procedure_at(id, cmd.version()) {
@@ -136,7 +141,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Procedure>> {
+	) -> Result<Option<Procedure>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
@@ -205,7 +210,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		qualified_name: &str,
-	) -> Result<Option<ResolvedProcedure>> {
+	) -> Result<Option<ResolvedProcedure>, ValueError> {
 		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
 			if let Some(ns) = self.find_namespace_by_path(txn, &ns_name)? {
 				if let Some(address) = ns.address() {
@@ -239,7 +244,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		variant: VariantRef,
-	) -> Result<Vec<Procedure>> {
+	) -> Result<Vec<Procedure>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_procedures_for_variant_at(variant, cmd.version()))
@@ -287,7 +292,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::procedure::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
+	pub fn create_procedure(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: ProcedureToCreate,
+	) -> Result<Procedure, ValueError> {
 		let procedure = CatalogStore::create_procedure(txn, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
 		Ok(procedure)
@@ -298,14 +307,14 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		id: ProcedureId,
 		to_create: ProcedureToCreate,
-	) -> Result<Procedure> {
+	) -> Result<Procedure, ValueError> {
 		let procedure = CatalogStore::create_procedure_with_id(txn, id, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
 		Ok(procedure)
 	}
 
 	#[instrument(name = "catalog::procedure::drop", level = "info", skip(self, txn))]
-	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<()> {
+	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<(), ValueError> {
 		let pre = CatalogStore::get_procedure(&mut Transaction::Admin(&mut *txn), id)?;
 		if !pre.is_persistent() {
 			return Err(CatalogError::CannotDropEphemeralProcedure {
@@ -324,7 +333,7 @@ impl Catalog {
 		catalog: &CatalogCache,
 		version: CommitVersion,
 		procedure: Procedure,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if procedure.is_persistent() {
 			return Err(CatalogError::CannotRegisterPersistentAsEphemeral {
 				kind: procedure.kind().as_str().to_string(),

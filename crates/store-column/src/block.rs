@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::value_type::{ValueType, field::FieldType},
 };
 use serde::{Deserialize, Serialize};
@@ -127,7 +128,7 @@ impl BlockData {
 		self.schema.iter().position(|(n, _, _)| n == name).map(|i| (i, &self.columns[i]))
 	}
 
-	pub fn view_range(&self, start: usize, end: usize) -> Result<BlockData> {
+	pub fn view_range(&self, start: usize, end: usize) -> Result<BlockData, ValueError> {
 		reifydb_assertions! {
 			assert!(start <= end, "view_range: start {start} > end {end}");
 		}

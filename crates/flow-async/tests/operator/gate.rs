@@ -23,7 +23,7 @@ use reifydb_runtime::context::{
 };
 use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{column_view::ColumnView, datetime::DateTime, value_type::ValueType},
 };
 
@@ -50,7 +50,7 @@ fn insert(batch: RecordBatch) -> Change {
 	)
 }
 
-fn apply(gate: &mut GateOperator, change: Change) -> Result<Change> {
+fn apply(gate: &mut GateOperator, change: Change) -> Result<Change, ValueError> {
 	let mut txn = TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0)));
 	let mut host = TxnHostContext::new(&mut txn, GATE);
 	gate.apply(&mut host, change)

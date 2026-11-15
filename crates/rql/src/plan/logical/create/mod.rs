@@ -41,12 +41,9 @@ use reifydb_value::{
 	value::value_type::ValueType,
 };
 
-use crate::{
-	Result,
-	plan::logical::{
-		Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
-		CreateRoleNode, LogicalPlan,
-	},
+use crate::plan::logical::{
+	Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
+	CreateRoleNode, LogicalPlan,
 };
 
 impl<'bump> Compiler<'bump> {
@@ -54,7 +51,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreate<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
 			AstCreate::DeferredWindowedViewGroup(node) => {
@@ -112,7 +109,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnPropertyKind> {
+pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnPropertyKind, ValueError> {
 	if matches!(value, Ast::Literal(AstLiteral::None(_))) {
 		return Ok(ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None));
 	}
@@ -122,7 +119,7 @@ pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnProper
 	Err(invalid_column_property(value, format!("Unknown saturation strategy: {}", value.token().fragment.text())))
 }
 
-pub(crate) fn reject_dictionary_on_decimal(column: &str, ty: &ValueType, fragment: Fragment) -> Result<()> {
+pub(crate) fn reject_dictionary_on_decimal(column: &str, ty: &ValueType, fragment: Fragment) -> Result<(), ValueError> {
 	if matches!(ty.inner_type(), ValueType::Decimal { .. }) {
 		return Err(CatalogError::DictionaryColumnUnsupported {
 			column: column.to_string(),
@@ -150,7 +147,7 @@ pub(crate) fn check_view_partition(
 	columns: &[ViewColumnToCreate],
 	storage_kind: &AstViewStorageKind,
 	view_ns_segments: &[&str],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let partition_by: &[String] = match storage_kind {
 		AstViewStorageKind::Table {
 			partition_by,
@@ -186,7 +183,7 @@ pub(crate) fn check_view_partition(
 pub(crate) fn reject_digest_partition_columns<'a>(
 	columns: impl Iterator<Item = (&'a str, ValueType)>,
 	partition_by: &[String],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (name, ty) in columns {
 		if matches!(ty.inner_type(), ValueType::Digest { .. }) && partition_by.iter().any(|pb| pb == name) {
 			return Err(PartitionError::DigestPartitionColumn {

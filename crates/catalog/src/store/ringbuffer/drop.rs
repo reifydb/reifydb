@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{namespace::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
+use crate::{CatalogStore, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
+	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<(), ValueError> {
 		let pk_id = if let Some(ringbuffer_def) =
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?
 		{

@@ -20,7 +20,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration},
 	error::RqlError,
 	plan::logical::Compiler,
@@ -39,18 +38,20 @@ impl<T: Copy> Declared<T> {
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_aggregate_with(with: Option<&AstOperatorWith<'bump>>) -> Result<AggregateWith> {
+	pub(crate) fn compile_aggregate_with(
+		with: Option<&AstOperatorWith<'bump>>,
+	) -> Result<AggregateWith, ValueError> {
 		reject_every_key(with, "no WITH keys: aggregate takes none")?;
 		Ok(AggregateWith {})
 	}
 
-	pub(crate) fn compile_distinct_with(with: Option<&AstOperatorWith<'bump>>) -> Result<DistinctWith> {
+	pub(crate) fn compile_distinct_with(with: Option<&AstOperatorWith<'bump>>) -> Result<DistinctWith, ValueError> {
 		reject_every_key(with, "no WITH keys: distinct takes none")?;
 		Ok(DistinctWith {})
 	}
 }
 
-fn reject_every_key(with: Option<&AstOperatorWith<'_>>, expected: &str) -> Result<()> {
+fn reject_every_key(with: Option<&AstOperatorWith<'_>>, expected: &str) -> Result<(), ValueError> {
 	match with.and_then(|with| with.entries.first()) {
 		Some(entry) => Err(unknown_key(entry, expected)),
 		None => Ok(()),
@@ -69,7 +70,7 @@ pub(crate) fn unknown_key(entry: &AstOperatorWithEntry<'_>, expected: &str) -> V
 	.into()
 }
 
-pub(crate) fn literal<'a, 'bump>(entry: &'a AstOperatorWithEntry<'bump>) -> Result<&'a Token<'bump>> {
+pub(crate) fn literal<'a, 'bump>(entry: &'a AstOperatorWithEntry<'bump>) -> Result<&'a Token<'bump>, ValueError> {
 	match &entry.value {
 		Some(AstOperatorWithValue::Literal(token)) => Ok(token),
 		Some(AstOperatorWithValue::Word(token)) => Err(AstError::UnexpectedToken {
@@ -93,7 +94,7 @@ pub(crate) fn is_number(token: &Token<'_>) -> bool {
 	token.kind == TokenKind::Literal(Literal::Number)
 }
 
-pub(crate) fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
+pub(crate) fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool, ValueError> {
 	let token = literal(entry)?;
 	literal_boolean(token).ok_or_else(|| {
 		AstError::UnexpectedToken {
@@ -104,7 +105,10 @@ pub(crate) fn boolean(entry: &AstOperatorWithEntry<'_>) -> Result<bool> {
 	})
 }
 
-pub(crate) fn exact_or_default(exact: Option<(bool, &AstOperatorWithEntry<'_>)>, emit: Emit) -> Result<bool> {
+pub(crate) fn exact_or_default(
+	exact: Option<(bool, &AstOperatorWithEntry<'_>)>,
+	emit: Emit,
+) -> Result<bool, ValueError> {
 	match exact {
 		None => Ok(emit == Emit::Off),
 		Some((false, _)) => Ok(false),
@@ -129,14 +133,18 @@ pub(crate) fn literal_boolean(token: &Token<'_>) -> Option<bool> {
 	}
 }
 
-pub(crate) fn declared_duration(token: &Token<'_>, key: &str, bound: DurationBound) -> Result<Declared<Duration>> {
+pub(crate) fn declared_duration(
+	token: &Token<'_>,
+	key: &str,
+	bound: DurationBound,
+) -> Result<Declared<Duration>, ValueError> {
 	Ok(Declared {
 		value: compile_duration(token, bound, key)?,
 		fragment: token.fragment.to_owned(),
 	})
 }
 
-pub(crate) fn declared_count(token: &Token<'_>) -> Result<Declared<u64>> {
+pub(crate) fn declared_count(token: &Token<'_>) -> Result<Declared<u64>, ValueError> {
 	let count = if is_number(token) {
 		parse_primitive_uint::<u64>(token.fragment.to_owned()).ok()
 	} else {
@@ -158,7 +166,7 @@ pub(crate) fn declared_count(token: &Token<'_>) -> Result<Declared<u64>> {
 pub(crate) fn reject_immutable_not_smaller_than_lateness<T: PartialOrd>(
 	immutable: Option<&Declared<T>>,
 	lateness: Option<&Declared<T>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let (Some(immutable), Some(lateness)) = (immutable, lateness) else {
 		return Ok(());
 	};

@@ -6,8 +6,9 @@ use reifydb_core::{
 	interface::{catalog::identity::IdentityAttributeValue, store::MultiVersionRow},
 	return_internal_error,
 };
+use reifydb_value::error::ValueError;
 
-use crate::{Result, store::identity_attribute_value::shape::identity_attribute_value};
+use crate::store::identity_attribute_value::shape::identity_attribute_value;
 
 pub mod create;
 pub mod drop;
@@ -15,7 +16,9 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_identity_attribute_value<K>(multi: MultiVersionRow<K>) -> Result<IdentityAttributeValue> {
+pub(crate) fn convert_identity_attribute_value<K>(
+	multi: MultiVersionRow<K>,
+) -> Result<IdentityAttributeValue, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let identity = identity_attribute_value::get_identity(&bytes);
 	let attribute = identity_attribute_value::get_attribute(&bytes);

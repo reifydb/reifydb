@@ -6,11 +6,10 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::instrument;
 
 use crate::{
-	Result,
 	environment::create_env_columns,
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -31,13 +30,17 @@ impl EnvironmentNode {
 
 impl QueryNode for EnvironmentNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::environment::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::environment::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 		}

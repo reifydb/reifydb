@@ -6,7 +6,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use postcard::from_bytes;
 use reifydb_core::{interface::catalog::dictionary::Dictionary, internal_error};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, dictionary::DictionaryEntryId},
 };
 
@@ -17,7 +17,7 @@ impl Transaction<'_> {
 		&mut self,
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>> {
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		match self {
 			Transaction::Command(cmd) => get_from_registry(cmd.dictionary_allocators(), dictionary, ids),
 			Transaction::Admin(admin) => get_from_registry(admin.dictionary_allocators(), dictionary, ids),
@@ -33,7 +33,7 @@ fn get_from_registry(
 	registry: Option<DictionaryAllocatorRegistry>,
 	dictionary: &Dictionary,
 	ids: &[DictionaryEntryId],
-) -> Result<Vec<Option<Value>>> {
+) -> Result<Vec<Option<Value>>, ValueError> {
 	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
 	let raw: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
 	let answers = registry.get_batch(dictionary, &raw)?;

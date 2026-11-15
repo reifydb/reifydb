@@ -7,13 +7,10 @@ use arrow_array::RecordBatch;
 use reifydb_catalog::vtable::{VTableContext, tables::VTables};
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions};
+use reifydb_value::{error::ValueError, fragment::Fragment, reifydb_assertions};
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct VirtualScanNode {
 	virtual_table: VTables,
@@ -23,7 +20,11 @@ pub(crate) struct VirtualScanNode {
 }
 
 impl VirtualScanNode {
-	pub fn new(virtual_table: VTables, context: Arc<QueryContext>, table_context: VTableContext) -> Result<Self> {
+	pub fn new(
+		virtual_table: VTables,
+		context: Arc<QueryContext>,
+		table_context: VTableContext,
+	) -> Result<Self, ValueError> {
 		let def = virtual_table.vtable();
 
 		let headers = ColumnHeaders {
@@ -41,7 +42,7 @@ impl VirtualScanNode {
 
 impl QueryNode for VirtualScanNode {
 	#[instrument(name = "volcano::scan::virtual::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		let ctx = self.table_context.take().unwrap_or_else(|| VTableContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
@@ -50,7 +51,11 @@ impl QueryNode for VirtualScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::virtual::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		}

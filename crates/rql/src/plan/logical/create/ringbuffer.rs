@@ -9,12 +9,13 @@ use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
 use reifydb_rql_frontend::ast::ast::{AstColumnProperty, AstCreateRingBuffer, AstType};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::constraint::{Constraint, TypeConstraint},
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateRingBufferNode, LogicalPlan,
 		create::{
@@ -31,7 +32,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateRingBuffer<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
 		let ringbuffer_ns_segments: Vec<&str> = ast.ringbuffer.namespace.iter().map(|n| n.text()).collect();

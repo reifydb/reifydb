@@ -3,8 +3,9 @@
 
 use reifydb_core::interface::catalog::{id::NamespaceId, metrics::MetricsId, object::ObjectId};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, vtable::VTableRegistry};
+use crate::{CatalogStore, vtable::VTableRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricsObject {
@@ -30,7 +31,7 @@ impl MetricsObject {
 		}
 	}
 
-	pub fn resolve(txn: &mut Transaction<'_>, metric_id: MetricsId) -> Result<Option<ResolvedMetric>> {
+	pub fn resolve(txn: &mut Transaction<'_>, metric_id: MetricsId) -> Result<Option<ResolvedMetric>, ValueError> {
 		match metric_id {
 			MetricsId::Object(ObjectId::Table(id)) => Ok(CatalogStore::find_table(txn, id)?
 				.map(|t| ResolvedMetric::plain(MetricsObject::Table, id.0, t.namespace.0))),

@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackColumnBlockChangeOperations, column_block::ColumnBlock, id::ColumnBlockId,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogTrackColumnBlockChangeOperations for AdminTransaction {
-	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<()> {
+	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(block),
@@ -26,7 +26,7 @@ impl CatalogTrackColumnBlockChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<()> {
+	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(block),
 			post: None,

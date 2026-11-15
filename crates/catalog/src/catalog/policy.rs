@@ -9,18 +9,18 @@ use reifydb_transaction::{
 	change::TransactionalPolicyChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
 
 impl Catalog {
 	#[instrument(name = "catalog::policy::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
+	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(policy) = TransactionalPolicyChanges::find_policy_by_name(admin, name) {
@@ -98,7 +98,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> Result<(Policy, Vec<PolicyOperation>)> {
+	) -> Result<(Policy, Vec<PolicyOperation>), ValueError> {
 		let (policy, ops) = CatalogStore::create_policy(txn, to_create)?;
 		txn.track_policy_created(policy.clone())?;
 		self.cache.set_policy_operations(policy.id, ops.clone());
@@ -106,7 +106,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::policy::alter", level = "debug", skip(self, txn))]
-	pub fn alter_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId, enabled: bool) -> Result<()> {
+	pub fn alter_policy(
+		&self,
+		txn: &mut AdminTransaction,
+		policy_id: PolicyId,
+		enabled: bool,
+	) -> Result<(), ValueError> {
 		let pre = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
 
 		CatalogStore::alter_policy_enabled(txn, policy_id, enabled)?;
@@ -121,7 +126,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::policy::drop", level = "info", skip(self, txn))]
-	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> Result<()> {
+	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> Result<(), ValueError> {
 		if let Some(policy) = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			CatalogStore::drop_policy(txn, policy_id)?;
 			txn.track_policy_deleted(policy)?;
@@ -132,7 +137,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Policy> {
+	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Policy, ValueError> {
 		self.find_policy_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Policy,
@@ -144,7 +149,7 @@ impl Catalog {
 		})
 	}
 
-	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<Policy>> {
+	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<Policy>, ValueError> {
 		if let Transaction::Test(t) = txn {
 			let mut policies =
 				CatalogStore::list_all_policies(&mut Transaction::Test(Box::new(t.reborrow())))?;
@@ -162,7 +167,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		policy_id: PolicyId,
-	) -> Result<Vec<PolicyOperation>> {
+	) -> Result<Vec<PolicyOperation>, ValueError> {
 		if let Some(ops) = self.cache.list_policy_operations(policy_id) {
 			return Ok(ops);
 		}

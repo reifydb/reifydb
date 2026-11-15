@@ -18,6 +18,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId,
@@ -27,7 +28,7 @@ use reifydb_value::{
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	store::series::create::{
 		SeriesColumnToCreate as StoreSeriesColumnToCreate, SeriesToCreate as StoreSeriesToCreate,
@@ -84,7 +85,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::series::find", level = "trace", skip(self, txn))]
-	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<Series>> {
+	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<Series>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(series) = self.cache.find_series_at(id, cmd.version()) {
@@ -150,7 +151,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Series>> {
+	) -> Result<Option<Series>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(series) = self.cache.find_series_by_name_at(namespace, name, cmd.version())
@@ -237,7 +238,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::get", level = "trace", skip(self, txn))]
-	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Series> {
+	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Series, ValueError> {
 		self.find_series(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Series with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -246,17 +247,29 @@ impl Catalog {
 		})
 	}
 
-	pub fn get_or_create_series_shape(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<RowShape> {
+	pub fn get_or_create_series_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		series: &Series,
+	) -> Result<RowShape, ValueError> {
 		let fields = self.series_shape_fields(txn, series)?;
 		self.get_or_create_row_shape(txn, RowFamily::Series, fields)
 	}
 
-	pub fn find_series_shape(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<Option<RowShape>> {
+	pub fn find_series_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		series: &Series,
+	) -> Result<Option<RowShape>, ValueError> {
 		let fields = self.series_shape_fields(txn, series)?;
 		self.get_or_load_row_shape(RowShape::new(RowFamily::Series, fields).fingerprint(), txn)
 	}
 
-	fn series_shape_fields(&self, txn: &mut Transaction<'_>, series: &Series) -> Result<Vec<RowShapeField>> {
+	fn series_shape_fields(
+		&self,
+		txn: &mut Transaction<'_>,
+		series: &Series,
+	) -> Result<Vec<RowShapeField>, ValueError> {
 		let mut fields = Vec::with_capacity(series.columns.len());
 
 		let key_column = series.key.column();
@@ -270,7 +283,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
+	pub fn create_series(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: SeriesToCreate,
+	) -> Result<Series, ValueError> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 
@@ -285,7 +302,7 @@ impl Catalog {
 		series_id: SeriesId,
 		to_create: SeriesToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Series> {
+	) -> Result<Series, ValueError> {
 		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
@@ -295,7 +312,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::drop", level = "info", skip(self, txn))]
-	pub fn drop_series(&self, txn: &mut AdminTransaction, series: Series) -> Result<()> {
+	pub fn drop_series(&self, txn: &mut AdminTransaction, series: Series) -> Result<(), ValueError> {
 		for block in CatalogStore::list_column_blocks_for_series(&mut Transaction::Admin(&mut *txn), series.id)?
 		{
 			self.drop_column_block(txn, block.id)?;
@@ -306,7 +323,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::list", level = "trace", skip(self, txn))]
-	pub fn list_series(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>> {
+	pub fn list_series(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>, ValueError> {
 		CatalogStore::list_series(txn)
 	}
 
@@ -316,7 +333,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		id: SeriesId,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<SeriesPartitionMetadata>>> {
+	) -> Result<Vec<Option<SeriesPartitionMetadata>>, ValueError> {
 		CatalogStore::find_series_metadata(txn, id, partitions)
 	}
 
@@ -326,9 +343,9 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
 		updates: Vec<(Partition, SeriesPartitionMetadata, F)>,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
-		F: Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
+		F: Fn(&mut SeriesPartitionMetadata) -> Result<(), ValueError> + Send + Sync + 'static,
 	{
 		CatalogStore::update_series_metadata_rebased_txn(txn, series_id, updates)
 	}

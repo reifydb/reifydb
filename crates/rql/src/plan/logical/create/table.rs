@@ -12,6 +12,7 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, TypeConstraint},
@@ -20,7 +21,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan,
 		create::{
@@ -37,7 +38,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateTable<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		let table_ns_segments: Vec<&str> = ast.table.namespace.iter().map(|n| n.text()).collect();
@@ -204,7 +205,7 @@ impl<'bump> Compiler<'bump> {
 		namespace: &BumpFragment<'bump>,
 		name: &BumpFragment<'bump>,
 		optional: bool,
-	) -> Result<TypeConstraint> {
+	) -> Result<TypeConstraint, ValueError> {
 		let ns_name = namespace.text();
 		let type_name = name.text();
 		let ns = self.catalog.find_namespace_by_segments(tx, &[ns_name])?;

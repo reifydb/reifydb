@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_sink(txn: &mut AdminTransaction, sink_id: SinkId) -> Result<()> {
+	pub(crate) fn drop_sink(txn: &mut AdminTransaction, sink_id: SinkId) -> Result<(), ValueError> {
 		let sink = CatalogStore::find_sink(&mut Transaction::Admin(&mut *txn), sink_id)?;
 
 		if let Some(sink) = sink {

@@ -17,7 +17,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use vec::IntoIter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,7 +183,7 @@ impl OperatorStateRangeIter {
 }
 
 impl Iterator for OperatorStateRangeIter {
-	type Item = Result<MultiVersionRow<TaggedKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -235,7 +235,7 @@ impl Iterator for OperatorStateRangeIter {
 
 pub(crate) struct FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 {
 	storage_iter: Peekable<I>,
 	pending_iter: Peekable<IntoIter<(TaggedKey, PendingWrite)>>,
@@ -245,9 +245,9 @@ where
 
 impl<I> Iterator for FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 {
-	type Item = Result<MultiVersionRow<TaggedKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -317,7 +317,7 @@ pub(crate) fn flow_merge_pending_iterator<I>(
 	reverse: bool,
 ) -> FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+	I: Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 {
 	let pending: Vec<(TaggedKey, PendingWrite)> = pending
 		.into_iter()
@@ -349,7 +349,7 @@ mod tests {
 		let key = |row: u64| RowKey::encoded(storage, RowNumber(row));
 		let bytes = |value: u8| EncodedBytes(CowVec::new(vec![value]));
 		let tagged = |row: u64| TaggedKey::decode(&key(row)).unwrap();
-		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = [(1, 10), (2, 20), (4, 40)]
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>, ValueError>> = [(1, 10), (2, 20), (4, 40)]
 			.into_iter()
 			.map(|(row, value)| {
 				Ok(MultiVersionRow {

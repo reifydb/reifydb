@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackBindingChangeOperations,
 	id::{BindingId, NamespaceId},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{Change, OperationType::*, TransactionalBindingChanges},
@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl CatalogTrackBindingChangeOperations for AdminTransaction {
-	fn track_binding_created(&mut self, binding: Binding) -> Result<()> {
+	fn track_binding_created(&mut self, binding: Binding) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(binding),
@@ -24,7 +24,7 @@ impl CatalogTrackBindingChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_binding_deleted(&mut self, binding: Binding) -> Result<()> {
+	fn track_binding_deleted(&mut self, binding: Binding) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(binding),
 			post: None,

@@ -5,17 +5,19 @@ use reifydb_core::{
 	interface::catalog::{queue::Queue, ringbuffer::RingBuffer},
 	partition::{BatchPartitions, partition_col_indices, partitions_of_batch},
 };
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use super::columns::CastColumns;
-use crate::Result;
 
-pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastColumns) -> Result<BatchPartitions> {
+pub(crate) fn ringbuffer_batch_partitions(
+	ringbuffer: &RingBuffer,
+	cast: &CastColumns,
+) -> Result<BatchPartitions, ValueError> {
 	let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 	if indices.is_empty() {
 		return Ok(BatchPartitions::default());
 	}
-	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>, ValueError>>()?;
 	let batch = partitions_of_batch(&keys);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
@@ -29,12 +31,12 @@ pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastCo
 	Ok(batch)
 }
 
-pub(crate) fn queue_batch_partitions(queue: &Queue, cast: &CastColumns) -> Result<BatchPartitions> {
+pub(crate) fn queue_batch_partitions(queue: &Queue, cast: &CastColumns) -> Result<BatchPartitions, ValueError> {
 	let indices = partition_col_indices(&queue.columns, &queue.partition_by);
 	if indices.is_empty() {
 		return Ok(BatchPartitions::default());
 	}
-	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>, ValueError>>()?;
 	let batch = partitions_of_batch(&keys);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {

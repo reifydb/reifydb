@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_evaluate::stack::{Variable, field_label, strip_dollar_prefix};
 use reifydb_value::{
-	error::{RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -23,10 +23,10 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {
+	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<(), ValueError> {
 		let name = strip_dollar_prefix(fragment.text());
 		match self.symbols.get(name) {
 			Some(Variable::Columns {
@@ -95,7 +95,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_store_var(&mut self, fragment: &Fragment) -> Result<()> {
+	pub(crate) fn exec_store_var(&mut self, fragment: &Fragment) -> Result<(), ValueError> {
 		let name = strip_dollar_prefix(fragment.text());
 		let sv = self.stack.pop()?;
 		let variable = match sv {
@@ -115,7 +115,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_declare_var(&mut self, fragment: &Fragment) -> Result<()> {
+	pub(crate) fn exec_declare_var(&mut self, fragment: &Fragment) -> Result<(), ValueError> {
 		let name = strip_dollar_prefix(fragment.text());
 		if name == "identity" {
 			return Err(TypeError::Runtime {
@@ -147,7 +147,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_field_access(&mut self, object: &Fragment, field: &Fragment) -> Result<()> {
+	pub(crate) fn exec_field_access(&mut self, object: &Fragment, field: &Fragment) -> Result<(), ValueError> {
 		let var_name = strip_dollar_prefix(object.text());
 		let field_name = field.text();
 		match self.symbols.get(var_name) {
@@ -229,7 +229,7 @@ impl<'a> Vm<'a> {
 	}
 }
 
-fn rename_user_columns(scalar: &RecordBatch, name: &str) -> Result<RecordBatch> {
+fn rename_user_columns(scalar: &RecordBatch, name: &str) -> Result<RecordBatch, ValueError> {
 	let columns = scalar
 		.schema_ref()
 		.fields()

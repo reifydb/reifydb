@@ -30,7 +30,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	expression::{
 		compare::{Equal, compare_columns},
 		context::EvalContext,
@@ -42,7 +41,7 @@ pub(crate) fn variable_column(
 	ctx: &EvalContext,
 	expr: &VariableExpression,
 	row_count: usize,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let variable_name = expr.name();
 
 	if variable_name == "env" {
@@ -138,7 +137,7 @@ pub(crate) fn variable_field_column(
 	variable: &VariableExpression,
 	field_name: &str,
 	row_count: usize,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let variable_name = variable.name();
 	match ctx.symbols.get(variable_name) {
 		Some(Variable::Columns {
@@ -229,7 +228,7 @@ pub(crate) fn combine_bool_columns(
 	right: (FieldRef, ArrayRef),
 	fragment: Fragment,
 	combine_fn: fn(bool, bool) -> bool,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if left.1.len() != right.1.len() {
 		return Err(length_mismatch(left.1.len(), right.1.len(), &fragment));
 	}
@@ -306,7 +305,7 @@ fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Frag
 	})
 }
 
-fn bool_column_has_true(col: &(FieldRef, ArrayRef)) -> Result<bool> {
+fn bool_column_has_true(col: &(FieldRef, ArrayRef)) -> Result<bool, ValueError> {
 	let view = ColumnView::try_from(col)?;
 	Ok(match &view.data {
 		ViewData::Bool(b) => match view.logical_nulls() {
@@ -383,7 +382,7 @@ pub(crate) fn list_contains_element(
 	list_col: &(FieldRef, ArrayRef),
 	element_col: &(FieldRef, ArrayRef),
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (list_view, element_view) = (ColumnView::try_from(list_col)?, ColumnView::try_from(element_col)?);
 	let len = list_col.1.len();
 	let mut data = Vec::with_capacity(len);
@@ -429,7 +428,7 @@ pub(crate) fn enforce_cast_constraint(
 	target: &ValueType,
 	constraint: &Option<Constraint>,
 	fragment: &Fragment,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(constraint) = constraint else {
 		return Ok(());
 	};

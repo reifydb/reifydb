@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, sumtype::SumTypeId},
 };
 
@@ -28,13 +28,13 @@ pub trait Changes {
 }
 
 pub trait Lookup {
-	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>>;
+	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>, ValueError>;
 
-	fn view(&mut self, id: ViewId) -> Result<View>;
+	fn view(&mut self, id: ViewId) -> Result<View, ValueError>;
 
-	fn table(&mut self, id: TableId) -> Result<Table>;
+	fn table(&mut self, id: TableId) -> Result<Table, ValueError>;
 
-	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType>;
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType, ValueError>;
 }
 
 pub trait ClockNow {

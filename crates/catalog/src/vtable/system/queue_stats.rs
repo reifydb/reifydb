@@ -9,9 +9,10 @@ use reifydb_core::{
 	key::queue::QueueDueKey,
 };
 use reifydb_transaction::{queue::scheduling::queue_partition_counters, transaction::Transaction};
-use reifydb_value::value::{datetime::DateTime, partition::Partition};
-
-use crate::Result;
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, partition::Partition},
+};
 
 pub(crate) struct PartitionStats {
 	pub partition: Partition,
@@ -19,7 +20,7 @@ pub(crate) struct PartitionStats {
 	pub oldest_due_at: Option<DateTime>,
 }
 
-pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Result<Vec<PartitionStats>> {
+pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Result<Vec<PartitionStats>, ValueError> {
 	let single = txn.single();
 	let ctx = txn.context();
 

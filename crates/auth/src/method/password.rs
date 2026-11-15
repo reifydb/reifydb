@@ -9,7 +9,7 @@ use argon2::{
 };
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use crate::error::AuthError;
 
@@ -29,7 +29,7 @@ impl AuthenticationProvider for PasswordProvider {
 		true
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, ValueError> {
 		let password = config
 			.get("password")
 			.filter(|p| !p.is_empty())
@@ -53,7 +53,7 @@ impl AuthenticationProvider for PasswordProvider {
 		&self,
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
+	) -> Result<AuthStep, ValueError> {
 		let credential = credentials
 			.get("password")
 			.filter(|p| !p.is_empty())

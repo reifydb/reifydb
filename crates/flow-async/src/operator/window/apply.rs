@@ -4,7 +4,7 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	state::timer::TimerKind,
 };
-use reifydb_value::{Result, util::hash::Hash128, value::duration::Duration};
+use reifydb_value::{error::ValueError, util::hash::Hash128, value::duration::Duration};
 use tracing::instrument;
 
 use super::{hooks::BuiltinHooks, operator::WindowOperator, rows::BuiltinRows};
@@ -27,7 +27,7 @@ pub fn apply_tumbling_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	change: Change,
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let mut runner = operator.runner.take().expect("a tumbling or sliding window owns a window runner");
 	let mut rows = BuiltinRows::new(operator, &change);
@@ -50,7 +50,7 @@ pub fn apply_session_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	change: Change,
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let mut runner = operator.runner.take().expect("a session window owns a window runner");
 	let mut rows = BuiltinRows::sessions(operator, &change);
@@ -70,8 +70,8 @@ pub fn apply_session_engine(
 
 fn with_engine<T>(
 	operator: &mut WindowOperator,
-	run: impl FnOnce(&mut TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>) -> Result<T>,
-) -> Result<T> {
+	run: impl FnOnce(&mut TumblingEngine<Hash128, DateTimeCoord, RowAccumulator>) -> Result<T, ValueError>,
+) -> Result<T, ValueError> {
 	let config = operator.engine_config();
 	let mut engine =
 		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
@@ -82,7 +82,11 @@ fn with_engine<T>(
 	out
 }
 
-pub fn forget_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
+pub fn forget_sealed_groups(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	fired: FiredAt,
+) -> Result<(), ValueError> {
 	if let Some(mut runner) = operator.runner.take() {
 		let reaped =
 			with_engine(operator, |engine| runner.on_timer(engine, host, TimerKind::Maintenance, fired));
@@ -101,7 +105,7 @@ pub fn seal_session_engines(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	timers: &[Timer],
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let Some(latest) = timers.iter().max_by_key(|timer| timer.due) else {
 		return Ok(Vec::new());
 	};
@@ -119,7 +123,7 @@ pub fn seal_engine_windows(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	fired: FiredAt,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let Some(mut runner) = operator.runner.take() else {
 		return Ok(Vec::new());
 	};

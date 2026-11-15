@@ -11,10 +11,13 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_value::value::identity::{IdentityId, IdentityKind};
+use reifydb_value::{
+	error::ValueError,
+	value::identity::{IdentityId, IdentityKind},
+};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	cache::{CatalogCache, load::identity::load_identities},
 };
 
@@ -24,7 +27,7 @@ pub fn bootstrap_identities(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut qt = QueryTransaction::new(
 		multi.begin_query(multi.generate_transaction_id())?,
 		single.clone(),

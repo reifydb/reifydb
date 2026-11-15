@@ -10,7 +10,7 @@ use reifydb_codec::log::{
 use reifydb_runtime::io::fs::{Create, Filesystem, Len, Open, OpenMut, Pread, SyncData, SyncDir};
 
 use crate::{
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	segment::{read_exact, write_all},
 };
 
@@ -25,7 +25,7 @@ pub struct Vote<F: Filesystem> {
 }
 
 impl<F: Filesystem> Vote<F> {
-	pub fn create(fs: &F, dir: &Path) -> Result<Self>
+	pub fn create(fs: &F, dir: &Path) -> Result<Self, StoreLogError>
 	where
 		F: Create + SyncDir,
 	{
@@ -42,7 +42,7 @@ impl<F: Filesystem> Vote<F> {
 		})
 	}
 
-	pub fn open(fs: &F, dir: &Path) -> Result<Self>
+	pub fn open(fs: &F, dir: &Path) -> Result<Self, StoreLogError>
 	where
 		F: OpenMut,
 	{
@@ -57,7 +57,7 @@ impl<F: Filesystem> Vote<F> {
 		})
 	}
 
-	pub fn save(&mut self, state: State) -> Result<()> {
+	pub fn save(&mut self, state: State) -> Result<(), StoreLogError> {
 		let seq = self.seq.next();
 		let path = self.dir.join(VOTE_NAMES[self.next]);
 		write_all(&self.files[self.next], &path, 0, &state.encode(seq))?;
@@ -85,12 +85,12 @@ impl<F: Filesystem> Vote<F> {
 	}
 }
 
-pub fn read<F: Open>(fs: &F, dir: &Path) -> Result<State> {
+pub fn read<F: Open>(fs: &F, dir: &Path) -> Result<State, StoreLogError> {
 	let files = [fs.open(&dir.join(VOTE_NAMES[0]))?, fs.open(&dir.join(VOTE_NAMES[1]))?];
 	Ok(pick(&files, dir)?.0)
 }
 
-fn fresh<F: Filesystem + Create>(fs: &F, dir: &Path, at: usize, seq: VoteSeq) -> Result<F::FileMut> {
+fn fresh<F: Filesystem + Create>(fs: &F, dir: &Path, at: usize, seq: VoteSeq) -> Result<F::FileMut, StoreLogError> {
 	let path = dir.join(VOTE_NAMES[at]);
 	let file = fs.create(&path, FILE_BYTES as u64)?;
 	write_all(&file, &path, 0, &State::EMPTY.encode(seq))?;
@@ -104,7 +104,7 @@ enum Slot {
 	Corrupt,
 }
 
-fn pick<H: Pread + Len>(files: &[H; SLOTS], dir: &Path) -> Result<(State, VoteSeq, usize)> {
+fn pick<H: Pread + Len>(files: &[H; SLOTS], dir: &Path) -> Result<(State, VoteSeq, usize), StoreLogError> {
 	let mut best: Option<(State, VoteSeq, usize)> = None;
 	let mut short: Option<u64> = None;
 	for (at, file) in files.iter().enumerate() {
@@ -130,7 +130,7 @@ fn pick<H: Pread + Len>(files: &[H; SLOTS], dir: &Path) -> Result<(State, VoteSe
 	}
 }
 
-fn slot<H: Pread + Len>(file: &H) -> Result<Slot> {
+fn slot<H: Pread + Len>(file: &H) -> Result<Slot, StoreLogError> {
 	let len = file.len()?;
 	if len < FILE_BYTES as u64 {
 		return Ok(Slot::Short(len));

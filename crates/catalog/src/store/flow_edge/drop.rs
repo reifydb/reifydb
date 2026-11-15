@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::flow::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> Result<()> {
+	pub(crate) fn drop_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> Result<(), ValueError> {
 		let edge = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut *txn), edge_id)?;
 
 		if let Some(edge_def) = edge {

@@ -3,7 +3,7 @@
 
 use std::mem::take;
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	engine::FlowEngineInner,
@@ -11,7 +11,7 @@ use crate::{
 };
 
 impl FlowEngineInner {
-	pub fn begin_watermarks(&mut self, txn: &mut DeferredTransaction) -> Result<()> {
+	pub fn begin_watermarks(&mut self, txn: &mut DeferredTransaction) -> Result<(), ValueError> {
 		self.staged_watermarks.clear();
 		for source in &self.dirty_watermarks {
 			if let Some(coordinate) = self.watermarks.get(source) {

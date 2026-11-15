@@ -7,6 +7,7 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{expression::ConstantExpression, value::column::factory};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	return_error,
 	value::{
@@ -19,9 +20,11 @@ use reifydb_value::{
 };
 use temporal::TemporalParser;
 
-use crate::Result;
-
-pub(crate) fn constant_value(expr: &ConstantExpression, name: &str, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
+pub(crate) fn constant_value(
+	expr: &ConstantExpression,
+	name: &str,
+	row_count: usize,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	Ok(match expr {
 		ConstantExpression::Bool {
 			fragment,
@@ -49,7 +52,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, name: &str, row_count: u
 	})
 }
 
-fn number_value(fragment: &Fragment, name: &str, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
+fn number_value(fragment: &Fragment, name: &str, row_count: usize) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let text = fragment.text();
 	if text.contains(['.', 'e', 'E']) {
 		let value = parse_decimal(fragment.clone())?;

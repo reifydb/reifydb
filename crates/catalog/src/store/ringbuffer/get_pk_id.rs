@@ -7,14 +7,15 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferKey,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
+use crate::{CatalogStore, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
 	pub(crate) fn get_ringbuffer_pk_id(
 		rx: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
-	) -> Result<Option<PrimaryKeyId>> {
+	) -> Result<Option<PrimaryKeyId>, ValueError> {
 		let multi = match rx.get(&[RingBufferKey::new(ringbuffer_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return Ok(None),

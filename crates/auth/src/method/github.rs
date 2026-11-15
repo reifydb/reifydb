@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider, MethodSettingError};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 use subtle::ConstantTimeEq;
 
 use crate::error::GithubError;
@@ -58,7 +58,7 @@ impl AuthenticationProvider for GithubProvider {
 		true
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, ValueError> {
 		let user_id = config.get("user_id").ok_or_else(|| ValueError::from(GithubError::MissingUserId))?;
 
 		if user_id.is_empty() || !user_id.bytes().all(|b| b.is_ascii_digit()) {
@@ -78,7 +78,7 @@ impl AuthenticationProvider for GithubProvider {
 		&self,
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
+	) -> Result<AuthStep, ValueError> {
 		let stored_id = stored.get("user_id").ok_or_else(|| ValueError::from(GithubError::MissingUserId))?;
 
 		let Some(verified_id) = credentials.get("github_user_id") else {

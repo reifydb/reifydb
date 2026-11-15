@@ -5,14 +5,13 @@ use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use super::{Parser, Precedence};
 use crate::{
-	Result,
 	ast::ast::{AstMatch, AstMatchArm},
 	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_match(&mut self) -> Result<AstMatch<'bump>> {
+	pub(crate) fn parse_match(&mut self) -> Result<AstMatch<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Match)?;
 
 		let subject = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
@@ -61,7 +60,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_match_arm(&mut self, has_subject: bool) -> Result<AstMatchArm<'bump>> {
+	fn parse_match_arm(&mut self, has_subject: bool) -> Result<AstMatchArm<'bump>, ValueError> {
 		self.skip_new_line()?;
 
 		if !self.is_eof() && self.current()?.is_keyword(Keyword::Else) {

@@ -8,10 +8,13 @@ pub mod update;
 
 use reifydb_core::expression::Expression;
 use reifydb_rql_frontend::ast::ast::Ast;
+use reifydb_value::error::ValueError;
 
-use crate::{Result, expression::ExpressionCompiler, plan::logical::reserved::reject_reserved_output_names};
+use crate::{expression::ExpressionCompiler, plan::logical::reserved::reject_reserved_output_names};
 
-pub(crate) fn compile_returning_clause<'bump>(returning: Option<Vec<Ast<'bump>>>) -> Result<Option<Vec<Expression>>> {
+pub(crate) fn compile_returning_clause<'bump>(
+	returning: Option<Vec<Ast<'bump>>>,
+) -> Result<Option<Vec<Expression>>, ValueError> {
 	let Some(returning_asts) = returning else {
 		return Ok(None);
 	};

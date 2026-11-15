@@ -15,6 +15,7 @@ use reifydb_store_single::{
 	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
+use reifydb_value::error::ValueError;
 use reifydb_wal::lsn::Lsn;
 use test_each_file::test_each_path;
 
@@ -24,20 +25,20 @@ use common::Runner;
 struct NoWal;
 
 impl WalFloorCheckpoint for NoWal {
-	fn make_durable(&self, _through: Lsn) -> reifydb_value::Result<()> {
+	fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 		// Store-level scripts never log a commit, so there is no lsn to make durable.
 		Ok(())
 	}
 
-	fn saved_through(&self, _through: Lsn) -> reifydb_value::Result<()> {
+	fn saved_through(&self, _through: Lsn) -> Result<(), ValueError> {
 		Ok(())
 	}
 
-	fn durable_head(&self) -> reifydb_value::Result<Option<Lsn>> {
+	fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 		Ok(None)
 	}
 
-	fn appended_head(&self) -> reifydb_value::Result<Option<Lsn>> {
+	fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 		panic!("not used by single")
 	}
 }

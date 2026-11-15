@@ -10,10 +10,9 @@ use reifydb_core::{
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
-	Result,
 	nodes::CreateProcedureNode,
 	plan::{
 		logical,
@@ -26,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let on_event = create.on_event.expect("handler must have on_event");
 		let on_variant = create.on_variant.expect("handler must have on_variant");
 

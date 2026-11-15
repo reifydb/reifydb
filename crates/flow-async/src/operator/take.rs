@@ -37,7 +37,6 @@ use reifydb_core::{
 use reifydb_flow::operator::source::decode_change;
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	util::cowvec::CowVec,
@@ -122,11 +121,11 @@ pub struct TakeOperator {
 	shape: Option<(SchemaRef, RowShape)>,
 }
 
-fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>, ValueError> {
 	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
 }
 
-fn row_shape_from_columns(cols: &RecordBatch) -> Result<RowShape> {
+fn row_shape_from_columns(cols: &RecordBatch) -> Result<RowShape, ValueError> {
 	let fields: Vec<RowShapeField> = user_views(cols)?
 		.iter()
 		.map(|view| RowShapeField::unconstrained(view.field.name().clone(), view.get_type()))
@@ -134,7 +133,7 @@ fn row_shape_from_columns(cols: &RecordBatch) -> Result<RowShape> {
 	Ok(RowShape::new(RowFamily::Pod, fields))
 }
 
-fn row_shape_for(cache: &mut Option<(SchemaRef, RowShape)>, cols: &RecordBatch) -> Result<RowShape> {
+fn row_shape_for(cache: &mut Option<(SchemaRef, RowShape)>, cols: &RecordBatch) -> Result<RowShape, ValueError> {
 	if let Some((schema, shape)) = cache.as_ref()
 		&& schema == cols.schema_ref()
 	{
@@ -145,7 +144,7 @@ fn row_shape_for(cache: &mut Option<(SchemaRef, RowShape)>, cols: &RecordBatch) 
 	Ok(shape)
 }
 
-fn encode_take_rows(shape: &RowShape, columns: &RecordBatch) -> Result<Vec<EncodedBytes>> {
+fn encode_take_rows(shape: &RowShape, columns: &RecordBatch) -> Result<Vec<EncodedBytes>, ValueError> {
 	let views = user_views(columns)?;
 	let mut bodies: Vec<EncodedPodRowBuilder> = (0..columns.num_rows()).map(|_| shape.allocate_pod()).collect();
 	shape.write_columns(&mut bodies, &views)?;
@@ -167,7 +166,7 @@ fn encode_take_rows(shape: &RowShape, columns: &RecordBatch) -> Result<Vec<Encod
 		.collect())
 }
 
-fn decode_take_rows(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
+fn decode_take_rows(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch, ValueError> {
 	let mut envelopes: Vec<&Envelope> = Vec::with_capacity(rows.len());
 	for (_, encoded) in rows {
 		envelopes.push(Envelope::try_view(EncodedPodRow::view(encoded))?);
@@ -197,7 +196,7 @@ fn decode_take_rows(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Res
 	stamp_system_columns(decoded, stamps)
 }
 
-fn is_timed(encoded: &EncodedBytes) -> Result<bool> {
+fn is_timed(encoded: &EncodedBytes) -> Result<bool, ValueError> {
 	Ok(Envelope::try_view(EncodedPodRow::view(encoded))?.time().is_some())
 }
 
@@ -283,7 +282,11 @@ impl Output {
 		}
 	}
 
-	fn finish(self, loaded: &HashMap<RowNumber, EncodedBytes>, output_diffs: &mut Vec<Diff>) -> Result<()> {
+	fn finish(
+		self,
+		loaded: &HashMap<RowNumber, EncodedBytes>,
+		output_diffs: &mut Vec<Diff>,
+	) -> Result<(), ValueError> {
 		for group in self.epochs.into_iter().flatten() {
 			match (group.kind, group.source) {
 				(Kind::Insert, Source::Input) => {
@@ -373,7 +376,7 @@ impl TakePlan {
 		&self,
 		host: &mut dyn HostContext,
 		outputs: &[Output],
-	) -> Result<HashMap<RowNumber, EncodedBytes>> {
+	) -> Result<HashMap<RowNumber, EncodedBytes>, ValueError> {
 		let wanted: BTreeSet<RowNumber> = outputs.iter().flat_map(Output::unread).collect();
 		if wanted.is_empty() {
 			return Ok(HashMap::new());
@@ -391,7 +394,7 @@ impl TakePlan {
 		Ok(loaded)
 	}
 
-	fn store_rows(&self, host: &mut dyn HostContext, state: &TakeState, rows: TakeRows) -> Result<()> {
+	fn store_rows(&self, host: &mut dyn HostContext, state: &TakeState, rows: TakeRows) -> Result<(), ValueError> {
 		let mut sets = Vec::new();
 		for (row, encoded) in rows.fresh {
 			if !state.holds(&row) {
@@ -409,7 +412,7 @@ impl TakePlan {
 		host.state_remove(&removes)
 	}
 
-	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {
+	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState, ValueError> {
 		let key = Self::state_key();
 		let Some(row) = host.state_get(from_ref(&key))?.pop().flatten() else {
 			return Ok(TakeState::default());
@@ -425,7 +428,7 @@ impl TakePlan {
 		})
 	}
 
-	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<()> {
+	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<(), ValueError> {
 		let row = encode(state).map_err(|e| {
 			ValueError::from(FlowAsyncError::Encode {
 				state: "TakeState",
@@ -489,7 +492,7 @@ impl TakePlan {
 		created: &[DateTime],
 		encoded: &[EncodedBytes],
 		output: &mut Output,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut fresh: Vec<(RowAge, usize, usize)> = fresh
 			.into_iter()
 			.map(|(row_number, row_idx, count)| {
@@ -512,7 +515,7 @@ impl TakePlan {
 		count: usize,
 		(row_idx, encoded): (usize, EncodedBytes),
 		output: &mut Output,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.limit == 0 {
 			return Ok(());
 		}
@@ -564,7 +567,7 @@ impl TakePlan {
 		rows: &mut TakeRows,
 		post: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-	) -> Result<Option<Output>> {
+	) -> Result<Option<Output>, ValueError> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
 			return Ok(None);
@@ -608,7 +611,7 @@ impl TakePlan {
 		pre: RecordBatch,
 		post: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-	) -> Result<Option<Output>> {
+	) -> Result<Option<Output>, ValueError> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
 			return Ok(None);
@@ -660,7 +663,7 @@ impl TakePlan {
 		rows: &mut TakeRows,
 		pre: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-	) -> Result<Option<Output>> {
+	) -> Result<Option<Output>, ValueError> {
 		let row_count = pre.num_rows();
 		if row_count == 0 {
 			return Ok(None);
@@ -710,7 +713,7 @@ impl HostOperator for TakeOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		let mut state = self.plan.load_take_state(host)?;
 		let mut rows = TakeRows::of(&state);

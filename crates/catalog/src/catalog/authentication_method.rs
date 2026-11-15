@@ -13,7 +13,7 @@ use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
@@ -24,7 +24,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		name: &str,
-	) -> Result<Option<AuthenticationMethod>> {
+	) -> Result<Option<AuthenticationMethod>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(method) =
@@ -125,7 +125,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		name: &str,
-	) -> Result<AuthenticationMethod> {
+	) -> Result<AuthenticationMethod, ValueError> {
 		self.find_authentication_method_by_name(txn, name)?.ok_or_else(|| not_found(name))
 	}
 
@@ -134,7 +134,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: AuthenticationMethodToCreate,
-	) -> Result<AuthenticationMethod> {
+	) -> Result<AuthenticationMethod, ValueError> {
 		let method = CatalogStore::create_authentication_method(txn, to_create)?;
 		txn.track_authentication_method_created(method.clone())?;
 		Ok(method)
@@ -145,7 +145,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		method: AuthenticationMethod,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let pre = CatalogStore::find_authentication_method(&mut Transaction::Admin(&mut *txn), method.id)?
 			.ok_or_else(|| not_found(&method.name))?;
 
@@ -155,7 +155,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::authentication_method::drop", level = "info", skip(self, txn))]
-	pub fn drop_authentication_method(&self, txn: &mut AdminTransaction, id: AuthenticationMethodId) -> Result<()> {
+	pub fn drop_authentication_method(
+		&self,
+		txn: &mut AdminTransaction,
+		id: AuthenticationMethodId,
+	) -> Result<(), ValueError> {
 		if let Some(method) = CatalogStore::find_authentication_method(&mut Transaction::Admin(&mut *txn), id)?
 		{
 			CatalogStore::drop_authentication_method(txn, id)?;
@@ -166,7 +170,10 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn list_all_authentication_methods(&self, txn: &mut Transaction<'_>) -> Result<Vec<AuthenticationMethod>> {
+	pub fn list_all_authentication_methods(
+		&self,
+		txn: &mut Transaction<'_>,
+	) -> Result<Vec<AuthenticationMethod>, ValueError> {
 		if let Transaction::Test(t) = txn {
 			let mut methods = CatalogStore::list_all_authentication_methods(&mut Transaction::Test(
 				Box::new(t.reborrow()),

@@ -6,8 +6,6 @@ use std::io::Error as IoError;
 use rusqlite::Error as SqlError;
 use thiserror::Error;
 
-pub type SqliteResult<T> = Result<T, SqliteError>;
-
 #[derive(Debug, Error)]
 pub enum SqliteError {
 	#[error("failed to connect to SQLite database at {path}: {source}")]

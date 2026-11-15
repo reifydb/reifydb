@@ -23,7 +23,6 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	util::{cowvec::CowVec, hash::Hash128},
@@ -103,8 +102,8 @@ fn cached<T: Clone>(
 	host: &mut dyn HostContext,
 	cache: &Cache<T>,
 	key: &GroupStateKey,
-	decode: fn(&EncodedPodRow) -> Result<T>,
-) -> Result<Option<T>> {
+	decode: fn(&EncodedPodRow) -> Result<T, ValueError>,
+) -> Result<Option<T>, ValueError> {
 	if let Some((value, _)) = cache.borrow().get(key) {
 		return Ok(value.clone());
 	}
@@ -126,7 +125,7 @@ impl PublishedLedger {
 		cache.insert(key, (value, true));
 	}
 
-	pub(crate) fn flush(&self, host: &mut dyn HostContext) -> Result<()> {
+	pub(crate) fn flush(&self, host: &mut dyn HostContext) -> Result<(), ValueError> {
 		let written = take(&mut *self.written.borrow_mut());
 		let mut sets = take(&mut *self.sets.borrow_mut());
 		let mut pins = take(&mut *self.pins.borrow_mut());
@@ -159,12 +158,17 @@ impl PublishedLedger {
 		typed_key::<JoinPublished>(group, &Asc(left))
 	}
 
-	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
+	fn published_set(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+	) -> Result<PublishedSet, ValueError> {
 		Ok(cached(host, &self.sets, &self.published_key(group, left), decode_published_set)?
 			.unwrap_or_default())
 	}
 
-	fn write_published_set(&self, group: GroupId, left: RowNumber, set: &PublishedSet) -> Result<()> {
+	fn write_published_set(&self, group: GroupId, left: RowNumber, set: &PublishedSet) -> Result<(), ValueError> {
 		let key = self.published_key(group, left);
 		if set.entries.is_empty() {
 			self.hold(&self.sets, key, None);
@@ -200,7 +204,7 @@ impl PublishedLedger {
 		left: RowNumber,
 		right: RowNumber,
 		content: &EncodedBytes,
-	) -> Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool), ValueError> {
 		self.publish_as(host, group, left, right, content, None)
 	}
 
@@ -212,7 +216,7 @@ impl PublishedLedger {
 		right: RowNumber,
 		content: &EncodedBytes,
 		reuse: Option<RowNumber>,
-	) -> Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool), ValueError> {
 		let version = ContentVersion::of(content);
 		let mut set = self.published_set(host, group, left)?;
 		let published =
@@ -252,7 +256,7 @@ impl PublishedLedger {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		left: RowNumber,
-	) -> Result<Vec<Published>> {
+	) -> Result<Vec<Published>, ValueError> {
 		Ok(self.published_set(host, group, left)?
 			.entries
 			.iter()
@@ -271,7 +275,7 @@ impl PublishedLedger {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		left: RowNumber,
-	) -> Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool), ValueError> {
 		self.publish_unmatched_as(host, group, left, None)
 	}
 
@@ -281,7 +285,7 @@ impl PublishedLedger {
 		group: GroupId,
 		left: RowNumber,
 		reuse: Option<RowNumber>,
-	) -> Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool), ValueError> {
 		let mut set = self.published_set(host, group, left)?;
 		if let Some(entry) = set.entries.iter().find(|entry| entry.tag == TAG_UNMATCHED) {
 			return Ok((RowNumber(entry.row_number), false));
@@ -306,13 +310,18 @@ impl PublishedLedger {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		left: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut set = self.published_set(host, group, left)?;
 		set.entries.retain(|entry| entry.tag != TAG_UNMATCHED);
 		self.write_published_set(group, left, &set)
 	}
 
-	pub(crate) fn release_all(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<()> {
+	pub(crate) fn release_all(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+	) -> Result<(), ValueError> {
 		let mut set = self.published_set(host, group, left)?;
 		let held = set.entries.len();
 		let mut joined: Vec<(RowNumber, ContentVersion)> = Vec::new();
@@ -340,7 +349,7 @@ impl PublishedLedger {
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
-	) -> Result<Option<EncodedBytes>> {
+	) -> Result<Option<EncodedBytes>, ValueError> {
 		let mut set = self.published_set(host, group, left)?;
 		let Some(index) =
 			set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0)
@@ -358,7 +367,7 @@ impl PublishedLedger {
 		group: GroupId,
 		right: RowNumber,
 		content: &EncodedBytes,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let version = ContentVersion::of(content);
 		let key = self.pin_key(group, right, version);
 		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)? else {
@@ -378,7 +387,7 @@ impl PublishedLedger {
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let key = self.pin_key(group, right, version);
 		let mut pin = cached(host, &self.pins, &key, decode_pin)?.unwrap_or(Pin {
 			refs: 0,
@@ -395,7 +404,7 @@ impl PublishedLedger {
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
-	) -> Result<Option<EncodedBytes>> {
+	) -> Result<Option<EncodedBytes>, ValueError> {
 		let key = self.pin_key(group, right, version);
 		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)?.filter(|pin| pin.refs > 0) else {
 			return internal_err!(
@@ -426,7 +435,7 @@ fn sort_entries(set: &mut PublishedSet) {
 	set.entries.sort_by_key(|entry| (entry.tag, entry.right));
 }
 
-fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
+fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow, ValueError> {
 	encode(set).map_err(|e| {
 		ValueError::from(FlowAsyncError::Encode {
 			state: "snapshot published set",
@@ -435,7 +444,7 @@ fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
 	})
 }
 
-fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
+fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet, ValueError> {
 	decode::<PublishedSet>(row).map_err(|e| {
 		ValueError::from(FlowAsyncError::Decode {
 			state: "snapshot published set",
@@ -444,7 +453,7 @@ fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
 	})
 }
 
-fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
+fn encode_pin(pin: &Pin) -> Result<EncodedPodRow, ValueError> {
 	encode(pin).map_err(|e| {
 		ValueError::from(FlowAsyncError::Encode {
 			state: "snapshot pin",
@@ -453,7 +462,7 @@ fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
 	})
 }
 
-fn decode_pin(row: &EncodedPodRow) -> Result<Pin> {
+fn decode_pin(row: &EncodedPodRow) -> Result<Pin, ValueError> {
 	decode::<Pin>(row).map_err(|e| {
 		ValueError::from(FlowAsyncError::Decode {
 			state: "snapshot pin",
@@ -475,7 +484,7 @@ pub(crate) fn publish_joined(
 	left: &RecordBatch,
 	left_indices: &[usize],
 	outer: bool,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	if left_indices.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -544,7 +553,7 @@ pub(crate) fn withdraw_joined(
 	key_hash: &Hash128,
 	left: &RecordBatch,
 	left_idx: usize,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let group = ctx.right_store.group_of(key_hash);
 	let left_number = require_row_numbers(left)?[left_idx];
 	let mut withdrawals = Vec::new();
@@ -619,7 +628,7 @@ pub(crate) fn resync_joined(
 	post: &RecordBatch,
 	left_idx: usize,
 	outer: bool,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let mut out = withdraw_joined(host, ctx, keys.pre, pre, left_idx)?;
 	out.extend(publish_joined(host, ctx, keys.post, post, &[left_idx], outer)?);
 	Ok(out)
@@ -633,7 +642,7 @@ pub(crate) fn publish_slot(
 	left_indices: &[usize],
 	outer: bool,
 	reuse: Option<RowNumber>,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	if left_indices.is_empty() {
 		return Ok(None);
 	}
@@ -667,7 +676,7 @@ pub(crate) fn withdraw_slot(
 	group: GroupId,
 	left: &RecordBatch,
 	left_idx: usize,
-) -> Result<Option<(RecordBatch, RowNumber)>> {
+) -> Result<Option<(RecordBatch, RowNumber)>, ValueError> {
 	let left_number = require_row_numbers(left)?[left_idx];
 	for entry in ctx.ledger.published(host, group, left_number)? {
 		let right_number = match entry.right {
@@ -710,7 +719,7 @@ pub(crate) fn retain_published_slot(
 	ctx: &PublishedJoinContext,
 	group: GroupId,
 	left: RowNumber,
-) -> Result<Option<(RecordBatch, RowNumber)>> {
+) -> Result<Option<(RecordBatch, RowNumber)>, ValueError> {
 	let Some((number, content, slot)) = winning_right_row(host, ctx.right_store, group)? else {
 		return Ok(None);
 	};
@@ -728,7 +737,11 @@ pub(crate) fn retain_published_slot(
 	Ok(Some((slot, entry.row_number)))
 }
 
-pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &PublishedJoinContext, key_hash: &Hash128) -> Result<()> {
+pub(crate) fn retire_slot(
+	host: &mut dyn HostContext,
+	ctx: &PublishedJoinContext,
+	key_hash: &Hash128,
+) -> Result<(), ValueError> {
 	let group = ctx.right_store.group_of(key_hash);
 	match winning_right_row(host, ctx.right_store, group)? {
 		Some((number, content, _)) => {
@@ -744,7 +757,7 @@ pub(crate) fn retire_right(
 	ctx: &PublishedJoinContext,
 	key_hash: &Hash128,
 	row_number: RowNumber,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let group = ctx.right_store.group_of(key_hash);
 	let Some(content) = ctx.right_store.get_row_in(host, group, row_number)? else {
 		return Ok(());

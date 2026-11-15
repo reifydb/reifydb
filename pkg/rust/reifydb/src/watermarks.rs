@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::Database;
 
@@ -60,7 +60,7 @@ impl<'a> Watermarks<'a> {
 	}
 
 	/// The only fallible read is `tx().current()`.
-	pub fn snapshot(&self) -> Result<WatermarkSnapshot> {
+	pub fn snapshot(&self) -> Result<WatermarkSnapshot, ValueError> {
 		let tx = self.tx();
 		let reader = self.reader();
 		Ok(WatermarkSnapshot {
@@ -84,7 +84,7 @@ pub struct TxWatermarks<'a> {
 
 impl TxWatermarks<'_> {
 	/// Highest committed version on the engine. Advances on every successful commit.
-	pub fn current(&self) -> Result<CommitVersion> {
+	pub fn current(&self) -> Result<CommitVersion, ValueError> {
 		self.db.engine().current_version()
 	}
 
@@ -148,7 +148,7 @@ impl ReaderWatermarks<'_> {
 
 	/// Waits for every deferred flow to have materialized output covering `version`, returning
 	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_subscription`].
-	pub fn wait_for_flow_caught_up(&self, version: CommitVersion, timeout: Duration) -> Result<bool> {
+	pub fn wait_for_flow_caught_up(&self, version: CommitVersion, timeout: Duration) -> Result<bool, ValueError> {
 		let watermark = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>();
 		let deadline = self.clock.instant() + timeout.to_std();
 		loop {

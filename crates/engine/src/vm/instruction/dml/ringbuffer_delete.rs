@@ -30,6 +30,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -47,7 +48,6 @@ use super::{
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 };
 use crate::{
-	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::{
 		RingBufferOperations, release_ring_rows, ring_rows_oldest_first, save_ring,
@@ -68,7 +68,7 @@ pub(crate) fn delete_ringbuffer(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let DeleteRingBufferNode {
 		input,
 		target,
@@ -117,7 +117,7 @@ fn resolve_delete_ringbuffer_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedRingBuffer,
-) -> Result<(Namespace, RingBuffer)> {
+) -> Result<(Namespace, RingBuffer), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -147,7 +147,7 @@ fn collect_rows_for_ringbuffer_delete(
 	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 	caller: IdentityId,
-) -> Result<Vec<(Option<Partition>, RowNumber)>> {
+) -> Result<Vec<(Option<Partition>, RowNumber)>, ValueError> {
 	let mut seen = HashSet::new();
 	let mut rows_to_delete = Vec::new();
 	let partitioned = !target.ringbuffer.partition_by.is_empty();
@@ -219,7 +219,7 @@ fn delete_ringbuffer_rows(
 	target: &RingBufferTarget<'_>,
 	rows_filter: Option<Vec<(Option<Partition>, RowNumber)>>,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>), ValueError> {
 	let ringbuffer = target.ringbuffer;
 	let catalog = &services.catalog;
 	let mut ring = Ring::new(ringbuffer.capacity);
@@ -267,7 +267,7 @@ fn delete_ringbuffer_rows(
 }
 
 #[inline]
-fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> Result<RecordBatch> {
+fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),

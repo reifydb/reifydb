@@ -13,7 +13,7 @@ pub mod sink;
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{
-	Database, IdentityId, Params, Result as ReifyResult, ValueError,
+	Database, IdentityId, Params, ValueError,
 	core::{
 		interface::catalog::{id::SubscriptionId, subscription::SubscribeOptions},
 		internal,
@@ -58,7 +58,7 @@ pub struct Subscriptions {
 }
 
 impl Subscriptions {
-	pub fn new(db: &Database) -> ReifyResult<Self> {
+	pub fn new(db: &Database) -> Result<Self, ValueError> {
 		let store = db
 			.subsystem::<SubscriptionSubsystem>()
 			.ok_or_else(|| ValueError(Box::new(internal!("the subscription subsystem is not running"))))?
@@ -81,7 +81,7 @@ impl Subscriptions {
 		&self,
 		identity: IdentityId,
 		queries: &[(String, Params, SubscribeOptions)],
-	) -> ReifyResult<Result<Vec<SubscriptionId>, SubscribeError<ValueError>>> {
+	) -> Result<Result<Vec<SubscriptionId>, SubscribeError<ValueError>>, ValueError> {
 		let ack = match handle_subscribe(
 			&self.host,
 			self.connection_id,
@@ -105,7 +105,7 @@ impl Subscriptions {
 
 	/// Drops the subscriptions and the rows that back them. An id this node does not hold is skipped,
 	/// so unsubscribing twice is not an error.
-	pub async fn unsubscribe(&self, subscription_ids: &[SubscriptionId]) -> ReifyResult<()> {
+	pub async fn unsubscribe(&self, subscription_ids: &[SubscriptionId]) -> Result<(), ValueError> {
 		{
 			let mut remote_tasks = self.remote_tasks.lock();
 			for subscription_id in subscription_ids {
@@ -131,7 +131,7 @@ impl Subscriptions {
 	/// Everything produced by a write that committed before this call.
 	///
 	/// [`Database::caught_up`] only stages; draining what was staged is this transport's job.
-	pub fn caught_up(&self, db: &Database) -> ReifyResult<Vec<NodePush>> {
+	pub fn caught_up(&self, db: &Database) -> Result<Vec<NodePush>, ValueError> {
 		db.caught_up()?;
 
 		let mut pushes = Vec::new();

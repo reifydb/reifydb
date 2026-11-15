@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet, hash_map::Entry};
 use arrow_array::RecordBatch;
 use reifydb_core::key::operator::state::GroupId;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, system_columns::require_row_numbers},
 };
@@ -111,7 +111,10 @@ pub(crate) fn slot_coord(event_coord: DateTimeCoord, row_number: u64) -> WindowS
 	WindowSlotKey::new(event_coord, row_number)
 }
 
-pub(crate) fn distinct_row_runs(pre: &RecordBatch, post: &RecordBatch) -> Result<Vec<(RecordBatch, RecordBatch)>> {
+pub(crate) fn distinct_row_runs(
+	pre: &RecordBatch,
+	post: &RecordBatch,
+) -> Result<Vec<(RecordBatch, RecordBatch)>, ValueError> {
 	let pre_numbers = require_row_numbers(pre)?;
 	let post_numbers = require_row_numbers(post)?;
 	let mut runs = Vec::new();
@@ -137,7 +140,7 @@ pub(crate) fn route_into_buckets<F>(
 	is_add: bool,
 	assign: F,
 	routing: &mut Routing,
-) -> Result<()>
+) -> Result<(), ValueError>
 where
 	F: Fn(usize) -> (WindowSpan<DateTimeCoord>, DateTimeCoord),
 {

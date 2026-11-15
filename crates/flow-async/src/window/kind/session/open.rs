@@ -4,7 +4,7 @@
 use std::mem::take;
 
 use reifydb_core::internal_err;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::operator::state::seal::coord::Coord;
 
@@ -146,7 +146,7 @@ impl<S: Coord> OpenSessions<S> {
 		}
 	}
 
-	pub fn remove(&mut self, id: u64, row: RowNumber) -> Result<Option<Removal<S>>> {
+	pub fn remove(&mut self, id: u64, row: RowNumber) -> Result<Option<Removal<S>>, ValueError> {
 		let Some(index) = self.sessions.iter().position(|session| session.id == id) else {
 			return Ok(None);
 		};

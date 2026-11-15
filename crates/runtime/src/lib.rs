@@ -30,8 +30,6 @@ pub mod testing;
 use std::future::Future;
 use std::thread;
 
-use reifydb_value::Result as ValueResult;
-
 use crate::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
@@ -125,6 +123,8 @@ use std::error::Error;
 
 #[cfg(target_arch = "wasm32")]
 impl Error for WasmJoinError {}
+
+use reifydb_value::error::ValueError;
 
 use crate::actor::system::ActorSpawner;
 
@@ -231,7 +231,7 @@ impl Runtime {
 }
 
 impl Shutdown for Runtime {
-	fn shutdown(&self) -> ValueResult<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("runtime");
 		self.system.shutdown();
 		if let Err(err) = self.system.join() {

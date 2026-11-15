@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::AstDispatch,
 		identifier::MaybeQualifiedSumTypeIdentifier,
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_dispatch(&mut self) -> Result<AstDispatch<'bump>> {
+	pub(crate) fn parse_dispatch(&mut self) -> Result<AstDispatch<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Dispatch)?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;

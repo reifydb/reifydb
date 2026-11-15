@@ -17,7 +17,7 @@ use reifydb_flow_async::error::FlowAsyncError;
 use reifydb_flow_async::operator::{BoxedHostOperator, provider::OperatorProvider};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
-use reifydb_value::{Result, config::ExtensionParams, error::ValueError};
+use reifydb_value::{config::ExtensionParams, error::ValueError};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use tracing::instrument;
 
@@ -46,7 +46,7 @@ impl OperatorProvider for StandardOperatorProvider {
 		operator_id: OperatorId,
 		params: &ExtensionParams,
 		with: &ApplyWith,
-	) -> Result<BoxedHostOperator> {
+	) -> Result<BoxedHostOperator, ValueError> {
 		let operator = params.name();
 
 		if let Some(factory) = self.custom.get(operator) {
@@ -89,7 +89,7 @@ impl StandardOperatorProvider {
 		operator_id: OperatorId,
 		params: &ExtensionParams,
 		with: &ApplyWith,
-	) -> Result<BoxedHostOperator> {
+	) -> Result<BoxedHostOperator, ValueError> {
 		let loader = extern_c_operator_loader();
 		let mut loader_write = loader.write();
 

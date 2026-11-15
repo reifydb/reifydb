@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::TimerKind,
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -91,7 +91,7 @@ where
 		}
 	}
 
-	pub fn route<R, X>(&self, rows: &mut R) -> Result<Routed<R::Group, C, X>>
+	pub fn route<R, X>(&self, rows: &mut R) -> Result<Routed<R::Group, C, X>, ValueError>
 	where
 		R: WindowRows<Coord = C>,
 		X: Contributions<Item = R::Contribution>,
@@ -109,7 +109,7 @@ where
 		store: &mut dyn WindowStore,
 		mut routed: Routed<H::Group, C, HookContributions<H>>,
 		hooks: &mut H,
-	) -> Result<H::Out>
+	) -> Result<H::Out, ValueError>
 	where
 		H: WindowHooks<Coord = C>,
 		H::Group: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -154,7 +154,7 @@ where
 		store: &mut dyn WindowStore,
 		frontier: C,
 		seal_span: C::SealSpan,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 		A: WindowAccumulator,
@@ -174,7 +174,7 @@ where
 		store: &mut dyn WindowStore,
 		kind: TimerKind,
 		fired: FiredAt,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 		A: WindowAccumulator,
@@ -195,7 +195,7 @@ where
 		store: &mut dyn WindowStore,
 		rows: SessionRows<H::Group, C, HookItem<H>>,
 		hooks: &mut H,
-	) -> Result<H::Out>
+	) -> Result<H::Out, ValueError>
 	where
 		H: WindowHooks<Coord = C>,
 		H::Group: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -334,7 +334,7 @@ where
 		store: &mut dyn WindowStore,
 		keys: &[&[u8]],
 		fired: FiredAt,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 		A: WindowAccumulator,
@@ -347,7 +347,7 @@ where
 			.iter()
 			.filter(|key| !key.is_empty())
 			.map(|key| tracker_hash(key))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		hashes.sort();
 		hashes.dedup();
 		if hashes.is_empty() {

@@ -17,10 +17,12 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, row_number::RowNumber, value_type::ValueType},
+};
 
 use crate::{
-	Result,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
 		instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
@@ -32,7 +34,7 @@ pub(crate) fn execute_alter_table(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterTableNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let namespace_id = plan.namespace.def().id();
 	let namespace_name = plan.namespace.name().to_string();
 	let table_name = plan.table.text().to_string();
@@ -140,7 +142,7 @@ pub(crate) fn execute_alter_table(
 						RangeScope::All,
 						1024,
 					)?
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				if batch.is_empty() {
 					break;
 				}

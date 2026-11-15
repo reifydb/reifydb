@@ -7,11 +7,11 @@ pub mod panic;
 use arrow_array::RecordBatch;
 use reifydb_core::value::batch::empty_batch;
 use reifydb_sdk::common::extern_c::wire::callbacks::builder::EmitDiffKind;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::callbacks::extern_c::builder::BuilderRegistry;
 
-pub fn single_columns_from_registry(registry: &BuilderRegistry) -> Result<RecordBatch> {
+pub fn single_columns_from_registry(registry: &BuilderRegistry) -> Result<RecordBatch, ValueError> {
 	let mut diffs = registry.drain();
 	if let Some(first) = diffs.drain(..).next() {
 		Ok(match first.kind {

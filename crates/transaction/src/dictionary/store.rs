@@ -22,16 +22,16 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, value::dictionary::DictionaryId};
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
 use crate::single::SingleTransaction;
 
 pub trait DictionaryStore: Send + Sync {
-	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
+	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>, ValueError>;
 
-	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>>;
+	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>, ValueError>;
 
-	fn commit_entries(&self, dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()>;
+	fn commit_entries(&self, dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<(), ValueError>;
 }
 
 pub struct DictEntryWrite {
@@ -45,7 +45,7 @@ pub fn remove_dictionary_entries(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	dictionary: DictionaryId,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let lock_key = DictionaryKey::encoded(dictionary);
 	let full_scans = [
 		DictionaryEntryKey::full_scan(dictionary).encode(),
@@ -92,7 +92,7 @@ impl SingleDictionaryStore {
 }
 
 impl DictionaryStore for SingleDictionaryStore {
-	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>, ValueError> {
 		self.reads.fetch_add(1, Ordering::Relaxed);
 		let store = self.single.read_store();
 		Ok(SingleVersionGet::get(&store, &self.ctx, slice::from_ref(key))?
@@ -101,7 +101,7 @@ impl DictionaryStore for SingleDictionaryStore {
 			.map(|bytes| bytes.bytes))
 	}
 
-	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {
+	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>, ValueError> {
 		let store = self.single.read_store();
 		let batch = SingleVersionRange::range_batch(
 			&store,
@@ -115,7 +115,7 @@ impl DictionaryStore for SingleDictionaryStore {
 		}
 	}
 
-	fn commit_entries(&self, dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()> {
+	fn commit_entries(&self, dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<(), ValueError> {
 		debug_assert!(!writes.is_empty(), "commit_entries must not be called with no writes");
 
 		let lock_key = DictionaryKey::encoded(dictionary);

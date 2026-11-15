@@ -15,14 +15,15 @@ use reifydb_core::{
 	key::catalog::TableKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::table::{decode_table_time, shape::table},
 };
 
-pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = TableKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -49,7 +50,7 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_table<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Table> {
+fn convert_table<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Table, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = TableId(table::get_id(&bytes));
 	let namespace = NamespaceId(table::get_namespace(&bytes));

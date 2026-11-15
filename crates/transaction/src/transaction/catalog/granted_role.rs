@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackGrantedRoleChangeOperations,
 	identity::{GrantedRole, RoleId},
 };
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackGrantedRoleChangeOperations for AdminTransaction {
-	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<()> {
+	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<(), ValueError> {
 		self.interceptors.granted_role_post_create.execute(GrantedRolePostCreateContext::new(&granted_role))?;
 		let change = Change {
 			pre: None,
@@ -29,7 +29,7 @@ impl CatalogTrackGrantedRoleChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<()> {
+	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<(), ValueError> {
 		self.interceptors.granted_role_pre_delete.execute(GrantedRolePreDeleteContext::new(&granted_role))?;
 		let change = Change {
 			pre: Some(granted_role),

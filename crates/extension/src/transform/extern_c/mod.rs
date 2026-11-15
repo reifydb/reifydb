@@ -19,7 +19,7 @@ use reifydb_sdk::{
 		vtable::ExternCTransformVTable,
 	},
 };
-use reifydb_value::{self, Result};
+use reifydb_value::{self, error::ValueError};
 use tracing::instrument;
 
 use super::{Transform, context::TransformContext};
@@ -91,7 +91,7 @@ impl Drop for ExternCTransform {
 
 impl Transform for ExternCTransform {
 	#[instrument(name = "transform::extern_c::apply", level = "trace", skip_all)]
-	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
 		ensure_marshallable(&input)?;
 		EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });

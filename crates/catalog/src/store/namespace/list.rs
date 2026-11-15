@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{any::TaggedKey, namespace::NamespaceKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::namespace::convert_namespace};
+use crate::{CatalogStore, store::namespace::convert_namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<Namespace>> {
+	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<Namespace>, ValueError> {
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();

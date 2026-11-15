@@ -9,7 +9,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	bound::parts,
@@ -74,7 +74,7 @@ impl KeyFilterSource for OperatorStateKeySource {
 		self.started = true;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice, ValueError> {
 		if !self.started {
 			self.restart();
 		}

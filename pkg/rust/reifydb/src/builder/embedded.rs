@@ -58,7 +58,7 @@ fn pool_config_from_sources(
 	wal_config: WalConfig,
 	wal_fs: Option<(Fs, PathBuf)>,
 	clock: &Clock,
-) -> Result<PoolConfigSources> {
+) -> Result<PoolConfigSources, ValueError> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
 	let (saved_through, persisted_high) = match multi_persistent.as_ref() {
@@ -92,12 +92,13 @@ use reifydb_extension::block_encoding::registry::BlockEncodingsConfigurator;
 use reifydb_store_column::store::ColumnStore;
 #[cfg(feature = "column")]
 use reifydb_sub_store::subsystem::StorageConfig;
+use reifydb_value::error::ValueError;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
 #[cfg(all(feature = "column", reifydb_target = "host"))]
 use crate::api;
 use crate::{
-	Database, MigrationSource, Result,
+	Database, MigrationSource,
 	api::{StorageFactory, commit_wal, transaction},
 };
 
@@ -278,7 +279,7 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn build(self) -> Result<Database> {
+	pub fn build(self) -> Result<Database, ValueError> {
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
 		let boot_ctx = TransactionContext::system(
 			RuntimeContext::builder(Spawner::inline())

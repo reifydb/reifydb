@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::identity::Role;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::interceptor::chain::InterceptorChain;
 
@@ -19,11 +19,11 @@ impl<'a> RolePostCreateContext<'a> {
 }
 
 pub trait RolePostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RolePostCreateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RolePostCreateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RolePostCreateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RolePostCreateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RolePostCreateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -33,14 +33,14 @@ impl InterceptorChain<dyn RolePostCreateInterceptor + Send + Sync> {
 
 pub struct ClosureRolePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRolePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -51,7 +51,7 @@ where
 
 impl<F> Clone for ClosureRolePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -62,16 +62,16 @@ where
 
 impl<F> RolePostCreateInterceptor for ClosureRolePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RolePostCreateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RolePostCreateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn role_post_create<F>(f: F) -> ClosureRolePostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RolePostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureRolePostCreateInterceptor::new(f)
 }
@@ -89,11 +89,11 @@ impl<'a> RolePreDeleteContext<'a> {
 }
 
 pub trait RolePreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RolePreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RolePreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RolePreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RolePreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RolePreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -103,14 +103,14 @@ impl InterceptorChain<dyn RolePreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureRolePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRolePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -121,7 +121,7 @@ where
 
 impl<F> Clone for ClosureRolePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -132,16 +132,16 @@ where
 
 impl<F> RolePreDeleteInterceptor for ClosureRolePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RolePreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RolePreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn role_pre_delete<F>(f: F) -> ClosureRolePreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RolePreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureRolePreDeleteInterceptor::new(f)
 }

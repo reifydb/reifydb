@@ -13,8 +13,8 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{EpochSeconds, VersionEpoch};
 use reifydb_value::{
-	Result,
 	count::Count,
+	error::ValueError,
 	value::{duration::Duration, identity::IdentityId},
 };
 use tracing::{debug, instrument, warn};
@@ -24,11 +24,11 @@ use crate::{gc::epoch::log::EpochLog, plane::horizon::max_retention_horizon};
 const PRUNE_BUDGET: usize = 1024;
 
 #[instrument(name = "lifecycle::gc::epoch::hydrate", level = "debug", skip_all)]
-pub fn hydrate(engine: &StandardEngine, horizon: Duration) -> Result<usize> {
+pub fn hydrate(engine: &StandardEngine, horizon: Duration) -> Result<usize, ValueError> {
 	hydrate_into(engine, horizon, engine.version_epoch())
 }
 
-pub fn hydrate_into(engine: &StandardEngine, horizon: Duration, epoch: &VersionEpoch) -> Result<usize> {
+pub fn hydrate_into(engine: &StandardEngine, horizon: Duration, epoch: &VersionEpoch) -> Result<usize, ValueError> {
 	let now = EpochSeconds::from_datetime(engine.clock().now());
 	let oldest_covered =
 		now.to_datetime().checked_sub(horizon).map(EpochSeconds::from_datetime).unwrap_or_default();
@@ -74,7 +74,7 @@ impl EpochLogTask {
 	}
 
 	#[instrument(name = "lifecycle::gc::epoch::persist", level = "debug", skip_all)]
-	fn persist_sample(&mut self, now: EpochSeconds) -> Result<bool> {
+	fn persist_sample(&mut self, now: EpochSeconds) -> Result<bool, ValueError> {
 		let version = self.engine.current_version()?;
 		if !self.log.write(now, version)? {
 			return Ok(false);
@@ -96,7 +96,7 @@ impl EpochLogTask {
 	}
 
 	#[instrument(name = "lifecycle::gc::epoch::prune", level = "debug", skip_all)]
-	fn prune(&mut self, now: EpochSeconds) -> Result<Progress> {
+	fn prune(&mut self, now: EpochSeconds) -> Result<Progress, ValueError> {
 		let horizon = max_retention_horizon(&self.catalog);
 		let Some(cutoff) = now.to_datetime().checked_sub(horizon) else {
 			return Ok(Progress::Exhausted);

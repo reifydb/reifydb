@@ -25,8 +25,8 @@ use reifydb_rql_frontend::{
 use reifydb_runtime::cache::sync::SyncLru;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result, error,
-	error::Diagnostic,
+	error,
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	util::hash::xxh3_128,
 	value::{Value, system_columns::SystemColumn, value_type::ValueType},
@@ -58,7 +58,7 @@ where
 		&'a Bump,
 		&Catalog,
 		&mut Transaction<'_>,
-	) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+	) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError>,
 {
 	f
 }
@@ -111,7 +111,7 @@ impl Compiler {
 		}))
 	}
 
-	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult> {
+	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult, ValueError> {
 		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
 		if let Some(cached) = self.0.cache.get(&fingerprint) {
 			return Ok(CompilationResult::Ready(cached));
@@ -145,7 +145,7 @@ impl Compiler {
 		bump: &'b Bump,
 		tx: &mut Transaction<'_>,
 		statements: Vec<AstStatement<'b>>,
-	) -> Result<Vec<Compiled>> {
+	) -> Result<Vec<Compiled>, ValueError> {
 		let mut plans = Vec::new();
 		for statement in statements {
 			let is_output = statement.is_output;
@@ -170,7 +170,7 @@ impl Compiler {
 		&self,
 		tx: &mut Transaction<'_>,
 		state: &mut IncrementalCompilation,
-	) -> Result<Option<Compiled>> {
+	) -> Result<Option<Compiled>, ValueError> {
 		if state.current >= state.total_statements {
 			return Ok(None);
 		}
@@ -204,14 +204,14 @@ impl Compiler {
 		tx: &mut Transaction<'_>,
 		query: &str,
 		policy: F,
-	) -> Result<CompilationResult>
+	) -> Result<CompilationResult, ValueError>
 	where
 		F: for<'a> Fn(
 			BumpVec<'a, LogicalPlan<'a>>,
 			&'a Bump,
 			&Catalog,
 			&mut Transaction<'_>,
-		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError>,
 	{
 		let cacheable = tx.identity().is_privileged();
 		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
@@ -270,14 +270,14 @@ impl Compiler {
 		tx: &mut Transaction<'_>,
 		statement: AstStatement<'b>,
 		policy: F,
-	) -> Result<Option<(QueryPlan, Vec<SystemColumn>)>>
+	) -> Result<Option<(QueryPlan, Vec<SystemColumn>)>, ValueError>
 	where
 		F: for<'a> Fn(
 			BumpVec<'a, LogicalPlan<'a>>,
 			&'a Bump,
 			&Catalog,
 			&mut Transaction<'_>,
-		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError>,
 	{
 		let Some(mut physical) =
 			plan_with_policy(bump, &self.0.catalog, &self.0.routines, tx, statement, &policy)?
@@ -296,14 +296,14 @@ impl Compiler {
 		tx: &mut Transaction<'_>,
 		state: &mut IncrementalCompilation,
 		policy: &F,
-	) -> Result<Option<Compiled>>
+	) -> Result<Option<Compiled>, ValueError>
 	where
 		F: for<'a> Fn(
 			BumpVec<'a, LogicalPlan<'a>>,
 			&'a Bump,
 			&Catalog,
 			&mut Transaction<'_>,
-		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError>,
 	{
 		if state.current >= state.total_statements {
 			return Ok(None);
@@ -335,7 +335,7 @@ impl Compiler {
 		}
 	}
 
-	pub fn remote_target(&self, tx: &mut Transaction<'_>, query: &str) -> Result<Option<Namespace>> {
+	pub fn remote_target(&self, tx: &mut Transaction<'_>, query: &str) -> Result<Option<Namespace>, ValueError> {
 		let bump = Bump::new();
 		for statement in parse_str(&bump, query)? {
 			if let Some(namespace) = find_remote_target(&bump, &self.0.catalog, tx, statement)? {
@@ -428,18 +428,18 @@ fn is_write(plan: &PhysicalPlan<'_>) -> bool {
 	)
 }
 
-fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan, ValueError> {
 	materialize_query_plan_with(plan, |kind| query::not_a_query_input(Fragment::None, kind))
 }
 
-fn materialize_as_clause_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+fn materialize_as_clause_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan, ValueError> {
 	materialize_query_plan_with(plan, |kind| query::as_clause_not_query(Fragment::None, kind))
 }
 
 fn materialize_query_plan_with(
 	plan: PhysicalPlan<'_>,
 	not_query: impl FnOnce(&str) -> Diagnostic,
-) -> Result<QueryPlan> {
+) -> Result<QueryPlan, ValueError> {
 	Ok(match plan {
 		PhysicalPlan::TableScan(node) => QueryPlan::TableScan(node),
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
@@ -686,7 +686,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 	}
 }
 
-fn compile_instructions(plan: PhysicalPlan<'_>, routines: &Routines) -> Result<Vec<Instruction>> {
+fn compile_instructions(plan: PhysicalPlan<'_>, routines: &Routines) -> Result<Vec<Instruction>, ValueError> {
 	let mut compiler = InstructionCompiler::new(routines.clone());
 	compiler.compile_plan(plan)?;
 	compiler.emit(Instruction::Halt);
@@ -806,12 +806,12 @@ impl InstructionCompiler {
 		self.instructions.len()
 	}
 
-	fn emit_conditional_jump(&mut self, condition: Expression) -> Result<usize> {
+	fn emit_conditional_jump(&mut self, condition: Expression) -> Result<usize, ValueError> {
 		self.compile_expression(&condition)?;
 		Ok(self.emit(Instruction::JumpIfFalsePop(0)))
 	}
 
-	fn compile_expression(&mut self, expr: &Expression) -> Result<()> {
+	fn compile_expression(&mut self, expr: &Expression) -> Result<(), ValueError> {
 		match expr {
 			Expression::Constant(c) => {
 				let value = c.to_value()?;
@@ -1088,7 +1088,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<(), ValueError> {
 		match plan {
 			PhysicalPlan::Declare(node) => self.compile_declare(node)?,
 			PhysicalPlan::Assign(node) => self.compile_assign(node)?,
@@ -1115,7 +1115,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_leaf(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+	fn compile_leaf(&mut self, plan: PhysicalPlan<'_>) -> Result<(), ValueError> {
 		match plan {
 			PhysicalPlan::CreateNamespace(node) => {
 				self.emit(Instruction::CreateNamespace(node));
@@ -1731,7 +1731,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_declare(&mut self, node: physical::DeclareNode<'_>) -> Result<()> {
+	fn compile_declare(&mut self, node: physical::DeclareNode<'_>) -> Result<(), ValueError> {
 		match node.value {
 			physical::LetValue::Expression(expr) => {
 				self.compile_expression(&expr)?;
@@ -1759,7 +1759,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_assign(&mut self, node: physical::AssignNode<'_>) -> Result<()> {
+	fn compile_assign(&mut self, node: physical::AssignNode<'_>) -> Result<(), ValueError> {
 		match node.value {
 			physical::AssignValue::Expression(expr) => {
 				self.compile_expression(&expr)?;
@@ -1773,7 +1773,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_append_plan(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<()> {
+	fn compile_append_plan(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<(), ValueError> {
 		match node {
 			physical::AppendPhysicalNode::IntoVariable {
 				..
@@ -1799,7 +1799,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_define_function(&mut self, node: physical::DefineFunctionNode<'_>) -> Result<()> {
+	fn compile_define_function(&mut self, node: physical::DefineFunctionNode<'_>) -> Result<(), ValueError> {
 		let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 		for plan in node.body {
 			body_compiler.compile_plan(plan)?;
@@ -1816,7 +1816,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_call_function(&mut self, node: physical::CallFunctionNode) -> Result<()> {
+	fn compile_call_function(&mut self, node: physical::CallFunctionNode) -> Result<(), ValueError> {
 		let arity = node.arguments.len();
 		for arg in &node.arguments {
 			self.compile_expression(arg)?;
@@ -1832,7 +1832,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_return(&mut self, node: physical::ReturnNode<'_>) -> Result<()> {
+	fn compile_return(&mut self, node: physical::ReturnNode<'_>) -> Result<(), ValueError> {
 		match node.value {
 			Some(physical::ReturnValue::Expression(expr)) => {
 				self.compile_expression(&expr)?;
@@ -1850,7 +1850,7 @@ impl InstructionCompiler {
 	}
 
 	#[inline(never)]
-	fn compile_define_closure(&mut self, node: physical::DefineClosureNode<'_>) -> Result<()> {
+	fn compile_define_closure(&mut self, node: physical::DefineClosureNode<'_>) -> Result<(), ValueError> {
 		let mut body_compiler = InstructionCompiler::new(self.routines.clone());
 		for plan in node.body {
 			body_compiler.compile_plan(plan)?;
@@ -1866,7 +1866,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
+	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> Result<(), ValueError> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
 		let false_jump = self.emit_conditional_jump(node.condition)?;
@@ -1912,14 +1912,14 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_branch(&mut self, branch: Vec<PhysicalPlan<'_>>) -> Result<()> {
+	fn compile_branch(&mut self, branch: Vec<PhysicalPlan<'_>>) -> Result<(), ValueError> {
 		for plan in branch {
 			self.compile_plan(plan)?;
 		}
 		Ok(())
 	}
 
-	fn compile_value_branch(&mut self, mut branch: Vec<PhysicalPlan<'_>>) -> Result<()> {
+	fn compile_value_branch(&mut self, mut branch: Vec<PhysicalPlan<'_>>) -> Result<(), ValueError> {
 		let Some(value) = branch.pop() else {
 			self.emit(Instruction::PushNone);
 			return Ok(());
@@ -1928,7 +1928,7 @@ impl InstructionCompiler {
 		self.compile_value_plan(value)
 	}
 
-	fn compile_bound_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+	fn compile_bound_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<(), ValueError> {
 		if !is_write(&plan) {
 			return self.compile_value_plan(plan);
 		}
@@ -1938,7 +1938,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_value_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+	fn compile_value_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<(), ValueError> {
 		match plan {
 			PhysicalPlan::Conditional(node) => self.compile_conditional_value(node),
 			other => {
@@ -1949,7 +1949,7 @@ impl InstructionCompiler {
 		}
 	}
 
-	fn compile_conditional_value(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
+	fn compile_conditional_value(&mut self, node: physical::ConditionalNode<'_>) -> Result<(), ValueError> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
 		let false_jump = self.emit_conditional_jump(node.condition)?;
@@ -1996,7 +1996,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_loop(&mut self, node: physical::LoopNode<'_>) -> Result<()> {
+	fn compile_loop(&mut self, node: physical::LoopNode<'_>) -> Result<(), ValueError> {
 		let loop_start = self.current_addr();
 
 		self.emit(Instruction::EnterScope(ScopeType::Loop));
@@ -2026,7 +2026,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_while(&mut self, node: physical::WhileNode<'_>) -> Result<()> {
+	fn compile_while(&mut self, node: physical::WhileNode<'_>) -> Result<(), ValueError> {
 		let condition_addr = self.current_addr();
 		let false_jump = self.emit_conditional_jump(node.condition)?;
 
@@ -2059,7 +2059,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_for(&mut self, node: physical::ForNode<'_>) -> Result<()> {
+	fn compile_for(&mut self, node: physical::ForNode<'_>) -> Result<(), ValueError> {
 		self.compile_plan_for_iterable(BumpBox::into_inner(node.iterable))?;
 		self.emit(Instruction::ForInit {
 			variable_name: node.variable_name.clone(),
@@ -2100,7 +2100,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
+	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> Result<(), ValueError> {
 		match plan {
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
@@ -2232,7 +2232,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_append(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<()> {
+	fn compile_append(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<(), ValueError> {
 		match node {
 			physical::AppendPhysicalNode::IntoVariable {
 				target,
@@ -2271,7 +2271,7 @@ impl InstructionCompiler {
 		}
 	}
 
-	fn compile_break(&mut self) -> Result<()> {
+	fn compile_break(&mut self) -> Result<(), ValueError> {
 		let loop_ctx = self.loop_stack.last_mut().ok_or(RqlError::BreakOutsideLoop)?;
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;
 		let idx = self.emit(Instruction::Break {
@@ -2282,7 +2282,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_continue(&mut self) -> Result<()> {
+	fn compile_continue(&mut self) -> Result<(), ValueError> {
 		let loop_ctx = self.loop_stack.last().ok_or(RqlError::ContinueOutsideLoop)?;
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;
 		let continue_addr = loop_ctx.continue_addr;
@@ -2342,7 +2342,7 @@ fn hidden_queue_column(name: &str, expression: Expression) -> Expression {
 	})
 }
 
-fn constant_value(expr: &Expression) -> Result<Option<Value>> {
+fn constant_value(expr: &Expression) -> Result<Option<Value>, ValueError> {
 	match expr {
 		Expression::Constant(c) => Ok(Some(c.to_value()?)),
 		Expression::List(l) => {

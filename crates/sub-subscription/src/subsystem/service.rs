@@ -21,7 +21,7 @@ use reifydb_transaction::{
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	transaction::Transaction,
 };
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
 	store::SubscriptionStore,
@@ -114,7 +114,7 @@ impl SubscriptionServiceImpl {
 		hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		held: MutexGuard<'_, ()>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let current = self.state.multi.begin_query(self.state.multi.generate_transaction_id())?.version();
 		self.state.position_tracker.update(ctx.id, current);
 
@@ -122,7 +122,7 @@ impl SubscriptionServiceImpl {
 		let flow_id = flow_dag.id;
 
 		let (tx, rx) = mpsc::channel();
-		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |r| {
+		let reply: Box<dyn FnOnce(Result<(), ValueError>) + Send> = Box::new(move |r| {
 			let _ = tx.send(r);
 		});
 		if self.state
@@ -159,7 +159,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		_txn: &mut Transaction<'_>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let id = ctx.id;
 		let flow_id = flow_dag.id;
 		let held = self.state.store.hold_registrations();
@@ -176,7 +176,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		Ok(())
 	}
 
-	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool> {
+	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool, ValueError> {
 		let existed = self.state.store.unregister(id);
 		self.state.position_tracker.remove(id);
 		self.state.subscribed.unregister(id);

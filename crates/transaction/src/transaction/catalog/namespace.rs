@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::Namespace,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogTrackNamespaceChangeOperations for AdminTransaction {
-	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()> {
+	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(namespace),
@@ -26,7 +26,7 @@ impl CatalogTrackNamespaceChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<()> {
+	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(namespace),
 			post: None,

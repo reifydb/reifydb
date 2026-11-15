@@ -5,7 +5,7 @@ use std::mem;
 
 use arrow_array::RecordBatch;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, diff_type::DiffType},
 };
 use serde::{Deserialize, Serialize};
@@ -249,7 +249,7 @@ impl Change {
 		self.diffs.iter().map(Diff::row_count).sum()
 	}
 
-	pub fn merge(changes: Vec<Change>) -> Result<Change> {
+	pub fn merge(changes: Vec<Change>) -> Result<Change, ValueError> {
 		let mut iter = changes.into_iter();
 		let mut merged = iter.next().expect("Change::merge requires at least one Change");
 		for mut ch in iter {
@@ -275,7 +275,7 @@ impl Change {
 		Ok(merged)
 	}
 
-	pub fn coalesce(&mut self) -> Result<()> {
+	pub fn coalesce(&mut self) -> Result<(), ValueError> {
 		if self.diffs.len() <= 1 {
 			return Ok(());
 		}

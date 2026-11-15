@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	state::{AppState, StateConfig},
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 use tokio::runtime::Handle;
 
 use crate::subsystem::GrpcSubsystem;
@@ -134,7 +134,7 @@ type ResolvedDeps = (
 );
 
 impl SubsystemFactory for GrpcSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let (engine, spawner, clock, rng, handle, interceptors, subscription_store, auth_service) =
 			Self::resolve_dependencies(ioc)?;
 
@@ -157,7 +157,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 
 impl GrpcSubsystemFactory {
 	#[inline]
-	fn resolve_dependencies(ioc: &IocContainer) -> Result<ResolvedDeps> {
+	fn resolve_dependencies(ioc: &IocContainer) -> Result<ResolvedDeps, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let clock = ioc.resolve::<Clock>()?;

@@ -26,7 +26,9 @@ use reifydb_store_commit::store::EvictedVersion;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::byte_size::ByteSize;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::error::ValueError;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, instrument};
 
@@ -213,7 +215,7 @@ impl FlushEngine {
 		state: &mut FlushEngineState,
 		cutoff: CommitVersion,
 		budget: ByteSize,
-	) -> Result<(Progress, u64)> {
+	) -> Result<(Progress, u64), ValueError> {
 		let synced = match state.synced_through {
 			Some(synced) if synced >= cutoff => synced,
 			_ => {
@@ -568,12 +570,12 @@ mod tests {
 	struct NoWalCheckpoint;
 
 	impl WalCheckpoint for NoWalCheckpoint {
-		fn make_durable(&self) -> Result<CommitVersion> {
+		fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 			// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
 			Ok(CommitVersion(i64::MAX as u64))
 		}
 
-		fn saved_through(&self, _version: CommitVersion) -> Result<()> {
+		fn saved_through(&self, _version: CommitVersion) -> Result<(), ValueError> {
 			Ok(())
 		}
 	}
@@ -584,11 +586,11 @@ mod tests {
 	}
 
 	impl WalCheckpoint for DurableThrough {
-		fn make_durable(&self) -> Result<CommitVersion> {
+		fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 			Ok(self.version)
 		}
 
-		fn saved_through(&self, version: CommitVersion) -> Result<()> {
+		fn saved_through(&self, version: CommitVersion) -> Result<(), ValueError> {
 			*self.saved.lock() = Some(version);
 			Ok(())
 		}

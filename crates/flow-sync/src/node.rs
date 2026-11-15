@@ -15,7 +15,7 @@ use reifydb_flow::{
 	},
 	txn::{Emit, FlowStorageTransaction, Intern},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub enum Node {
 	Source(SourceOperator),
@@ -56,7 +56,7 @@ impl Node {
 		&mut self,
 		txn: &mut T,
 		change: Change,
-	) -> Result<Change> {
+	) -> Result<Change, ValueError> {
 		match self {
 			Node::Source(source) => source.apply(change),
 			Node::Filter(filter) => filter.apply(txn, change),

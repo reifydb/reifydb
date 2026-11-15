@@ -3,15 +3,16 @@
 
 use reifydb_core::{interface::catalog::id::NamespaceId, key::namespace::NamespaceKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::namespace::shape::namespace};
+use crate::{CatalogStore, store::namespace::shape::namespace};
 
 impl CatalogStore {
 	pub(crate) fn update_namespace_grpc(
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		grpc: Option<String>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let existing = Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 
 		let mut row = namespace::allocate();

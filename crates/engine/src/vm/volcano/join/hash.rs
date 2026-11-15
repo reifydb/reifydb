@@ -19,6 +19,7 @@ use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{system_columns::user_columns, value_type::ValueType},
@@ -29,12 +30,9 @@ use super::common::{
 	JoinContext, JoinSlot, ensure_join_keyable, eval_join_condition, join_key_types, load_and_merge_all,
 	materialize_join, resolve_column_names, user_key_columns, user_row, user_views,
 };
-use crate::{
-	Result,
-	vm::volcano::{
-		key_rows::{key_arrays, key_rows, key_types},
-		query::{QueryContext, QueryNode},
-	},
+use crate::vm::volcano::{
+	key_rows::{key_arrays, key_rows, key_types},
+	query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct EquiKeyPair {
@@ -135,7 +133,7 @@ fn access_fragment(acc: &AccessObjectExpression) -> Fragment {
 	}
 }
 
-fn key_index(columns: &RecordBatch, (name, fragment): &(String, Fragment)) -> Result<usize> {
+fn key_index(columns: &RecordBatch, (name, fragment): &(String, Fragment)) -> Result<usize, ValueError> {
 	user_columns(columns)
 		.position(|(field, _)| field.name() == name)
 		.ok_or_else(|| error!(column_not_found(fragment.clone())))
@@ -235,7 +233,7 @@ impl HashJoinNode {
 		state: &mut HashJoinState,
 		probe_slots: &[ProbeSlot],
 		build_picks: &[Option<usize>],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let slots: Vec<JoinSlot<'_>> = if probe_slots.is_empty() {
 			vec![JoinSlot {
 				columns: &state.probe_shell,
@@ -271,13 +269,16 @@ impl HashJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::build")]
-	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
+	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<(), ValueError> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let right_key_indices: Vec<usize> = if user_columns(&build_columns).next().is_none() {
 			Vec::new()
 		} else {
-			self.right_keys.iter().map(|key| key_index(&build_columns, key)).collect::<Result<_>>()?
+			self.right_keys
+				.iter()
+				.map(|key| key_index(&build_columns, key))
+				.collect::<Result<_, ValueError>>()?
 		};
 		ensure_join_keyable(&user_views(&build_columns)?, &right_key_indices, |key| {
 			self.right_keys[key].1.clone()
@@ -334,7 +335,7 @@ fn key_table(
 	build_columns: &RecordBatch,
 	key_indices: &[usize],
 	targets: &[ValueType],
-) -> Result<(Option<RowConverter>, KeyTable)> {
+) -> Result<(Option<RowConverter>, KeyTable), ValueError> {
 	let mut hash_table: KeyTable = HashMap::new();
 	if user_columns(build_columns).next().is_none() {
 		return Ok((None, hash_table));
@@ -362,7 +363,7 @@ fn probe_key_rows(
 	probe: &RecordBatch,
 	key_indices: &[usize],
 	targets: &[ValueType],
-) -> Result<Option<(Rows, Vec<ArrayRef>)>> {
+) -> Result<Option<(Rows, Vec<ArrayRef>)>, ValueError> {
 	let Some(converter) = converter else {
 		return Ok(None);
 	};
@@ -387,7 +388,7 @@ fn matches_for_probe_row(
 
 impl QueryNode for HashJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -395,7 +396,11 @@ impl QueryNode for HashJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "HashJoinNode::next() called before initialize()");
 		}
@@ -434,15 +439,17 @@ impl QueryNode for HashJoinNode {
 		let resolve_names_and_indices = |state: &mut HashJoinState,
 		                                 probe: &RecordBatch,
 		                                 left_keys: &[(String, Fragment)]|
-		 -> Result<()> {
+		 -> Result<(), ValueError> {
 			if state.resolved_names.is_empty() {
 				let resolved = resolve_column_names(probe, &state.build_columns, &self.alias, None);
 				state.resolved_names = resolved.qualified_names;
 				state.probe_shell = head(probe, 0);
 			}
 			if state.left_key_indices.is_empty() {
-				state.left_key_indices =
-					left_keys.iter().map(|key| key_index(probe, key)).collect::<Result<_>>()?;
+				state.left_key_indices = left_keys
+					.iter()
+					.map(|key| key_index(probe, key))
+					.collect::<Result<_, ValueError>>()?;
 			}
 			Ok(())
 		};

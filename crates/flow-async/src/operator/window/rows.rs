@@ -9,7 +9,7 @@ use reifydb_core::{
 	internal_err,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{Value, duration::Duration, row_number::RowNumber, system_columns::row_numbers},
 };
@@ -69,7 +69,7 @@ impl<'a> BuiltinRows<'a> {
 	fn columns(
 		&mut self,
 		batch: &RecordBatch,
-	) -> Result<WindowColumns<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>> {
+	) -> Result<WindowColumns<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>, ValueError> {
 		let row_count = batch.num_rows();
 		if row_count == 0 {
 			return WindowColumns::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -108,7 +108,7 @@ impl<'a> BuiltinRows<'a> {
 		)
 	}
 
-	fn numbers(&self, batch: &RecordBatch, row_count: usize) -> Result<Vec<Option<RowNumber>>> {
+	fn numbers(&self, batch: &RecordBatch, row_count: usize) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		match self.numbered {
 			true => Ok(required_row_numbers(batch)?.iter().copied().map(Some).collect()),
 			false => {
@@ -118,7 +118,7 @@ impl<'a> BuiltinRows<'a> {
 		}
 	}
 
-	fn retracts(&mut self, batch: &RecordBatch) -> Result<RetractRows<Hash128>> {
+	fn retracts(&mut self, batch: &RecordBatch) -> Result<RetractRows<Hash128>, ValueError> {
 		let row_count = batch.num_rows();
 		if row_count == 0 {
 			return RetractRows::new(Vec::new(), Vec::new());
@@ -141,7 +141,10 @@ impl WindowRows for BuiltinRows<'_> {
 		self.change.diffs.len()
 	}
 
-	fn diff(&mut self, index: usize) -> Result<WindowDiff<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>> {
+	fn diff(
+		&mut self,
+		index: usize,
+	) -> Result<WindowDiff<Hash128, DateTimeCoord, (WindowSlotKey, SlotRow)>, ValueError> {
 		let change = self.change;
 		let Some(diff) = change.diffs.get(index) else {
 			return internal_err!(

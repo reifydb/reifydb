@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_store_multi::tier::persistent::MultiPersistentTier;
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 pub struct ExpiredScan {
 	pub expired: Vec<MultiVersionRow<TaggedKey>>,
@@ -33,7 +33,7 @@ pub fn scan_expired_indexed(
 	cutoff: Cutoff,
 	cursor: Option<&ExpiryCursor>,
 	limit: usize,
-) -> Result<ExpiredIndexScan> {
+) -> Result<ExpiredIndexScan, ValueError> {
 	let candidates = persistent.expired_keys(
 		kind,
 		cutoff.instant(),
@@ -76,7 +76,7 @@ pub fn scan_expired(
 	family: RowFamily,
 	cutoff: Cutoff,
 	limit: usize,
-) -> Result<ExpiredScan> {
+) -> Result<ExpiredScan, ValueError> {
 	let mut expired: Vec<MultiVersionRow<TaggedKey>> = Vec::new();
 	let mut next_cursor: Option<TaggedKey> = None;
 

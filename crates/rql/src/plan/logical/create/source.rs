@@ -2,14 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstCreateSource;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateSourceNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateSourceNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_source(&self, ast: AstCreateSource<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_source(
+		&self,
+		ast: AstCreateSource<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateSource(CreateSourceNode {
 			name: ast.name,
 			connector: ast.connector,

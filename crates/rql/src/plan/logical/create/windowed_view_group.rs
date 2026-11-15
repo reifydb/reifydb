@@ -7,10 +7,9 @@ use reifydb_rql_frontend::ast::ast::{
 	AstOperatorWithValue, AstStatement, AstWindowKind, AstWindowedViewGroupMember,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::duration::Duration};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::duration::Duration};
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration, invalid_option},
 	error::RqlError,
 	plan::logical::{
@@ -24,7 +23,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateDeferredWindowedViewGroup<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		if ast.members.is_empty() {
 			return Err(RqlError::WindowedViewGroupNoMembers {
 				fragment: ast.group.name.to_owned(),
@@ -80,7 +79,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn member_duration(entry: &AstOperatorWithEntry<'_>) -> Result<Duration> {
+fn member_duration(entry: &AstOperatorWithEntry<'_>) -> Result<Duration, ValueError> {
 	match &entry.value {
 		Some(AstOperatorWithValue::Literal(token)) | Some(AstOperatorWithValue::Word(token)) => {
 			compile_duration(token, DurationBound::Positive, "a windowed view group member")
@@ -103,7 +102,10 @@ fn entry_fragment(entry: &AstOperatorWithEntry<'_>) -> Fragment {
 	}
 }
 
-fn inject_member<'bump>(as_clause: &mut AstStatement<'bump>, member: &AstWindowedViewGroupMember<'bump>) -> Result<()> {
+fn inject_member<'bump>(
+	as_clause: &mut AstStatement<'bump>,
+	member: &AstWindowedViewGroupMember<'bump>,
+) -> Result<(), ValueError> {
 	let windowed: Vec<usize> =
 		as_clause.nodes.iter().enumerate().filter(|(_, node)| is_windowed(node)).map(|(i, _)| i).collect();
 	let index = match windowed.as_slice() {

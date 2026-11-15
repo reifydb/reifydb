@@ -5,15 +5,15 @@ use arrow_array::RecordBatch;
 use reifydb_core::{error::diagnostic::catalog::procedure_has_live_bindings, value::batch::single_row};
 use reifydb_rql::nodes::DropProcedureNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{return_error, value::Value};
+use reifydb_value::{error::ValueError, return_error, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_procedure(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropProcedureNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let Some(procedure_id) = plan.procedure_id else {
 		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

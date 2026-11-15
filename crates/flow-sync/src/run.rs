@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_flow::txn::{Emit, FlowStorageTransaction, Intern};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 use crate::{
 	graph::build,
@@ -31,7 +31,7 @@ pub fn run<T: Changes + FlowStorageTransaction + Emit + Lookup + Intern + ClockN
 	txn: &mut T,
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let at = txn.cursor();
 	if txn.entries_from(at).is_empty() {
 		return Ok(());
@@ -63,7 +63,7 @@ pub fn run_flow<T: FlowStorageTransaction + Emit + Intern>(
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
 	change: Change,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 	for operator_id in flow.topological_order() {
 		let operator = flow.get_operator(operator_id).unwrap_or_else(|| {
@@ -134,7 +134,7 @@ fn seed_entry_nodes(
 	flow: &FlowDag,
 	entries: &[(ObjectId, Diff)],
 	changed_at: DateTime,
-) -> Result<HashMap<OperatorId, Vec<Change>>> {
+) -> Result<HashMap<OperatorId, Vec<Change>>, ValueError> {
 	let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 	let mut consolidated: HashMap<ObjectId, Vec<Diff>> = HashMap::new();
 	for operator_id in flow.topological_order() {
@@ -174,7 +174,7 @@ fn run_topology<T: FlowStorageTransaction + Emit + Intern>(
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
 	mut pending: HashMap<OperatorId, Vec<Change>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (operator_id, node) in nodes.iter_mut() {
 		let inbox = match pending.remove(operator_id) {
 			Some(v) if !v.is_empty() => v,
@@ -202,7 +202,7 @@ fn dispatch_node<T: FlowStorageTransaction + Emit + Intern>(
 	operator_id: OperatorId,
 	node: &mut Node,
 	inbox: Vec<Change>,
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	let merged = Change::merge(inbox)?;
 	let version = merged.version;
 	let changed_at = merged.changed_at;

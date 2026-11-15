@@ -9,7 +9,7 @@ use reifydb_core::{
 	state::timer::TimerMove,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 use crate::{
 	operator::state::seal::{
@@ -137,7 +137,7 @@ impl SealDomain for U8Coord {
 		false
 	}
 
-	fn seal_span_of(with: &ApplyWith) -> Result<Option<RowSpan>> {
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<RowSpan>, ValueError> {
 		let count = with.window_slots()?;
 		let Some(lateness) = with.lateness_count()? else {
 			return Ok(None);
@@ -145,7 +145,7 @@ impl SealDomain for U8Coord {
 		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
 	}
 
-	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError> {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -161,12 +161,12 @@ impl SealDomain for U8Coord {
 		})
 	}
 
-	fn observe(store: &mut dyn WindowStore, newest: Self, _seal_span: RowSpan) -> Result<()> {
+	fn observe(store: &mut dyn WindowStore, newest: Self, _seal_span: RowSpan) -> Result<(), ValueError> {
 		SealLedger::observe(store, newest.to_order())?;
 		Ok(())
 	}
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self> {
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
 		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
 	}
 
@@ -180,7 +180,7 @@ impl SealDomain for U8Coord {
 		_lag: Option<RowSpan>,
 		_before: Option<u64>,
 		_after: Option<u64>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		Ok(())
 	}
 
@@ -189,7 +189,7 @@ impl SealDomain for U8Coord {
 		_seal_span: RowSpan,
 		_before: Option<u64>,
 		_after: Option<u64>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		Ok(())
 	}
 
@@ -202,7 +202,7 @@ impl SealDomain for U8Coord {
 		None
 	}
 
-	fn arm_reap(_store: &mut dyn WindowStore, _fired: DateTime, _seal_span: RowSpan) -> Result<()> {
+	fn arm_reap(_store: &mut dyn WindowStore, _fired: DateTime, _seal_span: RowSpan) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

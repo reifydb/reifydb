@@ -9,11 +9,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_handler(txn: &mut AdminTransaction, id: HandlerId) -> Result<()> {
+	pub(crate) fn drop_handler(txn: &mut AdminTransaction, id: HandlerId) -> Result<(), ValueError> {
 		let Some(handler) = Self::find_handler(&mut Transaction::Admin(&mut *txn), id)? else {
 			return Ok(());
 		};

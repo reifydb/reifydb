@@ -5,15 +5,18 @@ use reifydb_rql_frontend::{
 	ast::ast::{AstCreateIndex, AstIndexColumn},
 	bump::BumpBox,
 };
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_index(&self, ast: AstCreateIndex<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_index(
+		&self,
+		ast: AstCreateIndex<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let columns = ast
 			.columns
 			.into_iter()
@@ -27,7 +30,7 @@ impl<'bump> Compiler<'bump> {
 			.filters
 			.into_iter()
 			.map(|filter_ast| ExpressionCompiler::compile(BumpBox::into_inner(filter_ast)))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 
 		let map = if let Some(map_ast) = ast.map {
 			Some(ExpressionCompiler::compile(BumpBox::into_inner(map_ast))?)

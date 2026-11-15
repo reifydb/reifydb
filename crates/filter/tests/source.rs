@@ -6,7 +6,7 @@ use reifydb_filter::{
 	bloom::BloomFilter,
 	source::{FilterSlice, KeyFilterSource},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 #[derive(Debug)]
 struct VecSource {
@@ -36,7 +36,7 @@ impl KeyFilterSource for VecSource {
 		self.pos = 0;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice, ValueError> {
 		let end = (self.pos + budget).min(self.hashes.len());
 		let hashes = self.hashes[self.pos..end].to_vec();
 		self.pos = end;

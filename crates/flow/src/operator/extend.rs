@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, value::system_columns::user_columns};
+use reifydb_value::{error::ValueError, value::system_columns::user_columns};
 use tracing::instrument;
 
 use crate::{
@@ -53,7 +53,7 @@ impl ExtendOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 		let references = expressions.iter().map(column_reference).collect();
 
@@ -92,7 +92,7 @@ impl ExtendOperator {
 		txn: &mut T,
 		literals: &mut Option<BoundLiterals>,
 		columns: &RecordBatch,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(empty_batch());
@@ -137,7 +137,7 @@ impl ExtendOperator {
 		self.operator
 	}
 
-	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change, ValueError> {
 		let mut result = Vec::new();
 		let mut literals = None;
 

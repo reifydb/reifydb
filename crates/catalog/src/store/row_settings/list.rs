@@ -8,9 +8,10 @@ use reifydb_core::{
 	row::RowSettings,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::decode_row_settings;
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowSettingsEntry {
@@ -20,7 +21,7 @@ pub struct RowSettingsEntry {
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub fn list_row_settings(rx: &mut Transaction<'_>) -> Result<Vec<RowSettingsEntry>> {
+	pub fn list_row_settings(rx: &mut Transaction<'_>) -> Result<Vec<RowSettingsEntry>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(RowSettingsKey::full_scan(), RangeScope::All, 1024)?;

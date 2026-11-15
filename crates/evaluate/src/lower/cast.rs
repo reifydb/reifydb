@@ -26,17 +26,15 @@ use crate::{
 		compile::{enforce_cast_constraint, wrap_cast_error},
 		context::EvalContext,
 	},
-	lower::{Lowered, Node, empty_of, error::into_external, lower_node, typed_field, udf, volatile},
+	lower::{Node, Stop, empty_of, error::into_external, lower_node, typed_field, udf, volatile},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_cast<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
 	cast: &'e CastExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let inner = lower_node(ctx, operator, &cast.expression)?;
 	let label = display_label(expression);
 	let to = cast.to.ty.clone();
@@ -144,15 +142,15 @@ impl ScalarUDFImpl for CastUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("cast types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(cast_field(self.name(), &self.to, &args.arg_fields[0]))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let ScalarFunctionArgs {
 			args: values,
 			arg_fields,
@@ -174,7 +172,7 @@ impl ScalarUDFImpl for CastUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

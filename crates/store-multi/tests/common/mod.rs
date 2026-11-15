@@ -46,7 +46,7 @@ use reifydb_store_multi::{
 	tier::TierStorage,
 };
 use reifydb_testing::testscript;
-use reifydb_value::{Result as ValueResult, cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, error::ValueError, util::cowvec::CowVec};
 use testscript::command::Command;
 
 fn system_ctx() -> Arc<TransactionContext> {
@@ -501,12 +501,12 @@ impl testscript::runner::Runner for Runner {
 pub struct NoWalCheckpoint;
 
 impl WalCheckpoint for NoWalCheckpoint {
-	fn make_durable(&self) -> ValueResult<CommitVersion> {
+	fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
 		Ok(CommitVersion(i64::MAX as u64))
 	}
 
-	fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+	fn saved_through(&self, _version: CommitVersion) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

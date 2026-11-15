@@ -12,7 +12,6 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, IntoDiagnostic, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
@@ -102,7 +101,11 @@ pub fn registry_values(row: &[u8]) -> Vec<Value> {
 	}
 }
 
-pub fn partitions_of_rows(shape: &RowShape, indices: &[usize], rows: &[EncodedBytes]) -> Result<Vec<Partition>> {
+pub fn partitions_of_rows(
+	shape: &RowShape,
+	indices: &[usize],
+	rows: &[EncodedBytes],
+) -> Result<Vec<Partition>, ValueError> {
 	let columns = indices
 		.iter()
 		.map(|&index| {
@@ -114,8 +117,8 @@ pub fn partitions_of_rows(shape: &RowShape, indices: &[usize], rows: &[EncodedBy
 			decode_cells(&mut builder, &field.name, shape, index, rows)?;
 			Ok(builder.finish(&field.name))
 		})
-		.collect::<Result<Vec<_>>>()?;
-	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 	let partitions = partitions_of_batch(&views).rows;
 	reifydb_assertions! {
 		for (row, partition) in rows.iter().zip(&partitions) {
@@ -182,7 +185,7 @@ impl QueuePlacement {
 	}
 }
 
-pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
+pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>, ValueError> {
 	let Some(ordered_by) = queue.ordered_by() else {
 		return Ok(None);
 	};

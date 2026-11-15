@@ -7,10 +7,10 @@ use reifydb_core::{
 	key::identity::AuthenticationKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::authentication::{convert_authentication, shape::authentication},
 };
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_authentication(
 		rx: &mut Transaction<'_>,
 		id: AuthenticationId,
-	) -> Result<Option<Authentication>> {
+	) -> Result<Option<Authentication>, ValueError> {
 		rx.get(&[AuthenticationKey::new(id).into()])?.pop().flatten().map(convert_authentication).transpose()
 	}
 
@@ -26,7 +26,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<Option<Authentication>> {
+	) -> Result<Option<Authentication>, ValueError> {
 		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

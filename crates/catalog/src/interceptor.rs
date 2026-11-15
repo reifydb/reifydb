@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_transaction::interceptor::transaction::{PrePublishContext, PrePublishInterceptor};
+use reifydb_value::error::ValueError;
 
-use crate::{Result, cache::CatalogCache, catalog::Catalog};
+use crate::{cache::CatalogCache, catalog::Catalog};
 
 pub struct CatalogCacheInterceptor {
 	catalog: CatalogCache,
@@ -18,7 +19,7 @@ impl CatalogCacheInterceptor {
 }
 
 impl PrePublishInterceptor for CatalogCacheInterceptor {
-	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<()> {
+	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<(), ValueError> {
 		let version = ctx.version;
 
 		for change in &ctx.changes.namespace {

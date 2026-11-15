@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_core::{expression::Expression, row::JoinPick};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		dictionary::DictionaryId,
 		value_type::{ValueType, field::from_field},
@@ -19,7 +19,7 @@ pub(crate) fn kept_dictionary_columns(
 	left_keys: &[Expression],
 	right_keys: &[Expression],
 	pick: Option<&JoinPick>,
-) -> Result<(HashMap<String, DictionaryId>, HashMap<String, DictionaryId>)> {
+) -> Result<(HashMap<String, DictionaryId>, HashMap<String, DictionaryId>), ValueError> {
 	let mut left_kept = dictionary_columns(left)?;
 	let mut right_kept = dictionary_columns(right)?;
 	if let Some(pick) = pick {
@@ -62,7 +62,7 @@ pub(crate) fn entry_schema(raw: &Schema, decoded: &Schema, kept: &HashMap<String
 	Arc::new(Schema::new(fields))
 }
 
-pub(crate) fn dictionary_columns(schema: &Schema) -> Result<HashMap<String, DictionaryId>> {
+pub(crate) fn dictionary_columns(schema: &Schema) -> Result<HashMap<String, DictionaryId>, ValueError> {
 	let mut columns = HashMap::new();
 	for field in schema.fields() {
 		let field_type = from_field(field)?;

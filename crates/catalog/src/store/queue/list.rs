@@ -9,11 +9,12 @@ use reifydb_core::{
 	key::{any::TaggedKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn list_queues(rx: &mut Transaction<'_>) -> Result<Vec<Queue>> {
+	pub(crate) fn list_queues(rx: &mut Transaction<'_>) -> Result<Vec<Queue>, ValueError> {
 		let mut queue_ids: Vec<QueueId> = Vec::new();
 		{
 			let stream = rx.range(QueueKey::full_scan(), RangeScope::All, 1024)?;
@@ -34,7 +35,10 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_queues_in_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Queue>> {
+	pub(crate) fn list_queues_in_namespace(
+		rx: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Vec<Queue>, ValueError> {
 		Ok(Self::list_queues(rx)?.into_iter().filter(|queue| queue.namespace == namespace).collect())
 	}
 }

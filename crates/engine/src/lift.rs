@@ -25,7 +25,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -153,7 +153,7 @@ pub fn lift_entry_changes(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	accept: impl Fn(ObjectId) -> bool,
-) -> Result<Vec<Change>> {
+) -> Result<Vec<Change>, ValueError> {
 	let index = entry_lift_index(entry);
 	let mut changes: Vec<Change> = Vec::new();
 	for (id, object) in index.objects.iter().filter(|(id, _)| accept(**id)) {
@@ -202,7 +202,7 @@ fn lift_entry_object(
 	indexed: &[(usize, RowNumber)],
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-) -> Result<Vec<Change>> {
+) -> Result<Vec<Change>, ValueError> {
 	let mut layers: BTreeMap<SourceVersion, Vec<LiftedRow>> = BTreeMap::new();
 	for (index, row) in indexed {
 		let (pre, post) = match &entry.deltas[*index] {
@@ -265,7 +265,7 @@ fn lift_rows(
 	changed_at: DateTime,
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-) -> Result<Option<Change>> {
+) -> Result<Option<Change>, ValueError> {
 	pair_moved_rows(&mut rows);
 
 	let mut buckets: BTreeMap<BucketKey, Bucket> = BTreeMap::new();
@@ -357,7 +357,11 @@ fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 	rows.retain(|row| row.pre.is_some() || row.post.is_some());
 }
 
-fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, fingerprint: RowShapeFingerprint) -> Result<RowShape> {
+fn load_shape(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	fingerprint: RowShapeFingerprint,
+) -> Result<RowShape, ValueError> {
 	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("RowShape with fingerprint {:?} not found while lifting commit changes", fingerprint)
 	})

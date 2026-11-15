@@ -8,7 +8,7 @@ use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, sta
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	params::Params,
 	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
@@ -20,7 +20,7 @@ pub fn evaluate_operator_params(
 	expressions: &[Expression],
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
-) -> Result<HashMap<String, Value>> {
+) -> Result<HashMap<String, Value>, ValueError> {
 	let mut result = HashMap::new();
 
 	let session = EvalContext {

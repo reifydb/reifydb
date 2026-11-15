@@ -7,7 +7,6 @@ use arrow_array::new_empty_array;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_runtime::io::fs::{FsError, Len, Pread, Pwrite};
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	value::value_type::{
@@ -63,7 +62,7 @@ struct BorgChunk {
 	rows: u64,
 }
 
-pub fn serialize_block(data: &BlockData, session: &VortexSession) -> Result<Vec<u8>> {
+pub fn serialize_block(data: &BlockData, session: &VortexSession) -> Result<Vec<u8>, ValueError> {
 	let array_ctx = ArrayContext::empty();
 	let options = SerializeOptions {
 		offset: 0,
@@ -152,7 +151,7 @@ pub struct BlockHandle<R: Pread + Len> {
 }
 
 impl<R: Pread + Len> BlockHandle<R> {
-	pub fn open(file: R, session: VortexSession) -> Result<Self> {
+	pub fn open(file: R, session: VortexSession) -> Result<Self, ValueError> {
 		let len = file.len().map_err(fs("open"))?;
 		let mut prefix = [0u8; PREFIX];
 		if !read_exact(&file, 0, &mut prefix).map_err(fs("open"))? || &prefix[..4] != MAGIC {
@@ -204,7 +203,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 		})
 	}
 
-	pub fn read(&self, columns: Option<&[&str]>) -> Result<BlockData> {
+	pub fn read(&self, columns: Option<&[&str]>) -> Result<BlockData, ValueError> {
 		if let Some(names) = columns
 			&& let Some(missing) = names
 				.iter()
@@ -261,7 +260,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 	}
 }
 
-fn expected_dtype(session: &VortexSession, name: &str, field_type: &FieldType) -> Result<DType> {
+fn expected_dtype(session: &VortexSession, name: &str, field_type: &FieldType) -> Result<DType, ValueError> {
 	let field = Arc::new(to_field(name, field_type));
 	let empty = new_empty_array(field.data_type());
 	Ok(to_vortex(session, &(field, empty))?.dtype().clone())
@@ -371,7 +370,7 @@ mod tests {
 			.collect()
 	}
 
-	fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
+	fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData, ValueError> {
 		let fs = MemoryFs::new();
 		let path = Path::new("/block.borg");
 		let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();

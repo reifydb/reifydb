@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstCall, AstCallFunction, AstList, AstLiteral, AstLiteralText, AstTuple},
 		identifier::MaybeQualifiedFunctionIdentifier,
@@ -18,7 +19,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_call(&mut self) -> Result<AstCall<'bump>> {
+	pub(crate) fn parse_call(&mut self) -> Result<AstCall<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Call)?;
 
 		let first_ident = self.consume_identifier()?;
@@ -46,7 +47,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_call_arguments(&mut self) -> Result<AstTuple<'bump>> {
+	fn parse_call_arguments(&mut self) -> Result<AstTuple<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 
 		let mut nodes = Vec::with_capacity(4);
@@ -69,7 +70,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_call_argument(&mut self) -> Result<Ast<'bump>> {
+	fn parse_call_argument(&mut self) -> Result<Ast<'bump>, ValueError> {
 		if self.current()?.is_operator(Operator::OpenBracket) {
 			let token = self.consume_operator(Operator::OpenBracket)?;
 
@@ -100,7 +101,7 @@ impl<'bump> Parser<'bump> {
 		self.parse_node(Precedence::None)
 	}
 
-	fn parse_qualified_name_argument(&mut self) -> Result<Ast<'bump>> {
+	fn parse_qualified_name_argument(&mut self) -> Result<Ast<'bump>, ValueError> {
 		let start = self.current()?.fragment;
 		let line = start.line();
 		let column = start.column();
@@ -129,7 +130,7 @@ impl<'bump> Parser<'bump> {
 		}))))
 	}
 
-	pub(crate) fn parse_function_call(&mut self) -> Result<AstCallFunction<'bump>> {
+	pub(crate) fn parse_function_call(&mut self) -> Result<AstCallFunction<'bump>, ValueError> {
 		let first_ident_token = self.consume_identifier()?;
 		let start_token = first_ident_token;
 

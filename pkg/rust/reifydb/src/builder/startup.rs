@@ -14,10 +14,9 @@ use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPoi
 use reifydb_store_operator::{range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_value::{
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{Value, duration::Duration},
 };
-
-use crate::Result;
 
 pub(crate) struct StartupConfig {
 	pub pools: PoolConfig,
@@ -55,7 +54,7 @@ pub(crate) fn resolve_startup_configs(
 	buffer: &CommitStore,
 	persistent: Option<&MultiPersistentTier>,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<StartupConfig> {
+) -> Result<StartupConfig, ValueError> {
 	let persisted = read_configs(ctx, Some(buffer), persistent, STARTUP_KEYS)?;
 
 	let resolve = |key: ConfigKey| -> Value {
@@ -114,7 +113,7 @@ pub(crate) fn resolve_startup_configs(
 		async_threads: threads(ConfigKey::ThreadsAsync),
 	};
 
-	let split = |total_key: ConfigKey, shards_key: ConfigKey| -> Result<Option<(ByteSize, usize)>> {
+	let split = |total_key: ConfigKey, shards_key: ConfigKey| -> Result<Option<(ByteSize, usize)>, ValueError> {
 		let shards = shard_count(shards_key);
 		let Some(total) = uint8_opt(total_key) else {
 			return Ok(None);

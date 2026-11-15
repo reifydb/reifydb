@@ -9,10 +9,9 @@ use reifydb_rql_frontend::{
 	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue, AstWindowKind},
 	diagnostic::AstError,
 };
-use reifydb_value::{fragment::Fragment, value::duration::Duration};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::duration::Duration};
 
 use crate::{
-	Result,
 	duration::DurationBound,
 	error::RqlError,
 	plan::logical::{
@@ -50,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 		kind: AstWindowKind,
 		with: Option<&AstOperatorWith<'bump>>,
 		window: Fragment,
-	) -> Result<WindowWith> {
+	) -> Result<WindowWith, ValueError> {
 		let parsed = Self::parse_config(with, window)?;
 		let kind = Self::build_window_kind(kind, &parsed)?;
 		Self::reject_immutable_not_smaller_than_lateness(&parsed)?;
@@ -62,7 +61,7 @@ impl<'bump> Compiler<'bump> {
 		})
 	}
 
-	fn parse_config(with: Option<&AstOperatorWith<'bump>>, window: Fragment) -> Result<ParsedConfig> {
+	fn parse_config(with: Option<&AstOperatorWith<'bump>>, window: Fragment) -> Result<ParsedConfig, ValueError> {
 		let mut parsed = ParsedConfig {
 			window,
 			..Default::default()
@@ -87,7 +86,7 @@ impl<'bump> Compiler<'bump> {
 	pub(super) fn parse_on(
 		entry: &AstOperatorWithEntry<'bump>,
 		actions: &[(&str, OnEmpty)],
-	) -> Result<Declared<OnEmpty>> {
+	) -> Result<Declared<OnEmpty>, ValueError> {
 		let names: Vec<&str> = actions.iter().map(|(name, _)| *name).collect();
 		let expected_action = format!("the empty action {}", names.join(" or "));
 		let example = names.first().copied().unwrap_or("remove");
@@ -145,7 +144,10 @@ impl<'bump> Compiler<'bump> {
 		})
 	}
 
-	pub(super) fn parse_config_item(entry: &AstOperatorWithEntry<'bump>, config: &mut ParsedConfig) -> Result<()> {
+	pub(super) fn parse_config_item(
+		entry: &AstOperatorWithEntry<'bump>,
+		config: &mut ParsedConfig,
+	) -> Result<(), ValueError> {
 		let Some(key) = entry.key.word() else {
 			return Err(unknown_key(entry, WINDOW_CONFIG_KEYS));
 		};
@@ -218,7 +220,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
-	fn reject_immutable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<()> {
+	fn reject_immutable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<(), ValueError> {
 		reject_immutable_not_smaller_than_lateness(parsed.immutable.as_ref(), parsed.lateness.as_ref())
 	}
 
@@ -244,7 +246,10 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub(super) fn reject_immutable_not_smaller_than_window(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
+	pub(super) fn reject_immutable_not_smaller_than_window(
+		parsed: &ParsedConfig,
+		kind: &WindowKind,
+	) -> Result<(), ValueError> {
 		let Some(immutable) = parsed.immutable.as_ref() else {
 			return Ok(());
 		};
@@ -268,7 +273,7 @@ impl<'bump> Compiler<'bump> {
 		.into())
 	}
 
-	fn reject_pane_not_fitting(parsed: &ParsedConfig, window: Duration) -> Result<()> {
+	fn reject_pane_not_fitting(parsed: &ParsedConfig, window: Duration) -> Result<(), ValueError> {
 		let window_value = Self::declared_text(parsed.duration.as_ref().map(|declared| &declared.fragment));
 		let Some(pane) = parsed.pane.as_ref() else {
 			return Err(RqlError::WindowPaneRequired {
@@ -324,7 +329,7 @@ impl<'bump> Compiler<'bump> {
 		parsed: &ParsedConfig,
 		size: &WindowSize,
 		slide: &WindowSize,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let domain = |measure: &WindowSize| match measure {
 			WindowSize::Duration(_) => "duration",
 			WindowSize::Count(_) => "count",
@@ -341,7 +346,7 @@ impl<'bump> Compiler<'bump> {
 		.into())
 	}
 
-	fn reject_slide_of_zero(parsed: &ParsedConfig, slide: &WindowSize) -> Result<()> {
+	fn reject_slide_of_zero(parsed: &ParsedConfig, slide: &WindowSize) -> Result<(), ValueError> {
 		let zero = match slide {
 			WindowSize::Duration(slide) => slide.is_zero(),
 			WindowSize::Count(slide) => *slide == 0,
@@ -361,7 +366,7 @@ impl<'bump> Compiler<'bump> {
 		parsed: &ParsedConfig,
 		size: &WindowSize,
 		slide: &WindowSize,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let too_large = match (size, slide) {
 			(WindowSize::Duration(size), WindowSize::Duration(slide)) => slide >= size,
 			(WindowSize::Count(size), WindowSize::Count(slide)) => slide >= size,
@@ -380,7 +385,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline]
-	pub(super) fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind> {
+	pub(super) fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind, ValueError> {
 		if let Some(lag) = parsed.lag.as_ref()
 			&& !matches!(kind, AstWindowKind::Rolling)
 		{
@@ -505,7 +510,7 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
+	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize, ValueError> {
 		if parsed.duration.is_some()
 			&& let Some(count) = parsed.count.as_ref()
 		{
@@ -538,7 +543,7 @@ mod tests {
 
 	use super::*;
 
-	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
+	fn parse_window_config(source: &str) -> Result<ParsedConfig, ValueError> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source).unwrap();
 		let Some(Ast::Window(window)) = statements[0].nodes.first() else {
@@ -848,7 +853,7 @@ mod tests {
 		);
 	}
 
-	fn build_rolling(source: &str) -> Result<WindowKind> {
+	fn build_rolling(source: &str) -> Result<WindowKind, ValueError> {
 		let parsed = parse_window_config(source)?;
 		Compiler::<'static>::build_window_kind(AstWindowKind::Rolling, &parsed)
 	}

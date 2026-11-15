@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	Database, IdentityId, Params, Result as ReifyResult, ValueError,
+	Database, IdentityId, Params, ValueError,
 	core::interface::catalog::subscription::{SubscribeOptions, SubscribeOutcome},
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
@@ -24,7 +24,7 @@ pub struct NodeSubscribeHost {
 }
 
 impl NodeSubscribeHost {
-	pub fn new(db: &Database) -> ReifyResult<Self> {
+	pub fn new(db: &Database) -> Result<Self, ValueError> {
 		let rng = db.engine().ioc().resolve::<Rng>()?;
 		Ok(Self {
 			context: SubscribeContext::new(

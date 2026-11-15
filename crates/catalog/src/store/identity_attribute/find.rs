@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::identity::IdentityAttributeKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::identity_attribute::{convert_identity_attribute, shape::identity_attribute},
 };
 
@@ -17,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_identity_attribute(
 		rx: &mut Transaction<'_>,
 		id: IdentityAttributeId,
-	) -> Result<Option<IdentityAttribute>> {
+	) -> Result<Option<IdentityAttribute>, ValueError> {
 		rx.get(&[IdentityAttributeKey::new(id).into()])?
 			.pop()
 			.flatten()
@@ -28,7 +29,7 @@ impl CatalogStore {
 	pub(crate) fn find_identity_attribute_by_name(
 		rx: &mut Transaction<'_>,
 		name: &str,
-	) -> Result<Option<IdentityAttribute>> {
+	) -> Result<Option<IdentityAttribute>, ValueError> {
 		let stream = rx.range(IdentityAttributeKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

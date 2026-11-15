@@ -27,7 +27,7 @@ use reifydb_core::{
 };
 #[cfg(feature = "runtime")]
 use reifydb_value::value::datetime::DateTime;
-use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
+use reifydb_value::{error::ValueError, reifydb_assertions, util::hash::Hash128};
 use tracing::instrument;
 
 pub(crate) fn expiry_range<K: Keyspace>() -> GroupStateRange {
@@ -72,7 +72,7 @@ pub(crate) fn managed_due_key(due: DateTime, group: GroupId) -> GroupStateKey {
 }
 
 #[cfg(feature = "runtime")]
-pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId> {
+pub(crate) fn managed_due_group(key: &GroupStateKey) -> Result<GroupId, ValueError> {
 	let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_bytes()) else {
 		return internal_err!("a managed due key must decode");
 	};
@@ -139,16 +139,23 @@ impl ExpirySuffix for CustomManagedDueKey {
 }
 
 #[cfg(feature = "runtime")]
-pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
+pub(crate) fn expiry_set<E: OperatorState>(
+	store: &mut dyn StateStore,
+	key: GroupStateKey,
+	entry: E,
+) -> Result<(), ValueError> {
 	store.state_set(vec![(key, entry.encode_state()?)])
 }
 
-pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
+pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<(), ValueError> {
 	store.state_remove(from_ref(key))
 }
 
 #[cfg(feature = "runtime")]
-pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<Option<E>> {
+pub(crate) fn expiry_get<E: OperatorState>(
+	store: &mut dyn StateStore,
+	key: &GroupStateKey,
+) -> Result<Option<E>, ValueError> {
 	match store.state_get(from_ref(key))?.pop().flatten() {
 		Some(payload) => Ok(Some(decode::<E>(&payload)?)),
 		None => Ok(None),
@@ -156,7 +163,7 @@ pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &Gro
 }
 
 #[cfg(reifydb_assertions)]
-pub(crate) fn expiry_all<K, E>(store: &mut dyn StateStore) -> Result<Vec<E>>
+pub(crate) fn expiry_all<K, E>(store: &mut dyn StateStore) -> Result<Vec<E>, ValueError>
 where
 	K: Keyspace,
 	K::Suffix: ExpirySuffix,
@@ -175,7 +182,7 @@ pub(crate) fn expiry_due<K, E>(
 	threshold: u64,
 	floor: Option<u64>,
 	limit: usize,
-) -> Result<Vec<(GroupStateKey, E)>>
+) -> Result<Vec<(GroupStateKey, E)>, ValueError>
 where
 	K: Keyspace,
 	K::Suffix: ExpirySuffix,
@@ -200,7 +207,7 @@ where
 }
 
 #[instrument(name = "flow::seal::expiry_next", level = "debug", skip_all)]
-pub(crate) fn expiry_next_above<K>(store: &mut dyn StateStore, threshold: u64) -> Result<Option<u64>>
+pub(crate) fn expiry_next_above<K>(store: &mut dyn StateStore, threshold: u64) -> Result<Option<u64>, ValueError>
 where
 	K: Keyspace,
 	K::Suffix: ExpirySuffix,
@@ -220,7 +227,7 @@ where
 }
 
 #[instrument(name = "flow::seal::expiry_earliest", level = "debug", skip_all)]
-pub(crate) fn expiry_earliest<K>(store: &mut dyn StateStore) -> Result<Option<u64>>
+pub(crate) fn expiry_earliest<K>(store: &mut dyn StateStore) -> Result<Option<u64>, ValueError>
 where
 	K: Keyspace,
 	K::Suffix: ExpirySuffix,
@@ -280,7 +287,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: Vec<(GroupStateKey, E)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut encoded = Vec::with_capacity(rows.len());
 		for (key, entry) in rows {
 			let expiry = expiry_of::<K>(&key);
@@ -296,7 +303,7 @@ where
 		store: &mut dyn StateStore,
 		threshold: u64,
 		limit: usize,
-	) -> Result<Vec<(GroupStateKey, E)>> {
+	) -> Result<Vec<(GroupStateKey, E)>, ValueError> {
 		self.pending = None;
 		if self.earliest.is_some_and(|earliest| threshold < earliest) {
 			return Ok(Vec::new());
@@ -310,7 +317,7 @@ where
 		Ok(due)
 	}
 
-	pub(crate) fn settle(&mut self, store: &mut dyn StateStore) -> Result<()> {
+	pub(crate) fn settle(&mut self, store: &mut dyn StateStore) -> Result<(), ValueError> {
 		let Some(scan) = self.pending.take() else {
 			return Ok(());
 		};
@@ -333,7 +340,7 @@ where
 		Ok(())
 	}
 
-	pub(crate) fn earliest(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+	pub(crate) fn earliest(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
 		let earliest = expiry_earliest::<K>(store)?;
 		self.earliest = Some(earliest.unwrap_or(u64::MAX));
 		Ok(earliest)

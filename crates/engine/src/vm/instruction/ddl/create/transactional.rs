@@ -13,11 +13,10 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateTransactionalViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error, return_error, value::Value};
+use reifydb_value::{error, error::ValueError, return_error, value::Value};
 
 use super::{create_transactional_view_flow, extract_view_sort};
 use crate::{
-	Result,
 	flow_sync::{backfill_transactional_view, sync_transactional_views},
 	vm::services::Services,
 };
@@ -27,7 +26,7 @@ pub(crate) fn create_transactional_view(
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateTransactionalViewNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

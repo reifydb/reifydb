@@ -12,14 +12,14 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::column_block::shape::{column_block, deserialize_partition_values, deserialize_stats},
 };
 
-fn decode_block_link(row: &EncodedPodRow) -> Result<u64> {
+fn decode_block_link(row: &EncodedPodRow) -> Result<u64, ValueError> {
 	let Ok(bytes) = <[u8; 8]>::try_from(row.body()) else {
 		return_internal_error!(
 			"Column block link is {} bytes wide, expected 8. This indicates a corrupt link row.",
@@ -30,7 +30,10 @@ fn decode_block_link(row: &EncodedPodRow) -> Result<u64> {
 }
 
 impl CatalogStore {
-	pub(crate) fn find_column_block(rx: &mut Transaction<'_>, id: ColumnBlockId) -> Result<Option<ColumnBlock>> {
+	pub(crate) fn find_column_block(
+		rx: &mut Transaction<'_>,
+		id: ColumnBlockId,
+	) -> Result<Option<ColumnBlock>, ValueError> {
 		let Some(multi) = rx.get(&[ColumnBlockKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -40,7 +43,7 @@ impl CatalogStore {
 	pub(crate) fn find_latest_column_block_for_table(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Option<ColumnBlock>> {
+	) -> Result<Option<ColumnBlock>, ValueError> {
 		let mut latest: Option<ColumnBlock> = None;
 		for id in collect_table_block_ids(rx, table_id)? {
 			if let Some(block) = Self::find_column_block(rx, id)? {
@@ -54,7 +57,10 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn collect_series_block_ids(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Vec<ColumnBlockId>> {
+pub(crate) fn collect_series_block_ids(
+	rx: &mut Transaction<'_>,
+	series_id: SeriesId,
+) -> Result<Vec<ColumnBlockId>, ValueError> {
 	let mut ids = Vec::new();
 	let mut stream = rx.range(SeriesColumnBlockKey::full_scan(series_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
@@ -69,7 +75,7 @@ pub(crate) fn collect_series_partition_block_ids(
 	rx: &mut Transaction<'_>,
 	series_id: SeriesId,
 	partition: Partition,
-) -> Result<Vec<ColumnBlockId>> {
+) -> Result<Vec<ColumnBlockId>, ValueError> {
 	let mut ids = Vec::new();
 	let mut stream = rx.range(SeriesColumnBlockKey::partition_scan(series_id, partition), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
@@ -80,7 +86,10 @@ pub(crate) fn collect_series_partition_block_ids(
 	Ok(ids)
 }
 
-pub(crate) fn collect_table_block_ids(rx: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<ColumnBlockId>> {
+pub(crate) fn collect_table_block_ids(
+	rx: &mut Transaction<'_>,
+	table_id: TableId,
+) -> Result<Vec<ColumnBlockId>, ValueError> {
 	let mut ids = Vec::new();
 	let mut stream = rx.range(TableColumnBlockKey::full_scan(table_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {

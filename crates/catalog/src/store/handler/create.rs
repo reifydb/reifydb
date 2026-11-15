@@ -9,10 +9,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		handler::shape::{handler as handler_shape, handler_namespace},
@@ -29,7 +29,10 @@ pub struct HandlerToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_handler(txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
+	pub(crate) fn create_handler(
+		txn: &mut AdminTransaction,
+		to_create: HandlerToCreate,
+	) -> Result<Handler, ValueError> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_existing) = CatalogStore::find_handler_by_name(

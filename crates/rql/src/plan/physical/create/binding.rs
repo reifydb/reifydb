@@ -5,10 +5,9 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::interface::catalog::binding::{BindingFormat, BindingProtocol, HttpMethod};
 use reifydb_rql_frontend::ast::ast::AstBindingProtocolKind;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	nodes::CreateBindingNode,
 	plan::{
 		logical,
@@ -21,7 +20,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateBindingNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = create.name.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			return Err(CatalogError::NotFound {

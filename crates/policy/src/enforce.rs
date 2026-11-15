@@ -15,7 +15,7 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::ValueError, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
@@ -49,7 +49,7 @@ impl CompiledWritePolicies {
 		row_columns: &RecordBatch,
 		identity: IdentityId,
 		evaluator: &impl PolicyEvaluator,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.enforce_matching(row_columns, identity, evaluator, |_| true)
 	}
 
@@ -58,7 +58,7 @@ impl CompiledWritePolicies {
 		row_columns: &RecordBatch,
 		identity: IdentityId,
 		evaluator: &impl PolicyEvaluator,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.enforce_matching(row_columns, identity, evaluator, |condition| condition.reads_row)
 	}
 
@@ -68,7 +68,7 @@ impl CompiledWritePolicies {
 		identity: IdentityId,
 		evaluator: &impl PolicyEvaluator,
 		include: impl Fn(&CompiledCondition) -> bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let row_count = row_columns.num_rows();
 		if row_count == 0 {
 			return Ok(());
@@ -92,7 +92,7 @@ pub fn compile_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	target: &PolicyTarget<'_>,
-) -> Result<Option<CompiledWritePolicies>> {
+) -> Result<Option<CompiledWritePolicies>, ValueError> {
 	if tx.identity().is_privileged() {
 		return Ok(None);
 	}
@@ -125,7 +125,7 @@ pub fn enforce_write_policies(
 	target: &PolicyTarget<'_>,
 	row_columns: &RecordBatch,
 	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(compiled) = compile_write_policies(catalog, tx, target)? else {
 		return Ok(());
 	};
@@ -184,7 +184,7 @@ pub fn enforce_session_policy(
 	session_type: &str,
 	default_deny: bool,
 	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if tx.identity().is_privileged() {
 		return Ok(());
 	}
@@ -197,7 +197,7 @@ pub fn enforce_session_policy(
 }
 
 #[inline]
-fn session_empty_outcome(session_type: &str, default_deny: bool) -> Result<()> {
+fn session_empty_outcome(session_type: &str, default_deny: bool) -> Result<(), ValueError> {
 	if default_deny {
 		Err(PolicyError::SessionDenied {
 			session_type: session_type.to_string(),
@@ -214,7 +214,7 @@ fn evaluate_session_policies(
 	session_type: &str,
 	identity: IdentityId,
 	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	reifydb_assertions! {
 		let count = policies.len();
 		assert!(
@@ -244,7 +244,7 @@ pub fn enforce_identity_policy(
 	identity: IdentityId,
 	target: &PolicyTarget<'_>,
 	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if identity.is_privileged() {
 		return Ok(());
 	}
@@ -261,7 +261,7 @@ fn evaluate_identity_policies(
 	target: &PolicyTarget<'_>,
 	identity: IdentityId,
 	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	reifydb_assertions! {
 		let count = policies.len();
 		assert!(
@@ -294,7 +294,7 @@ fn resolve_target_policies(
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
 	target: &PolicyTarget<'_>,
-) -> Result<Vec<(Policy, PolicyOperation)>> {
+) -> Result<Vec<(Policy, PolicyOperation)>, ValueError> {
 	resolve_write_policies(
 		catalog,
 		tx,
@@ -316,9 +316,13 @@ fn no_policy_error(target: &PolicyTarget<'_>) -> ValueError {
 	.into()
 }
 
-fn for_each_policy_condition<F>(policies: &[(Policy, PolicyOperation)], bump: &Bump, mut on_condition: F) -> Result<()>
+fn for_each_policy_condition<F>(
+	policies: &[(Policy, PolicyOperation)],
+	bump: &Bump,
+	mut on_condition: F,
+) -> Result<(), ValueError>
 where
-	F: FnMut(&Policy, &Expression) -> Result<()>,
+	F: FnMut(&Policy, &Expression) -> Result<(), ValueError>,
 {
 	for (policy, op) in policies {
 		let body_source = bump.alloc_str(&op.body_source);
@@ -336,7 +340,7 @@ where
 }
 
 #[inline]
-fn compile_policy_condition(node: Ast<'_>) -> Result<Option<Expression>> {
+fn compile_policy_condition(node: Ast<'_>) -> Result<Option<Expression>, ValueError> {
 	let expr = match node {
 		Ast::Require(req) => ExpressionCompiler::compile(BumpBox::into_inner(req.body))?,
 		Ast::Filter(filter) => ExpressionCompiler::compile(BumpBox::into_inner(filter.node))?,

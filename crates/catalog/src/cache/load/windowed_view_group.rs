@@ -14,14 +14,12 @@ use reifydb_core::{
 	key::catalog::WindowedViewGroupKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::windowed_view_group::shape::{deserialize_members, windowed_view_group},
-};
+use crate::store::windowed_view_group::shape::{deserialize_members, windowed_view_group};
 
-pub(crate) fn load_windowed_view_groups(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_windowed_view_groups(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = WindowedViewGroupKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -35,7 +33,7 @@ pub(crate) fn load_windowed_view_groups(rx: &mut Transaction<'_>, catalog: &Cata
 	Ok(())
 }
 
-fn convert_windowed_view_group<K>(multi: MultiVersionRow<K>) -> Result<WindowedViewGroup> {
+fn convert_windowed_view_group<K>(multi: MultiVersionRow<K>) -> Result<WindowedViewGroup, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	Ok(WindowedViewGroup {
 		id: WindowedViewGroupId(windowed_view_group::get_id(&bytes)),

@@ -4,11 +4,12 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::column::ColumnBlockKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::column_block::find::decode_column_block};
+use crate::store::column_block::find::decode_column_block;
 
-pub(crate) fn load_column_blocks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_column_blocks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = ColumnBlockKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 

@@ -75,8 +75,6 @@ impl Display for ChaosError {
 
 impl Error for ChaosError {}
 
-pub type ChaosResult<T> = Result<T, ChaosError>;
-
 const DEFAULT_STEPS: u32 = 200;
 
 pub struct ChaosHarness<C: MountedOperator + OperatorMetadata + 'static> {
@@ -229,7 +227,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 		self
 	}
 
-	pub fn build(self) -> ChaosResult<RunnableChaos<C>> {
+	pub fn build(self) -> Result<RunnableChaos<C>, ChaosError> {
 		validate_supported_ops(&self.supported_ops)?;
 		let input_shape = self.input_shape.ok_or(ChaosError::MissingField("input_shape"))?;
 		let output_shape = self.output_shape.ok_or(ChaosError::MissingField("output_shape"))?;
@@ -278,7 +276,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 	}
 }
 
-fn validate_supported_ops(ops: &SupportedOps) -> ChaosResult<()> {
+fn validate_supported_ops(ops: &SupportedOps) -> Result<(), ChaosError> {
 	if ops.is_reachable() {
 		Ok(())
 	} else {
@@ -325,7 +323,7 @@ mod tests {
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 	use reifydb_core::{interface::flow::OperatorCapability, operator_with::ApplyWith};
 	use reifydb_sdk::{
-		error::Result,
+		error::SdkError,
 		flow::operator::{
 			NostateMount, NostateOperator, OperatorMetadata,
 			column::operator::OperatorColumn,
@@ -352,11 +350,19 @@ mod tests {
 	}
 
 	impl NostateOperator for NoOpOperator {
-		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		fn create(
+			_operator_id: OperatorId,
+			_params: &ExtensionParams,
+			_with: &ApplyWith,
+		) -> Result<Self, SdkError> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<()> {
+		fn apply(
+			&mut self,
+			_ctx: &mut impl GuestContext<Nostate>,
+			_change: impl ChangeView,
+		) -> Result<(), SdkError> {
 			Ok(())
 		}
 	}
@@ -459,7 +465,10 @@ mod tests {
 		assert!(well_formed_builder().build().is_ok(), "expected well-formed builder to succeed");
 	}
 
-	fn expect_build_err(result: ChaosResult<RunnableChaos<NostateMount<NoOpOperator>>>, label: &str) -> ChaosError {
+	fn expect_build_err(
+		result: Result<RunnableChaos<NostateMount<NoOpOperator>>, ChaosError>,
+		label: &str,
+	) -> ChaosError {
 		// RunnableChaos is not Debug, so Result::expect_err is unavailable.
 		match result {
 			Ok(_) => panic!("expected error from build(): {label}"),

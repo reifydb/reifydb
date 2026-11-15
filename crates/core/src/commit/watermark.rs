@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use crate::{common::CommitVersion, error::diagnostic::flow::flow_error, interface::catalog::flow::FlowId};
 
@@ -34,7 +34,7 @@ impl ReaderWatermark {
 #[derive(Clone)]
 pub struct FlowCaughtUpWatermark {
 	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
-	poisoned: Arc<dyn Fn() -> Result<Vec<(FlowId, String)>> + Send + Sync>,
+	poisoned: Arc<dyn Fn() -> Result<Vec<(FlowId, String)>, ValueError> + Send + Sync>,
 	stalled: Arc<dyn Fn() -> Vec<FlowId> + Send + Sync>,
 }
 
@@ -42,7 +42,7 @@ impl FlowCaughtUpWatermark {
 	pub fn new<F, P, S>(sample: F, poisoned: P, stalled: S) -> Self
 	where
 		F: Fn() -> CommitVersion + Send + Sync + 'static,
-		P: Fn() -> Result<Vec<(FlowId, String)>> + Send + Sync + 'static,
+		P: Fn() -> Result<Vec<(FlowId, String)>, ValueError> + Send + Sync + 'static,
 		S: Fn() -> Vec<FlowId> + Send + Sync + 'static,
 	{
 		Self {
@@ -56,7 +56,7 @@ impl FlowCaughtUpWatermark {
 		(self.sample)()
 	}
 
-	pub fn poisoned(&self) -> Result<Vec<(FlowId, String)>> {
+	pub fn poisoned(&self) -> Result<Vec<(FlowId, String)>, ValueError> {
 		(self.poisoned)()
 	}
 
@@ -64,7 +64,7 @@ impl FlowCaughtUpWatermark {
 		(self.stalled)()
 	}
 
-	pub fn ensure_healthy(&self) -> Result<()> {
+	pub fn ensure_healthy(&self) -> Result<(), ValueError> {
 		let poisoned = self.poisoned()?;
 		if !poisoned.is_empty() {
 			let flows: Vec<String> =

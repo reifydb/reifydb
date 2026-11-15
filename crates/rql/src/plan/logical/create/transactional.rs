@@ -11,12 +11,13 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::constraint::{Constraint, TypeConstraint},
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTransactionalViewNode, LogicalPlan,
 		create::{reject_dictionary_on_decimal, reject_digest_partition_columns},
@@ -29,7 +30,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateTransactionalView<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();

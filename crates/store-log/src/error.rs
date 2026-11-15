@@ -11,8 +11,6 @@ use std::{
 use reifydb_codec::log::{LogIndex, LogVersion, Position, Term};
 use reifydb_runtime::io::fs::FsError;
 
-pub type Result<T> = std::result::Result<T, StoreLogError>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreLogError {
 	NotFound(PathBuf),

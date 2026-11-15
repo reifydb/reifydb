@@ -18,8 +18,7 @@ use arrow_buffer::NullBuffer;
 use arrow_schema::FieldRef;
 use arrow_select::{filter::filter, take::take};
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		Value,
@@ -40,7 +39,7 @@ use crate::value::{
 	},
 };
 
-pub fn cast_value(value: Value, target: &ValueType) -> Result<Value> {
+pub fn cast_value(value: Value, target: &ValueType) -> Result<Value, ValueError> {
 	if value.get_type() == *target {
 		return Ok(value);
 	}
@@ -62,7 +61,7 @@ pub fn cast_column_data(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	cast_column_data_inner(ctx, data, target, &|| lazy_fragment.fragment())
 }
 
@@ -71,7 +70,7 @@ fn cast_column_data_inner(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: &dyn Fn() -> Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if data.get_type() == target {
 		return Ok(owned_column(data));
 	}
@@ -155,13 +154,13 @@ fn owned_column(data: &ColumnView) -> (FieldRef, ArrayRef) {
 	(Arc::new(data.field.clone()), data.array().slice(0, data.len()))
 }
 
-fn compact(column: &(FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef)> {
+fn compact(column: &(FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let predicate = BooleanArray::new(nulls.inner().clone(), None);
 	let array = filter(column.1.as_ref(), &predicate).map_err(frame_error)?;
 	Ok((column.0.clone(), array))
 }
 
-fn expand(column: (FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef)> {
+fn expand(column: (FieldRef, ArrayRef), nulls: &NullBuffer) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut src_idx = 0u32;
 	let picks: UInt32Array = (0..nulls.len())
 		.map(|i| match nulls.is_valid(i) {

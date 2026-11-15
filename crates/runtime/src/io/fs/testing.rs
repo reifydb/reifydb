@@ -12,7 +12,7 @@ use std::{
 use crate::{
 	io::fs::{
 		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename,
-		Result, SyncData, SyncDir, Truncate, Unlink,
+		SyncData, SyncDir, Truncate, Unlink,
 		memory::{MemoryFile, MemoryFileMut, MemoryFileState, MemoryFs, SectorMask, sector_span},
 	},
 	sync::mutex::Mutex,
@@ -222,7 +222,13 @@ impl Sectored for MemoryFileMut {
 	}
 }
 
-fn hooked_pread<F: Sectored>(inner: &Inner, id: FileId, file: &F, offset: u64, buf: &mut [u8]) -> Result<usize> {
+fn hooked_pread<F: Sectored>(
+	inner: &Inner,
+	id: FileId,
+	file: &F,
+	offset: u64,
+	buf: &mut [u8],
+) -> Result<usize, FsError> {
 	match inner.hooks.on_pread(id, offset, buf.len()) {
 		ReadOutcome::Clean => file.pread(offset, buf),
 		ReadOutcome::Corrupt(mask) => {
@@ -281,14 +287,14 @@ impl Filesystem for TestingFs {
 }
 
 impl Mkdir for TestingFs {
-	fn mkdir(&self, path: &Path) -> Result<()> {
+	fn mkdir(&self, path: &Path) -> Result<(), FsError> {
 		self.0.syscall();
 		self.0.inner.mkdir(path)
 	}
 }
 
 impl Create for TestingFs {
-	fn create(&self, path: &Path, len: u64) -> Result<TestingFileMut> {
+	fn create(&self, path: &Path, len: u64) -> Result<TestingFileMut, FsError> {
 		self.0.syscall();
 		let inner = self.0.inner.create(path, len)?;
 		self.0.hooks.on_create(path);
@@ -301,7 +307,7 @@ impl Create for TestingFs {
 }
 
 impl Open for TestingFs {
-	fn open(&self, path: &Path) -> Result<TestingFile> {
+	fn open(&self, path: &Path) -> Result<TestingFile, FsError> {
 		self.0.syscall();
 		if let OpenOutcome::Err(error) = self.0.hooks.on_open(path) {
 			return Err(error);
@@ -316,7 +322,7 @@ impl Open for TestingFs {
 }
 
 impl OpenMut for TestingFs {
-	fn open_mut(&self, path: &Path) -> Result<TestingFileMut> {
+	fn open_mut(&self, path: &Path) -> Result<TestingFileMut, FsError> {
 		self.0.syscall();
 		let inner = self.0.inner.open_mut(path)?;
 		Ok(TestingFileMut {
@@ -328,14 +334,14 @@ impl OpenMut for TestingFs {
 }
 
 impl ReadDir for TestingFs {
-	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, FsError> {
 		self.0.syscall();
 		self.0.inner.read_dir(path)
 	}
 }
 
 impl Rename for TestingFs {
-	fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+	fn rename(&self, from: &Path, to: &Path) -> Result<(), FsError> {
 		self.0.syscall();
 		match self.0.hooks.on_rename(from, to) {
 			MetaOutcome::Durable => self.0.inner.rename(from, to),
@@ -353,7 +359,7 @@ impl Rename for TestingFs {
 }
 
 impl Unlink for TestingFs {
-	fn unlink(&self, path: &Path) -> Result<()> {
+	fn unlink(&self, path: &Path) -> Result<(), FsError> {
 		self.0.syscall();
 		match self.0.hooks.on_unlink(path) {
 			MetaOutcome::Durable => self.0.inner.unlink(path),
@@ -371,14 +377,14 @@ impl Unlink for TestingFs {
 }
 
 impl RemoveDir for TestingFs {
-	fn remove_dir(&self, path: &Path) -> Result<()> {
+	fn remove_dir(&self, path: &Path) -> Result<(), FsError> {
 		self.0.syscall();
 		self.0.inner.remove_dir(path)
 	}
 }
 
 impl SyncDir for TestingFs {
-	fn sync_dir(&self, path: &Path) -> Result<()> {
+	fn sync_dir(&self, path: &Path) -> Result<(), FsError> {
 		self.0.syscall();
 		match self.0.hooks.on_sync_dir(path) {
 			SyncOutcome::Honest => {
@@ -393,28 +399,28 @@ impl SyncDir for TestingFs {
 }
 
 impl Pread for TestingFile {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.fs.syscall();
 		hooked_pread(&self.fs, self.id, &self.inner, offset, buf)
 	}
 }
 
 impl Len for TestingFile {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.fs.syscall();
 		self.inner.len()
 	}
 }
 
 impl Pread for TestingFileMut {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.fs.syscall();
 		hooked_pread(&self.fs, self.id, &self.inner, offset, buf)
 	}
 }
 
 impl Pwrite for TestingFileMut {
-	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize> {
+	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
 		self.fs.syscall();
 		let sector_bytes = self.inner.sector_bytes();
 		match self.fs.hooks.on_pwrite(self.id, offset, buf.len()) {
@@ -455,7 +461,7 @@ impl Pwrite for TestingFileMut {
 }
 
 impl SyncData for TestingFileMut {
-	fn sync_data(&self) -> Result<()> {
+	fn sync_data(&self) -> Result<(), FsError> {
 		self.fs.syscall();
 		match self.fs.hooks.on_sync(self.id) {
 			SyncOutcome::Honest => self.inner.sync_data(),
@@ -466,14 +472,14 @@ impl SyncData for TestingFileMut {
 }
 
 impl Truncate for TestingFileMut {
-	fn truncate(&self, len: u64) -> Result<()> {
+	fn truncate(&self, len: u64) -> Result<(), FsError> {
 		self.fs.syscall();
 		self.inner.truncate(len)
 	}
 }
 
 impl Len for TestingFileMut {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.fs.syscall();
 		self.inner.len()
 	}

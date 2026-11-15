@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::change::Change;
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{error::ValueError, value::Value};
 
 use crate::operator::{reclaim::StateFootprint, subject::Subject, view::MaterializedView};
 
@@ -19,17 +19,17 @@ impl<'a, S: Subject> Session<'a, S> {
 		}
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<()> {
+	pub fn apply(&mut self, change: Change) -> Result<(), ValueError> {
 		let out = self.subject.apply(change)?;
 		self.view.fold(&out);
 		Ok(())
 	}
 
-	pub fn footprint(&mut self) -> Result<Option<StateFootprint>> {
+	pub fn footprint(&mut self) -> Result<Option<StateFootprint>, ValueError> {
 		self.subject.footprint()
 	}
 
-	pub fn tick(&mut self, at_ms: u64) -> Result<bool> {
+	pub fn tick(&mut self, at_ms: u64) -> Result<bool, ValueError> {
 		match self.subject.tick(at_ms)? {
 			Some(change) => {
 				self.view.fold(&change);
@@ -39,7 +39,7 @@ impl<'a, S: Subject> Session<'a, S> {
 		}
 	}
 
-	pub fn drain(&mut self, at_ms: u64, max_ticks: usize) -> Result<usize> {
+	pub fn drain(&mut self, at_ms: u64, max_ticks: usize) -> Result<usize, ValueError> {
 		let mut ticks = 0;
 		loop {
 			let before = self.view.len();

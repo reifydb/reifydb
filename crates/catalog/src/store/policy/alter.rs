@@ -3,15 +3,16 @@
 
 use reifydb_core::{interface::catalog::policy::PolicyId, key::identity::PolicyKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::policy::shape::policy};
+use crate::{CatalogStore, store::policy::shape::policy};
 
 impl CatalogStore {
 	pub(crate) fn alter_policy_enabled(
 		txn: &mut AdminTransaction,
 		policy_id: PolicyId,
 		enabled: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(def) = Self::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			let mut row = policy::allocate();
 			policy::set_id(&mut row, def.id);

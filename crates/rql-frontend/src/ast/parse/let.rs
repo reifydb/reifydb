@@ -4,7 +4,6 @@
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstAssign, AstLet, LetValue},
 		identifier::UnqualifiedIdentifier,
@@ -15,7 +14,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_let(&mut self) -> Result<AstLet<'bump>> {
+	pub(crate) fn parse_let(&mut self) -> Result<AstLet<'bump>, ValueError> {
 		let token = self.current()?;
 
 		if !self.current()?.is_keyword(Keyword::Let) {
@@ -65,7 +64,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_assign(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
+	pub(crate) fn parse_assign(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>, ValueError> {
 		let variable = match left {
 			Ast::Variable(variable) => variable,
 			_ => unreachable!("parse_assign called with non-variable left"),
@@ -83,7 +82,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_let_value(&mut self) -> Result<LetValue<'bump>> {
+	pub(crate) fn parse_let_value(&mut self) -> Result<LetValue<'bump>, ValueError> {
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			self.advance()?;
 			let statement = self.parse_block_statement()?;
@@ -98,7 +97,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn is_statement(&self) -> Result<bool> {
+	fn is_statement(&self) -> Result<bool, ValueError> {
 		if let Ok(token) = self.current() {
 			Ok(matches!(
 				token.kind,

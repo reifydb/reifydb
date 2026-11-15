@@ -21,16 +21,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{Value, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub struct DictionaryScanNode {
 	dictionary: ResolvedDictionary,
@@ -41,7 +39,7 @@ pub struct DictionaryScanNode {
 }
 
 impl DictionaryScanNode {
-	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self, ValueError> {
 		let headers = ColumnHeaders {
 			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
 		};
@@ -61,7 +59,7 @@ impl DictionaryScanNode {
 		range: TaggedKeyBoundRange,
 		batch_size: u64,
 		dict_def: &Dictionary,
-	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<TaggedKey>)> {
+	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<TaggedKey>), ValueError> {
 		let mut ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
@@ -97,7 +95,11 @@ impl DictionaryScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::assemble")]
-	fn assemble(ids: &[DictionaryEntryId], values: &[Value], dict_def: &Dictionary) -> Result<Option<RecordBatch>> {
+	fn assemble(
+		ids: &[DictionaryEntryId],
+		values: &[Value],
+		dict_def: &Dictionary,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let id_column = build_id_column(ids, dict_def.id_type.clone())?;
 		let value_column = build_value_column(values, dict_def.value_type.clone());
 
@@ -107,12 +109,16 @@ impl DictionaryScanNode {
 
 impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "volcano::scan::dictionary::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::dictionary::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		}
@@ -147,7 +153,7 @@ impl QueryNode for DictionaryScanNode {
 	}
 }
 
-fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let data = match id_type {
 		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();

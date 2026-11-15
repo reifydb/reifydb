@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	flow::{FlowEntry, FlowId},
 	id::NamespaceId,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackFlowChangeOperations for AdminTransaction {
-	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<()> {
+	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(entry),
@@ -28,7 +28,7 @@ impl CatalogTrackFlowChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<()> {
+	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -38,7 +38,7 @@ impl CatalogTrackFlowChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<()> {
+	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(entry),
 			post: None,

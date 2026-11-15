@@ -7,14 +7,15 @@ use reifydb_core::{
 	key::catalog::PrimaryKeyKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
-pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = PrimaryKeyKey::full_scan();
 
 	let mut entries = Vec::new();

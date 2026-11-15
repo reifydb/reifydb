@@ -8,9 +8,10 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
@@ -18,7 +19,7 @@ impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
 		object: impl Into<ObjectId>,
-	) -> Result<Option<PrimaryKey>> {
+	) -> Result<Option<PrimaryKey>, ValueError> {
 		let object_id = object.into();
 
 		let primary_key_id = match object_id {
@@ -80,7 +81,10 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	pub(crate) fn find_view_primary_key(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKey>> {
+	pub(crate) fn find_view_primary_key(
+		rx: &mut Transaction<'_>,
+		view_id: ViewId,
+	) -> Result<Option<PrimaryKey>, ValueError> {
 		Self::find_primary_key(rx, view_id)
 	}
 }

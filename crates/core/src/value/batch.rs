@@ -18,7 +18,6 @@ use reifydb_codec::row::{
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	util::kernel,
 	value::{
@@ -68,12 +67,12 @@ use crate::{
 	},
 };
 
-pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
+pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch, ValueError> {
 	let row_count = columns.first().map_or(0, |(_, array)| array.len());
 	assemble(columns, HashMap::new(), row_count)
 }
 
-pub fn mark_tag_columns(batch: RecordBatch, sumtypes: &HashMap<String, SumTypeId>) -> Result<RecordBatch> {
+pub fn mark_tag_columns(batch: RecordBatch, sumtypes: &HashMap<String, SumTypeId>) -> Result<RecordBatch, ValueError> {
 	if sumtypes.is_empty() {
 		return Ok(batch);
 	}
@@ -89,7 +88,7 @@ pub fn mark_tag_columns(batch: RecordBatch, sumtypes: &HashMap<String, SumTypeId
 	batch_with(&schema, columns, batch.num_rows())
 }
 
-pub fn mark_field(field: &FieldRef, id: SumTypeId) -> Result<FieldRef> {
+pub fn mark_field(field: &FieldRef, id: SumTypeId) -> Result<FieldRef, ValueError> {
 	let mut field_type = from_field(field)?;
 	if field_type.value_type.as_ref().map(ValueType::inner_type) != Some(&ValueType::Uint1) {
 		return Err(internal_error!("sumtype tag column {} is not uint1", field.name()));
@@ -98,7 +97,11 @@ pub fn mark_field(field: &FieldRef, id: SumTypeId) -> Result<FieldRef> {
 	Ok(Arc::new(to_field(field.name(), &field_type).with_nullable(field.is_nullable())))
 }
 
-pub fn batch_with(schema: &SchemaRef, columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch> {
+pub fn batch_with(
+	schema: &SchemaRef,
+	columns: Vec<(FieldRef, ArrayRef)>,
+	row_count: usize,
+) -> Result<RecordBatch, ValueError> {
 	let reusable = schema.fields().len() == columns.len()
 		&& schema
 			.fields()
@@ -120,11 +123,11 @@ pub fn empty_batch() -> RecordBatch {
 	RecordBatch::new_empty(Arc::new(Schema::empty()))
 }
 
-pub fn single_row<'a>(values: impl IntoIterator<Item = (&'a str, Value)>) -> Result<RecordBatch> {
+pub fn single_row<'a>(values: impl IntoIterator<Item = (&'a str, Value)>) -> Result<RecordBatch, ValueError> {
 	batch(values.into_iter().map(|(name, value)| from_one(name, value)).collect())
 }
 
-pub fn from_rows(names: &[&str], rows: &[Vec<Value>]) -> Result<RecordBatch> {
+pub fn from_rows(names: &[&str], rows: &[Vec<Value>]) -> Result<RecordBatch, ValueError> {
 	let mut builders: Vec<ColumnBuilder> = (0..names.len())
 		.map(|i| match rows.iter().map(|row| &row[i]).find(|value| !matches!(value, Value::None { .. })) {
 			Some(value) => ColumnBuilder::with_capacity(value.get_type(), rows.len()),
@@ -142,7 +145,7 @@ pub fn from_rows(names: &[&str], rows: &[Vec<Value>]) -> Result<RecordBatch> {
 	batch(names.iter().zip(builders).map(|(name, builder)| builder.finish(name)).collect())
 }
 
-pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch> {
+pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch, ValueError> {
 	let Some(Value::Record(first_fields)) = records.first() else {
 		return Ok(empty_batch());
 	};
@@ -173,15 +176,19 @@ pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch> {
 	from_rows(&name_refs, &rows)
 }
 
-pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Result<RecordBatch> {
+pub fn from_encoded_bytes(
+	shape: &RowShape,
+	ids: &[RowNumber],
+	rows: &[EncodedBytes],
+) -> Result<RecordBatch, ValueError> {
 	from_encoded(shape, ids, rows)
 }
 
-pub fn from_encoded_slices(shape: &RowShape, ids: &[RowNumber], rows: &[&[u8]]) -> Result<RecordBatch> {
+pub fn from_encoded_slices(shape: &RowShape, ids: &[RowNumber], rows: &[&[u8]]) -> Result<RecordBatch, ValueError> {
 	from_encoded(shape, ids, rows)
 }
 
-fn from_encoded<R: AsRef<[u8]>>(shape: &RowShape, ids: &[RowNumber], rows: &[R]) -> Result<RecordBatch> {
+fn from_encoded<R: AsRef<[u8]>>(shape: &RowShape, ids: &[RowNumber], rows: &[R]) -> Result<RecordBatch, ValueError> {
 	assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
 
 	let mut columns = Vec::with_capacity(shape.field_count());
@@ -200,18 +207,18 @@ fn from_encoded<R: AsRef<[u8]>>(shape: &RowShape, ids: &[RowNumber], rows: &[R])
 	assemble(columns, HashMap::new(), rows.len())
 }
 
-pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch> {
+pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch, ValueError> {
 	batch(columns
 		.iter()
 		.map(|column| ColumnBuilder::with_capacity(column.constraint.get_type(), 0).finish(&column.name))
 		.collect())
 }
 
-pub fn append(left: &RecordBatch, right: &RecordBatch) -> Result<RecordBatch> {
+pub fn append(left: &RecordBatch, right: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	concat(&[left.clone(), right.clone()])
 }
 
-pub fn concat(batches: &[RecordBatch]) -> Result<RecordBatch> {
+pub fn concat(batches: &[RecordBatch]) -> Result<RecordBatch, ValueError> {
 	let mut parts: Vec<&RecordBatch> = Vec::with_capacity(batches.len());
 	for batch in batches {
 		match parts.first() {
@@ -239,13 +246,13 @@ pub fn concat(batches: &[RecordBatch]) -> Result<RecordBatch> {
 		let views = parts
 			.iter()
 			.map(|part| ColumnView::try_from((part.column(index), part.schema_ref().field(index))))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		columns.push(unify(schema.field(index).name(), &views)?);
 	}
 	assemble(columns, schema.metadata().clone(), parts.iter().map(|part| part.num_rows()).sum())
 }
 
-pub fn concat_columns(columns: &[(FieldRef, ArrayRef)]) -> Result<(FieldRef, ArrayRef)> {
+pub fn concat_columns(columns: &[(FieldRef, ArrayRef)]) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let Some(((field, array), rest)) = columns.split_first() else {
 		return internal_err!("concat_columns needs at least one column");
 	};
@@ -256,7 +263,7 @@ pub fn concat_columns(columns: &[(FieldRef, ArrayRef)]) -> Result<(FieldRef, Arr
 		let arrays: Vec<&dyn Array> = columns.iter().map(|(_, array)| array.as_ref()).collect();
 		return Ok((field.clone(), concat_arrays(&arrays).map_err(frame_error)?));
 	}
-	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 	unify(field.name(), &views)
 }
 
@@ -264,7 +271,7 @@ pub fn head(batch: &RecordBatch, n: usize) -> RecordBatch {
 	batch.slice(0, n.min(batch.num_rows()))
 }
 
-pub fn filter(batch: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch> {
+pub fn filter(batch: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch, ValueError> {
 	let predicate = kernel::shared_predicate(mask, batch.num_rows());
 	let columns = batch
 		.columns()
@@ -285,7 +292,7 @@ pub fn append_rows(
 	shape: &RowShape,
 	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
 	row_numbers: Vec<RowNumber>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	append_shaped_rows(batch, shape, rows, row_numbers, false)
 }
 
@@ -294,7 +301,7 @@ pub fn append_rows_fitted(
 	shape: &RowShape,
 	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
 	row_numbers: Vec<RowNumber>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	append_shaped_rows(batch, shape, rows, row_numbers, true)
 }
 
@@ -304,7 +311,7 @@ fn append_shaped_rows(
 	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
 	row_numbers: Vec<RowNumber>,
 	fit: bool,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let user: Vec<usize> = schema
 		.fields()
@@ -361,7 +368,7 @@ fn append_shaped_rows(
 	merge_system_columns(out, &batch, stamps(shape, &rows, &row_numbers)?, rows.len())
 }
 
-pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch, ValueError> {
 	kernel::rows_in_range(indices, batch.num_rows())?;
 	let indices = UInt64Array::from_iter_values(indices.iter().map(|&index| index as u64));
 	let columns = batch
@@ -378,7 +385,7 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> 
 	.map_err(frame_error)
 }
 
-pub(crate) fn gather(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> Result<RecordBatch> {
+pub(crate) fn gather(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> Result<RecordBatch, ValueError> {
 	let Some(lead) = sources.first() else {
 		return Ok(empty_batch());
 	};
@@ -419,7 +426,7 @@ pub(crate) fn gather(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> Resu
 	take_rows(&glued, &order)
 }
 
-pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch> {
+pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch, ValueError> {
 	kernel::rows_in_range(&picks.iter().flatten().copied().collect::<Vec<_>>(), batch.num_rows())?;
 	let pairs: Vec<(usize, usize)> = picks.iter().map(|pick| pick.map_or((1, 0), |index| (0, index))).collect();
 	let schema = batch.schema_ref();
@@ -444,7 +451,7 @@ pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result
 	assemble(columns, schema.metadata().clone(), picks.len())
 }
 
-pub fn scalar_value(batch: &RecordBatch) -> Result<Value> {
+pub fn scalar_value(batch: &RecordBatch) -> Result<Value, ValueError> {
 	let user = user_views(batch)?;
 	if user.len() != 1 {
 		return internal_err!("scalar_value() requires exactly 1 column, got {}", user.len());
@@ -455,7 +462,7 @@ pub fn scalar_value(batch: &RecordBatch) -> Result<Value> {
 	Ok(user[0].get_value(0))
 }
 
-pub fn scalar_value_type(batch: &RecordBatch, value: &Value) -> Result<ValueType> {
+pub fn scalar_value_type(batch: &RecordBatch, value: &Value) -> Result<ValueType, ValueError> {
 	let user = user_views(batch)?;
 	if user.len() != 1 {
 		return internal_err!("scalar_value_type() requires exactly 1 column, got {}", user.len());
@@ -470,7 +477,7 @@ pub fn is_scalar(batch: &RecordBatch) -> bool {
 	batch.schema_ref().fields().iter().filter(|field| !is_system_field(field)).count() == 1 && batch.num_rows() == 1
 }
 
-pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> Result<GroupRows> {
+pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> Result<GroupRows, ValueError> {
 	let schema = batch.schema_ref();
 	let mut key_views = Vec::with_capacity(keys.len());
 	for &key in keys {
@@ -489,7 +496,7 @@ pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> 
 	group_rows(&key_views, batch.num_rows(), dict)
 }
 
-pub fn reattach_dictionary_ids(batch: RecordBatch, from: &RecordBatch) -> Result<RecordBatch> {
+pub fn reattach_dictionary_ids(batch: RecordBatch, from: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
@@ -517,7 +524,7 @@ pub fn reattach_dictionary_ids(batch: RecordBatch, from: &RecordBatch) -> Result
 	assemble(columns, schema.metadata().clone(), batch.num_rows())
 }
 
-pub fn data_size(batch: &RecordBatch) -> Result<usize> {
+pub fn data_size(batch: &RecordBatch) -> Result<usize, ValueError> {
 	Ok(views(batch)?.iter().map(view_data_size).sum())
 }
 
@@ -592,7 +599,7 @@ fn varlen_size<T: ByteArrayType<Offset = i64>>(array: &GenericByteArray<T>) -> u
 		+ array.len() * mem::size_of::<i64>()
 }
 
-pub fn views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+pub fn views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>, ValueError> {
 	batch.schema_ref()
 		.fields()
 		.iter()
@@ -608,7 +615,7 @@ pub(crate) fn frame_error(error: ArrowError) -> ValueError {
 	.into()
 }
 
-fn user_views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+fn user_views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>, ValueError> {
 	Ok(views(batch)?.into_iter().filter(|view| !is_system_field(view.field)).collect())
 }
 
@@ -616,7 +623,7 @@ fn assemble(
 	columns: Vec<(FieldRef, ArrayRef)>,
 	metadata: HashMap<String, String>,
 	row_count: usize,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
 	RecordBatch::try_new_with_options(
 		Arc::new(Schema::new_with_metadata(fields, metadata)),
@@ -626,7 +633,7 @@ fn assemble(
 	.map_err(frame_error)
 }
 
-fn check_joinable(lead: &RecordBatch, part: &RecordBatch) -> Result<()> {
+fn check_joinable(lead: &RecordBatch, part: &RecordBatch) -> Result<(), ValueError> {
 	if lead.num_columns() != part.num_columns() {
 		return Err(CoreError::FrameError {
 			message: "mismatched column count".to_string(),
@@ -651,7 +658,7 @@ fn check_joinable(lead: &RecordBatch, part: &RecordBatch) -> Result<()> {
 	Ok(())
 }
 
-fn unify(name: &str, views: &[ColumnView]) -> Result<(FieldRef, ArrayRef)> {
+fn unify(name: &str, views: &[ColumnView]) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let Some((lead, rest)) = views.split_first() else {
 		return internal_err!("column {} has no parts to concat", name);
 	};
@@ -664,7 +671,7 @@ fn unify(name: &str, views: &[ColumnView]) -> Result<(FieldRef, ArrayRef)> {
 	let shared = rest
 		.iter()
 		.map(|view| from_field(view.field).map(|t| t.sumtype == sumtype))
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	match sumtype {
 		Some(id) if shared.into_iter().all(|same| same) => Ok((mark_field(&field, id)?, array)),
 		_ => Ok((field, array)),
@@ -685,7 +692,7 @@ fn stamps<R: AsRef<[u8]>>(
 	shape: &RowShape,
 	rows: &[R],
 	row_numbers: &[RowNumber],
-) -> Result<Vec<(SystemColumn, ArrayRef)>> {
+) -> Result<Vec<(SystemColumn, ArrayRef)>, ValueError> {
 	let mut columns: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if !row_numbers.is_empty() {
 		let values = UInt64Array::from_iter_values(row_numbers.iter().map(|row_number| row_number.0));
@@ -734,7 +741,7 @@ fn merge_system_columns(
 	batch: &RecordBatch,
 	fresh: Vec<(SystemColumn, ArrayRef)>,
 	appended: usize,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(field) = batch
 		.schema_ref()
 		.fields()
@@ -790,7 +797,7 @@ pub fn decode_cells<R: AsRef<[u8]>>(
 	shape: &RowShape,
 	index: usize,
 	rows: &[R],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let value_type = shape.fields()[index].constraint.get_type();
 	for row in rows {
 		let row = row.as_ref();

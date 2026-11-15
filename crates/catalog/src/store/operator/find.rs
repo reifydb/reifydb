@@ -12,10 +12,13 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::operator::shape::operator};
+use crate::{CatalogStore, store::operator::shape::operator};
 
 impl CatalogStore {
-	pub(crate) fn find_operator(rx: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<FlowNode>> {
+	pub(crate) fn find_operator(
+		rx: &mut Transaction<'_>,
+		operator_id: OperatorId,
+	) -> Result<Option<FlowNode>, ValueError> {
 		let Some(multi) = rx.get(&[OperatorKey::new(operator_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};

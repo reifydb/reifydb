@@ -7,7 +7,7 @@ use bs58::decode as bs58_decode;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
-use reifydb_value::{Result, error::ValueError, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use crate::error::SolanaError;
 
@@ -36,7 +36,7 @@ impl AuthenticationProvider for SolanaProvider {
 		true
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, ValueError> {
 		let public_key =
 			config.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
 
@@ -59,7 +59,7 @@ impl AuthenticationProvider for SolanaProvider {
 		&self,
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
+	) -> Result<AuthStep, ValueError> {
 		let public_key_b58 =
 			stored.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
 
@@ -71,7 +71,7 @@ impl AuthenticationProvider for SolanaProvider {
 		stored: &BTreeMap<String, String>,
 		challenge: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
+	) -> Result<AuthStep, ValueError> {
 		let public_key_b58 =
 			stored.get("public_key").ok_or_else(|| ValueError::from(SolanaError::MissingPublicKey))?;
 		let message = challenge
@@ -96,7 +96,12 @@ impl AuthenticationProvider for SolanaProvider {
 
 impl SolanaProvider {
 	#[inline]
-	fn verify_signature(&self, public_key_b58: &str, signature_b58: &str, message: &str) -> Result<AuthStep> {
+	fn verify_signature(
+		&self,
+		public_key_b58: &str,
+		signature_b58: &str,
+		message: &str,
+	) -> Result<AuthStep, ValueError> {
 		let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
 			.into_vec()
 			.map_err(|e| {

@@ -29,7 +29,7 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::{Result, error};
+use reifydb_value::{error, error::ValueError};
 
 use crate::{
 	accumulator::StatementMetricsAccumulator,
@@ -62,7 +62,7 @@ impl Default for MetricsSubsystemFactory {
 }
 
 impl SubsystemFactory for MetricsSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let registry = ioc.resolve::<MetricsRegistry>()?;
 		let clock = ioc.resolve::<Clock>()?;
@@ -114,7 +114,7 @@ impl MetricsSubsystemFactory {
 		operator_store: &OperatorStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
-	) -> Result<ActorHandle<SamplerMessage>> {
+	) -> Result<ActorHandle<SamplerMessage>, ValueError> {
 		let surfaces = Arc::new(MetricsSurfaces::build(MetricsDomain::ALL.map(MetricsDomain::spec)));
 		surfaces.register_all(engine)?;
 		let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
@@ -150,7 +150,7 @@ impl MetricsSubsystemFactory {
 		spawner: &ActorSpawner,
 		epoch_gauge: Arc<EpochGauge>,
 		sampler: ActorRef<SamplerMessage>,
-	) -> Result<ActorHandle<MetricsMessage>> {
+	) -> Result<ActorHandle<MetricsMessage>, ValueError> {
 		let accumulator = ioc
 			.try_resolve::<Arc<StatementMetricsAccumulator>>()
 			.unwrap_or_else(|| Arc::new(StatementMetricsAccumulator::new()));

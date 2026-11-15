@@ -11,10 +11,10 @@ use reifydb_core::{
 	interface::catalog::view::ViewStorageKind,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
 use crate::{
-	Result, nodes,
+	nodes,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -26,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropNamespaceNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let full_name: String = drop.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 		let ns_segments: Vec<&str> = drop.segments.iter().map(|s| s.text()).collect();
 		let namespace_name = self.interner.intern_fragment(drop.segments.last().unwrap()).with_text(&full_name);
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropTableNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.table.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -98,7 +98,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropViewNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.view.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -142,7 +142,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropRingBufferNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.ringbuffer.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -190,7 +190,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropQueueNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.queue.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -247,7 +247,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropDictionaryNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.dictionary.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -295,7 +295,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSumTypeNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.sumtype.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -343,7 +343,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSeriesNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.series.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -387,7 +387,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSourceNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.source.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -411,7 +411,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropProcedureNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.procedure.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -457,7 +457,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSinkNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.sink.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -481,7 +481,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropWindowedViewGroupNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.group.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -504,7 +504,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropHandlerNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.handler.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -558,7 +558,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropBindingNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.binding.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -581,7 +581,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropTestNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.test.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");
@@ -623,7 +623,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropRelationshipNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = drop.source.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");

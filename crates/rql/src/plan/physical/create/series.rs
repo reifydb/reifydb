@@ -10,10 +10,9 @@ use reifydb_core::{
 	interface::{catalog::series::SeriesEncoding, resolved::ResolvedNamespace},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error, value::Value};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error, value::Value};
 
 use crate::{
-	Result,
 	nodes::CreateSeriesNode,
 	plan::{
 		logical,
@@ -26,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSeriesNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = create.series.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.series.namespace.first() {

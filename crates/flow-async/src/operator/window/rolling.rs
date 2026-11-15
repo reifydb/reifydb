@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
@@ -87,14 +87,18 @@ fn finalize_rolling(_group: &Hash128, _newest: DateTimeCoord, accumulator: &RowA
 	accumulator.finalize()
 }
 
-fn group_key(group_values: &HashMap<Hash128, Vec<Value>>, group: &Hash128) -> Result<Vec<Value>> {
+fn group_key(group_values: &HashMap<Hash128, Vec<Value>>, group: &Hash128) -> Result<Vec<Value>, ValueError> {
 	match group_values.get(group) {
 		Some(values) => Ok(values.clone()),
 		None => internal_err!("a rolling group {group:?} was published without its group values"),
 	}
 }
 
-fn zero_rolling(kinds: &[SlotKind], types: &[Option<ValueType>], prior: &[Value]) -> Result<Option<Vec<Value>>> {
+fn zero_rolling(
+	kinds: &[SlotKind],
+	types: &[Option<ValueType>],
+	prior: &[Value],
+) -> Result<Option<Vec<Value>>, ValueError> {
 	if kinds.len() != prior.len() {
 		return internal_err!("a rolling row holds {} slots but the window has {}", prior.len(), kinds.len());
 	}
@@ -134,7 +138,7 @@ pub fn apply_rolling_engine(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	change: Change,
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let pane = operator.rolling_pane();
 	let (routed, group_values) = {
@@ -168,7 +172,7 @@ pub fn seal_rolling_engine(
 	host: &mut dyn HostContext,
 	fired: FiredAt,
 	kind: TimerKind,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let Some(size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
@@ -202,7 +206,11 @@ fn emit_row(published: &RowNumber, group_values: Vec<Value>, last_value: Vec<Val
 	}
 }
 
-fn rolling_diffs(operator: &mut WindowOperator, emits: Vec<NativeEmit>, changed_at: DateTime) -> Result<Vec<Diff>> {
+fn rolling_diffs(
+	operator: &mut WindowOperator,
+	emits: Vec<NativeEmit>,
+	changed_at: DateTime,
+) -> Result<Vec<Diff>, ValueError> {
 	let mut inserts = Vec::new();
 	let mut updates = Vec::new();
 	let mut removes = Vec::new();
@@ -246,10 +254,7 @@ mod tests {
 			timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 		},
 	};
-	use reifydb_value::{
-		Result as ValueResult,
-		value::{datetime::DateTime, digest::Digest, value_type::ValueType},
-	};
+	use reifydb_value::value::{datetime::DateTime, digest::Digest, value_type::ValueType};
 
 	use super::*;
 	use crate::{
@@ -314,15 +319,20 @@ mod tests {
 	}
 
 	impl TimerStore for MockStore {
-		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<(), ValueError> {
 			unreachable!("the window engine never arms timers; only the shell above it does")
 		}
 
-		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer(
+			&mut self,
+			_due: DateTime,
+			_kind: TimerKind,
+			_key: &EncodedKey,
+		) -> Result<(), ValueError> {
 			unreachable!("the window engine never disarms timers; only the shell above it does")
 		}
 
-		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 			Ok(None)
 		}
 	}
@@ -340,14 +350,14 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
-		fn state_get(&mut self, keys: &[GroupStateKey]) -> ValueResult<Vec<Option<EncodedPodRow>>> {
+		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 			Ok(keys.iter().map(|key| self.state.get(key.as_slice()).cloned()).collect())
 		}
 		fn state_page_inner(
 			&mut self,
 			range: GroupStateRange,
 			limit: Option<usize>,
-		) -> ValueResult<Vec<(GroupStateKey, EncodedPodRow)>> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			let range = inner_bytes(range);
 			// The backing map is a HashMap, so without this sort the page order is arbitrary and the real
 			// store's key order is not reproduced.
@@ -387,33 +397,36 @@ mod tests {
 			&mut self,
 			group: GroupId,
 			keys: &[EncodedKey],
-		) -> ValueResult<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
 		fn get_or_create_row_numbers_for_groups(
 			&mut self,
 			groups: &[GroupId],
-		) -> ValueResult<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(groups
 				.iter()
 				.map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new())))
 				.collect())
 		}
 
-		fn mint_row_numbers(&mut self, count: usize) -> ValueResult<RowNumber> {
+		fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, ValueError> {
 			let first = self.next_row + 1;
 			self.next_row += count as u64;
 			Ok(RowNumber(first))
 		}
 
-		fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> ValueResult<Vec<Option<RowNumber>>> {
+		fn get_row_numbers_for_groups(
+			&mut self,
+			groups: &[GroupId],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(groups
 				.iter()
 				.map(|group| self.rows.get(&(*group, Vec::new())).map(|&row| RowNumber(row)))
 				.collect())
 		}
 
-		fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> ValueResult<()> {
+		fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 			for (group, row) in rows {
 				self.rows.insert((*group, Vec::new()), row.0);
 			}
@@ -424,28 +437,28 @@ mod tests {
 			&mut self,
 			group: GroupId,
 			keys: &[EncodedKey],
-		) -> ValueResult<Vec<Option<RowNumber>>> {
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(keys.iter()
 				.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|&row| RowNumber(row)))
 				.collect())
 		}
 
-		fn state_remove(&mut self, keys: &[GroupStateKey]) -> ValueResult<()> {
+		fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 			for key in keys {
 				self.state.remove(key.as_slice());
 			}
 			Ok(())
 		}
 
-		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> ValueResult<StateBatch> {
+		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 			per_key::read_batch(self, keys)
 		}
 
-		fn state_write_batch(&mut self, batch: StateBatch) -> ValueResult<()> {
+		fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 			per_key::write_batch(self, batch)
 		}
 
-		fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> ValueResult<()> {
+		fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 			for (key, payload) in rows {
 				self.state.insert(key.as_slice().to_vec(), payload);
 			}
@@ -457,18 +470,18 @@ mod tests {
 			groups: &[GroupId],
 			limit: usize,
 			keyspaces: KeyspaceMask,
-		) -> ValueResult<GroupSweep> {
+		) -> Result<GroupSweep, ValueError> {
 			per_key::group_sweep(self, groups, limit, keyspaces)
 		}
 
-		fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> ValueResult<()> {
+		fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), ValueError> {
 			for key in keys {
 				self.rows.remove(&(group, key.as_bytes().to_vec()));
 			}
 			Ok(())
 		}
 
-		fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> ValueResult<()> {
+		fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), ValueError> {
 			for group in groups {
 				self.rows.remove(&(*group, Vec::new()));
 			}

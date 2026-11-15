@@ -6,8 +6,7 @@ use std::{fmt::Display, sync::Arc};
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		boolean::parse::parse_bool,
@@ -20,7 +19,7 @@ use reifydb_value::{
 
 use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_boolean(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+pub fn to_boolean(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let name = data.field.name();
 	match &data.data {
 		ViewData::Int1(container) => from_int1(container.values(), name, lazy_fragment),
@@ -56,7 +55,7 @@ fn to_bool<T>(
 	name: &str,
 	lazy_fragment: impl LazyFragment,
 	validate: impl Fn(T) -> Option<bool>,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	T: Copy + Display + IsNumber + Default,
 {
@@ -88,7 +87,7 @@ macro_rules! impl_integer_to_bool {
 			container: &[$type],
 			name: &str,
 			lazy_fragment: impl LazyFragment,
-		) -> Result<(FieldRef, ArrayRef)> {
+		) -> Result<(FieldRef, ArrayRef), ValueError> {
 			to_bool(container, name, lazy_fragment, |val| match val {
 				0 => Some(false),
 				1 => Some(true),
@@ -105,7 +104,7 @@ macro_rules! impl_float_to_bool {
 			container: &[$type],
 			name: &str,
 			lazy_fragment: impl LazyFragment,
-		) -> Result<(FieldRef, ArrayRef)> {
+		) -> Result<(FieldRef, ArrayRef), ValueError> {
 			to_bool(container, name, lazy_fragment, |val| {
 				if val == 0.0 {
 					Some(false)
@@ -136,7 +135,7 @@ fn from_utf8(
 	container: &LargeStringArray,
 	name: &str,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut out = ColumnBuilder::with_capacity(ValueType::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_valid(idx) {

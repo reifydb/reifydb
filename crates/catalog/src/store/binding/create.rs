@@ -9,9 +9,10 @@ use reifydb_core::{
 	key::{catalog::BindingKey, namespace::NamespaceBindingKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::{
 		binding::shape::{binding, binding_namespace},
 		sequence::system::SystemSequence,
@@ -27,7 +28,10 @@ pub struct BindingToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_binding(txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
+	pub(crate) fn create_binding(
+		txn: &mut AdminTransaction,
+		to_create: BindingToCreate,
+	) -> Result<Binding, ValueError> {
 		let id = SystemSequence::next_binding_id(txn)?;
 
 		let (protocol_str, http_method, http_path, rpc_name) = match &to_create.protocol {

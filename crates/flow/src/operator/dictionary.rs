@@ -22,7 +22,6 @@ use reifydb_core::{
 };
 use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	value::{
@@ -72,7 +71,7 @@ impl BoundExpressions {
 		txn: &mut T,
 		literals: &mut Option<BoundLiterals>,
 		columns: &RecordBatch,
-	) -> Result<(RecordBatch, &[LoweredExpr])> {
+	) -> Result<(RecordBatch, &[LoweredExpr]), ValueError> {
 		if !self.bound.as_ref().is_some_and(|(binding, _)| binding.matches(&columns.schema())) {
 			let binding = DictionaryBinding::new(columns, &self.expressions, self.passing)?;
 			let lowered = binding
@@ -99,7 +98,11 @@ pub(crate) struct BoundLiterals {
 }
 
 impl DictionaryBinding {
-	pub(crate) fn new(columns: &RecordBatch, expressions: &[Expression], passing: bool) -> Result<Self> {
+	pub(crate) fn new(
+		columns: &RecordBatch,
+		expressions: &[Expression],
+		passing: bool,
+	) -> Result<Self, ValueError> {
 		let schema = columns.schema();
 		let mut dictionary_columns = HashMap::new();
 		for (position, field) in schema.fields().iter().enumerate() {
@@ -142,7 +145,7 @@ impl DictionaryBinding {
 		&self.expressions
 	}
 
-	pub(crate) fn bind_literals<T: Find + ?Sized>(&self, txn: &mut T) -> Result<BoundLiterals> {
+	pub(crate) fn bind_literals<T: Find + ?Sized>(&self, txn: &mut T) -> Result<BoundLiterals, ValueError> {
 		let mut dictionaries: HashMap<usize, Dictionary> = HashMap::new();
 		for position in self.decoded.iter().chain(self.literals.iter().map(|(p, _)| p)) {
 			if !dictionaries.contains_key(position) {
@@ -169,7 +172,7 @@ impl DictionaryBinding {
 				Some(id) => Ok(id),
 				None => DictionaryEntryId::from_u128(0, dictionaries[position].id_type.clone()),
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(BoundLiterals {
 			dictionaries,
 			ids,
@@ -181,7 +184,7 @@ impl DictionaryBinding {
 		txn: &mut T,
 		literals: &BoundLiterals,
 		columns: &RecordBatch,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		if self.ids.is_empty() && self.literals.is_empty() && self.decoded.is_empty() {
 			return Ok(columns.clone());
 		}
@@ -212,7 +215,7 @@ impl DictionaryBinding {
 		batch(fields)
 	}
 
-	fn dictionary<T: Resolve + ?Sized>(&self, txn: &mut T, position: usize) -> Result<Dictionary> {
+	fn dictionary<T: Resolve + ?Sized>(&self, txn: &mut T, position: usize) -> Result<Dictionary, ValueError> {
 		let field = self.schema.field(position);
 		let id = from_field(field)?.dictionary_id.expect("a bound dictionary column carries its dictionary");
 		txn.dictionary(id)?.ok_or_else(|| {
@@ -376,7 +379,7 @@ impl Binder<'_> {
 	}
 }
 
-fn dictionary_of(field: &FieldRef) -> Result<Option<DictionaryId>> {
+fn dictionary_of(field: &FieldRef) -> Result<Option<DictionaryId>, ValueError> {
 	let field_type = from_field(field)?;
 	let bare = match field_type.value_type {
 		Some(ValueType::Option(inner)) => *inner,

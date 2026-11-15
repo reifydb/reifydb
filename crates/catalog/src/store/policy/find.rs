@@ -7,18 +7,19 @@ use reifydb_core::{
 	key::identity::PolicyKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::policy::{convert_policy, shape::policy},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>> {
+	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>, ValueError> {
 		rx.get(&[PolicyKey::new(id).into()])?.pop().flatten().map(convert_policy).transpose()
 	}
 
-	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
+	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>, ValueError> {
 		let stream = rx.range(PolicyKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

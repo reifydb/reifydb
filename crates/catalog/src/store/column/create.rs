@@ -35,9 +35,10 @@ use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	id::ColumnId,
 };
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::shape::{column, object_column},
@@ -62,7 +63,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		object: impl Into<ObjectId>,
 		mut column_to_create: ColumnToCreate,
-	) -> Result<Column> {
+	) -> Result<Column, ValueError> {
 		let object = object.into();
 
 		Self::reject_existing_column(txn, object, &column_to_create)?;
@@ -88,7 +89,7 @@ impl CatalogStore {
 		id: ColumnId,
 		object: impl Into<ObjectId>,
 		mut column_to_create: ColumnToCreate,
-	) -> Result<Column> {
+	) -> Result<Column, ValueError> {
 		let object = object.into();
 
 		column_to_create.constraint = Self::stored_constraint(txn, &column_to_create)?;
@@ -98,7 +99,10 @@ impl CatalogStore {
 		Self::create_properties_and_build(txn, id, column_to_create)
 	}
 
-	fn stored_constraint(txn: &mut AdminTransaction, column_to_create: &ColumnToCreate) -> Result<TypeConstraint> {
+	fn stored_constraint(
+		txn: &mut AdminTransaction,
+		column_to_create: &ColumnToCreate,
+	) -> Result<TypeConstraint, ValueError> {
 		let Some(dict_id) = column_to_create.dictionary_id else {
 			return Ok(column_to_create.constraint.clone());
 		};
@@ -129,7 +133,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		object: ObjectId,
 		column_to_create: &ColumnToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(column) =
 			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), object, &column_to_create.column)?
 		{
@@ -172,7 +176,7 @@ impl CatalogStore {
 		id: ColumnId,
 		object: ObjectId,
 		column_to_create: &ColumnToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = column::allocate();
 		column::set_id(&mut row, u64::from(id));
 		column::set_object(&mut row, u64::from(object));
@@ -193,7 +197,7 @@ impl CatalogStore {
 		id: ColumnId,
 		object: ObjectId,
 		column_to_create: &ColumnToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = object_column::allocate();
 		object_column::set_id(&mut row, u64::from(id));
 		object_column::set_name(&mut row, &column_to_create.column);
@@ -205,12 +209,12 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		id: ColumnId,
 		column_to_create: ColumnToCreate,
-	) -> Result<Column> {
+	) -> Result<Column, ValueError> {
 		let properties = column_to_create
 			.properties
 			.into_iter()
 			.map(|property| Self::create_column_property(txn, id, property))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 
 		Ok(Column {
 			id,

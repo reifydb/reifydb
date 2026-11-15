@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::catalog::object::ObjectId;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::datetime::DateTime;
-
-use crate::Result;
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Advanced {
@@ -17,7 +15,11 @@ pub enum Advanced {
 }
 
 pub trait CompletenessWriter: Send + Sync {
-	fn advance(&self, tx: &mut Transaction<'_>, advances: &[(ObjectId, DateTime)]) -> Result<Vec<Advanced>>;
+	fn advance(
+		&self,
+		tx: &mut Transaction<'_>,
+		advances: &[(ObjectId, DateTime)],
+	) -> Result<Vec<Advanced>, ValueError>;
 }
 
 pub type CompletenessWriterRef = Arc<dyn CompletenessWriter>;

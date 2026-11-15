@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{change::CatalogTrackIdentityChangeOperations, identity::Identity};
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
 	change::{
@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl CatalogTrackIdentityChangeOperations for AdminTransaction {
-	fn track_identity_created(&mut self, identity: Identity) -> Result<()> {
+	fn track_identity_created(&mut self, identity: Identity) -> Result<(), ValueError> {
 		self.interceptors.identity_post_create.execute(IdentityPostCreateContext::new(&identity))?;
 		let change = Change {
 			pre: None,
@@ -26,7 +26,7 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()> {
+	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -36,7 +36,7 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_identity_deleted(&mut self, identity: Identity) -> Result<()> {
+	fn track_identity_deleted(&mut self, identity: Identity) -> Result<(), ValueError> {
 		self.interceptors.identity_pre_delete.execute(IdentityPreDeleteContext::new(&identity))?;
 		let change = Change {
 			pre: Some(identity),

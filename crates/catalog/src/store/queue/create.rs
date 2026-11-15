@@ -18,7 +18,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -51,10 +51,12 @@ pub struct QueueToCreate {
 	pub time: TimeSource,
 }
 
+use reifydb_value::error::ValueError;
+
 use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
-	pub(crate) fn create_queue(txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue> {
+	pub(crate) fn create_queue(txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue, ValueError> {
 		Self::validate_queue(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_queue(txn, namespace_id, &to_create.name)?;
@@ -72,7 +74,7 @@ impl CatalogStore {
 		})
 	}
 
-	fn validate_queue(to_create: &QueueToCreate) -> Result<()> {
+	fn validate_queue(to_create: &QueueToCreate) -> Result<(), ValueError> {
 		reject_invalid_time(CatalogObjectKind::Queue, &to_create.name, &to_create.time)?;
 		reject_invalid_column_list(
 			CatalogObjectKind::Queue,
@@ -127,7 +129,7 @@ impl CatalogStore {
 		queue_id: QueueId,
 		to_create: QueueToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Queue> {
+	) -> Result<Queue, ValueError> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
 		Self::validate_queue(&to_create)?;
 
@@ -145,7 +147,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_existing_queue(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+	fn reject_existing_queue(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<(), ValueError> {
 		let Some(queue) = CatalogStore::find_queue_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -169,7 +175,7 @@ impl CatalogStore {
 		queue_id: QueueId,
 		namespace: NamespaceId,
 		to_create: &QueueToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = queue::allocate();
 		queue::set_id(&mut row, u64::from(queue_id));
 		queue::set_namespace(&mut row, u64::from(namespace));
@@ -195,7 +201,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		queue_id: QueueId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = queue_namespace::allocate();
 		queue_namespace::set_id(&mut row, u64::from(queue_id));
 		queue_namespace::set_name(&mut row, name);
@@ -209,7 +215,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		queue_id: QueueId,
 		to_create: QueueToCreate,
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
 			columns.push(CatalogStore::create_column(
@@ -237,7 +243,7 @@ impl CatalogStore {
 		queue_id: QueueId,
 		to_create: QueueToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, (col, column_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
 			columns.push(CatalogStore::create_column_with_id(

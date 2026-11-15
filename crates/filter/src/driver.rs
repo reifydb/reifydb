@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	adaptive::{AdaptiveKeyFilter, RebuildHandle},
@@ -40,7 +40,7 @@ impl RebuildDriver {
 		self.source.name()
 	}
 
-	pub fn step(&mut self) -> Result<DriverProgress> {
+	pub fn step(&mut self) -> Result<DriverProgress, ValueError> {
 		match self.rebuild.take() {
 			Some(handle) => self.scan(handle),
 			None => Ok(self.evaluate()),
@@ -70,7 +70,7 @@ impl RebuildDriver {
 		DriverProgress::Started
 	}
 
-	fn scan(&mut self, handle: RebuildHandle) -> Result<DriverProgress> {
+	fn scan(&mut self, handle: RebuildHandle) -> Result<DriverProgress, ValueError> {
 		let slice = self.source.next_slice(self.config.scan_budget)?;
 		handle.feed(&slice.hashes);
 		if slice.exhausted {

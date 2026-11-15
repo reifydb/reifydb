@@ -7,7 +7,6 @@ use arrow_array::{Array, ArrayRef, PrimitiveArray};
 use arrow_buffer::i256;
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -35,7 +34,7 @@ pub fn to_number(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if !target.is_number() {
 		let from = data.get_type();
 		return Err(TypeError::UnsupportedCast {
@@ -78,7 +77,7 @@ fn boolean_to_number(
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if !matches!(target, ValueType::Decimal { .. }) {
 		return boolean_to_primitive(data, target, lazy_fragment);
 	}
@@ -94,7 +93,7 @@ fn boolean_to_primitive(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnBuilder, val: bool| {
@@ -205,7 +204,7 @@ fn text_to_integer(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match &data.data {
 		ViewData::Utf8 {
 			container,
@@ -351,7 +350,7 @@ fn text_to_float(
 	column_data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if let ViewData::Utf8 {
 		container,
 		..
@@ -418,7 +417,7 @@ fn text_to_decimal(
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if let ViewData::Utf8 {
 		container,
 		..
@@ -461,7 +460,7 @@ fn number_to_number(
 	target: ValueType,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if !target.is_number() {
 		return Err(TypeError::UnsupportedCast {
 			from: data.get_type(),
@@ -785,7 +784,7 @@ fn push_fitted<T>(
 	value: T,
 	target: &ValueType,
 	fragment: Fragment,
-) -> Result<()>
+) -> Result<(), ValueError>
 where
 	T: GetType + Debug,
 	Fit<T>: SafeConvert<T>,
@@ -805,7 +804,7 @@ fn convert_family<From, To>(
 	lazy_fragment: impl LazyFragment,
 	target: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	From: Clone + SafeConvert<To> + GetType,
 	To: GetType,
@@ -834,7 +833,7 @@ pub(crate) fn convert_vec<From, To>(
 	lazy_fragment: impl LazyFragment,
 	target_kind: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	From: Copy + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -856,7 +855,7 @@ pub(crate) fn convert_vec_clone<From, To>(
 	lazy_fragment: impl LazyFragment,
 	target_kind: ValueType,
 	mut push: impl FnMut(&mut ColumnBuilder, To),
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	From: Clone + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -878,7 +877,7 @@ pub mod tests {
 		use std::mem;
 
 		use reifydb_value::{
-			Result,
+			error::ValueError,
 			fragment::{Fragment, LazyFragment},
 			value::{
 				column_view::ColumnView,
@@ -987,7 +986,11 @@ pub mod tests {
 
 		impl Convert for &TestCtx {
 			/// Simulates a conversion failure for one- and two-byte integer sources only.
-			fn convert<From, To>(&self, val: From, _fragment: impl LazyFragment) -> Result<Option<To>>
+			fn convert<From, To>(
+				&self,
+				val: From,
+				_fragment: impl LazyFragment,
+			) -> Result<Option<To>, ValueError>
 			where
 				From: SafeConvert<To> + GetType,
 				To: GetType,

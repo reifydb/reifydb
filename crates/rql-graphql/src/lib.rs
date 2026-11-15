@@ -20,5 +20,3 @@ pub enum RqlGraphqlError {
 	#[error("Compiler error: {0}")]
 	Compiler(#[from] CompilerError),
 }
-
-pub type Result<T> = std::result::Result<T, RqlGraphqlError>;

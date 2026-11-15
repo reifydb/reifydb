@@ -16,10 +16,10 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::ringbuffer::{
 		decode_ringbuffer_time,
 		shape::{ringbuffer, ringbuffer_namespace},
@@ -30,7 +30,7 @@ impl CatalogStore {
 	pub(crate) fn find_ringbuffer(
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
-	) -> Result<Option<RingBuffer>> {
+	) -> Result<Option<RingBuffer>, ValueError> {
 		let Some(multi) = rx.get(&[RingBufferKey::new(ringbuffer).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -63,7 +63,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<RingBufferMetadata>>> {
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		let keys: Vec<TaggedKey> = partitions
 			.iter()
 			.map(|&partition| RingBufferMetadataKey::of(ringbuffer.id, partition).into())
@@ -81,7 +81,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		storage: StorageId,
 		partition: Partition,
-	) -> Result<Option<PartitionedMetadata>> {
+	) -> Result<Option<PartitionedMetadata>, ValueError> {
 		let key = RingBufferMetadataKey::of(storage, Some(partition)).into();
 		let Some(multi) = rx.get(&[key])?.pop().flatten() else {
 			return Ok(None);
@@ -95,7 +95,7 @@ impl CatalogStore {
 	pub(crate) fn list_ringbuffer_partitions(
 		rx: &mut Transaction<'_>,
 		storage: StorageId,
-	) -> Result<Vec<PartitionedMetadata>> {
+	) -> Result<Vec<PartitionedMetadata>, ValueError> {
 		let range = RingBufferMetadataKey::full_scan_for_storage(storage);
 		let mut results = Vec::new();
 		for entry in rx.range(range, RangeScope::All, 4096)? {
@@ -122,7 +122,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<RingBuffer>> {
+	) -> Result<Option<RingBuffer>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), RangeScope::All, 1024)?;
 

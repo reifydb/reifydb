@@ -38,8 +38,8 @@ use reifydb_core::{
 use reifydb_flow::txn::{Find, Intern, Resolve};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -80,51 +80,62 @@ pub trait HostContext: WindowStore + Resolve {
 
 	fn wall_now(&self) -> DateTime;
 
-	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError>;
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError>;
 
-	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>>;
+	fn join_expiry_clear(
+		&mut self,
+		side: u8,
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<Vec<Option<DateTime>>, ValueError>;
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()>;
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError>;
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
+	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError>;
 
-	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage>;
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError>;
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
-	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError>;
 
 	fn state_range_limited(
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError>;
 
 	fn state_range_limited_visit(
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), ValueError>,
+	) -> Result<(), ValueError> {
 		for (key, row) in self.state_range_limited(range, limit)? {
 			visit(key, row)?;
 		}
 		Ok(())
 	}
 
-	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>;
+	fn reclaim_group_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>, ValueError>;
 
-	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>>;
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError>;
 
-	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_join_row_numbers(
+		&mut self,
+		keys: &[JoinRowMappingKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError>;
 
-	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()>;
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<(), ValueError>;
 
-	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()>;
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<(), ValueError>;
 
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType>;
 
@@ -132,19 +143,26 @@ pub trait HostContext: WindowStore + Resolve {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>>;
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError>;
 
-	fn dictionary_get(&mut self, dictionary: DictionaryId, ids: &[DictionaryEntryId])
-	-> Result<Vec<Option<Value>>>;
+	fn dictionary_get(
+		&mut self,
+		dictionary: DictionaryId,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError>;
 
-	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
+	fn dictionary_intern(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>, ValueError>;
 
 	fn lookup_read(
 		&mut self,
 		storage: StorageId,
 		version: CommitVersion,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError>;
 
 	fn lookup_view_read(&self, view: ViewId, source: SourceVersion) -> LookupAt;
 
@@ -153,7 +171,7 @@ pub trait HostContext: WindowStore + Resolve {
 		storage: StorageId,
 		at: LookupAt,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 		match at {
 			LookupAt::Commit(version) => self.lookup_read(storage, version, partitions),
 			LookupAt::Layered {
@@ -191,7 +209,7 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		}
 	}
 
-	fn arm_reclaim(&mut self, group: GroupId) -> Result<()> {
+	fn arm_reclaim(&mut self, group: GroupId) -> Result<(), ValueError> {
 		let Some(retention) = self.retention else {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
@@ -232,7 +250,7 @@ fn reclaim_due(batch_time: DateTime, retention: Duration) -> DateTime {
 }
 
 impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
-	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {
@@ -243,7 +261,7 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 		)
 	}
 
-	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.txn.disarm_timer(
 			self.operator,
 			&Timer {
@@ -254,11 +272,11 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 		)
 	}
 
-	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 		Ok(self.txn.flow_watermark())
 	}
 
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), ValueError> {
 		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 }
@@ -268,7 +286,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.operator_store().persistent().retires_groups()
 	}
 
-	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 		self.txn.state_get(self.operator, keys)
 	}
 
@@ -276,15 +294,15 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_classify(self.operator, key, pre);
 	}
 
-	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 		self.txn.state_remove(self.operator, keys)
 	}
 
-	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 		self.txn.state_batch(self.operator, keys)
 	}
 
-	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set(self.operator, rows)?;
 		for group in groups {
@@ -293,7 +311,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(())
 	}
 
-	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 		let groups: BTreeSet<GroupId> = (0..batch.len())
 			.filter(|&slot| matches!(batch.op(slot), Some(PendingWrite::Set(_))))
 			.filter_map(|slot| managed_group(batch.key(slot)))
@@ -309,7 +327,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		let batch = self.txn.state_range(
 			self.operator,
 			StateRange {
@@ -326,7 +344,12 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(out)
 	}
 
-	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+	fn group_sweep(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep, ValueError> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit, keyspaces)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
@@ -338,42 +361,53 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		})
 	}
 
-	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
 		Ok(Some((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))))
 	}
 
-	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups)
 	}
 
-	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), ValueError> {
 		self.txn.remove_row_number(self.operator, group, keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), ValueError> {
 		self.txn.remove_row_number_for_group(self.operator, groups)
 	}
 
-	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, ValueError> {
 		self.txn.mint_row_numbers(self.operator, count)
 	}
 
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.txn.get_row_numbers_for_groups(self.operator, groups)
 	}
 
-	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 		self.txn.set_row_numbers_for_groups(self.operator, rows)
 	}
 
@@ -383,7 +417,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		self.txn.reclaim_group_identities(self.operator, groups, limit)
 	}
 }
@@ -406,7 +440,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		storage: StorageId,
 		version: CommitVersion,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 		if let Some(floor) = self.txn.lookup_floor()
 			&& version < floor
 		{
@@ -468,7 +502,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		storage: StorageId,
 		at: LookupAt,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 		let LookupAt::Layered {
 			view,
 			base,
@@ -548,27 +582,31 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.row_shape_cache(self.operator)
 	}
 
-	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
 		self.txn.join_expiry_arm(self.operator, side, rows)
 	}
 
-	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+	fn join_expiry_clear(
+		&mut self,
+		side: u8,
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<Vec<Option<DateTime>>, ValueError> {
 		self.txn.join_expiry_clear(self.operator, side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 		self.txn.join_expiry_free(self.operator, entries)
 	}
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
+	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
 		self.txn.join_expiry_min(self.operator)
 	}
 
-	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage> {
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError> {
 		self.txn.join_due_page(self.operator, at, budget, start)
 	}
 
@@ -576,7 +614,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.catalog().get_config_uint8(key)
 	}
 
-	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.state_range_limited(range, None)
 	}
 
@@ -584,7 +622,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		let mut out = Vec::new();
 		self.state_range_limited_visit(range, limit, &mut |key, row| {
 			out.push((key, row));
@@ -597,8 +635,8 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), ValueError>,
+	) -> Result<(), ValueError> {
 		let site = range_site(&range);
 		let mut query = StateRange::forward(range, site);
 		query.limit = limit;
@@ -609,23 +647,30 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		Ok(())
 	}
 
-	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+	fn reclaim_group_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		self.txn.reclaim_group_identities(self.operator, groups, limit)
 	}
 
-	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.txn.get_join_row_numbers(self.operator, keys)
 	}
 
-	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_join_row_numbers(
+		&mut self,
+		keys: &[JoinRowMappingKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.txn.get_or_create_join_row_numbers(self.operator, keys)
 	}
 
-	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()> {
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<(), ValueError> {
 		self.txn.remove_join_row_numbers(self.operator, keys)
 	}
 
-	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()> {
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<(), ValueError> {
 		self.txn.remove_join_row_numbers_for_left(self.operator, tag, left)
 	}
 
@@ -637,7 +682,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		match self.txn.find_dictionary(dictionary) {
 			Some(dict) => self.txn.find_in_dictionary(&dict, values),
 			None => Ok(vec![None; values.len()]),
@@ -648,24 +693,32 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		&mut self,
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>> {
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		match self.txn.find_dictionary(dictionary) {
 			Some(dict) => self.txn.get_from_dictionary(&dict, ids),
 			None => Ok(vec![None; ids.len()]),
 		}
 	}
 
-	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn dictionary_intern(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		self.txn.intern(dictionary, values)
 	}
 }
 
 impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		Ok(self.txn.find_dictionary(id))
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		#[cfg(test)]
 		{
 			self.dictionary_resolves += 1;
@@ -677,22 +730,30 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 pub(crate) struct HostFind<'a>(pub(crate) &'a mut dyn HostContext);
 
 impl Resolve for HostFind<'_> {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		self.0.dictionary(id)
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.0.resolve(dictionary, ids)
 	}
 }
 
 impl Find for HostFind<'_> {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.0.dictionary_find(dictionary.id, values)
 	}
 }
 
-fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateKey> {
+fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateKey, ValueError> {
 	if let TaggedKey::OperatorState(decoded) = key
 		&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 	{

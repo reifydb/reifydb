@@ -4,8 +4,7 @@
 pub(crate) mod shape_header {
 	use reifydb_codec::row::{pod::EncodedPodRow, shape::RowFamily};
 	use reifydb_core::return_internal_error;
-
-	use crate::Result;
+	use reifydb_value::error::ValueError;
 
 	pub(crate) fn encode(family: RowFamily, field_count: u16) -> EncodedPodRow {
 		let mut body = [0u8; 3];
@@ -14,7 +13,7 @@ pub(crate) mod shape_header {
 		EncodedPodRow::new(&body)
 	}
 
-	pub(crate) fn decode(row: &EncodedPodRow) -> Result<(RowFamily, u16)> {
+	pub(crate) fn decode(row: &EncodedPodRow) -> Result<(RowFamily, u16), ValueError> {
 		let Ok(bytes) = <[u8; 3]>::try_from(row.body()) else {
 			return_internal_error!(
 				"Row-shape header is {} bytes wide, expected 3. This indicates a corrupt shape header.",

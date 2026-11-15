@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 use crate::operator::host::HostContext;
 
@@ -23,7 +23,7 @@ impl JoinExpiryIndex {
 		}
 	}
 
-	pub(crate) fn min(&mut self, host: &mut dyn HostContext) -> Result<Option<DateTime>> {
+	pub(crate) fn min(&mut self, host: &mut dyn HostContext) -> Result<Option<DateTime>, ValueError> {
 		if let Some(earliest) = self.earliest {
 			return Ok(earliest);
 		}

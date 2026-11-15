@@ -18,13 +18,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	store::queue::create::{QueueColumnToCreate as StoreQueueColumnToCreate, QueueToCreate as StoreQueueToCreate},
 };
@@ -82,13 +83,17 @@ impl From<QueueToCreate> for StoreQueueToCreate {
 }
 
 impl Catalog {
-	pub fn get_or_create_queue_shape(&self, txn: &mut Transaction<'_>, queue: &Queue) -> Result<RowShape> {
+	pub fn get_or_create_queue_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		queue: &Queue,
+	) -> Result<RowShape, ValueError> {
 		let fields = self.column_shape_fields(txn, &queue.columns)?;
 		self.get_or_create_row_shape(txn, RowFamily::Queue, fields)
 	}
 
 	#[instrument(name = "catalog::queue::find", level = "trace", skip(self, txn))]
-	pub fn find_queue(&self, txn: &mut Transaction<'_>, id: QueueId) -> Result<Option<Queue>> {
+	pub fn find_queue(&self, txn: &mut Transaction<'_>, id: QueueId) -> Result<Option<Queue>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(queue) = self.cache.find_queue_at(id, cmd.version()) {
@@ -151,7 +156,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Queue>> {
+	) -> Result<Option<Queue>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(queue) = self.cache.find_queue_by_name_at(namespace, name, cmd.version()) {
@@ -235,7 +240,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::queue::get", level = "trace", skip(self, txn))]
-	pub fn get_queue(&self, txn: &mut Transaction<'_>, id: QueueId) -> Result<Queue> {
+	pub fn get_queue(&self, txn: &mut Transaction<'_>, id: QueueId) -> Result<Queue, ValueError> {
 		self.find_queue(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Queue with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -245,7 +250,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::queue::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_queue(&self, txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue> {
+	pub fn create_queue(&self, txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue, ValueError> {
 		let queue = CatalogStore::create_queue(txn, to_create.into())?;
 		txn.track_queue_created(queue.clone())?;
 
@@ -260,7 +265,7 @@ impl Catalog {
 		queue_id: QueueId,
 		to_create: QueueToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Queue> {
+	) -> Result<Queue, ValueError> {
 		let queue = CatalogStore::create_queue_with_id(txn, queue_id, to_create.into(), column_ids)?;
 		txn.track_queue_created(queue.clone())?;
 
@@ -270,14 +275,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::queue::drop", level = "info", skip(self, txn))]
-	pub fn drop_queue(&self, txn: &mut AdminTransaction, queue: Queue) -> Result<()> {
+	pub fn drop_queue(&self, txn: &mut AdminTransaction, queue: Queue) -> Result<(), ValueError> {
 		CatalogStore::drop_queue(txn, queue.id)?;
 		txn.track_queue_deleted(queue)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::queue::list", level = "trace", skip(self, txn))]
-	pub fn list_queues(&self, txn: &mut Transaction<'_>) -> Result<Vec<Queue>> {
+	pub fn list_queues(&self, txn: &mut Transaction<'_>) -> Result<Vec<Queue>, ValueError> {
 		CatalogStore::list_queues(txn)
 	}
 
@@ -286,7 +291,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
-	) -> Result<Vec<Queue>> {
+	) -> Result<Vec<Queue>, ValueError> {
 		CatalogStore::list_queues_in_namespace(txn, namespace)
 	}
 }

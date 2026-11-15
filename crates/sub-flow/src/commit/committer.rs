@@ -35,7 +35,7 @@ use reifydb_transaction::{
 };
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use reifydb_value::{Result, byte_size::ByteSize, util::hex::display as hex_display};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, util::hex::display as hex_display};
 use tracing::instrument;
 
 use crate::{
@@ -48,8 +48,8 @@ pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
 const COMMITTER_BATCH_SIZE: usize = 1024;
 
-pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
-pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<()>) + Send>;
+pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<CommitVersion, ValueError>) + Send>;
+pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<(), ValueError>) + Send>;
 
 pub enum CommitterMessage {
 	Slice {
@@ -406,7 +406,7 @@ impl Committer {
 		transaction: &mut CommandTransaction,
 		slice: &FlowSlice,
 		operator: OperatorSlice,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.operators.check_checkpoints(&operator.checkpoints)?;
 		push_if_not_empty(transaction, operator)?;
 		if slice.layers.len() < 2 {
@@ -531,7 +531,7 @@ impl Committer {
 		pending: &Pending,
 		source: SourceVersion,
 		operator: OperatorSlice,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		transaction.stamp_source(source)?;
 		push_if_not_empty(transaction, operator)?;
 		apply_pending_writes(transaction, pending)?;
@@ -542,7 +542,7 @@ impl Committer {
 
 type SizedSlice = (usize, SliceCommitReply, OperatorSlice, Vec<Option<ByteSize>>);
 
-fn push_if_not_empty(transaction: &mut CommandTransaction, operator: OperatorSlice) -> Result<()> {
+fn push_if_not_empty(transaction: &mut CommandTransaction, operator: OperatorSlice) -> Result<(), ValueError> {
 	if operator.is_empty() {
 		return Ok(());
 	}
@@ -555,7 +555,7 @@ fn release_slices(slices: Arc<Vec<FlowSlice>>) {
 }
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
-fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
+fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<(), ValueError> {
 	let mut writes: Vec<(TaggedKey, &PendingWrite)> = Vec::with_capacity(combined.len());
 	let dropped = dropped_queues(transaction, combined)?;
 	for (encoded, pw) in combined.rows_ordered() {
@@ -637,7 +637,7 @@ struct WriteRun {
 }
 
 impl WriteRun {
-	fn flush(&mut self, transaction: &mut CommandTransaction) -> Result<()> {
+	fn flush(&mut self, transaction: &mut CommandTransaction) -> Result<(), ValueError> {
 		if !self.sets.is_empty() {
 			transaction.set(take(&mut self.sets))?;
 		}
@@ -654,7 +654,7 @@ impl WriteRun {
 	}
 }
 
-fn dropped_queues(transaction: &mut CommandTransaction, combined: &Pending) -> Result<BTreeSet<QueueId>> {
+fn dropped_queues(transaction: &mut CommandTransaction, combined: &Pending) -> Result<BTreeSet<QueueId>, ValueError> {
 	let queues: BTreeSet<QueueId> = combined.queue_items().iter().map(|item| item.queue).collect();
 	if queues.is_empty() {
 		return Ok(BTreeSet::new());
@@ -739,7 +739,7 @@ mod commit_integration {
 	use reifydb_store_operator::{
 		actor::resident_flush::flush_now,
 		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
-		error::{Result as OperatorResult, StoreOperatorError},
+		error::StoreOperatorError,
 		persistent::{PersistentTier, testing::PersistentHooks},
 		resident::{Resident, ResidentLimits},
 		types::OperatorWrite,
@@ -771,7 +771,7 @@ mod commit_integration {
 	}
 
 	struct SliceReplies {
-		results: Mutex<Vec<(usize, Result<CommitVersion>)>>,
+		results: Mutex<Vec<(usize, Result<CommitVersion, ValueError>)>>,
 		remaining: AtomicUsize,
 		done: WaiterHandle,
 	}
@@ -1597,7 +1597,7 @@ mod commit_integration {
 	struct FailingSizing(OperatorId);
 
 	impl PersistentHooks for FailingSizing {
-		fn on_measure(&self, operator: OperatorId) -> OperatorResult<()> {
+		fn on_measure(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 			if operator != self.0 {
 				return Ok(());
 			}
@@ -1753,7 +1753,11 @@ mod commit_integration {
 		)
 	}
 
-	fn commit_direct(committer: &Committer, engine: &StandardEngine, slice: FlowSlice) -> Result<CommitVersion> {
+	fn commit_direct(
+		committer: &Committer,
+		engine: &StandardEngine,
+		slice: FlowSlice,
+	) -> Result<CommitVersion, ValueError> {
 		let replies = SliceReplies::new(1);
 		committer.commit_slices(
 			"commit-test",
@@ -1871,20 +1875,20 @@ mod commit_integration {
 	}
 
 	impl WalFloorCheckpoint for RecordingFloor {
-		fn make_durable(&self, _through: Lsn) -> Result<()> {
+		fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn saved_through(&self, through: Lsn) -> Result<()> {
+		fn saved_through(&self, through: Lsn) -> Result<(), ValueError> {
 			self.saved.lock().push(through);
 			Ok(())
 		}
 
-		fn durable_head(&self) -> Result<Option<Lsn>> {
+		fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 			Ok(None)
 		}
 
-		fn appended_head(&self) -> Result<Option<Lsn>> {
+		fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 			Ok(None)
 		}
 	}
@@ -1917,19 +1921,19 @@ mod commit_integration {
 	}
 
 	impl WalFloorCheckpoint for HeadAtGuard {
-		fn make_durable(&self, _through: Lsn) -> Result<()> {
+		fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn saved_through(&self, _through: Lsn) -> Result<()> {
+		fn saved_through(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn durable_head(&self) -> Result<Option<Lsn>> {
+		fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 			Ok(None)
 		}
 
-		fn appended_head(&self) -> Result<Option<Lsn>> {
+		fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 			// Called exactly when a commit takes its operator guard, so it records what the log held then.
 			let head = self.wal.cursors().expect("the commit log cursors read").appended;
 			self.heads.lock().push(head);

@@ -37,7 +37,7 @@ use reifydb_runtime::{
 	},
 };
 use reifydb_transaction::error::TransactionError;
-use reifydb_value::{Result, byte_size::ByteSize, error::ValueError, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, value::duration::Duration};
 use reifydb_wal::lsn::Lsn;
 
 use crate::consumer::SubscriptionCommitLogConsumer;
@@ -48,13 +48,13 @@ pub enum SubscriptionReaderMessage {
 	Wake,
 	Tick,
 	Loaded {
-		outcome: Result<Loaded>,
+		outcome: Result<Loaded, ValueError>,
 	},
 	Dispatched {
-		result: Result<()>,
+		result: Result<(), ValueError>,
 	},
 	Terminated {
-		result: Result<()>,
+		result: Result<(), ValueError>,
 	},
 	Shutdown,
 }
@@ -217,7 +217,7 @@ impl SubscriptionReader {
 		&self,
 		state: &mut SubscriptionReaderState,
 		ctx: &Context<SubscriptionReaderMessage>,
-		outcome: Result<Loaded>,
+		outcome: Result<Loaded, ValueError>,
 	) {
 		if !matches!(state.phase, Phase::Loading) {
 			return;
@@ -259,8 +259,8 @@ impl SubscriptionReader {
 		&self,
 		state: &mut SubscriptionReaderState,
 		ctx: &Context<SubscriptionReaderMessage>,
-		message: fn(Result<T>) -> SubscriptionReaderMessage,
-	) -> Box<dyn FnOnce(Result<T>) + Send> {
+		message: fn(Result<T, ValueError>) -> SubscriptionReaderMessage,
+	) -> Box<dyn FnOnce(Result<T, ValueError>) + Send> {
 		state.waiting_since = None;
 		state.replied = Arc::new(AtomicBool::new(false));
 		let replied = state.replied.clone();
@@ -282,7 +282,7 @@ impl SubscriptionReader {
 		&self,
 		state: &mut SubscriptionReaderState,
 		ctx: &Context<SubscriptionReaderMessage>,
-		result: Result<()>,
+		result: Result<(), ValueError>,
 	) {
 		let Phase::Dispatching {
 			to,
@@ -310,7 +310,7 @@ impl SubscriptionReader {
 		&self,
 		state: &mut SubscriptionReaderState,
 		ctx: &Context<SubscriptionReaderMessage>,
-		result: Result<()>,
+		result: Result<(), ValueError>,
 	) {
 		let Phase::Terminating {
 			resume,

@@ -10,10 +10,9 @@ use reifydb_rql_frontend::{
 	diagnostic::AstError,
 	token::token::Token,
 };
-use reifydb_value::{fragment::Fragment, value::duration::Duration};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::duration::Duration};
 
 use crate::{
-	Result,
 	duration::DurationBound,
 	error::RqlError,
 	plan::logical::{
@@ -35,7 +34,7 @@ enum Immutable {
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith> {
+	pub(crate) fn compile_apply_with(with: Option<&AstOperatorWith<'bump>>) -> Result<ApplyWith, ValueError> {
 		let mut lateness: Option<Declared<WithSpan>> = None;
 		let mut retention: Option<Declared<Duration>> = None;
 		let mut immutable: Option<Immutable> = None;
@@ -279,7 +278,7 @@ fn window_reads(kind: AstWindowKind, key: &str) -> bool {
 	}
 }
 
-fn declared_span(token: &Token<'_>, key: &str) -> Result<Declared<WithSpan>> {
+fn declared_span(token: &Token<'_>, key: &str) -> Result<Declared<WithSpan>, ValueError> {
 	if is_duration(token) {
 		let declared = declared_duration(token, key, DurationBound::AllowZero)?;
 		return Ok(Declared {
@@ -301,7 +300,7 @@ fn declared_span(token: &Token<'_>, key: &str) -> Result<Declared<WithSpan>> {
 	.into())
 }
 
-fn declared_immutable(entry: &AstOperatorWithEntry<'_>) -> Result<Option<Immutable>> {
+fn declared_immutable(entry: &AstOperatorWithEntry<'_>) -> Result<Option<Immutable>, ValueError> {
 	let token = literal(entry)?;
 	Ok(match literal_boolean(token) {
 		Some(true) => Some(Immutable::Zero(Declared {
@@ -316,7 +315,7 @@ fn declared_immutable(entry: &AstOperatorWithEntry<'_>) -> Result<Option<Immutab
 fn reject_retention_below_lateness(
 	retention: Option<&Declared<Duration>>,
 	lateness: Option<&Declared<WithSpan>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let (Some(retention), Some(lateness)) = (retention, lateness) else {
 		return Ok(());
 	};
@@ -335,7 +334,7 @@ fn reject_retention_below_lateness(
 fn reject_immutable_not_smaller_than_lateness_in_its_unit(
 	immutable: Option<&Declared<WithSpan>>,
 	lateness: Option<&Declared<WithSpan>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let (Some(immutable), Some(lateness)) = (immutable, lateness) else {
 		return Ok(());
 	};
@@ -377,11 +376,11 @@ mod tests {
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
 	};
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{error::ValueError, value::duration::Duration};
 
-	use crate::{Result, plan::logical::Compiler};
+	use crate::plan::logical::Compiler;
 
-	fn apply_with(source: &str) -> Result<ApplyWith> {
+	fn apply_with(source: &str) -> Result<ApplyWith, ValueError> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
 		let Some(Ast::Apply(apply)) = statements[0].nodes.first() else {

@@ -5,11 +5,12 @@ use arrow_array::ArrayRef;
 use arrow_row::{RowConverter, SortField};
 use arrow_schema::FieldRef;
 use reifydb_core::{internal_error, value::column::view::group_by::cast_key};
-use reifydb_value::value::{column_view::ColumnView, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{column_view::ColumnView, value_type::ValueType},
+};
 
-use crate::Result;
-
-pub(crate) fn key_types(key_columns: &[(&FieldRef, &ArrayRef)]) -> Result<Vec<ValueType>> {
+pub(crate) fn key_types(key_columns: &[(&FieldRef, &ArrayRef)]) -> Result<Vec<ValueType>, ValueError> {
 	key_columns
 		.iter()
 		.map(|(field, array)| Ok(ColumnView::try_from((*array, field.as_ref()))?.get_type()))
@@ -30,7 +31,7 @@ pub(crate) fn key_arrays(key_columns: &[(&FieldRef, &ArrayRef)], targets: &[Valu
 pub(crate) fn key_rows(
 	key_columns: &[(&FieldRef, &ArrayRef)],
 	targets: &[ValueType],
-) -> Result<(RowConverter, Vec<ArrayRef>)> {
+) -> Result<(RowConverter, Vec<ArrayRef>), ValueError> {
 	let arrays = key_arrays(key_columns, targets);
 	let fields = arrays.iter().map(|array| SortField::new(array.data_type().clone())).collect();
 	let converter = RowConverter::new(fields).map_err(|e| internal_error!("Failed to build row keys: {}", e))?;

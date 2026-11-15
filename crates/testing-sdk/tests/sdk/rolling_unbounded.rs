@@ -14,7 +14,7 @@ use reifydb_flow_async::window::{
 	span::WindowSpan,
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -45,24 +45,26 @@ row!(Latest {
 	price: f64
 });
 
-fn coords(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+fn coords(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 	rows.iter()
 		.map(|&i| {
 			cols.row(i)
 				.as_ref()
-				.map(|row| -> Result<Option<DateTimeCoord>> { Ok(row.row_time().map(DateTimeCoord)) })
+				.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
+					Ok(row.row_time().map(DateTimeCoord))
+				})
 				.transpose()
 				.map(Option::flatten)
 		})
 		.collect()
 }
 
-fn extracts(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<(String, (u64, f64))>>> {
+fn extracts(cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 	rows.iter()
 		.map(|&i| {
 			cols.row(i)
 				.as_ref()
-				.map(|row| -> Result<Option<(String, (u64, f64))>> {
+				.map(|row| -> Result<Option<(String, (u64, f64))>, SdkError> {
 					let (Some(group), Some(key), Some(price)) =
 						(row.utf8("group")?, row.u64("key")?, row.f64("price")?)
 					else {
@@ -93,11 +95,11 @@ impl WindowedOperator for RetainedPlain {
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = Latest;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		coords(cols, rows)
 	}
 
@@ -106,7 +108,7 @@ impl WindowedOperator for RetainedPlain {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+	) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 		extracts(cols, rows)
 	}
 
@@ -149,11 +151,11 @@ impl WindowedOperator for RetainedTopK {
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = BTreeMap<u64, Latest>;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		coords(cols, rows)
 	}
 
@@ -162,7 +164,7 @@ impl WindowedOperator for RetainedTopK {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+	) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 		extracts(cols, rows)
 	}
 

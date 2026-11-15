@@ -3,11 +3,12 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
+use reifydb_value::error::ValueError;
 
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	pub(crate) fn pop_as_column(&mut self) -> Result<(FieldRef, ArrayRef)> {
+	pub(crate) fn pop_as_column(&mut self) -> Result<(FieldRef, ArrayRef), ValueError> {
 		self.stack.pop()?.into_column()
 	}
 }

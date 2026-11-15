@@ -12,19 +12,16 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::RollbackMigrationNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::Value};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::Value};
 
-use crate::{
-	Result,
-	vm::{services::Services, vm::Vm},
-};
+use crate::vm::{services::Services, vm::Vm};
 
 pub(crate) fn execute_rollback_migration(
 	vm: &mut Vm,
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RollbackMigrationNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		Transaction::Test(t) => &mut *t.inner,

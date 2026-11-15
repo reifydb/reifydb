@@ -22,6 +22,7 @@ use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::variant::resolve_enum_equality;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions, return_error,
 	value::{column_view::ColumnView, system_columns::user_columns, value_type::field::is_sumtype_tag},
@@ -29,13 +30,10 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{NoopNode, user_header_names, user_pairs, with_system_headers, with_user_columns};
-use crate::{
-	Result,
-	vm::volcano::{
-		inline::enum_operand,
-		query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
-		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
-	},
+use crate::vm::volcano::{
+	inline::enum_operand,
+	query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
+	udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 };
 
 pub(crate) struct ExtendNode {
@@ -66,19 +64,19 @@ impl ExtendNode {
 		session: &EvalContext<'e>,
 		new_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> Result<EvalContext<'e>> {
+	) -> Result<EvalContext<'e>, ValueError> {
 		Ok(session.with_eval(batch(new_columns.to_vec())?, row_count))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval")]
-	fn eval_projection(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	fn eval_projection(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		lowered.evaluate(exec_ctx)
 	}
 }
 
 impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.written = self.expressions.iter().map(display_label).collect();
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
@@ -103,7 +101,11 @@ impl QueryNode for ExtendNode {
 	}
 
 	#[instrument(name = "volcano::extend::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 		}
@@ -158,7 +160,7 @@ impl QueryNode for ExtendNode {
 }
 
 impl Transform for ExtendNode {
-	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("ExtendNode::apply() called before initialize()");
 
@@ -225,7 +227,7 @@ impl ExtendWithoutInputNode {
 
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "volcano::extend::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.written = self.expressions.iter().map(display_label).collect();
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
@@ -238,7 +240,11 @@ impl QueryNode for ExtendWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::extend::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		}
@@ -284,7 +290,11 @@ fn names(field: &Field) -> Vec<Fragment> {
 	names
 }
 
-fn reject_duplicate_columns(existing: &[Fragment], new_names: &[Fragment], written: &[Fragment]) -> Result<()> {
+fn reject_duplicate_columns(
+	existing: &[Fragment],
+	new_names: &[Fragment],
+	written: &[Fragment],
+) -> Result<(), ValueError> {
 	for (index, name) in new_names.iter().enumerate() {
 		if existing.iter().chain(&new_names[..index]).any(|other| other.text() == name.text()) {
 			return_error!(extend_duplicate_column(written[index].clone(), name.text()));

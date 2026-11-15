@@ -38,7 +38,7 @@ use reifydb_flow_async::{
 		span::WindowSpan,
 	},
 };
-use reifydb_value::{Result, config::ExtensionParams};
+use reifydb_value::{config::ExtensionParams, error::ValueError};
 
 use crate::flow::operator::{
 	timer::Timer,
@@ -46,7 +46,7 @@ use crate::flow::operator::{
 	windowed::operator::{Emit, KindSet, counted_merge, unmerge_counted},
 };
 
-pub(crate) fn operator_watermark<C: SealDomain>(store: &mut impl WindowStore) -> Result<C> {
+pub(crate) fn operator_watermark<C: SealDomain>(store: &mut impl WindowStore) -> Result<C, ValueError> {
 	C::frontier(store)
 }
 
@@ -54,7 +54,7 @@ pub(crate) fn observe_batch<C: SealDomain>(
 	store: &mut impl WindowStore,
 	newest: C,
 	seal_span: C::SealSpan,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	C::observe(store, newest, seal_span)
 }
 
@@ -62,7 +62,10 @@ pub(crate) fn all_rows(cols: &impl ColumnsView) -> Vec<usize> {
 	(0..cols.row_count()).collect()
 }
 
-pub(crate) fn timer_frontier<C: SealDomain>(store: &mut impl WindowStore, timer: Timer<'_>) -> Result<Option<C>> {
+pub(crate) fn timer_frontier<C: SealDomain>(
+	store: &mut impl WindowStore,
+	timer: Timer<'_>,
+) -> Result<Option<C>, ValueError> {
 	if !C::arms_timer() {
 		return Ok(None);
 	}

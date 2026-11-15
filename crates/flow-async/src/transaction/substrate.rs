@@ -18,7 +18,7 @@ use reifydb_store_operator::store::OperatorStore;
 #[cfg(test)]
 use reifydb_store_operator::types::classify_slice;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::{byte_size::ByteSize, error::ValueError};
 #[cfg(test)]
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
@@ -70,7 +70,7 @@ pub fn operator_section(
 	pending: &Pending,
 	checkpoints: &[(FlowId, FlowCheckpoint)],
 	deletes: &[FlowId],
-) -> Result<(OperatorSlice, Vec<Option<ByteSize>>)> {
+) -> Result<(OperatorSlice, Vec<Option<ByteSize>>), ValueError> {
 	let mut writes = Vec::new();
 	let mut sizes = Vec::new();
 	let mut unsized_at = Vec::new();

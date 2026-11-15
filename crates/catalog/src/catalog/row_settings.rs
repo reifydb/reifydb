@@ -4,12 +4,17 @@
 use reifydb_core::{interface::catalog::storage::StorageId, row::RowSettings};
 use reifydb_store_multi::flush::ObjectPersistence;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 use tracing::warn;
 
-use crate::{CatalogStore, Result, catalog::Catalog};
+use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
-	pub fn find_row_settings(&self, txn: &mut Transaction<'_>, storage: StorageId) -> Result<Option<RowSettings>> {
+	pub fn find_row_settings(
+		&self,
+		txn: &mut Transaction<'_>,
+		storage: StorageId,
+	) -> Result<Option<RowSettings>, ValueError> {
 		if let Some(settings) = self.cache.find_row_settings_at(storage, txn.version()) {
 			return Ok(Some(settings));
 		}

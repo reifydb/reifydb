@@ -3,7 +3,6 @@
 
 use arrow_buffer::i256;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	value::{
 		Value,
@@ -224,7 +223,12 @@ impl KeySerializer {
 		self.extend_bytes(blob.as_ref() as &[u8])
 	}
 
-	pub fn extend_decimal(&mut self, value: &Decimal, precision: Precision, scale: Scale) -> Result<&mut Self> {
+	pub fn extend_decimal(
+		&mut self,
+		value: &Decimal,
+		precision: Precision,
+		scale: Scale,
+	) -> Result<&mut Self, ValueError> {
 		let unscaled = decimal_unscaled(value, precision, scale).ok_or_else(|| {
 			key_error(format!(
 				"decimal {value} does not fit precision {} and scale {}",
@@ -254,7 +258,7 @@ impl KeySerializer {
 		self
 	}
 
-	pub fn try_extend_value(&mut self, value: &Value) -> Result<&mut Self> {
+	pub fn try_extend_value(&mut self, value: &Value) -> Result<&mut Self, ValueError> {
 		match value {
 			Value::None {
 				inner,

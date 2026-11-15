@@ -19,7 +19,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::info;
 
 use crate::{
@@ -79,7 +79,7 @@ impl HasVersion for MetricsSubsystem {
 }
 
 impl Shutdown for MetricsSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if !self.running.swap(false, Ordering::SeqCst) {
 			return Ok(());
 		}

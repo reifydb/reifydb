@@ -23,10 +23,10 @@ use reifydb_sdk::flow::operator::{
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
-use reifydb_value::{Result, config::ExtensionParams};
+use reifydb_value::{config::ExtensionParams, error::ValueError};
 
 pub(crate) type OperatorFactory =
-	Arc<dyn Fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator> + Send + Sync>;
+	Arc<dyn Fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator, ValueError> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {

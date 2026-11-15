@@ -6,10 +6,10 @@ use reifydb_core::{
 	interface::catalog::procedure::{ProcedureParam, RqlTrigger},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
 use crate::{
-	Result, convert_procedure_param_type, nodes,
+	convert_procedure_param_type, nodes,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -21,7 +21,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		if create.on_event.is_some() {
 			return self.compile_create_handler(rx, create);
 		}

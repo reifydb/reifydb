@@ -62,7 +62,7 @@ impl BlockEncodingsConfigurator {
 #[cfg(test)]
 mod tests {
 	use arrow_schema::FieldRef;
-	use reifydb_value::{Result, value::Value};
+	use reifydb_value::{error::ValueError, value::Value};
 
 	use super::BlockEncodings;
 	use crate::block_encoding::{BlockEncoding, BoundBlockEncoding};
@@ -74,7 +74,11 @@ mod tests {
 			self.0
 		}
 
-		fn bind(&self, _user: &[FieldRef], _config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+		fn bind(
+			&self,
+			_user: &[FieldRef],
+			_config: &[(String, Value)],
+		) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 			unreachable!("registry tests never bind")
 		}
 	}

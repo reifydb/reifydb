@@ -6,8 +6,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_value::Result;
-
 pub mod ast;
 pub mod bump;
 pub mod diagnostic;

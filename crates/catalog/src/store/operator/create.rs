@@ -12,12 +12,16 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{error::ValueError, value::blob::Blob};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::operator::shape::{operator, operator_by_flow},
 };
 
 impl CatalogStore {
-	pub(crate) fn create_operator(txn: &mut AdminTransaction, flow: FlowId, node: &FlowNode) -> Result<()> {
+	pub(crate) fn create_operator(
+		txn: &mut AdminTransaction,
+		flow: FlowId,
+		node: &FlowNode,
+	) -> Result<(), ValueError> {
 		let data = to_stdvec(&node.ty)
 			.map_err(|e| ValueError(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 

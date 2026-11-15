@@ -3,14 +3,12 @@
 
 use reifydb_core::sort::{SortDirection, SortKey};
 use reifydb_rql_frontend::ast::ast::AstSort;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, LogicalPlan, OrderNode},
-};
+use crate::plan::logical::{Compiler, LogicalPlan, OrderNode};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_sort(&self, ast: AstSort<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_sort(&self, ast: AstSort<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()

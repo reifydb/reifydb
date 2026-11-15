@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef::SourceSeries, interface::catalog::flow::OperatorId};
 use reifydb_rql::nodes::SeriesScanNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -21,7 +21,7 @@ impl From<SeriesScanNode> for SeriesScanCompiler {
 }
 
 impl CompileOperator for SeriesScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let series = self.series_scan.source.def();
 		let time_domain = series.time.domain();
 		let series_id = series.id;

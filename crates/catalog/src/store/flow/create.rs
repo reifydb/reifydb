@@ -9,10 +9,10 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::flow::shape::{flow, flow_namespace},
 };
@@ -28,7 +28,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> Result<Flow> {
+	) -> Result<Flow, ValueError> {
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_flow(txn, namespace_id, &to_create.name)?;
 		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
@@ -41,7 +41,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_existing_flow(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+	fn reject_existing_flow(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<(), ValueError> {
 		if CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
 			.is_none()
 		{
@@ -63,7 +67,7 @@ impl CatalogStore {
 		flow_id: FlowId,
 		namespace_id: NamespaceId,
 		to_create: &FlowToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		Self::store_flow(txn, flow_id, namespace_id, to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())
 	}
@@ -73,7 +77,7 @@ impl CatalogStore {
 		flow: FlowId,
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = flow::allocate();
 		flow::set_id(&mut row, u64::from(flow));
 		flow::set_namespace(&mut row, u64::from(namespace));
@@ -91,7 +95,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		flow: FlowId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = flow_namespace::allocate();
 		flow_namespace::set_id(&mut row, u64::from(flow));
 		flow_namespace::set_name(&mut row, name);

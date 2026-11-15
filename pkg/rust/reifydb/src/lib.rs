@@ -168,7 +168,6 @@ pub use reifydb_transaction::{
 };
 pub use reifydb_value as value;
 pub use reifydb_value::{
-	Result,
 	error::ValueError,
 	params::Params,
 	value::{

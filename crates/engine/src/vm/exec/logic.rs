@@ -12,15 +12,16 @@ use reifydb_core::{
 };
 use reifydb_evaluate::{lower::LoweredExpr, stack::Variable};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{column_view::ColumnView, value_type::ValueType},
 };
 
 use super::comparison::operand;
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_between(&mut self) -> Result<()> {
+	pub(crate) fn exec_between(&mut self) -> Result<(), ValueError> {
 		let upper = self.pop_as_column()?;
 		let lower = self.pop_as_column()?;
 		let value = self.pop_as_column()?;
@@ -38,7 +39,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_in_list(&mut self, count: u16, negated: bool) -> Result<()> {
+	pub(crate) fn exec_in_list(&mut self, count: u16, negated: bool) -> Result<(), ValueError> {
 		let mut items = Vec::with_capacity(count as usize);
 		for _ in 0..count {
 			items.push(self.pop_as_column()?);
@@ -63,7 +64,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_cast(&mut self, target: &ValueType) -> Result<()> {
+	pub(crate) fn exec_cast(&mut self, target: &ValueType) -> Result<(), ValueError> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_cast");
 		let ctx = self.eval_ctx();

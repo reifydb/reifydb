@@ -24,7 +24,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -152,16 +152,20 @@ macro_rules! volume_operator {
 			type Accumulator = TraderVolumes;
 			type Output = $output;
 
-			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 				Ok(Self)
 			}
 
-			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+			fn coord(
+				&self,
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<DateTimeCoord>> {
+							.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 								Ok(row.row_time().map(DateTimeCoord))
 							})
 							.transpose()
@@ -175,12 +179,12 @@ macro_rules! volume_operator {
 				_: &mut impl GuestContext<Windowed>,
 				cols: &impl ColumnsView,
 				rows: &[usize],
-			) -> Result<Vec<Option<(String, (u64, f64))>>> {
+			) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<(String, (u64, f64))>> {
+							.map(|row| -> Result<Option<(String, (u64, f64))>, SdkError> {
 								let (Some(group), Some(trader), Some(volume)) = (
 									row.utf8("group")?,
 									row.u64("trader")?,

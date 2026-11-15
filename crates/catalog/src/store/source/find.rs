@@ -10,16 +10,17 @@ use reifydb_core::{
 	key::{catalog::SourceKey, namespace::NamespaceSourceKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::CatalogError,
 	store::source::shape::{source, source_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_source(rx: &mut Transaction<'_>, id: SourceId) -> Result<Option<Source>> {
+	pub(crate) fn find_source(rx: &mut Transaction<'_>, id: SourceId) -> Result<Option<Source>, ValueError> {
 		let Some(multi) = rx.get(&[SourceKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -53,7 +54,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Source>> {
+	) -> Result<Option<Source>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), RangeScope::All, 1024)?;
 

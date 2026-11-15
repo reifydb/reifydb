@@ -9,7 +9,7 @@ use reifydb_runtime::io::fs::{
 	Create, File, Filesystem, Fs, FsError, Mkdir, Open, OpenMut, ReadDir, SyncData, SyncDir, Truncate, Unlink,
 	memory::MemoryFs,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use vortex_session::VortexSession;
 
 #[cfg(feature = "testing")]
@@ -30,7 +30,7 @@ pub struct FsColumnStore<F: Filesystem> {
 }
 
 impl<F: Filesystem + Mkdir + SyncDir> FsColumnStore<F> {
-	pub fn new(fs: F, root: PathBuf) -> Result<Self> {
+	pub fn new(fs: F, root: PathBuf) -> Result<Self, ValueError> {
 		match fs.mkdir(&root) {
 			Ok(()) => {
 				if let Some(parent) = root.parent() {
@@ -68,7 +68,7 @@ impl<F> WriteBlock for FsColumnStore<F>
 where
 	F: Filesystem + Create + Mkdir + OpenMut + SyncDir + Send + Sync + 'static,
 {
-	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
+	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<(), ValueError> {
 		let bytes = serialize_block(data, &self.session)?;
 		let dir = self.dir(key);
 		match self.fs.mkdir(&dir) {
@@ -99,7 +99,7 @@ where
 impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for FsColumnStore<F> {
 	type File = F::File;
 
-	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>> {
+	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>, ValueError> {
 		let file = match self.fs.open(&self.path(key)) {
 			Ok(file) => file,
 			Err(FsError::NotFound(_)) => return Ok(None),
@@ -110,13 +110,13 @@ impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for FsColumnStore<F
 }
 
 impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for FsColumnStore<F> {
-	fn remove(&self, key: &BlockFileKey) -> Result<()> {
+	fn remove(&self, key: &BlockFileKey) -> Result<(), ValueError> {
 		self.fs.unlink(&self.path(key)).map_err(fs("remove"))
 	}
 }
 
 impl<F: Filesystem + ReadDir + Send + Sync + 'static> ListBlocks for FsColumnStore<F> {
-	fn list(&self) -> Result<Vec<BlockFileKey>> {
+	fn list(&self) -> Result<Vec<BlockFileKey>, ValueError> {
 		let mut keys = Vec::new();
 		for dir_path in self.fs.read_dir(&self.root).map_err(fs("list"))? {
 			let Some(dir) = number(dir_path.file_name()) else {
@@ -150,15 +150,15 @@ pub enum ColumnStore {
 
 impl ColumnStore {
 	#[cfg(reifydb_target = "host")]
-	pub fn host(dir: PathBuf) -> Result<Self> {
+	pub fn host(dir: PathBuf) -> Result<Self, ValueError> {
 		Ok(Self::Store(FsColumnStore::new(Fs::Host(HostFs::new()), dir)?))
 	}
 
-	pub fn memory() -> Result<Self> {
+	pub fn memory() -> Result<Self, ValueError> {
 		Ok(Self::Store(FsColumnStore::new(Fs::Memory(MemoryFs::new()), PathBuf::from("/column"))?))
 	}
 
-	pub fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
+	pub fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<(), ValueError> {
 		match self {
 			Self::Store(store) => store.write(key, data),
 			#[cfg(feature = "testing")]
@@ -166,7 +166,7 @@ impl ColumnStore {
 		}
 	}
 
-	pub fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<File>>> {
+	pub fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<File>>, ValueError> {
 		match self {
 			Self::Store(store) => store.open(key),
 			#[cfg(feature = "testing")]
@@ -174,7 +174,7 @@ impl ColumnStore {
 		}
 	}
 
-	pub fn remove(&self, key: &BlockFileKey) -> Result<()> {
+	pub fn remove(&self, key: &BlockFileKey) -> Result<(), ValueError> {
 		match self {
 			Self::Store(store) => store.remove(key),
 			#[cfg(feature = "testing")]
@@ -182,7 +182,7 @@ impl ColumnStore {
 		}
 	}
 
-	pub fn list(&self) -> Result<Vec<BlockFileKey>> {
+	pub fn list(&self) -> Result<Vec<BlockFileKey>, ValueError> {
 		match self {
 			Self::Store(store) => store.list(),
 			#[cfg(feature = "testing")]

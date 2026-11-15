@@ -17,7 +17,6 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::Fragment,
 	value::{
@@ -428,7 +427,7 @@ impl From<&Expression> for JsonExpression {
 impl TryFrom<JsonExpression> for Expression {
 	type Error = ValueError;
 
-	fn try_from(json: JsonExpression) -> Result<Self> {
+	fn try_from(json: JsonExpression) -> Result<Self, ValueError> {
 		Ok(match json {
 			JsonExpression::None => Expression::Constant(ConstantExpression::None {
 				fragment: Fragment::None,
@@ -642,7 +641,10 @@ impl TryFrom<JsonExpression> for Expression {
 				args,
 			} => {
 				let func = IdentExpression(internal_fragment(&function));
-				let args = args.into_iter().map(|a| a.try_into()).collect::<Result<Vec<_>>>()?;
+				let args = args
+					.into_iter()
+					.map(|a| a.try_into())
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				let full_fragment = joined_call_fragment(&func, &args);
 				Expression::Call(CallExpression {
 					func,
@@ -657,7 +659,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::List {
@@ -666,7 +668,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Record {
@@ -675,7 +677,7 @@ impl TryFrom<JsonExpression> for Expression {
 				fields: fields
 					.into_iter()
 					.map(|(name, a)| Ok((internal_fragment(&name), a.try_into()?)))
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Prefix {
@@ -749,7 +751,7 @@ impl TryFrom<JsonExpression> for Expression {
 								fragment: Fragment::None,
 							})
 						})
-						.collect::<Result<Vec<_>>>()?,
+						.collect::<Result<Vec<_>, ValueError>>()?,
 					else_expr: converted_else,
 					fragment: Fragment::None,
 				})
@@ -760,7 +762,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Extend {
@@ -769,7 +771,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Type {
@@ -808,7 +810,7 @@ fn cast_type_name(to: &TypeExpression) -> String {
 	}
 }
 
-fn parse_cast_type(s: &str) -> Result<(ValueType, Option<Constraint>)> {
+fn parse_cast_type(s: &str) -> Result<(ValueType, Option<Constraint>), ValueError> {
 	let lower = s.to_lowercase();
 	let sized = lower.strip_suffix(')').and_then(|rest| rest.split_once('('));
 	if let Some((name @ ("utf8" | "blob"), bytes)) = sized {
@@ -826,11 +828,11 @@ fn parse_cast_type(s: &str) -> Result<(ValueType, Option<Constraint>)> {
 	Ok((parse_type(s)?, None))
 }
 
-fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
+fn parse_family_type(s: &str) -> Result<Option<ValueType>, ValueError> {
 	let Some((name, params)) = s.strip_suffix(')').and_then(|rest| rest.split_once('(')) else {
 		return Ok(None);
 	};
-	let param = |text: &str| -> Result<u8> {
+	let param = |text: &str| -> Result<u8, ValueError> {
 		text.trim().parse::<u8>().map_err(|_| ValueError(Box::new(internal!("Invalid type parameter: {}", s))))
 	};
 	Ok(match (name, params.split_once(',')) {
@@ -842,7 +844,7 @@ fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
 	})
 }
 
-fn parse_type(s: &str) -> Result<ValueType> {
+fn parse_type(s: &str) -> Result<ValueType, ValueError> {
 	if let Some(ty) = parse_family_type(&s.to_lowercase())? {
 		return Ok(ty);
 	}
@@ -895,7 +897,7 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 	to_string_pretty(&json_expr).expect("JsonExpression should always serialize")
 }
 
-pub fn from_json(json: &str) -> Result<Expression> {
+pub fn from_json(json: &str) -> Result<Expression, ValueError> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
 		ValueError::from(TypeError::SerdeDeserialize {
 			message: e.to_string(),

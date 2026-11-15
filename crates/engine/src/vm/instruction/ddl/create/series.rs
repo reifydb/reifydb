@@ -12,15 +12,15 @@ use reifydb_core::{interface::catalog::storage::StorageId, row::RowSettings, val
 use reifydb_extension::block_encoding::error::BlockEncodingError;
 use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_series(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSeriesNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let result = services.catalog.create_series(
 		txn,
 		SeriesToCreate {

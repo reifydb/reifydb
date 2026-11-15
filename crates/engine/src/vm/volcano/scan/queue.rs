@@ -17,17 +17,17 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{row_number::RowNumber, system_columns::SystemColumn, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{row_number::RowNumber, system_columns::SystemColumn, value_type::ValueType},
+};
 use tracing::instrument;
 
 use super::{
 	super::{decode_dictionary_columns, user_pairs, with_user_columns},
 	empty_scan, scan_headers, source_system_columns,
 };
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<TaggedKey>, bool);
 
@@ -44,7 +44,11 @@ pub struct QueueScan {
 }
 
 impl QueueScan {
-	pub fn new(queue: ResolvedQueue, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
+	pub fn new(
+		queue: ResolvedQueue,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self, ValueError> {
 		let mut storage_types = Vec::with_capacity(queue.columns().len());
 		let mut dictionaries = Vec::with_capacity(queue.columns().len());
 
@@ -76,7 +80,7 @@ impl QueueScan {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape, ValueError> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -101,15 +105,16 @@ impl QueueScan {
 		rx: &'rx mut Transaction<'tx>,
 		range: TaggedKeyBoundRange,
 		batch_size: u64,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'rx>, ValueError>
+	{
 		rx.range_rev(range, RangeScope::All, batch_size as usize)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 		batch_size: u64,
-	) -> Result<DrainedBatch> {
+	) -> Result<DrainedBatch, ValueError> {
 		let mut batch: Vec<EncodedBytes> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut new_last_key = None;
@@ -136,7 +141,7 @@ impl QueueScan {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::column_alloc")]
-	fn storage_columns(&self, shape: &RowShape, declared: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn storage_columns(&self, shape: &RowShape, declared: usize) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let mut storage_columns: Vec<(FieldRef, ArrayRef)> = self
 			.queue
 			.columns()
@@ -164,7 +169,7 @@ impl QueueScan {
 		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		append_rows(columns, shape, bytes_vec, row_numbers)
 	}
 
@@ -172,7 +177,7 @@ impl QueueScan {
 		RowKeyRange::scan_range(self.queue.def().id.into(), None).resume_before(self.last_key.as_ref())
 	}
 
-	fn empty_declared_columns(&self) -> Result<RecordBatch> {
+	fn empty_declared_columns(&self) -> Result<RecordBatch, ValueError> {
 		empty_scan(
 			self.queue
 				.columns()
@@ -186,12 +191,16 @@ impl QueueScan {
 
 impl QueryNode for QueueScan {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.exhausted {
 			return Ok(None);
 		}

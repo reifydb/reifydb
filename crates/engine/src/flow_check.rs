@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::flow::dag::FlowDag;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub trait FlowRegistrationCheck: Send + Sync {
-	fn check(&self, txn: &mut AdminTransaction, dag: &FlowDag) -> Result<()>;
+	fn check(&self, txn: &mut AdminTransaction, dag: &FlowDag) -> Result<(), ValueError>;
 }
 
 pub type FlowRegistrationCheckRef = Arc<dyn FlowRegistrationCheck>;

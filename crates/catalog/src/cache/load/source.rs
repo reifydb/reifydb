@@ -13,12 +13,13 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::SourceKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
 use super::CatalogCache;
-use crate::{Result, error::CatalogError, store::source::shape::source};
+use crate::{error::CatalogError, store::source::shape::source};
 
-pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = SourceKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -36,7 +37,7 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 	Ok(())
 }
 
-fn convert_source<K>(multi: MultiVersionRow<K>) -> Result<Source> {
+fn convert_source<K>(multi: MultiVersionRow<K>) -> Result<Source, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SourceId(source::get_id(&bytes));
 	let namespace = NamespaceId(source::get_namespace(&bytes));

@@ -10,7 +10,7 @@ use reifydb::{
 	},
 	embedded,
 	sdk::{
-		error::Result as SdkResult,
+		error::SdkError,
 		flow::operator::{
 			OperatorMetadata,
 			column::operator::OperatorColumn,
@@ -55,16 +55,16 @@ impl WindowedOperator for GuestCarry {
 	type Accumulator = Moments;
 	type Output = GuestCarryWindow;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> SdkResult<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -78,12 +78,12 @@ impl WindowedOperator for GuestCarry {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> SdkResult<Vec<Option<(i32, f64)>>> {
+	) -> Result<Vec<Option<(i32, f64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> SdkResult<Option<(i32, f64)>> {
+					.map(|row| -> Result<Option<(i32, f64)>, SdkError> {
 						let (Some(g), Some(v)) = (row.i32("g")?, row.i32("v")?) else {
 							return Ok(None);
 						};

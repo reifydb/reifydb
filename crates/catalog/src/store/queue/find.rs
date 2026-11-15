@@ -10,9 +10,10 @@ use reifydb_core::{
 	key::{namespace::NamespaceQueueKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::queue::{
 		decode_queue_time,
 		shape::{decode_deduplicate, decode_dispatch, decode_partition_by, queue, queue_namespace},
@@ -20,7 +21,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_queue(rx: &mut Transaction<'_>, queue_id: QueueId) -> Result<Option<Queue>> {
+	pub(crate) fn find_queue(rx: &mut Transaction<'_>, queue_id: QueueId) -> Result<Option<Queue>, ValueError> {
 		let Some(multi) = rx.get(&[QueueKey::new(queue_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -55,7 +56,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Queue>> {
+	) -> Result<Option<Queue>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceQueueKey::full_scan(namespace), RangeScope::All, 1024)?;
 

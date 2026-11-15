@@ -6,15 +6,15 @@ use reifydb_catalog::catalog::binding::BindingToCreate;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateBindingNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_binding(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateBindingNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let binding = services.catalog.create_binding(
 		txn,
 		BindingToCreate {

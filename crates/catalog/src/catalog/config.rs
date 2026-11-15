@@ -6,13 +6,13 @@ use reifydb_core::interface::catalog::{
 	config::{Config, ConfigKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 use super::Catalog;
-use crate::{CatalogStore, Result, error::CatalogError};
+use crate::{CatalogStore, error::CatalogError};
 
 impl Catalog {
-	pub fn set_config(&self, txn: &mut AdminTransaction, key: ConfigKey, value: Value) -> Result<()> {
+	pub fn set_config(&self, txn: &mut AdminTransaction, key: ConfigKey, value: Value) -> Result<(), ValueError> {
 		let value = key.accept(value).map_err(|e| CatalogError::from((key, e)))?;
 
 		let pre_value = self.cache.get_config(key);

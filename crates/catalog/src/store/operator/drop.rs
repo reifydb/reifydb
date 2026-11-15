@@ -7,11 +7,12 @@ use reifydb_core::{
 	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::operator::shape::operator};
+use crate::{CatalogStore, store::operator::shape::operator};
 
 impl CatalogStore {
-	pub(crate) fn drop_operator(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<()> {
+	pub(crate) fn drop_operator(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<(), ValueError> {
 		let Some(multi) = txn.get(&[OperatorKey::new(operator_id).into()])?.pop().flatten() else {
 			return Ok(());
 		};
@@ -21,7 +22,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn unlink_node(txn: &mut AdminTransaction, operator_id: OperatorId, flow: FlowId) -> Result<()> {
+	fn unlink_node(txn: &mut AdminTransaction, operator_id: OperatorId, flow: FlowId) -> Result<(), ValueError> {
 		txn.remove(vec![(OperatorKey::new(operator_id).into(), None)])?;
 		txn.remove(vec![(OperatorByFlowKey::new(flow, operator_id).into(), None)])?;
 		Ok(())

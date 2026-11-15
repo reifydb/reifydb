@@ -25,7 +25,7 @@ use reifydb_store_column::{
 	session::new_session,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -54,7 +54,7 @@ use vortex_session::VortexSession;
 
 type Column = (FieldRef, ArrayRef);
 
-fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
+fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData, ValueError> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();

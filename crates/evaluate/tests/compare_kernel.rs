@@ -11,8 +11,7 @@ use reifydb_evaluate::expression::compare::{
 	CompareOp, Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns,
 };
 use reifydb_value::{
-	Result,
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -40,7 +39,10 @@ fn compare<Op: CompareOp>(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef
 	.unwrap()
 }
 
-fn try_compare<Op: CompareOp>(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
+fn try_compare<Op: CompareOp>(
+	left: (FieldRef, ArrayRef),
+	right: (FieldRef, ArrayRef),
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	compare_columns::<Op>(
 		&factory::rename(left, "left"),
 		&factory::rename(right, "right"),

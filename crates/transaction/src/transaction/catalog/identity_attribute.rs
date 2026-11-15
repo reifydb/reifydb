@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackIdentityAttributeChangeOperations,
 	identity::{IdentityAttribute, IdentityAttributeId},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackIdentityAttributeChangeOperations for AdminTransaction {
-	fn track_identity_attribute_created(&mut self, attribute: IdentityAttribute) -> Result<()> {
+	fn track_identity_attribute_created(&mut self, attribute: IdentityAttribute) -> Result<(), ValueError> {
 		self.interceptors
 			.identity_attribute_post_create
 			.execute(IdentityAttributePostCreateContext::new(&attribute))?;
@@ -31,7 +31,7 @@ impl CatalogTrackIdentityAttributeChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_identity_attribute_deleted(&mut self, attribute: IdentityAttribute) -> Result<()> {
+	fn track_identity_attribute_deleted(&mut self, attribute: IdentityAttribute) -> Result<(), ValueError> {
 		self.interceptors
 			.identity_attribute_pre_delete
 			.execute(IdentityAttributePreDeleteContext::new(&attribute))?;

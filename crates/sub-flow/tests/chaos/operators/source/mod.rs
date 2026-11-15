@@ -44,7 +44,7 @@ use reifydb_testing_chaos::{
 		scenario::{BatchSize, Scenario},
 	},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	framework::harness::Harness,
@@ -96,7 +96,7 @@ impl HostOperator for SourceOp {
 		}
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		match self {
 			SourceOp::Series(o) => o.apply(host, change),
 			SourceOp::Table(o) => o.apply(host, change),

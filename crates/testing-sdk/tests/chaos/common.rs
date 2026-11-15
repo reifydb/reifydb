@@ -9,7 +9,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		NostateOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -47,11 +47,11 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl NostateOperator for PassthroughOperator {
-	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<(), SdkError> {
 		for index in 0..change.diff_count() {
 			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
@@ -79,11 +79,11 @@ impl OperatorMetadata for DoubleInsertOperator {
 }
 
 impl NostateOperator for DoubleInsertOperator {
-	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<(), SdkError> {
 		for index in 0..change.diff_count() {
 			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
@@ -113,11 +113,11 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 }
 
 impl NostateOperator for SwallowsRemoveOperator {
-	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<(), SdkError> {
 		for index in 0..change.diff_count() {
 			let diff = change.diff(index).expect("every counted diff resolves");
 			match diff.kind() {
@@ -130,7 +130,7 @@ impl NostateOperator for SwallowsRemoveOperator {
 	}
 }
 
-fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>)> {
+fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>), SdkError> {
 	let mut rows = Vec::with_capacity(columns.row_count());
 	let mut numbers = Vec::with_capacity(columns.row_count());
 	for position in 0..columns.row_count() {
@@ -144,19 +144,19 @@ fn rows_of(columns: &impl ColumnsView) -> Result<(Vec<KvRow>, Vec<RowNumber>)> {
 	Ok((rows, numbers))
 }
 
-fn emit_insert(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+fn emit_insert(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<(), SdkError> {
 	let (rows, numbers) = rows_of(&diff.post().expect("an insert carries a post batch"))?;
 	ctx.emit_insert(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])
 }
 
-fn emit_update(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+fn emit_update(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<(), SdkError> {
 	let (pre, _) = rows_of(&diff.pre().expect("an update carries a pre batch"))?;
 	let (post, numbers) = rows_of(&diff.post().expect("an update carries a post batch"))?;
 	let times = vec![ctx.batch_time(); (&numbers).len()];
 	ctx.emit_update(&pre, &post, &numbers, &times, &times)
 }
 
-fn emit_remove(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<()> {
+fn emit_remove(ctx: &mut impl GuestEmitContext, diff: &impl DiffView) -> Result<(), SdkError> {
 	let (rows, numbers) = rows_of(&diff.pre().expect("a remove carries a pre batch"))?;
 	ctx.emit_remove(&rows, &numbers, &vec![ctx.batch_time(); (&numbers).len()])
 }

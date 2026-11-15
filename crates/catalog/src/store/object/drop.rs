@@ -20,14 +20,15 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::column::shape::object_column};
+use crate::{CatalogStore, store::column::shape::object_column};
 
 pub(crate) fn drop_object_metadata(
 	txn: &mut AdminTransaction,
 	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	CatalogStore::drop_eviction(txn, storage)?;
 	let range = ColumnKey::full_scan(storage);
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;

@@ -52,7 +52,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	params::Params,
 	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
 };
@@ -150,7 +150,7 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		Ok(self.multi
 			.get(&self.context, keys)?
 			.into_iter()
@@ -159,12 +159,12 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		self.multi.contains(&self.context, keys)
 	}
 
 	#[inline]
-	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		self.multi.read_as_of_version_exclusive(version);
 		Ok(())
 	}
@@ -175,7 +175,7 @@ impl QueryTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		self.multi.range(&self.context, range, scope, batch_size)
 	}
 
@@ -186,7 +186,7 @@ impl QueryTransaction {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_> {
 		self.multi.range_row(&self.context, storage, start, end, scope, batch_size)
 	}
 
@@ -198,7 +198,7 @@ impl QueryTransaction {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_> {
 		self.multi.range_partitioned_row(&self.context, storage, start, end, scope, batch_size)
 	}
 
@@ -208,12 +208,12 @@ impl QueryTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		self.multi.range_rev(&self.context, range, scope, batch_size)
 	}
 
 	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
-	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

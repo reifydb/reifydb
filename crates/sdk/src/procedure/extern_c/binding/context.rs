@@ -11,7 +11,7 @@ use crate::{
 		binding::builder::ColumnsBuilder,
 		wire::{buffer::ExternCBuffer, status::EXTERN_C_OK},
 	},
-	error::{Result, SdkError},
+	error::SdkError,
 	procedure::extern_c::wire::context::ExternCContextRaw,
 };
 
@@ -27,7 +27,7 @@ impl ExternCProcedureContext {
 		}
 	}
 
-	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>, SdkError> {
 		raw_procedure_query(self, query, params)
 	}
 
@@ -44,7 +44,11 @@ impl ExternCProcedureContext {
 	}
 }
 
-pub(crate) fn raw_procedure_query(ctx: &ExternCProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_procedure_query(
+	ctx: &ExternCProcedureContext,
+	query: &str,
+	params: Params,
+) -> Result<Vec<Frame>, SdkError> {
 	let params_bytes = encode_params(&params)
 		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 

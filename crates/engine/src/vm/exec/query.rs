@@ -15,6 +15,7 @@ use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	params::Params,
 	value::{
 		identity::IdentityId,
@@ -22,15 +23,12 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	vm::{
-		services::Services,
-		vm::Vm,
-		volcano::{
-			compile::compile,
-			query::{QueryContext, QueryNode, charge_query_memory_bytes, query_budget},
-		},
+use crate::vm::{
+	services::Services,
+	vm::Vm,
+	volcano::{
+		compile::compile,
+		query::{QueryContext, QueryNode, charge_query_memory_bytes, query_budget},
 	},
 };
 
@@ -41,7 +39,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		plan: &QueryPlan,
 		params: &Params,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut std_txn = tx.reborrow();
 		if let Some(columns) = run_query_plan(
 			services,
@@ -64,7 +62,7 @@ pub(crate) fn run_query_plan(
 	params: Params,
 	symbols: &mut SymbolTable,
 	identity: IdentityId,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,

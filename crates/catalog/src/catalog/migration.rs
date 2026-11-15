@@ -9,11 +9,11 @@ use reifydb_transaction::{
 	change::TransactionalMigrationChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{fragment::Fragment, util::hash::Hash128};
+use reifydb_value::{error::ValueError, fragment::Fragment, util::hash::Hash128};
 use tracing::instrument;
 
 use crate::{
-	CatalogStore, Result, catalog::Catalog, error::CatalogError,
+	CatalogStore, catalog::Catalog, error::CatalogError,
 	store::migration::create::MigrationToCreate as StoreMigrationToCreate,
 };
 
@@ -26,7 +26,11 @@ pub struct MigrationToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::migration::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_migration(&self, txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
+	pub fn create_migration(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: MigrationToCreate,
+	) -> Result<Migration, ValueError> {
 		let new_hash = migration_hash(&to_create.body, to_create.rollback_body.as_deref());
 
 		if let Some(existing) = txn.find_migration_by_name(&to_create.name).cloned() {
@@ -57,26 +61,30 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		migration: &Migration,
 		action: MigrationAction,
-	) -> Result<MigrationEvent> {
+	) -> Result<MigrationEvent, ValueError> {
 		let event = CatalogStore::create_migration_event(txn, migration, action)?;
 		txn.track_migration_event_created(event.clone())?;
 		Ok(event)
 	}
 
-	pub fn list_migrations(&self, txn: &mut Transaction<'_>) -> Result<Vec<Migration>> {
+	pub fn list_migrations(&self, txn: &mut Transaction<'_>) -> Result<Vec<Migration>, ValueError> {
 		CatalogStore::list_migrations(txn)
 	}
 
-	pub fn list_migration_events(&self, txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>> {
+	pub fn list_migration_events(&self, txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>, ValueError> {
 		CatalogStore::list_migration_events(txn)
 	}
 
-	pub fn find_migration_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Migration>> {
+	pub fn find_migration_by_name(
+		&self,
+		txn: &mut Transaction<'_>,
+		name: &str,
+	) -> Result<Option<Migration>, ValueError> {
 		CatalogStore::find_migration_by_name(txn, name)
 	}
 }
 
-fn reconcile(name: String, existing: Migration, new_hash: Hash128) -> Result<Migration> {
+fn reconcile(name: String, existing: Migration, new_hash: Hash128) -> Result<Migration, ValueError> {
 	if existing.hash == new_hash {
 		return Ok(existing);
 	}

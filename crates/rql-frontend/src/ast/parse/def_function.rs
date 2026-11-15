@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstDefFunction, AstFunctionParameter, AstReturn, AstType, AstVariable, LetValue},
 		parse::{Parser, Precedence},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_def_function(&mut self) -> Result<AstDefFunction<'bump>> {
+	pub(crate) fn parse_def_function(&mut self) -> Result<AstDefFunction<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Udf)?;
 		let name = self.parse_as_identifier()?;
 
@@ -38,7 +39,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_function_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>> {
+	fn parse_function_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>, ValueError> {
 		let mut parameters = Vec::new();
 
 		loop {
@@ -80,7 +81,7 @@ impl<'bump> Parser<'bump> {
 		Ok(parameters)
 	}
 
-	pub(crate) fn parse_type_annotation(&mut self) -> Result<AstType<'bump>> {
+	pub(crate) fn parse_type_annotation(&mut self) -> Result<AstType<'bump>, ValueError> {
 		let ty_token = self.consume_identifier()?;
 
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
@@ -100,7 +101,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn parse_return(&mut self) -> Result<AstReturn<'bump>> {
+	pub(crate) fn parse_return(&mut self) -> Result<AstReturn<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Return)?;
 
 		let value = if !self.is_eof() {

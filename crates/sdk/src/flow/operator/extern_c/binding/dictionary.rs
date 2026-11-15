@@ -15,7 +15,7 @@ use crate::{
 		buffer::ExternCBuffer,
 		status::{EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 	},
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::extern_c::binding::context::ExternCContext,
 };
 
@@ -23,7 +23,7 @@ pub(crate) fn raw_get(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	ids: &[DictionaryEntryId],
-) -> Result<Vec<Option<Value>>> {
+) -> Result<Vec<Option<Value>>, SdkError> {
 	let raw_ids: Vec<u128> = ids.iter().map(DictionaryEntryId::to_u128).collect();
 	let mut values = vec![ExternCBuffer::empty(); ids.len()];
 	let mut present = vec![0u8; ids.len()];
@@ -65,7 +65,7 @@ pub(crate) fn raw_get(
 					.transpose()
 					.map_err(|e| SdkError::Other(format!("failed to deserialize value: {}", e)))
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, SdkError>>()?;
 		Ok(decoded)
 	}
 }
@@ -74,13 +74,13 @@ pub(crate) fn raw_find(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	values: &[Value],
-) -> Result<Vec<Option<DictionaryEntryId>>> {
+) -> Result<Vec<Option<DictionaryEntryId>>, SdkError> {
 	let encoded = values
 		.iter()
 		.map(|value| {
 			encode_value(value).map_err(|e| SdkError::Other(format!("failed to serialize value: {}", e)))
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, SdkError>>()?;
 	let buffers: Vec<ExternCBuffer> = encoded
 		.iter()
 		.map(|bytes| ExternCBuffer {
@@ -138,13 +138,13 @@ pub(crate) fn raw_intern(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	values: &[Value],
-) -> Result<Vec<DictionaryEntryId>> {
+) -> Result<Vec<DictionaryEntryId>, SdkError> {
 	let encoded = values
 		.iter()
 		.map(|value| {
 			encode_value(value).map_err(|e| SdkError::Other(format!("failed to serialize value: {}", e)))
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, SdkError>>()?;
 	let buffers: Vec<ExternCBuffer> = encoded
 		.iter()
 		.map(|bytes| ExternCBuffer {

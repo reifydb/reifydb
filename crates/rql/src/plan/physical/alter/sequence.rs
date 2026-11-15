@@ -8,10 +8,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
 use crate::{
-	Result,
 	nodes::AlterSequenceNode,
 	plan::{
 		logical::{self},
@@ -24,7 +23,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		alter: logical::AlterSequenceNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = alter.sequence.namespace.iter().map(|n| n.text()).collect();
 
 		let namespace = self

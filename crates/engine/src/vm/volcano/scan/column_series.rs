@@ -25,15 +25,12 @@ use reifydb_value::{
 	value::{partition::Partition, system_columns::SystemColumn},
 };
 
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode},
-		scan::{
-			column_block_sequence::BlockSequenceReader, column_decode::BlockDecoder,
-			column_predicate::series_scan_predicate, column_prune::prune_series_blocks, empty_scan,
-			scan_headers, series::empty_series_columns, source_system_columns,
-		},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode},
+	scan::{
+		column_block_sequence::BlockSequenceReader, column_decode::BlockDecoder,
+		column_predicate::series_scan_predicate, column_prune::prune_series_blocks, empty_scan, scan_headers,
+		series::empty_series_columns, source_system_columns,
 	},
 };
 
@@ -92,7 +89,7 @@ impl ColumnSeriesScanNode {
 		}
 	}
 
-	fn series_reads_as_empty(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<bool> {
+	fn series_reads_as_empty(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<bool, ValueError> {
 		let catalog = &self.context.services.catalog;
 		let partitions = match self.partition {
 			Some(partition) => vec![partition],
@@ -103,7 +100,7 @@ impl ColumnSeriesScanNode {
 		Ok(!found.iter().flatten().any(|metadata| metadata.row_count > 0))
 	}
 
-	fn registered_partitions(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<Vec<Partition>> {
+	fn registered_partitions(&self, rx: &mut Transaction<'_>, def: &Series) -> Result<Vec<Partition>, ValueError> {
 		let mut partitions = Vec::new();
 		let stream = rx.range(PartitionKey::full_scan(ObjectId::Series(def.id)), RangeScope::All, 1024)?;
 		for entry in stream {
@@ -114,7 +111,7 @@ impl ColumnSeriesScanNode {
 		Ok(partitions)
 	}
 
-	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState> {
+	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState, ValueError> {
 		let services = &self.context.services;
 		let name = self.series.fully_qualified_name();
 		let def = self.series.def();
@@ -183,7 +180,7 @@ fn bucket_order(block: &ColumnBlock) -> (u64, Option<Partition>) {
 	}
 }
 
-fn empty_columns(schema: &Schema) -> Result<RecordBatch> {
+fn empty_columns(schema: &Schema) -> Result<RecordBatch, ValueError> {
 	let columns = schema
 		.iter()
 		.filter(|(name, _, _)| SystemColumn::from_name(name).is_none())
@@ -195,11 +192,15 @@ fn empty_columns(schema: &Schema) -> Result<RecordBatch> {
 }
 
 impl QueryNode for ColumnSeriesScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if matches!(self.state, ScanState::Unopened) {
 			self.state = self.open(rx)?;
 		}

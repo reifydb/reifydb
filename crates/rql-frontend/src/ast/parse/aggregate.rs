@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{ast::AstAggregate, parse::Parser},
 	diagnostic::{AstError, OperationKind},
 	token::{keyword::Keyword, operator::Operator::OpenCurly},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_aggregate(&mut self) -> Result<AstAggregate<'bump>> {
+	pub(crate) fn parse_aggregate(&mut self) -> Result<AstAggregate<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 

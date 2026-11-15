@@ -4,7 +4,6 @@
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstMigrate, AstRollbackMigration},
 		parse::Parser,
@@ -16,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_migrate(&mut self) -> Result<AstMigrate<'bump>> {
+	pub(crate) fn parse_migrate(&mut self) -> Result<AstMigrate<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Migrate)?;
 
 		let target = if (self.consume_if(TokenKind::Keyword(Keyword::To))?).is_some() {
@@ -50,7 +49,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_rollback_migration(&mut self) -> Result<AstRollbackMigration<'bump>> {
+	pub(crate) fn parse_rollback_migration(&mut self) -> Result<AstRollbackMigration<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Rollback)?;
 		self.consume_keyword(Keyword::Migration)?;
 

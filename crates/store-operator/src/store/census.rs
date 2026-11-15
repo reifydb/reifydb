@@ -15,7 +15,7 @@ use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{Enumerate, PersistentTier},
 	store::{OperatorStore, StandardOperatorStore},
 	types::{LayeredPre, OperatorStateCensus, OperatorWrite, RetiredRows},
@@ -45,7 +45,7 @@ pub(crate) struct OperatorCensus {
 }
 
 impl OperatorCensus {
-	pub(crate) fn seeded(persistent: &PersistentTier) -> Result<Self> {
+	pub(crate) fn seeded(persistent: &PersistentTier) -> Result<Self, StoreOperatorError> {
 		let census = Self::default();
 		let entries = persistent.census()?;
 		let mut buckets = census.buckets.lock();
@@ -230,22 +230,22 @@ fn key_width(keyspace: KeyspaceId) -> Option<u64> {
 
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
-	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		Ok(self.census.bytes(operator))
 	}
 
 	#[instrument(name = "store::operator::total_bytes", level = "trace", skip(self), ret)]
-	pub fn total_bytes(&self) -> Result<ByteSize> {
+	pub fn total_bytes(&self) -> Result<ByteSize, StoreOperatorError> {
 		Ok(self.census.total_bytes())
 	}
 
 	#[instrument(name = "store::operator::census", level = "debug", skip(self))]
-	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	pub fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		Ok(self.census.snapshot())
 	}
 
 	#[instrument(name = "store::operator::stored_operators", level = "debug", skip(self))]
-	pub fn stored_operators(&self) -> Result<Vec<OperatorId>> {
+	pub fn stored_operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		let mut operators = self.resident.shared().operators();
 		operators.extend(Enumerate::operators(&self.persistent)?);
 		operators.sort_unstable();
@@ -255,25 +255,25 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.bytes(operator),
 		}
 	}
 
-	pub fn total_bytes(&self) -> Result<ByteSize> {
+	pub fn total_bytes(&self) -> Result<ByteSize, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.total_bytes(),
 		}
 	}
 
-	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	pub fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.census(),
 		}
 	}
 
-	pub fn stored_operators(&self) -> Result<Vec<OperatorId>> {
+	pub fn stored_operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.stored_operators(),
 		}

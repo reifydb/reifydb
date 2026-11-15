@@ -27,7 +27,6 @@ use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	params::Params,
@@ -50,7 +49,7 @@ pub fn coerce_columns(
 	columns: &RecordBatch,
 	target_columns: &[CatalogColumn],
 	runtime_context: &RuntimeContext,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let row_count = columns.num_rows();
 	if row_count == 0 {
 		return Ok(empty_batch());
@@ -153,7 +152,7 @@ pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize
 pub fn stored_created_at<T: FlowGet + ?Sized>(
 	txn: &mut T,
 	rows: &[(EncodedKey, Option<EncodedKey>)],
-) -> Result<Vec<Option<DateTime>>> {
+) -> Result<Vec<Option<DateTime>>, ValueError> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -188,11 +187,11 @@ pub struct SourceRowEncoder<'a> {
 }
 
 impl<'a> SourceRowEncoder<'a> {
-	pub fn new(columns: &'a RecordBatch, shape: &'a RowShape, field_columns: &[usize]) -> Result<Self> {
+	pub fn new(columns: &'a RecordBatch, shape: &'a RowShape, field_columns: &[usize]) -> Result<Self, ValueError> {
 		let views = field_columns
 			.iter()
 			.map(|&index| ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(Self {
 			shape,
 			views,
@@ -210,7 +209,7 @@ impl<'a> SourceRowEncoder<'a> {
 		}
 	}
 
-	pub fn encode_all(&self) -> Result<Vec<EncodedBytes>> {
+	pub fn encode_all(&self) -> Result<Vec<EncodedBytes>, ValueError> {
 		match self.shape.family() {
 			RowFamily::Table => {
 				self.stamp_rows((0..self.row_count).map(|_| self.shape.allocate_table()).collect())
@@ -230,7 +229,7 @@ impl<'a> SourceRowEncoder<'a> {
 		}
 	}
 
-	fn stamp_rows<B: SourceRowBuilder>(&self, mut rows: Vec<B>) -> Result<Vec<EncodedBytes>> {
+	fn stamp_rows<B: SourceRowBuilder>(&self, mut rows: Vec<B>) -> Result<Vec<EncodedBytes>, ValueError> {
 		self.shape.write_columns(&mut rows, &self.views)?;
 
 		rows.into_iter()

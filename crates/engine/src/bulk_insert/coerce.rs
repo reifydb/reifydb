@@ -26,8 +26,6 @@ use reifydb_value::{
 	value::{Value, column_view::ColumnView},
 };
 
-use crate::Result;
-
 pub(super) struct RowCoercer {
 	ctx: Arc<TransactionContext>,
 	routines: Routines,
@@ -43,21 +41,31 @@ impl RowCoercer {
 		}
 	}
 
-	pub(super) fn coerce(&self, value: Value, column: &Column, source_name: &str, row_idx: usize) -> Result<Value> {
+	pub(super) fn coerce(
+		&self,
+		value: Value,
+		column: &Column,
+		source_name: &str,
+		row_idx: usize,
+	) -> Result<Value, ValueError> {
 		if matches!(value, Value::None { .. }) {
 			return Ok(value);
 		}
 		self.cast(value, column).map_err(|e| with_row_note(e, source_name, row_idx))
 	}
 
-	pub(super) fn cast_column(&self, view: &ColumnView<'_>, column: &Column) -> Result<(FieldRef, ArrayRef)> {
+	pub(super) fn cast_column(
+		&self,
+		view: &ColumnView<'_>,
+		column: &Column,
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let target = column.constraint.get_type();
 		let fragment = || Fragment::internal(&column.name);
 		check_digest_write(view, &target, fragment)?;
 		cast_column_data(&self.context(view.len()), view, target.inner_type().clone(), fragment)
 	}
 
-	fn cast(&self, value: Value, column: &Column) -> Result<Value> {
+	fn cast(&self, value: Value, column: &Column) -> Result<Value, ValueError> {
 		let target = column.constraint.get_type();
 		let fragment = || Fragment::internal(&column.name);
 		check_digest_write_type(&value.get_type(), &target, fragment)?;

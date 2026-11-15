@@ -10,12 +10,12 @@ use reifydb_core::{
 	key::catalog::DictionaryKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::dictionary::DictionaryId;
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
 use super::CatalogCache;
-use crate::{Result, store::dictionary::shape::dictionary};
+use crate::store::dictionary::shape::dictionary;
 
-pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = DictionaryKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -29,7 +29,7 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache
 	Ok(())
 }
 
-fn convert_dictionary<K>(multi: MultiVersionRow<K>) -> Result<Dictionary> {
+fn convert_dictionary<K>(multi: MultiVersionRow<K>) -> Result<Dictionary, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = DictionaryId(dictionary::get_id(&bytes));
 	let namespace = NamespaceId(dictionary::get_namespace(&bytes));

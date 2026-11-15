@@ -11,13 +11,15 @@ use reifydb_core::{
 		column::factory,
 	},
 };
-use reifydb_value::{error::BinaryOp, value::Value};
+use reifydb_value::{
+	error::{BinaryOp, ValueError},
+	value::Value,
+};
 
 use crate::{
-	Result,
 	expression::{compare::field_compare_target, context::EvalContext},
 	lower::{
-		Lowered, Node, bool_field, bool_operand, compare, inner_type, is_untyped_none, literal,
+		Node, Stop, bool_field, bool_operand, compare, inner_type, is_untyped_none, literal,
 		literal::none_bool, lower_node,
 	},
 	stack::Variable,
@@ -36,7 +38,7 @@ pub(super) fn lower_in<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	e: &'e InExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	if let Some(values) = list_values(ctx, &e.list)? {
 		return lower_in_values(ctx, operator, e, values);
 	}
@@ -75,7 +77,7 @@ pub(super) fn lower_in<'e>(
 	})
 }
 
-fn list_values(ctx: &EvalContext, list: &Expression) -> Result<Option<Vec<Value>>> {
+fn list_values(ctx: &EvalContext, list: &Expression) -> Result<Option<Vec<Value>>, ValueError> {
 	let name = match list {
 		Expression::Variable(variable) => variable.name(),
 		Expression::Parameter(ParameterExpression::Named {
@@ -103,7 +105,12 @@ fn list_values(ctx: &EvalContext, list: &Expression) -> Result<Option<Vec<Value>
 	})
 }
 
-fn lower_in_values(ctx: &EvalContext, operator: &'static str, e: &InExpression, values: Vec<Value>) -> Lowered<Node> {
+fn lower_in_values(
+	ctx: &EvalContext,
+	operator: &'static str,
+	e: &InExpression,
+	values: Vec<Value>,
+) -> Result<Node, Stop> {
 	let name = e.fragment.text();
 	let value = lower_node(ctx, operator, &e.value)?;
 	if values.is_empty() {

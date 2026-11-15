@@ -11,9 +11,10 @@ use reifydb_core::{
 	key::{catalog::WindowedViewGroupKey, namespace::NamespaceWindowedViewGroupKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::windowed_view_group::shape::{deserialize_members, windowed_view_group, windowed_view_group_namespace},
 };
 
@@ -21,7 +22,7 @@ impl CatalogStore {
 	pub(crate) fn find_windowed_view_group(
 		rx: &mut Transaction<'_>,
 		id: WindowedViewGroupId,
-	) -> Result<Option<WindowedViewGroup>> {
+	) -> Result<Option<WindowedViewGroup>, ValueError> {
 		let Some(multi) = rx.get(&[WindowedViewGroupKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -40,7 +41,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<WindowedViewGroup>> {
+	) -> Result<Option<WindowedViewGroup>, ValueError> {
 		let name = name.as_ref();
 		let mut stream =
 			rx.range(NamespaceWindowedViewGroupKey::full_scan(namespace), RangeScope::All, 1024)?;

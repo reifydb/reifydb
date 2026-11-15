@@ -41,7 +41,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::catalog::vtable::VTable;
 
-use crate::{Result, cache::CatalogCache};
+use crate::cache::CatalogCache;
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
@@ -63,7 +63,7 @@ impl Catalog {
 		&self.cache
 	}
 
-	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
+	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<(), ValueError> {
 		self.cache.register_vtable_user(def)
 	}
 }
@@ -72,7 +72,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
 };
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 impl GetConfig for Catalog {
 	fn get_config(&self, key: ConfigKey) -> Value {

@@ -43,7 +43,6 @@ use reifydb_value::{
 
 use super::coerce::{InputFragments, coerce_value_to_column_type, key_out_of_range};
 use crate::{
-	Result,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
@@ -64,7 +63,7 @@ pub(crate) fn sumtype_variant_tags(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	columns: &[Column],
-) -> Result<HashMap<SumTypeId, Vec<u8>>> {
+) -> Result<HashMap<SumTypeId, Vec<u8>>, ValueError> {
 	let mut tags = HashMap::new();
 	for column in columns {
 		if let Some(Constraint::SumType(id)) = column.constraint.constraint()
@@ -146,12 +145,12 @@ impl CastColumns {
 		self.rows
 	}
 
-	pub(crate) fn view(&self, index: usize) -> Result<ColumnView<'_>> {
+	pub(crate) fn view(&self, index: usize) -> Result<ColumnView<'_>, ValueError> {
 		ColumnView::try_from(&self.columns[index])
 	}
 
-	pub(crate) fn write<B: RowBuilder>(&self, shape: &RowShape, rows: &mut [B]) -> Result<()> {
-		let views = self.columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+	pub(crate) fn write<B: RowBuilder>(&self, shape: &RowShape, rows: &mut [B]) -> Result<(), ValueError> {
+		let views = self.columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 		shape.write_columns(rows, &views)
 	}
 }
@@ -162,7 +161,7 @@ pub(crate) fn fill_sequences(
 	columns: &[Column],
 	object: ObjectId,
 	casts: &mut [CastColumns],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut indices: Vec<usize> =
 		casts.iter().flat_map(|cast| cast.fills.iter().map(|(index, _)| *index)).collect();
 	indices.sort_unstable();
@@ -209,10 +208,13 @@ pub(crate) fn fill_sequences(
 	Ok(())
 }
 
-pub(crate) fn input_views<'a>(batch: &'a RecordBatch, columns: &[Column]) -> Result<Vec<Option<ColumnView<'a>>>> {
+pub(crate) fn input_views<'a>(
+	batch: &'a RecordBatch,
+	columns: &[Column],
+) -> Result<Vec<Option<ColumnView<'a>>>, ValueError> {
 	let views: Vec<ColumnView<'a>> = user_columns(batch)
 		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, ValueError>>()?;
 	let mut by_name: HashMap<&str, usize> = HashMap::new();
 	for (index, view) in views.iter().enumerate() {
 		by_name.insert(view.field.name().as_str(), index);
@@ -226,7 +228,7 @@ impl ColumnPipeline<'_> {
 		inputs: &[Option<ColumnView<'_>>],
 		rows: usize,
 		earliest: Option<Failure>,
-	) -> Result<CastColumns> {
+	) -> Result<CastColumns, ValueError> {
 		let mut best = earliest;
 		let mut columns = Vec::with_capacity(self.columns.len());
 		let mut fills = Vec::new();
@@ -302,7 +304,7 @@ impl ColumnPipeline<'_> {
 		services: &Services,
 		txn: &mut Transaction<'_>,
 		casts: &mut [CastColumns],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		match self.sequences {
 			Some(object) => fill_sequences(&services.catalog, txn, self.columns, object, casts),
 			None => Ok(()),
@@ -326,7 +328,7 @@ impl ColumnPipeline<'_> {
 		input: Option<&ColumnView<'_>>,
 		rows: usize,
 		filled: &[usize],
-	) -> Result<Option<(FieldRef, ArrayRef)>> {
+	) -> Result<Option<(FieldRef, ArrayRef)>, ValueError> {
 		let target = column.constraint.get_type();
 		let Some(input) = input else {
 			if target.is_option() || filled.len() == rows {
@@ -479,7 +481,7 @@ pub(crate) fn intern_dictionary_columns(
 	columns: &[Column],
 	series_key: Option<&SeriesKey>,
 	batches: &mut [CastColumns],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if batches.iter().all(|batch| batch.rows == 0) {
 		return Ok(());
 	}
@@ -509,15 +511,20 @@ pub(crate) fn intern_dictionary_columns(
 		let none = dictionary.id_type.none();
 		let mut values = Vec::new();
 		for batch in batches.iter() {
-			let views = indices.iter().map(|&index| batch.view(index)).collect::<Result<Vec<_>>>()?;
+			let views = indices
+				.iter()
+				.map(|&index| batch.view(index))
+				.collect::<Result<Vec<_>, ValueError>>()?;
 			gather_dictionary_values(&views, &mut values);
 		}
 
 		let mut ids = txn.intern_values(&dictionary, values)?.into_iter();
 		for batch in batches.iter_mut() {
 			let scattered = {
-				let views =
-					indices.iter().map(|&index| batch.view(index)).collect::<Result<Vec<_>>>()?;
+				let views = indices
+					.iter()
+					.map(|&index| batch.view(index))
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				scatter_dictionary_ids(&views, none, &mut ids)
 			};
 			for (&index, ids) in indices.iter().zip(scattered) {

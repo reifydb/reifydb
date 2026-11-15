@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{bytes::EncodedBytes, table::EncodedTableRowBuilder};
 use reifydb_core::interface::catalog::table::Table;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
@@ -26,11 +26,11 @@ impl<'a> TableRowPreInsertContext<'a> {
 }
 
 pub trait TableRowPreInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPreInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPreInsertContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -42,14 +42,14 @@ impl InterceptorChain<dyn TableRowPreInsertInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -60,7 +60,7 @@ where
 
 impl<F> Clone for ClosureTableRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -71,16 +71,16 @@ where
 
 impl<F> TableRowPreInsertInterceptor for ClosureTableRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_pre_insert<F>(f: F) -> ClosureTableRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPreInsertInterceptor::new(f)
 }
@@ -103,11 +103,11 @@ impl<'a> TableRowPostInsertContext<'a> {
 }
 
 pub trait TableRowPostInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPostInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPostInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPostInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPostInsertContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -117,14 +117,14 @@ impl InterceptorChain<dyn TableRowPostInsertInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -135,7 +135,7 @@ where
 
 impl<F> Clone for ClosureTableRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -146,16 +146,16 @@ where
 
 impl<F> TableRowPostInsertInterceptor for ClosureTableRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_post_insert<F>(f: F) -> ClosureTableRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPostInsertInterceptor::new(f)
 }
@@ -178,11 +178,11 @@ impl<'a> TableRowPreUpdateContext<'a> {
 }
 
 pub trait TableRowPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPreUpdateContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -194,14 +194,14 @@ impl InterceptorChain<dyn TableRowPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -212,7 +212,7 @@ where
 
 impl<F> Clone for ClosureTableRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -223,16 +223,16 @@ where
 
 impl<F> TableRowPreUpdateInterceptor for ClosureTableRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_pre_update<F>(f: F) -> ClosureTableRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPreUpdateInterceptor::new(f)
 }
@@ -263,11 +263,11 @@ impl<'a> TableRowPostUpdateContext<'a> {
 }
 
 pub trait TableRowPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPostUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPostUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -277,14 +277,14 @@ impl InterceptorChain<dyn TableRowPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -295,7 +295,7 @@ where
 
 impl<F> Clone for ClosureTableRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -306,16 +306,16 @@ where
 
 impl<F> TableRowPostUpdateInterceptor for ClosureTableRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_post_update<F>(f: F) -> ClosureTableRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPostUpdateInterceptor::new(f)
 }
@@ -335,11 +335,11 @@ impl<'a> TableRowPreDeleteContext<'a> {
 }
 
 pub trait TableRowPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -349,14 +349,14 @@ impl InterceptorChain<dyn TableRowPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -367,7 +367,7 @@ where
 
 impl<F> Clone for ClosureTableRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -378,16 +378,16 @@ where
 
 impl<F> TableRowPreDeleteInterceptor for ClosureTableRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_pre_delete<F>(f: F) -> ClosureTableRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPreDeleteInterceptor::new(f)
 }
@@ -410,11 +410,11 @@ impl<'a> TableRowPostDeleteContext<'a> {
 }
 
 pub trait TableRowPostDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn TableRowPostDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TableRowPostDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TableRowPostDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -424,14 +424,14 @@ impl InterceptorChain<dyn TableRowPostDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureTableRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureTableRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -442,7 +442,7 @@ where
 
 impl<F> Clone for ClosureTableRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -453,16 +453,16 @@ where
 
 impl<F> TableRowPostDeleteInterceptor for ClosureTableRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut TableRowPostDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn table_row_post_delete<F>(f: F) -> ClosureTableRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut TableRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureTableRowPostDeleteInterceptor::new(f)
 }
@@ -475,7 +475,7 @@ impl TableRowInterceptor {
 		table: &Table,
 		ids: &[RowNumber],
 		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = TableRowPreInsertContext::new(table, ids, rows);
 		txn.table_row_pre_insert_interceptors().execute(ctx)
 	}
@@ -485,7 +485,7 @@ impl TableRowInterceptor {
 		table: &Table,
 		ids: &[RowNumber],
 		bytes_slice: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = TableRowPostInsertContext::new(table, ids, bytes_slice);
 		txn.table_row_post_insert_interceptors().execute(ctx)
 	}
@@ -495,7 +495,7 @@ impl TableRowInterceptor {
 		table: &Table,
 		ids: &[RowNumber],
 		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = TableRowPreUpdateContext::new(table, ids, rows);
 		txn.table_row_pre_update_interceptors().execute(ctx)
 	}
@@ -506,12 +506,12 @@ impl TableRowInterceptor {
 		ids: &[RowNumber],
 		posts: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = TableRowPostUpdateContext::new(table, ids, posts, pres);
 		txn.table_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, table: &Table, ids: &[RowNumber]) -> Result<()> {
+	pub fn pre_delete(txn: &mut impl WithInterceptors, table: &Table, ids: &[RowNumber]) -> Result<(), ValueError> {
 		let ctx = TableRowPreDeleteContext::new(table, ids);
 		txn.table_row_pre_delete_interceptors().execute(ctx)
 	}
@@ -521,7 +521,7 @@ impl TableRowInterceptor {
 		table: &Table,
 		ids: &[RowNumber],
 		deleted: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = TableRowPostDeleteContext::new(table, ids, deleted);
 		txn.table_row_post_delete_interceptors().execute(ctx)
 	}

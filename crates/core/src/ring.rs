@@ -4,7 +4,7 @@
 use indexmap::{IndexMap, IndexSet};
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 
@@ -13,20 +13,21 @@ use crate::{interface::catalog::ringbuffer::RingBufferMetadata, return_internal_
 const ROW_PAGE: usize = 64;
 
 pub trait RingRead {
-	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>>;
+	fn metadata(&mut self, partitions: &[Option<Partition>])
+	-> Result<Vec<Option<RingBufferMetadata>>, ValueError>;
 
-	fn rows(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>>;
+	fn rows(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>, ValueError>;
 
 	fn oldest(
 		&mut self,
 		partition: Option<Partition>,
 		after: Option<RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError>;
 }
 
 pub trait RingStore: RingRead {
-	fn reserve(&mut self, count: u64) -> Result<u64>;
+	fn reserve(&mut self, count: u64) -> Result<u64, ValueError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,7 +67,11 @@ impl Ring {
 		}
 	}
 
-	pub fn preload(&mut self, store: &mut impl RingStore, partitions: &[Option<Partition>]) -> Result<()> {
+	pub fn preload(
+		&mut self,
+		store: &mut impl RingStore,
+		partitions: &[Option<Partition>],
+	) -> Result<(), ValueError> {
 		let missing: Vec<Option<Partition>> = partitions
 			.iter()
 			.copied()
@@ -94,7 +99,7 @@ impl Ring {
 		&mut self,
 		store: &mut impl RingStore,
 		partition: Option<Partition>,
-	) -> Result<Option<RingBufferMetadata>> {
+	) -> Result<Option<RingBufferMetadata>, ValueError> {
 		self.preload(store, &[partition])?;
 		Ok(self.tracked[&partition].current)
 	}
@@ -111,7 +116,7 @@ impl Ring {
 		metadata: &RingBufferMetadata,
 		after: Option<RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		if self.capacity > 1 {
 			return store.oldest(partition, after, limit);
 		}
@@ -126,7 +131,7 @@ impl Ring {
 		&mut self,
 		store: &mut impl RingStore,
 		requests: &[(Option<Partition>, Vec<RowNumber>)],
-	) -> Result<Vec<Vec<Placement>>> {
+	) -> Result<Vec<Vec<Placement>>, ValueError> {
 		let partitions: Vec<Option<Partition>> = requests.iter().map(|(partition, _)| *partition).collect();
 		assert!(
 			distinct(&partitions),
@@ -141,7 +146,7 @@ impl Ring {
 		store: &mut impl RingStore,
 		partition: Option<Partition>,
 		rows: &[RowNumber],
-	) -> Result<Vec<Placement>> {
+	) -> Result<Vec<Placement>, ValueError> {
 		let count = rows.len();
 		assert!(
 			count as u64 <= self.capacity,
@@ -206,7 +211,7 @@ impl Ring {
 		&mut self,
 		store: &mut impl RingStore,
 		requests: &[(Option<Partition>, Vec<RowNumber>)],
-	) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
+	) -> Result<Vec<Vec<Option<EncodedBytes>>>, ValueError> {
 		let partitions: Vec<Option<Partition>> = requests.iter().map(|(partition, _)| *partition).collect();
 		assert!(
 			distinct(&partitions),
@@ -239,7 +244,7 @@ impl Ring {
 		partition: Option<Partition>,
 		cutoff: DateTime,
 		batch: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		let Some(mut metadata) = self.metadata(store, partition)?.filter(|metadata| !metadata.is_empty())
 		else {
 			return Ok(Vec::new());
@@ -289,7 +294,7 @@ impl Ring {
 pub fn oldest(
 	store: &mut impl RingRead,
 	partitions: &[Option<Partition>],
-) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 	let metadata = store.metadata(partitions)?;
 	let mut oldest = Vec::with_capacity(partitions.len());
 	for (&partition, metadata) in partitions.iter().zip(metadata) {
@@ -301,7 +306,7 @@ pub fn oldest(
 	Ok(oldest)
 }
 
-pub fn oldest_first(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Vec<RowNumber>> {
+pub fn oldest_first(store: &mut impl RingRead, partition: Option<Partition>) -> Result<Vec<RowNumber>, ValueError> {
 	let Some(metadata) = store.metadata(&[partition])?.pop().flatten() else {
 		return Ok(Vec::new());
 	};
@@ -349,12 +354,18 @@ mod tests {
 	}
 
 	impl RingRead for MemoryStore {
-		fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
+		fn metadata(
+			&mut self,
+			partitions: &[Option<Partition>],
+		) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 			self.metadata_calls += 1;
 			Ok(partitions.iter().map(|partition| self.metadata.get(partition).copied()).collect())
 		}
 
-		fn rows(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn rows(
+			&mut self,
+			rows: &[(Option<Partition>, RowNumber)],
+		) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.rows_calls += 1;
 			self.reads.extend_from_slice(rows);
 			Ok(rows.iter().map(|key| self.rows.get(key).cloned()).collect())
@@ -365,7 +376,7 @@ mod tests {
 			partition: Option<Partition>,
 			after: Option<RowNumber>,
 			limit: usize,
-		) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+		) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 			let mut found: Vec<(RowNumber, EncodedBytes)> = self
 				.rows
 				.iter()
@@ -382,7 +393,7 @@ mod tests {
 	}
 
 	impl RingStore for MemoryStore {
-		fn reserve(&mut self, batch_count: u64) -> Result<u64> {
+		fn reserve(&mut self, batch_count: u64) -> Result<u64, ValueError> {
 			let base = self.next_base.max(100);
 			self.next_base = base + batch_count;
 			Ok(base)

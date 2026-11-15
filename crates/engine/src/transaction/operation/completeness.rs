@@ -17,10 +17,12 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
-	Result,
 	partition::row_key_from_partition,
 	transaction::operation::table::{TableInsert, TableOperations, load_stored_shape},
 	vm::instruction::dml::primary_key::{PrimaryKeyEncoder, get_primary_key, primary_key_index},
@@ -41,7 +43,11 @@ impl CompletenessWriterImpl {
 }
 
 impl CompletenessWriter for CompletenessWriterImpl {
-	fn advance(&self, tx: &mut Transaction<'_>, advances: &[(ObjectId, DateTime)]) -> Result<Vec<Advanced>> {
+	fn advance(
+		&self,
+		tx: &mut Transaction<'_>,
+		advances: &[(ObjectId, DateTime)],
+	) -> Result<Vec<Advanced>, ValueError> {
 		let table = self.catalog.get_table(tx, TableId::SOURCE_COMPLETENESS)?;
 		let Some(pk) = get_primary_key(&self.catalog, tx, &table)? else {
 			return Err(internal_error!("{} has no primary key", table.name));
@@ -168,14 +174,14 @@ impl CompletenessWriter for CompletenessWriterImpl {
 	}
 }
 
-fn column_index(table: &Table, column: ColumnId) -> Result<usize> {
+fn column_index(table: &Table, column: ColumnId) -> Result<usize, ValueError> {
 	table.columns
 		.iter()
 		.position(|c| c.id == column)
 		.ok_or_else(|| internal_error!("{} has no column {:?}", table.name, column))
 }
 
-fn indexed_row_number(table: &Table, body: &[u8]) -> Result<RowNumber> {
+fn indexed_row_number(table: &Table, body: &[u8]) -> Result<RowNumber, ValueError> {
 	let bytes: [u8; 8] = body.try_into().map_err(|_| {
 		internal_error!("{} primary key entry holds {} bytes, not a row number", table.name, body.len())
 	})?;

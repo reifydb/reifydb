@@ -25,7 +25,7 @@ use reifydb_value::{
 use crate::cursor::drain as drain_cursor;
 use crate::{
 	cursor::Cursor,
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	index::{Index, find_at, header, read},
 	reader::{clamp, floor, record, register, unregister, version_of},
 	segment::{STAGING_SUFFIX, Scan, Segment, Torn, parent, scan, sync_path},
@@ -79,7 +79,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		config: Config,
 		base: LogVersion,
 		base_index: LogIndex,
-	) -> Result<Self> {
+	) -> Result<Self, StoreLogError> {
 		fs.mkdir(dir)?;
 		fs.sync_dir(parent(dir))?;
 		let opened_at = clock.now();
@@ -102,7 +102,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		})
 	}
 
-	pub fn open(fs: F, clock: C, dir: &Path, config: Config) -> Result<(Self, Scan)> {
+	pub fn open(fs: F, clock: C, dir: &Path, config: Config) -> Result<(Self, Scan), StoreLogError> {
 		sweep(&fs, dir)?;
 		let mut bases = bases_in(&fs, dir)?;
 		let opened_at = clock.now();
@@ -155,7 +155,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		}
 	}
 
-	pub fn append(&mut self, record: &Record) -> Result<Position> {
+	pub fn append(&mut self, record: &Record) -> Result<Position, StoreLogError> {
 		if let Some((index, _)) = self.tail()
 			&& record.index != after(index)
 		{
@@ -185,7 +185,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		Ok(position)
 	}
 
-	pub fn truncate_from(&mut self, index: LogIndex) -> Result<()> {
+	pub fn truncate_from(&mut self, index: LogIndex) -> Result<(), StoreLogError> {
 		let commit = self.commit_index();
 		if index <= commit {
 			return Err(StoreLogError::TruncateCommitted {
@@ -234,12 +234,12 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		Ok(())
 	}
 
-	pub fn seal(&mut self) -> Result<()> {
+	pub fn seal(&mut self) -> Result<(), StoreLogError> {
 		self.index.seal(self.timestamps)?;
 		self.segment.seal()
 	}
 
-	pub fn purge(&mut self, ttl: Duration) -> Result<Vec<LogVersion>> {
+	pub fn purge(&mut self, ttl: Duration) -> Result<Vec<LogVersion>, StoreLogError> {
 		let Some(deadline) = self.clock.now().checked_sub(ttl) else {
 			return Ok(Vec::new());
 		};
@@ -247,11 +247,11 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.drop_bases(snapshot, Some(deadline))
 	}
 
-	pub fn drop_below(&mut self, index: LogIndex) -> Result<Vec<LogVersion>> {
+	pub fn drop_below(&mut self, index: LogIndex) -> Result<Vec<LogVersion>, StoreLogError> {
 		self.drop_bases(index, None)
 	}
 
-	pub fn bytes(&self) -> Result<ByteSize> {
+	pub fn bytes(&self) -> Result<ByteSize, StoreLogError> {
 		let mut total = ByteSize::from_bytes(self.segment.head().as_u64());
 		for base in &self.bases[..self.bases.len() - 1] {
 			let len = self.fs.open(&self.dir.join(log_name(*base)))?.len()?;
@@ -260,7 +260,11 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		Ok(total)
 	}
 
-	fn drop_bases(&mut self, ceiling: LogIndex, deadline: Option<DateTime>) -> Result<Vec<LogVersion>> {
+	fn drop_bases(
+		&mut self,
+		ceiling: LogIndex,
+		deadline: Option<DateTime>,
+	) -> Result<Vec<LogVersion>, StoreLogError> {
 		let pinned = floor(&self.fs, &self.dir)?;
 		let mut dropped = Vec::new();
 		while self.bases.len() > 1 {
@@ -288,24 +292,24 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		Ok(dropped)
 	}
 
-	pub fn register(&self, id: &str) -> Result<()> {
+	pub fn register(&self, id: &str) -> Result<(), StoreLogError> {
 		register(&self.fs, &self.dir, id)
 	}
 
-	pub fn unregister(&self, id: &str) -> Result<()> {
+	pub fn unregister(&self, id: &str) -> Result<(), StoreLogError> {
 		unregister(&self.fs, &self.dir, id)
 	}
 
-	pub fn record(&self, id: &str, version: LogVersion) -> Result<()> {
+	pub fn record(&self, id: &str, version: LogVersion) -> Result<(), StoreLogError> {
 		record(&self.fs, &self.dir, id, version)
 	}
 
-	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>> {
+	pub fn cursor(&self, id: &str) -> Result<Cursor<'_, F>, StoreLogError> {
 		let after = version_of(&self.fs, &self.dir, id)?;
 		Cursor::open(&self.fs, &self.dir, (after != LogVersion::ZERO).then_some(after), self.torn())
 	}
 
-	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>> {
+	pub fn record_at(&self, index: LogIndex) -> Result<Option<Record>, StoreLogError> {
 		let at = self.base_indexes.partition_point(|base| *base <= index);
 		if at == 0 {
 			return Ok(None);
@@ -359,11 +363,11 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		&self.vote
 	}
 
-	pub fn save_vote(&mut self, state: State) -> Result<()> {
+	pub fn save_vote(&mut self, state: State) -> Result<(), StoreLogError> {
 		self.vote.save(state)
 	}
 
-	pub fn commit(&mut self, index: LogIndex) -> Result<()> {
+	pub fn commit(&mut self, index: LogIndex) -> Result<(), StoreLogError> {
 		let low = self.commit_index();
 		let high = self.last_index().unwrap_or(LogIndex::ZERO);
 		if index < low || index > high {
@@ -390,7 +394,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.head
 	}
 
-	pub fn compact_to(&mut self, index: LogIndex) -> Result<()> {
+	pub fn compact_to(&mut self, index: LogIndex) -> Result<(), StoreLogError> {
 		let mut state = self.vote.state();
 		if index == state.snapshot_index {
 			return Ok(());
@@ -415,7 +419,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		self.vote.save(state)
 	}
 
-	pub fn rebase(&mut self, index: LogIndex, term: Term) -> Result<()> {
+	pub fn rebase(&mut self, index: LogIndex, term: Term) -> Result<(), StoreLogError> {
 		let mut state = self.vote.state();
 		state.commit_index = state.commit_index.max(index);
 		state.snapshot_index = index;
@@ -440,7 +444,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		})
 	}
 
-	fn behind_snapshot(&self) -> Result<bool> {
+	fn behind_snapshot(&self) -> Result<bool, StoreLogError> {
 		let state = self.vote.state();
 		let held = self.last.map(|(index, _)| index).unwrap_or(before(self.base_indexes[0]));
 		if held < state.snapshot_index {
@@ -451,7 +455,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 				.is_some_and(|record| record.term != state.snapshot_term))
 	}
 
-	fn empty_to(&mut self, base_index: LogIndex) -> Result<Scan> {
+	fn empty_to(&mut self, base_index: LogIndex) -> Result<Scan, StoreLogError> {
 		for base in self.bases[1..].iter().rev() {
 			remove(&self.fs, &self.dir.join(log_name(*base)))?;
 			remove(&self.fs, &self.dir.join(index_name(*base)))?;
@@ -500,7 +504,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		}
 	}
 
-	fn roll(&mut self, base: LogVersion, base_index: LogIndex) -> Result<()> {
+	fn roll(&mut self, base: LogVersion, base_index: LogIndex) -> Result<(), StoreLogError> {
 		self.seal()?;
 		let (segment, index) = new_pair(&self.fs, &self.dir, self.config, base, base_index)?;
 		self.segment = segment;
@@ -518,7 +522,7 @@ fn base_indexes_of<F: Filesystem + Open>(
 	dir: &Path,
 	bases: &[LogVersion],
 	active: LogIndex,
-) -> Result<Vec<LogIndex>> {
+) -> Result<Vec<LogIndex>, StoreLogError> {
 	let mut out = vec![active; bases.len()];
 	for at in (0..bases.len() - 1).rev() {
 		out[at] = match header(fs, &dir.join(index_name(bases[at]))) {
@@ -540,7 +544,7 @@ fn rescanned_base_index<F: Filesystem + Open>(
 	dir: &Path,
 	base: LogVersion,
 	fallback: LogIndex,
-) -> Result<LogIndex> {
+) -> Result<LogIndex, StoreLogError> {
 	Ok(match scan(fs, &dir.join(log_name(base)))?.records.first() {
 		Some(record) => record.index,
 		None => fallback,
@@ -548,11 +552,13 @@ fn rescanned_base_index<F: Filesystem + Open>(
 }
 
 #[cfg(test)]
-pub(crate) fn drain<F: Filesystem + Open + ReadDir, C: ClockNow>(partition: &Partition<F, C>) -> Result<Vec<Record>> {
+pub(crate) fn drain<F: Filesystem + Open + ReadDir, C: ClockNow>(
+	partition: &Partition<F, C>,
+) -> Result<Vec<Record>, StoreLogError> {
 	drain_cursor(&partition.fs, &partition.dir)
 }
 
-pub fn sync<F: Filesystem + OpenMut>(fs: &F, dir: &Path, base: LogVersion) -> Result<()> {
+pub fn sync<F: Filesystem + OpenMut>(fs: &F, dir: &Path, base: LogVersion) -> Result<(), StoreLogError> {
 	sync_path(fs, &dir.join(log_name(base)))?;
 	sync_path(fs, &dir.join(index_name(base)))
 }
@@ -585,7 +591,7 @@ fn name_of(path: &Path) -> Option<&str> {
 	path.file_name().and_then(|name| name.to_str())
 }
 
-pub fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
+pub fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>, StoreLogError> {
 	let mut bases: Vec<LogVersion> = fs
 		.read_dir(dir)?
 		.iter()
@@ -597,7 +603,7 @@ pub fn bases_in<F: ReadDir>(fs: &F, dir: &Path) -> Result<Vec<LogVersion>> {
 	Ok(bases)
 }
 
-fn sweep<F: ReadDir + Unlink>(fs: &F, dir: &Path) -> Result<()> {
+fn sweep<F: ReadDir + Unlink>(fs: &F, dir: &Path) -> Result<(), StoreLogError> {
 	let entries = fs.read_dir(dir)?;
 	let bases: HashSet<LogVersion> = entries.iter().filter_map(|path| name_of(path)).filter_map(base_of).collect();
 	for path in &entries {
@@ -614,7 +620,12 @@ fn sweep<F: ReadDir + Unlink>(fs: &F, dir: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn expired<F: Filesystem + Open>(fs: &F, dir: &Path, base: LogVersion, deadline: DateTime) -> Result<bool> {
+fn expired<F: Filesystem + Open>(
+	fs: &F,
+	dir: &Path,
+	base: LogVersion,
+	deadline: DateTime,
+) -> Result<bool, StoreLogError> {
 	match header(fs, &dir.join(index_name(base))) {
 		Ok(found) => Ok(found.timestamps.is_some_and(|range| range.max <= deadline)),
 		Err(error) if rebuildable(&error) => Ok(false),
@@ -632,14 +643,14 @@ pub(crate) fn rebuildable(error: &StoreLogError) -> bool {
 	)
 }
 
-fn remove<F: Unlink>(fs: &F, path: &Path) -> Result<()> {
+fn remove<F: Unlink>(fs: &F, path: &Path) -> Result<(), StoreLogError> {
 	match fs.unlink(path) {
 		Err(FsError::NotFound(_)) => Ok(()),
 		other => Ok(other?),
 	}
 }
 
-fn discard<F: Unlink>(fs: &F, dir: &Path, base: LogVersion) -> Result<()> {
+fn discard<F: Unlink>(fs: &F, dir: &Path, base: LogVersion) -> Result<(), StoreLogError> {
 	remove(fs, &dir.join(index_name(base)))?;
 	remove(fs, &dir.join(log_name(base)))
 }
@@ -650,7 +661,7 @@ fn rebuild<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	config: Config,
 	base: LogVersion,
 	scan: &Scan,
-) -> Result<Index<F>> {
+) -> Result<Index<F>, StoreLogError> {
 	let first = scan.records.first().expect("a rebuild without records is discarded, never rebuilt");
 	let path = dir.join(index_name(base));
 	remove(fs, &path)?;
@@ -670,7 +681,7 @@ fn new_pair<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	config: Config,
 	base: LogVersion,
 	base_index: LogIndex,
-) -> Result<(Segment<F>, Index<F>)> {
+) -> Result<(Segment<F>, Index<F>), StoreLogError> {
 	let segment = Segment::create(fs, &dir.join(log_name(base)), config.segment_bytes)?;
 	let index = Index::create(fs, &dir.join(index_name(base)), base, base_index, config.index_interval)?;
 	Ok((segment, index))
@@ -681,7 +692,7 @@ fn last_of<F: Filesystem + Open>(
 	dir: &Path,
 	bases: &[LogVersion],
 	active: Option<&Record>,
-) -> Result<Option<(LogVersion, LogIndex, Term)>> {
+) -> Result<Option<(LogVersion, LogIndex, Term)>, StoreLogError> {
 	if let Some(record) = active {
 		return Ok(Some((record.version, record.index, record.term)));
 	}

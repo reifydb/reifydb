@@ -7,7 +7,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure, AstDropQueue,
@@ -33,7 +32,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_drop(&mut self) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop(&mut self) -> Result<AstDrop<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Table))?).is_some() {
@@ -157,7 +156,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_if_exists(&mut self) -> Result<bool> {
+	pub(crate) fn parse_if_exists(&mut self) -> Result<bool, ValueError> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;
 			Ok(true)
@@ -166,7 +165,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_cascade(&mut self) -> Result<bool> {
+	fn parse_cascade(&mut self) -> Result<bool, ValueError> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Cascade))?).is_some() {
 			Ok(true)
 		} else {
@@ -180,7 +179,7 @@ impl<'bump> Parser<'bump> {
 		token: Token<'bump>,
 		make_identifier: impl FnOnce(BumpFragment<'bump>, Vec<BumpFragment<'bump>>) -> I,
 		wrap: impl FnOnce(Token<'bump>, bool, I, bool) -> AstDrop<'bump>,
-	) -> Result<AstDrop<'bump>> {
+	) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -190,7 +189,7 @@ impl<'bump> Parser<'bump> {
 		Ok(wrap(token, if_exists, identifier, cascade))
 	}
 
-	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -211,7 +210,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_view(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_view(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -232,7 +231,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_windowed_view_group(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_windowed_view_group(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -244,7 +243,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -265,7 +264,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_queue(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_queue(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -286,7 +285,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let segments: Vec<_> = self
 			.parse_double_colon_separated_identifiers()?
@@ -303,7 +302,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -324,7 +323,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_enum(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_enum(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -345,7 +344,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_series(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_series(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -366,7 +365,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_source(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_source(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -387,7 +386,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_procedure(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_procedure(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -404,7 +403,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_sink(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_sink(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		self.parse_drop_qualified(
 			token,
 			|name, ns| {
@@ -425,7 +424,7 @@ impl<'bump> Parser<'bump> {
 		)
 	}
 
-	fn parse_drop_handler(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_handler(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -442,7 +441,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_test(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_test(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -459,7 +458,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_relationship(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	fn parse_drop_relationship(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 		let name = name_token.fragment;

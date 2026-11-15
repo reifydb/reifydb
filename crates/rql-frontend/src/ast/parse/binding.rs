@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			Ast, AstBindingProtocol, AstBindingProtocolKind, AstCreate, AstCreateBinding, AstDrop,
@@ -26,7 +27,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		kind: AstBindingProtocolKind,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -83,7 +84,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_binding(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_binding(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.consume_if(TokenKind::Keyword(Keyword::If))?.is_some();
 		if if_exists {
 			self.consume_keyword(Keyword::Exists)?;
@@ -102,7 +103,9 @@ impl<'bump> Parser<'bump> {
 	}
 }
 
-fn parse_with_block<'bump>(parser: &mut Parser<'bump>) -> Result<Vec<(BumpFragment<'bump>, BumpFragment<'bump>)>> {
+fn parse_with_block<'bump>(
+	parser: &mut Parser<'bump>,
+) -> Result<Vec<(BumpFragment<'bump>, BumpFragment<'bump>)>, ValueError> {
 	parser.consume_operator(Operator::OpenCurly)?;
 	let mut pairs = Vec::new();
 
@@ -136,7 +139,7 @@ fn parse_with_block<'bump>(parser: &mut Parser<'bump>) -> Result<Vec<(BumpFragme
 	Ok(pairs)
 }
 
-fn extract_text_literal<'bump>(node: &Ast<'bump>) -> Result<BumpFragment<'bump>> {
+fn extract_text_literal<'bump>(node: &Ast<'bump>) -> Result<BumpFragment<'bump>, ValueError> {
 	match node {
 		Ast::Literal(AstLiteral::Text(text)) => Ok(text.0.fragment),
 		other => Err(AstError::UnexpectedToken {

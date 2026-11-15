@@ -2,14 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstChanges;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{ChangesNode, Compiler, LogicalPlan},
-};
+use crate::plan::logical::{ChangesNode, Compiler, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_changes(&self, ast: AstChanges<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_changes(&self, ast: AstChanges<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::Changes(ChangesNode {
 			with: Self::compile_changes_with(&ast.token, ast.with.as_ref())?,
 			fragment: ast.token.fragment.to_owned(),

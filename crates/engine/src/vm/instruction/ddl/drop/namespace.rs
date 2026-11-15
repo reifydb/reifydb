@@ -11,16 +11,19 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DropNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::{Value, constraint::Constraint};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, constraint::Constraint},
+};
 
 use super::dependent::{find_column_dependents, find_flow_dependents};
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropNamespaceNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let Some(namespace_id) = plan.namespace_id else {
 		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

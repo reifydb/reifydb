@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::operator::{HostOperator, host::TxnHostContext};
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedMount, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -51,11 +51,11 @@ impl UnmanagedOperator for WriteProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(WriteProbe)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		// A guest error aborts the process at the boundary, so the outcome must travel out of band.
 		let key = unmanaged_key(&0u64.to_be_bytes()).expect("an eight byte suffix fits the keyspace");
 		let accepted = ctx.state().set(&[(key.clone(), 1i64)]).is_ok();

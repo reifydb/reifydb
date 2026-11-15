@@ -9,15 +9,13 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{dictionary::DictionaryId, value_type::ValueType},
 };
 use tracing::{instrument, warn};
 
-use crate::{
-	CatalogStore, Result, catalog::Catalog,
-	store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate,
-};
+use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
@@ -40,7 +38,11 @@ impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub fn find_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Option<Dictionary>> {
+	pub fn find_dictionary(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: DictionaryId,
+	) -> Result<Option<Dictionary>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(dict) = self.cache.find_dictionary_at(id, cmd.version()) {
@@ -116,7 +118,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Dictionary>> {
+	) -> Result<Option<Dictionary>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(dict) =
@@ -216,7 +218,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
-	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Dictionary> {
+	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Dictionary, ValueError> {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
@@ -225,26 +227,30 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> Result<Dictionary> {
+	) -> Result<Dictionary, ValueError> {
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
 		txn.track_dictionary_created(dictionary.clone())?;
 		Ok(dictionary)
 	}
 
 	#[instrument(name = "catalog::dictionary::drop", level = "info", skip(self, txn))]
-	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: Dictionary) -> Result<()> {
+	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: Dictionary) -> Result<(), ValueError> {
 		CatalogStore::drop_dictionary(txn, dictionary.id)?;
 		txn.track_dictionary_deleted(dictionary)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::dictionary::list", level = "trace", skip(self, txn))]
-	pub fn list_dictionaries(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
+	pub fn list_dictionaries(
+		&self,
+		txn: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Vec<Dictionary>, ValueError> {
 		CatalogStore::list_dictionaries(txn, namespace)
 	}
 
 	#[instrument(name = "catalog::dictionary::list_all", level = "trace", skip(self, txn))]
-	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
+	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<Dictionary>, ValueError> {
 		CatalogStore::list_all_dictionaries(txn)
 	}
 }

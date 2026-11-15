@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::internal_err;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::{
 	operator::state::seal::coord::Coord,
@@ -38,7 +38,13 @@ where
 	C: Coord + Hash,
 	X: Contributions,
 {
-	fn push(&mut self, op: AccumulatorOp, group: &G, coord: Option<C>, contribution: &X::Item) -> Result<()> {
+	fn push(
+		&mut self,
+		op: AccumulatorOp,
+		group: &G,
+		coord: Option<C>,
+		contribution: &X::Item,
+	) -> Result<(), ValueError> {
 		let Some(coord) = coord else {
 			return Ok(());
 		};
@@ -109,11 +115,16 @@ where
 		&mut self.windows[at]
 	}
 
-	fn push_row(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>, row: usize) -> Result<()> {
+	fn push_row(
+		&mut self,
+		op: AccumulatorOp,
+		columns: &WindowColumns<G, C, X::Item>,
+		row: usize,
+	) -> Result<(), ValueError> {
 		self.push(op, &columns.groups()[row], columns.coords()[row], &columns.contributions()[row])
 	}
 
-	fn push_all(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>) -> Result<()> {
+	fn push_all(&mut self, op: AccumulatorOp, columns: &WindowColumns<G, C, X::Item>) -> Result<(), ValueError> {
 		for row in 0..columns.len() {
 			self.push_row(op, columns, row)?;
 		}
@@ -125,8 +136,8 @@ where
 		diff: usize,
 		pre: &WindowColumns<G, C, X::Item>,
 		post: &WindowColumns<G, C, X::Item>,
-	) -> Result<()> {
-		let number = |columns: &WindowColumns<G, C, X::Item>, row: usize| -> Result<RowNumber> {
+	) -> Result<(), ValueError> {
+		let number = |columns: &WindowColumns<G, C, X::Item>, row: usize| -> Result<RowNumber, ValueError> {
 			match columns.rows()[row] {
 				Some(number) => Ok(number),
 				None => internal_err!(
@@ -178,7 +189,7 @@ where
 		post: &WindowColumns<G, C, X::Item>,
 		run_pre: &mut Vec<usize>,
 		run_post: &mut Vec<usize>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		for row in run_pre.drain(..) {
 			self.push_row(AccumulatorOp::Remove, pre, row)?;
 		}
@@ -205,7 +216,10 @@ where
 	}
 }
 
-pub fn route_tumbling<R, X>(rows: &mut R, size: <R::Coord as Coord>::Span) -> Result<Routed<R::Group, R::Coord, X>>
+pub fn route_tumbling<R, X>(
+	rows: &mut R,
+	size: <R::Coord as Coord>::Span,
+) -> Result<Routed<R::Group, R::Coord, X>, ValueError>
 where
 	R: WindowRows,
 	X: Contributions<Item = R::Contribution>,
@@ -219,7 +233,7 @@ pub fn route_sliding<R, X>(
 	rows: &mut R,
 	size: <R::Coord as Coord>::Span,
 	slide: <R::Coord as Coord>::Span,
-) -> Result<Routed<R::Group, R::Coord, X>>
+) -> Result<Routed<R::Group, R::Coord, X>, ValueError>
 where
 	R: WindowRows,
 	X: Contributions<Item = R::Contribution>,
@@ -233,7 +247,7 @@ fn route<R, X>(
 	rows: &mut R,
 	size: <R::Coord as Coord>::Span,
 	slide: Option<<R::Coord as Coord>::Span>,
-) -> Result<Routed<R::Group, R::Coord, X>>
+) -> Result<Routed<R::Group, R::Coord, X>, ValueError>
 where
 	R: WindowRows,
 	X: Contributions<Item = R::Contribution>,

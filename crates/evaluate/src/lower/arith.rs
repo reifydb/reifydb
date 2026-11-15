@@ -19,21 +19,18 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::value_type::field::{FieldType, to_field},
 };
 
 use crate::{
-	Result,
 	expression::context::EvalContext,
 	lower::{
-		Lowered, Node, error::into_external, inner_type, is_untyped_none, lower_node, typed_field, udf,
-		volatile,
+		Node, Stop, error::into_external, inner_type, is_untyped_none, lower_node, typed_field, udf, volatile,
 	},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_arith<'e>(
 	ctx: &EvalContext,
@@ -42,7 +39,7 @@ pub(super) fn lower_arith<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: Fragment,
 	op: ArithOp,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	let arith = ctx.arith();
@@ -61,7 +58,13 @@ pub(super) fn lower_arith<'e>(
 	})
 }
 
-fn arith_field(name: &str, op: ArithOp, arith: &ArithContext, left: &FieldRef, right: &FieldRef) -> Result<FieldRef> {
+fn arith_field(
+	name: &str,
+	op: ArithOp,
+	arith: &ArithContext,
+	left: &FieldRef,
+	right: &FieldRef,
+) -> Result<FieldRef, ValueError> {
 	match (is_untyped_none(left)?, is_untyped_none(right)?) {
 		(true, true) => Ok(Arc::new(to_field(name, &FieldType::default()))),
 		(true, false) => Ok(typed_field(name, inner_type(right)?, true)),
@@ -125,16 +128,16 @@ impl ScalarUDFImpl for ArithUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("arith types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		arith_field(self.name(), self.op, &self.arith, &args.arg_fields[0], &args.arg_fields[1])
 			.map_err(into_external)
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let ScalarFunctionArgs {
 			args: values,
 			arg_fields,
@@ -146,7 +149,7 @@ impl ScalarUDFImpl for ArithUdf {
 			.into_iter()
 			.zip(values)
 			.map(|(field, value)| Ok((field, value.into_array(number_rows)?)))
-			.collect::<DfResult<Vec<(FieldRef, ArrayRef)>>>()?;
+			.collect::<Result<Vec<(FieldRef, ArrayRef)>, DataFusionError>>()?;
 		let (left, right) = (&columns[0], &columns[1]);
 		let fragment = || self.fragment.clone();
 		let (field, array) = match self.op {
@@ -161,7 +164,7 @@ impl ScalarUDFImpl for ArithUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

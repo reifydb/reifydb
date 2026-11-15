@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstWindow, AstWindowKind},
 		parse::{Parser, Precedence},
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_window(&mut self) -> Result<AstWindow<'bump>> {
+	pub(crate) fn parse_window(&mut self) -> Result<AstWindow<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Window)?;
 
@@ -125,7 +126,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_by_clause(&mut self) -> Result<Vec<Ast<'bump>>> {
+	fn parse_by_clause(&mut self) -> Result<Vec<Ast<'bump>>, ValueError> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut group_by = Vec::new();

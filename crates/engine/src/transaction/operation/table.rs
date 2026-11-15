@@ -29,20 +29,21 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, read::Read, write::Write},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	return_error,
 	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use smallvec::smallvec;
 
-use crate::{Result, partition::row_key_from_partition, transaction::operation::storage::DmlTransaction};
+use crate::{partition::row_key_from_partition, transaction::operation::storage::DmlTransaction};
 
 fn build_table_insert_change(
 	table: &Table,
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -57,8 +58,8 @@ fn build_table_update_change(
 	ids: &[RowNumber],
 	pres: &[EncodedBytes],
 	posts: &[EncodedBytes],
-	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
-) -> Result<Change> {
+	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape, ValueError>,
+) -> Result<Change, ValueError> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -75,8 +76,8 @@ fn build_table_remove_change(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
-) -> Result<Change> {
+	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape, ValueError>,
+) -> Result<Change, ValueError> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -89,8 +90,8 @@ pub(crate) fn decode_table_rows(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-	mut stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
-) -> Result<RecordBatch> {
+	mut stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape, ValueError>,
+) -> Result<RecordBatch, ValueError> {
 	let current = shape.fingerprint();
 	if bytes_slice.iter().all(|row| EncodedTableRow::view(row).fingerprint() == current) {
 		return from_encoded_bytes(shape, ids, bytes_slice);
@@ -119,7 +120,7 @@ pub(crate) fn load_stored_shape(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	fingerprint: RowShapeFingerprint,
-) -> Result<RowShape> {
+) -> Result<RowShape, ValueError> {
 	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
 	})
@@ -149,7 +150,12 @@ impl TableDml for AdminTransaction {
 	}
 }
 
-fn insert_rows<T: TableDml>(txn: &mut T, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+fn insert_rows<T: TableDml>(
+	txn: &mut T,
+	table: &Table,
+	shape: &RowShape,
+	insert: TableInsert<'_>,
+) -> Result<(), ValueError> {
 	let TableInsert {
 		ids,
 		partitions,
@@ -235,7 +241,7 @@ fn refuse_changed_keys(
 	rows: &[EncodedTableRowBuilder],
 	key_columns: &[usize],
 	keys: &[Value],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if key_cells(shape, rows, key_columns) != keys {
 		let key_columns = key_columns.iter().map(|&index| table.columns[index].name.clone()).collect();
 		return_error!(primary_key_changed_by_hook(Fragment::None, table.name.clone(), key_columns));
@@ -243,7 +249,12 @@ fn refuse_changed_keys(
 	Ok(())
 }
 
-fn moved_partitions(table: &Table, shape: &RowShape, partitions: &[Partition], rows: &[EncodedBytes]) -> Result<bool> {
+fn moved_partitions(
+	table: &Table,
+	shape: &RowShape,
+	partitions: &[Partition],
+	rows: &[EncodedBytes],
+) -> Result<bool, ValueError> {
 	let indices = partition_col_indices(&table.columns, &table.partition_by);
 	Ok(!indices.is_empty() && partitions_of_rows(shape, &indices, rows)? != partitions)
 }
@@ -256,7 +267,7 @@ fn updated_rows<T: WithInterceptors>(
 	partitions: &[Partition],
 	rows: &mut [EncodedTableRowBuilder],
 	key_columns: &[usize],
-) -> Result<Vec<EncodedBytes>> {
+) -> Result<Vec<EncodedBytes>, ValueError> {
 	if txn.table_row_pre_update_interceptors().is_empty() {
 		return Ok(rows.iter().map(|row| row.clone().freeze_bytes()).collect());
 	}
@@ -274,7 +285,7 @@ fn updated_rows<T: WithInterceptors>(
 }
 
 pub trait TableOperations {
-	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()>;
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<(), ValueError>;
 
 	fn update_table(
 		&mut self,
@@ -285,7 +296,7 @@ pub trait TableOperations {
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
 		catalog: &Catalog,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError>;
 
 	fn remove_from_table(
 		&mut self,
@@ -294,7 +305,7 @@ pub trait TableOperations {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		displayed: &[EncodedBytes],
-	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError>;
 }
 
 fn update_rows<T: TableDml>(
@@ -305,8 +316,8 @@ fn update_rows<T: TableDml>(
 	rows: &mut [EncodedTableRowBuilder],
 	key_columns: &[usize],
 	pres: &[EncodedBytes],
-	mut stored_shape: impl FnMut(&mut T, RowShapeFingerprint) -> Result<RowShape>,
-) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	mut stored_shape: impl FnMut(&mut T, RowShapeFingerprint) -> Result<RowShape, ValueError>,
+) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 	assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 	if ids.is_empty() {
@@ -350,8 +361,8 @@ fn remove_rows<T: TableDml>(
 	ids: &[RowNumber],
 	partitions: &[Partition],
 	displayed: &[EncodedBytes],
-	mut stored_shape: impl FnMut(&mut T, RowShapeFingerprint) -> Result<RowShape>,
-) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	mut stored_shape: impl FnMut(&mut T, RowShapeFingerprint) -> Result<RowShape, ValueError>,
+) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 	assert_eq!(ids.len(), displayed.len(), "ids/displayed length mismatch");
 	if ids.is_empty() {
 		return Ok(Vec::new());
@@ -392,7 +403,7 @@ fn remove_rows<T: TableDml>(
 }
 
 impl TableOperations for CommandTransaction {
-	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<(), ValueError> {
 		insert_rows(self, table, shape, insert)
 	}
 
@@ -405,7 +416,7 @@ impl TableOperations for CommandTransaction {
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
 		catalog: &Catalog,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		update_rows(self, table, ids, partitions, rows, key_columns, pres, |txn, fingerprint| {
 			load_stored_shape(catalog, &mut Transaction::Command(txn), table, fingerprint)
 		})
@@ -418,7 +429,7 @@ impl TableOperations for CommandTransaction {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		displayed: &[EncodedBytes],
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		remove_rows(self, table, ids, partitions, displayed, |txn, fingerprint| {
 			load_stored_shape(catalog, &mut Transaction::Command(txn), table, fingerprint)
 		})
@@ -426,7 +437,7 @@ impl TableOperations for CommandTransaction {
 }
 
 impl TableOperations for AdminTransaction {
-	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<(), ValueError> {
 		insert_rows(self, table, shape, insert)
 	}
 
@@ -439,7 +450,7 @@ impl TableOperations for AdminTransaction {
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
 		catalog: &Catalog,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		update_rows(self, table, ids, partitions, rows, key_columns, pres, |txn, fingerprint| {
 			load_stored_shape(catalog, &mut Transaction::Admin(txn), table, fingerprint)
 		})
@@ -452,7 +463,7 @@ impl TableOperations for AdminTransaction {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		displayed: &[EncodedBytes],
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		remove_rows(self, table, ids, partitions, displayed, |txn, fingerprint| {
 			load_stored_shape(catalog, &mut Transaction::Admin(txn), table, fingerprint)
 		})
@@ -460,7 +471,7 @@ impl TableOperations for AdminTransaction {
 }
 
 impl TableOperations for Transaction<'_> {
-	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<(), ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, shape, insert),
 			Transaction::Admin(txn) => txn.insert_table(table, shape, insert),
@@ -478,7 +489,7 @@ impl TableOperations for Transaction<'_> {
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
 		catalog: &Catalog,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		match self {
 			Transaction::Command(txn) => {
 				txn.update_table(table, ids, partitions, rows, key_columns, pres, catalog)
@@ -500,7 +511,7 @@ impl TableOperations for Transaction<'_> {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		displayed: &[EncodedBytes],
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(catalog, table, ids, partitions, displayed),
 			Transaction::Admin(txn) => txn.remove_from_table(catalog, table, ids, partitions, displayed),

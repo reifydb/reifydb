@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::PrimaryKeyKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
@@ -19,7 +20,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_primary_keys(rx: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyInfo>> {
+	pub(crate) fn list_primary_keys(rx: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyInfo>, ValueError> {
 		let mut result = Vec::new();
 
 		let primary_key_range = PrimaryKeyKey::full_scan();
@@ -69,7 +70,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_primary_key_columns(rx: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
+	pub(crate) fn list_primary_key_columns(rx: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>, ValueError> {
 		let mut result = Vec::new();
 
 		let primary_key_range = PrimaryKeyKey::full_scan();

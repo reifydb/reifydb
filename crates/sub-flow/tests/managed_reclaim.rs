@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		ManagedOperator, OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -53,11 +53,11 @@ impl OperatorMetadata for Tally {
 }
 
 impl ManagedOperator for Tally {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Tally)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<(), SdkError> {
 		// A ROOT key no group owns must survive every sweep, otherwise the operator loses its own bookkeeping.
 		ctx.state()
 			.set(&[(managed_key_in(GroupId::ROOT, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
@@ -101,11 +101,11 @@ impl UnmanagedOperator for Untracked {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Untracked)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }

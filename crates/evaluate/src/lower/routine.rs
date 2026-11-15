@@ -34,23 +34,20 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	error::EvaluateError,
 	expression::{compile::type_column, context::EvalContext},
 	lower::{
-		Lowered, Node, Stop, compare, direct::splice_key, empty_of, error::into_external, literal, lower_node,
+		Node, Stop, compare, direct::splice_key, empty_of, error::into_external, literal, lower_node,
 		schema::positional, typed_field, udf, volatile,
 	},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_call<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
 	call: &'e CallExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let name = call.func.0.text();
 	assert!(ctx.symbols.get_function(name).is_none(), "UDF '{}' should have been hoisted to UdfEvalNode", name);
 	let function = ctx.routines.get_scalar_function(name).ok_or_else(|| -> ValueError {
@@ -92,8 +89,11 @@ pub(super) fn lower_call<'e>(
 			}
 			_ => lower_node(ctx, operator, arg),
 		})
-		.collect::<Lowered<Vec<Node>>>()?;
-	let args = args.into_iter().map(|node| enum_as_text(node, &call.func.0)).collect::<Result<Vec<Node>>>()?;
+		.collect::<Result<Vec<Node>, Stop>>()?;
+	let args = args
+		.into_iter()
+		.map(|node| enum_as_text(node, &call.func.0))
+		.collect::<Result<Vec<Node>, ValueError>>()?;
 	let fields: Vec<FieldRef> = args.iter().map(|node| node.field.clone()).collect();
 	let field = routine_field(display_label(expression).text(), function.as_ref(), &fields)?;
 	Ok(Node {
@@ -112,7 +112,7 @@ pub(super) fn lower_call<'e>(
 	})
 }
 
-fn enum_as_text(node: Node, fragment: &Fragment) -> Result<Node> {
+fn enum_as_text(node: Node, fragment: &Fragment) -> Result<Node, ValueError> {
 	let Some(value_type) = from_field(&node.field)?.value_type.map(|value_type| value_type.inner_type().clone())
 	else {
 		return Ok(node);
@@ -127,13 +127,13 @@ fn enum_as_text(node: Node, fragment: &Fragment) -> Result<Node> {
 	})
 }
 
-fn routine_field(name: &str, function: &dyn Function, args: &[FieldRef]) -> Result<FieldRef> {
+fn routine_field(name: &str, function: &dyn Function, args: &[FieldRef]) -> Result<FieldRef, ValueError> {
 	let types = args
 		.iter()
 		.map(|field| {
 			Ok((ColumnView::try_from(&split_nulls(empty_of(field))?.0)?.get_type(), field.is_nullable()))
 		})
-		.collect::<Result<Vec<(ValueType, bool)>>>()?;
+		.collect::<Result<Vec<(ValueType, bool)>, ValueError>>()?;
 	let value_type = function.return_type_of(&types);
 	if !function.propagates_options() && value_type == ValueType::Option(Box::new(ValueType::Any)) {
 		return Ok(Arc::new(to_field(name, &FieldType::default())));
@@ -201,15 +201,15 @@ impl ScalarUDFImpl for RoutineUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("routine types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		routine_field(self.name(), self.function.as_ref(), args.arg_fields).map_err(into_external)
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let ScalarFunctionArgs {
 			args: values,
 			arg_fields,
@@ -229,7 +229,7 @@ impl ScalarUDFImpl for RoutineUdf {
 				};
 				Ok((field, value.into_array(rows)?))
 			})
-			.collect::<DfResult<Vec<(FieldRef, ArrayRef)>>>()?;
+			.collect::<Result<Vec<(FieldRef, ArrayRef)>, DataFusionError>>()?;
 		let mut function_ctx = FunctionContext {
 			fragment: self.fragment.clone(),
 			identity: self.identity,
@@ -267,7 +267,7 @@ impl ScalarUDFImpl for RoutineUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

@@ -4,15 +4,16 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::token::Token, key::identity::TokenKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use subtle::ConstantTimeEq;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::token::{convert_token, shape::token},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
+	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>, ValueError> {
 		let stream = rx.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

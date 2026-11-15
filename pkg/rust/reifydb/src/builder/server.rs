@@ -72,7 +72,10 @@ use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
 	wal::{CommitWal, Recovery, WalConfig, WalConfigurator, replay},
 };
-use reifydb_value::value::{Value, duration::Duration};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, duration::Duration},
+};
 use reifydb_wal::sync::WalMode;
 #[cfg(all(feature = "sub_metric_profiler", feature = "sub_tracing"))]
 use tracing_subscriber::filter::LevelFilter;
@@ -99,7 +102,7 @@ fn pool_config_from_sources(
 	overrides: &[(ConfigKey, Value)],
 	wal_config: WalConfig,
 	clock: &Clock,
-) -> Result<PoolConfigSources> {
+) -> Result<PoolConfigSources, ValueError> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
 	let (saved_through, persisted_high) = match multi_persistent.as_ref() {
@@ -129,7 +132,7 @@ fn pool_config_from_sources(
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
 use crate::{
-	Database, MigrationSource, Result,
+	Database, MigrationSource,
 	api::{StorageFactory, commit_wal, transaction},
 };
 
@@ -367,7 +370,7 @@ impl ServerBuilder {
 	}
 
 	#[allow(unused_mut)]
-	pub fn build(mut self) -> Result<Database> {
+	pub fn build(mut self) -> Result<Database, ValueError> {
 		// Servers accept one file descriptor per connection; raise the soft FD
 		// limit to the hard limit before any listener is bound so concurrent load
 		// does not exhaust it (`accept error: Too many open files`).

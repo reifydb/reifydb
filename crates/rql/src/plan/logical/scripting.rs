@@ -3,9 +3,10 @@
 
 use reifydb_rql_frontend::ast::ast::AstClosure;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{Compiler, DefineClosureNode, LogicalPlan, function::FunctionParameter},
 };
 
@@ -14,7 +15,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstClosure<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut parameters = Vec::new();
 		for param in ast.parameters {
 			let param_name = param.variable.token.fragment;

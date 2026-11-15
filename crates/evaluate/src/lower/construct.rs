@@ -14,12 +14,9 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	expression::context::EvalContext,
-	lower::{Lowered, Node, bool_field, error::into_external, literal, lower_node, udf, volatile},
+	lower::{Node, Stop, bool_field, error::into_external, literal, lower_node, udf, volatile},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum Shape {
@@ -44,7 +41,7 @@ pub(super) fn lower_construct<'e>(
 	shape: Shape,
 	items: Vec<&'e Expression>,
 	fragment: &Fragment,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	if shape == Shape::Tuple && items.len() == 1 {
 		return lower_node(ctx, operator, items[0]);
 	}
@@ -77,7 +74,7 @@ pub(super) fn lower_projection<'e>(
 	operator: &'static str,
 	expressions: &'e [Expression],
 	fragment: &Fragment,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	if expressions.len() == 1 {
 		return lower_node(ctx, operator, &expressions[0]);
 	}
@@ -136,15 +133,15 @@ impl ScalarUDFImpl for ConstructUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("construct types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(self.field.clone())
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let mut arrays = Vec::with_capacity(args.args.len());
 		for value in args.args {
 			arrays.push(value.into_array(args.number_rows)?);
@@ -153,7 +150,7 @@ impl ScalarUDFImpl for ConstructUdf {
 			.iter()
 			.zip(args.arg_fields.iter())
 			.map(|(array, field)| ColumnView::try_from((array, field.as_ref())))
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.map_err(into_external)?;
 		let rows = (0..args.number_rows)
 			.map(|row| self.shape.value(views.iter().map(|view| view.get_value(row)).collect()));
@@ -161,7 +158,7 @@ impl ScalarUDFImpl for ConstructUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }
@@ -198,15 +195,15 @@ impl ScalarUDFImpl for ProjectionUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("projection types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(self.field.clone())
 	}
 
-	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let error: ValueError = TypeError::Runtime {
 			kind: RuntimeErrorKind::ExpectedSingleColumn {
 				actual: self.columns,
@@ -217,7 +214,7 @@ impl ScalarUDFImpl for ProjectionUdf {
 		Err(into_external(error))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

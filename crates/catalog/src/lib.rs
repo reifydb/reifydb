@@ -11,7 +11,10 @@ use reifydb_core::interface::{
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 pub mod bootstrap;
 pub mod cache;
 pub mod catalog;
@@ -24,8 +27,6 @@ pub mod system;
 pub mod test_utils;
 pub mod vtable;
 
-pub type Result<T> = reifydb_value::Result<T>;
-
 pub struct CatalogStore;
 
 pub fn create_token(
@@ -34,7 +35,7 @@ pub fn create_token(
 	identity: IdentityId,
 	expires_at: Option<DateTime>,
 	created_at: DateTime,
-) -> Result<Token> {
+) -> Result<Token, ValueError> {
 	CatalogStore::create_token(txn, token, identity, expires_at, created_at)
 }
 
@@ -44,27 +45,27 @@ pub fn create_session_token(
 	identity: IdentityId,
 	expires_at: Option<DateTime>,
 	created_at: DateTime,
-) -> Result<Token> {
+) -> Result<Token, ValueError> {
 	CatalogStore::create_session_token(txn, token, identity, expires_at, created_at)
 }
 
-pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
+pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<Token>, ValueError> {
 	CatalogStore::find_token_by_value(txn, value)
 }
 
-pub fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
+pub fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<(), ValueError> {
 	CatalogStore::drop_token(txn, id)
 }
 
-pub fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+pub fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<(), ValueError> {
 	CatalogStore::drop_tokens_by_identity(txn, identity)
 }
 
-pub fn drop_session_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+pub fn drop_session_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<(), ValueError> {
 	CatalogStore::drop_session_tokens_by_identity(txn, identity)
 }
 
-pub fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
+pub fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<(), ValueError> {
 	CatalogStore::drop_expired_tokens(txn, now)
 }
 

@@ -15,7 +15,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -67,11 +67,11 @@ impl UnmanagedOperator for SlowCounter {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(SlowCounter)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		thread::sleep(SLOW_APPLY.to_std());
 
 		let mut seen = 0i64;

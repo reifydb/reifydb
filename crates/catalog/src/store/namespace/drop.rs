@@ -13,11 +13,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		Self::drop_namespace_windowed_view_groups(txn, namespace)?;
 		Self::drop_namespace_tables(txn, namespace)?;
 		Self::drop_namespace_views(txn, namespace)?;
@@ -31,7 +32,10 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_windowed_view_groups(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_windowed_view_groups(
+		txn: &mut AdminTransaction,
+		namespace: NamespaceId,
+	) -> Result<(), ValueError> {
 		let range = NamespaceWindowedViewGroupKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut group_ids = Vec::new();
@@ -49,7 +53,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_tables(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_tables(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceTableKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut table_ids = Vec::new();
@@ -67,7 +71,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_views(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_views(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceViewKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut view_ids = Vec::new();
@@ -85,7 +89,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_ringbuffers(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_ringbuffers(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceRingBufferKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut rb_ids = Vec::new();
@@ -103,7 +107,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_queues(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_queues(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceQueueKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut queue_ids = Vec::new();
@@ -121,7 +125,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_flows(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_flows(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceFlowKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut flow_ids = Vec::new();
@@ -139,7 +143,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_dictionaries(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_dictionaries(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceDictionaryKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut dict_ids = Vec::new();
@@ -157,7 +161,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn drop_namespace_sumtypes(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+	fn drop_namespace_sumtypes(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<(), ValueError> {
 		let range = NamespaceSumTypeKey::full_scan(namespace);
 		let mut stream = txn.range(range, RangeScope::All, 1024)?;
 		let mut st_ids = Vec::new();

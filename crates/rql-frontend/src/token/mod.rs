@@ -20,7 +20,6 @@ use token::{Token, TokenKind};
 use variable::scan_variable;
 
 use crate::{
-	Result,
 	bump::{Bump, BumpVec},
 	token::{
 		identifier::{scan_digit_starting_identifier, scan_identifier, scan_quoted_identifier},
@@ -60,7 +59,7 @@ fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	None
 }
 
-pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<'b>>> {
+pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<'b>>, ValueError> {
 	let mut cursor = Cursor::new(input);
 
 	let estimated_tokens = (input.len() / 6).clamp(8, 2048);

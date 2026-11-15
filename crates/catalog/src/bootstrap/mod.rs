@@ -25,13 +25,13 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 use tracing::{info, warn};
 
 use crate::{
-	Result,
 	cache::{
 		CatalogCache,
 		load::{CatalogCacheLoader, config::load_configs},
@@ -62,7 +62,7 @@ pub fn bootstrap_system_objects(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	bootstrap_root_namespaces(multi, single, catalog, eventbus, runtime)?;
 	identity::bootstrap_identities(multi, single, catalog, eventbus, runtime)?;
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus, runtime)?;
@@ -89,7 +89,7 @@ pub fn bootstrap_root_namespaces(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let version_key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	}
@@ -235,7 +235,7 @@ pub fn seed_bootstrap_configs(
 	multi: &MultiTransaction,
 	catalog: &CatalogCache,
 	configs: &[(ConfigKey, Value)],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	reject_duplicate_configs(configs);
 	if !configs.is_empty() {
 		let version = multi.version()?;
@@ -255,7 +255,7 @@ pub fn apply_bootstrap_configs(
 	eventbus: &EventBus,
 	configs: &[(ConfigKey, Value)],
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	reject_duplicate_configs(configs);
 	if configs.is_empty() {
 		return Ok(());
@@ -290,7 +290,7 @@ pub fn load_catalog_cache(
 	single: &SingleTransaction,
 	catalog: &CatalogCache,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut qt = QueryTransaction::new(
 		multi.begin_query(multi.generate_transaction_id())?,
 		single.clone(),
@@ -305,7 +305,7 @@ pub fn read_configs(
 	buffer: Option<&CommitStore>,
 	persistent: Option<&MultiPersistentTier>,
 	keys: &[ConfigKey],
-) -> Result<HashMap<ConfigKey, Value>> {
+) -> Result<HashMap<ConfigKey, Value>, ValueError> {
 	let mut found: HashMap<ConfigKey, Value> = HashMap::new();
 
 	let range = ConfigStorageKey::full_scan();
@@ -373,7 +373,7 @@ pub(crate) fn ensure_namespace(
 	path: &str,
 	local_name: &str,
 	parent_id: NamespaceId,
-) -> Result<NamespaceId> {
+) -> Result<NamespaceId, ValueError> {
 	if let Some(ns) = catalog_api.find_namespace_by_path(&mut Transaction::Admin(admin), path)? {
 		return Ok(ns.id());
 	}

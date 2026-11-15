@@ -13,10 +13,10 @@ use reifydb_rql_frontend::{
 	token::token::{Literal, Token, TokenKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		AssignNode, AssignValue, Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue,
@@ -33,7 +33,11 @@ enum ExprOrPlan<'bump> {
 }
 
 impl<'bump> Compiler<'bump> {
-	fn compile_value_expression(&self, inner: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<ExprOrPlan<'bump>> {
+	fn compile_value_expression(
+		&self,
+		inner: Ast<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<ExprOrPlan<'bump>, ValueError> {
 		match inner {
 			inner @ (Ast::If(_) | Ast::Match(_)) => {
 				let plan = self.compile_single(inner, tx)?;
@@ -45,7 +49,11 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub(crate) fn compile_let(&self, ast: AstLet<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_let(
+		&self,
+		ast: AstLet<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
 				let inner = BumpBox::into_inner(expr);
@@ -83,7 +91,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAssign<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
 				match self.compile_value_expression(BumpBox::into_inner(expr), tx)? {
@@ -103,7 +111,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn none_as_map(&self) -> Result<LogicalPlan<'bump>> {
+	fn none_as_map(&self) -> Result<LogicalPlan<'bump>, ValueError> {
 		let none_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
 			kind: TokenKind::Literal(Literal::None),
 			fragment: BumpFragment::internal(self.bump, "none"),
@@ -111,7 +119,11 @@ impl<'bump> Compiler<'bump> {
 		self.compile_scalar_as_map(none_literal)
 	}
 
-	pub(crate) fn compile_if(&self, ast: AstIf<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_if(
+		&self,
+		ast: AstIf<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 
 		let then_branch = self.compile_branch(ast.then_block, tx)?;
@@ -144,7 +156,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstMatch<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let fragment = ast.token.fragment.to_owned();
 		let subject = Self::compile_match_subject(ast.subject)?;
 		let (branches, else_plan) = self.lower_match_arms(ast.arms, &fragment, &subject, tx)?;
@@ -155,7 +167,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		result: AstLetValue<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match result {
 			AstLetValue::Expression(expr) => self.compile_scalar_as_map(BumpBox::into_inner(expr)),
 			AstLetValue::Statement(statement) => {
@@ -166,7 +178,9 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline]
-	fn compile_match_subject(subject: Option<BumpBox<'bump, Ast<'bump>>>) -> Result<Option<Expression>> {
+	fn compile_match_subject(
+		subject: Option<BumpBox<'bump, Ast<'bump>>>,
+	) -> Result<Option<Expression>, ValueError> {
 		match subject {
 			Some(s) => Ok(Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?)),
 			None => Ok(None),
@@ -180,7 +194,7 @@ impl<'bump> Compiler<'bump> {
 		fragment: &Fragment,
 		subject: &Option<Expression>,
 		tx: &mut Transaction<'_>,
-	) -> Result<MatchBranches<'bump>> {
+	) -> Result<MatchBranches<'bump>, ValueError> {
 		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
 		let mut else_plan: Option<LogicalPlan<'bump>> = None;
 
@@ -249,7 +263,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		mut branches: Vec<(Expression, LogicalPlan<'bump>)>,
 		else_plan: Option<LogicalPlan<'bump>>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		if branches.is_empty() {
 			return match else_plan {
 				Some(plan) => Ok(plan),
@@ -281,7 +295,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		block: AstBlock<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
+	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>, ValueError> {
 		let statements = self.compile_block(block, tx)?;
 		if statements.is_empty() {
 			return Ok(self.single_statement(self.none_as_map()?));
@@ -295,7 +309,10 @@ impl<'bump> Compiler<'bump> {
 		vec![statement]
 	}
 
-	fn fold_plans_into_single(&self, mut plans: BumpVec<'bump, LogicalPlan<'bump>>) -> Result<LogicalPlan<'bump>> {
+	fn fold_plans_into_single(
+		&self,
+		mut plans: BumpVec<'bump, LogicalPlan<'bump>>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match plans.len() {
 			0 => self.none_as_map(),
 			1 => Ok(plans.pop().unwrap()),
@@ -309,7 +326,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		block: AstBlock<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
+	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>, ValueError> {
 		let mut result = Vec::new();
 		for stmt in block.statements {
 			let plans = self.compile(stmt, tx)?;
@@ -318,7 +335,11 @@ impl<'bump> Compiler<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn compile_loop(&self, ast: AstLoop<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_loop(
+		&self,
+		ast: AstLoop<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::Loop(LoopNode {
 			body,
@@ -329,7 +350,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstWhile<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::While(WhileNode {
@@ -338,7 +359,11 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_for(&self, ast: AstFor<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_for(
+		&self,
+		ast: AstFor<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let variable_name = {
 			let text = ast.variable.token.fragment.text();
 			let clean = text.strip_prefix('$').unwrap_or(text);
@@ -368,7 +393,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstDefFunction<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let name = ast.name.token.fragment;
 
 		let mut parameters = Vec::new();
@@ -405,7 +430,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstReturn<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let value = match ast.value {
 			Some(AstLetValue::Expression(expr)) => {
 				Some(match self.compile_value_expression(BumpBox::into_inner(expr), tx)? {
@@ -425,7 +450,10 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_call_function(
+		&self,
+		ast: AstCallFunction<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {
@@ -466,7 +494,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {

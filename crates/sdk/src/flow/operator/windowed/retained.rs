@@ -38,7 +38,7 @@ use reifydb_value::{
 use tracing::debug;
 
 use crate::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::Row},
@@ -104,7 +104,7 @@ where
 		window_row_key(group.into_encoded_key(), window_start)
 	}
 
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A, K, V>> {
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Buckets<A, K, V>, SdkError> {
 		let mut buckets: Buckets<A, K, V> = Routing::default();
 
 		for di in 0..change.diff_count() {
@@ -143,7 +143,7 @@ where
 		cols: &C,
 		buckets: &mut Buckets<A, K, V>,
 		is_add: bool,
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
 		self.push_extracted(extracted, buckets, is_add);
 		Ok(())
@@ -168,7 +168,7 @@ where
 		store: &mut GuestAsHost<'_, C>,
 		frontier: A::Coord,
 		seal_span: SealSpan<A>,
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
 		if horizon <= <A::Coord as Coord>::from_order(0) {
 			return Ok(());
@@ -217,7 +217,7 @@ where
 		seal_span: Option<SealSpan<A>>,
 		ctx: &mut C,
 		routing: Buckets<A, K, V>,
-	) -> Result<Emitted<A>> {
+	) -> Result<Emitted<A>, SdkError> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let (mut buckets, mut order) = routing.finish();
 		if let Some(seal_span) = seal_span {
@@ -303,7 +303,7 @@ where
 		inserts: &[(RowNumber, DateTime, A::Output)],
 		updates: &[UpdateRow<A>],
 		removes: &[(RowNumber, DateTime, A::Output)],
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
@@ -367,7 +367,7 @@ where
 		None
 	}
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		with.reject_retention()?;
 		with.require_window("tumbling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
@@ -382,7 +382,7 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<(), SdkError> {
 		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
@@ -398,7 +398,7 @@ where
 		Self::expire_through(engine, reap_queue_empty, &mut store, frontier, seal_span)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {
 		let buckets = self.route(ctx, &change)?;
 		if buckets.is_empty() {
 			return Ok(());
@@ -457,7 +457,7 @@ mod tests {
 				type Accumulator = RetainedAccumulator<u64, i64>;
 				type Output = Out;
 
-				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 					Ok(Self(PhantomData))
 				}
 
@@ -465,12 +465,14 @@ mod tests {
 					&self,
 					cols: &impl crate::flow::operator::view::ColumnsView,
 					rows: &[usize],
-				) -> Result<Vec<Option<$coord>>> {
+				) -> Result<Vec<Option<$coord>>, SdkError> {
 					rows.iter()
 						.map(|&i| {
 							cols.row(i)
 								.as_ref()
-								.map(|_| -> Result<Option<$coord>> { Ok(None) })
+								.map(|_| -> Result<Option<$coord>, SdkError> {
+									Ok(None)
+								})
 								.transpose()
 								.map(Option::flatten)
 						})
@@ -482,14 +484,17 @@ mod tests {
 					_: &mut impl GuestContext<Windowed>,
 					cols: &impl crate::flow::operator::view::ColumnsView,
 					rows: &[usize],
-				) -> Result<Vec<Option<(u64, (u64, i64))>>> {
+				) -> Result<Vec<Option<(u64, (u64, i64))>>, SdkError> {
 					rows.iter()
 						.map(|&i| {
 							cols.row(i)
 								.as_ref()
-								.map(|_| -> Result<Option<(u64, (u64, i64))>> {
-									Ok(None)
-								})
+								.map(
+									|_| -> Result<
+										Option<(u64, (u64, i64))>,
+										SdkError,
+									> { Ok(None) },
+								)
 								.transpose()
 								.map(Option::flatten)
 						})

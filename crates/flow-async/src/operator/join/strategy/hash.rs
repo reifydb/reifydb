@@ -22,7 +22,6 @@ use reifydb_core::{
 };
 use reifydb_flow::error::FlowSinkError;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	util::hash::Hash128,
 	value::{
@@ -47,7 +46,7 @@ use crate::operator::{
 	row_times, time_column,
 };
 
-pub(crate) fn build_shape(host: &mut dyn HostContext, columns: &RecordBatch) -> Result<RowShape> {
+pub(crate) fn build_shape(host: &mut dyn HostContext, columns: &RecordBatch) -> Result<RowShape, ValueError> {
 	let mut fields: Vec<RowShapeField> = Vec::with_capacity(columns.num_columns());
 	for (field, array) in user_columns(columns) {
 		let view = ColumnView::try_from((array, field.as_ref()))?;
@@ -94,7 +93,11 @@ impl JoinRows {
 		self.held = held;
 	}
 
-	pub(crate) fn encoded(&mut self, host: &mut dyn HostContext, store: &Store) -> Result<&EncodedRows> {
+	pub(crate) fn encoded(
+		&mut self,
+		host: &mut dyn HostContext,
+		store: &Store,
+	) -> Result<&EncodedRows, ValueError> {
 		let encoded = match self.encoded.take() {
 			Some(encoded) => encoded,
 			None => {
@@ -111,7 +114,7 @@ impl JoinRows {
 		Ok(self.encoded.insert(encoded))
 	}
 
-	pub(crate) fn stored_right_columns(&self, indices: &[usize]) -> Result<RecordBatch> {
+	pub(crate) fn stored_right_columns(&self, indices: &[usize]) -> Result<RecordBatch, ValueError> {
 		let taken = take_rows(&self.columns, indices)?;
 		let times = row_times(&taken)?;
 		let times: Vec<Option<DateTime>> =
@@ -148,10 +151,15 @@ impl EncodedRows {
 	}
 }
 
-fn encode_rows(shape: &RowShape, columns: &RecordBatch, side: JoinSide, now: DateTime) -> Result<Vec<EncodedPodRow>> {
+fn encode_rows(
+	shape: &RowShape,
+	columns: &RecordBatch,
+	side: JoinSide,
+	now: DateTime,
+) -> Result<Vec<EncodedPodRow>, ValueError> {
 	let views: Vec<ColumnView> = user_columns(columns)
 		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, ValueError>>()?;
 	let mut bodies: Vec<EncodedPodRowBuilder> = (0..columns.num_rows()).map(|_| shape.allocate_pod()).collect();
 	shape.write_columns(&mut bodies, &views)?;
 	let stamps = Stamps::of(columns, side)?;
@@ -176,7 +184,7 @@ enum Stamps<'a> {
 }
 
 impl<'a> Stamps<'a> {
-	fn of(columns: &'a RecordBatch, side: JoinSide) -> Result<Self> {
+	fn of(columns: &'a RecordBatch, side: JoinSide) -> Result<Self, ValueError> {
 		Ok(match side {
 			JoinSide::Left => {
 				for column in [
@@ -202,7 +210,12 @@ impl<'a> Stamps<'a> {
 		})
 	}
 
-	fn stamp(&self, mut envelope: EnvelopeBuilder, row: usize, now: DateTime) -> Result<EnvelopeBuilder> {
+	fn stamp(
+		&self,
+		mut envelope: EnvelopeBuilder,
+		row: usize,
+		now: DateTime,
+	) -> Result<EnvelopeBuilder, ValueError> {
 		match self {
 			Stamps::Left {
 				created_at,
@@ -261,7 +274,7 @@ pub(crate) fn add_to_state_entry_batch(
 	key_hash: &Hash128,
 	rows: &mut JoinRows,
 	indices: &[usize],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if indices.is_empty() {
 		return Ok(());
 	}
@@ -280,7 +293,7 @@ pub(crate) fn prepare_entry_update(
 	store: &Store,
 	key_hash: &Hash128,
 	rows: &mut JoinRows,
-) -> Result<EntryUpdate> {
+) -> Result<EntryUpdate, ValueError> {
 	rows.encoded(host, store)?;
 	Ok(EntryUpdate {
 		group: store.group_of(key_hash),
@@ -294,7 +307,7 @@ pub(crate) fn update_row_in_entry(
 	pre_row_number: RowNumber,
 	rows: &mut JoinRows,
 	row_idx: usize,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let encoded = rows.encoded(host, store)?;
 	let row = encoded.row(row_idx).clone();
 	let post_row_number = encoded.number(row_idx);
@@ -319,14 +332,18 @@ pub(crate) fn update_single_row_in_entry(
 	pre_row_number: RowNumber,
 	rows: &mut JoinRows,
 	row_idx: usize,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let prepared = EntryUpdate {
 		group: store.group_of(key_hash),
 	};
 	update_row_in_entry(host, store, &prepared, pre_row_number, rows, row_idx)
 }
 
-pub(crate) fn is_first_right_row(host: &mut dyn HostContext, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
+pub(crate) fn is_first_right_row(
+	host: &mut dyn HostContext,
+	right_store: &Store,
+	key_hash: &Hash128,
+) -> Result<bool, ValueError> {
 	Ok(!right_store.contains_key(host, key_hash)?)
 }
 
@@ -337,7 +354,7 @@ fn decode_run(
 	fingerprint: RowShapeFingerprint,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let shape = store
 		.get_row_shape(host, fingerprint)?
 		.ok_or_else(|| ValueError(Box::new(internal!("Row shape not found in store"))))?;
@@ -417,7 +434,7 @@ where
 	Some(builder.finish(column.name()).1)
 }
 
-fn refuse_partial_stamps(columns: &RecordBatch, column: SystemColumn) -> Result<()> {
+fn refuse_partial_stamps(columns: &RecordBatch, column: SystemColumn) -> Result<(), ValueError> {
 	let Some(array) = columns.column_by_name(column.name()) else {
 		return Ok(());
 	};
@@ -453,7 +470,7 @@ fn concatenates(target: &ValueType, view: &ColumnView) -> bool {
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
-pub(crate) fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
+pub(crate) fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch, ValueError> {
 	let mut names: Vec<String> = Vec::new();
 	for run in &runs {
 		for (field, _) in user_columns(run) {
@@ -467,7 +484,7 @@ pub(crate) fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<Recor
 	let mut result_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(names.len());
 	for name in &names {
 		let views: Vec<Option<ColumnView>> =
-			runs.iter().map(|run| column_view(run, name)).collect::<Result<_>>()?;
+			runs.iter().map(|run| column_view(run, name)).collect::<Result<_, ValueError>>()?;
 		let target_type = views.iter().flatten().next().map(ColumnView::get_type).unwrap_or(ValueType::Any);
 		let mut buf = ColumnBuilder::with_capacity(target_type.clone(), total);
 		let dictionary = runs
@@ -551,7 +568,7 @@ pub(crate) fn columns_from_block(
 	host: &mut dyn HostContext,
 	store: &Store,
 	block: Vec<(RowNumber, EncodedBytes)>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let runs = decode_runs(host, store, block)?;
 	if runs.len() == 1 {
 		return Ok(runs.into_iter().next().unwrap());
@@ -563,7 +580,7 @@ pub(crate) fn decode_runs(
 	host: &mut dyn HostContext,
 	store: &Store,
 	block: Vec<(RowNumber, EncodedBytes)>,
-) -> Result<Vec<RecordBatch>> {
+) -> Result<Vec<RecordBatch>, ValueError> {
 	let mut runs: Vec<RecordBatch> = Vec::new();
 	let mut run_fingerprint: Option<RowShapeFingerprint> = None;
 	let mut run_ids: Vec<RowNumber> = Vec::new();
@@ -593,9 +610,9 @@ fn stream_join_blocks<F>(
 	store: &Store,
 	key_hash: &Hash128,
 	join_block: F,
-) -> Result<Vec<Diff>>
+) -> Result<Vec<Diff>, ValueError>
 where
-	F: FnMut(&mut dyn HostContext, &RecordBatch) -> Result<Vec<Diff>>,
+	F: FnMut(&mut dyn HostContext, &RecordBatch) -> Result<Vec<Diff>, ValueError>,
 {
 	let mut join_block = join_block;
 	stream_join_blocks_encoded(host, store, key_hash, false, |host, opposite, _| join_block(host, opposite))
@@ -608,9 +625,9 @@ pub(crate) fn stream_join_blocks_encoded<F>(
 	key_hash: &Hash128,
 	want_encoded: bool,
 	mut join_block: F,
-) -> Result<Vec<Diff>>
+) -> Result<Vec<Diff>, ValueError>
 where
-	F: FnMut(&mut dyn HostContext, &RecordBatch, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
+	F: FnMut(&mut dyn HostContext, &RecordBatch, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>, ValueError>,
 {
 	let limit = host.config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
@@ -657,7 +674,7 @@ pub(crate) fn emit_update_joined_columns(
 	row_idx: usize,
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	stream_join_blocks(host, ctx.opposite_store, ctx.key_hash, |host, opposite| {
 		let (pre_joined, post_joined) = match primary_side {
 			JoinSide::Left => (
@@ -709,7 +726,7 @@ pub(crate) fn emit_joined_columns_batch(
 	primary_indices: &[usize],
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	if primary_indices.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -746,7 +763,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	primary_indices: &[usize],
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	if primary_indices.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -782,9 +799,9 @@ pub(crate) fn for_each_left_block<F>(
 	left_store: &Store,
 	key_hash: &Hash128,
 	mut on_block: F,
-) -> Result<()>
+) -> Result<(), ValueError>
 where
-	F: FnMut(&mut dyn HostContext, &RecordBatch) -> Result<()>,
+	F: FnMut(&mut dyn HostContext, &RecordBatch) -> Result<(), ValueError>,
 {
 	let limit = host.config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut after: Option<RowNumber> = None;

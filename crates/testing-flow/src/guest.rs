@@ -32,8 +32,8 @@ use reifydb_testing_chaos::operator::event::Row;
 use reifydb_testing_sdk::builders::TestChangeBuilder;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
-	Result,
 	config::ExtensionParams,
+	error::ValueError,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
 
@@ -112,7 +112,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		self.version += 1;
 	}
 
-	pub fn apply(&mut self, input: Change) -> Result<Change> {
+	pub fn apply(&mut self, input: Change) -> Result<Change, ValueError> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
@@ -224,7 +224,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilde
 		self
 	}
 
-	pub fn build(self) -> Result<GuestOperatorHarness<C>> {
+	pub fn build(self) -> Result<GuestOperatorHarness<C>, ValueError> {
 		let engine = TestEngine::new();
 		let core = C::create(
 			self.operator_id,
@@ -270,7 +270,7 @@ mod tests {
 		operator_with::WithSpan,
 	};
 	use reifydb_sdk::{
-		error::Result as SdkResult,
+		error::SdkError,
 		flow::operator::{
 			ManagedMount, ManagedOperator,
 			column::operator::OperatorColumn,
@@ -295,11 +295,19 @@ mod tests {
 	}
 
 	impl ManagedOperator for ManagedWriter {
-		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+		fn create(
+			_operator_id: OperatorId,
+			_params: &ExtensionParams,
+			_with: &ApplyWith,
+		) -> Result<Self, SdkError> {
 			Ok(ManagedWriter)
 		}
 
-		fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> SdkResult<()> {
+		fn apply(
+			&mut self,
+			ctx: &mut impl GuestContext<Managed>,
+			_change: impl ChangeView,
+		) -> Result<(), SdkError> {
 			let group = GroupId::of(&EncodedKey::new("group".as_bytes()));
 			ctx.state()
 				.set(&[(managed_key_in(group, &[]).expect("an empty id fits the keyspace"), 1i64)])?;

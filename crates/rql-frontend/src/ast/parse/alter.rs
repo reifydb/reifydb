@@ -4,7 +4,6 @@
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstAlter, AstAlterRemoteNamespace, AstAlterSequence, AstAlterTable, AstAlterTableAction,
@@ -25,7 +24,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_alter(&mut self) -> Result<AstAlter<'bump>> {
+	pub(crate) fn parse_alter(&mut self) -> Result<AstAlter<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
@@ -129,7 +128,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
 			let fragment = token.fragment.to_owned();
@@ -168,7 +167,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_alter_table(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+	fn parse_alter_table(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -237,7 +236,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_alter_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+	fn parse_alter_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>, ValueError> {
 		let segments = self.parse_double_colon_separated_identifiers()?;
 
 		let namespace = MaybeQualifiedNamespaceIdentifier::new(

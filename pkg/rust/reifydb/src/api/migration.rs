@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::internal_error;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 #[derive(Debug, Clone)]
 pub struct Migration {
@@ -69,7 +69,7 @@ pub enum MigrationSource {
 }
 
 impl MigrationSource {
-	pub fn resolve(self) -> Result<Vec<MigrationStatement>> {
+	pub fn resolve(self) -> Result<Vec<MigrationStatement>, ValueError> {
 		match self {
 			Self::List(migrations) => Ok(migrations.into_iter().map(MigrationStatement::from).collect()),
 			Self::Directory(path) => load_directory(&path),
@@ -122,7 +122,7 @@ impl From<String> for MigrationSource {
 
 const RQL_EXTENSION: &str = ".rql";
 
-fn load_directory(path: &Path) -> Result<Vec<MigrationStatement>> {
+fn load_directory(path: &Path) -> Result<Vec<MigrationStatement>, ValueError> {
 	let entries = fs::read_dir(path)
 		.map_err(|e| internal_error!("failed to read migration directory `{}`: {}", path.display(), e))?;
 

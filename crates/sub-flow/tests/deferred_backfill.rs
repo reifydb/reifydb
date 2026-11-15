@@ -44,7 +44,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		ManagedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -2167,11 +2167,11 @@ impl OperatorMetadata for Tally {
 }
 
 impl ManagedOperator for Tally {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Tally)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<(), SdkError> {
 		// A ROOT key no group owns must survive every sweep, so the census floor is exactly one key.
 		ctx.state()
 			.set(&[(managed_key_in(GroupId::ROOT, &[]).expect("an empty id fits the keyspace"), 1i64)])?;

@@ -6,15 +6,15 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropBindingNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_binding(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropBindingNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let binding = services.catalog.find_binding_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

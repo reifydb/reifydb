@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstGrant, AstRevoke},
 		parse::Parser,
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_grant(&mut self) -> Result<AstGrant<'bump>> {
+	pub(crate) fn parse_grant(&mut self) -> Result<AstGrant<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Grant)?;
 		let role_token = self.consume_identifier()?;
 		self.consume_keyword(Keyword::To)?;
@@ -24,7 +25,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_revoke(&mut self) -> Result<AstRevoke<'bump>> {
+	pub(crate) fn parse_revoke(&mut self) -> Result<AstRevoke<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Revoke)?;
 		let role_token = self.consume_identifier()?;
 		self.consume_keyword(Keyword::From)?;

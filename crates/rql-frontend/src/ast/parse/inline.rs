@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::query::duplicate_field;
-use reifydb_value::return_error;
+use reifydb_value::{error::ValueError, return_error};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstInline, AstInlineKeyedValue},
 		parse::{Parser, Precedence},
@@ -22,7 +21,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_inline(&mut self) -> Result<AstInline<'bump>> {
+	pub(crate) fn parse_inline(&mut self) -> Result<AstInline<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut keyed_values = Vec::with_capacity(4);
@@ -53,7 +52,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_inline_with_unique_keys(&mut self) -> Result<AstInline<'bump>> {
+	pub(crate) fn parse_inline_with_unique_keys(&mut self) -> Result<AstInline<'bump>, ValueError> {
 		let inline = self.parse_inline()?;
 		for (idx, keyed) in inline.keyed_values.iter().enumerate() {
 			if inline.keyed_values[..idx].iter().any(|earlier| earlier.key.text() == keyed.key.text()) {

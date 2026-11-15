@@ -5,7 +5,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::runtime::Handle;
 
 use crate::{
@@ -30,7 +30,7 @@ impl AdminSubsystemFactory {
 }
 
 impl SubsystemFactory for AdminSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_spawner = ioc.resolve::<ActorSpawner>()?;
 		let ioc_clock = ioc.resolve::<Clock>()?;

@@ -1093,7 +1093,7 @@ mod join_row_expiry_guard_tests {
 		},
 	};
 	use reifydb_value::{
-		Result,
+		error::ValueError,
 		util::hash::Hash128,
 		value::{
 			Value,
@@ -1118,27 +1118,32 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl TimerStore for RecordingHost {
-		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<()> {
+		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer(
+			&mut self,
+			_due: DateTime,
+			_kind: TimerKind,
+			_key: &EncodedKey,
+		) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 			Ok(None)
 		}
 	}
 
 	impl StateStore for RecordingHost {
-		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 			self.reached.set(true);
 			Ok(vec![None; keys.len()])
 		}
@@ -1147,11 +1152,14 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_range: GroupStateRange,
 			_limit: Option<usize>,
-		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			Ok(Vec::new())
 		}
 
-		fn state_last(&mut self, _range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		fn state_last(
+			&mut self,
+			_range: GroupStateRange,
+		) -> Result<Option<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			Ok(None)
 		}
 
@@ -1159,53 +1167,60 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_group: GroupId,
 			_keys: &[EncodedKey],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(Vec::new())
 		}
 
 		fn get_or_create_row_numbers_for_groups(
 			&mut self,
 			_groups: &[GroupId],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(Vec::new())
 		}
 
-		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber> {
+		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber, ValueError> {
 			Ok(RowNumber(1))
 		}
 
-		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(Vec::new())
 		}
 
-		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers(
+			&mut self,
+			_group: GroupId,
+			_keys: &[EncodedKey],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(Vec::new())
 		}
 
-		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
+		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn state_remove(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
+		fn state_remove(&mut self, _keys: &[GroupStateKey]) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 			per_key::read_batch(self, keys)
 		}
 
-		fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 			per_key::write_batch(self, batch)
 		}
 
-		fn state_set(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		fn state_set(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 			self.reached.set(true);
 			Ok(())
 		}
@@ -1215,11 +1230,11 @@ mod join_row_expiry_guard_tests {
 			groups: &[GroupId],
 			limit: usize,
 			keyspaces: KeyspaceMask,
-		) -> Result<GroupSweep> {
+		) -> Result<GroupSweep, ValueError> {
 			per_key::group_sweep(self, groups, limit, keyspaces)
 		}
 
-		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {
+		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
@@ -1229,13 +1244,17 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl IdentityReclaim for RecordingHost {
-		fn reclaim_identities(&mut self, groups: &[GroupId], _limit: usize) -> Result<Vec<ReclaimOutcome>> {
+		fn reclaim_identities(
+			&mut self,
+			groups: &[GroupId],
+			_limit: usize,
+		) -> Result<Vec<ReclaimOutcome>, ValueError> {
 			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
 		}
 	}
 
 	impl Resolve for RecordingHost {
-		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 			Ok(None)
 		}
 
@@ -1243,7 +1262,7 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_dictionary: &Dictionary,
 			ids: &[DictionaryEntryId],
-		) -> Result<Vec<Option<Value>>> {
+		) -> Result<Vec<Option<Value>>, ValueError> {
 			Ok(vec![None; ids.len()])
 		}
 	}
@@ -1261,11 +1280,15 @@ mod join_row_expiry_guard_tests {
 			DateTime::default()
 		}
 
-		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn join_expiry_arm(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		fn join_expiry_arm(
+			&mut self,
+			_side: u8,
+			_rows: &[(GroupId, RowNumber, DateTime)],
+		) -> Result<(), ValueError> {
 			Ok(())
 		}
 
@@ -1273,19 +1296,24 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_side: u8,
 			rows: &[(GroupId, RowNumber)],
-		) -> Result<Vec<Option<DateTime>>> {
+		) -> Result<Vec<Option<DateTime>>, ValueError> {
 			Ok(vec![None; rows.len()])
 		}
 
-		fn join_expiry_free(&mut self, _entries: &[JoinDueEntry]) -> Result<()> {
+		fn join_expiry_free(&mut self, _entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
+		fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
 			Ok(None)
 		}
 
-		fn join_due_page(&mut self, _at: DateTime, _budget: usize, _start: &DueStart) -> Result<JoinDuePage> {
+		fn join_due_page(
+			&mut self,
+			_at: DateTime,
+			_budget: usize,
+			_start: &DueStart,
+		) -> Result<JoinDuePage, ValueError> {
 			Ok(JoinDuePage {
 				due: Vec::new(),
 				resume: None,
@@ -1298,7 +1326,10 @@ mod join_row_expiry_guard_tests {
 			0
 		}
 
-		fn state_range(&mut self, _range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		fn state_range(
+			&mut self,
+			_range: GroupStateRange,
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			Ok(Vec::new())
 		}
 
@@ -1306,7 +1337,7 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			range: GroupStateRange,
 			_limit: Option<usize>,
-		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			self.reached.set(true);
 			*self.range.borrow_mut() = Some(range);
 			Ok(Vec::new())
@@ -1316,26 +1347,29 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			groups: &[GroupId],
 			_limit: usize,
-		) -> Result<Vec<ReclaimOutcome>> {
+		) -> Result<Vec<ReclaimOutcome>, ValueError> {
 			Ok(vec![ReclaimOutcome::NOTHING; groups.len()])
 		}
 
-		fn get_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_join_row_numbers(
+			&mut self,
+			_keys: &[JoinRowMappingKey],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(Vec::new())
 		}
 
 		fn get_or_create_join_row_numbers(
 			&mut self,
 			_keys: &[JoinRowMappingKey],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(Vec::new())
 		}
 
-		fn remove_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<()> {
+		fn remove_join_row_numbers(&mut self, _keys: &[JoinRowMappingKey]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn remove_join_row_numbers_for_left(&mut self, _tag: u8, _left: u64) -> Result<()> {
+		fn remove_join_row_numbers_for_left(&mut self, _tag: u8, _left: u64) -> Result<(), ValueError> {
 			Ok(())
 		}
 
@@ -1347,7 +1381,7 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_dictionary: DictionaryId,
 			values: &[Value],
-		) -> Result<Vec<Option<DictionaryEntryId>>> {
+		) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 			Ok(vec![None; values.len()])
 		}
 
@@ -1355,7 +1389,7 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_dictionary: DictionaryId,
 			ids: &[DictionaryEntryId],
-		) -> Result<Vec<Option<Value>>> {
+		) -> Result<Vec<Option<Value>>, ValueError> {
 			Ok(vec![None; ids.len()])
 		}
 
@@ -1363,7 +1397,7 @@ mod join_row_expiry_guard_tests {
 			&mut self,
 			_dictionary: &Dictionary,
 			_values: &[Value],
-		) -> Result<Vec<DictionaryEntryId>> {
+		) -> Result<Vec<DictionaryEntryId>, ValueError> {
 			panic!("the recording host never interns a dictionary value")
 		}
 
@@ -1372,7 +1406,7 @@ mod join_row_expiry_guard_tests {
 			_storage: StorageId,
 			_version: CommitVersion,
 			_partitions: &[Partition],
-		) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+		) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 			unreachable!()
 		}
 

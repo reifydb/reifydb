@@ -8,15 +8,18 @@ use reifydb_rql_frontend::{
 	},
 	bump::BumpFragment,
 };
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_alter_sequence(
+		&self,
+		ast: AstAlterSequence<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let namespace = if ast.sequence.namespace.is_empty() {
 			vec![BumpFragment::internal(self.bump, resolver::DEFAULT_NAMESPACE)]
 		} else {

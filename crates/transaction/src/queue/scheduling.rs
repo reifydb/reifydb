@@ -27,7 +27,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 use tracing::debug;
@@ -60,7 +60,7 @@ pub fn partition_counters_page(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	range: EncodedKeyRange,
-) -> Result<PartitionCounterPage> {
+) -> Result<PartitionCounterPage, ValueError> {
 	let store = single.read_store();
 	let batch = SingleVersionRange::range_batch(&store, ctx, range.clone(), PARTITION_COUNTER_PAGE)?;
 	let next = match (batch.has_more, batch.items.last()) {
@@ -84,7 +84,7 @@ pub fn queue_partition_counters(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
-) -> Result<Vec<(Partition, QueuePartitionCounters)>> {
+) -> Result<Vec<(Partition, QueuePartitionCounters)>, ValueError> {
 	let mut counters = Vec::new();
 	let mut next = Some(QueuePartitionKey::queue_scan(queue).encode());
 	while let Some(range) = next {
@@ -109,7 +109,7 @@ pub fn admit_ready_items(
 	queue: QueueId,
 	partition: Partition,
 	items: &[QueueAdmission],
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	if items.is_empty() {
 		return Ok(0);
 	}
@@ -171,7 +171,7 @@ pub fn apply_ack_transitions(
 	queue: QueueId,
 	partition: Partition,
 	acks: &[QueueRowAck],
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	if acks.is_empty() {
 		return Ok(0);
 	}
@@ -253,7 +253,7 @@ pub fn apply_reap_transitions(
 	partition: Partition,
 	reaps: &[(ExpiredLease, QueueAckTransition)],
 	now: DateTime,
-) -> Result<Vec<bool>> {
+) -> Result<Vec<bool>, ValueError> {
 	if reaps.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -327,7 +327,7 @@ pub fn apply_replay_transition(
 	partition: Partition,
 	row: RowNumber,
 	key_hash: Option<u64>,
-) -> Result<ReplayOutcome> {
+) -> Result<ReplayOutcome, ValueError> {
 	let lock_key = QueuePartitionKey::new(queue, partition);
 	let mut tx = single.begin_command_ranged(ctx, [&lock_key.encode()], partition_ranges(queue, partition))?;
 
@@ -387,7 +387,7 @@ pub fn remove_item_states(
 	queue: QueueId,
 	partition: Partition,
 	rows: &[RowNumber],
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	if rows.is_empty() {
 		return Ok(0);
 	}
@@ -464,7 +464,7 @@ fn apply_state_transition(
 	target: TransitionTarget,
 	state: &mut QueueItemState,
 	transition: &QueueAckTransition,
-) -> Result<TransitionEffect> {
+) -> Result<TransitionEffect, ValueError> {
 	let TransitionTarget {
 		queue,
 		partition,
@@ -517,7 +517,7 @@ fn promote_next(
 	queue: QueueId,
 	partition: Partition,
 	key_hash: u64,
-) -> Result<i64> {
+) -> Result<i64, ValueError> {
 	let (successor, blocked_delta) = match chain_peek(ctx, single, overlay, queue, partition, key_hash)? {
 		ChainHead::Empty => return Ok(0),
 		ChainHead::Single(row) => (row, -1),
@@ -561,11 +561,14 @@ fn expose_due(
 	partition: Partition,
 	row: RowNumber,
 	state: &QueueItemState,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	tx.set(vec![(QueueDueKey::new(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())])
 }
 
-fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &QueuePartitionKey) -> Result<QueuePartitionCounters> {
+fn read_counters(
+	tx: &mut SingleWriteTransaction<'_>,
+	lock_key: &QueuePartitionKey,
+) -> Result<QueuePartitionCounters, ValueError> {
 	Ok(tx.get(from_ref(lock_key))?
 		.remove(0)
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
@@ -578,7 +581,7 @@ fn adjust_counters(
 	applied: u64,
 	requeued: u64,
 	blocked_delta: i64,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut counters = read_counters(tx, lock_key)?;
 	counters.in_flight = counters.in_flight.saturating_sub(applied);
 	counters.depth += requeued;
@@ -591,7 +594,7 @@ pub fn remove_queue_scheduling_state(
 	ctx: &Arc<TransactionContext>,
 	single: &SingleTransaction,
 	queue: QueueId,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let lock_keys: Vec<EncodedKey> = queue_partition_counters(ctx, single, queue)?
 		.into_iter()
 		.map(|(partition, _)| QueuePartitionKey::encoded(queue, partition))

@@ -17,7 +17,7 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::sqlite::{SqlitePersistent, route, typed},
 	types::OperatorStateCensus,
 };
@@ -45,7 +45,7 @@ impl KeyspaceVisitor for Census<'_> {
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
-	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -60,7 +60,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::occupied_keyspaces", level = "debug", skip(self), fields(operator = operator.0))]
-	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError> {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -70,7 +70,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::occupied_operators", level = "debug", skip(self))]
-	pub fn occupied_operators(&self) -> Result<Vec<OperatorId>> {
+	pub fn occupied_operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -84,7 +84,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::census", level = "debug", skip(self))]
-	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	pub fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {

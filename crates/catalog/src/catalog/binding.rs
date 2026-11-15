@@ -10,11 +10,11 @@ use reifydb_transaction::{
 	change::TransactionalBindingChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::instrument;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::binding::create::BindingToCreate as StoreBindingToCreate,
@@ -42,7 +42,7 @@ impl From<BindingToCreate> for StoreBindingToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::binding::find", level = "trace", skip(self, txn))]
-	pub fn find_binding(&self, txn: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>> {
+	pub fn find_binding(&self, txn: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(binding) = self.cache.find_binding_at(id, cmd.version()) {
@@ -89,7 +89,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Binding>> {
+	) -> Result<Option<Binding>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(binding) =
@@ -155,7 +155,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		procedure_id: ProcedureId,
-	) -> Result<Vec<Binding>> {
+	) -> Result<Vec<Binding>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_bindings_for_procedure_at(procedure_id, cmd.version()))
@@ -201,7 +201,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::binding::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
+	pub fn create_binding(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: BindingToCreate,
+	) -> Result<Binding, ValueError> {
 		if let Some(existing) = self.cache.find_binding_by_name(to_create.namespace, &to_create.name) {
 			let _ = existing;
 			return Err(CatalogError::AlreadyExists {
@@ -262,7 +266,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::binding::drop", level = "info", skip(self, txn))]
-	pub fn drop_binding(&self, txn: &mut AdminTransaction, id: BindingId) -> Result<()> {
+	pub fn drop_binding(&self, txn: &mut AdminTransaction, id: BindingId) -> Result<(), ValueError> {
 		let pre = CatalogStore::find_binding(&mut Transaction::Admin(&mut *txn), id)?;
 		if let Some(pre) = pre {
 			CatalogStore::drop_binding(txn, id)?;

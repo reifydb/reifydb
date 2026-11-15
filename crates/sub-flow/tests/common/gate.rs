@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -79,7 +79,7 @@ impl OperatorMetadata for GatedPassThrough {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-fn key_values(columns: &impl ColumnsView) -> SdkResult<(Vec<KeyValue>, Vec<RowNumber>)> {
+fn key_values(columns: &impl ColumnsView) -> Result<(Vec<KeyValue>, Vec<RowNumber>), SdkError> {
 	let mut rows = Vec::with_capacity(columns.row_count());
 	let mut numbers = Vec::with_capacity(columns.row_count());
 	for index in 0..columns.row_count() {
@@ -102,13 +102,13 @@ impl UnmanagedOperator for GatedPassThrough {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(GatedPassThrough {
 			gate: params.require_str("gate"),
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		GATES.lock().entry(self.gate.clone()).or_default().entered = true;
 		while !gate(&self.gate).open {
 			thread::sleep(Duration::from_milliseconds_const(10).to_std());
@@ -182,7 +182,7 @@ impl OperatorMetadata for GatedPassThroughTimed {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-fn key_value_times(columns: &impl ColumnsView) -> SdkResult<(Vec<KeyValueTime>, Vec<RowNumber>, Vec<DateTime>)> {
+fn key_value_times(columns: &impl ColumnsView) -> Result<(Vec<KeyValueTime>, Vec<RowNumber>, Vec<DateTime>), SdkError> {
 	let mut rows = Vec::with_capacity(columns.row_count());
 	let mut numbers = Vec::with_capacity(columns.row_count());
 	let mut times = Vec::with_capacity(columns.row_count());
@@ -208,13 +208,13 @@ impl UnmanagedOperator for GatedPassThroughTimed {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(GatedPassThroughTimed {
 			gate: params.require_str("gate"),
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		GATES.lock().entry(self.gate.clone()).or_default().entered = true;
 		while !gate(&self.gate).open {
 			thread::sleep(Duration::from_milliseconds_const(10).to_std());

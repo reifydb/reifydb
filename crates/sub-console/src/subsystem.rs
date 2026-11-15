@@ -16,7 +16,7 @@ use reifydb_runtime::{
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server_ws::acceptor::WsStreamAcceptor;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::{
 	runtime::Handle,
 	sync::{oneshot, watch},
@@ -72,7 +72,7 @@ impl HasVersion for ConsoleSubsystem {
 }
 
 impl Shutdown for ConsoleSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("console");
 		if let Some(tx) = self.shutdown_tx.lock().take() {
 			let _ = tx.send(true);

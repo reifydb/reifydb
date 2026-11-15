@@ -50,7 +50,7 @@ use reifydb_sdk::{
 		},
 	},
 };
-use reifydb_value::{Result, byte_size::ByteSize, count::Count};
+use reifydb_value::{byte_size::ByteSize, count::Count, error::ValueError};
 use tracing::{Span, error, field, instrument};
 
 thread_local! {
@@ -110,7 +110,7 @@ impl Drop for ExternCOperatorHandle {
 
 #[inline]
 #[instrument(name = "flow::extern_c::marshal", level = "trace", skip_all)]
-fn marshal_input(arena: &mut Arena, change: &Change) -> Result<ExternCChange> {
+fn marshal_input(arena: &mut Arena, change: &Change) -> Result<ExternCChange, ValueError> {
 	arena.marshal_change(change)
 }
 
@@ -164,7 +164,7 @@ impl HostOperator for ExternCOperatorHandle {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
 		// no pointer into it is still live when it is cleared and re-borrowed.
 		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
@@ -219,7 +219,7 @@ impl HostOperator for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		let key = timer.key.as_ref();
 
 		let mut host_ctx = ExternCHostContext::new(host, self.class);

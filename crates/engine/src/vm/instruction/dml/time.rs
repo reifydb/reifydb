@@ -5,7 +5,7 @@ use arrow_buffer::NullBuffer;
 use reifydb_codec::row::shape::RowShape;
 use reifydb_core::common::TimeSource;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		column_view::{ColumnView, ViewData},
 		container::temporal_array::datetimes,
@@ -91,7 +91,12 @@ impl<'a> RowTime<'a> {
 		}
 	}
 
-	pub(crate) fn inserted(&self, index: usize, row: &[u8], arrival: DateTime) -> Result<Option<DateTime>> {
+	pub(crate) fn inserted(
+		&self,
+		index: usize,
+		row: &[u8],
+		arrival: DateTime,
+	) -> Result<Option<DateTime>, ValueError> {
 		match &self.source {
 			Source::None => Ok(None),
 			Source::Processing => Ok(Some(arrival)),
@@ -108,7 +113,7 @@ impl<'a> RowTime<'a> {
 		index: usize,
 		row: &[u8],
 		previous_time: Option<DateTime>,
-	) -> Result<Option<DateTime>> {
+	) -> Result<Option<DateTime>, ValueError> {
 		match &self.source {
 			Source::None => Ok(None),
 			Source::Processing => Ok(previous_time),
@@ -127,7 +132,7 @@ impl<'a> RowTime<'a> {
 		values: &EventColumn<'_>,
 		index: usize,
 		row: &[u8],
-	) -> Result<DateTime> {
+	) -> Result<DateTime, ValueError> {
 		if let Some(time) = values.at(index) {
 			return Ok(time);
 		}
@@ -472,7 +477,7 @@ mod tests {
 
 	type Outcome = std::result::Result<Option<i64>, (String, String)>;
 
-	fn outcome(result: Result<Option<DateTime>>) -> Outcome {
+	fn outcome(result: Result<Option<DateTime>, ValueError>) -> Outcome {
 		result.map(|time| time.map(|time| time.to_nanos())).map_err(|err| {
 			let diagnostic = err.diagnostic();
 			(diagnostic.code, diagnostic.message)

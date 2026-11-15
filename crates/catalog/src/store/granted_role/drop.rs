@@ -3,12 +3,16 @@
 
 use reifydb_core::{interface::catalog::identity::RoleId, key::identity::GrantedRoleKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn revoke_role(txn: &mut AdminTransaction, identity: IdentityId, role: RoleId) -> Result<()> {
+	pub(crate) fn revoke_role(
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		role: RoleId,
+	) -> Result<(), ValueError> {
 		txn.remove(vec![(GrantedRoleKey::new(identity, role).into(), None)])?;
 		Ok(())
 	}

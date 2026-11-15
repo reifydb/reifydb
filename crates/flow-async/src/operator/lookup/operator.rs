@@ -38,7 +38,6 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	util::hash::Hash128,
 	value::{
@@ -85,7 +84,7 @@ fn key_partition(
 	partitions: &PartitionLookup,
 	reads: &mut ChangeReads,
 	key: &RowKey,
-) -> Result<Option<Partition>> {
+) -> Result<Option<Partition>, ValueError> {
 	match key {
 		RowKey::Missing | RowKey::Unmatched => Ok(None),
 		RowKey::Found(partition) => Ok(Some(*partition)),
@@ -250,7 +249,7 @@ impl Output {
 }
 
 impl LookupOperator {
-	pub fn new(config: LookupConfig) -> Result<Self> {
+	pub fn new(config: LookupConfig) -> Result<Self, ValueError> {
 		let lowered_left = config
 			.left
 			.iter()
@@ -301,7 +300,7 @@ impl LookupOperator {
 		PartitionLookup::new(&self.config.columns, &self.config.partition_by, self.re_emits())
 	}
 
-	fn decode_left(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Change> {
+	fn decode_left(&self, host: &mut dyn HostContext, mut change: Change) -> Result<Change, ValueError> {
 		let parent = change.origin.clone();
 		for diff in change.diffs.iter_mut() {
 			if self.is_right(diff.origin().unwrap_or(&parent)) {
@@ -339,7 +338,7 @@ impl LookupOperator {
 		partitions: &PartitionLookup,
 		reads: &mut ChangeReads,
 		columns: &RecordBatch,
-	) -> Result<Vec<RowKey>> {
+	) -> Result<Vec<RowKey>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -392,7 +391,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		key: &RowKey,
 		version: LookupAt,
-	) -> Result<Option<(RowNumber, EncodedBytes)>> {
+	) -> Result<Option<(RowNumber, EncodedBytes)>, ValueError> {
 		let Some(partition) = key_partition(host, partitions, reads, key)? else {
 			return Ok(None);
 		};
@@ -407,7 +406,7 @@ impl LookupOperator {
 		host: &mut dyn HostContext,
 		reads: &mut ChangeReads,
 		wanted: Vec<(Partition, LookupAt)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut queued = HashSet::new();
 		let mut groups: Vec<(LookupAt, Vec<Partition>)> = Vec::new();
 		for (partition, version) in wanted {
@@ -495,7 +494,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		key: &RowKey,
 		source: SourceVersion,
-	) -> Result<Option<Resolved>> {
+	) -> Result<Option<Resolved>, ValueError> {
 		if matches!(key, RowKey::Missing) && self.config.join_type == JoinType::Inner {
 			return Ok(None);
 		}
@@ -524,7 +523,7 @@ impl LookupOperator {
 		output_id: RowNumber,
 		resolved: Resolved,
 		output: &mut Output,
-	) -> Result<Published> {
+	) -> Result<Published, ValueError> {
 		ledger.store(row_number, StoredRead::new(output_id, resolved.right.as_ref(), resolved.key))?;
 		if let Some(key) = resolved.key {
 			output.held.push((left_idx, key));
@@ -543,7 +542,7 @@ impl LookupOperator {
 		pre: &RecordBatch,
 		left_idx: usize,
 		output: &mut Output,
-	) -> Result<Option<(Published, RowNumber)>> {
+	) -> Result<Option<(Published, RowNumber)>, ValueError> {
 		let row_number = require_row_numbers(pre)?[left_idx];
 		let Some(read) = ledger.take(row_number)? else {
 			return Ok(None);
@@ -566,7 +565,7 @@ impl LookupOperator {
 		source: SourceVersion,
 		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let partitions = self.partitions();
 		let keys = self.key_values(host, &partitions, reads, post)?;
 		let wanted = self.wanted(host, reads, &keys, source);
@@ -609,7 +608,7 @@ impl LookupOperator {
 		host: &mut dyn HostContext,
 		pre: &RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let builder = self.builder(pre.schema_ref());
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
 		let mut output = Output::default();
@@ -632,7 +631,7 @@ impl LookupOperator {
 		source: SourceVersion,
 		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let partitions = self.partitions();
 		let post_keys = self.key_values(host, &partitions, reads, post)?;
 		let pre_builder = self.builder(pre.schema_ref());
@@ -674,7 +673,12 @@ impl LookupOperator {
 		self.finish(host, output, Some((pre, &pre_builder)), Some((post, &post_builder)), result)
 	}
 
-	fn hold_left(&self, host: &mut dyn HostContext, rows: &RecordBatch, output: &mut Output) -> Result<()> {
+	fn hold_left(
+		&self,
+		host: &mut dyn HostContext,
+		rows: &RecordBatch,
+		output: &mut Output,
+	) -> Result<(), ValueError> {
 		let held = mem::take(&mut output.held);
 		if held.is_empty() {
 			return Ok(());
@@ -701,7 +705,7 @@ impl LookupOperator {
 		reads: &mut ChangeReads,
 		rows: &RecordBatch,
 		changed: &mut Vec<Partition>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(self.config.partition_by.len());
 		for name in &self.config.partition_by {
 			let Some(index) = resolve_column(rows, name) else {
@@ -726,7 +730,7 @@ impl LookupOperator {
 		source: SourceVersion,
 		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut changed = Vec::new();
 		{
 			let partitions = self.partitions();
@@ -765,7 +769,7 @@ impl LookupOperator {
 		Ok(())
 	}
 
-	fn flush_due(&mut self, host: &mut dyn HostContext, result: &mut Vec<Diff>) -> Result<()> {
+	fn flush_due(&mut self, host: &mut dyn HostContext, result: &mut Vec<Diff>) -> Result<(), ValueError> {
 		if self.waiting.is_empty() {
 			return Ok(());
 		}
@@ -789,7 +793,7 @@ impl LookupOperator {
 		partition: Partition,
 		right: Option<(RowNumber, EncodedBytes)>,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let group = self.left_store.group_of(&Hash128(partition.0));
 		let mut after = None;
 		loop {
@@ -815,7 +819,7 @@ impl LookupOperator {
 		run: &RecordBatch,
 		right: Option<&(RowNumber, EncodedBytes)>,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let numbers = require_row_numbers(run)?;
 		let mut ledger = ReadLedger::read(host, numbers.iter().copied())?;
 		let mut output = Output::default();
@@ -844,7 +848,7 @@ impl LookupOperator {
 		pre: Side<'_>,
 		post: Side<'_>,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let cleared = mem::take(&mut output.cleared);
 		let armed = mem::take(&mut output.armed);
 		self.expiry.move_rows(host, &cleared, &armed)?;
@@ -882,7 +886,12 @@ impl LookupOperator {
 		Ok(())
 	}
 
-	fn joined(&self, rows: &[Published], side: Side<'_>, right: Option<&RecordBatch>) -> Result<RecordBatch> {
+	fn joined(
+		&self,
+		rows: &[Published],
+		side: Side<'_>,
+		right: Option<&RecordBatch>,
+	) -> Result<RecordBatch, ValueError> {
 		let Some((left, builder)) = side else {
 			return internal_err!(
 				"lookup published {} rows from a side its change does not carry",
@@ -948,7 +957,7 @@ impl HostOperator for LookupOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = self.decode_left(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.config.operator
@@ -1000,14 +1009,14 @@ impl HostOperator for LookupOperator {
 		Ok(Change::from_flow(self.config.operator, version, result, change.changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::Maintenance {
 			self.expiry.free_due(host, FiredAt::of(&timer))?;
 		}
 		Ok(None)
 	}
 
-	fn on_tick(&mut self, host: &mut dyn HostContext) -> Result<Option<TimedOutput>> {
+	fn on_tick(&mut self, host: &mut dyn HostContext) -> Result<Option<TimedOutput>, ValueError> {
 		let mut result = Vec::new();
 		self.flush_due(host, &mut result)?;
 		if result.is_empty() {

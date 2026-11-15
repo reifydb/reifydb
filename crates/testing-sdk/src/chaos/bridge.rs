@@ -271,7 +271,7 @@ mod tests {
 		subject::Subject,
 	};
 	use reifydb_value::{
-		Result,
+		error::ValueError,
 		value::{Value, diff_type::DiffType, system_columns::row_numbers, value_type::ValueType},
 	};
 
@@ -304,12 +304,12 @@ mod tests {
 	}
 
 	impl Subject for NullSubject {
-		fn apply(&mut self, change: Change) -> Result<Change> {
+		fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 			self.applied.push(change);
 			Ok(TestChangeBuilder::new().build())
 		}
 
-		fn tick(&mut self, _at_ms: u64) -> Result<Option<Change>> {
+		fn tick(&mut self, _at_ms: u64) -> Result<Option<Change>, ValueError> {
 			Ok(None)
 		}
 	}

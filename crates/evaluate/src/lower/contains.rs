@@ -17,17 +17,15 @@ use crate::{
 		compile::{combine_bool_columns, list_contains_element},
 		context::EvalContext,
 	},
-	lower::{Lowered, Node, bool_field, error::into_external, in_list::items, literal, lower_node, udf, volatile},
+	lower::{Node, Stop, bool_field, error::into_external, in_list::items, literal, lower_node, udf, volatile},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_contains<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	_expression: &'e Expression,
 	contains: &'e ContainsExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let name = contains.fragment.text();
 	let value = lower_node(ctx, operator, &contains.value)?;
 	let items = items(&contains.list);
@@ -81,15 +79,15 @@ impl ScalarUDFImpl for ContainsUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("contains types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(bool_field("contains", false))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let mut columns = Vec::with_capacity(args.args.len());
 		for (field, value) in args.arg_fields.iter().zip(args.args) {
 			columns.push((field.clone(), value.into_array(args.number_rows)?));
@@ -104,7 +102,7 @@ impl ScalarUDFImpl for ContainsUdf {
 		Ok(ColumnarValue::Array(result.1))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

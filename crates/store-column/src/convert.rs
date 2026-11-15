@@ -16,7 +16,7 @@ use arrow_array::{
 use arrow_buffer::ScalarBuffer;
 use arrow_schema::{DataType, Field, FieldRef, Fields, IntervalUnit, TimeUnit};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		container::dictionary_array::DICTIONARY_ENTRY_WIDTH,
 		value_type::field::{FieldType, to_field},
@@ -28,7 +28,7 @@ use vortex_session::VortexSession;
 
 use crate::error::{StoreColumnError, vortex};
 
-pub fn to_vortex(session: &VortexSession, column: &(FieldRef, ArrowArrayRef)) -> Result<ArrayRef> {
+pub fn to_vortex(session: &VortexSession, column: &(FieldRef, ArrowArrayRef)) -> Result<ArrayRef, ValueError> {
 	let (field, array) = column;
 	let reshaped = reshape(array);
 	let plain = Field::new(field.name(), reshaped.data_type().clone(), field.is_nullable());
@@ -40,7 +40,7 @@ pub fn to_arrow(
 	name: &str,
 	field_type: &FieldType,
 	array: ArrayRef,
-) -> Result<(FieldRef, ArrowArrayRef)> {
+) -> Result<(FieldRef, ArrowArrayRef), ValueError> {
 	let target = to_field(name, field_type);
 	let plain = Field::new(name, reshaped_type(target.data_type()), target.is_nullable());
 	let mut ctx = session.create_execution_ctx();
@@ -74,7 +74,7 @@ fn reshape(array: &ArrowArrayRef) -> ArrowArrayRef {
 	}
 }
 
-fn unshape(name: &str, array: &ArrowArrayRef, target: &DataType) -> Result<ArrowArrayRef> {
+fn unshape(name: &str, array: &ArrowArrayRef, target: &DataType) -> Result<ArrowArrayRef, ValueError> {
 	Ok(match target {
 		DataType::Timestamp(TimeUnit::Nanosecond, Some(zone)) => {
 			let nanos = array.as_primitive::<Int64Type>();

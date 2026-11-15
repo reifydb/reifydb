@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 use serde::de::DeserializeOwned;
@@ -193,7 +193,7 @@ impl WindowMeta {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<Vec<u64>> {
+	) -> Result<Vec<u64>, ValueError> {
 		Ok(get::<_, RowIndexState>(store, from_ref(&RowIndexKey(group, row_number)))?
 			.remove(0)
 			.unwrap_or_default()
@@ -206,7 +206,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let key = RowIndexKey(group, row_number);
 		let mut state: RowIndexState = get(store, from_ref(&key))?.remove(0).unwrap_or_default();
 		if !state.window_ids.contains(&window_id) {
@@ -221,7 +221,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let key = RowIndexKey(group, row_number);
 		let Some(mut state) = get_classified::<_, RowIndexState>(store, from_ref(&key))?.remove(0) else {
 			return Ok(());
@@ -243,7 +243,7 @@ impl WindowMeta {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		remove(store, from_ref(&RowIndexKey(group, row_number)))
 	}
 
@@ -253,7 +253,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 		member: &T,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		store.state_set(vec![((&SessionMemberKey(group, row_number)).into_group_state_key(), encode(member)?)])
 	}
 
@@ -262,7 +262,7 @@ impl WindowMeta {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<T> {
+	) -> Result<T, ValueError> {
 		let key = (&SessionMemberKey(group, row_number)).into_group_state_key();
 		match store.state_get(from_ref(&key))?.pop().flatten() {
 			Some(row) => Ok(decode_body::<T>(&row)?),
@@ -279,7 +279,7 @@ impl WindowMeta {
 		&mut self,
 		store: &mut dyn StateStore,
 		groups: &[GroupId],
-	) -> Result<Vec<Option<OpenSessionsState>>> {
+	) -> Result<Vec<Option<OpenSessionsState>>, ValueError> {
 		let keys: Vec<SessionKey> = groups.iter().map(|group| SessionKey(*group)).collect();
 		get_classified::<_, OpenSessionsState>(store, &keys)
 	}
@@ -288,7 +288,7 @@ impl WindowMeta {
 		&mut self,
 		store: &mut dyn StateStore,
 		states: Vec<(GroupId, OpenSessionsState)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if states.is_empty() {
 			return Ok(());
 		}
@@ -300,11 +300,11 @@ impl WindowMeta {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		remove(store, from_ref(&SessionMemberKey(group, row_number)))
 	}
 
-	pub fn drop_sessions(&mut self, store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+	pub fn drop_sessions(&mut self, store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), ValueError> {
 		if groups.is_empty() {
 			return Ok(());
 		}

@@ -6,19 +6,16 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::AlterIdentityNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{params::Params, value::Value};
+use reifydb_value::{error::ValueError, params::Params, value::Value};
 
-use crate::{
-	Result,
-	vm::{instruction::ddl::create::identity::resolve_attribute_assignments, services::Services},
-};
+use crate::vm::{instruction::ddl::create::identity::resolve_attribute_assignments, services::Services};
 
 pub(crate) fn alter_identity(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterIdentityNode,
 	params: &Params,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 
 	let found = services.catalog.find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)?;

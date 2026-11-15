@@ -4,10 +4,9 @@
 use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
 use reifydb_rql_frontend::ast::identifier::MaybeQualifiedColumnObject;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
 use crate::{
-	Result,
 	nodes::CreateColumnPropertyNode,
 	plan::{
 		logical,
@@ -20,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateColumnPropertyNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let (ns_segments, table_fragment) = match &create.column.object {
 			MaybeQualifiedColumnObject::Qualified {
 				namespace,

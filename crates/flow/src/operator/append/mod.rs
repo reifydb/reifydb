@@ -13,7 +13,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	value::{
@@ -50,7 +49,7 @@ pub struct AppendOperator {
 	lanes: AppendLanes,
 }
 
-fn check_lanes(first: &SchemaRef, second: &SchemaRef) -> Result<()> {
+fn check_lanes(first: &SchemaRef, second: &SchemaRef) -> Result<(), ValueError> {
 	for field in first.fields() {
 		let Ok(other) = second.field_with_name(field.name()) else {
 			continue;
@@ -110,7 +109,7 @@ impl AppendOperator {
 		operator: OperatorId,
 		inputs: &[OperatorId],
 		mut parent_schemas: Vec<Option<SchemaRef>>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		if inputs.len() != 2 {
 			return Err(ValueError::from(FlowGraphError::NodeInputArity {
 				operator: "Append",
@@ -137,7 +136,7 @@ impl AppendOperator {
 		}
 	}
 
-	fn output_row_numbers(&self, parent_index: usize, source: &RecordBatch) -> Result<ArrayRef> {
+	fn output_row_numbers(&self, parent_index: usize, source: &RecordBatch) -> Result<ArrayRef, ValueError> {
 		Ok(Arc::new(UInt64Array::from_iter_values(
 			require_row_numbers(source)?
 				.iter()
@@ -151,7 +150,7 @@ impl AppendOperator {
 		self.operator
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
@@ -199,7 +198,11 @@ impl AppendOperator {
 impl AppendOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn translate_append_insert(&mut self, parent_index: usize, post: RecordBatch) -> Result<Option<Diff>> {
+	fn translate_append_insert(
+		&mut self,
+		parent_index: usize,
+		post: RecordBatch,
+	) -> Result<Option<Diff>, ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(None);
 		}
@@ -214,7 +217,7 @@ impl AppendOperator {
 		parent_index: usize,
 		pre: RecordBatch,
 		post: RecordBatch,
-	) -> Result<Option<Diff>> {
+	) -> Result<Option<Diff>, ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(None);
 		}
@@ -226,7 +229,11 @@ impl AppendOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
-	fn translate_append_remove(&mut self, parent_index: usize, pre: RecordBatch) -> Result<Option<Diff>> {
+	fn translate_append_remove(
+		&mut self,
+		parent_index: usize,
+		pre: RecordBatch,
+	) -> Result<Option<Diff>, ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(None);
 		}
@@ -235,6 +242,6 @@ impl AppendOperator {
 	}
 }
 
-fn restamped(batch: RecordBatch, row_numbers: ArrayRef) -> Result<RecordBatch> {
+fn restamped(batch: RecordBatch, row_numbers: ArrayRef) -> Result<RecordBatch, ValueError> {
 	restamp_row_numbers(&batch, &FORWARDED_SYSTEM_COLUMNS, row_numbers)
 }

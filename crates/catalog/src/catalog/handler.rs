@@ -10,10 +10,10 @@ use reifydb_transaction::{
 	change::TransactionalHandlerChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::VariantRef};
 use tracing::instrument;
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
+use crate::{CatalogStore, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
 
 #[derive(Debug, Clone)]
 pub struct HandlerToCreate {
@@ -25,7 +25,11 @@ pub struct HandlerToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::handler::find_by_id", level = "trace", skip(self, txn))]
-	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<Handler>> {
+	pub fn find_handler_by_id(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: HandlerId,
+	) -> Result<Option<Handler>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) = self.cache.find_handler_at(id, cmd.version()) {
@@ -78,7 +82,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Handler>> {
+	) -> Result<Option<Handler>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) =
@@ -142,7 +146,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		variant: VariantRef,
-	) -> Result<Vec<Handler>> {
+	) -> Result<Vec<Handler>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_handlers_for_variant_at(variant, cmd.version()))
@@ -182,7 +186,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::handler::drop", level = "info", skip(self, txn))]
-	pub fn drop_handler(&self, txn: &mut AdminTransaction, id: HandlerId) -> Result<()> {
+	pub fn drop_handler(&self, txn: &mut AdminTransaction, id: HandlerId) -> Result<(), ValueError> {
 		if let Some(handler) = self.find_handler_by_id(&mut Transaction::Admin(&mut *txn), id)? {
 			CatalogStore::drop_handler(txn, id)?;
 			txn.track_handler_deleted(handler)?;
@@ -191,7 +195,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::handler::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
+	pub fn create_handler(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: HandlerToCreate,
+	) -> Result<Handler, ValueError> {
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,

@@ -10,11 +10,12 @@ use reifydb_core::{
 	key::flow::FlowKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{CatalogStore, Result, store::flow::decode_flow};
+use crate::{CatalogStore, store::flow::decode_flow};
 
-pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = FlowKey::full_scan();
 	let mut loaded = Vec::new();
 	for entry in rx.range(range, RangeScope::All, 1024)? {
@@ -39,6 +40,6 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_flow<K>(multi: MultiVersionRow<K>) -> Result<Flow> {
+fn convert_flow<K>(multi: MultiVersionRow<K>) -> Result<Flow, ValueError> {
 	decode_flow(EncodedCatalogRow::view(&multi.bytes))
 }

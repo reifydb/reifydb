@@ -24,7 +24,7 @@ use reifydb_sub_server::{
 	state::AppState,
 };
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::{
 	io::{AsyncRead, AsyncWrite},
 	net::{TcpListener, TcpStream},
@@ -80,7 +80,7 @@ impl WsSubsystem {
 		runtime: Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let max_connections = state.max_connections();
 		let clock = state.clock().clone();
 		let subsystem = Self {
@@ -156,7 +156,7 @@ impl WsSubsystem {
 		});
 	}
 
-	fn spawn_main_server(&self, shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+	fn spawn_main_server(&self, shutdown_rx: watch::Receiver<bool>) -> Result<(), ValueError> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
 			return Ok(());
@@ -194,7 +194,7 @@ impl WsSubsystem {
 		Ok(())
 	}
 
-	fn spawn_admin_server(&self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<(), ValueError> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(());
 		};
@@ -231,7 +231,7 @@ impl WsSubsystem {
 	}
 
 	#[inline]
-	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
+	fn bind_listener(&self, addr: &str) -> Result<TcpListener, ValueError> {
 		self.runtime.block_on(TcpListener::bind(addr)).map_err(|e| {
 			CoreError::SubsystemBindFailed {
 				addr: addr.to_string(),
@@ -257,7 +257,7 @@ impl HasVersion for WsSubsystem {
 }
 
 impl Shutdown for WsSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("ws");
 		if let Some(tx) = self.shutdown_tx.lock().take() {
 			let _ = tx.send(true);
@@ -319,7 +319,7 @@ impl Subsystem for WsSubsystem {
 }
 
 #[inline]
-fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
+fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr, ValueError> {
 	listener.local_addr().map_err(|e| {
 		CoreError::SubsystemAddressUnavailable {
 			reason: e.to_string(),

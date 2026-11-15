@@ -16,21 +16,24 @@ use reifydb_store_column::{
 	session::new_session,
 	stats::{block_stats, has_ordering},
 };
-use reifydb_value::value::{
-	Value,
-	blob::Blob,
-	column_view::ColumnView,
-	constraint::{precision::Precision, scale::Scale},
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	dictionary::DictionaryEntryId,
-	digest::Digest,
-	duration::Duration,
-	identity::IdentityId,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value,
+		blob::Blob,
+		column_view::ColumnView,
+		constraint::{precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		digest::Digest,
+		duration::Duration,
+		identity::IdentityId,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 use uuid::Uuid;
 use vortex_session::VortexSession;
@@ -39,7 +42,7 @@ type Column = (FieldRef, ArrayRef);
 
 const OPS: [&str; 6] = ["eq", "ne", "lt", "lt_eq", "gt", "gt_eq"];
 
-fn load(bytes: &[u8], session: &VortexSession) -> reifydb_value::Result<BlockData> {
+fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData, ValueError> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();

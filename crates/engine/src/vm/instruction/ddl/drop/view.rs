@@ -9,12 +9,16 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DropViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 use super::dependent::find_flow_dependents;
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
-pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: DropViewNode) -> Result<RecordBatch> {
+pub(crate) fn drop_view(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: DropViewNode,
+) -> Result<RecordBatch, ValueError> {
 	let Some(view_id) = plan.view_id else {
 		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

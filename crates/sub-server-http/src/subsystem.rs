@@ -25,7 +25,7 @@ use reifydb_sub_server::{
 	accept::{PermittedStream, accept_admitted},
 	state::AppState,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::{
 	net::TcpListener,
 	runtime::Handle,
@@ -69,7 +69,7 @@ impl HttpSubsystem {
 		admin_bind_addr: Option<String>,
 		state: AppState,
 		handle: Handle,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let connection_semaphore = Arc::new(Semaphore::new(state.max_connections()));
 		let subsystem = Self {
 			bind_addr,
@@ -110,7 +110,7 @@ impl HttpSubsystem {
 		self.admin_local_addr().map(|a| a.port())
 	}
 
-	fn spawn_main_server(&self) -> Result<()> {
+	fn spawn_main_server(&self) -> Result<(), ValueError> {
 		let Some(listener) = self.bind_main_listener()? else {
 			return Ok(());
 		};
@@ -120,7 +120,7 @@ impl HttpSubsystem {
 	}
 
 	#[inline]
-	fn bind_main_listener(&self) -> Result<Option<TcpListener>> {
+	fn bind_main_listener(&self) -> Result<Option<TcpListener>, ValueError> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
 			return Ok(None);
@@ -159,7 +159,7 @@ impl HttpSubsystem {
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 	}
 
-	fn spawn_admin_server(&self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<(), ValueError> {
 		let Some(listener) = self.bind_admin_listener()? else {
 			return Ok(());
 		};
@@ -169,7 +169,7 @@ impl HttpSubsystem {
 	}
 
 	#[inline]
-	fn bind_admin_listener(&self) -> Result<Option<TcpListener>> {
+	fn bind_admin_listener(&self) -> Result<Option<TcpListener>, ValueError> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(None);
 		};
@@ -246,7 +246,7 @@ impl HttpSubsystem {
 	}
 
 	#[inline]
-	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
+	fn bind_listener(&self, addr: &str) -> Result<TcpListener, ValueError> {
 		self.handle.block_on(TcpListener::bind(addr)).map_err(|e| {
 			CoreError::SubsystemBindFailed {
 				addr: addr.to_string(),
@@ -272,7 +272,7 @@ impl HasVersion for HttpSubsystem {
 }
 
 impl Shutdown for HttpSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("http");
 		self.stop_admin_server(&mut errors);
 		self.stop_main_server(&mut errors);
@@ -310,7 +310,7 @@ impl Subsystem for HttpSubsystem {
 }
 
 #[inline]
-fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
+fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr, ValueError> {
 	listener.local_addr().map_err(|e| {
 		CoreError::SubsystemAddressUnavailable {
 			reason: e.to_string(),

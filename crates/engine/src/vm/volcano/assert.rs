@@ -12,13 +12,13 @@ use reifydb_core::{
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	reifydb_assertions,
 	value::column_view::{ColumnView, ViewData},
 };
 use tracing::instrument;
 
 use crate::{
-	Result,
 	error::EngineError,
 	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
@@ -46,13 +46,13 @@ impl AssertNode {
 		columns: &RecordBatch,
 		row_count: usize,
 		assert_expr: &Expression,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let eval_ctx = session.with_eval(columns.clone(), row_count);
 		evaluate(&eval_ctx, assert_expr)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::verify")]
-	fn verify(&self, data: &ColumnView<'_>, row_count: usize, assert_expr: &Expression) -> Result<()> {
+	fn verify(&self, data: &ColumnView<'_>, row_count: usize, assert_expr: &Expression) -> Result<(), ValueError> {
 		let frag = assert_expr.full_fragment_owned();
 		let label = display_label(assert_expr);
 		match &data.data {
@@ -88,14 +88,18 @@ impl AssertNode {
 
 impl QueryNode for AssertNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "AssertNode::next() called before initialize()");
 		}
@@ -139,13 +143,13 @@ impl AssertWithoutInputNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::eval")]
-	fn eval(session: &EvalContext<'_>, assert_expr: &Expression) -> Result<(FieldRef, ArrayRef)> {
+	fn eval(session: &EvalContext<'_>, assert_expr: &Expression) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let eval_ctx = session.with_eval_empty();
 		evaluate(&eval_ctx, assert_expr)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::verify")]
-	fn verify(&self, data: &ColumnView<'_>, assert_expr: &Expression) -> Result<()> {
+	fn verify(&self, data: &ColumnView<'_>, assert_expr: &Expression) -> Result<(), ValueError> {
 		let frag = assert_expr.full_fragment_owned();
 		let label = display_label(assert_expr);
 		match &data.data {
@@ -179,13 +183,17 @@ impl AssertWithoutInputNode {
 
 impl QueryNode for AssertWithoutInputNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.done {
 			return Ok(None);
 		}

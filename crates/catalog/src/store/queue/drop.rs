@@ -9,11 +9,12 @@ use reifydb_transaction::{
 	queue::scheduling::remove_queue_scheduling_state,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
+use crate::{CatalogStore, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
+	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<(), ValueError> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
 			txn.remove(vec![(NamespaceQueueKey::new(queue_def.namespace, queue).into(), None)])?;
 			remove_queue_scheduling_state(txn.context(), &txn.single, queue)?;

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::column_block::ColumnStats;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, value_type::ValueType},
 };
 use vortex_array::{
@@ -26,7 +26,7 @@ pub fn has_ordering(ty: &ValueType) -> bool {
 	}
 }
 
-pub fn block_stats(data: &BlockData, session: &VortexSession) -> Result<Vec<ColumnStats>> {
+pub fn block_stats(data: &BlockData, session: &VortexSession) -> Result<Vec<ColumnStats>, ValueError> {
 	let mut stats = Vec::with_capacity(data.schema.len());
 	for ((name, ty, _), chunks) in data.schema.iter().zip(&data.columns) {
 		let (min, max) = if has_ordering(ty) {
@@ -44,7 +44,11 @@ pub fn block_stats(data: &BlockData, session: &VortexSession) -> Result<Vec<Colu
 	Ok(stats)
 }
 
-fn fold_min_max(name: &str, chunks: &ColumnChunks, session: &VortexSession) -> Result<(Option<Value>, Option<Value>)> {
+fn fold_min_max(
+	name: &str,
+	chunks: &ColumnChunks,
+	session: &VortexSession,
+) -> Result<(Option<Value>, Option<Value>), ValueError> {
 	let mut ctx = session.create_execution_ctx();
 	let mut min: Option<Value> = None;
 	let mut max: Option<Value> = None;
@@ -66,7 +70,7 @@ fn fold_min_max(name: &str, chunks: &ColumnChunks, session: &VortexSession) -> R
 	Ok((min, max))
 }
 
-fn none_count(chunks: &ColumnChunks, session: &VortexSession) -> Result<usize> {
+fn none_count(chunks: &ColumnChunks, session: &VortexSession) -> Result<usize, ValueError> {
 	let mut ctx = session.create_execution_ctx();
 	let mut total = 0;
 	for chunk in &chunks.chunks {

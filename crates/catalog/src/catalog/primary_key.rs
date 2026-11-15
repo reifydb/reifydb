@@ -7,11 +7,11 @@ use reifydb_core::interface::catalog::{
 	object::ObjectId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result, catalog::Catalog,
-	store::primary_key::create::PrimaryKeyToCreate as StorePrimaryKeyToCreate,
+	CatalogStore, catalog::Catalog, store::primary_key::create::PrimaryKeyToCreate as StorePrimaryKeyToCreate,
 };
 
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
-	) -> Result<PrimaryKeyId> {
+	) -> Result<PrimaryKeyId, ValueError> {
 		CatalogStore::create_primary_key(txn, to_create.into())
 	}
 
@@ -44,7 +44,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		object: impl Into<ObjectId>,
-	) -> Result<Option<PrimaryKey>> {
+	) -> Result<Option<PrimaryKey>, ValueError> {
 		let object = object.into();
 		let cacheable = !matches!(&*txn, Transaction::Admin(_) | Transaction::Test(_));
 		if cacheable
@@ -63,12 +63,15 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "trace", skip(self, txn))]
-	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKey>> {
+	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKey>, ValueError> {
 		Ok(CatalogStore::list_primary_keys(txn)?.into_iter().map(|info| info.def).collect())
 	}
 
 	#[instrument(name = "catalog::primary_key::list_columns", level = "trace", skip(self, txn))]
-	pub fn list_primary_key_columns(&self, txn: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
+	pub fn list_primary_key_columns(
+		&self,
+		txn: &mut Transaction<'_>,
+	) -> Result<Vec<(u64, u64, usize)>, ValueError> {
 		CatalogStore::list_primary_key_columns(txn)
 	}
 }

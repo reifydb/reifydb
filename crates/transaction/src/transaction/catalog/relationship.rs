@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, RelationshipId, TableId},
 	relationship::Relationship,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackRelationshipChangeOperations for AdminTransaction {
-	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<()> {
+	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(relationship),
@@ -28,7 +28,7 @@ impl CatalogTrackRelationshipChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<()> {
+	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(relationship),
 			post: None,

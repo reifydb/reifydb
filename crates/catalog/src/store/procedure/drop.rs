@@ -13,11 +13,12 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_procedure(txn: &mut AdminTransaction, procedure: ProcedureId) -> Result<()> {
+	pub(crate) fn drop_procedure(txn: &mut AdminTransaction, procedure: ProcedureId) -> Result<(), ValueError> {
 		if let Some(p) = Self::find_procedure(&mut Transaction::Admin(&mut *txn), procedure)? {
 			txn.remove(vec![(NamespaceProcedureKey::new(p.namespace(), procedure).into(), None)])?;
 		}

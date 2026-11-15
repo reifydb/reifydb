@@ -10,10 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::ValueError, fragment::Fragment, reifydb_assertions};
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct ApplyTransformNode {
 	input: Box<dyn QueryNode>,
@@ -33,14 +30,18 @@ impl ApplyTransformNode {
 
 impl QueryNode for ApplyTransformNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::apply_transform::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::apply_transform::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ApplyTransformNode::next() called before initialize()");
 		}
@@ -77,11 +78,15 @@ impl UnknownTransformNode {
 }
 
 impl QueryNode for UnknownTransformNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Err(ValueError(Box::new(unknown_apply_operator(self.operator.clone()))))
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Err(ValueError(Box::new(unknown_apply_operator(self.operator.clone()))))
 	}
 

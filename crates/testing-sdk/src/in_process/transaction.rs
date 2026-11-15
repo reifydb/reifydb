@@ -36,7 +36,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -152,7 +152,7 @@ impl FlowTransaction for TestFlowTransaction {
 		self.row_shapes.entry(operator).or_default()
 	}
 
-	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change> {
+	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change, ValueError> {
 		panic!("not supported by the test transaction: run_durable_sink")
 	}
 
@@ -160,11 +160,11 @@ impl FlowTransaction for TestFlowTransaction {
 		&mut self,
 		_sink: &mut dyn DurableSink,
 		_timer: Timer,
-	) -> Result<Option<TimedOutput>> {
+	) -> Result<Option<TimedOutput>, ValueError> {
 		panic!("not supported by the test transaction: run_durable_sink_timer")
 	}
 
-	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		Ok(vec![None; keys.len()])
 	}
 
@@ -173,51 +173,63 @@ impl FlowTransaction for TestFlowTransaction {
 		_range: TaggedKeyBoundRange,
 		_scope: RangeScope,
 		_batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		Box::new(iter::empty())
 	}
 
-	fn fetch_state(&mut self, _id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn fetch_state(
+		&mut self,
+		_id: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		Ok(vec![None; keys.len()])
 	}
 }
 
 impl FlowGet for TestFlowTransaction {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		pending_get(self, keys)
 	}
 }
 
 impl FlowBatch for TestFlowTransaction {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.pending_mut().remove(keys);
 		Ok(())
 	}
 }
 
 impl Resolve for TestFlowTransaction {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		Ok(self.find_dictionary(id))
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.get_from_dictionary(dictionary, ids)
 	}
 }
 
 impl Find for TestFlowTransaction {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.find_in_dictionary(dictionary, values)
 	}
 }
 
 impl Intern for TestFlowTransaction {
-	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		Ok(self.dictionary_allocators()
 			.intern_batch(dictionary, values)?
 			.into_iter()

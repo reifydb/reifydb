@@ -42,7 +42,7 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result, error,
+	error,
 	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
@@ -215,7 +215,7 @@ impl JoinOperator {
 		left_retention: Option<Duration>,
 		right_retention: Option<Duration>,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let left_node = left.operator;
 		let right_node = right.operator;
 		let left_exprs = left.exprs;
@@ -288,7 +288,7 @@ impl JoinOperator {
 		EncodedKey::new(Vec::new())
 	}
 
-	fn side_of(tag: u8) -> Result<JoinSide> {
+	fn side_of(tag: u8) -> Result<JoinSide, ValueError> {
 		JoinSide::from_tag(tag).ok_or_else(|| {
 			ValueError::from(FlowAsyncError::Decode {
 				state: "join expiry key",
@@ -309,7 +309,7 @@ impl JoinOperator {
 		}
 	}
 
-	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
+	fn resync_timer(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<(), ValueError> {
 		let earliest = self.expiry.min(host)?;
 		self.arm_maintenance(host, earliest, retry)
 	}
@@ -322,7 +322,7 @@ impl JoinOperator {
 		host: &mut dyn HostContext,
 		earliest: Option<DateTime>,
 		retry: Option<DateTime>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let next = match (earliest, retry) {
 			(Some(earliest), Some(retry)) => Some(earliest.min(retry)),
 			(earliest, retry) => earliest.or(retry),
@@ -339,7 +339,7 @@ impl JoinOperator {
 		side: JoinSide,
 		cleared: &[(GroupId, RowNumber)],
 		armed: &[(GroupId, RowNumber, DateTime)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(retention) = self.retention_of(side) else {
 			return Ok(());
 		};
@@ -372,7 +372,7 @@ impl JoinOperator {
 		side: JoinSide,
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
@@ -396,7 +396,7 @@ impl JoinOperator {
 		side: JoinSide,
 		columns: &RecordBatch,
 		keys: &[Option<Hash128>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
@@ -417,7 +417,7 @@ impl JoinOperator {
 		side: JoinSide,
 		pre: Option<RecordBatch>,
 		post: RecordBatch,
-	) -> Result<(Option<RecordBatch>, RecordBatch)> {
+	) -> Result<(Option<RecordBatch>, RecordBatch), ValueError> {
 		let (Some(retention), Some(frontier)) = (self.retention_of(side), host.flow_watermark()?) else {
 			return Ok((pre, post));
 		};
@@ -439,7 +439,7 @@ impl JoinOperator {
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
 		moves: &mut ExpiryMoves,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
@@ -459,7 +459,7 @@ impl JoinOperator {
 		host: &mut dyn HostContext,
 		state: &JoinState,
 		entry: &JoinDueEntry,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let group = entry.group;
 		let row_number = entry.row_number;
 		if self.ignores_right_changes() {
@@ -477,7 +477,7 @@ impl JoinOperator {
 		state: &JoinState,
 		entry: &JoinDueEntry,
 		left_numbers: &[RowNumber],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let group = entry.group;
 		let row_number = entry.row_number;
 		if self.ignores_right_changes()
@@ -498,7 +498,7 @@ impl JoinOperator {
 		state.right.remove_row_in(host, group, from_ref(&row_number))
 	}
 
-	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
+	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
 		let Some(span) = self.widest_retention() else {
 			return Ok(());
 		};
@@ -597,7 +597,7 @@ impl JoinOperator {
 		&self,
 		columns: &RecordBatch,
 		lowered_exprs: &[LoweredExpr],
-	) -> Result<Vec<Option<Hash128>>> {
+	) -> Result<Vec<Option<Hash128>>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -633,7 +633,7 @@ impl JoinOperator {
 		}
 
 		let expr_views: Vec<ColumnView> =
-			expr_columns.iter().map(ColumnView::try_from).collect::<Result<_>>()?;
+			expr_columns.iter().map(ColumnView::try_from).collect::<Result<_, ValueError>>()?;
 		for (view, (field, _)) in expr_views.iter().zip(&expr_columns) {
 			let ty = view.get_type();
 			if matches!(ty.inner_type(), ValueType::Digest { .. }) {
@@ -650,7 +650,7 @@ impl JoinOperator {
 		left: &RecordBatch,
 		left_idx: usize,
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		let left_row_number = require_row_numbers(left)?[left_idx];
 
 		let (row_numbers, fresh, existing) =
@@ -669,7 +669,7 @@ impl JoinOperator {
 		host: &mut dyn HostContext,
 		keys: &[JoinRowMappingKey],
 		identity: Identity<'_>,
-	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
+	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>), ValueError> {
 		match identity {
 			Identity::Carried(supplied) => {
 				let (fresh, existing) = (0..keys.len()).partition(|index| supplied[*index].1);
@@ -701,7 +701,7 @@ impl JoinOperator {
 		}
 	}
 
-	fn split(built: RecordBatch, fresh: &[usize], existing: &[usize]) -> Result<Emitted> {
+	fn split(built: RecordBatch, fresh: &[usize], existing: &[usize]) -> Result<Emitted, ValueError> {
 		Ok(Emitted {
 			fresh: JoinedColumnsBuilder::retain_rows(&built, fresh)?,
 			existing: JoinedColumnsBuilder::retain_rows(&built, existing)?,
@@ -714,7 +714,7 @@ impl JoinOperator {
 		left: &RecordBatch,
 		left_indices: &[usize],
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		if left_indices.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -730,7 +730,11 @@ impl JoinOperator {
 		Self::split(built, &fresh, &existing)
 	}
 
-	pub(crate) fn cleanup_left_row_joins(&self, host: &mut dyn HostContext, left_number: u64) -> Result<()> {
+	pub(crate) fn cleanup_left_row_joins(
+		&self,
+		host: &mut dyn HostContext,
+		left_number: u64,
+	) -> Result<(), ValueError> {
 		host.remove_join_row_numbers_for_left(JOIN_MAPPING_TAG, left_number)
 	}
 
@@ -757,7 +761,7 @@ impl JoinOperator {
 		left_idx: usize,
 		right: &RecordBatch,
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		let right_count = right.num_rows();
 		if right_count == 0 {
 			return Ok(Emitted::empty());
@@ -787,7 +791,7 @@ impl JoinOperator {
 		right: &RecordBatch,
 		right_idx: usize,
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		let left_count = left.num_rows();
 		if left_count == 0 {
 			return Ok(Emitted::empty());
@@ -818,7 +822,7 @@ impl JoinOperator {
 		right: &RecordBatch,
 		right_indices: &[usize],
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();
 		if left_count == 0 || right_count == 0 {
@@ -855,7 +859,7 @@ impl JoinOperator {
 		left_indices: &[usize],
 		slot: &RecordBatch,
 		row_numbers: &[RowNumber],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let builder = self.columns.builder(left.schema_ref(), slot.schema_ref());
 		builder.join_cartesian(row_numbers, left, left_indices, slot, &[0])
 	}
@@ -865,7 +869,7 @@ impl JoinOperator {
 		left: &RecordBatch,
 		left_indices: &[usize],
 		row_numbers: &[RowNumber],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
 		builder.unmatched_left(row_numbers, left, left_indices, &self.right_schema)
 	}
@@ -878,7 +882,7 @@ impl JoinOperator {
 		slots: &RecordBatch,
 		slot_of_row: &[Option<usize>],
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		if left_indices.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -911,7 +915,7 @@ impl JoinOperator {
 		left_indices: &[usize],
 		slot: Option<&RecordBatch>,
 		identity: Identity<'_>,
-	) -> Result<Emitted> {
+	) -> Result<Emitted, ValueError> {
 		if left_indices.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -935,7 +939,12 @@ impl JoinOperator {
 		Self::split(built, &fresh, &existing)
 	}
 
-	fn entry(&self, host: &mut dyn HostContext, side: JoinSide, mut columns: RecordBatch) -> Result<RecordBatch> {
+	fn entry(
+		&self,
+		host: &mut dyn HostContext,
+		side: JoinSide,
+		mut columns: RecordBatch,
+	) -> Result<RecordBatch, ValueError> {
 		let kept = match side {
 			JoinSide::Left => &self.left_kept,
 			JoinSide::Right => &self.right_kept,
@@ -988,7 +997,7 @@ impl HostOperator for JoinOperator {
 		Some(builder.schema(&self.left_schema, &self.right_schema))
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -1093,7 +1102,7 @@ impl HostOperator for JoinOperator {
 		Ok(Change::from_flow(self.operator, version, result, change.changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::Maintenance {
 			self.free_due_join_rows(host, FiredAt::of(&timer))?;
 		}
@@ -1116,7 +1125,7 @@ impl JoinOperator {
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
@@ -1154,7 +1163,7 @@ impl JoinOperator {
 		post: &RecordBatch,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let side = JoinSide::Right;
 		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
@@ -1242,7 +1251,7 @@ impl JoinOperator {
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
@@ -1283,7 +1292,7 @@ impl JoinOperator {
 		side: JoinSide,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 		let row_count = post.num_rows();
@@ -1682,25 +1691,25 @@ mod seal_tests {
 	}
 
 	impl FlowGet for CountingTxn {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			pending_get(self, keys)
 		}
 	}
 
 	impl FlowBatch for CountingTxn {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 			self.pending_mut().insert(keys, rows);
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 			self.pending_mut().remove(keys);
 			Ok(())
 		}
 	}
 
 	impl Resolve for CountingTxn {
-		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 			panic!("a join over plain columns never resolves a dictionary")
 		}
 
@@ -1708,7 +1717,7 @@ mod seal_tests {
 			&mut self,
 			_dictionary: &Dictionary,
 			_ids: &[DictionaryEntryId],
-		) -> Result<Vec<Option<Value>>> {
+		) -> Result<Vec<Option<Value>>, ValueError> {
 			panic!("a join over plain columns never resolves a dictionary")
 		}
 	}
@@ -1718,13 +1727,17 @@ mod seal_tests {
 			&mut self,
 			_dictionary: &Dictionary,
 			_values: &[Value],
-		) -> Result<Vec<Option<DictionaryEntryId>>> {
+		) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 			panic!("a join over plain columns never finds a dictionary value")
 		}
 	}
 
 	impl Intern for CountingTxn {
-		fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		fn intern(
+			&mut self,
+			_dictionary: &Dictionary,
+			_values: &[Value],
+		) -> Result<Vec<DictionaryEntryId>, ValueError> {
 			panic!("a join over plain columns never interns a dictionary value")
 		}
 	}
@@ -1790,7 +1803,11 @@ mod seal_tests {
 			self.inner.row_shape_cache(operator)
 		}
 
-		fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
+		fn run_durable_sink(
+			&mut self,
+			sink: &mut dyn DurableSink,
+			change: Change,
+		) -> Result<Change, ValueError> {
 			self.inner.run_durable_sink(sink, change)
 		}
 
@@ -1798,11 +1815,11 @@ mod seal_tests {
 			&mut self,
 			sink: &mut dyn DurableSink,
 			timer: Timer,
-		) -> Result<Option<TimedOutput>> {
+		) -> Result<Option<TimedOutput>, ValueError> {
 			self.inner.run_durable_sink_timer(sink, timer)
 		}
 
-		fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.inner.storage_get_many(keys)
 		}
 
@@ -1811,7 +1828,7 @@ mod seal_tests {
 			range: TaggedKeyBoundRange,
 			scope: RangeScope,
 			batch_size: usize,
-		) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 			// a repeated enumeration of one keyspace must show up here as a repeated start bound
 			match range.encode().start {
 				Bound::Included(start) | Bound::Excluded(start) => self.scan_starts.push(start),
@@ -1820,7 +1837,11 @@ mod seal_tests {
 			self.inner.storage_range(range, scope, batch_size)
 		}
 
-		fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn fetch_state(
+			&mut self,
+			id: OperatorId,
+			keys: &[GroupStateKey],
+		) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.inner.fetch_state(id, keys)
 		}
 	}

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch};
 use arrow_schema::{DataType, Field, FieldRef, Schema};
 use reifydb_extension::block_encoding::{BlockEncoding, BoundBlockEncoding, error::BlockEncodingError};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{error::ValueError, value::Value};
 
 pub const DELTA: &str = "delta";
 
@@ -37,7 +37,11 @@ impl BlockEncoding for DeltaEncoding {
 		self.version
 	}
 
-	fn bind(&self, user: &[FieldRef], config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+	fn bind(
+		&self,
+		user: &[FieldRef],
+		config: &[(String, Value)],
+	) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 		let column = match config {
 			[(key, Value::Utf8(column))] if key == "column" => column.clone(),
 			_ => return Err(invalid(format!("expects exactly `column`, got {config:?}")).into()),
@@ -83,11 +87,11 @@ impl BoundBlockEncoding for BoundDelta {
 		self.stored.clone()
 	}
 
-	fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+	fn encode(&self, user: RecordBatch) -> Result<RecordBatch, ValueError> {
 		reshape(&user, &self.column, &self.stored, encode_deltas)
 	}
 
-	fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+	fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch, ValueError> {
 		if version == 0 || version > self.version {
 			return Err(
 				invalid(format!("cannot decode version {version}, knows 1 to {}", self.version)).into()
@@ -104,7 +108,12 @@ fn invalid(reason: String) -> BlockEncodingError {
 	}
 }
 
-fn reshape(batch: &RecordBatch, from: &str, fields: &[FieldRef], step: fn(&[i64]) -> Vec<i64>) -> Result<RecordBatch> {
+fn reshape(
+	batch: &RecordBatch,
+	from: &str,
+	fields: &[FieldRef],
+	step: fn(&[i64]) -> Vec<i64>,
+) -> Result<RecordBatch, ValueError> {
 	let source = batch
 		.column_by_name(from)
 		.and_then(|array| array.as_any().downcast_ref::<Int64Array>())

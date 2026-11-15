@@ -76,13 +76,13 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{duration::Duration, identity::IdentityKind},
 };
 use tracing::instrument;
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	nodes::{AlterMethodTtl, TakeLimit},
 	plan::logical::alter::table::AlterTableNode,
@@ -100,7 +100,7 @@ pub fn compile_logical<'b>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	ast: AstStatement<'b>,
-) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
+) -> Result<BumpVec<'b, LogicalPlan<'b>>, ValueError> {
 	Compiler {
 		catalog: catalog.clone(),
 		bump,
@@ -115,7 +115,7 @@ pub(crate) fn find_remote_target<'b>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	ast: AstStatement<'b>,
-) -> Result<Option<Namespace>> {
+) -> Result<Option<Namespace>, ValueError> {
 	let compiler = Compiler {
 		catalog: catalog.clone(),
 		bump,
@@ -133,7 +133,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstStatement<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>, ValueError> {
 		if ast.is_empty() {
 			return Ok(BumpVec::new_in(self.bump));
 		}
@@ -161,7 +161,11 @@ impl<'bump> Compiler<'bump> {
 		Ok(result)
 	}
 
-	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub fn compile_single(
+		&self,
+		node: Ast<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match node {
 			Ast::Create(node) => self.compile_create(BumpBox::into_inner(node), tx),
 			Ast::Drop(node) => self.compile_drop(node),
@@ -320,7 +324,7 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> Result<LogicalPlan<'bump>> {
+	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		let fragment = scalar_node.token().fragment.to_owned();
 		let expr = ExpressionCompiler::compile(scalar_node)?;
 		let alias_expr = AliasExpression {
@@ -335,7 +339,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn compile_infix(&self, node: AstInfix<'bump>) -> Result<LogicalPlan<'bump>> {
+	fn compile_infix(&self, node: AstInfix<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		match node.operator {
 			InfixOperator::Assign(_token) => {
 				let variable = match BumpBox::into_inner(node.left) {

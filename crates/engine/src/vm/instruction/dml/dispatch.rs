@@ -20,18 +20,16 @@ use reifydb_policy::inject_from_policies;
 use reifydb_rql::{compiler::CompilationResult, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, column_view::ColumnView, duration::Duration, sumtype::VariantRef},
 };
 
-use crate::{
-	Result,
-	vm::{
-		callable::{CallSite, ProcedureCall, enforce_call_policy, invoke_procedure_routine},
-		services::Services,
-		vm::Vm,
-	},
+use crate::vm::{
+	callable::{CallSite, ProcedureCall, enforce_call_policy, invoke_procedure_routine},
+	services::Services,
+	vm::Vm,
 };
 
 pub(crate) const MAX_DISPATCH_DEPTH: u8 = 32;
@@ -43,7 +41,7 @@ pub(crate) fn dispatch(
 	plan: DispatchNode,
 	params: &Params,
 	dispatch_depth: u8,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let prev = tx.context().clone();
 	tx.set_context(prev.with_current(vm.identity));
 	let result = fire_handlers(vm, services, tx, plan, params, dispatch_depth);
@@ -58,7 +56,7 @@ fn fire_handlers(
 	plan: DispatchNode,
 	params: &Params,
 	dispatch_depth: u8,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if dispatch_depth >= MAX_DISPATCH_DEPTH {
 		return Err(internal_error!(
 			"Max dispatch depth ({}) exceeded for event variant '{}'",

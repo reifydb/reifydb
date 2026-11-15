@@ -14,7 +14,7 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::{byte_size::ByteSize, error::ValueError};
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
@@ -28,7 +28,7 @@ use crate::{
 
 pub type CommitLoaderHandle = ActorHandle<CommitLoaderMessage>;
 
-pub type CommitLoaderReply = Box<dyn FnOnce(Result<Loaded>) + Send>;
+pub type CommitLoaderReply = Box<dyn FnOnce(Result<Loaded, ValueError>) + Send>;
 
 pub enum CommitLoaderMessage {
 	Fetch {
@@ -109,7 +109,7 @@ impl CommitLoader {
 		after: (CommitVersion, Lsn),
 		up_to: CommitVersion,
 		budget: ByteSize,
-	) -> Result<Loaded> {
+	) -> Result<Loaded, ValueError> {
 		let cursor = after.0;
 		if let Some(memo) = state.memo.iter().find(|memo| {
 			memo.after <= cursor && cursor < memo.loaded.advance_to && memo.loaded.advance_to <= up_to

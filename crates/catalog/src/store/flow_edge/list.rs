@@ -10,14 +10,15 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::flow_edge::shape::{flow_edge, flow_edge_by_flow},
 };
 
 impl CatalogStore {
-	pub fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>> {
+	pub fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>, ValueError> {
 		let mut edge_ids = Vec::new();
 		{
 			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
@@ -41,7 +42,7 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
+	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(FlowEdgeKey::full_scan(), RangeScope::All, 1024)?;

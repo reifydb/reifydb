@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{key::operator::state::GroupId, state::timer::StateStore};
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::window::meta::WindowMeta;
 
@@ -22,7 +22,7 @@ impl<'a> Mint<'a> {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<Vec<u64>> {
+	) -> Result<Vec<u64>, ValueError> {
 		self.meta.lookup_row_index(store, group, row_number)
 	}
 
@@ -32,7 +32,7 @@ impl<'a> Mint<'a> {
 		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.meta.store_row_index(store, group, row_number, window_id)
 	}
 
@@ -42,7 +42,7 @@ impl<'a> Mint<'a> {
 		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.meta.withdraw_row_index(store, group, row_number, window_id)
 	}
 
@@ -51,7 +51,7 @@ impl<'a> Mint<'a> {
 		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.meta.drop_row_index(store, group, row_number)
 	}
 }

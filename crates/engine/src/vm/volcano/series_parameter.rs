@@ -9,12 +9,15 @@ use reifydb_core::{
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::nodes::{PartitionKey, SeriesBound};
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
-use reifydb_value::value::{
-	Value,
-	partition::{Partition, ScanPartitions},
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value,
+		partition::{Partition, ScanPartitions},
+	},
 };
 
-use crate::{Result, vm::volcano::partition_parameter::choose_partition};
+use crate::vm::volcano::partition_parameter::choose_partition;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SeriesRange {
@@ -32,7 +35,7 @@ pub(crate) fn choose_series_range(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Result<Option<SeriesRange>> {
+) -> Result<Option<SeriesRange>, ValueError> {
 	if txn.layout() == ScanLayout::Column {
 		return Ok(None);
 	}

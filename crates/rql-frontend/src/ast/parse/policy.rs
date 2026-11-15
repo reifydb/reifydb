@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			Ast, AstAlter, AstAlterPolicy, AstAlterPolicyAction, AstCreate, AstCreatePolicy, AstDrop,
@@ -23,7 +24,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let name = if !self.is_eof()
 			&& self.current()?.is_identifier()
 			&& !self.current()?.is_keyword(Keyword::On)
@@ -98,7 +99,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_policy_scope(&mut self) -> Result<AstPolicyScope<'bump>> {
+	fn parse_policy_scope(&mut self) -> Result<AstPolicyScope<'bump>, ValueError> {
 		let segments = self.parse_double_colon_separated_identifiers()?;
 		let fragments: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -109,7 +110,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_policy_body(&mut self) -> Result<Vec<Ast<'bump>>> {
+	fn parse_policy_body(&mut self) -> Result<Vec<Ast<'bump>>, ValueError> {
 		let mut nodes = Vec::new();
 
 		loop {
@@ -134,7 +135,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> Result<AstAlter<'bump>> {
+	) -> Result<AstAlter<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 
 		let action = if (self.consume_if(TokenKind::Keyword(Keyword::Enable))?).is_some() {
@@ -156,7 +157,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> Result<AstDrop<'bump>> {
+	) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 

@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::value::{decode_params, encode_params};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	params::Params,
 	value::{Value, duration::Duration},
 };
@@ -121,7 +121,7 @@ pub struct WindowKnobs {
 }
 
 impl WindowKnobs {
-	pub fn from_operator_with(with: &ApplyWith) -> Result<Self> {
+	pub fn from_operator_with(with: &ApplyWith) -> Result<Self, ValueError> {
 		let knobs = Self {
 			lateness: duration_span("lateness", with.lateness)?,
 			immutable: duration_span("immutable", with.immutable)?,
@@ -140,7 +140,7 @@ impl WindowKnobs {
 }
 
 impl ApplyWith {
-	pub fn window_duration(&self) -> Result<Duration> {
+	pub fn window_duration(&self) -> Result<Duration, ValueError> {
 		let Some(kind) = &self.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -158,7 +158,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn window_slots(&self) -> Result<u64> {
+	pub fn window_slots(&self) -> Result<u64, ValueError> {
 		let Some(kind) = &self.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -176,7 +176,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn window_slide_duration(&self) -> Result<Option<Duration>> {
+	pub fn window_slide_duration(&self) -> Result<Option<Duration>, ValueError> {
 		match &self.window {
 			Some(WindowKind::Sliding {
 				slide,
@@ -192,7 +192,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn window_slide_slots(&self) -> Result<Option<u64>> {
+	pub fn window_slide_slots(&self) -> Result<Option<u64>, ValueError> {
 		match &self.window {
 			Some(WindowKind::Sliding {
 				slide,
@@ -217,7 +217,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn check_session_window(&self) -> Result<()> {
+	pub fn check_session_window(&self) -> Result<(), ValueError> {
 		let Some(gap) = self.window_session_gap() else {
 			return Ok(());
 		};
@@ -234,14 +234,14 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn effective_retention(&self) -> Result<Option<Duration>> {
+	pub fn effective_retention(&self) -> Result<Option<Duration>, ValueError> {
 		match self.retention {
 			Some(retention) => Ok(Some(retention)),
 			None => self.lateness_duration(),
 		}
 	}
 
-	pub fn check_retention(&self) -> Result<()> {
+	pub fn check_retention(&self) -> Result<(), ValueError> {
 		let (Some(retention), Some(lateness)) = (self.retention, self.lateness_duration()?) else {
 			return Ok(());
 		};
@@ -255,13 +255,13 @@ impl ApplyWith {
 		Ok(())
 	}
 
-	pub fn reject_retention(&self) -> Result<()> {
+	pub fn reject_retention(&self) -> Result<(), ValueError> {
 		match self.retention {
 			None => Ok(()),
 			Some(_) => Err(CoreError::OperatorWithRetentionNotSupported.into()),
 		}
 	}
-	pub fn reject_window(&self) -> Result<()> {
+	pub fn reject_window(&self) -> Result<(), ValueError> {
 		match &self.window {
 			None => Ok(()),
 			Some(kind) => Err(CoreError::OperatorWithWindowNotSupported {
@@ -271,7 +271,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn require_window(&self, supported: &'static str) -> Result<&WindowKind> {
+	pub fn require_window(&self, supported: &'static str) -> Result<&WindowKind, ValueError> {
 		let Some(kind) = &self.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -285,7 +285,7 @@ impl ApplyWith {
 		Ok(kind)
 	}
 
-	pub fn lateness_duration(&self) -> Result<Option<Duration>> {
+	pub fn lateness_duration(&self) -> Result<Option<Duration>, ValueError> {
 		match self.lateness {
 			None => Ok(None),
 			Some(WithSpan::Duration(d)) => Ok(Some(d)),
@@ -297,7 +297,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn lateness_count(&self) -> Result<Option<u64>> {
+	pub fn lateness_count(&self) -> Result<Option<u64>, ValueError> {
 		match self.lateness {
 			None => Ok(None),
 			Some(WithSpan::Count(n)) => Ok(Some(n)),
@@ -309,7 +309,7 @@ impl ApplyWith {
 		}
 	}
 
-	pub fn immutable_count(&self) -> Result<Option<u64>> {
+	pub fn immutable_count(&self) -> Result<Option<u64>, ValueError> {
 		match self.immutable {
 			None => Ok(None),
 			Some(WithSpan::Count(n)) => Ok(Some(n)),
@@ -322,7 +322,7 @@ impl ApplyWith {
 	}
 }
 
-pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
+pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>, ValueError> {
 	let mut values = HashMap::new();
 	if let Some(window) = &with.window {
 		values.insert("window".to_string(), Value::Utf8(window.name().to_string()));
@@ -382,7 +382,7 @@ pub fn encode_apply_with(with: &ApplyWith) -> Result<Vec<u8>> {
 		.map_err(|e| internal_error!("failed to encode apply with: {}", e))
 }
 
-pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith> {
+pub fn decode_apply_with(bytes: &[u8]) -> Result<ApplyWith, ValueError> {
 	let values = match decode_params(bytes).map_err(|e| internal_error!("failed to decode apply with: {}", e))? {
 		Params::None => return Ok(ApplyWith::default()),
 		Params::Named(values) => values,
@@ -428,7 +428,7 @@ fn decode_window_kind(
 	lag: Option<Duration>,
 	pane: Option<Duration>,
 	on_empty: OnEmpty,
-) -> Result<Option<WindowKind>> {
+) -> Result<Option<WindowKind>, ValueError> {
 	let Some(window_name) = window_name else {
 		if duration.is_some()
 			|| slots.is_some() || slide.is_some()
@@ -494,7 +494,7 @@ fn decode_window_kind(
 	}
 }
 
-fn decode_window_size(duration: Option<Duration>, slots: Option<u64>) -> Result<WindowSize> {
+fn decode_window_size(duration: Option<Duration>, slots: Option<u64>) -> Result<WindowSize, ValueError> {
 	match (duration, slots) {
 		(Some(d), None) => Ok(WindowSize::Duration(d)),
 		(None, Some(n)) => Ok(WindowSize::Count(n)),
@@ -528,7 +528,7 @@ fn span_value(span: WithSpan) -> Value {
 	}
 }
 
-fn value_span(key: &str, value: &Value) -> Result<WithSpan> {
+fn value_span(key: &str, value: &Value) -> Result<WithSpan, ValueError> {
 	match value {
 		Value::Duration(duration) => Ok(WithSpan::Duration(*duration)),
 		Value::Uint8(count) => Ok(WithSpan::Count(*count)),
@@ -536,7 +536,7 @@ fn value_span(key: &str, value: &Value) -> Result<WithSpan> {
 	}
 }
 
-fn duration_span(key: &'static str, span: Option<WithSpan>) -> Result<Option<Duration>> {
+fn duration_span(key: &'static str, span: Option<WithSpan>) -> Result<Option<Duration>, ValueError> {
 	match span {
 		None => Ok(None),
 		Some(WithSpan::Duration(duration)) => Ok(Some(duration)),

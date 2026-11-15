@@ -16,12 +16,12 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::operator::shape::{operator, operator_by_flow},
 };
 
 impl CatalogStore {
-	pub fn list_operators_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
+	pub fn list_operators_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>, ValueError> {
 		let mut node_ids = Vec::new();
 		{
 			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
@@ -43,7 +43,7 @@ impl CatalogStore {
 		Ok(operators)
 	}
 
-	pub(crate) fn list_operators_all(rx: &mut Transaction<'_>) -> Result<Vec<(FlowId, FlowNode)>> {
+	pub(crate) fn list_operators_all(rx: &mut Transaction<'_>) -> Result<Vec<(FlowId, FlowNode)>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(OperatorKey::full_scan(), RangeScope::All, 1024)?;

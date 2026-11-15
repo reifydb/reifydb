@@ -5,11 +5,15 @@ use std::sync::Arc;
 
 use reifydb_core::interface::catalog::object::{Object, ObjectId};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, vtable::VTableRegistry};
+use crate::{CatalogStore, vtable::VTableRegistry};
 
 impl CatalogStore {
-	pub(crate) fn find_object(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Option<Object>> {
+	pub(crate) fn find_object(
+		rx: &mut Transaction<'_>,
+		object: impl Into<ObjectId>,
+	) -> Result<Option<Object>, ValueError> {
 		let object_id = object.into();
 
 		match object_id {

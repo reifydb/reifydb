@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::system_columns::{is_system_field, user_columns},
 };
 
@@ -26,7 +26,7 @@ pub(super) struct SubscriptionInspectorImpl {
 }
 
 impl SubscriptionInspectorImpl {
-	fn with_op(input: &RecordBatch, ops: Vec<u8>) -> Result<RecordBatch> {
+	fn with_op(input: &RecordBatch, ops: Vec<u8>) -> Result<RecordBatch, ValueError> {
 		let mut columns: Vec<(FieldRef, ArrayRef)> =
 			user_columns(input).map(|(field, array)| (field.clone(), array.clone())).collect();
 		columns.push(uint1(OP_COLUMN, ops));
@@ -46,7 +46,7 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 		self.store.active_subscriptions()
 	}
 
-	fn inspect(&self, id: SubscriptionId) -> Result<Option<RecordBatch>> {
+	fn inspect(&self, id: SubscriptionId) -> Result<Option<RecordBatch>, ValueError> {
 		let batches = self.store.drain(&id, usize::MAX);
 		if batches.is_empty() {
 			if !self.store.contains(&id) {

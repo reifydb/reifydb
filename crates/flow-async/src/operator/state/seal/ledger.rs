@@ -10,7 +10,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 use crate::{operator::state::seal::rule::SealedThrough, timer::Timer};
 
@@ -46,7 +46,7 @@ impl FiredAt {
 pub struct SealLedger;
 
 impl SealLedger {
-	pub fn advance(store: &mut dyn StateStore, fired: FiredAt) -> Result<SealedThrough> {
+	pub fn advance(store: &mut dyn StateStore, fired: FiredAt) -> Result<SealedThrough, ValueError> {
 		let fired_order = fired.at().to_order();
 		let current = Self::read_order(store)?.unwrap_or(0);
 		if fired_order <= current {
@@ -59,7 +59,7 @@ impl SealLedger {
 		Ok(SealedThrough::from_order(fired_order))
 	}
 
-	pub fn observe(store: &mut dyn StateStore, order: u64) -> Result<u64> {
+	pub fn observe(store: &mut dyn StateStore, order: u64) -> Result<u64, ValueError> {
 		let current = Self::read_order(store)?.unwrap_or(0);
 		if order <= current {
 			return Ok(current);
@@ -71,7 +71,7 @@ impl SealLedger {
 		Ok(order)
 	}
 
-	pub fn read_order(store: &mut dyn StateStore) -> Result<Option<u64>> {
+	pub fn read_order(store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
 		let Some(bytes) = store.state_get(from_ref(&seal_ledger_key()))?.pop().flatten() else {
 			return Ok(None);
 		};

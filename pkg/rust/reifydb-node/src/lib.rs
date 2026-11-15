@@ -10,12 +10,12 @@ compile_error!(
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use napi::{
-	Error as NapiError, Result,
+	Error as NapiError,
 	bindgen_prelude::{Buffer, Either},
 };
 use napi_derive::napi;
 use reifydb::{
-	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
+	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, WithSubsystem,
 	auth::service::AuthResponse,
 	core::{
 		actors::server::method_not_enabled_reason,
@@ -41,6 +41,8 @@ use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 pub mod subscription;
+
+use reifydb::ValueError;
 
 use crate::subscription::{Subscriptions, sink::NodePush};
 
@@ -101,7 +103,7 @@ pub struct SubscriptionTick {
 	pub closed: Vec<String>,
 }
 
-fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
+fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>, NapiError> {
 	let converted = convert_frames(frames).map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
 	frames.iter()
 		.zip(converted)
@@ -130,33 +132,33 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
 
 type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 
-fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
+fn parse_params(params: Option<ParamsInput>) -> Result<Params, NapiError> {
 	let wire = match params {
 		None => return Ok(Params::None),
 		Some(Either::A(items)) => WireParams::Positional(
 			items.into_iter()
 				.enumerate()
 				.map(|(index, value)| to_wire_value(&format!("${}", index + 1), value))
-				.collect::<Result<_>>()?,
+				.collect::<Result<_, NapiError>>()?,
 		),
 		Some(Either::B(map)) => WireParams::Named(
 			map.into_iter()
-				.map(|(name, value)| -> Result<_> {
+				.map(|(name, value)| -> Result<_, NapiError> {
 					let wire = to_wire_value(&format!("${name}"), value)?;
 					Ok((name, wire))
 				})
-				.collect::<Result<_>>()?,
+				.collect::<Result<_, NapiError>>()?,
 		),
 	};
 	wire.into_params().map_err(NapiError::from_reason)
 }
 
-fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue> {
+fn to_wire_value(parameter: &str, param: ParamValue) -> Result<WireValue, NapiError> {
 	WireValue::parse(&param.r#type, param.value)
 		.map_err(|e| NapiError::from_reason(format!("parameter {parameter}: unknown type: {e}")))
 }
 
-fn parse_options(options: Option<SubscribeOptionsInput>) -> Result<SubscribeOptions> {
+fn parse_options(options: Option<SubscribeOptionsInput>) -> Result<SubscribeOptions, NapiError> {
 	let Some(options) = options else {
 		return Ok(SubscribeOptions::default());
 	};
@@ -183,19 +185,19 @@ fn parse_options(options: Option<SubscribeOptionsInput>) -> Result<SubscribeOpti
 	})
 }
 
-fn parse_duration(option: &str, value: ParamValue) -> Result<Duration> {
+fn parse_duration(option: &str, value: ParamValue) -> Result<Duration, NapiError> {
 	to_wire_value(option, value)?.into_duration(option).map_err(NapiError::from_reason)
 }
 
 impl ReifydbNode {
-	pub fn new(migrations: impl Into<MigrationSource>) -> ReifyResult<Self> {
+	pub fn new(migrations: impl Into<MigrationSource>) -> Result<Self, ValueError> {
 		let db = embedded::memory().with_flow(|flow| flow).with_migrations(migrations).build()?;
 		Self::from_database(db)
 	}
 
 	/// Binds a built database to a subscription transport. Every entry point goes through here so
 	/// none of them can hand back a node whose subscriptions were never wired up.
-	pub fn from_database(db: Database) -> ReifyResult<Self> {
+	pub fn from_database(db: Database) -> Result<Self, ValueError> {
 		let subscriptions = Subscriptions::new(&db)?;
 		Ok(Self {
 			db: Arc::new(db),
@@ -228,7 +230,7 @@ fn migration_source(entry: MigrationEntry) -> MigrationSource {
 }
 
 #[napi(js_name = "openWithMigrations")]
-pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode> {
+pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode, NapiError> {
 	let mut builder = embedded::memory().with_flow(|flow| flow);
 	if !entries.is_empty() {
 		let sources = entries.into_iter().map(migration_source).collect();
@@ -241,25 +243,30 @@ pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode>
 #[napi]
 impl ReifydbNode {
 	#[napi(js_name = "adminRoot")]
-	pub async fn admin_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	pub async fn admin_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.admin_root_now(rql, params)).await
 	}
 
 	#[napi(js_name = "commandRoot")]
-	pub async fn command_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	pub async fn command_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.command_root_now(rql, params)).await
 	}
 
 	#[napi(js_name = "queryRoot")]
-	pub async fn query_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	pub async fn query_root(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.query_root_now(rql, params)).await
 	}
 
 	#[napi(js_name = "adminAs")]
-	pub async fn admin_as(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	pub async fn admin_as(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<ParamsInput>,
+	) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.admin_as_now(identity, rql, params)).await
 	}
@@ -270,13 +277,18 @@ impl ReifydbNode {
 		identity: String,
 		rql: String,
 		params: Option<ParamsInput>,
-	) -> Result<Vec<Frame>> {
+	) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.command_as_now(identity, rql, params)).await
 	}
 
 	#[napi(js_name = "queryAs")]
-	pub async fn query_as(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	pub async fn query_as(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<ParamsInput>,
+	) -> Result<Vec<Frame>, NapiError> {
 		let node = self.clone();
 		offload(move || node.query_as_now(identity, rql, params)).await
 	}
@@ -286,7 +298,7 @@ impl ReifydbNode {
 		&self,
 		identity: String,
 		subscriptions: Vec<SubscriptionInput>,
-	) -> Result<Vec<String>> {
+	) -> Result<Vec<String>, NapiError> {
 		let identity = parse_identity(&identity)?;
 		let queries = subscriptions
 			.into_iter()
@@ -297,7 +309,7 @@ impl ReifydbNode {
 					parse_options(subscription.options)?,
 				))
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, NapiError>>()?;
 		let subscription_ids = self
 			.subscriptions
 			.subscribe(identity, &queries)
@@ -308,9 +320,11 @@ impl ReifydbNode {
 	}
 
 	#[napi]
-	pub async fn unsubscribe(&self, subscription_ids: Vec<String>) -> Result<()> {
-		let subscription_ids =
-			subscription_ids.iter().map(|raw| parse_subscription_id(raw)).collect::<Result<Vec<_>>>()?;
+	pub async fn unsubscribe(&self, subscription_ids: Vec<String>) -> Result<(), NapiError> {
+		let subscription_ids = subscription_ids
+			.iter()
+			.map(|raw| parse_subscription_id(raw))
+			.collect::<Result<Vec<_>, NapiError>>()?;
 		self.subscriptions
 			.unsubscribe(&subscription_ids)
 			.await
@@ -318,14 +332,18 @@ impl ReifydbNode {
 	}
 
 	#[napi(js_name = "caughtUp")]
-	pub async fn caught_up(&self) -> Result<SubscriptionTick> {
+	pub async fn caught_up(&self) -> Result<SubscriptionTick, NapiError> {
 		let node = self.clone();
 		// A tick holds `Buffer`s, so only the pushes may cross the thread boundary.
 		Ok(to_tick(offload(move || node.caught_up_pushes()).await?))
 	}
 
 	#[napi]
-	pub async fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> Result<String> {
+	pub async fn authenticate(
+		&self,
+		method: String,
+		credentials: HashMap<String, String>,
+	) -> Result<String, NapiError> {
 		let node = self.clone();
 		offload(move || node.authenticate_now(method, credentials)).await
 	}
@@ -339,50 +357,65 @@ impl ReifydbNode {
 	}
 
 	#[napi]
-	pub fn tick(&self) -> Result<SubscriptionTick> {
+	pub fn tick(&self) -> Result<SubscriptionTick, NapiError> {
 		Ok(to_tick(self.subscriptions.poll()))
 	}
 }
 
 impl ReifydbNode {
-	fn admin_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn admin_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let params = parse_params(params)?;
 		render(self.db.admin_as_root(&rql, params))
 	}
 
-	fn command_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn command_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let params = parse_params(params)?;
 		render(self.db.command_as_root(&rql, params))
 	}
 
-	fn query_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn query_root_now(&self, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>, NapiError> {
 		let params = parse_params(params)?;
 		render(self.db.query_as_root(&rql, params))
 	}
 
-	fn admin_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn admin_as_now(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<ParamsInput>,
+	) -> Result<Vec<Frame>, NapiError> {
 		let identity = parse_identity(&identity)?;
 		let params = parse_params(params)?;
 		render(self.db.admin_as(identity, &rql, params))
 	}
 
-	fn command_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn command_as_now(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<ParamsInput>,
+	) -> Result<Vec<Frame>, NapiError> {
 		let identity = parse_identity(&identity)?;
 		let params = parse_params(params)?;
 		render(self.db.command_as(identity, &rql, params))
 	}
 
-	fn query_as_now(&self, identity: String, rql: String, params: Option<ParamsInput>) -> Result<Vec<Frame>> {
+	fn query_as_now(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<ParamsInput>,
+	) -> Result<Vec<Frame>, NapiError> {
 		let identity = parse_identity(&identity)?;
 		let params = parse_params(params)?;
 		render(self.db.query_as(identity, &rql, params))
 	}
 
-	fn caught_up_pushes(&self) -> Result<Vec<NodePush>> {
+	fn caught_up_pushes(&self) -> Result<Vec<NodePush>, NapiError> {
 		self.subscriptions.caught_up(&self.db).map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
-	fn authenticate_now(&self, method: String, credentials: HashMap<String, String>) -> Result<String> {
+	fn authenticate_now(&self, method: String, credentials: HashMap<String, String>) -> Result<String, NapiError> {
 		self.db.auth_service()
 			.authenticate(&method, credentials)
 			.map(|response| auth_response_to_json(&response))
@@ -390,10 +423,10 @@ impl ReifydbNode {
 	}
 }
 
-async fn offload<T, F>(work: F) -> Result<T>
+async fn offload<T, F>(work: F) -> Result<T, NapiError>
 where
 	T: Send + 'static,
-	F: FnOnce() -> Result<T> + Send + 'static,
+	F: FnOnce() -> Result<T, NapiError> + Send + 'static,
 {
 	spawn_blocking(work).await.expect("blocking task panicked")
 }
@@ -416,18 +449,18 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 	tick
 }
 
-fn render(result: ReifyResult<Vec<CoreFrame>>) -> Result<Vec<Frame>> {
+fn render(result: Result<Vec<CoreFrame>, ValueError>) -> Result<Vec<Frame>, NapiError> {
 	let frames = result.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
 	frames_to_napi(&frames)
 }
 
-fn parse_subscription_id(raw: &str) -> Result<SubscriptionId> {
+fn parse_subscription_id(raw: &str) -> Result<SubscriptionId, NapiError> {
 	raw.parse::<u64>()
 		.map(SubscriptionId)
 		.map_err(|_| NapiError::from_reason(format!("invalid subscription id: {raw}")))
 }
 
-fn parse_identity(raw: &str) -> Result<IdentityId> {
+fn parse_identity(raw: &str) -> Result<IdentityId, NapiError> {
 	let uuid = Uuid::parse_str(raw).map_err(|e| NapiError::from_reason(format!("invalid identity: {e}")))?;
 	Ok(IdentityId::new(Uuid7::from(uuid)))
 }

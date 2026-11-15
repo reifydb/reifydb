@@ -19,13 +19,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition},
 };
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	store::ringbuffer::create::{
 		RingBufferColumnToCreate as StoreRingBufferColumnToCreate,
@@ -84,13 +85,17 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
-	) -> Result<RowShape> {
+	) -> Result<RowShape, ValueError> {
 		let fields = self.column_shape_fields(txn, &ringbuffer.columns)?;
 		self.get_or_create_row_shape(txn, RowFamily::RingBuffer, fields)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<Option<RingBuffer>> {
+	pub fn find_ringbuffer(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: RingBufferId,
+	) -> Result<Option<RingBuffer>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, cmd.version()) {
@@ -157,7 +162,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<RingBuffer>> {
+	) -> Result<Option<RingBuffer>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(ringbuffer) =
@@ -249,7 +254,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<RingBuffer> {
+	pub fn get_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<RingBuffer, ValueError> {
 		self.find_ringbuffer(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"RingBuffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -263,7 +268,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> Result<RingBuffer> {
+	) -> Result<RingBuffer, ValueError> {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
@@ -278,7 +283,7 @@ impl Catalog {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<RingBuffer> {
+	) -> Result<RingBuffer, ValueError> {
 		let ringbuffer =
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
@@ -289,14 +294,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::drop", level = "info", skip(self, txn))]
-	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBuffer) -> Result<()> {
+	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBuffer) -> Result<(), ValueError> {
 		CatalogStore::drop_ringbuffer(txn, ringbuffer.id)?;
 		txn.track_ringbuffer_deleted(ringbuffer)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::ringbuffer::list", level = "trace", skip(self, txn))]
-	pub fn list_ringbuffers(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
+	pub fn list_ringbuffers(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>, ValueError> {
 		CatalogStore::list_ringbuffers(txn)
 	}
 
@@ -305,7 +310,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		storage: StorageId,
-	) -> Result<Vec<PartitionedMetadata>> {
+	) -> Result<Vec<PartitionedMetadata>, ValueError> {
 		CatalogStore::list_ringbuffer_partitions(txn, storage)
 	}
 
@@ -315,7 +320,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		storage: StorageId,
 		partition: Partition,
-	) -> Result<Option<PartitionedMetadata>> {
+	) -> Result<Option<PartitionedMetadata>, ValueError> {
 		CatalogStore::find_ringbuffer_partition(txn, storage, partition)
 	}
 
@@ -325,7 +330,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<RingBufferMetadata>>> {
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		CatalogStore::find_partition_metadata(txn, ringbuffer, partitions)
 	}
 
@@ -335,7 +340,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		entries: &[(Option<Partition>, RingBufferMetadata)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		CatalogStore::save_partition_metadata(txn, ringbuffer, entries)
 	}
 
@@ -345,7 +350,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		partitions: &[Option<Partition>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		CatalogStore::remove_partition_metadata(txn, ringbuffer, partitions)
 	}
 
@@ -355,7 +360,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		CatalogStore::set_ringbuffer_primary_key(txn, ringbuffer_id, primary_key_id)
 	}
 
@@ -364,7 +369,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
-	) -> Result<Option<PrimaryKeyId>> {
+	) -> Result<Option<PrimaryKeyId>, ValueError> {
 		CatalogStore::get_ringbuffer_pk_id(txn, ringbuffer_id)
 	}
 }

@@ -7,15 +7,18 @@ use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateIdentityAttributeNode;
 use reifydb_rql_frontend::token::keyword::is_keyword;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, value_type::ValueType},
+};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_identity_attribute(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateIdentityAttributeNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 
 	if matches!(name, "id" | "name" | "roles" | "kind") {

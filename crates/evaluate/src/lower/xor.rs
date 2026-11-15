@@ -11,17 +11,15 @@ use reifydb_value::{error::LogicalOp, fragment::Fragment};
 
 use crate::{
 	expression::{context::EvalContext, logic::execute_logical_op},
-	lower::{Lowered, Node, bool_field, error::into_external, logic_probe, lower_node, udf, volatile},
+	lower::{Node, Stop, bool_field, error::into_external, logic_probe, lower_node, udf, volatile},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_xor<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
 	xor: &'e XorExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let left = lower_node(ctx, operator, &xor.left)?;
 	let right = lower_node(ctx, operator, &xor.right)?;
 	let fragment = xor.full_fragment_owned();
@@ -68,15 +66,15 @@ impl ScalarUDFImpl for XorUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("xor types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(bool_field("xor", args.arg_fields.iter().any(|field| field.is_nullable())))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let left = (args.arg_fields[0].clone(), args.args[0].clone().into_array(args.number_rows)?);
 		let right = (args.arg_fields[1].clone(), args.args[1].clone().into_array(args.number_rows)?);
 		let (_, array) =
@@ -84,7 +82,7 @@ impl ScalarUDFImpl for XorUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

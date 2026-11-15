@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::subscription::{HydrateError, HydrationBound};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub(crate) fn backfill_sources(flow: &FlowDag) -> StdResult<BTreeSet<ObjectId>, HydrateError> {
 	let mut sources = BTreeSet::new();
@@ -53,7 +53,7 @@ pub(crate) fn sorted_view_source(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	sources: &BTreeSet<ObjectId>,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let mut only = sources.iter();
 	let (Some(ObjectId::View(view)), None) = (only.next(), only.next()) else {
 		return Ok(false);

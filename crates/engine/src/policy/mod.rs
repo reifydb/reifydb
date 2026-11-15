@@ -19,7 +19,7 @@ use reifydb_policy::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	params::Params,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -50,7 +50,7 @@ impl<'a> PolicyEvaluator<'a> {
 		operation: DataOp,
 		row_columns: &RecordBatch,
 		target_type: PolicyTargetType,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
 			object: target_object,
@@ -67,7 +67,7 @@ impl<'a> PolicyEvaluator<'a> {
 		target_object: &str,
 		operation: DataOp,
 		target_type: PolicyTargetType,
-	) -> Result<Option<CompiledWritePolicies>> {
+	) -> Result<Option<CompiledWritePolicies>, ValueError> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
 			object: target_object,
@@ -82,7 +82,7 @@ impl<'a> PolicyEvaluator<'a> {
 		compiled: &CompiledWritePolicies,
 		identity: IdentityId,
 		row_columns: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		compiled.enforce(row_columns, identity, self)
 	}
 
@@ -91,7 +91,7 @@ impl<'a> PolicyEvaluator<'a> {
 		compiled: &CompiledWritePolicies,
 		identity: IdentityId,
 		row_columns: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		compiled.enforce_row_dependent(row_columns, identity, self)
 	}
 
@@ -100,7 +100,7 @@ impl<'a> PolicyEvaluator<'a> {
 		tx: &mut Transaction<'_>,
 		session_type: SessionOp,
 		default_deny: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		enforce_session_policy(&self.services.catalog, tx, session_type.as_str(), default_deny, self)
 	}
 
@@ -112,7 +112,7 @@ impl<'a> PolicyEvaluator<'a> {
 		target_object: &str,
 		operation: CallableOp,
 		target_type: PolicyTargetType,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
 			object: target_object,
@@ -130,7 +130,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		batch: &RecordBatch,
 		row_count: usize,
 		identity: IdentityId,
-	) -> Result<bool> {
+	) -> Result<bool, ValueError> {
 		let lowered = LoweredExpr::new(expr.clone(), "policy");
 
 		let base = EvalContext {

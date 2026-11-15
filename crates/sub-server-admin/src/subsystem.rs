@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::{Result, error::ValueError, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{info, warn};
 
@@ -46,7 +46,7 @@ pub struct AdminSubsystem {
 }
 
 impl AdminSubsystem {
-	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Result<Self> {
+	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Result<Self, ValueError> {
 		let subsystem = Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -60,7 +60,7 @@ impl AdminSubsystem {
 		Ok(subsystem)
 	}
 
-	fn spawn_server(&self) -> Result<()> {
+	fn spawn_server(&self) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!self.bind_addr.is_empty(),
@@ -79,7 +79,7 @@ impl AdminSubsystem {
 	}
 
 	#[inline]
-	fn bind_listener(&self) -> Result<TcpListener> {
+	fn bind_listener(&self) -> Result<TcpListener, ValueError> {
 		let addr = self.bind_addr.clone();
 		let handle = self.handle.clone();
 		handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
@@ -91,7 +91,7 @@ impl AdminSubsystem {
 	}
 
 	#[inline]
-	fn record_bound_addr(&self, listener: &TcpListener) -> Result<()> {
+	fn record_bound_addr(&self, listener: &TcpListener) -> Result<(), ValueError> {
 		let actual_addr = listener.local_addr().map_err(|e| {
 			ValueError::from(CoreError::SubsystemAddressUnavailable {
 				reason: e.to_string(),
@@ -203,7 +203,7 @@ impl HasVersion for AdminSubsystem {
 }
 
 impl Shutdown for AdminSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("admin");
 		self.signal_shutdown();
 		self.await_completion(&mut errors);

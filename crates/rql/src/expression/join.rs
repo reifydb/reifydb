@@ -15,9 +15,9 @@ use reifydb_rql_frontend::{
 	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
 };
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
-use crate::{Result, expression::ExpressionCompiler};
+use crate::expression::ExpressionCompiler;
 
 pub struct JoinConditionCompiler {
 	alias: Option<Fragment>,
@@ -30,7 +30,7 @@ impl JoinConditionCompiler {
 		}
 	}
 
-	pub fn compile(&self, ast: Ast<'_>) -> Result<Expression> {
+	pub fn compile(&self, ast: Ast<'_>) -> Result<Expression, ValueError> {
 		match ast {
 			Ast::Infix(ast_infix) if matches!(ast_infix.operator, InfixOperator::AccessTable(_)) => {
 				self.compile_qualified_column(ast_infix)
@@ -82,7 +82,7 @@ impl JoinConditionCompiler {
 		}
 	}
 
-	fn compile_qualified_column(&self, ast: AstInfix<'_>) -> Result<Expression> {
+	fn compile_qualified_column(&self, ast: AstInfix<'_>) -> Result<Expression, ValueError> {
 		assert!(matches!(ast.operator, InfixOperator::AccessTable(_)));
 
 		let Ast::Identifier(left) = BumpBox::into_inner(ast.left) else {
@@ -110,7 +110,7 @@ impl JoinConditionCompiler {
 		))
 	}
 
-	fn compile_infix(&self, ast: AstInfix<'_>) -> Result<Expression> {
+	fn compile_infix(&self, ast: AstInfix<'_>) -> Result<Expression, ValueError> {
 		match ast.operator {
 			InfixOperator::AccessTable(_) => self.compile_qualified_column(ast),
 			InfixOperator::Add(token) => {

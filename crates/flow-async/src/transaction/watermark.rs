@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 };
-use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
 
 use crate::transaction::{
@@ -24,7 +24,7 @@ pub fn source_watermark_key() -> GroupStateKey {
 pub struct SourceWatermarks;
 
 impl SourceWatermarks {
-	pub fn advance(source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<()> {
+	pub fn advance(source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<(), ValueError> {
 		let coordinate = at.to_millis();
 		let previous = raw(source, txn)?;
 		if coordinate <= previous {
@@ -44,17 +44,17 @@ impl SourceWatermarks {
 		Self::persist(source, txn, coordinate)
 	}
 
-	pub fn persist(source: OperatorId, txn: &mut impl FlowTransaction, coordinate: i64) -> Result<()> {
+	pub fn persist(source: OperatorId, txn: &mut impl FlowTransaction, coordinate: i64) -> Result<(), ValueError> {
 		txn.state_set(source, vec![(source_watermark_key(), encode_payload(&coordinate)?)])?;
 		txn.source_watermark_cache().insert(source, coordinate);
 		Ok(())
 	}
 
-	pub fn source_watermark(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
+	pub fn source_watermark(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime, ValueError> {
 		Ok(DateTime::from_millis(raw(source, txn)?))
 	}
 
-	pub fn flow_watermark(sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime> {
+	pub fn flow_watermark(sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime, ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!sources.is_empty(),
@@ -91,7 +91,7 @@ impl SourceWatermarks {
 	}
 }
 
-fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<i64> {
+fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<i64, ValueError> {
 	if let Some(cached) = txn.source_watermark_cache().get(&source).copied() {
 		return Ok(cached);
 	}

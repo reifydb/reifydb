@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{column_view::ColumnView, partition::Partition, row_number::RowNumber},
 };
 
@@ -20,7 +20,7 @@ pub fn row_key(storage: StorageId, row: RowNumber) -> EncodedKey {
 	RowKey::encoded(storage, row)
 }
 
-pub fn sort_runs(sort: &[ViewSortKey], cols: &RecordBatch) -> Result<Vec<SortRun>> {
+pub fn sort_runs(sort: &[ViewSortKey], cols: &RecordBatch) -> Result<Vec<SortRun>, ValueError> {
 	if sort.is_empty() {
 		return Ok(Vec::new());
 	}

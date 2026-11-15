@@ -3,28 +3,28 @@
 
 use reifydb_core::interface::catalog::column_block::{ColumnBlock, ColumnBlockSource};
 use reifydb_runtime::io::fs::{Len, Pread};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{block::BlockData, persist::BlockHandle};
 
 pub trait Device: Send + Sync + 'static {}
 
 pub trait WriteBlock: Device {
-	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()>;
+	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<(), ValueError>;
 }
 
 pub trait OpenBlock: Device {
 	type File: Pread + Len;
 
-	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<Self::File>>>;
+	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<Self::File>>, ValueError>;
 }
 
 pub trait RemoveBlock: Device {
-	fn remove(&self, key: &BlockFileKey) -> Result<()>;
+	fn remove(&self, key: &BlockFileKey) -> Result<(), ValueError>;
 }
 
 pub trait ListBlocks: Device {
-	fn list(&self) -> Result<Vec<BlockFileKey>>;
+	fn list(&self) -> Result<Vec<BlockFileKey>, ValueError>;
 }
 
 pub struct BlockFileKey {

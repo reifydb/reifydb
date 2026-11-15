@@ -7,13 +7,13 @@ use std::sync::{
 };
 
 use reifydb_core::common::CommitVersion;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub trait VersionProvider: Send + Sync + Clone {
-	fn next(&self) -> Result<CommitVersion>;
-	fn reserve(&self) -> Result<CommitVersion>;
+	fn next(&self) -> Result<CommitVersion, ValueError>;
+	fn reserve(&self) -> Result<CommitVersion, ValueError>;
 	fn publish(&self, version: CommitVersion);
-	fn current(&self) -> Result<CommitVersion>;
+	fn current(&self) -> Result<CommitVersion, ValueError>;
 
 	fn advance_to(&self, _version: CommitVersion) {}
 }
@@ -32,11 +32,11 @@ impl StandardVersionProvider {
 }
 
 impl VersionProvider for StandardVersionProvider {
-	fn next(&self) -> Result<CommitVersion> {
+	fn next(&self) -> Result<CommitVersion, ValueError> {
 		Ok(CommitVersion(self.next_version.fetch_add(1, Ordering::SeqCst) + 1))
 	}
 
-	fn reserve(&self) -> Result<CommitVersion> {
+	fn reserve(&self) -> Result<CommitVersion, ValueError> {
 		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst) + 1))
 	}
 
@@ -44,7 +44,7 @@ impl VersionProvider for StandardVersionProvider {
 		self.next_version.fetch_max(version.0, Ordering::SeqCst);
 	}
 
-	fn current(&self) -> Result<CommitVersion> {
+	fn current(&self) -> Result<CommitVersion, ValueError> {
 		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst)))
 	}
 

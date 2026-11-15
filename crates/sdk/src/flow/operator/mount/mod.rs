@@ -24,7 +24,7 @@ use reifydb_runtime::fatal::{
 	report::{FatalKind, FatalReport},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -34,7 +34,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::operator::{OperatorColumn, reads_entry_ids},
@@ -44,7 +44,7 @@ use crate::{
 	},
 };
 
-fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
+fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> Result<R, SdkError>) -> R {
 	match catch_unwind(AssertUnwindSafe(f)) {
 		Ok(Ok(value)) => value,
 		Ok(Err(e)) => {
@@ -67,7 +67,7 @@ fn dictionary_values(
 	host: &mut dyn HostContext,
 	input_columns: &[OperatorColumn],
 	batch: Option<&RecordBatch>,
-) -> Result<DictionaryValues> {
+) -> Result<DictionaryValues, ValueError> {
 	let mut values = DictionaryValues::new();
 	let Some(batch) = batch else {
 		return Ok(values);
@@ -139,7 +139,7 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		declared_schema(self.output_columns.iter().map(|column| (column.name, &column.type_constraint)))
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		for batch in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
 			row_numbers(batch)?;
 			row_times(batch)?;
@@ -155,7 +155,7 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 					dictionary_values(host, self.input_columns, diff.post())?,
 				])
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{
 			let view = InProcessChangeView::new(&change, &values);
@@ -166,7 +166,7 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Change::from_flow(self.operator, version, diffs, changed_at))
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		let due = timer.due;
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{

@@ -26,7 +26,7 @@ use reifydb_flow_async::operator::{
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -82,12 +82,12 @@ fn keyed_by(key: (FieldRef, ArrayRef)) -> Change {
 	Change::from_flow(SOURCE_OPERATOR, ChangeVersion::from(CommitVersion(1)), vec![diff], at)
 }
 
-fn apply(engine: &TestEngine, operator: &mut dyn HostOperator, change: Change) -> Result<Change> {
+fn apply(engine: &TestEngine, operator: &mut dyn HostOperator, change: Change) -> Result<Change, ValueError> {
 	let mut txn = engine.flow_txn().deferred();
 	operator.apply(&mut TxnHostContext::new(&mut txn, SUBJECT), change)
 }
 
-fn refusal(result: Result<Change>) -> Option<String> {
+fn refusal(result: Result<Change, ValueError>) -> Option<String> {
 	match result {
 		Ok(output) => Some(format!("built groups from a digest key: {:?}", output.diffs)),
 		Err(err) => {

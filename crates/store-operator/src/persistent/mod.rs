@@ -26,11 +26,11 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
-use reifydb_value::{Result as ValueResult, byte_size::ByteSize};
+use reifydb_value::{byte_size::ByteSize, error::ValueError};
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{
 		memory::MemoryPersistent,
 		testing::{PersistentHooks, TestingPersistent},
@@ -80,7 +80,7 @@ impl PersistentTier {
 		}
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
 			Self::Absent | Self::Memory(_) | Self::Testing(_) => Ok(None),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -103,7 +103,7 @@ impl PersistentTier {
 		keyspace: KeyspaceId,
 		after: Option<&EncodedKey>,
 		limit: u64,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Vec::new()),
 			Self::Memory(storage) => Ok(storage.state_keys_after(operator, keyspace, after, limit)),
@@ -124,7 +124,7 @@ impl PersistentTier {
 }
 
 impl Shutdown for PersistentTier {
-	fn shutdown(&self) -> ValueResult<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => storage.shutdown(),
@@ -142,8 +142,11 @@ pub trait Persistent: Clone + Send + Sync + 'static {
 }
 
 pub trait Fetch: Persistent {
-	fn get<Q: Borrow<GroupStateKey>>(&self, operator: OperatorId, keys: &[Q])
-	-> Result<Vec<Option<EncodedPodRow>>>;
+	fn get<Q: Borrow<GroupStateKey>>(
+		&self,
+		operator: OperatorId,
+		keys: &[Q],
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError>;
 }
 
 pub trait Page: Persistent {
@@ -153,7 +156,7 @@ pub trait Page: Persistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch>;
+	) -> Result<OperatorBatch, StoreOperatorError>;
 
 	fn last_batch(
 		&self,
@@ -161,7 +164,7 @@ pub trait Page: Persistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch>;
+	) -> Result<OperatorBatch, StoreOperatorError>;
 
 	fn group_page(
 		&self,
@@ -169,7 +172,7 @@ pub trait Page: Persistent {
 		groups: &[GroupId],
 		batch: u64,
 		mask: KeyspaceMask,
-	) -> Result<OperatorBatch>;
+	) -> Result<OperatorBatch, StoreOperatorError>;
 }
 
 pub trait Measure: Persistent {
@@ -177,37 +180,37 @@ pub trait Measure: Persistent {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<ByteSize>>>;
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError>;
 
-	fn bytes(&self, operator: OperatorId) -> Result<ByteSize>;
+	fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError>;
 }
 
 pub trait Enumerate: Persistent {
-	fn census(&self) -> Result<Vec<OperatorStateCensus>>;
+	fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError>;
 
-	fn operators(&self) -> Result<Vec<OperatorId>>;
+	fn operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError>;
 
-	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>>;
+	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError>;
 }
 
 pub trait Checkpoint: Persistent {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>>;
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError>;
 
-	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()>;
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<(), StoreOperatorError>;
 
-	fn checkpoint_remove(&self, flow: FlowId) -> Result<()>;
+	fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError>;
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>>;
+	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError>;
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>>;
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError>;
 
-	fn checkpoint_list(&self) -> Result<Vec<FlowId>>;
+	fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError>;
 }
 
 pub trait Apply: Persistent {
-	fn apply(&self, batch: &FlushBatch) -> Result<Applied>;
+	fn apply(&self, batch: &FlushBatch) -> Result<Applied, StoreOperatorError>;
 
-	fn drop_operator(&self, operator: OperatorId) -> Result<()>;
+	fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError>;
 }
 
 impl Persistent for PersistentTier {
@@ -231,7 +234,7 @@ impl Fetch for PersistentTier {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(vec![None; keys.len()]),
 			Self::Memory(memory) => Fetch::get(memory, operator, keys),
@@ -252,7 +255,7 @@ impl Page for PersistentTier {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
 			Self::Memory(memory) => Page::range_batch(memory, operator, range, batch, occupied),
@@ -268,7 +271,7 @@ impl Page for PersistentTier {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
 			Self::Memory(memory) => Page::last_batch(memory, operator, range, batch, occupied),
@@ -284,7 +287,7 @@ impl Page for PersistentTier {
 		groups: &[GroupId],
 		batch: u64,
 		mask: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
 			Self::Memory(memory) => Page::group_page(memory, operator, groups, batch, mask),
@@ -300,7 +303,7 @@ impl Measure for PersistentTier {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<ByteSize>>> {
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(vec![None; keys.len()]),
 			Self::Memory(memory) => Measure::state_sizes(memory, operator, keys),
@@ -313,7 +316,7 @@ impl Measure for PersistentTier {
 		}
 	}
 
-	fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(ByteSize::ZERO),
 			Self::Memory(memory) => Measure::bytes(memory, operator),
@@ -325,7 +328,7 @@ impl Measure for PersistentTier {
 }
 
 impl Enumerate for PersistentTier {
-	fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Vec::new()),
 			Self::Memory(memory) => Enumerate::census(memory),
@@ -335,7 +338,7 @@ impl Enumerate for PersistentTier {
 		}
 	}
 
-	fn operators(&self) -> Result<Vec<OperatorId>> {
+	fn operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Vec::new()),
 			Self::Memory(memory) => Enumerate::operators(memory),
@@ -345,7 +348,7 @@ impl Enumerate for PersistentTier {
 		}
 	}
 
-	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Vec::new()),
 			Self::Memory(memory) => Enumerate::keyspaces(memory, operator),
@@ -357,7 +360,7 @@ impl Enumerate for PersistentTier {
 }
 
 impl Checkpoint for PersistentTier {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(None),
 			Self::Memory(memory) => Checkpoint::checkpoint_get(memory, flow),
@@ -367,7 +370,7 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(()),
 			Self::Memory(memory) => Checkpoint::checkpoint_set(memory, flow, checkpoint),
@@ -382,7 +385,7 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
+	fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(()),
 			Self::Memory(memory) => Checkpoint::checkpoint_remove(memory, flow),
@@ -397,7 +400,7 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(None),
 			Self::Memory(memory) => Checkpoint::checkpoint_floor(memory),
@@ -407,7 +410,7 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(None),
 			Self::Memory(memory) => Checkpoint::checkpoint_lsn_floor(memory),
@@ -417,7 +420,7 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
+	fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Vec::new()),
 			Self::Memory(memory) => Checkpoint::checkpoint_list(memory),
@@ -452,7 +455,7 @@ impl PersistentTier {
 }
 
 impl Apply for PersistentTier {
-	fn apply(&self, batch: &FlushBatch) -> Result<Applied> {
+	fn apply(&self, batch: &FlushBatch) -> Result<Applied, StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(Applied::default()),
 			Self::Memory(memory) => Apply::apply(memory, batch),
@@ -471,7 +474,7 @@ impl Apply for PersistentTier {
 		}
 	}
 
-	fn drop_operator(&self, operator: OperatorId) -> Result<()> {
+	fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Absent => Ok(()),
 			Self::Memory(memory) => Apply::drop_operator(memory, operator),

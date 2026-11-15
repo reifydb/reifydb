@@ -63,7 +63,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{Result as ValueResult, byte_size::ByteSize, params::Params, value::identity::IdentityId};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 struct Bridge {
@@ -218,7 +218,7 @@ impl Bridge {
 }
 
 impl Bridge {
-	fn shutdown(&self) -> ValueResult<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("bridge");
 		errors.step("flow", self.flow_subsystem.shutdown());
 		errors.step("runtime", self.runtime.shutdown());

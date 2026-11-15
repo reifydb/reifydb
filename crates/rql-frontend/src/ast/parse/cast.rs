@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::AstCast,
 		parse::{Parser, Precedence},
@@ -18,7 +19,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>> {
+	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>, ValueError> {
 		let token = self.consume_keyword(Cast)?;
 		let paren = self.consume_operator(OpenParen)?;
 		self.skip_new_line()?;

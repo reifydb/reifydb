@@ -4,12 +4,7 @@
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
 
-use crate::{
-	device::Mark,
-	error::{Result, WalError},
-	lsn::Lsn,
-	wal::Wal,
-};
+use crate::{device::Mark, error::WalError, lsn::Lsn, wal::Wal};
 
 pub struct Floor<T, L> {
 	wal: Wal<T, L>,
@@ -36,7 +31,7 @@ impl<T, L> Floor<T, L> {
 }
 
 impl<T, L: Mark> Floor<T, L> {
-	pub fn advance(&self, lsn: Lsn) -> Result<()> {
+	pub fn advance(&self, lsn: Lsn) -> Result<(), WalError> {
 		let mut position = self.position.lock();
 		reifydb_assertions! {
 			assert!(

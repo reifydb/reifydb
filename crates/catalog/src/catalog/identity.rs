@@ -16,6 +16,7 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -25,14 +26,18 @@ use reifydb_value::{
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
 
 impl Catalog {
 	#[instrument(name = "catalog::identity::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
+	pub fn find_identity_by_name(
+		&self,
+		txn: &mut Transaction<'_>,
+		name: &str,
+	) -> Result<Option<Identity>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(admin, name) {
@@ -117,7 +122,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		attribute_name: &str,
 		value: &Value,
-	) -> Result<Option<Identity>> {
+	) -> Result<Option<Identity>, ValueError> {
 		let Some(attribute) = self.find_identity_attribute_by_name(txn, attribute_name)? else {
 			return Ok(None);
 		};
@@ -130,7 +135,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::find", level = "trace", skip(self, txn))]
-	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<Identity>> {
+	pub fn find_identity(
+		&self,
+		txn: &mut Transaction<'_>,
+		identity: IdentityId,
+	) -> Result<Option<Identity>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(ident) = TransactionalIdentityChanges::find_identity(admin, identity) {
@@ -215,7 +224,7 @@ impl Catalog {
 		kind: IdentityKind,
 		clock: &Clock,
 		rng: &Rng,
-	) -> Result<Identity> {
+	) -> Result<Identity, ValueError> {
 		let ident = CatalogStore::create_identity(txn, name, kind, clock, rng)?;
 		txn.track_identity_created(ident.clone())?;
 		Ok(ident)
@@ -227,7 +236,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		new_name: &str,
-	) -> Result<Identity> {
+	) -> Result<Identity, ValueError> {
 		let pre = self.get_mutable_identity(txn, identity, "renamed")?;
 		if pre.name == new_name {
 			return Ok(pre);
@@ -255,7 +264,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::promote_guest", level = "info", skip(self, txn))]
-	pub fn promote_guest_to_user(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+	pub fn promote_guest_to_user(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+	) -> Result<Identity, ValueError> {
 		let pre = self.get_mutable_identity(txn, identity, "promoted")?;
 
 		let kind = pre.resolved_kind();
@@ -278,7 +291,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::enable", level = "info", skip(self, txn))]
-	pub fn enable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+	pub fn enable_identity(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+	) -> Result<Identity, ValueError> {
 		let pre = self.get_mutable_identity(txn, identity, "enabled")?;
 
 		let post = Identity {
@@ -291,7 +308,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::disable", level = "info", skip(self, txn))]
-	pub fn disable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+	pub fn disable_identity(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+	) -> Result<Identity, ValueError> {
 		let pre = self.get_mutable_identity(txn, identity, "disabled")?;
 
 		let post = Identity {
@@ -308,7 +329,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		operation: &str,
-	) -> Result<Identity> {
+	) -> Result<Identity, ValueError> {
 		if let Some(kind) = identity.sentinel_kind() {
 			return Err(CatalogError::IdentityKindInvalid {
 				name: identity.to_string(),
@@ -341,7 +362,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::drop", level = "info", skip(self, txn))]
-	pub fn drop_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	pub fn drop_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<(), ValueError> {
 		let values = CatalogStore::find_identity_attribute_values_for_identity(
 			&mut Transaction::Admin(&mut *txn),
 			identity,
@@ -362,7 +383,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::list_all", level = "trace", skip(self, txn))]
-	pub fn list_identities_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Identity>> {
+	pub fn list_identities_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Identity>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.list_all_identities_at(cmd.version())),
 			Transaction::Admin(admin) => {
@@ -394,7 +415,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
+	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Role>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(role) = TransactionalRoleChanges::find_role_by_name(admin, name) {
@@ -472,7 +493,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::find", level = "trace", skip(self, txn))]
-	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<Role>> {
+	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<Role>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(role) = TransactionalRoleChanges::find_role(admin, role_id) {
@@ -550,14 +571,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::create", level = "info", skip(self, txn))]
-	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<Role> {
+	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<Role, ValueError> {
 		let role = CatalogStore::create_role(txn, name)?;
 		txn.track_role_created(role.clone())?;
 		Ok(role)
 	}
 
 	#[instrument(name = "catalog::role::drop", level = "info", skip(self, txn))]
-	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> Result<()> {
+	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> Result<(), ValueError> {
 		if let Some(role) = CatalogStore::find_role(&mut Transaction::Admin(&mut *txn), role_id)? {
 			CatalogStore::drop_role(txn, role_id)?;
 			txn.track_role_deleted(role)?;
@@ -573,14 +594,19 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		role_id: RoleId,
-	) -> Result<GrantedRole> {
+	) -> Result<GrantedRole, ValueError> {
 		let ir = CatalogStore::grant_role(txn, identity, role_id)?;
 		txn.track_granted_role_created(ir.clone())?;
 		Ok(ir)
 	}
 
 	#[instrument(name = "catalog::identity::revoke_role", level = "debug", skip(self, txn))]
-	pub fn revoke_role(&self, txn: &mut AdminTransaction, identity: IdentityId, role_id: RoleId) -> Result<()> {
+	pub fn revoke_role(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		role_id: RoleId,
+	) -> Result<(), ValueError> {
 		let ir = GrantedRole {
 			identity,
 			role_id,
@@ -595,7 +621,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<String>> {
+	) -> Result<Vec<String>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				let version = admin.version();
@@ -684,7 +710,7 @@ impl Catalog {
 		}
 	}
 
-	pub fn get_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Identity> {
+	pub fn get_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Identity, ValueError> {
 		self.find_identity_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Identity,
@@ -696,7 +722,7 @@ impl Catalog {
 		})
 	}
 
-	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Role> {
+	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Role, ValueError> {
 		self.find_role_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Role,

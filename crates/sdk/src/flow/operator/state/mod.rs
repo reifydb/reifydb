@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_value::error::ValueError;
 
 use crate::{
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
 		context::{GuestBound, guest_sweep_mask},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
@@ -33,11 +33,11 @@ impl<'a> State<'a> {
 		}
 	}
 
-	pub fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>> {
+	pub fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>, SdkError> {
 		self.fetch(keys)?.iter().map(|row| row.as_ref().map(decode_payload).transpose()).collect()
 	}
 
-	pub fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()> {
+	pub fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<(), SdkError> {
 		let mut encoded = Vec::with_capacity(rows.len());
 		for (key, value) in rows {
 			encoded.push((key.clone(), encode_payload(value)?));
@@ -45,20 +45,20 @@ impl<'a> State<'a> {
 		self.set_bytes(encoded)
 	}
 
-	pub fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	pub fn remove(&mut self, keys: &[GroupStateKey]) -> Result<(), SdkError> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		extern_c::remove(self.ctx, &raw)
 	}
 
-	pub fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>> {
+	pub fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>, SdkError> {
 		Ok(self.fetch(keys)?.iter().map(Option::is_some).collect())
 	}
 
 	pub fn get_bytes(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		for (k, row) in extern_c::get(self.ctx, &raw)? {
 			visit(framed(k)?, EncodedPodRow::from(row))?;
@@ -66,12 +66,12 @@ impl<'a> State<'a> {
 		Ok(())
 	}
 
-	pub fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	pub fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), SdkError> {
 		let raw: Vec<_> = rows.into_iter().map(|(k, row)| (k.as_encoded().clone(), row.into_bytes())).collect();
 		extern_c::set(self.ctx, &raw)
 	}
 
-	fn fetch(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn fetch(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, SdkError> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		let found = extern_c::get(self.ctx, &raw)?;
 		Ok(raw.iter()
@@ -81,14 +81,14 @@ impl<'a> State<'a> {
 			.collect())
 	}
 
-	pub fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+	pub fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, SdkError> {
 		check_batch_keys(&keys)?;
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		let rows = extern_c::batch_read(self.ctx, &raw)?;
 		Ok(StateBatch::read(keys, |_| Ok(rows.into_iter().map(|row| row.map(EncodedPodRow::from)).collect()))?)
 	}
 
-	pub fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
+	pub fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<(), SdkError> {
 		extern_c::batch_write(self.ctx, &batch)
 	}
 
@@ -99,8 +99,8 @@ impl<'a> State<'a> {
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError> {
 		for (seen, (k, row)) in
 			extern_c::range(self.ctx, group, keyspace, start, end, limit.unwrap_or(usize::MAX))?
 				.into_iter()
@@ -119,7 +119,7 @@ impl<'a> State<'a> {
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
-	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), SdkError> {
 		let (rows, complete) = extern_c::sweep(self.ctx, groups, limit, guest_sweep_mask(keyspaces))?;
 		let mut framed_rows = Vec::with_capacity(rows.len());
 		for (k, row) in rows {
@@ -130,7 +130,7 @@ impl<'a> State<'a> {
 }
 
 #[inline]
-fn framed(key: EncodedKey) -> Result<GroupStateKey> {
+fn framed(key: EncodedKey) -> Result<GroupStateKey, SdkError> {
 	match GroupStateKey::from_framed(key) {
 		Some(key) => Ok(key),
 		None => Err(SdkError::Serialization("host returned a state key that is not framed".to_string())),
@@ -138,11 +138,11 @@ fn framed(key: EncodedKey) -> Result<GroupStateKey> {
 }
 
 #[inline]
-pub fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
+pub fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow, SdkError> {
 	Ok(value.encode_state().map_err(ValueError::from)?)
 }
 
 #[inline]
-pub fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
+pub fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T, SdkError> {
 	Ok(decode(row).map_err(ValueError::from)?)
 }

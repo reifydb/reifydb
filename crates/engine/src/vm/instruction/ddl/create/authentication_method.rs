@@ -14,15 +14,15 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateAuthenticationMethodNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_authentication_method(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateAuthenticationMethodNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 	let provider = registered_provider(services, name)?;
 	let properties = configure_method(provider, name, &plan.properties)?;
@@ -41,7 +41,10 @@ pub(crate) fn create_authentication_method(
 	single_row([("method", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))])
 }
 
-pub(crate) fn registered_provider<'a>(services: &'a Services, name: &str) -> Result<&'a dyn AuthenticationProvider> {
+pub(crate) fn registered_provider<'a>(
+	services: &'a Services,
+	name: &str,
+) -> Result<&'a dyn AuthenticationProvider, ValueError> {
 	services.auth_registry.get(name).ok_or_else(|| {
 		CatalogError::UnknownAuthenticationProvider {
 			name: name.to_string(),
@@ -55,7 +58,7 @@ pub(crate) fn configure_method(
 	provider: &dyn AuthenticationProvider,
 	name: &str,
 	properties: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, String>> {
+) -> Result<BTreeMap<String, String>, ValueError> {
 	provider.configure_method(properties).map_err(|err| {
 		match err {
 			MethodSettingError::Unknown {
@@ -85,7 +88,7 @@ pub(crate) fn check_promote_guest(
 	provider: &dyn AuthenticationProvider,
 	name: &str,
 	promote_guest: bool,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if promote_guest && !provider.can_promote_guest() {
 		return Err(CatalogError::PromoteGuestNotAllowed {
 			method: name.to_string(),

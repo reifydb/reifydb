@@ -22,7 +22,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions};
+use reifydb_value::{
+	error::{Diagnostic, ValueError},
+	params::Params,
+	reifydb_assertions,
+};
 use tracing::instrument;
 
 #[cfg(feature = "testing")]
@@ -201,7 +205,7 @@ impl AdminTransaction {
 		&self.event_bus
 	}
 
-	pub(crate) fn check_active(&self) -> Result<()> {
+	pub(crate) fn check_active(&self) -> Result<(), ValueError> {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => Err(TransactionError::AlreadyCommitted.into()),
@@ -224,12 +228,12 @@ impl AdminTransaction {
 	}
 
 	#[instrument(name = "transaction::admin::commit", level = "debug", skip(self))]
-	pub fn commit(&mut self) -> Result<CommitVersion> {
+	pub fn commit(&mut self) -> Result<CommitVersion, ValueError> {
 		self.check_active()?;
 		self.finalize_commit()
 	}
 
-	fn finalize_commit(&mut self) -> Result<CommitVersion> {
+	fn finalize_commit(&mut self) -> Result<CommitVersion, ValueError> {
 		reifydb_assertions! {
 			let state_ok = self.state == TransactionState::Active;
 			assert!(
@@ -266,7 +270,7 @@ impl AdminTransaction {
 		multi: &mut MultiWriteTransaction,
 		changes: TransactionalCatalogChanges,
 		row_changes: Vec<RowChange>,
-	) -> Result<CommitVersion> {
+	) -> Result<CommitVersion, ValueError> {
 		let id = multi.id();
 		let pre_publish = &self.interceptors.pre_publish;
 		let version = multi.commit_with(|version| {
@@ -280,7 +284,7 @@ impl AdminTransaction {
 		Ok(version)
 	}
 
-	fn remove_dropped_dictionaries(&self, changes: &TransactionalCatalogChanges) -> Result<()> {
+	fn remove_dropped_dictionaries(&self, changes: &TransactionalCatalogChanges) -> Result<(), ValueError> {
 		for change in &changes.dictionary {
 			let (Some(dictionary), None) = (&change.pre, &change.post) else {
 				continue;
@@ -297,7 +301,7 @@ impl AdminTransaction {
 	}
 
 	#[instrument(name = "transaction::admin::rollback", level = "debug", skip(self))]
-	pub fn rollback(&mut self) -> Result<()> {
+	pub fn rollback(&mut self) -> Result<(), ValueError> {
 		self.check_active()?;
 		if let Some(mut multi) = self.cmd.take() {
 			self.state = TransactionState::RolledBack;
@@ -308,10 +312,10 @@ impl AdminTransaction {
 	}
 
 	#[instrument(name = "transaction::admin::with_single_command", level = "trace", skip(self, keys, f))]
-	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R, ValueError> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -319,7 +323,7 @@ impl AdminTransaction {
 	}
 
 	#[instrument(name = "transaction::admin::begin_single_query", level = "trace", skip(self, keys))]
-	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -328,7 +332,7 @@ impl AdminTransaction {
 	}
 
 	#[instrument(name = "transaction::admin::begin_single_command", level = "trace", skip(self, keys))]
-	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
+	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -371,7 +375,10 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get_committed(
+		&mut self,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
@@ -383,7 +390,7 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
@@ -395,32 +402,32 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains(&self.context, keys)
 	}
 
 	#[inline]
-	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
 		Ok(())
 	}
 
 	#[inline]
-	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_rebased(entries)
 	}
 
 	#[inline]
-	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(entries)
 	}
 
 	#[inline]
-	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_with_pre(entries)
 	}
@@ -431,13 +438,13 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(&self.context, entries)
 	}
 
 	#[inline]
-	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_silent(keys)
 	}
@@ -448,7 +455,7 @@ impl AdminTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(&self.context, range, scope, batch_size))
 	}
@@ -460,7 +467,8 @@ impl AdminTransaction {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_>, ValueError>
+	{
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_row(&self.context, storage, start, end, scope, batch_size))
 	}
@@ -473,7 +481,10 @@ impl AdminTransaction {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+	) -> Result<
+		Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_>,
+		ValueError,
+	> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(
 			&self.context,
@@ -491,7 +502,7 @@ impl AdminTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(&self.context, range, scope, batch_size))
 	}
@@ -502,13 +513,13 @@ impl AdminTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(&self.context, range, scope, batch_size))
 	}
 
 	#[inline]
-	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().mark_range(range);
 		Ok(())
@@ -523,30 +534,30 @@ impl WithEventBus for AdminTransaction {
 
 impl Read for AdminTransaction {
 	#[inline]
-	fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		AdminTransaction::get(self, keys)
 	}
 	#[inline]
-	fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		AdminTransaction::get_committed(self, keys)
 	}
 }
 
 impl Write for AdminTransaction {
 	#[inline]
-	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		AdminTransaction::set_rebased(self, entries)
 	}
 	#[inline]
-	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		AdminTransaction::set(self, entries)
 	}
 	#[inline]
-	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		AdminTransaction::set_with_pre(self, entries)
 	}
 	#[inline]
-	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError> {
 		AdminTransaction::remove(self, entries)
 	}
 	#[inline]

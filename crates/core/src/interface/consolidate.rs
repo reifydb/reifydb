@@ -8,7 +8,8 @@ use std::{
 
 use arrow_array::RecordBatch;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{diff_type::DiffType, row_number::RowNumber, system_columns::row_numbers},
 };
 
@@ -17,7 +18,7 @@ use crate::{
 	value::batch::{concat, gather},
 };
 
-pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>, ValueError> {
 	if has_foldable_overlap(&diffs)? {
 		consolidate_keyed(diffs)
 	} else {
@@ -25,7 +26,7 @@ pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	}
 }
 
-pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>, ValueError> {
 	let diffs: Vec<Diff> = diffs.into_iter().filter(|diff| diff.row_count() > 0).collect();
 	if diffs.is_empty() {
 		return Ok(diffs);
@@ -39,7 +40,7 @@ pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	consolidate_keyed(diffs)
 }
 
-fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool> {
+fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool, ValueError> {
 	let mut first_kind: Option<DiffType> = None;
 	let mut mixed = false;
 	let mut updates = 0usize;
@@ -89,7 +90,7 @@ fn has_foldable_overlap(diffs: &[Diff]) -> Result<bool> {
 	Ok(false)
 }
 
-fn any_update_repeats_a_row(diffs: &[Diff]) -> Result<bool> {
+fn any_update_repeats_a_row(diffs: &[Diff]) -> Result<bool, ValueError> {
 	for diff in diffs {
 		if diff.kind() == DiffType::Update
 			&& diff.row_count() > 1
@@ -109,7 +110,7 @@ fn repeats_a_row(rows: &[RowNumber]) -> bool {
 
 type KindRanges<'a> = (Option<&'a ChangeOrigin>, [Option<(RowNumber, RowNumber)>; 3]);
 
-fn foldable_ranges_meet(diffs: &[Diff]) -> Result<bool> {
+fn foldable_ranges_meet(diffs: &[Diff]) -> Result<bool, ValueError> {
 	let mut first: Option<KindRanges> = None;
 	let mut rest: Vec<KindRanges> = Vec::new();
 	for diff in diffs {
@@ -165,7 +166,7 @@ fn kind_bit(kind: DiffType) -> u8 {
 	}
 }
 
-fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
+fn key_rows(diff: &Diff) -> Result<&[RowNumber], ValueError> {
 	match diff {
 		Diff::Insert {
 			post,
@@ -196,7 +197,7 @@ fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 	}
 }
 
-fn merge_adjacent(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+fn merge_adjacent(diffs: Vec<Diff>) -> Result<Vec<Diff>, ValueError> {
 	let mut merged: Vec<Diff> = Vec::with_capacity(diffs.len());
 	let mut run: Vec<Diff> = Vec::new();
 	for diff in diffs {
@@ -228,7 +229,7 @@ fn same_columns(a: &RecordBatch, b: &RecordBatch) -> bool {
 		.map(|field| field.name()))
 }
 
-fn merge_run(run: Vec<Diff>) -> Result<Diff> {
+fn merge_run(run: Vec<Diff>) -> Result<Diff, ValueError> {
 	let mut run = run.into_iter();
 	let lead = run.next().expect("merge_adjacent never closes an empty run");
 	let rest: Vec<Diff> = run.collect();
@@ -276,7 +277,7 @@ enum RowState {
 
 type StateKey = (usize, RowNumber);
 
-fn is_canonical(diffs: &[Diff]) -> Result<bool> {
+fn is_canonical(diffs: &[Diff]) -> Result<bool, ValueError> {
 	let mut keys: Option<HashSet<(Option<&ChangeOrigin>, RowNumber)>> = None;
 	let mut closed: Vec<Option<&ChangeOrigin>> = Vec::new();
 	let mut run_start = 0;
@@ -316,7 +317,7 @@ fn is_canonical(diffs: &[Diff]) -> Result<bool> {
 	Ok(true)
 }
 
-fn keys_apart(run: &[Diff], rows: &[RowNumber]) -> Result<bool> {
+fn keys_apart(run: &[Diff], rows: &[RowNumber]) -> Result<bool, ValueError> {
 	if !rows.is_sorted_by(|a, b| a < b) {
 		return Ok(false);
 	}
@@ -334,7 +335,7 @@ fn keys_apart(run: &[Diff], rows: &[RowNumber]) -> Result<bool> {
 	Ok(true)
 }
 
-fn seen_keys(diffs: &[Diff]) -> Result<HashSet<(Option<&ChangeOrigin>, RowNumber)>> {
+fn seen_keys(diffs: &[Diff]) -> Result<HashSet<(Option<&ChangeOrigin>, RowNumber)>, ValueError> {
 	let mut keys = HashSet::new();
 	for diff in diffs {
 		for &row in unchecked_key_rows(diff)? {
@@ -344,7 +345,7 @@ fn seen_keys(diffs: &[Diff]) -> Result<HashSet<(Option<&ChangeOrigin>, RowNumber
 	Ok(keys)
 }
 
-fn unchecked_key_rows(diff: &Diff) -> Result<&[RowNumber]> {
+fn unchecked_key_rows(diff: &Diff) -> Result<&[RowNumber], ValueError> {
 	match diff {
 		Diff::Insert {
 			post,
@@ -361,7 +362,7 @@ fn unchecked_key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 	}
 }
 
-fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>, ValueError> {
 	let diffs: Vec<Diff> = diffs.into_iter().filter(|diff| diff.row_count() > 0).collect();
 	let mut origins: Vec<Option<&ChangeOrigin>> = Vec::new();
 	let mut origin_of: Vec<usize> = Vec::with_capacity(diffs.len());
@@ -445,7 +446,9 @@ fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 		group_post[at].extend(post);
 	}
 
-	let gathered = |side: fn(&Diff) -> Option<&RecordBatch>, picks: &[(usize, usize)]| -> Result<RecordBatch> {
+	let gathered = |side: fn(&Diff) -> Option<&RecordBatch>,
+	                picks: &[(usize, usize)]|
+	 -> Result<RecordBatch, ValueError> {
 		let mut local_of: Vec<Option<usize>> = vec![None; diffs.len()];
 		let mut sources: Vec<&RecordBatch> = Vec::new();
 		let mut local_picks: Vec<(usize, usize)> = Vec::with_capacity(picks.len());
@@ -493,11 +496,11 @@ fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	Ok(result)
 }
 
-fn all_row_keyed<'a>(mut diffs: impl Iterator<Item = &'a Diff>) -> Result<bool> {
+fn all_row_keyed<'a>(mut diffs: impl Iterator<Item = &'a Diff>) -> Result<bool, ValueError> {
 	diffs.try_fold(true, |keyed, diff| Ok(keyed && diff_is_row_keyed(diff)?))
 }
 
-fn diff_is_row_keyed(diff: &Diff) -> Result<bool> {
+fn diff_is_row_keyed(diff: &Diff) -> Result<bool, ValueError> {
 	match diff {
 		Diff::Insert {
 			post,
@@ -515,7 +518,7 @@ fn diff_is_row_keyed(diff: &Diff) -> Result<bool> {
 	}
 }
 
-fn batch_row_keyed(batch: &RecordBatch) -> Result<bool> {
+fn batch_row_keyed(batch: &RecordBatch) -> Result<bool, ValueError> {
 	Ok(batch.num_rows() > 0 && row_numbers(batch)?.len() == batch.num_rows())
 }
 

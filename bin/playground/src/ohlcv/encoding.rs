@@ -7,7 +7,7 @@ use reifydb::{
 	arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, UInt64Array},
 	arrow_schema::{DataType, Field, FieldRef, Schema},
 	extension::block_encoding::{BlockEncoding, BoundBlockEncoding, error::BlockEncodingError},
-	value::{Result, value::Value},
+	value::{error::ValueError, value::Value},
 };
 
 pub const OHLCV: &str = "ohlcv";
@@ -22,7 +22,11 @@ impl BlockEncoding for OhlcvEncoding {
 		1
 	}
 
-	fn bind(&self, user: &[FieldRef], config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+	fn bind(
+		&self,
+		user: &[FieldRef],
+		config: &[(String, Value)],
+	) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 		if config.len() != PRICES.len() {
 			return Err(invalid(format!("expects exactly open, high, low, close, got {config:?}")).into());
 		}
@@ -89,7 +93,7 @@ impl BoundBlockEncoding for BoundOhlcv {
 		self.stored.clone()
 	}
 
-	fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+	fn encode(&self, user: RecordBatch) -> Result<RecordBatch, ValueError> {
 		let open = int64(&user, &self.open)?;
 		let high = int64(&user, &self.high)?;
 		let low = int64(&user, &self.low)?;
@@ -127,7 +131,7 @@ impl BoundBlockEncoding for BoundOhlcv {
 		assemble(&self.stored, columns)
 	}
 
-	fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+	fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch, ValueError> {
 		if version != 1 {
 			return Err(invalid(format!("cannot decode version {version}, knows 1")).into());
 		}
@@ -179,18 +183,18 @@ fn invalid(reason: String) -> BlockEncodingError {
 	}
 }
 
-fn copied(batch: &RecordBatch, name: &str) -> Result<ArrayRef> {
+fn copied(batch: &RecordBatch, name: &str) -> Result<ArrayRef, ValueError> {
 	Ok(Arc::clone(batch.column_by_name(name).ok_or_else(|| invalid(format!("block has no column `{name}`")))?))
 }
 
-fn int64(batch: &RecordBatch, name: &str) -> Result<Vec<i64>> {
+fn int64(batch: &RecordBatch, name: &str) -> Result<Vec<i64>, ValueError> {
 	let array = copied(batch, name)?;
 	let values =
 		array.as_any().downcast_ref::<Int64Array>().ok_or_else(|| invalid(format!("`{name}` is not int8")))?;
 	Ok(values.values().to_vec())
 }
 
-fn uint64(batch: &RecordBatch, name: &str) -> Result<Vec<u64>> {
+fn uint64(batch: &RecordBatch, name: &str) -> Result<Vec<u64>, ValueError> {
 	let array = copied(batch, name)?;
 	let values = array
 		.as_any()
@@ -199,7 +203,7 @@ fn uint64(batch: &RecordBatch, name: &str) -> Result<Vec<u64>> {
 	Ok(values.values().to_vec())
 }
 
-fn assemble(fields: &[FieldRef], columns: Vec<ArrayRef>) -> Result<RecordBatch> {
+fn assemble(fields: &[FieldRef], columns: Vec<ArrayRef>) -> Result<RecordBatch, ValueError> {
 	RecordBatch::try_new(Arc::new(Schema::new(fields.to_vec())), columns).map_err(|e| invalid(e.to_string()).into())
 }
 

@@ -14,16 +14,13 @@ use reifydb_core::{
 use reifydb_evaluate::{error::EvaluateError, stack::Variable};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	reifydb_assertions,
 	value::Value,
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct VariableNode {
 	variable_expr: VariableExpression,
@@ -43,13 +40,17 @@ impl VariableNode {
 
 impl QueryNode for VariableNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::variable::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::variable::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
 		}

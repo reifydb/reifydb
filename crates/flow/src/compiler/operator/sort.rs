@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef::Sort, interface::catalog::flow::OperatorId, sort::SortKey};
 use reifydb_rql::{nodes::SortNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -23,7 +23,7 @@ impl From<SortNode> for SortCompiler {
 }
 
 impl CompileOperator for SortCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(

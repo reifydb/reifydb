@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{catalog::token::Token, store::MultiVersionRow};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::store::token::shape::token;
 
@@ -12,7 +12,7 @@ pub mod drop;
 pub mod find;
 pub mod shape;
 
-pub(crate) fn convert_token<K>(multi: MultiVersionRow<K>) -> Result<Token> {
+pub(crate) fn convert_token<K>(multi: MultiVersionRow<K>) -> Result<Token, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = token::get_id(&bytes);
 	let token_value = token::get_token(&bytes).to_string();

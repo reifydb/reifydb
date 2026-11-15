@@ -15,7 +15,7 @@ use crate::{
 	body::Body,
 	cursors::Cursors,
 	device::{Append, Flush, Mark, ReadFrom, Reclaim},
-	error::{Result, WalError},
+	error::WalError,
 	floor::Floor,
 	lsn::Lsn,
 	recovered::Recovered,
@@ -50,7 +50,7 @@ impl<T, L> Clone for Wal<T, L> {
 }
 
 impl<T: Body, L: Append + Flush + ReadFrom + Reclaim + Mark> Wal<T, L> {
-	pub fn open(device: L, scans: Vec<Scan>, mode: WalMode) -> Result<(Self, Recovered)> {
+	pub fn open(device: L, scans: Vec<Scan>, mode: WalMode) -> Result<(Self, Recovered), WalError> {
 		if let WalMode::Async {
 			interval,
 		} = mode && !interval.is_positive()
@@ -113,7 +113,7 @@ impl<T, L> Wal<T, L> {
 }
 
 impl<T, L: Mark> Wal<T, L> {
-	pub fn floor(&self, name: &str) -> Result<Floor<T, L>> {
+	pub fn floor(&self, name: &str) -> Result<Floor<T, L>, WalError> {
 		if !self.0.held.lock().insert(name.to_string()) {
 			return Err(WalError::FloorHeld(name.to_string()));
 		}
@@ -126,7 +126,7 @@ impl<T, L: Mark> Wal<T, L> {
 		}
 	}
 
-	fn position_of(&self, name: &str) -> Result<Option<Lsn>> {
+	fn position_of(&self, name: &str) -> Result<Option<Lsn>, WalError> {
 		match self.0.device.register(name) {
 			Ok(()) => return Ok(None),
 			Err(WalError::Log(StoreLogError::AlreadyExists(_))) => {}
@@ -138,7 +138,7 @@ impl<T, L: Mark> Wal<T, L> {
 }
 
 impl<T, L: Reclaim + Mark> Wal<T, L> {
-	pub fn gc(&self) -> Result<Option<Lsn>> {
+	pub fn gc(&self) -> Result<Option<Lsn>, WalError> {
 		let lowest =
 			self.0.device.readers()?.into_iter().map(|(_, hint)| Lsn::from_version(hint)).min().flatten();
 		if let Some(lowest) = lowest {
@@ -157,7 +157,7 @@ impl<T, L: Reclaim + Mark> Wal<T, L> {
 		self.start()
 	}
 
-	pub fn cursors(&self) -> Result<Cursors> {
+	pub fn cursors(&self) -> Result<Cursors, WalError> {
 		let appended = self.0.appender.lock().last;
 		let durable = self.0.progress.lock().durable;
 		let floors =
@@ -175,13 +175,13 @@ impl<T, L: Reclaim + Mark> Wal<T, L> {
 		})
 	}
 
-	fn start(&self) -> Result<Option<Lsn>> {
+	fn start(&self) -> Result<Option<Lsn>, WalError> {
 		Ok(self.0.device.start()?.and_then(Lsn::from_version))
 	}
 }
 
 impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
-	pub fn replay(&self, from: Lsn) -> Result<Replay<'_, T, L>> {
+	pub fn replay(&self, from: Lsn) -> Result<Replay<'_, T, L>, WalError> {
 		let oldest = self.0.device.start()?.and_then(Lsn::from_version);
 		let at = match oldest {
 			Some(oldest) if from < oldest => {
@@ -207,13 +207,13 @@ impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
 }
 
 impl<T: Body, L: Append + Flush> Wal<T, L> {
-	pub fn append(&self, at: DateTime, body: &T) -> Result<Lsn> {
+	pub fn append(&self, at: DateTime, body: &T) -> Result<Lsn, WalError> {
 		let mut payload = Vec::new();
 		body.encode(&mut payload);
 		self.append_encoded(at, body.kind(), payload)
 	}
 
-	pub fn append_encoded(&self, at: DateTime, kind: u32, payload: Vec<u8>) -> Result<Lsn> {
+	pub fn append_encoded(&self, at: DateTime, kind: u32, payload: Vec<u8>) -> Result<Lsn, WalError> {
 		if let Some(failed) = &self.0.progress.lock().failed {
 			return Err(failed.clone());
 		}
@@ -241,7 +241,7 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 		Ok(lsn)
 	}
 
-	pub fn sync(&self) -> Result<Option<Lsn>> {
+	pub fn sync(&self) -> Result<Option<Lsn>, WalError> {
 		if let Some(failed) = &self.0.progress.lock().failed {
 			return Err(failed.clone());
 		}

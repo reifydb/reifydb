@@ -37,7 +37,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
@@ -46,7 +46,7 @@ use crate::{
 		resident_flush::{FlushMessage, PendingFlush, begin_flush_pending, flush_now},
 	},
 	config::OperatorStoreConfig,
-	error::Result as OperatorResult,
+	error::StoreOperatorError,
 	persistent::{Persistent, PersistentTier},
 	range::{
 		OperatorRangeTier, RangeSink,
@@ -218,7 +218,7 @@ impl StandardOperatorStore {
 		self.resident.begin_commit()
 	}
 
-	pub fn saved_lsn(&self) -> OperatorResult<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		self.persistent.saved_lsn()
 	}
 
@@ -294,7 +294,7 @@ impl MetricsCollector for CheckpointCollector {
 }
 
 impl Shutdown for StandardOperatorStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if self.persistent.is_absent() {
 			return Ok(());
 		}
@@ -342,7 +342,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn saved_lsn(&self) -> OperatorResult<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.saved_lsn(),
 		}
@@ -392,13 +392,13 @@ impl OperatorStore {
 }
 
 impl CheckpointFloor for OperatorStore {
-	fn floor(&self) -> Result<Option<CommitVersion>> {
+	fn floor(&self) -> Result<Option<CommitVersion>, ValueError> {
 		Ok(self.checkpoint_floor()?)
 	}
 }
 
 impl Shutdown for OperatorStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			Self::Standard(store) => store.shutdown(),
 		}

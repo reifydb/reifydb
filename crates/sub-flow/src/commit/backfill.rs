@@ -47,7 +47,7 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		identity::IdentityId,
 		system_columns::{SystemColumn, require_updated_at, system_column},
@@ -218,7 +218,7 @@ pub(crate) fn compute_unit_backfill(
 	members: &[(FlowDag, ViewId)],
 	snapshot: &Snapshot,
 	reads: &[(CommitVersion, Vec<ObjectId>)],
-) -> Result<(FlowSlice, WatermarkHolds)> {
+) -> Result<(FlowSlice, WatermarkHolds), ValueError> {
 	let version = snapshot.version;
 	let fed: Vec<(FlowId, ViewId)> = members.iter().map(|(member, view)| (member.id, *view)).collect();
 	let batch_size = query_batch_size(engine)?;
@@ -299,7 +299,7 @@ pub(crate) fn compute_unit_backfill(
 	Ok((slice, holds))
 }
 
-fn time_runs(change: Change) -> Result<Vec<Change>> {
+fn time_runs(change: Change) -> Result<Vec<Change>, ValueError> {
 	let mut pieces = Vec::new();
 	for diff in change.diffs {
 		let Diff::Insert {
@@ -333,7 +333,7 @@ fn time_runs(change: Change) -> Result<Vec<Change>> {
 	Ok(pieces)
 }
 
-fn equal_time_rows(post: &RecordBatch) -> Result<Vec<RecordBatch>> {
+fn equal_time_rows(post: &RecordBatch) -> Result<Vec<RecordBatch>, ValueError> {
 	let Some(column) = system_column(post, SystemColumn::Time) else {
 		return Ok(vec![post.clone()]);
 	};
@@ -362,7 +362,7 @@ fn clear_views(
 	flow: &FlowDag,
 	lease: &VersionLeaseGuard,
 	batch_size: NonZeroU64,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let catalog = engine.catalog();
 	let mut query = engine.begin_query_at_version(lease, IdentityId::system())?;
 	let mut keys: Vec<EncodedKey> = Vec::new();
@@ -387,7 +387,7 @@ fn clear_views(
 	Ok(())
 }
 
-fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64> {
+fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64, ValueError> {
 	match NonZeroU64::new(u64::from(engine.catalog().get_config_uint2(ConfigKey::QueryRowBatchSize))) {
 		Some(batch_size) => Ok(batch_size),
 		None => internal_err!("QUERY_ROW_BATCH_SIZE is 0, which its config validation rejects"),

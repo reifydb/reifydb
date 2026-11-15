@@ -13,7 +13,7 @@ use reifydb_flow_async::transaction::frontier::{FrontierEntries, FrontierEntry, 
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 use tracing::warn;
 
 const HYDRATE_BATCH: u64 = 1024;
@@ -37,7 +37,11 @@ fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
 	})
 }
 
-pub fn persist(ctx: &Arc<TransactionContext>, single: &SingleTransaction, entries: &FrontierEntries) -> Result<()> {
+pub fn persist(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+	entries: &FrontierEntries,
+) -> Result<(), ValueError> {
 	if entries.is_empty() {
 		return Ok(());
 	}
@@ -57,7 +61,11 @@ pub fn sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontier
 	}
 }
 
-pub fn try_sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, frontiers: &OutputFrontiers) -> Result<()> {
+pub fn try_sweep(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+	frontiers: &OutputFrontiers,
+) -> Result<(), ValueError> {
 	let Some((generation, entries)) = frontiers.unpersisted() else {
 		return Ok(());
 	};
@@ -66,7 +74,7 @@ pub fn try_sweep(ctx: &Arc<TransactionContext>, single: &SingleTransaction, fron
 	Ok(())
 }
 
-pub fn hydrate(ctx: &Arc<TransactionContext>, store: &SingleStore) -> Result<FrontierEntries> {
+pub fn hydrate(ctx: &Arc<TransactionContext>, store: &SingleStore) -> Result<FrontierEntries, ValueError> {
 	let mut out = Vec::new();
 	let batch =
 		SingleVersionRange::range_batch(store, ctx, OutputFrontierKey::full_scan().encode(), HYDRATE_BATCH)?;

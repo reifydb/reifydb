@@ -17,19 +17,24 @@ use reifydb_transaction::{
 	interceptor::{WithInterceptors, dictionary_row::DictionaryRowInterceptor},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::value::{Value, datetime::DateTime, dictionary::DictionaryEntryId};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
+};
 use smallvec::smallvec;
 
-use crate::Result;
-
 pub(crate) trait DictionaryOperations {
-	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>>;
+	fn intern_values(
+		&mut self,
+		dictionary: &Dictionary,
+		values: Vec<Value>,
+	) -> Result<Vec<DictionaryEntryId>, ValueError>;
 
 	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>>;
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError>;
 }
 
 struct Interned {
@@ -42,7 +47,7 @@ fn intern_through_chains<T: WithInterceptors>(
 	registry: impl FnOnce(&T) -> Option<DictionaryAllocatorRegistry>,
 	dictionary: &Dictionary,
 	mut values: Vec<Value>,
-) -> Result<Interned> {
+) -> Result<Interned, ValueError> {
 	if values.is_empty() {
 		return Ok(Interned {
 			ids: Vec::new(),
@@ -80,13 +85,17 @@ fn find_through(
 	registry: Option<DictionaryAllocatorRegistry>,
 	dictionary: &Dictionary,
 	values: &[Value],
-) -> Result<Vec<Option<DictionaryEntryId>>> {
+) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
 	registry.find(dictionary, values)
 }
 
 impl DictionaryOperations for CommandTransaction {
-	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
+	fn intern_values(
+		&mut self,
+		dictionary: &Dictionary,
+		values: Vec<Value>,
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		Ok(intern_through_chains(self, CommandTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
@@ -94,12 +103,12 @@ impl DictionaryOperations for CommandTransaction {
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		find_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 
-fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Change> {
+fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Change, ValueError> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::dictionary(dictionary.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
@@ -109,7 +118,11 @@ fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Cha
 }
 
 impl DictionaryOperations for AdminTransaction {
-	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
+	fn intern_values(
+		&mut self,
+		dictionary: &Dictionary,
+		values: Vec<Value>,
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		Ok(intern_through_chains(self, AdminTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
@@ -117,13 +130,17 @@ impl DictionaryOperations for AdminTransaction {
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		find_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 
 impl DictionaryOperations for Transaction<'_> {
-	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
+	fn intern_values(
+		&mut self,
+		dictionary: &Dictionary,
+		values: Vec<Value>,
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		match self {
 			Transaction::Command(cmd) => cmd.intern_values(dictionary, values),
 			Transaction::Admin(admin) => admin.intern_values(dictionary, values),
@@ -149,7 +166,7 @@ impl DictionaryOperations for Transaction<'_> {
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		match self {
 			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, values),
 			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, values),

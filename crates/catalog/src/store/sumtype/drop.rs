@@ -3,12 +3,12 @@
 
 use reifydb_core::key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_sumtype(txn: &mut AdminTransaction, sumtype: SumTypeId) -> Result<()> {
+	pub(crate) fn drop_sumtype(txn: &mut AdminTransaction, sumtype: SumTypeId) -> Result<(), ValueError> {
 		if let Some(sumtype_def) = Self::find_sumtype(&mut Transaction::Admin(&mut *txn), sumtype)? {
 			txn.remove(vec![(NamespaceSumTypeKey::new(sumtype_def.namespace, sumtype).into(), None)])?;
 		}

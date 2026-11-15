@@ -18,7 +18,6 @@ use reifydb_rql_frontend::{
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
@@ -28,7 +27,7 @@ use crate::{
 
 const JOIN_WITH_KEYS: &str = "retention, emit, exact, latest, or earliest";
 
-fn compile_join_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
+fn compile_join_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit, ValueError> {
 	let token = literal(entry)?;
 	literal_boolean(token).map(Emit::from).ok_or_else(|| {
 		AstError::UnexpectedToken {
@@ -43,7 +42,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_join_with(
 		with: Option<&AstOperatorWith<'bump>>,
 		alias: &BumpFragment<'bump>,
-	) -> Result<JoinWith> {
+	) -> Result<JoinWith, ValueError> {
 		let mut join = JoinWith::default();
 		let mut picked = false;
 		let mut column_pick = None;
@@ -90,7 +89,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_join_retention(entry: &AstOperatorWithEntry<'_>) -> Result<JoinRetention> {
+fn compile_join_retention(entry: &AstOperatorWithEntry<'_>) -> Result<JoinRetention, ValueError> {
 	let Some(AstOperatorWithValue::Block(sides)) = &entry.value else {
 		return Err(unknown_key(entry, "a block such as { left: 1h, right: 2h }"));
 	};
@@ -118,7 +117,7 @@ fn compile_join_pick(
 	entry: &AstOperatorWithEntry<'_>,
 	default_direction: SortDirection,
 	alias: &BumpFragment<'_>,
-) -> Result<Option<JoinPick>> {
+) -> Result<Option<JoinPick>, ValueError> {
 	let columns = match &entry.value {
 		Some(AstOperatorWithValue::Block(columns)) => columns,
 		_ => {
@@ -177,7 +176,7 @@ fn compile_join_pick(
 	}))
 }
 
-fn direction(token: &Token<'_>) -> Result<SortDirection> {
+fn direction(token: &Token<'_>) -> Result<SortDirection, ValueError> {
 	if token.is_keyword(Keyword::Asc) {
 		Ok(SortDirection::Asc)
 	} else if token.is_keyword(Keyword::Desc) {
@@ -204,11 +203,14 @@ mod tests {
 		},
 		bump::Bump,
 	};
-	use reifydb_value::value::{datetime::TIME_COLUMN_NAME, duration::Duration};
+	use reifydb_value::{
+		error::ValueError,
+		value::{datetime::TIME_COLUMN_NAME, duration::Duration},
+	};
 
-	use crate::{Result, plan::logical::Compiler};
+	use crate::plan::logical::Compiler;
 
-	fn join_with(source: &str) -> Result<JoinWith> {
+	fn join_with(source: &str) -> Result<JoinWith, ValueError> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
 		let Some(Ast::Join(join)) = statements[0].nodes.first() else {

@@ -10,14 +10,18 @@ use reifydb_core::{
 	key::{catalog::HandlerKey, namespace::NamespaceHandlerKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::handler::{handler_from_row, shape::handler_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_handler(rx: &mut Transaction<'_>, handler_id: HandlerId) -> Result<Option<Handler>> {
+	pub(crate) fn find_handler(
+		rx: &mut Transaction<'_>,
+		handler_id: HandlerId,
+	) -> Result<Option<Handler>, ValueError> {
 		let Some(multi) = rx.get(&[HandlerKey::new(handler_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -29,7 +33,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Handler>> {
+	) -> Result<Option<Handler>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), RangeScope::All, 1024)?;
 

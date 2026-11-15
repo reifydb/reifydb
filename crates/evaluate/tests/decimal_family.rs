@@ -21,8 +21,7 @@ use reifydb_evaluate::expression::{
 	prefix::prefix_apply,
 };
 use reifydb_value::{
-	Result,
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -69,7 +68,7 @@ macro_rules! arith {
 	}};
 }
 
-fn literal(text: &str) -> Result<(FieldRef, ArrayRef)> {
+fn literal(text: &str) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let ctx = EvalContext::testing();
 	let expr = Expression::Constant(ConstantExpression::Number {
 		fragment: Fragment::internal(text),
@@ -257,7 +256,7 @@ fn a_77_digit_literal_is_a_range_error() {
 	assert_eq!(err.0.code, "NUMBER_002");
 }
 
-fn written(expr: Expression, column_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
+fn written(expr: Expression, column_type: ValueType) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut ctx = EvalContext::testing();
 	ctx.target = Some(TargetColumn::Partial {
 		source_name: None,

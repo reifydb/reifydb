@@ -10,15 +10,19 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::sequence::{Sequence, generator::u64::decode},
 	system::ids::sequences::ALL,
 };
 
 impl CatalogStore {
-	pub(crate) fn find_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Option<Sequence>> {
+	pub(crate) fn find_sequence(
+		rx: &mut Transaction<'_>,
+		sequence_id: SequenceId,
+	) -> Result<Option<Sequence>, ValueError> {
 		let Some((_, name)) = ALL.iter().find(|(id, _)| *id == sequence_id) else {
 			return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

@@ -13,17 +13,17 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	value::system_columns::{is_system_field, resolve_column, user_columns},
 };
 
 use crate::{
-	Result,
 	expression::{access::access_position, context::EvalContext},
 	lower::{Node, error::from_datafusion, literal::row_zero},
 	stack::Variable,
 };
 
-pub(super) fn positional_schema(operator: &str, schema: &Schema) -> Result<DFSchema> {
+pub(super) fn positional_schema(operator: &str, schema: &Schema) -> Result<DFSchema, ValueError> {
 	let fields: Vec<Field> = schema
 		.fields()
 		.iter()
@@ -33,7 +33,7 @@ pub(super) fn positional_schema(operator: &str, schema: &Schema) -> Result<DFSch
 	DFSchema::try_from(Schema::new(fields)).map_err(|err| from_datafusion(operator, err))
 }
 
-pub(super) fn column(ctx: &EvalContext, operator: &str, column: &ColumnExpression) -> Result<Node> {
+pub(super) fn column(ctx: &EvalContext, operator: &str, column: &ColumnExpression) -> Result<Node, ValueError> {
 	let name = column.0.name.text();
 
 	if let Some(index) = resolve_column(&ctx.batch, name) {
@@ -60,7 +60,7 @@ pub(super) fn column(ctx: &EvalContext, operator: &str, column: &ColumnExpressio
 	Err(error!(column_not_found(column.0.name.clone())))
 }
 
-pub(super) fn access(ctx: &EvalContext, access: &AccessObjectExpression) -> Result<Node> {
+pub(super) fn access(ctx: &EvalContext, access: &AccessObjectExpression) -> Result<Node, ValueError> {
 	let index = access_position(&ctx.batch, access)?;
 	Ok(Node {
 		expr: positional(index),

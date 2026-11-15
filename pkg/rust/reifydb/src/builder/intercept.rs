@@ -42,7 +42,7 @@ use reifydb_transaction::interceptor::{
 	},
 	view::{ViewPostCreateContext, ViewPostUpdateContext, ViewPreDeleteContext, ViewPreUpdateContext},
 };
-use reifydb_value::Result as TypeResult;
+use reifydb_value::error::ValueError;
 
 pub trait WithInterceptorBuilder: Sized {
 	fn interceptor_builder_mut(&mut self) -> &mut InterceptorBuilder;
@@ -107,7 +107,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPreInsertContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreInsertContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -121,7 +121,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPostInsertContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostInsertContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -135,7 +135,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -149,7 +149,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -163,7 +163,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -177,7 +177,7 @@ impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableRowPostDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -233,7 +233,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPreInsertContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreInsertContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -247,7 +247,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPostInsertContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostInsertContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -261,7 +261,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -275,7 +275,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -289,7 +289,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -303,7 +303,7 @@ impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferRowPostDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -359,7 +359,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostCreateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostCreateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -373,7 +373,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -387,7 +387,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -401,7 +401,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -457,7 +457,7 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPostCreateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPostCreateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -471,7 +471,7 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -485,7 +485,7 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -499,7 +499,7 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -555,7 +555,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostCreateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostCreateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -569,7 +569,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -583,7 +583,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -597,7 +597,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -653,7 +653,7 @@ impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespacePostCreateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePostCreateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -667,7 +667,7 @@ impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespacePreUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePreUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -681,7 +681,7 @@ impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespacePostUpdateContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePostUpdateContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -695,7 +695,7 @@ impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespacePreDeleteContext) -> TypeResult<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePreDeleteContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();

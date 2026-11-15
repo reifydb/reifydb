@@ -46,6 +46,7 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -72,7 +73,6 @@ use super::{
 	},
 };
 use crate::{
-	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
 	transaction::operation::{series::moved_series_partitions, storage::DmlTransaction},
@@ -97,7 +97,7 @@ pub(crate) fn update_series(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let UpdateSeriesNode {
 		input,
 		target,
@@ -327,7 +327,7 @@ fn resolve_update_series_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedSeries,
-) -> Result<(Namespace, Series)> {
+) -> Result<(Namespace, Series), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -340,7 +340,11 @@ fn resolve_update_series_target(
 	Ok((namespace, series))
 }
 
-fn reject_series_row_key_assignment(namespace: &Namespace, series: &Series, input: &QueryPlan) -> Result<()> {
+fn reject_series_row_key_assignment(
+	namespace: &Namespace,
+	series: &Series,
+	input: &QueryPlan,
+) -> Result<(), ValueError> {
 	let QueryPlan::Patch(patch) = input else {
 		return Err(internal_error!("update of series {} has no patch at the top of its input", series.name));
 	};
@@ -401,7 +405,7 @@ fn enforce_old_row_policies(
 	row_numbers: &[RowNumber],
 	shape: &RowShape,
 	compiled: Option<&CompiledWritePolicies>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(compiled) = compiled.filter(|compiled| compiled.reads_row()) else {
 		return Ok(());
 	};
@@ -416,7 +420,10 @@ fn enforce_old_row_policies(
 	PolicyEvaluator::new(services, symbols).enforce_compiled_row_dependent(compiled, txn.identity(), &old_columns)
 }
 
-fn series_update_keys(series: &Series, columns: &RecordBatch) -> Result<(Vec<Option<u64>>, Option<Failure>)> {
+fn series_update_keys(
+	series: &Series,
+	columns: &RecordBatch,
+) -> Result<(Vec<Option<u64>>, Option<Failure>), ValueError> {
 	let key_column = series.key.column();
 	let view = column_view(columns, key_column)?.ok_or_else(|| {
 		internal_error!("update of series {} has no key column {} in its input", series.name, key_column)
@@ -432,7 +439,7 @@ fn series_update_keys(series: &Series, columns: &RecordBatch) -> Result<(Vec<Opt
 	Ok((keys, failure))
 }
 
-fn series_update_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>> {
+fn series_update_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>, ValueError> {
 	if !has_tag {
 		return Ok(vec![None; rows]);
 	}
@@ -461,7 +468,7 @@ fn track_series_update_flow_change(
 	shape: &RowShape,
 	columns: &RecordBatch,
 	updated: SeriesUpdatedRows,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut pre_columns = Vec::with_capacity(1 + series.columns.len());
 	pre_columns.push(series.key_column_data(updated.keys.clone()));
 	let fields = shape.fields();
@@ -495,7 +502,7 @@ fn track_series_update_flow_change(
 }
 
 #[inline]
-fn update_series_result(namespace: &str, series: &str, updated: u64) -> Result<RecordBatch> {
+fn update_series_result(namespace: &str, series: &str, updated: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),

@@ -30,7 +30,7 @@ use reifydb_core::value::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::bitmap::resize,
 	value::{
 		Value,
@@ -79,7 +79,7 @@ use crate::{
 		},
 		family::{cell_width, column_params, decode_family_column, family_params, is_family},
 	},
-	error::Result as SdkResult,
+	error::SdkError,
 };
 
 const COLUMN_FLAG_OPTIONAL: u8 = 0b0000_0001;
@@ -88,8 +88,8 @@ pub fn marshal_columns_to_bytes(
 	columns: &[(FieldRef, ArrayRef)],
 	row_count: usize,
 	row_numbers: &[RowNumber],
-) -> Result<Vec<u8>> {
-	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+) -> Result<Vec<u8>, ValueError> {
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 	for view in &views {
 		ensure_view_marshallable(view)?;
 	}
@@ -175,7 +175,7 @@ pub fn marshal_columns_to_bytes(
 	Ok(buf)
 }
 
-pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<RecordBatch> {
+pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Result<RecordBatch, SdkError> {
 	if bytes.len() < EXTERN_WASM_COLUMNS_HEADER_SIZE {
 		return Err(malformed(format!(
 			"guest sent {} bytes, fewer than the {EXTERN_WASM_COLUMNS_HEADER_SIZE} byte header",
@@ -278,7 +278,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<RecordBatch> {
 	}
 }
 
-fn region<'a>(bytes: &'a [u8], offset: u32, len: u32, what: &str) -> SdkResult<&'a [u8]> {
+fn region<'a>(bytes: &'a [u8], offset: u32, len: u32, what: &str) -> Result<&'a [u8], SdkError> {
 	if len == 0 {
 		return Ok(&[]);
 	}
@@ -529,7 +529,7 @@ fn unmarshal_column_data(
 	data: &[u8],
 	bitvec: &BooleanBuffer,
 	offsets_bytes: &[u8],
-) -> SdkResult<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), SdkError> {
 	if row_count == 0 {
 		return Ok(none(name, 0));
 	}
@@ -598,7 +598,7 @@ fn unmarshal_family(
 	scale: Scale,
 	row_count: usize,
 	data: &[u8],
-) -> SdkResult<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), SdkError> {
 	if row_count == 0 {
 		return Ok(none(name, 0));
 	}
@@ -621,7 +621,12 @@ fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()
 }
 
-fn cell_ranges(data: &[u8], row_count: usize, offsets_bytes: &[u8], what: &str) -> SdkResult<Vec<(usize, usize)>> {
+fn cell_ranges(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+	what: &str,
+) -> Result<Vec<(usize, usize)>, SdkError> {
 	let offsets = read_offsets(offsets_bytes);
 	if offsets.len() < row_count + 1 {
 		return Err(malformed(format!(
@@ -639,7 +644,7 @@ fn maybe_wrap_option(
 	bitvec: BooleanBuffer,
 	flags: u8,
 	index: usize,
-) -> SdkResult<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), SdkError> {
 	if inner.1.data_type().is_null() {
 		return Ok(inner);
 	}
@@ -654,7 +659,7 @@ fn maybe_wrap_option(
 	Ok(with_nulls(inner, NullBuffer::new(resize(&bitvec, len)))?)
 }
 
-fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> SdkResult<Vec<T>> {
+fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize) -> Result<Vec<T>, SdkError> {
 	if data.is_empty() {
 		return Ok(vec![T::default(); row_count]);
 	}
@@ -676,7 +681,7 @@ fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize
 	Ok(values)
 }
 
-fn unmarshal_raw<T: Copy + Default>(data: &[u8], row_count: usize, what: &str) -> SdkResult<Vec<T>> {
+fn unmarshal_raw<T: Copy + Default>(data: &[u8], row_count: usize, what: &str) -> Result<Vec<T>, SdkError> {
 	let needed = row_count * size_of::<T>();
 	if data.len() < needed {
 		return Err(malformed(format!(
@@ -695,7 +700,7 @@ fn unmarshal_raw<T: Copy + Default>(data: &[u8], row_count: usize, what: &str) -
 	Ok(values)
 }
 
-fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeStringArray> {
+fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Result<LargeStringArray, SdkError> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(LargeStringArray::from(vec![String::new(); row_count]));
 	}
@@ -706,11 +711,11 @@ fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkRes
 				.map(str::to_string)
 				.map_err(|_| malformed("guest utf8 cell is not utf8".to_string()))
 		})
-		.collect::<SdkResult<Vec<String>>>()?;
+		.collect::<Result<Vec<String>, SdkError>>()?;
 	Ok(LargeStringArray::from(strings))
 }
 
-fn unmarshal_date(data: &[u8], row_count: usize) -> SdkResult<Date32Array> {
+fn unmarshal_date(data: &[u8], row_count: usize) -> Result<Date32Array, SdkError> {
 	if data.is_empty() {
 		return Ok(date_array(vec![Date::default(); row_count]));
 	}
@@ -720,11 +725,11 @@ fn unmarshal_date(data: &[u8], row_count: usize) -> SdkResult<Date32Array> {
 			Date::from_days_since_epoch(days)
 				.ok_or_else(|| malformed(format!("guest date is {days} days since the epoch")))
 		})
-		.collect::<SdkResult<Vec<Date>>>()?;
+		.collect::<Result<Vec<Date>, SdkError>>()?;
 	Ok(date_array(dates))
 }
 
-fn unmarshal_datetime(data: &[u8], row_count: usize) -> SdkResult<TimestampNanosecondArray> {
+fn unmarshal_datetime(data: &[u8], row_count: usize) -> Result<TimestampNanosecondArray, SdkError> {
 	if data.is_empty() {
 		return Ok(datetime_array(vec![DateTime::default(); row_count]));
 	}
@@ -733,7 +738,7 @@ fn unmarshal_datetime(data: &[u8], row_count: usize) -> SdkResult<TimestampNanos
 	Ok(datetime_array(datetimes))
 }
 
-fn unmarshal_time(data: &[u8], row_count: usize) -> SdkResult<Time64NanosecondArray> {
+fn unmarshal_time(data: &[u8], row_count: usize) -> Result<Time64NanosecondArray, SdkError> {
 	if data.is_empty() {
 		return Ok(time_array(vec![Time::default(); row_count]));
 	}
@@ -743,11 +748,15 @@ fn unmarshal_time(data: &[u8], row_count: usize) -> SdkResult<Time64NanosecondAr
 			Time::from_nanos_since_midnight(nanos)
 				.ok_or_else(|| malformed(format!("guest time is {nanos} nanoseconds since midnight")))
 		})
-		.collect::<SdkResult<Vec<Time>>>()?;
+		.collect::<Result<Vec<Time>, SdkError>>()?;
 	Ok(time_array(times))
 }
 
-fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<IntervalMonthDayNanoArray> {
+fn unmarshal_duration(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+) -> Result<IntervalMonthDayNanoArray, SdkError> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(duration_array(vec![Duration::default(); row_count]));
 	}
@@ -757,11 +766,16 @@ fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Sd
 			decode_duration_cell(&data[start..end])
 				.map_err(|e| malformed(format!("guest duration cell: {e}")))
 		})
-		.collect::<SdkResult<Vec<Duration>>>()?;
+		.collect::<Result<Vec<Duration>, SdkError>>()?;
 	Ok(duration_array(durations))
 }
 
-fn unmarshal_uuids<T>(data: &[u8], row_count: usize, what: &str, build: impl Fn(Uuid) -> T) -> SdkResult<Vec<T>> {
+fn unmarshal_uuids<T>(
+	data: &[u8],
+	row_count: usize,
+	what: &str,
+	build: impl Fn(Uuid) -> T,
+) -> Result<Vec<T>, SdkError> {
 	let needed = row_count * 16;
 	if data.len() < needed {
 		return Err(malformed(format!("guest sent {} {what} bytes for {row_count} rows", data.len())));
@@ -769,7 +783,7 @@ fn unmarshal_uuids<T>(data: &[u8], row_count: usize, what: &str, build: impl Fn(
 	Ok(data[..needed].chunks_exact(16).map(|chunk| build(Uuid::from_bytes(chunk.try_into().unwrap()))).collect())
 }
 
-fn unmarshal_identity_id(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
+fn unmarshal_identity_id(data: &[u8], row_count: usize) -> Result<FixedSizeBinaryArray, SdkError> {
 	if data.is_empty() {
 		return Ok(identity_id_array(vec![IdentityId::default(); row_count]));
 	}
@@ -780,25 +794,25 @@ fn unmarshal_identity_id(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBi
 			7 => Ok(IdentityId(Uuid7(uuid))),
 			version => Err(malformed(format!("guest identity id is a uuid v{version}, not a uuid v7"))),
 		})
-		.collect::<SdkResult<Vec<IdentityId>>>()?;
+		.collect::<Result<Vec<IdentityId>, SdkError>>()?;
 	Ok(identity_id_array(ids))
 }
 
-fn unmarshal_uuid4(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
+fn unmarshal_uuid4(data: &[u8], row_count: usize) -> Result<FixedSizeBinaryArray, SdkError> {
 	if data.is_empty() {
 		return Ok(uuid4_array(vec![Uuid4::default(); row_count]));
 	}
 	Ok(uuid4_array(unmarshal_uuids(data, row_count, "uuid4", Uuid4)?))
 }
 
-fn unmarshal_uuid7(data: &[u8], row_count: usize) -> SdkResult<FixedSizeBinaryArray> {
+fn unmarshal_uuid7(data: &[u8], row_count: usize) -> Result<FixedSizeBinaryArray, SdkError> {
 	if data.is_empty() {
 		return Ok(uuid7_array(vec![Uuid7::default(); row_count]));
 	}
 	Ok(uuid7_array(unmarshal_uuids(data, row_count, "uuid7", Uuid7)?))
 }
 
-fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<LargeBinaryArray> {
+fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Result<LargeBinaryArray, SdkError> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(blob_array(&vec![Blob::empty(); row_count]));
 	}
@@ -809,7 +823,11 @@ fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkRes
 	Ok(blob_array(&blobs))
 }
 
-fn unmarshal_dictionary_ids(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> SdkResult<Vec<DictionaryEntryId>> {
+fn unmarshal_dictionary_ids(
+	data: &[u8],
+	row_count: usize,
+	offsets_bytes: &[u8],
+) -> Result<Vec<DictionaryEntryId>, SdkError> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return Ok(vec![DictionaryEntryId::default(); row_count]);
 	}
@@ -827,7 +845,7 @@ fn unmarshal_any(
 	row_count: usize,
 	offsets_bytes: &[u8],
 	defined: &BooleanBuffer,
-) -> SdkResult<LargeBinaryArray> {
+) -> Result<LargeBinaryArray, SdkError> {
 	let cells = if data.is_empty() || offsets_bytes.is_empty() {
 		vec![Value::none(); row_count]
 	} else {
@@ -837,7 +855,7 @@ fn unmarshal_any(
 				decode_any_cell(&data[start..end])
 					.map_err(|e| malformed(format!("guest any cell: {e}")))
 			})
-			.collect::<SdkResult<Vec<Value>>>()?
+			.collect::<Result<Vec<Value>, SdkError>>()?
 	};
 	let values = cells
 		.into_iter()
@@ -851,6 +869,6 @@ fn unmarshal_any(
 			} => Ok(None),
 			value => Ok(Some(value)),
 		})
-		.collect::<SdkResult<Vec<Option<Value>>>>()?;
+		.collect::<Result<Vec<Option<Value>>, SdkError>>()?;
 	Ok(any_array_optional(values))
 }

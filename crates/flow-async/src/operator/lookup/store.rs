@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::cowvec::CowVec,
 	value::{partition::Partition, row_number::RowNumber},
 };
@@ -80,7 +80,10 @@ pub(crate) struct ReadLedger {
 }
 
 impl ReadLedger {
-	pub(crate) fn read(host: &mut dyn HostContext, rows: impl IntoIterator<Item = RowNumber>) -> Result<Self> {
+	pub(crate) fn read(
+		host: &mut dyn HostContext,
+		rows: impl IntoIterator<Item = RowNumber>,
+	) -> Result<Self, ValueError> {
 		let mut seen = HashSet::new();
 		let rows: Vec<RowNumber> = rows.into_iter().filter(|row| seen.insert(*row)).collect();
 		let mut initial = HashMap::with_capacity(rows.len());
@@ -97,23 +100,23 @@ impl ReadLedger {
 		})
 	}
 
-	pub(crate) fn take(&mut self, row: RowNumber) -> Result<Option<StoredRead>> {
+	pub(crate) fn take(&mut self, row: RowNumber) -> Result<Option<StoredRead>, ValueError> {
 		Ok(self.slot(row)?.take())
 	}
 
-	pub(crate) fn store(&mut self, row: RowNumber, read: StoredRead) -> Result<()> {
+	pub(crate) fn store(&mut self, row: RowNumber, read: StoredRead) -> Result<(), ValueError> {
 		*self.slot(row)? = Some(read);
 		Ok(())
 	}
 
-	fn slot(&mut self, row: RowNumber) -> Result<&mut Option<StoredRead>> {
+	fn slot(&mut self, row: RowNumber) -> Result<&mut Option<StoredRead>, ValueError> {
 		match self.current.get_mut(&row) {
 			Some(slot) => Ok(slot),
 			None => internal_err!("lookup row {} changed its read without reading it first", row.value()),
 		}
 	}
 
-	pub(crate) fn commit(self, host: &mut dyn HostContext) -> Result<()> {
+	pub(crate) fn commit(self, host: &mut dyn HostContext) -> Result<(), ValueError> {
 		if self.rows.is_empty() {
 			return Ok(());
 		}
@@ -136,7 +139,7 @@ impl ReadLedger {
 	}
 }
 
-fn encode_read(read: &StoredRead) -> Result<EncodedPodRow> {
+fn encode_read(read: &StoredRead) -> Result<EncodedPodRow, ValueError> {
 	encode(read).map_err(|e| {
 		FlowAsyncError::Encode {
 			state: "LookupRead",
@@ -146,7 +149,7 @@ fn encode_read(read: &StoredRead) -> Result<EncodedPodRow> {
 	})
 }
 
-pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<StoredRead> {
+pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<StoredRead, ValueError> {
 	decode(stored).map_err(|e| {
 		FlowAsyncError::Decode {
 			state: "LookupRead",

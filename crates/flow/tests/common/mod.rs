@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::dictionary::Dictionary;
 use reifydb_flow::txn::{Find, Resolve};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -14,17 +14,25 @@ use reifydb_value::{
 pub struct NoDictionaries;
 
 impl Resolve for NoDictionaries {
-	fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		panic!("an operator over plain columns must never read a dictionary")
 	}
 
-	fn resolve(&mut self, _dictionary: &Dictionary, _ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		_dictionary: &Dictionary,
+		_ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		panic!("an operator over plain columns must never decode")
 	}
 }
 
 impl Find for NoDictionaries {
-	fn find(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		_dictionary: &Dictionary,
+		_values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		panic!("an operator over plain columns must never find a literal")
 	}
 }

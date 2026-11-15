@@ -6,7 +6,7 @@ use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{
 		Apply,
 		memory::{MemoryPersistent, row_bytes},
@@ -16,7 +16,7 @@ use crate::{
 
 impl Apply for MemoryPersistent {
 	#[instrument(name = "store::operator::persistent::memory::apply", level = "trace", skip_all)]
-	fn apply(&self, batch: &FlushBatch) -> Result<Applied> {
+	fn apply(&self, batch: &FlushBatch) -> Result<Applied, StoreOperatorError> {
 		let mut rows = self.0.rows.lock();
 		let mut checkpoints = self.0.checkpoints.lock();
 		let mut applied = Applied::default();
@@ -53,7 +53,7 @@ impl Apply for MemoryPersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::drop_operator", level = "trace", skip_all)]
-	fn drop_operator(&self, operator: OperatorId) -> Result<()> {
+	fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		self.0.rows.lock().remove(&operator);
 		Ok(())
 	}

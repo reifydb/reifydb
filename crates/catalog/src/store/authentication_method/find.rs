@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::identity::AuthenticationMethodKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::authentication_method::{convert_authentication_method, shape::authentication_method},
 };
 
@@ -17,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_authentication_method(
 		rx: &mut Transaction<'_>,
 		id: AuthenticationMethodId,
-	) -> Result<Option<AuthenticationMethod>> {
+	) -> Result<Option<AuthenticationMethod>, ValueError> {
 		rx.get(&[AuthenticationMethodKey::new(id).into()])?
 			.pop()
 			.flatten()
@@ -28,7 +29,7 @@ impl CatalogStore {
 	pub(crate) fn find_authentication_method_by_name(
 		rx: &mut Transaction<'_>,
 		name: &str,
-	) -> Result<Option<AuthenticationMethod>> {
+	) -> Result<Option<AuthenticationMethod>, ValueError> {
 		let stream = rx.range(AuthenticationMethodKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

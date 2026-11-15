@@ -5,7 +5,6 @@ use reifydb_core::common::JoinType;
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRequire, AstRownum, AstRunTests,
@@ -31,7 +30,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	fn try_parse_keyword_as_function_call(&mut self) -> Result<Ast<'bump>> {
+	fn try_parse_keyword_as_function_call(&mut self) -> Result<Ast<'bump>, ValueError> {
 		if self.position + 1 < self.tokens.len()
 			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
 		{
@@ -50,7 +49,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn parse_primary(&mut self) -> Result<Ast<'bump>> {
+	pub(crate) fn parse_primary(&mut self) -> Result<Ast<'bump>, ValueError> {
 		loop {
 			if self.is_eof() {
 				return Ok(Ast::Nop);

@@ -17,7 +17,6 @@ use reifydb_core::{
 };
 use reifydb_rql_frontend::bump::BumpBox;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	value::{system_columns::SystemColumn, value_type::ValueType},
@@ -28,15 +27,15 @@ use crate::{
 	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan, ReturnValue},
 };
 
-pub fn named_system_columns(plan: &PhysicalPlan<'_>) -> Result<Vec<SystemColumn>> {
+pub fn named_system_columns(plan: &PhysicalPlan<'_>) -> Result<Vec<SystemColumn>, ValueError> {
 	statement(plan, Scope::new(Mode::Query))
 }
 
-pub fn check_system_columns(plan: &PhysicalPlan<'_>) -> Result<()> {
+pub fn check_system_columns(plan: &PhysicalPlan<'_>) -> Result<(), ValueError> {
 	statement(plan, Scope::new(Mode::Query)).map(drop)
 }
 
-pub fn check_flow_system_columns(plan: &PhysicalPlan<'_>) -> Result<()> {
+pub fn check_flow_system_columns(plan: &PhysicalPlan<'_>) -> Result<(), ValueError> {
 	statement(plan, Scope::new(Mode::Subscription)).map(drop)
 }
 
@@ -130,7 +129,7 @@ fn system_column(name: &str) -> Option<SystemColumn> {
 	SystemColumn::ALL.into_iter().find(|column| &column.name()[1..] == bare)
 }
 
-fn statement(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Vec<SystemColumn>> {
+fn statement(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Vec<SystemColumn>, ValueError> {
 	let Found {
 		named,
 		unmet,
@@ -148,7 +147,7 @@ fn statement(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Vec<SystemColumn>>
 	}
 }
 
-fn statements(plans: &[PhysicalPlan<'_>], scope: &Scope) -> Result<Found> {
+fn statements(plans: &[PhysicalPlan<'_>], scope: &Scope) -> Result<Found, ValueError> {
 	let mut named = Vec::new();
 	for plan in plans {
 		named.extend(statement(plan, scope.fresh())?);
@@ -156,11 +155,11 @@ fn statements(plans: &[PhysicalPlan<'_>], scope: &Scope) -> Result<Found> {
 	Ok(Found::named(named))
 }
 
-fn nested(plan: &PhysicalPlan<'_>, scope: &Scope) -> Result<Found> {
+fn nested(plan: &PhysicalPlan<'_>, scope: &Scope) -> Result<Found, ValueError> {
 	Ok(Found::named(statement(plan, scope.fresh())?))
 }
 
-fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
+fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found, ValueError> {
 	match plan {
 		PhysicalPlan::TableScan(node) => Ok(resolve(Source::Table(&node.source), &scope)),
 		PhysicalPlan::IndexScan(node) => Ok(resolve(Source::Table(&node.source), &scope)),
@@ -327,14 +326,19 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 	}
 }
 
-fn optional(input: &Option<BumpBox<'_, PhysicalPlan<'_>>>, scope: Scope) -> Result<Found> {
+fn optional(input: &Option<BumpBox<'_, PhysicalPlan<'_>>>, scope: Scope) -> Result<Found, ValueError> {
 	match input {
 		Some(input) => visit(input, scope),
 		None => Ok(Found::default()),
 	}
 }
 
-fn join(left: &PhysicalPlan<'_>, right: &PhysicalPlan<'_>, on: &[Expression], scope: Scope) -> Result<Found> {
+fn join(
+	left: &PhysicalPlan<'_>,
+	right: &PhysicalPlan<'_>,
+	on: &[Expression],
+	scope: Scope,
+) -> Result<Found, ValueError> {
 	let on = references(on);
 	let is_on = |unmet: &Unmet| on.iter().any(|reference| reference.same(&unmet.reference));
 	let right_scope = scope.fresh().with(on.clone());
@@ -350,7 +354,12 @@ fn join(left: &PhysicalPlan<'_>, right: &PhysicalPlan<'_>, on: &[Expression], sc
 	})
 }
 
-fn returning(found: Found, target: Source<'_>, expressions: &Option<Vec<Expression>>, scope: &Scope) -> Result<Found> {
+fn returning(
+	found: Found,
+	target: Source<'_>,
+	expressions: &Option<Vec<Expression>>,
+	scope: &Scope,
+) -> Result<Found, ValueError> {
 	match expressions {
 		Some(expressions) => Ok(found.merge(resolve(target, &scope.fresh().with(references(expressions))))),
 		None => Ok(found),

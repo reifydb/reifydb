@@ -17,7 +17,7 @@ use reifydb_rql_frontend::{
 
 use crate::convert_data_type_with_constraints;
 
-pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
+pub fn parse_expression(rql: &str) -> Result<Vec<Expression>, ValueError> {
 	let bump = Bump::new();
 	let statements = parse_str(&bump, rql)?;
 	if statements.is_empty() {
@@ -51,14 +51,17 @@ use reifydb_core::{
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
 use reifydb_rql_frontend::{ast::ast::AstBlock, diagnostic::AstError};
-use reifydb_value::{err, error::Diagnostic, fragment::Fragment, value::row_number::ROW_NUMBER_COLUMN_NAME};
-
-use crate::Result;
+use reifydb_value::{
+	err,
+	error::{Diagnostic, ValueError},
+	fragment::Fragment,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
+};
 
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-	pub fn compile(ast: Ast<'_>) -> Result<Expression> {
+	pub fn compile(ast: Ast<'_>) -> Result<Expression, ValueError> {
 		match ast {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Boolean(_) => Ok(Expression::Constant(ConstantExpression::Bool {
@@ -325,7 +328,7 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression> {
+	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression, ValueError> {
 		let fragment = block.token.fragment.to_owned();
 
 		let mut statements = block.statements.into_iter();
@@ -359,7 +362,7 @@ impl ExpressionCompiler {
 		Self::compile(first_node)
 	}
 
-	fn compile_match_arm_result(result: LetValue<'_>) -> Result<Expression> {
+	fn compile_match_arm_result(result: LetValue<'_>) -> Result<Expression, ValueError> {
 		match result {
 			LetValue::Expression(expr) => Self::compile(BumpBox::into_inner(expr)),
 			LetValue::Statement(_) => Err(AstError::UnsupportedAstNode {
@@ -370,7 +373,7 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> Result<Expression> {
+	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> Result<Expression, ValueError> {
 		let fragment = match_ast.token.fragment.to_owned();
 
 		let subject = match match_ast.subject {
@@ -462,7 +465,7 @@ impl ExpressionCompiler {
 		}))
 	}
 
-	fn infix(ast: AstInfix<'_>) -> Result<Expression> {
+	fn infix(ast: AstInfix<'_>) -> Result<Expression, ValueError> {
 		match ast.operator {
 			InfixOperator::Add(token) => {
 				let left = Self::compile(BumpBox::into_inner(ast.left))?;
@@ -744,7 +747,7 @@ impl ExpressionCompiler {
 		namespace: &Fragment,
 		right_ast: Ast<'_>,
 		full_fragment: Fragment,
-	) -> Result<Expression> {
+	) -> Result<Expression, ValueError> {
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
 			Some(ast.token().fragment.text().to_string())
 		}

@@ -14,27 +14,30 @@ use reifydb_core::{
 	value::batch::batch_with,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{
-	column_view::{ColumnView, ViewData},
-	container::{
-		decimal_array::decimal_at,
-		dictionary_array,
-		temporal_array::{dates, datetimes, durations, times},
-		uuid_array::{identity_ids, uuid4s, uuid7s},
-		wide_int_array::wide_at,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		column_view::{ColumnView, ViewData},
+		container::{
+			decimal_array::decimal_at,
+			dictionary_array,
+			temporal_array::{dates, datetimes, durations, times},
+			uuid_array::{identity_ids, uuid4s, uuid7s},
+			wide_int_array::wide_at,
+		},
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		value_type::field::from_field,
 	},
-	ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64,
-	value_type::field::from_field,
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn enum_name_ranks(
 	batch: &RecordBatch,
 	services: &Arc<Services>,
 	rx: &mut Transaction<'_>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
@@ -64,7 +67,7 @@ pub(crate) fn rank_rows(
 	keys: &[(ColumnView<'_>, SortDirection)],
 	row_count: usize,
 	limit: Option<usize>,
-) -> Result<Vec<usize>> {
+) -> Result<Vec<usize>, ValueError> {
 	match sort_columns(keys, row_count) {
 		Some(columns) => {
 			let indices = lexsort_to_indices(&columns, limit)

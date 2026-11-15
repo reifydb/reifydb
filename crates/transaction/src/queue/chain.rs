@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::cowvec::CowVec,
 	value::{partition::Partition, row_number::RowNumber},
 };
@@ -48,7 +48,7 @@ pub fn chain_peek(
 	queue: QueueId,
 	partition: Partition,
 	key_hash: u64,
-) -> Result<ChainHead> {
+) -> Result<ChainHead, ValueError> {
 	let budget = 2 + ChainOverlay::of_key(&overlay.removed, key_hash).count() as u64;
 	if !overlay.stored.contains_key(&(key_hash, budget)) {
 		#[cfg(feature = "testing")]
@@ -88,7 +88,7 @@ pub fn chain_add(
 	partition: Partition,
 	key_hash: u64,
 	row: RowNumber,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	tx.set(vec![(QueueKeyActiveKey::new(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))])?;
 	overlay.removed.remove(&(key_hash, row));
 	overlay.added.insert((key_hash, row));
@@ -103,7 +103,7 @@ pub fn chain_remove(
 	partition: Partition,
 	key_hash: u64,
 	row: RowNumber,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	tx.remove(from_ref(&QueueKeyActiveKey::new(queue, partition, key_hash, row)))?;
 	overlay.added.remove(&(key_hash, row));
 	overlay.removed.insert((key_hash, row));

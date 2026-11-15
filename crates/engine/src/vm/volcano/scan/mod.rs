@@ -28,6 +28,7 @@ use reifydb_core::{
 use reifydb_flow::analyzer::FlowGraphAnalyzer;
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		partition::Partition,
@@ -35,7 +36,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 #[cfg(feature = "column")]
 pub mod column_block_sequence;
@@ -88,7 +89,7 @@ pub(crate) fn scan_headers<'a>(names: impl Iterator<Item = &'a str>, system: &[S
 	}
 }
 
-pub(crate) fn empty_scan(user: Vec<(FieldRef, ArrayRef)>, system: &[SystemColumn]) -> Result<RecordBatch> {
+pub(crate) fn empty_scan(user: Vec<(FieldRef, ArrayRef)>, system: &[SystemColumn]) -> Result<RecordBatch, ValueError> {
 	let mut out = batch(user)?;
 	for column in system {
 		let (_, array) = ColumnBuilder::with_capacity(column.ty(), 0).finish(column.name());
@@ -101,7 +102,7 @@ pub(crate) fn partition_array(partitions: &[Partition]) -> ArrayRef {
 	uint16(SystemColumn::Partitions.name(), partitions.iter().map(|partition| partition.0)).1
 }
 
-pub(crate) fn storage_row(row: MultiVersionRow<TaggedKey>) -> Result<MultiVersionRow<StorageRowKey>> {
+pub(crate) fn storage_row(row: MultiVersionRow<TaggedKey>) -> Result<MultiVersionRow<StorageRowKey>, ValueError> {
 	match row.key {
 		TaggedKey::Row(key) => Ok(MultiVersionRow {
 			key: StorageRowKey::new(key.row),
@@ -114,7 +115,7 @@ pub(crate) fn storage_row(row: MultiVersionRow<TaggedKey>) -> Result<MultiVersio
 
 pub(crate) fn storage_partitioned_row(
 	row: MultiVersionRow<TaggedKey>,
-) -> Result<MultiVersionRow<StoragePartitionedRowKey>> {
+) -> Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError> {
 	match row.key {
 		TaggedKey::PartitionedRow(key) => Ok(MultiVersionRow {
 			key: key.into(),
@@ -125,7 +126,11 @@ pub(crate) fn storage_partitioned_row(
 	}
 }
 
-pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
+pub(crate) fn guard_view_read(
+	view: &ResolvedView,
+	rx: &mut Transaction<'_>,
+	services: &Services,
+) -> Result<(), ValueError> {
 	if view.def().kind() == ViewKind::Transactional {
 		return Ok(());
 	}
@@ -156,7 +161,7 @@ fn upstream_from_catalog(
 	services: &Services,
 	rx: &mut Transaction<'_>,
 	view: ViewId,
-) -> Result<Option<BTreeSet<ObjectId>>> {
+) -> Result<Option<BTreeSet<ObjectId>>, ValueError> {
 	let mut dags = Vec::new();
 	for flow in services.catalog.list_flows_all(rx)? {
 		dags.push(services.catalog.get_flow_dag(rx, flow.id)?);

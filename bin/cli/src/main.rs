@@ -6,8 +6,7 @@
 mod local;
 mod ws;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-use std::thread;
+use std::{error::Error, thread};
 
 use clap::{Parser, Subcommand};
 use reifydb::allocator;
@@ -191,7 +190,7 @@ struct ReplArgs {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
 	allocator::verify();
 
 	let cli = Cli::parse();
@@ -205,7 +204,7 @@ async fn main() -> Result<()> {
 	}
 }
 
-async fn handle_ws(ws_cmd: WsCommand) -> Result<()> {
+async fn handle_ws(ws_cmd: WsCommand) -> Result<(), Box<dyn Error>> {
 	match ws_cmd.action {
 		WsAction::Query(args) => {
 			let rql = args.get_rql();

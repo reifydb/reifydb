@@ -8,12 +8,12 @@ use reifydb_core::value::column::{
 	factory,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 
-fn cast_any(value: Value, target: ValueType) -> Result<(FieldRef, ArrayRef)> {
+fn cast_any(value: Value, target: ValueType) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let column = factory::any("payload", vec![value]);
 	cast_column_data(
 		TargetConvert {

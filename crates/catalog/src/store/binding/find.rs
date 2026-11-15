@@ -10,14 +10,15 @@ use reifydb_core::{
 	key::{catalog::BindingKey, namespace::NamespaceBindingKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::binding::shape::{binding, binding_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_binding(rx: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>> {
+	pub(crate) fn find_binding(rx: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>, ValueError> {
 		let Some(multi) = rx.get(&[BindingKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -28,7 +29,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Binding>> {
+	) -> Result<Option<Binding>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceBindingKey::full_scan(namespace), RangeScope::All, 1024)?;
 

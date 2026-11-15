@@ -40,7 +40,6 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	value::{
@@ -106,7 +105,7 @@ impl SinkSeriesViewOperator {
 		}
 	}
 
-	fn series_key_view<'a>(&self, columns: &'a RecordBatch) -> Result<Option<ColumnView<'a>>> {
+	fn series_key_view<'a>(&self, columns: &'a RecordBatch) -> Result<Option<ColumnView<'a>>, ValueError> {
 		let key_column = self.key.column();
 		if key_column.is_empty() {
 			return column_view(columns, SystemColumn::Time.name());
@@ -123,7 +122,7 @@ impl SinkSeriesViewOperator {
 		column_view(columns, key_column)
 	}
 
-	fn series_keys(&self, columns: &RecordBatch) -> Result<Vec<Option<u64>>> {
+	fn series_keys(&self, columns: &RecordBatch) -> Result<Vec<Option<u64>>, ValueError> {
 		Ok(match self.series_key_view(columns)? {
 			None => vec![None; columns.num_rows()],
 			Some(time) if self.key.column().is_empty() => match time.base_type() {
@@ -135,7 +134,7 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
-	fn series_key_at(&self, keys: &[Option<u64>], row_idx: usize) -> Result<u64> {
+	fn series_key_at(&self, keys: &[Option<u64>], row_idx: usize) -> Result<u64, ValueError> {
 		let key_column = self.key.column();
 		keys[row_idx].ok_or_else(|| {
 			ValueError::from(FlowSinkError::MissingSeriesKey {
@@ -150,7 +149,7 @@ impl SinkSeriesViewOperator {
 		})
 	}
 
-	fn checked_series_keys(&self, keys: &[Option<u64>]) -> Result<Vec<u64>> {
+	fn checked_series_keys(&self, keys: &[Option<u64>]) -> Result<Vec<u64>, ValueError> {
 		(0..keys.len()).map(|row_idx| self.series_key_at(keys, row_idx)).collect()
 	}
 
@@ -160,7 +159,7 @@ impl SinkSeriesViewOperator {
 		view: &View,
 		object_id: StorageId,
 		source: &RecordBatch,
-	) -> Result<Option<Vec<Partition>>> {
+	) -> Result<Option<Vec<Partition>>, ValueError> {
 		if !self.is_partitioned() {
 			return Ok(None);
 		}
@@ -179,7 +178,7 @@ impl DurableSink for SinkSeriesViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change_keeping(txn, change, self.view.def().columns())?;
 		let resolved = self.view.clone();
 		let view = resolved.def();
@@ -218,7 +217,7 @@ impl SinkSeriesViewOperator {
 		shape: &RowShape,
 		object_id: StorageId,
 		post: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -261,7 +260,7 @@ impl SinkSeriesViewOperator {
 		object_id: StorageId,
 		pre: &RecordBatch,
 		post: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 && post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -335,7 +334,7 @@ impl SinkSeriesViewOperator {
 		txn: &mut DeferredTransaction,
 		view: &View,
 		pre: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(());
 		}

@@ -16,18 +16,19 @@ use reifydb_evaluate::{
 use reifydb_rql::nodes::AlterSequenceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{
+	error::ValueError,
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{Value, column_view::ColumnView},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn alter_table_sequence(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let table = match plan.column.object() {
 		ResolvedObject::Table(t) => t.def().clone(),
 		_ => unimplemented!(),

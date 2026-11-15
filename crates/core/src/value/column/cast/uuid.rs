@@ -6,7 +6,6 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -26,7 +25,11 @@ use reifydb_value::{
 use super::error::CastError;
 use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_uuid(data: &ColumnView, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+pub fn to_uuid(
+	data: &ColumnView,
+	target: ValueType,
+	lazy_fragment: impl LazyFragment,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match &data.data {
 		ViewData::Utf8 {
 			container,
@@ -53,7 +56,7 @@ fn from_text(
 	name: &str,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match target {
 		ValueType::Uuid4 => to_uuid4(container, name, lazy_fragment),
 		ValueType::Uuid7 => to_uuid7(container, name, lazy_fragment),
@@ -77,7 +80,7 @@ macro_rules! impl_to_uuid {
 			container: &LargeStringArray,
 			name: &str,
 			lazy_fragment: impl LazyFragment,
-		) -> Result<(FieldRef, ArrayRef)> {
+		) -> Result<(FieldRef, ArrayRef), ValueError> {
 			let mut out = ColumnBuilder::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_valid(idx) {
@@ -116,7 +119,7 @@ fn from_uuid4(
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match target {
 		ValueType::Uuid4 => Ok(retag(data, container, ValueType::Uuid4)),
 		_ => {
@@ -137,7 +140,7 @@ fn from_uuid7(
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match target {
 		ValueType::Uuid7 => Ok(retag(data, container, ValueType::Uuid7)),
 		ValueType::IdentityId => Ok(retag(data, container, ValueType::IdentityId)),
@@ -159,7 +162,7 @@ fn from_identity_id(
 	container: &FixedSizeBinaryArray,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match target {
 		ValueType::IdentityId => Ok(retag(data, container, ValueType::IdentityId)),
 		ValueType::Uuid7 => Ok(retag(data, container, ValueType::Uuid7)),

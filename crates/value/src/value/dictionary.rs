@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use super::{Value, value_type::ValueType};
-use crate::{Result, error::TypeError};
+use crate::error::{TypeError, ValueError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DictionaryEntryId {
@@ -23,7 +23,7 @@ pub enum DictionaryEntryId {
 }
 
 impl DictionaryEntryId {
-	pub fn from_u128(value: u128, id_type: ValueType) -> Result<Self> {
+	pub fn from_u128(value: u128, id_type: ValueType) -> Result<Self, ValueError> {
 		match id_type {
 			ValueType::Uint1 => {
 				if value > u8::MAX as u128 {

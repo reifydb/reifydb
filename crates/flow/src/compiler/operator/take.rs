@@ -7,7 +7,7 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -30,7 +30,7 @@ impl From<TakeNode> for TakeCompiler {
 }
 
 impl CompileOperator for TakeCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(

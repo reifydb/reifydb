@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef::SourceRingBuffer, interface::catalog::flow::OperatorId};
 use reifydb_rql::nodes::RingBufferScanNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -21,7 +21,7 @@ impl From<RingBufferScanNode> for RingBufferScanCompiler {
 }
 
 impl CompileOperator for RingBufferScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let ringbuffer = self.ringbuffer_scan.source.def();
 		let time_domain = ringbuffer.time.domain();
 		let ringbuffer_id = ringbuffer.id;

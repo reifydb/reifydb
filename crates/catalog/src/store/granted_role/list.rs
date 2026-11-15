@@ -3,11 +3,12 @@
 
 use reifydb_core::{interface::catalog::identity::GrantedRole, key::identity::GrantedRoleKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::granted_role::convert_granted_role};
+use crate::{CatalogStore, store::granted_role::convert_granted_role};
 
 impl CatalogStore {
-	pub(crate) fn list_all_granted_roles(rx: &mut Transaction<'_>) -> Result<Vec<GrantedRole>> {
+	pub(crate) fn list_all_granted_roles(rx: &mut Transaction<'_>) -> Result<Vec<GrantedRole>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(GrantedRoleKey::full_scan(), RangeScope::All, 1024)?;
 

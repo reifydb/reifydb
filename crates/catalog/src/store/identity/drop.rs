@@ -6,12 +6,12 @@ use reifydb_core::key::{
 	identity::{GrantedRoleKey, IdentityAttributeValueKey, IdentityKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	pub(crate) fn drop_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<(), ValueError> {
 		{
 			let range = GrantedRoleKey::identity_scan(identity);
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;

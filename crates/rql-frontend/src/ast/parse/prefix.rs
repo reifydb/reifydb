@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
 		parse::{Parser, Precedence},
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_prefix(&mut self) -> Result<Ast<'bump>> {
+	pub(crate) fn parse_prefix(&mut self) -> Result<Ast<'bump>, ValueError> {
 		let operator = self.parse_prefix_operator()?;
 
 		let precedence = match &operator {
@@ -48,7 +49,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_prefix_operator(&mut self) -> Result<AstPrefixOperator<'bump>> {
+	fn parse_prefix_operator(&mut self) -> Result<AstPrefixOperator<'bump>, ValueError> {
 		let token = self.advance()?;
 		match token.kind {
 			TokenKind::Operator(operator) => match operator {

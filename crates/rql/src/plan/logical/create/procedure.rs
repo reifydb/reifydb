@@ -2,14 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstCreateProcedure;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateProcedureNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateProcedureNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_procedure(&self, ast: AstCreateProcedure<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_procedure(
+		&self,
+		ast: AstCreateProcedure<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateProcedure(CreateProcedureNode {
 			procedure: ast.name,
 			params: ast.params,

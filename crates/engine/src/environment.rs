@@ -6,11 +6,9 @@ use reifydb_core::value::{
 	batch::batch,
 	column::factory::{any, utf8},
 };
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::Result;
-
-pub fn create_env_columns() -> Result<RecordBatch> {
+pub fn create_env_columns() -> Result<RecordBatch, ValueError> {
 	let mut keys = Vec::new();
 	let mut values = Vec::new();
 

@@ -32,7 +32,7 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hex::display as hex_display,
 	value::{Value, digest::Digest, duration::Duration, value_type::ValueType},
 };
@@ -274,7 +274,7 @@ impl MarkerPlane {
 	}
 }
 
-pub fn written_views(pending: &Pending, members: &[(FlowId, ViewId)]) -> Result<Vec<WrittenView>> {
+pub fn written_views(pending: &Pending, members: &[(FlowId, ViewId)]) -> Result<Vec<WrittenView>, ValueError> {
 	let head = members.first().map(|(_, view)| *view);
 	let mut views = BTreeSet::new();
 	for (encoded, write) in pending.rows_ordered() {

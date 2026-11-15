@@ -6,15 +6,15 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 	token::token::{Literal, TokenKind},
 };
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{AssertBlockNode, AssertNode, Compiler, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_assert(&self, ast: AstAssert<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_assert(&self, ast: AstAssert<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		let message = ast.message.and_then(|tok| {
 			if matches!(tok.kind, TokenKind::Literal(Literal::Text)) {
 				Some(tok.fragment.text().to_string())

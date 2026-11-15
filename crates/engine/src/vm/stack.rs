@@ -4,9 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::internal;
 use reifydb_evaluate::stack::Variable;
-use reifydb_value::{error, reifydb_assertions};
-
-use crate::Result;
+use reifydb_value::{error, error::ValueError, reifydb_assertions};
 
 #[derive(Debug, Clone)]
 pub struct Stack {
@@ -36,7 +34,7 @@ impl Stack {
 		self.variables.push(value);
 	}
 
-	pub fn pop(&mut self) -> Result<Variable> {
+	pub fn pop(&mut self) -> Result<Variable, ValueError> {
 		self.variables.pop().ok_or_else(|| error!(internal!("VM data stack underflow")))
 	}
 

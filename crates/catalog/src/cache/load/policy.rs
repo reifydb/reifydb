@@ -5,14 +5,12 @@ use std::collections::HashMap;
 
 use reifydb_core::key::identity::{PolicyKey, PolicyOpKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::policy::{convert_policy, convert_policy_op},
-};
+use crate::store::policy::{convert_policy, convert_policy_op};
 
-pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = PolicyKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 

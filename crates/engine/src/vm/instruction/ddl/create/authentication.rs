@@ -12,7 +12,7 @@ use reifydb_value::{
 	value::{Value, identity::IdentityKind},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 const PASSWORD_METHOD: &str = "password";
 
@@ -20,7 +20,7 @@ pub(crate) fn create_authentication(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateAuthenticationNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 

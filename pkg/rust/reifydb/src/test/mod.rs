@@ -4,7 +4,7 @@
 use std::{fs::read_to_string, path::Path};
 
 use reifydb_value::{
-	Result as ValueResult,
+	error::ValueError,
 	params::Params,
 	value::{Value, frame::frame::Frame},
 };
@@ -34,7 +34,7 @@ pub fn run_test_str(content: &str) -> Result<(), String> {
 	stopped
 }
 
-fn script_outcome(result: ValueResult<Vec<Frame>>) -> Result<(), String> {
+fn script_outcome(result: Result<Vec<Frame>, ValueError>) -> Result<(), String> {
 	match result {
 		Ok(frames) => {
 			if let Some(frame) = frames.last() {

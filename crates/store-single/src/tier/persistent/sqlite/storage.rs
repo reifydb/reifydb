@@ -23,7 +23,8 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration,
+	byte_size::ByteSize, count::Count, error::ValueError, reifydb_assertions, util::cowvec::CowVec,
+	value::duration::Duration,
 };
 use reifydb_wal::lsn::Lsn;
 use rusqlite::{
@@ -111,7 +112,11 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn persist(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, saved_lsn: Option<Lsn>) -> Result<()> {
+	pub fn persist(
+		&self,
+		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
+		saved_lsn: Option<Lsn>,
+	) -> Result<(), ValueError> {
 		if entries.is_empty() && saved_lsn.is_none() {
 			return Ok(());
 		}
@@ -140,7 +145,7 @@ impl SqlitePersistentStorage {
 		self.commit_tx(tx)
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Err(internal_error!(
@@ -193,7 +198,7 @@ impl SqlitePersistentStorage {
 
 impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
-	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(vec![None; keys.len()]);
@@ -219,7 +224,7 @@ impl TierStorage for SqlitePersistentStorage {
 		&self,
 		_ctx: &TransactionContext,
 		keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(vec![None; keys.len()]);
@@ -241,7 +246,7 @@ impl TierStorage for SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::single::persistent::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
-	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		if entries.is_empty() {
 			return Ok(());
 		}
@@ -264,7 +269,7 @@ impl TierStorage for SqlitePersistentStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -295,7 +300,7 @@ impl TierStorage for SqlitePersistentStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -319,7 +324,7 @@ impl TierStorage for SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::single::persistent::ensure_table", level = "debug", skip(self))]
-	fn ensure_table(&self) -> Result<()> {
+	fn ensure_table(&self) -> Result<(), ValueError> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
@@ -340,7 +345,7 @@ impl TierStorage for SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::single::persistent::clear_table", level = "debug", skip(self))]
-	fn clear_table(&self) -> Result<()> {
+	fn clear_table(&self) -> Result<(), ValueError> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
@@ -358,7 +363,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 impl SqlitePersistentStorage {
 	#[inline]
-	fn begin_tx<'a>(&self, conn: &'a Connection) -> Result<SqliteTransaction<'a>> {
+	fn begin_tx<'a>(&self, conn: &'a Connection) -> Result<SqliteTransaction<'a>, ValueError> {
 		SqliteTransaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.map_err(|e| internal_error!("Failed to start transaction: {}", e))
 	}
@@ -368,7 +373,7 @@ impl SqlitePersistentStorage {
 		&self,
 		tx: &SqliteTransaction,
 		entries: &[(EncodedKey, Option<CowVec<u8>>)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let result = insert_entries_in_tx(tx, TABLE_NAME, entries);
 		if let Err(e) = result {
 			if e.to_string().contains("no such table") {
@@ -393,7 +398,7 @@ impl SqlitePersistentStorage {
 	}
 
 	#[inline]
-	fn commit_tx(&self, tx: SqliteTransaction) -> Result<()> {
+	fn commit_tx(&self, tx: SqliteTransaction) -> Result<(), ValueError> {
 		tx.commit().map_err(|e| internal_error!("Failed to commit transaction: {}", e))
 	}
 
@@ -418,7 +423,7 @@ impl SqlitePersistentStorage {
 		effective_start: &Bound<Vec<u8>>,
 		end_owned: &Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Option<Vec<RawEntry>>> {
+	) -> Result<Option<Vec<RawEntry>>, ValueError> {
 		let start_ref = bound_as_ref(effective_start);
 		let end_ref = bound_as_ref(end_owned);
 		let (query, params) = build_range_query(TABLE_NAME, start_ref, end_ref, false, batch_size + 1);
@@ -493,7 +498,7 @@ impl SqlitePersistentStorage {
 		start_owned: &Bound<Vec<u8>>,
 		effective_end: &Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Option<Vec<RawEntry>>> {
+	) -> Result<Option<Vec<RawEntry>>, ValueError> {
 		let start_ref = bound_as_ref(start_owned);
 		let end_ref = bound_as_ref(effective_end);
 		let (query, params) = build_range_query(TABLE_NAME, start_ref, end_ref, true, batch_size + 1);
@@ -551,7 +556,7 @@ impl SqlitePersistentStorage {
 impl TierBackend for SqlitePersistentStorage {}
 
 impl Shutdown for SqlitePersistentStorage {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("single store");
 		self.inner.readers.shutdown();
 		if let Some(conn) = self.inner.conn.lock().take() {

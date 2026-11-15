@@ -7,11 +7,15 @@ use reifydb_core::{
 	key::flow::FlowEdgeKey,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::flow_edge::shape::flow_edge};
+use crate::{CatalogStore, store::flow_edge::shape::flow_edge};
 
 impl CatalogStore {
-	pub(crate) fn find_flow_edge(rx: &mut Transaction<'_>, edge: FlowEdgeId) -> Result<Option<FlowEdge>> {
+	pub(crate) fn find_flow_edge(
+		rx: &mut Transaction<'_>,
+		edge: FlowEdgeId,
+	) -> Result<Option<FlowEdge>, ValueError> {
 		let Some(multi) = rx.get(&[FlowEdgeKey::new(edge).into()])?.pop().flatten() else {
 			return Ok(None);
 		};

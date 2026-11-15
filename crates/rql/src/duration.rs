@@ -3,7 +3,6 @@
 
 use reifydb_rql_frontend::token::token::{Literal, Token, TokenKind};
 use reifydb_value::{
-	Result,
 	error::{AstErrorKind, TypeError, ValueError},
 	value::{duration::Duration, temporal::parse::duration::parse_duration},
 };
@@ -14,7 +13,7 @@ pub(crate) enum DurationBound {
 	AllowZero,
 }
 
-pub(crate) fn compile_duration(token: &Token<'_>, bound: DurationBound, context: &str) -> Result<Duration> {
+pub(crate) fn compile_duration(token: &Token<'_>, bound: DurationBound, context: &str) -> Result<Duration, ValueError> {
 	if token.kind != TokenKind::Literal(Literal::Duration) {
 		return Err(invalid_option(token, &format!("a bare duration literal such as `2h` for {}", context)));
 	}

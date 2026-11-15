@@ -10,7 +10,7 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 use crate::{
 	engine::FlowEngineInner,
@@ -28,7 +28,7 @@ pub struct WatermarkHold {
 pub type WatermarkHolds = Vec<WatermarkHold>;
 
 impl FlowEngineInner {
-	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds> {
+	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds, ValueError> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -74,7 +74,7 @@ fn output_frontiers<T: FlowTransaction>(
 	operators: &BTreeMap<(FlowId, OperatorId), BoxedHostOperator>,
 	topo: &[OperatorId],
 	lookups: &[OperatorId],
-) -> Result<BTreeMap<OperatorId, DateTime>> {
+) -> Result<BTreeMap<OperatorId, DateTime>, ValueError> {
 	let mut computed: BTreeMap<OperatorId, DateTime> = BTreeMap::new();
 
 	for operator_id in topo {
@@ -203,7 +203,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 

@@ -20,19 +20,20 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	byte_size::ByteSize,
 	error,
+	error::ValueError,
 	params::Params,
 	reifydb_assertions,
 	value::{column_view::ColumnView, identity::IdentityId, system_columns::check_user_columns},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub fn query_budget(services: &Services) -> Arc<MemoryBudget> {
 	let limit = services.catalog.get_config_uint8(ConfigKey::QueryBytes);
 	Arc::new(MemoryBudget::new(ByteSize::from_bytes(limit)))
 }
 
-pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnView<'_>) -> Result<()> {
+pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnView<'_>) -> Result<(), ValueError> {
 	let ty = data.get_type();
 	if ty.is_scalar() {
 		Ok(())
@@ -41,7 +42,11 @@ pub(crate) fn ensure_sort_key_orderable(key: &SortKey, data: &ColumnView<'_>) ->
 	}
 }
 
-pub(crate) fn charge_query_memory_bytes(budget: &MemoryBudget, charged: &mut usize, total: usize) -> Result<()> {
+pub(crate) fn charge_query_memory_bytes(
+	budget: &MemoryBudget,
+	charged: &mut usize,
+	total: usize,
+) -> Result<(), ValueError> {
 	if total > *charged {
 		let delta = (total - *charged) as u64;
 		if !budget.try_charge(ByteSize::from_bytes(delta)) {
@@ -53,9 +58,13 @@ pub(crate) fn charge_query_memory_bytes(budget: &MemoryBudget, charged: &mut usi
 }
 
 pub trait QueryNode: Send + Sync {
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()>;
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError>;
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>>;
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError>;
 
 	fn headers(&self) -> Option<ColumnHeaders>;
 }
@@ -72,11 +81,15 @@ pub struct QueryContext {
 }
 
 impl QueryNode for Box<dyn QueryNode> {
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let result = (**self).next(rx, ctx)?;
 		if let Some(ref batch) = result {
 			check_user_columns(batch)?;
@@ -142,7 +155,7 @@ mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	#[cfg(reifydb_assertions)]
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{byte_size::ByteSize, error::ValueError};
 	#[cfg(reifydb_assertions)]
 	use reifydb_value::{params::Params, value::identity::IdentityId};
 
@@ -150,7 +163,7 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	use super::{QueryContext, QueryNode, query_budget};
 	#[cfg(reifydb_assertions)]
-	use crate::{Result, vm::services::Services};
+	use crate::vm::services::Services;
 
 	#[test]
 	fn charge_query_memory_delta_charges_and_rejects_over_budget() {
@@ -184,7 +197,7 @@ mod tests {
 
 	#[cfg(reifydb_assertions)]
 	impl QueryNode for NegativeZeroNode {
-		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 			Ok(())
 		}
 
@@ -192,7 +205,7 @@ mod tests {
 			&mut self,
 			_rx: &mut Transaction<'a>,
 			_ctx: &mut QueryContext,
-		) -> Result<Option<RecordBatch>> {
+		) -> Result<Option<RecordBatch>, ValueError> {
 			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
 			Ok(Some(RecordBatch::try_from_iter([("c", column)]).unwrap()))
 		}

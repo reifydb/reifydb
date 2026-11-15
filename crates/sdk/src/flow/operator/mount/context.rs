@@ -29,7 +29,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::{Result as SdkResult, SdkError},
+	error::SdkError,
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
 		context::{
@@ -45,7 +45,7 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn reject_reserved_kind(kind: TimerKind) -> SdkResult<()> {
+fn reject_reserved_kind(kind: TimerKind) -> Result<(), SdkError> {
 	if kind == TimerKind::Reclaim {
 		return Err(ValueError::from(CoreError::OperatorTimerKindReserved {
 			kind: "Reclaim",
@@ -55,11 +55,11 @@ fn reject_reserved_kind(kind: TimerKind) -> SdkResult<()> {
 	Ok(())
 }
 
-fn decode<T: OperatorState>(row: &EncodedPodRow) -> SdkResult<T> {
+fn decode<T: OperatorState>(row: &EncodedPodRow) -> Result<T, SdkError> {
 	decode_payload(row)
 }
 
-fn encode<T: OperatorState>(value: &T) -> SdkResult<EncodedPodRow> {
+fn encode<T: OperatorState>(value: &T) -> Result<EncodedPodRow, SdkError> {
 	encode_payload(value)
 }
 
@@ -98,7 +98,7 @@ impl GuestEmit for InProcessInsertEmit<'_> {
 	fn sink(&mut self) -> &mut InProcessRowSink {
 		&mut self.sink
 	}
-	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<(), SdkError> {
 		let columns = self.sink.finish(row_numbers.to_vec(), times)?;
 		self.diffs.push(Diff::insert(columns));
 		Ok(())
@@ -115,7 +115,7 @@ impl GuestEmit for InProcessRemoveEmit<'_> {
 	fn sink(&mut self) -> &mut InProcessRowSink {
 		&mut self.sink
 	}
-	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> SdkResult<()> {
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<(), SdkError> {
 		let columns = self.sink.finish(row_numbers.to_vec(), times)?;
 		self.diffs.push(Diff::remove(columns));
 		Ok(())
@@ -136,7 +136,12 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 	fn post(&mut self) -> &mut InProcessRowSink {
 		&mut self.post
 	}
-	fn finish(self, row_numbers: &[RowNumber], pre_times: &[DateTime], post_times: &[DateTime]) -> SdkResult<()> {
+	fn finish(
+		self,
+		row_numbers: &[RowNumber],
+		pre_times: &[DateTime],
+		post_times: &[DateTime],
+	) -> Result<(), SdkError> {
 		let pre_columns = self.pre.finish(row_numbers.to_vec(), pre_times)?;
 		let post_columns = self.post.finish(row_numbers.to_vec(), post_times)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
@@ -151,7 +156,7 @@ pub struct InProcessState<'a> {
 }
 
 impl GuestState for InProcessState<'_> {
-	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<Option<T>>> {
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>, SdkError> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
@@ -160,17 +165,17 @@ impl GuestState for InProcessState<'_> {
 		let rows = unsafe { (*self.host).state_get(keys) }.map_err(to_sdk_err)?;
 		rows.iter().map(|row| row.as_ref().map(decode).transpose()).collect()
 	}
-	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> SdkResult<()> {
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<(), SdkError> {
 		let mut encoded = Vec::with_capacity(rows.len());
 		for (key, value) in rows {
 			encoded.push((key.clone(), encode(value)?));
 		}
 		self.set_bytes(encoded)
 	}
-	fn remove(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
+	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<(), SdkError> {
 		self.remove_bytes(keys)
 	}
-	fn contains(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<bool>> {
+	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>, SdkError> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
@@ -181,8 +186,8 @@ impl GuestState for InProcessState<'_> {
 	fn get_bytes(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
@@ -197,7 +202,7 @@ impl GuestState for InProcessState<'_> {
 		Ok(())
 	}
 
-	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> SdkResult<()> {
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), SdkError> {
 		for (key, _) in &rows {
 			class_framed(self.class, key)?;
 		}
@@ -209,7 +214,7 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_set(rows) }.map_err(to_sdk_err)
 	}
 
-	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<(), SdkError> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
@@ -221,7 +226,7 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_remove(keys) }.map_err(to_sdk_err)
 	}
 
-	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> SdkResult<StateBatch> {
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, SdkError> {
 		for key in &keys {
 			class_framed(self.class, key)?;
 		}
@@ -230,7 +235,7 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_batch(keys) }.map_err(to_sdk_err)
 	}
 
-	fn write_batch_bytes(&mut self, batch: StateBatch) -> SdkResult<()> {
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<(), SdkError> {
 		check_class_batch(self.class, &batch)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -244,8 +249,8 @@ impl GuestState for InProcessState<'_> {
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError> {
 		class_keyspace(self.class, keyspace)?;
 		let range = GroupStateRange::Keyspace {
 			group,
@@ -265,7 +270,7 @@ impl GuestState for InProcessState<'_> {
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
-	) -> SdkResult<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let sweep = unsafe { (*self.host).group_sweep(groups, limit, guest_sweep_mask(keyspaces)) }
@@ -279,7 +284,7 @@ impl GuestState for InProcessState<'_> {
 		keyspace: KeyspaceId,
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
-	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Option<(GroupStateKey, EncodedPodRow)>, SdkError> {
 		class_keyspace(self.class, keyspace)?;
 		let range = GroupStateRange::Keyspace {
 			group,
@@ -313,26 +318,26 @@ impl GuestEmitContext for InProcessContext<'_> {
 	fn batch_time(&self) -> DateTime {
 		self.now
 	}
-	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), SdkError> {
 		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).arm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
-	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), SdkError> {
 		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).disarm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> SdkResult<()> {
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), SdkError> {
 		reject_reserved_kind(kind)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).rearm_timers(kind, moves) }.map_err(to_sdk_err)
 	}
 
-	fn flow_watermark(&mut self) -> SdkResult<Option<DateTime>> {
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).flow_watermark() }.map_err(to_sdk_err)
@@ -341,7 +346,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> SdkResult<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).dictionary_find(dictionary, values) }.map_err(to_sdk_err)
@@ -350,7 +355,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> SdkResult<Vec<DictionaryEntryId>> {
+	) -> Result<Vec<DictionaryEntryId>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		let host = unsafe { &mut *self.host };
@@ -364,61 +369,64 @@ impl GuestEmitContext for InProcessContext<'_> {
 		&mut self,
 		group: GroupId,
 		keys: &[EncodedKey],
-	) -> SdkResult<Vec<(RowNumber, bool)>> {
+	) -> Result<Vec<(RowNumber, bool)>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_or_create_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
-	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+	) -> Result<Vec<(RowNumber, bool)>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_or_create_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
-	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<Vec<Option<RowNumber>>> {
+	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
-	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), SdkError> {
 		check_row_number_keys(keys)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number(group, keys) }.map_err(to_sdk_err)
 	}
-	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> SdkResult<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number_for_group(groups) }.map_err(to_sdk_err)
 	}
-	fn mint_row_numbers(&mut self, count: usize) -> SdkResult<RowNumber> {
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).mint_row_numbers(count) }.map_err(to_sdk_err)
 	}
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<Vec<Option<RowNumber>>> {
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>, SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
-	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> SdkResult<()> {
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), SdkError> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).set_row_numbers_for_groups(rows) }.map_err(to_sdk_err)
 	}
-	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<InProcessInsertEmit<'_>, SdkError> {
 		Ok(InProcessInsertEmit {
 			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
 		})
 	}
-	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessUpdateEmit<'_>> {
+	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<InProcessUpdateEmit<'_>, SdkError> {
 		Ok(InProcessUpdateEmit {
 			pre: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			post: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
 		})
 	}
-	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessRemoveEmit<'_>> {
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<InProcessRemoveEmit<'_>, SdkError> {
 		Ok(InProcessRemoveEmit {
 			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
@@ -453,7 +461,11 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> SdkResult<Vec<ReclaimOutcome>>
+	fn reclaim_group_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>, SdkError>
 	where
 		C: WindowClass,
 	{

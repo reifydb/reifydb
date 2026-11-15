@@ -10,9 +10,9 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	state::{batch::StateBatch, timer::StateStore},
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
-pub fn mint_row_numbers<S>(store: &mut S, count: u64) -> Result<RowNumber>
+pub fn mint_row_numbers<S>(store: &mut S, count: u64) -> Result<RowNumber, ValueError>
 where
 	S: StateStore + ?Sized,
 {
@@ -27,7 +27,7 @@ pub struct RowNumberReserve {
 }
 
 impl RowNumberReserve {
-	pub fn take<S>(&mut self, store: &mut S) -> Result<RowNumber>
+	pub fn take<S>(&mut self, store: &mut S) -> Result<RowNumber, ValueError>
 	where
 		S: StateStore + ?Sized,
 	{
@@ -39,7 +39,7 @@ impl RowNumberReserve {
 		Ok(RowNumber(next))
 	}
 
-	pub fn commit<S>(self, store: &mut S) -> Result<()>
+	pub fn commit<S>(self, store: &mut S) -> Result<(), ValueError>
 	where
 		S: StateStore + ?Sized,
 	{
@@ -50,7 +50,7 @@ impl RowNumberReserve {
 	}
 }
 
-fn row_number_seed<S>(store: &mut S) -> Result<u64>
+fn row_number_seed<S>(store: &mut S) -> Result<u64, ValueError>
 where
 	S: StateStore + ?Sized,
 {
@@ -60,7 +60,7 @@ where
 	}
 }
 
-pub fn get<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>>
+pub fn get<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>, ValueError>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -81,7 +81,7 @@ where
 	Ok(values)
 }
 
-pub fn get_classified<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>>
+pub fn get_classified<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>, ValueError>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -104,7 +104,7 @@ where
 	Ok(values)
 }
 
-pub fn batch<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<TypedBatch<V>>
+pub fn batch<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<TypedBatch<V>, ValueError>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -123,12 +123,12 @@ pub struct TypedBatch<V> {
 }
 
 impl<V: OperatorState> TypedBatch<V> {
-	pub fn set(&mut self, slot: usize, value: &V) -> Result<()> {
+	pub fn set(&mut self, slot: usize, value: &V) -> Result<(), ValueError> {
 		self.batch.set(slot, value.encode_state()?);
 		Ok(())
 	}
 
-	pub fn value(&self, slot: usize) -> Result<Option<V>> {
+	pub fn value(&self, slot: usize) -> Result<Option<V>, ValueError> {
 		match self.batch.value(slot) {
 			Some(row) => Ok(Some(decode::<V>(row)?)),
 			None => Ok(None),
@@ -139,12 +139,12 @@ impl<V: OperatorState> TypedBatch<V> {
 		self.batch.remove(slot);
 	}
 
-	pub fn commit(self, store: &mut dyn StateStore) -> Result<()> {
+	pub fn commit(self, store: &mut dyn StateStore) -> Result<(), ValueError> {
 		store.state_write_batch(self.batch)
 	}
 }
 
-pub fn set<K, V>(store: &mut dyn StateStore, entries: Vec<(K, V)>) -> Result<()>
+pub fn set<K, V>(store: &mut dyn StateStore, entries: Vec<(K, V)>) -> Result<(), ValueError>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -157,7 +157,7 @@ where
 	store.state_set(rows)
 }
 
-pub fn remove<K>(store: &mut dyn StateStore, keys: &[K]) -> Result<()>
+pub fn remove<K>(store: &mut dyn StateStore, keys: &[K]) -> Result<(), ValueError>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -243,21 +243,26 @@ mod tests {
 	}
 
 	impl TimerStore for MockStore {
-		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<(), ValueError> {
 			unreachable!("the window engine never arms timers; only the shell above it does")
 		}
 
-		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer(
+			&mut self,
+			_due: DateTime,
+			_kind: TimerKind,
+			_key: &EncodedKey,
+		) -> Result<(), ValueError> {
 			unreachable!("the window engine never disarms timers; only the shell above it does")
 		}
 
-		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 			Ok(None)
 		}
 	}
 
 	impl StateStore for MockStore {
-		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 			self.gets += 1;
 			Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 		}
@@ -270,7 +275,7 @@ mod tests {
 			&mut self,
 			range: GroupStateRange,
 			limit: Option<usize>,
-		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 			let range = inner_bytes(range);
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -306,34 +311,41 @@ mod tests {
 			&mut self,
 			_group: GroupId,
 			keys: &[EncodedKey],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
 		fn get_or_create_row_numbers_for_groups(
 			&mut self,
 			groups: &[GroupId],
-		) -> Result<Vec<(RowNumber, bool)>> {
+		) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
-		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber> {
+		fn mint_row_numbers(&mut self, _count: usize) -> Result<RowNumber, ValueError> {
 			Ok(RowNumber(1))
 		}
 
-		fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers_for_groups(
+			&mut self,
+			groups: &[GroupId],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(vec![None; groups.len()])
 		}
 
-		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<()> {
+		fn set_row_numbers_for_groups(&mut self, _rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn get_row_numbers(&mut self, _group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers(
+			&mut self,
+			_group: GroupId,
+			keys: &[EncodedKey],
+		) -> Result<Vec<Option<RowNumber>>, ValueError> {
 			Ok(keys.iter().enumerate().map(|(i, _)| Some(RowNumber(i as u64 + 1))).collect())
 		}
 
-		fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 			self.removes += 1;
 			for key in keys {
 				self.data.remove(key.as_slice());
@@ -341,15 +353,15 @@ mod tests {
 			Ok(())
 		}
 
-		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 			per_key::read_batch(self, keys)
 		}
 
-		fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 			per_key::write_batch(self, batch)
 		}
 
-		fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 			self.sets += 1;
 			for (key, payload) in rows {
 				self.data.insert(key.as_slice().to_vec(), payload);
@@ -362,15 +374,15 @@ mod tests {
 			groups: &[GroupId],
 			limit: usize,
 			keyspaces: KeyspaceMask,
-		) -> Result<GroupSweep> {
+		) -> Result<GroupSweep, ValueError> {
 			per_key::group_sweep(self, groups, limit, keyspaces)
 		}
 
-		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
+		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {
+		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<(), ValueError> {
 			Ok(())
 		}
 

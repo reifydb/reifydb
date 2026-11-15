@@ -54,7 +54,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
@@ -77,7 +76,7 @@ impl<'a> Vm<'a> {
 		result: Variable,
 		return_type: Option<&TypeConstraint>,
 		name: &Fragment,
-	) -> Result<Variable> {
+	) -> Result<Variable, ValueError> {
 		let Some(declared) = return_type else {
 			return Ok(result);
 		};
@@ -97,20 +96,20 @@ impl<'a> Vm<'a> {
 						)?;
 						Ok(factory::rename(casted, field.name()))
 					})
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				Ok(Variable::columns(batch(coerced)?))
 			}
 			other => Ok(other),
 		}
 	}
 
-	fn coerce_value(&self, value: Value, target: &ValueType, fragment: Fragment) -> Result<Value> {
+	fn coerce_value(&self, value: Value, target: &ValueType, fragment: Fragment) -> Result<Value, ValueError> {
 		match (value, target) {
 			(Value::Any(inner), ValueType::List(_)) => self.coerce_value(*inner, target, fragment),
 			(Value::List(items), ValueType::List(item)) => Ok(Value::List(
 				items.into_iter()
 					.map(|value| self.coerce_value(value, item, fragment.clone()))
-					.collect::<Result<Vec<_>>>()?,
+					.collect::<Result<Vec<_>, ValueError>>()?,
 			)),
 			(value, target) => {
 				let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
@@ -135,7 +134,7 @@ pub(crate) fn cast_to_declared_return_type(
 	declared: &TypeConstraint,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let target = declared.get_type();
 	let casted = cast_column_data(ctx, view, target.clone(), fragment.clone()).map_err(|err| {
 		EngineError::ReturnTypeMismatch {
@@ -152,7 +151,7 @@ pub(crate) fn cast_to_parameter_type(
 	ctx: impl Convert + Copy,
 	parameter: &FunctionParameter,
 	argument: (FieldRef, ArrayRef),
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let Some(declared) = &parameter.type_constraint else {
 		return Ok(argument);
 	};
@@ -166,7 +165,7 @@ pub(crate) fn declared_return_column(
 	declared: &TypeConstraint,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let results = results_column(&values, name)?;
 	match cast_to_declared_return_type(ctx, &ColumnView::try_from(&results)?, declared, name, fragment) {
 		Ok(casted) => {
@@ -178,7 +177,7 @@ pub(crate) fn declared_return_column(
 	}
 }
 
-fn results_column(values: &[Value], name: &str) -> Result<(FieldRef, ArrayRef)> {
+fn results_column(values: &[Value], name: &str) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let wrapped = |value: &Value| {
 		matches!(value, Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) | Value::Type(_))
 	};
@@ -207,7 +206,7 @@ fn declared_return_column_per_value(
 	declared: &TypeConstraint,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut data = ColumnBuilder::with_capacity(declared.get_type(), values.len());
 	for value in values {
 		let single = factory::from_one(name, value);
@@ -222,7 +221,7 @@ pub(crate) fn untyped_return_column(
 	values: Vec<Value>,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut layout: Option<BranchLayout> = None;
 	for value in &values {
 		let fits_any = matches!(
@@ -256,7 +255,7 @@ pub(crate) fn check_arity(
 	given: usize,
 	name: &str,
 	fragment: &Fragment,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if given == parameters.len() {
 		return Ok(());
 	}
@@ -282,7 +281,7 @@ fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ValueError {
 	.into()
 }
 
-fn assign_row_numbers_if_absent(columns: RecordBatch) -> Result<RecordBatch> {
+fn assign_row_numbers_if_absent(columns: RecordBatch) -> Result<RecordBatch, ValueError> {
 	if system_column(&columns, SystemColumn::RowNumbers).is_none() && columns.num_rows() > 0 {
 		let n = columns.num_rows() as u64;
 		let rns: ArrayRef = Arc::new(UInt64Array::from_iter_values(1..=n));
@@ -321,7 +320,7 @@ impl<'a> Vm<'a> {
 		arity: u8,
 		is_procedure_call: bool,
 		type_arguments: &[(usize, Fragment)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let arity = arity as usize;
 		let func_name = name.text();
 
@@ -347,7 +346,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		func_name: &str,
-	) -> Result<bool> {
+	) -> Result<bool, ValueError> {
 		if self.symbols.resolve_callable(func_name).is_some() {
 			return Ok(true);
 		}
@@ -355,7 +354,11 @@ impl<'a> Vm<'a> {
 		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_some())
 	}
 
-	fn rebind_type_arguments(&mut self, arity: usize, type_arguments: &[(usize, Fragment)]) -> Result<()> {
+	fn rebind_type_arguments(
+		&mut self,
+		arity: usize,
+		type_arguments: &[(usize, Fragment)],
+	) -> Result<(), ValueError> {
 		let mut args = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			args.push(self.stack.pop()?);
@@ -378,7 +381,7 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 		arity: usize,
 		name: &Fragment,
-	) -> Result<bool> {
+	) -> Result<bool, ValueError> {
 		if self.batch_size == 1 {
 			return Ok(false);
 		}
@@ -398,7 +401,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		func_name: &str,
-	) -> Result<bool> {
+	) -> Result<bool, ValueError> {
 		if services.routines.get_function(func_name).is_none() {
 			return Ok(false);
 		}
@@ -417,7 +420,7 @@ impl<'a> Vm<'a> {
 		arity: usize,
 		name: &Fragment,
 		func_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let function = services.routines.get_function(func_name).ok_or_else(|| {
 			ValueError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),
@@ -441,7 +444,7 @@ impl<'a> Vm<'a> {
 	}
 
 	#[inline]
-	fn pop_scalar_args(&mut self, arity: usize) -> Result<Vec<Value>> {
+	fn pop_scalar_args(&mut self, arity: usize) -> Result<Vec<Value>, ValueError> {
 		let mut args = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			args.push(self.pop_value()?);
@@ -468,7 +471,7 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		func_name: &str,
 		is_procedure_call: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let proc_def = {
 			let mut tx_tmp = tx.reborrow();
 			services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?
@@ -522,7 +525,7 @@ impl<'a> Vm<'a> {
 		callable: &Callable,
 		arity: usize,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let arg_columns = self.pop_args_as_columns(arity, name)?;
 		check_arity(&callable.parameters, arity, name.text(), name)?;
 
@@ -557,7 +560,7 @@ impl<'a> Vm<'a> {
 		&self,
 		parameters: &[FunctionParameter],
 		arguments: Vec<(FieldRef, ArrayRef)>,
-	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let ctx = self.eval_ctx();
 		parameters
 			.iter()
@@ -566,7 +569,11 @@ impl<'a> Vm<'a> {
 			.collect()
 	}
 
-	fn pop_args_as_columns(&mut self, arity: usize, name: &Fragment) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn pop_args_as_columns(
+		&mut self,
+		arity: usize,
+		name: &Fragment,
+	) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let mut arg_columns = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			arg_columns.push(self.pop_as_column()?);
@@ -593,7 +600,7 @@ impl<'a> Vm<'a> {
 		captured: &HashMap<String, Variable>,
 		return_type: Option<&TypeConstraint>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let arguments = self.cast_arguments(parameters, arg_columns)?;
 		let saved_ip = self.ip;
 		let saved_pending_return = self.pending_return.take();
@@ -643,9 +650,9 @@ impl<'a> Vm<'a> {
 		captured: &HashMap<String, Variable>,
 		name: &Fragment,
 		return_type: Option<&TypeConstraint>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let arg_columns = self.cast_arguments(parameters, arg_columns)?;
-		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 		let row_count = arg_columns.first().map(|c| c.1.len()).unwrap_or(0);
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 		let mut func_symbols = self.symbols.clone();
@@ -698,7 +705,7 @@ impl<'a> Vm<'a> {
 		callable: &Callable,
 		args: Vec<Value>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		check_arity(&callable.parameters, args.len(), name.text(), name)?;
 		let ctx = self.eval_ctx();
 		let mut arguments = Vec::with_capacity(args.len());
@@ -739,7 +746,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let (pol_ns, pol_name) = if let Some((ns, n)) = Catalog::split_qualified_name(func_name) {
 			(ns, n.to_string())
 		} else {
@@ -834,7 +841,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if !matches!(ctx.tx, Transaction::Test(..)) {
 			return Err(TypeError::Procedure {
 				kind: ProcedureErrorKind::UndefinedProcedure {
@@ -862,7 +869,7 @@ impl<'a> Vm<'a> {
 		params: &[ProcedureParam],
 		args: Vec<Value>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let target = match run_as {
 			RunAs::System => IdentityId::system(),
 			RunAs::Caller => self.identity,
@@ -890,7 +897,7 @@ impl<'a> Vm<'a> {
 		params: &[ProcedureParam],
 		args: Vec<Value>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let compiled = ctx.services.compiler.compile_with_policy(ctx.tx, source, inject_from_policies)?;
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -909,7 +916,7 @@ impl<'a> Vm<'a> {
 		proc_params: &[ProcedureParam],
 		args: Vec<Value>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let args = if args.is_empty() && !proc_params.is_empty() && matches!(self.params, Params::Named(_)) {
 			let named: Vec<Value> = proc_params
 				.iter()
@@ -990,7 +997,7 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 		address: &str,
 		token: Option<&str>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(ref registry) = services.remote_registry {
 			let param_refs: Vec<String> = (1..=args.len()).map(|i| format!("${}", i)).collect();
 			let remote_rql = format!("CALL {}({})", func_name, param_refs.join(", "));
@@ -1025,7 +1032,7 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		func_name: &str,
 		is_procedure_call: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(routine) = ctx.services.routines.get_procedure(func_name) {
 			return self.call_procedure_routine(ctx, routine, args, name, func_name);
 		}
@@ -1046,7 +1053,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let call_params = Params::Positional(Arc::new(args));
 		let attach_metadata = routine.attaches_row_metadata();
 		let columns = invoke_procedure_routine(
@@ -1087,7 +1094,7 @@ impl<'a> Vm<'a> {
 		generator: Arc<dyn RoutineFunction>,
 		args: Vec<Value>,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		generator.arity().check(name, args.len())?;
 		let arg_columns: Vec<(FieldRef, ArrayRef)> = args
 			.into_iter()
@@ -1118,7 +1125,7 @@ impl<'a> Vm<'a> {
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let function = ctx.services.routines.get_function(func_name).ok_or_else(|| {
 			ValueError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),
@@ -1159,7 +1166,7 @@ impl<'a> Vm<'a> {
 		self.symbols.define_function(func_name, node.clone());
 	}
 
-	pub(crate) fn exec_return_value(&mut self) -> Result<()> {
+	pub(crate) fn exec_return_value(&mut self) -> Result<(), ValueError> {
 		let cols = self.pop_as_columns()?;
 		self.control_flow = ControlFlow::Return(Some(cols));
 		Ok(())

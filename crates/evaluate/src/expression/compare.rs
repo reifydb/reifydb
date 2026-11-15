@@ -22,7 +22,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	return_error,
 	value::{
@@ -40,12 +40,11 @@ use reifydb_value::{
 };
 
 use super::logic::bool_column;
-use crate::Result;
 
 pub trait CompareOp {
 	const EQUALITY: bool = false;
 
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray>;
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError>;
 }
 
 pub struct Equal;
@@ -58,7 +57,7 @@ pub struct LessThanEqual;
 impl CompareOp for Equal {
 	const EQUALITY: bool = true;
 
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::eq(left, right))
 	}
 }
@@ -66,36 +65,36 @@ impl CompareOp for Equal {
 impl CompareOp for NotEqual {
 	const EQUALITY: bool = true;
 
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::neq(left, right))
 	}
 }
 
 impl CompareOp for GreaterThan {
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::gt(left, right))
 	}
 }
 
 impl CompareOp for GreaterThanEqual {
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::gt_eq(left, right))
 	}
 }
 
 impl CompareOp for LessThan {
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::lt(left, right))
 	}
 }
 
 impl CompareOp for LessThanEqual {
-	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
+	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray, ValueError> {
 		arrow_result(cmp::lt_eq(left, right))
 	}
 }
 
-fn arrow_result<E: Display>(result: StdResult<BooleanArray, E>) -> Result<BooleanArray> {
+fn arrow_result<E: Display>(result: StdResult<BooleanArray, E>) -> Result<BooleanArray, ValueError> {
 	Ok(result.map_err(|err| CoreError::FrameError {
 		message: err.to_string(),
 	})?)
@@ -188,7 +187,7 @@ pub(crate) fn field_compare_target(
 	(left, left_type): (&Field, &ValueType),
 	(right, right_type): (&Field, &ValueType),
 	equality: bool,
-) -> Result<Option<ValueType>> {
+) -> Result<Option<ValueType>, ValueError> {
 	let target = compare_target(left_type, right_type);
 	if target != Some(ValueType::DictionaryId) {
 		return Ok(target);
@@ -218,7 +217,7 @@ macro_rules! widen {
 	};
 }
 
-pub(crate) fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Result<ArrayRef> {
+pub(crate) fn cast_to(column: &(FieldRef, ArrayRef), target: &ValueType) -> Result<ArrayRef, ValueError> {
 	let view = ColumnView::try_from(column)?;
 	if view.get_type().inner_type() == target {
 		return Ok(column.1.clone());
@@ -385,7 +384,7 @@ pub fn compare_columns<Op: CompareOp>(
 	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, ValueType, ValueType) -> Diagnostic,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let len = match (left.1.len(), right.1.len()) {
 		(l, r) if l == r => l,
 		(1, r) => r,
@@ -411,7 +410,7 @@ pub fn compare_columns<Op: CompareOp>(
 	Ok(bool_column(fragment.text(), result, left.0.is_nullable() || right.0.is_nullable()))
 }
 
-fn kernel_compare<Op: CompareOp>(left_array: ArrayRef, right_array: ArrayRef) -> Result<BooleanArray> {
+fn kernel_compare<Op: CompareOp>(left_array: ArrayRef, right_array: ArrayRef) -> Result<BooleanArray, ValueError> {
 	Ok(match (left_array.len(), right_array.len()) {
 		(1, r) if r != 1 => Op::kernel(&Scalar::new(left_array), &right_array)?,
 		(l, 1) if l != 1 => Op::kernel(&left_array, &Scalar::new(right_array))?,

@@ -8,13 +8,13 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_windowed_view_group(
 		rx: &mut Transaction<'_>,
 		group: WindowedViewGroupId,
-	) -> Result<WindowedViewGroup> {
+	) -> Result<WindowedViewGroup, ValueError> {
 		CatalogStore::find_windowed_view_group(rx, group)?.ok_or_else(|| {
 			ValueError(Box::new(internal!(
 				"WindowedViewGroup with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

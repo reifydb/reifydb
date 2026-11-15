@@ -37,7 +37,6 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{
 		Value,
@@ -105,7 +104,11 @@ impl TableSink {
 		self.operator
 	}
 
-	pub fn apply<T: FlowStorageTransaction + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<()> {
+	pub fn apply<T: FlowStorageTransaction + Emit + Intern>(
+		&mut self,
+		txn: &mut T,
+		change: Change,
+	) -> Result<(), ValueError> {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
@@ -144,7 +147,7 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		source: &RecordBatch,
-	) -> Result<Option<Vec<Partition>>> {
+	) -> Result<Option<Vec<Partition>>, ValueError> {
 		if !self.is_partitioned() {
 			return Ok(None);
 		}
@@ -164,7 +167,7 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		post: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -202,7 +205,7 @@ impl TableSink {
 		txn: &mut T,
 		pre: &RecordBatch,
 		post: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 && post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -308,7 +311,7 @@ impl TableSink {
 		&mut self,
 		txn: &mut T,
 		pre: &RecordBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(());
 		}
@@ -362,7 +365,7 @@ impl TableSink {
 	}
 }
 
-fn with_stored_created_at(batch: RecordBatch, created: &[DateTime]) -> Result<RecordBatch> {
+fn with_stored_created_at(batch: RecordBatch, created: &[DateTime]) -> Result<RecordBatch, ValueError> {
 	with_system_column(
 		batch,
 		SystemColumn::CreatedAt,
@@ -384,7 +387,7 @@ fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: Row
 	cache.insert(row_number, created_at);
 }
 
-fn view_dictionaries<T: Intern + ?Sized>(txn: &mut T, view: &View) -> Result<Vec<(usize, Dictionary)>> {
+fn view_dictionaries<T: Intern + ?Sized>(txn: &mut T, view: &View) -> Result<Vec<(usize, Dictionary)>, ValueError> {
 	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
 	for (pos, col) in view.columns().iter().enumerate() {
 		if let Some(dict_id) = col.dictionary_id {
@@ -404,7 +407,7 @@ pub fn dictionary_encode_view_columns<T: Intern + ?Sized>(
 	txn: &mut T,
 	view: &View,
 	columns: &RecordBatch,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	let dict_columns = view_dictionaries(txn, view)?;
 	if dict_columns.is_empty() {
 		return Ok(None);
@@ -432,7 +435,7 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 	txn: &mut T,
 	view: &View,
 	columns: &RecordBatch,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	let dict_columns = view_dictionaries(txn, view)?;
 	lookup_dictionary_columns(txn, view, columns, dict_columns)
 }
@@ -442,7 +445,7 @@ pub fn dictionary_lookup_partition_columns<T: Intern + ?Sized>(
 	view: &View,
 	partition_indices: &[usize],
 	columns: &RecordBatch,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	let mut dict_columns = view_dictionaries(txn, view)?;
 	dict_columns.retain(|(pos, _)| partition_indices.contains(pos));
 	lookup_dictionary_columns(txn, view, columns, dict_columns)
@@ -453,7 +456,7 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 	view: &View,
 	columns: &RecordBatch,
 	dict_columns: Vec<(usize, Dictionary)>,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	if dict_columns.is_empty() {
 		return Ok(None);
 	}
@@ -490,7 +493,7 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 					})
 				})
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let ids = scatter_dictionary_ids(&views, dictionary.id_type.none(), &mut ids.into_iter()).remove(0);
 		encoded[*col_pos] = dictionary_id(field.name(), ids);
 	}
@@ -498,7 +501,7 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 	Ok(Some(batch(encoded)?))
 }
 
-fn entry_ids(view: &ColumnView<'_>, dictionary: &Dictionary) -> Result<Option<Vec<DictionaryEntryId>>> {
+fn entry_ids(view: &ColumnView<'_>, dictionary: &Dictionary) -> Result<Option<Vec<DictionaryEntryId>>, ValueError> {
 	let ViewData::DictionaryId {
 		container,
 		..
@@ -512,7 +515,7 @@ fn entry_ids(view: &ColumnView<'_>, dictionary: &Dictionary) -> Result<Option<Ve
 			true => DictionaryEntryId::from_u128(id.to_u128(), dictionary.id_type.clone()),
 			false => Ok(dictionary.id_type.none()),
 		})
-		.collect::<Result<Vec<_>>>()
+		.collect::<Result<Vec<_>, ValueError>>()
 		.map(Some)
 }
 
@@ -520,7 +523,7 @@ fn value_sort_runs<T: Intern + ?Sized>(
 	txn: &mut T,
 	sort: &[ViewSortKey],
 	columns: &RecordBatch,
-) -> Result<Vec<SortRun>> {
+) -> Result<Vec<SortRun>, ValueError> {
 	let mut decoded: Option<Vec<(FieldRef, ArrayRef)>> = None;
 	for key in sort {
 		let index = key.column.0 as usize;

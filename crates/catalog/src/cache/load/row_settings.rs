@@ -4,12 +4,13 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{any::TaggedKey, row::RowSettingsKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use tracing::warn;
 
 use super::CatalogCache;
-use crate::{Result, store::row_settings::decode_row_settings};
+use crate::store::row_settings::decode_row_settings;
 
-pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = RowSettingsKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 

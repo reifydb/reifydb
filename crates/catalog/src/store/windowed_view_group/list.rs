@@ -11,14 +11,17 @@ use reifydb_core::{
 	key::catalog::WindowedViewGroupKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::windowed_view_group::shape::{deserialize_members, windowed_view_group},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_windowed_view_groups_all(rx: &mut Transaction<'_>) -> Result<Vec<WindowedViewGroup>> {
+	pub(crate) fn list_windowed_view_groups_all(
+		rx: &mut Transaction<'_>,
+	) -> Result<Vec<WindowedViewGroup>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(WindowedViewGroupKey::full_scan(), RangeScope::All, 1024)?;

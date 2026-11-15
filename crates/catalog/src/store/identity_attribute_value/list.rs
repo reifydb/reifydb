@@ -3,13 +3,14 @@
 
 use reifydb_core::{interface::catalog::identity::IdentityAttributeValue, key::identity::IdentityAttributeValueKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::identity_attribute_value::convert_identity_attribute_value};
+use crate::{CatalogStore, store::identity_attribute_value::convert_identity_attribute_value};
 
 impl CatalogStore {
 	pub(crate) fn list_all_identity_attribute_values(
 		rx: &mut Transaction<'_>,
-	) -> Result<Vec<IdentityAttributeValue>> {
+	) -> Result<Vec<IdentityAttributeValue>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(IdentityAttributeValueKey::full_scan(), RangeScope::All, 1024)?;
 

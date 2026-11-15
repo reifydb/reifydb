@@ -2,20 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstDrop;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{
-		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
-		DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
-		DropQueueNode, DropRelationshipNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode,
-		DropSourceNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, DropWindowedViewGroupNode,
-		LogicalPlan,
-	},
+use crate::plan::logical::{
+	Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
+	DropIdentityAttributeNode, DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode,
+	DropQueueNode, DropRelationshipNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode,
+	DropSourceNode, DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, DropWindowedViewGroupNode,
+	LogicalPlan,
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_drop(&self, ast: AstDrop<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_drop(&self, ast: AstDrop<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstDrop::Namespace(node) => Ok(LogicalPlan::DropNamespace(DropNamespaceNode {
 				segments: node.namespace.segments,

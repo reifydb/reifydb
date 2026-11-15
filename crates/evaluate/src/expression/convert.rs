@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::cast::convert::{Convert, TargetConvert};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::LazyFragment,
 	value::{number::safe::convert::SafeConvert, value_type::get::GetType},
 };
@@ -11,7 +11,7 @@ use reifydb_value::{
 use crate::expression::context::EvalContext;
 
 impl Convert for EvalContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>, ValueError>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -21,7 +21,7 @@ impl Convert for EvalContext<'_> {
 }
 
 impl Convert for &EvalContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>, ValueError>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,

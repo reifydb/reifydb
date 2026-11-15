@@ -64,7 +64,7 @@ use reifydb_testing_chaos::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
 };
@@ -180,7 +180,7 @@ impl DurableSink for SinkOp {
 		}
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
 		match self {
 			SinkOp::Table(o) => DurableSink::apply(o, txn, change),
 			SinkOp::Series(o) => o.apply(txn, change),
@@ -275,11 +275,11 @@ impl SinkSubject {
 		}
 	}
 
-	fn decode(&self, number: RowNumber, bytes: &EncodedBytes) -> Result<RecordBatch> {
+	fn decode(&self, number: RowNumber, bytes: &EncodedBytes) -> Result<RecordBatch, ValueError> {
 		from_encoded_bytes(&self.shape, &[number], slice::from_ref(bytes))
 	}
 
-	fn diff_of(&mut self, key: EncodedKey, write: PendingWrite) -> Result<Option<Diff>> {
+	fn diff_of(&mut self, key: EncodedKey, write: PendingWrite) -> Result<Option<Diff>, ValueError> {
 		match write {
 			PendingWrite::Set(post) => match self.stored.get(&key).cloned() {
 				Some((number, pre)) => {
@@ -320,7 +320,7 @@ fn is_view_row(key: &EncodedKey) -> bool {
 }
 
 impl Subject for SinkSubject {
-	fn apply(&mut self, change: Change) -> Result<Change> {
+	fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		let version = change.version;
 		let changed_at = change.changed_at;
 		let step = self.harness.apply_sink(change)?;
@@ -337,7 +337,7 @@ impl Subject for SinkSubject {
 		Ok(Change::from_flow(SINK, version, diffs, changed_at))
 	}
 
-	fn tick(&mut self, _at_ms: u64) -> Result<Option<Change>> {
+	fn tick(&mut self, _at_ms: u64) -> Result<Option<Change>, ValueError> {
 		// No sink seals on the generic timer. Row-TTL eviction needs a timer kind the subject cannot
 		// carry, so it stays uncovered and the sweeps keep tick_pct at 0.
 		Ok(None)

@@ -44,7 +44,6 @@ use reifydb_flow::writer::series::{SeriesDeleteTally, apply_series_metadata_afte
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
@@ -268,7 +267,7 @@ impl Evictor {
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let eviction = self.ttl_eviction(storage)?;
 		match storage {
 			StorageId::Table(_) => self.evict_rows(
@@ -292,7 +291,7 @@ impl Evictor {
 		}
 	}
 
-	fn ttl_eviction(&self, storage: StorageId) -> Result<EvictionVisibility> {
+	fn ttl_eviction(&self, storage: StorageId) -> Result<EvictionVisibility, ValueError> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let eviction = self.engine.catalog().find_ttl_eviction(&mut Transaction::Command(&mut txn), storage);
 		txn.rollback()?;
@@ -310,7 +309,7 @@ impl Evictor {
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let storage = StorageId::View(id);
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let view = self.engine.catalog().find_view(&mut Transaction::Command(&mut txn), id)?;
@@ -361,7 +360,7 @@ impl Evictor {
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keyspaces = match family {
 			RowFamily::Series => [
 				SeriesRowKeyRange::full_scan(storage, None),
@@ -390,7 +389,7 @@ impl Evictor {
 		Ok(())
 	}
 
-	fn row_owner_exists(&self, txn: &mut CommandTransaction, storage: StorageId) -> Result<bool> {
+	fn row_owner_exists(&self, txn: &mut CommandTransaction, storage: StorageId) -> Result<bool, ValueError> {
 		let catalog = self.engine.catalog();
 		Ok(match storage {
 			StorageId::Table(id) => catalog.find_table(&mut Transaction::Command(&mut *txn), id)?.is_some(),
@@ -415,7 +414,7 @@ impl Evictor {
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-	) -> Result<(Vec<TaggedKey>, bool)> {
+	) -> Result<(Vec<TaggedKey>, bool), ValueError> {
 		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(&keyspace.encode())) {
 			let scan = scan::scan_expired_indexed(
 				txn,
@@ -453,7 +452,7 @@ impl Evictor {
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
-	) -> Result<(u64, bool)> {
+	) -> Result<(u64, bool), ValueError> {
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
@@ -483,7 +482,7 @@ impl Evictor {
 		storage: StorageId,
 		eviction: EvictionVisibility,
 		expired: &[TaggedKey],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let StorageId::Table(id) = storage else {
 			return Ok(());
 		};
@@ -516,7 +515,7 @@ impl Evictor {
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let storage = StorageId::RingBuffer(id);
 		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
 			loop {
@@ -546,7 +545,7 @@ impl Evictor {
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
-	) -> Result<(u64, bool)> {
+	) -> Result<(u64, bool), ValueError> {
 		let storage = StorageId::RingBuffer(id);
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let catalog = self.engine.catalog();
@@ -620,7 +619,7 @@ impl Evictor {
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		loop {
 			if *budget == 0 {
 				return Ok(());
@@ -644,7 +643,7 @@ impl Evictor {
 		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
-	) -> Result<(u64, bool)> {
+	) -> Result<(u64, bool), ValueError> {
 		let storage = StorageId::Series(id);
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
@@ -698,7 +697,7 @@ impl Evictor {
 			.filter_map(|((partition, tally), metadata)| {
 				let mut metadata = metadata?;
 				apply_series_metadata_after_delete(&mut metadata, &tally);
-				let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+				let change = move |latest: &mut SeriesPartitionMetadata| -> Result<(), ValueError> {
 					apply_series_metadata_after_delete(latest, &tally);
 					Ok(())
 				};
@@ -711,7 +710,11 @@ impl Evictor {
 	}
 }
 
-fn remove_expired(txn: &mut CommandTransaction, expired: &[TaggedKey], eviction: EvictionVisibility) -> Result<()> {
+fn remove_expired(
+	txn: &mut CommandTransaction,
+	expired: &[TaggedKey],
+	eviction: EvictionVisibility,
+) -> Result<(), ValueError> {
 	match eviction {
 		EvictionVisibility::Visible => txn.remove(expired.iter().map(|key| (key.clone(), None)).collect()),
 		EvictionVisibility::Silent => txn.remove_silent(expired.to_vec()),

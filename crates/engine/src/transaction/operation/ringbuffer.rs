@@ -28,13 +28,13 @@ use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
+};
 use smallvec::{SmallVec, smallvec};
 
-use crate::{
-	Result,
-	transaction::operation::{storage::DmlTransaction, table::TableDml},
-};
+use crate::transaction::operation::{storage::DmlTransaction, table::TableDml};
 
 pub fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	ring_row_tagged(ringbuffer.id.into(), partition, row_number)
@@ -45,7 +45,7 @@ fn moved_partitions(
 	shape: &RowShape,
 	partitions: &[Partition],
 	rows: &[EncodedBytes],
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 	Ok(!indices.is_empty() && partitions_of_rows(shape, &indices, rows)? != partitions)
 }
@@ -60,11 +60,11 @@ impl RingCounters<DmlTransaction<'_>> for CatalogRing<'_> {
 		&self,
 		txn: &mut DmlTransaction<'_>,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<RingBufferMetadata>>> {
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		self.catalog.find_partition_metadata(&mut txn.tx, self.ringbuffer, partitions)
 	}
 
-	fn reserve(&self, txn: &mut DmlTransaction<'_>, batch_count: u64) -> Result<u64> {
+	fn reserve(&self, txn: &mut DmlTransaction<'_>, batch_count: u64) -> Result<u64, ValueError> {
 		Ok(self.catalog.reserve_ringbuffer_row_numbers(&mut txn.tx, self.ringbuffer.id, batch_count)?.0)
 	}
 
@@ -72,11 +72,15 @@ impl RingCounters<DmlTransaction<'_>> for CatalogRing<'_> {
 		&self,
 		txn: &mut DmlTransaction<'_>,
 		entries: &[(Option<Partition>, RingBufferMetadata)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.catalog.save_partition_metadata(&mut txn.tx, self.ringbuffer, entries)
 	}
 
-	fn remove_metadata(&self, txn: &mut DmlTransaction<'_>, partitions: &[Option<Partition>]) -> Result<()> {
+	fn remove_metadata(
+		&self,
+		txn: &mut DmlTransaction<'_>,
+		partitions: &[Option<Partition>],
+	) -> Result<(), ValueError> {
 		self.catalog.remove_partition_metadata(&mut txn.tx, self.ringbuffer, partitions)
 	}
 }
@@ -87,7 +91,7 @@ pub fn place_ring_rows(
 	ringbuffer: &RingBuffer,
 	ring: &mut Ring,
 	requests: &[(Option<Partition>, Vec<RowNumber>)],
-) -> Result<Vec<Vec<Placement>>> {
+) -> Result<Vec<Vec<Placement>>, ValueError> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
@@ -101,7 +105,7 @@ pub fn reserve_ring_rows(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	count: usize,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
@@ -115,7 +119,7 @@ pub fn release_ring_rows(
 	ringbuffer: &RingBuffer,
 	ring: &mut Ring,
 	requests: &[(Option<Partition>, Vec<RowNumber>)],
-) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
+) -> Result<Vec<Vec<Option<EncodedBytes>>>, ValueError> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
@@ -129,7 +133,7 @@ pub fn ring_rows_oldest_first(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	partition: Option<Partition>,
-) -> Result<Vec<RowNumber>> {
+) -> Result<Vec<RowNumber>, ValueError> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
@@ -144,7 +148,12 @@ pub fn ring_rows_oldest_first(
 	)
 }
 
-pub fn save_ring(catalog: &Catalog, txn: &mut Transaction<'_>, ringbuffer: &RingBuffer, ring: &Ring) -> Result<()> {
+pub fn save_ring(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	ring: &Ring,
+) -> Result<(), ValueError> {
 	let counters = CatalogRing {
 		catalog,
 		ringbuffer,
@@ -167,7 +176,7 @@ fn build_ringbuffer_write_change(
 	ids: &[RowNumber],
 	rows: &[EncodedBytes],
 	evicted: &[Option<Evicted>],
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	let mut diffs: SmallVec<[Diff; 4]> = SmallVec::new();
 	let (victim_ids, victim_rows): (Vec<RowNumber>, Vec<EncodedBytes>) =
 		evicted.iter().flatten().map(|victim| (victim.row, victim.bytes.clone())).unzip();
@@ -184,7 +193,7 @@ fn build_ringbuffer_update_change(
 	ids: &[RowNumber],
 	pres: &[EncodedBytes],
 	posts: &[EncodedBytes],
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	Ok(ringbuffer_change(
 		ringbuffer,
 		smallvec![Diff::update(from_encoded_bytes(shape, ids, pres)?, from_encoded_bytes(shape, ids, posts)?)],
@@ -196,7 +205,7 @@ fn build_ringbuffer_remove_change(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	rows: &[EncodedBytes],
-) -> Result<Change> {
+) -> Result<Change, ValueError> {
 	Ok(ringbuffer_change(ringbuffer, smallvec![Diff::remove(from_encoded_bytes(shape, ids, rows)?)]))
 }
 
@@ -209,7 +218,7 @@ pub trait RingBufferOperations {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		evicted: &[Option<Evicted>],
-	) -> Result<Vec<EncodedBytes>>;
+	) -> Result<Vec<EncodedBytes>, ValueError>;
 
 	fn update_ringbuffer(
 		&mut self,
@@ -218,7 +227,7 @@ pub trait RingBufferOperations {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<Vec<EncodedBytes>>;
+	) -> Result<Vec<EncodedBytes>, ValueError>;
 
 	fn remove_from_ringbuffer(
 		&mut self,
@@ -226,7 +235,7 @@ pub trait RingBufferOperations {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: &[EncodedBytes],
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 }
 
 fn write_rows<T: TableDml>(
@@ -237,7 +246,7 @@ fn write_rows<T: TableDml>(
 	ids: &[RowNumber],
 	rows: &[EncodedBytes],
 	evicted: &[Option<Evicted>],
-) -> Result<Vec<EncodedBytes>> {
+) -> Result<Vec<EncodedBytes>, ValueError> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 	assert_eq!(ids.len(), evicted.len(), "ids/evicted length mismatch");
 	if ids.is_empty() {
@@ -317,7 +326,7 @@ fn update_rows<T: TableDml>(
 	ids: &[RowNumber],
 	rows: &[EncodedBytes],
 	pres: &[EncodedBytes],
-) -> Result<Vec<EncodedBytes>> {
+) -> Result<Vec<EncodedBytes>, ValueError> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 	assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 	let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
@@ -367,7 +376,7 @@ fn remove_rows<T: TableDml>(
 	partitions: &[Partition],
 	ids: &[RowNumber],
 	displayed: &[EncodedBytes],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	assert_eq!(ids.len(), displayed.len(), "ids/displayed length mismatch");
 	if ids.is_empty() {
 		return Ok(());
@@ -417,7 +426,7 @@ impl RingBufferOperations for CommandTransaction {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		evicted: &[Option<Evicted>],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		write_rows(self, ringbuffer, shape, partitions, ids, rows, evicted)
 	}
 
@@ -428,7 +437,7 @@ impl RingBufferOperations for CommandTransaction {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		update_rows(self, ringbuffer, partitions, ids, rows, pres)
 	}
 
@@ -438,7 +447,7 @@ impl RingBufferOperations for CommandTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		remove_rows(self, ringbuffer, partitions, ids, displayed)
 	}
 }
@@ -452,7 +461,7 @@ impl RingBufferOperations for AdminTransaction {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		evicted: &[Option<Evicted>],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		write_rows(self, ringbuffer, shape, partitions, ids, rows, evicted)
 	}
 
@@ -463,7 +472,7 @@ impl RingBufferOperations for AdminTransaction {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		update_rows(self, ringbuffer, partitions, ids, rows, pres)
 	}
 
@@ -473,7 +482,7 @@ impl RingBufferOperations for AdminTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		remove_rows(self, ringbuffer, partitions, ids, displayed)
 	}
 }
@@ -487,7 +496,7 @@ impl RingBufferOperations for Transaction<'_> {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		evicted: &[Option<Evicted>],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		match self {
 			Transaction::Command(txn) => {
 				txn.write_ringbuffer(ringbuffer, shape, partitions, ids, rows, evicted)
@@ -509,7 +518,7 @@ impl RingBufferOperations for Transaction<'_> {
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<Vec<EncodedBytes>> {
+	) -> Result<Vec<EncodedBytes>, ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows, pres),
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows, pres),
@@ -524,7 +533,7 @@ impl RingBufferOperations for Transaction<'_> {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),

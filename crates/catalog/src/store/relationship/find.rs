@@ -7,11 +7,15 @@ use reifydb_core::{
 	key::catalog::RelationshipKey,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::relationship::list::decode_relationship_row};
+use crate::{CatalogStore, store::relationship::list::decode_relationship_row};
 
 impl CatalogStore {
-	pub(crate) fn find_relationship(rx: &mut Transaction<'_>, id: RelationshipId) -> Result<Option<Relationship>> {
+	pub(crate) fn find_relationship(
+		rx: &mut Transaction<'_>,
+		id: RelationshipId,
+	) -> Result<Option<Relationship>, ValueError> {
 		let multi = match rx.get(&[RelationshipKey::new(id).into()])?.pop().flatten() {
 			Some(multi) => multi,
 			None => return Ok(None),

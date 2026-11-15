@@ -7,18 +7,16 @@ pub mod table;
 
 use reifydb_rql_frontend::ast::ast::AstAlter;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{AlterIdentityNode, AlterPolicyNode, Compiler, LogicalPlan},
-};
+use crate::plan::logical::{AlterIdentityNode, AlterPolicyNode, Compiler, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter(
 		&self,
 		ast: AstAlter<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Policy(node) => Ok(LogicalPlan::AlterPolicy(AlterPolicyNode {

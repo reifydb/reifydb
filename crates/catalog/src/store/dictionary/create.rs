@@ -8,12 +8,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{blob::Blob, dictionary::DictionaryId, value_type::ValueType},
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		dictionary::shape::{dictionary, dictionary_namespace},
@@ -33,7 +34,7 @@ impl CatalogStore {
 	pub(crate) fn create_dictionary(
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> Result<Dictionary> {
+	) -> Result<Dictionary, ValueError> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(
@@ -71,7 +72,7 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = dictionary::allocate();
 		dictionary::set_id(&mut row, u64::from(dictionary));
 		dictionary::set_namespace(&mut row, u64::from(namespace));
@@ -89,7 +90,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = dictionary_namespace::allocate();
 		dictionary_namespace::set_id(&mut row, u64::from(dictionary));
 		dictionary_namespace::set_name(&mut row, name);
@@ -185,7 +186,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceDictionaryKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

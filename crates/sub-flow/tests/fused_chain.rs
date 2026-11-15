@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_engine::lift::entry_changed_objects;
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -276,11 +276,11 @@ impl UnmanagedOperator for SymIds {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(SymIds)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		// Reading the id is the read that fails when the input carries the symbol text instead of its entry id.
 		for i in 0..change.diff_count() {
 			let Some(diff) = change.diff(i) else {

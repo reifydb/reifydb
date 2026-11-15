@@ -24,14 +24,14 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::mutex::Mutex,
 };
-use reifydb_value::{count::Count, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{count::Count, error::ValueError, reifydb_assertions, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::flush::actor::{FlushActor, Flusher};
 use crate::{
-	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+	SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
 	SingleVersionStore,
 	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
@@ -91,7 +91,7 @@ impl StandardSingleStore {
 		has_buffer = config.commit.is_some(),
 		has_persistent = config.persistent.is_some(),
 	))]
-	pub fn new(config: SingleStoreConfig) -> Result<Self> {
+	pub fn new(config: SingleStoreConfig) -> Result<Self, ValueError> {
 		let commit = config.commit.map(|c| c.storage);
 		let spawner = config.spawner.clone();
 		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
@@ -146,7 +146,7 @@ impl StandardSingleStore {
 		})))
 	}
 
-	pub fn commit_logged(&self, deltas: CowVec<Delta>, lsn: Lsn) -> Result<()> {
+	pub fn commit_logged(&self, deltas: CowVec<Delta>, lsn: Lsn) -> Result<(), ValueError> {
 		let entries = self.entries_from_deltas(&deltas);
 		self.apply_to_tiers(entries, Some(lsn))
 	}
@@ -156,7 +156,7 @@ impl StandardSingleStore {
 		SingleCommitGuard(Arc::clone(&self.in_flight))
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, ValueError> {
 		match &self.persistent {
 			Some(persistent) => persistent.saved_lsn(),
 			None => Ok(None),
@@ -213,7 +213,7 @@ impl Deref for StandardSingleStore {
 }
 
 impl Shutdown for StandardSingleStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self.persistent.as_ref() {
 			Some(persistent) => persistent.shutdown(),
 			None => Ok(()),
@@ -240,7 +240,11 @@ impl StandardSingleStore {
 
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self, ctx, keys), fields(keys = keys.len()))]
-	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<SingleVersionRow>>, ValueError> {
 		let mut rows = Vec::with_capacity(keys.len());
 		let mut misses = Vec::new();
 		let mut buffered = match &self.commit {
@@ -289,7 +293,7 @@ impl SingleVersionGet for StandardSingleStore {
 
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
-	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<(), ValueError> {
 		let entries = self.entries_from_deltas(&deltas);
 		self.apply_to_tiers(entries, None)
 	}
@@ -314,7 +318,11 @@ impl StandardSingleStore {
 	}
 
 	#[inline]
-	fn apply_to_tiers(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, lsn: Option<Lsn>) -> Result<()> {
+	fn apply_to_tiers(
+		&self,
+		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
+		lsn: Option<Lsn>,
+	) -> Result<(), ValueError> {
 		if let Some(buffer) = &self.commit {
 			if self.persistent.is_none() {
 				return buffer.set_without_tombstones(entries);
@@ -340,7 +348,7 @@ impl SingleVersionRange for StandardSingleStore {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch> {
+	) -> Result<SingleVersionBatch, ValueError> {
 		Ok(Self::materialize_batch(self.merge_tiers(ctx, &range, batch_size, Direction::Forward)?, batch_size))
 	}
 }
@@ -352,7 +360,7 @@ impl StandardSingleStore {
 		range: &EncodedKeyRange,
 		batch_size: u64,
 		direction: Direction,
-	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>> {
+	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>, ValueError> {
 		loop {
 			let evictions = self.tombstone_evictions.load(Ordering::SeqCst);
 			let entries = self.merge_tiers_once(ctx, range, batch_size, direction)?;
@@ -368,7 +376,7 @@ impl StandardSingleStore {
 		range: &EncodedKeyRange,
 		batch_size: u64,
 		direction: Direction,
-	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>> {
+	) -> Result<BTreeMap<EncodedKey, Option<CowVec<u8>>>, ValueError> {
 		let (start, end) = make_range_bounds(range);
 		let mut entries = BTreeMap::new();
 		let mut buffer_cursor = RangeCursor::new();
@@ -464,7 +472,7 @@ impl SingleVersionRangeRev for StandardSingleStore {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch> {
+	) -> Result<SingleVersionBatch, ValueError> {
 		Ok(Self::materialize_batch_rev(
 			self.merge_tiers(ctx, &range, batch_size, Direction::Reverse)?,
 			batch_size,
@@ -518,7 +526,7 @@ fn read_page<T: TierStorage>(
 	end: &Bound<Vec<u8>>,
 	page: usize,
 	direction: Direction,
-) -> Result<RangeBatch> {
+) -> Result<RangeBatch, ValueError> {
 	if cursor.is_exhausted() {
 		return Ok(RangeBatch::empty());
 	}
@@ -611,19 +619,19 @@ mod tests {
 	struct NoWal;
 
 	impl WalFloorCheckpoint for NoWal {
-		fn make_durable(&self, _through: Lsn) -> Result<()> {
+		fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn saved_through(&self, _through: Lsn) -> Result<()> {
+		fn saved_through(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn durable_head(&self) -> Result<Option<Lsn>> {
+		fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 			Ok(None)
 		}
 
-		fn appended_head(&self) -> Result<Option<Lsn>> {
+		fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 			panic!("not used by single")
 		}
 	}
@@ -690,21 +698,21 @@ mod tests {
 	}
 
 	impl WalFloorCheckpoint for RecordingWal {
-		fn make_durable(&self, through: Lsn) -> Result<()> {
+		fn make_durable(&self, through: Lsn) -> Result<(), ValueError> {
 			self.calls.lock().push(("make_durable", through.as_u64()));
 			Ok(())
 		}
 
-		fn saved_through(&self, through: Lsn) -> Result<()> {
+		fn saved_through(&self, through: Lsn) -> Result<(), ValueError> {
 			self.calls.lock().push(("saved_through", through.as_u64()));
 			Ok(())
 		}
 
-		fn durable_head(&self) -> Result<Option<Lsn>> {
+		fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 			panic!("recording wal has no durable head; this fake must not reach the idle pass")
 		}
 
-		fn appended_head(&self) -> Result<Option<Lsn>> {
+		fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 			panic!("not used by single")
 		}
 	}
@@ -757,16 +765,16 @@ mod tests {
 	}
 
 	impl WalFloorCheckpoint for DurableHeadWal {
-		fn make_durable(&self, _through: Lsn) -> Result<()> {
+		fn make_durable(&self, _through: Lsn) -> Result<(), ValueError> {
 			Ok(())
 		}
 
-		fn saved_through(&self, through: Lsn) -> Result<()> {
+		fn saved_through(&self, through: Lsn) -> Result<(), ValueError> {
 			self.saved.lock().push(through.as_u64());
 			Ok(())
 		}
 
-		fn durable_head(&self) -> Result<Option<Lsn>> {
+		fn durable_head(&self) -> Result<Option<Lsn>, ValueError> {
 			match self.racer.lock().as_ref() {
 				Some(store) => {
 					self.racing.lock().push(store.begin_commit());
@@ -776,7 +784,7 @@ mod tests {
 			}
 		}
 
-		fn appended_head(&self) -> Result<Option<Lsn>> {
+		fn appended_head(&self) -> Result<Option<Lsn>, ValueError> {
 			panic!("not used by single")
 		}
 	}

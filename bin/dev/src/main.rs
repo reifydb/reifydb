@@ -14,8 +14,6 @@ use reifydb::allocator;
 
 allocator::set_global_allocator!();
 
-type Result<T> = std::result::Result<T, String>;
-
 #[derive(Parser)]
 #[command(name = "reifydb-dev", about = "ReifyDB developer/debug tools", version)]
 struct Cli {
@@ -62,14 +60,14 @@ fn main() {
 	}
 }
 
-fn catalog_dump(args: CatalogArgs) -> Result<()> {
+fn catalog_dump(args: CatalogArgs) -> Result<(), String> {
 	eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
 	let cat = catalog::with_open(&args.dir, args.wal_off, catalog::load)?;
 	report::dump_catalog(&cat, args.json);
 	Ok(())
 }
 
-fn query(args: QueryArgs) -> Result<()> {
+fn query(args: QueryArgs) -> Result<(), String> {
 	let input = read_to_string(stdin()).map_err(|e| format!("failed to read stdin: {e}"))?;
 	eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
 	catalog::with_open(&args.dir, args.wal_off, |db| {

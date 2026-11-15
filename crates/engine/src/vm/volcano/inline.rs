@@ -47,12 +47,9 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::{
-		instruction::dml::series_insert::resolve_variant_tag,
-		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
-	},
+use crate::vm::{
+	instruction::dml::series_insert::resolve_variant_tag,
+	volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
 
 pub(crate) struct InlineDataNode {
@@ -99,7 +96,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn load_series_tag<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<()> {
+	fn load_series_tag<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<(), ValueError> {
 		let Some(ctx) = self.context.as_ref() else {
 			return Ok(());
 		};
@@ -110,7 +107,7 @@ impl InlineDataNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::expand_sumtypes")]
-	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<()> {
+	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<(), ValueError> {
 		let Some(ctx) = self.context.as_ref().cloned() else {
 			return Ok(());
 		};
@@ -202,8 +199,8 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 
 pub(crate) fn expand_aliases(
 	expressions: Vec<Expression>,
-	mut expand: impl FnMut(AliasExpression, &mut Vec<AliasExpression>) -> Result<()>,
-) -> Result<(Vec<Expression>, Vec<Fragment>)> {
+	mut expand: impl FnMut(AliasExpression, &mut Vec<AliasExpression>) -> Result<(), ValueError>,
+) -> Result<(Vec<Expression>, Vec<Fragment>), ValueError> {
 	let mut result = Vec::with_capacity(expressions.len());
 	let mut written = Vec::with_capacity(expressions.len());
 	let mut expanded = Vec::new();
@@ -221,7 +218,7 @@ pub(crate) fn expand_aliases(
 	Ok((result, written))
 }
 
-pub(crate) fn reject_variant_column_clashes(names: &[Fragment], written: &[Fragment]) -> Result<()> {
+pub(crate) fn reject_variant_column_clashes(names: &[Fragment], written: &[Fragment]) -> Result<(), ValueError> {
 	for (index, name) in names.iter().enumerate() {
 		let expanded = name.text() != written[index].text();
 		if names[..index].iter().zip(written).any(|(earlier, earlier_written)| {
@@ -240,7 +237,7 @@ fn expand_sumtype_none(
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
 	marks: &mut HashMap<String, SumTypeId>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let col_name = alias_expr.alias.0.text();
 	let is_none = matches!(alias_expr.expression.as_ref(), Expression::Constant(ConstantExpression::None { .. }));
 	let declared = source.and_then(|source| declared_sumtype_id(source, col_name));
@@ -287,7 +284,7 @@ pub(crate) fn expand_sumtype_assignment(
 	expanded: &mut Vec<AliasExpression>,
 	marks: &mut HashMap<String, SumTypeId>,
 	fields: &mut FlatFields,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if let Some((id, name)) = enum_name_write(ctx, Some(source), &alias_expr)? {
 		let fields = fields.remove(alias_expr.alias.0.text()).unwrap_or_default();
 		return expand_enum_name(ctx, txn, source, id, name, alias_expr, fields, expanded, marks);
@@ -372,7 +369,7 @@ fn resolve_series_tag_name(
 	txn: &mut Transaction<'_>,
 	sumtype: &SumType,
 	alias_expr: AliasExpression,
-) -> Result<AliasExpression> {
+) -> Result<AliasExpression, ValueError> {
 	let Some(variant) = enum_name(ctx, alias_expr.expression.as_ref())? else {
 		return Ok(alias_expr);
 	};
@@ -398,7 +395,7 @@ fn expand_enum_param(
 	alias_expr: AliasExpression,
 	expanded: &mut Vec<AliasExpression>,
 	marks: &mut HashMap<String, SumTypeId>,
-) -> Result<Option<AliasExpression>> {
+) -> Result<Option<AliasExpression>, ValueError> {
 	let col_name = alias_expr.alias.0.text().to_string();
 	let (Some(source), Some(symbol)) = (source, param_symbol(alias_expr.expression.as_ref())) else {
 		return Ok(Some(alias_expr));
@@ -445,7 +442,7 @@ pub(crate) fn param_symbol(expression: &Expression) -> Option<&str> {
 	}
 }
 
-pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Value>> {
+pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Value>, ValueError> {
 	let Some(Variable::Columns {
 		batch,
 	}) = ctx.symbols.get(name)
@@ -462,7 +459,7 @@ pub(crate) fn symbol_scalar(ctx: &QueryContext, name: &str) -> Result<Option<Val
 	Ok(Some(value))
 }
 
-fn operand_scalar(ctx: &QueryContext, expression: &Expression) -> Result<Option<Value>> {
+fn operand_scalar(ctx: &QueryContext, expression: &Expression) -> Result<Option<Value>, ValueError> {
 	if let Some(symbol) = param_symbol(expression) {
 		return symbol_scalar(ctx, symbol);
 	}
@@ -486,14 +483,14 @@ fn operand_scalar(ctx: &QueryContext, expression: &Expression) -> Result<Option<
 
 pub(crate) type FlatFields = HashMap<String, Vec<AliasExpression>>;
 
-pub(crate) fn param_enum(ctx: &QueryContext, expression: &Expression) -> Result<Option<String>> {
+pub(crate) fn param_enum(ctx: &QueryContext, expression: &Expression) -> Result<Option<String>, ValueError> {
 	match operand_scalar(ctx, expression)? {
 		Some(Value::Enum(value)) => Ok(Some(value.r#enum)),
 		_ => Ok(None),
 	}
 }
 
-pub(crate) fn enum_operand(ctx: &QueryContext, expression: &Expression) -> Result<EnumOperand> {
+pub(crate) fn enum_operand(ctx: &QueryContext, expression: &Expression) -> Result<EnumOperand, ValueError> {
 	if let Expression::Constant(ConstantExpression::Text {
 		fragment,
 	}) = expression
@@ -512,7 +509,7 @@ pub(crate) fn enum_operand(ctx: &QueryContext, expression: &Expression) -> Resul
 	})
 }
 
-pub(crate) fn enum_name(ctx: &QueryContext, expression: &Expression) -> Result<Option<Fragment>> {
+pub(crate) fn enum_name(ctx: &QueryContext, expression: &Expression) -> Result<Option<Fragment>, ValueError> {
 	if let Expression::Constant(ConstantExpression::Text {
 		fragment,
 	}) = expression
@@ -530,7 +527,7 @@ fn enum_name_write(
 	ctx: &QueryContext,
 	source: Option<&ResolvedObject>,
 	alias_expr: &AliasExpression,
-) -> Result<Option<(SumTypeId, Fragment)>> {
+) -> Result<Option<(SumTypeId, Fragment)>, ValueError> {
 	let Some(id) = source.and_then(|source| declared_sumtype_id(source, alias_expr.alias.0.text())) else {
 		return Ok(None);
 	};
@@ -544,7 +541,7 @@ pub(crate) fn take_flat_fields<T>(
 	items: Vec<T>,
 	alias: impl Fn(&T) -> Option<&AliasExpression>,
 	into_alias: impl Fn(T) -> AliasExpression,
-) -> Result<(Vec<T>, FlatFields)> {
+) -> Result<(Vec<T>, FlatFields), ValueError> {
 	let mut owners = HashMap::new();
 	for alias_expr in items.iter().filter_map(&alias) {
 		let Some((id, _)) = enum_name_write(ctx, source, alias_expr)? else {
@@ -589,7 +586,7 @@ fn expand_enum_name(
 	fields: Vec<AliasExpression>,
 	expanded: &mut Vec<AliasExpression>,
 	marks: &mut HashMap<String, SumTypeId>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let sumtype = ctx.services.catalog.get_sumtype(txn, id)?;
 	let col_name = alias_expr.alias.0.text();
 	let r#enum = param_enum(ctx, alias_expr.expression.as_ref())?;
@@ -643,7 +640,7 @@ fn expand_enum_name(
 	Ok(())
 }
 
-fn is_none_value(ctx: &QueryContext, expression: &Expression) -> Result<bool> {
+fn is_none_value(ctx: &QueryContext, expression: &Expression) -> Result<bool, ValueError> {
 	if matches!(expression, Expression::Constant(ConstantExpression::None { .. })) {
 		return Ok(true);
 	}
@@ -655,14 +652,18 @@ fn is_none_value(ctx: &QueryContext, expression: &Expression) -> Result<bool> {
 
 impl QueryNode for InlineDataNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		self.load_series_tag(rx)?;
 		self.expand_sumtype_constructors(rx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::inline::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		}
@@ -759,7 +760,7 @@ impl InlineDataNode {
 		session: &EvalContext<'_>,
 		rows_data: &[HashMap<String, &AliasExpression>],
 		column_name: &str,
-	) -> Result<EvaluatedColumnValues> {
+	) -> Result<EvaluatedColumnValues, ValueError> {
 		let mut all_values = Vec::new();
 		let mut first_value_type: Option<ValueType> = None;
 
@@ -798,7 +799,7 @@ impl InlineDataNode {
 		all_values: &[(Value, ValueType, Fragment)],
 		first_value_type: Option<ValueType>,
 		name: &str,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let integers: Vec<ValueType> = all_values
 			.iter()
 			.filter(|(value, _, _)| !matches!(value, Value::None { .. }))
@@ -870,7 +871,7 @@ impl InlineDataNode {
 		all_values: &[(Value, ValueType, Fragment)],
 		wide: &ValueType,
 		name: &str,
-	) -> Result<Vec<Option<Value>>> {
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		let mut groups: Vec<(ValueType, Vec<usize>)> = Vec::new();
 		let mut singles: Vec<usize> = Vec::new();
 		for (row, (value, value_type, _)) in all_values.iter().enumerate() {
@@ -941,7 +942,7 @@ impl InlineDataNode {
 		name: &str,
 		casts: &mut [Option<Value>],
 		first_error: &mut Option<(usize, ValueError)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		for &row in rows {
 			if first_error.as_ref().is_some_and(|(failed, _)| *failed < row) {
 				break;
@@ -965,7 +966,7 @@ impl InlineDataNode {
 		Ok(())
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>> {
+	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>, ValueError> {
 		let all_columns = Self::collect_column_names(&self.rows);
 		let rows_data = Self::build_row_maps(&self.rows);
 
@@ -991,7 +992,7 @@ impl InlineDataNode {
 		Ok(Some(columns))
 	}
 
-	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>> {
+	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<RecordBatch>, ValueError> {
 		let source = ctx.source.as_ref().unwrap();
 		let headers = self.headers.as_ref().unwrap();
 		let session = eval_context_from_query(ctx);
@@ -1031,7 +1032,7 @@ impl InlineDataNode {
 		series_tag: Option<&SumType>,
 		rows_data: &[HashMap<String, &AliasExpression>],
 		column_name: &Fragment,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
 		let mut column_data = if let Some(tc) = table_column {

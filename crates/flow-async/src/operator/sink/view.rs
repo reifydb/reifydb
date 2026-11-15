@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
 use reifydb_flow::operator::{sink::table::TableSink, source::decode_change_keeping};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::DurableSink;
 use crate::transaction::deferred::DeferredTransaction;
@@ -17,7 +17,7 @@ impl DurableSink for TableSink {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change_keeping(txn, change, self.view().columns())?;
 		let version = change.version;
 		let changed_at = change.changed_at;

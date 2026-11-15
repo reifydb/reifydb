@@ -20,7 +20,7 @@ use reifydb_flow_async::{
 use reifydb_value::config::ExtensionParams;
 
 use crate::{
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata,
 		column::row::{OutputRows, Row},
@@ -42,9 +42,9 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 	type Accumulator: WindowAccumulator;
 	type Output: OutputRows;
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>;
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i).map(|_| Err(batch_only::<Self>("coord"))).transpose().map(Option::flatten)
@@ -57,7 +57,7 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(Self::GroupKey, Contribution<Self>)>>> {
+	) -> Result<Vec<Option<(Self::GroupKey, Contribution<Self>)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i).map(|_| Err(batch_only::<Self>("extract"))).transpose().map(Option::flatten)
@@ -76,7 +76,7 @@ pub(crate) fn extract_rows<T: WindowedOperator>(
 	ctx: &mut impl GuestContext<Windowed>,
 	cols: &impl ColumnsView,
 	rows: &[usize],
-) -> Result<Vec<Extracted<T>>> {
+) -> Result<Vec<Extracted<T>>, SdkError> {
 	let coords = batch_len::<T, _>(aggregator.coord(cols, rows)?, rows.len(), "coord_batch")?;
 	let kept: Vec<(usize, T::Coord)> =
 		rows.iter().copied().zip(coords).filter_map(|(i, coord)| Some((i, coord?))).collect();
@@ -94,7 +94,7 @@ fn batch_only<T: WindowedOperator>(method: &str) -> SdkError {
 	SdkError::OperatorError(format!("{} reads rows only in batches, {method} is not implemented", T::NAME))
 }
 
-pub(crate) fn batch_len<T: WindowedOperator, V>(values: Vec<V>, rows: usize, method: &str) -> Result<Vec<V>> {
+pub(crate) fn batch_len<T: WindowedOperator, V>(values: Vec<V>, rows: usize, method: &str) -> Result<Vec<V>, SdkError> {
 	if values.len() != rows {
 		return Err(SdkError::OperatorError(format!(
 			"{} {method} returned {} results for {rows} rows",

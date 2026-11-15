@@ -3,8 +3,9 @@
 
 use std::collections::HashSet;
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithKey, AstOperatorWithValue},
 		parse::Parser,
@@ -25,7 +26,7 @@ enum Level {
 }
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_operator_with(&mut self) -> Result<Option<AstOperatorWith<'bump>>> {
+	pub(crate) fn parse_operator_with(&mut self) -> Result<Option<AstOperatorWith<'bump>>, ValueError> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok(None);
 		}
@@ -44,7 +45,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_operator_with_block(&mut self, level: Level) -> Result<Vec<AstOperatorWithEntry<'bump>>> {
+	fn parse_operator_with_block(&mut self, level: Level) -> Result<Vec<AstOperatorWithEntry<'bump>>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 		let mut entries = Vec::new();
 		let mut seen = HashSet::new();
@@ -105,7 +106,7 @@ impl<'bump> Parser<'bump> {
 		Ok(entries)
 	}
 
-	fn parse_operator_with_key(&mut self) -> Result<AstOperatorWithKey<'bump>> {
+	fn parse_operator_with_key(&mut self) -> Result<AstOperatorWithKey<'bump>, ValueError> {
 		let qualified = self.tokens.get(self.position + 1).is_some_and(|next: &Token<'bump>| {
 			next.is_operator(Operator::Dot) || next.is_operator(Operator::DoubleColon)
 		});
@@ -115,7 +116,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstOperatorWithKey::Word(self.consume_identifier()?))
 	}
 
-	pub(crate) fn parse_operator_with_value(&mut self) -> Result<AstOperatorWithValue<'bump>> {
+	pub(crate) fn parse_operator_with_value(&mut self) -> Result<AstOperatorWithValue<'bump>, ValueError> {
 		let current = self.current()?;
 		if current.is_operator(Operator::OpenCurly) {
 			return Ok(AstOperatorWithValue::Block(self.parse_operator_with_block(Level::Block)?));

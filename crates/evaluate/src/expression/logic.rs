@@ -9,7 +9,7 @@ use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::FieldRef;
 use reifydb_core::{error::CoreError, value::column::nulls::split_nulls};
 use reifydb_value::{
-	error::{LogicalOp, OperandCategory, TypeError},
+	error::{LogicalOp, OperandCategory, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -19,8 +19,6 @@ use reifydb_value::{
 		},
 	},
 };
-
-use crate::Result;
 
 pub(crate) fn bool_column(name: &str, values: BooleanArray, nullable: bool) -> (FieldRef, ArrayRef) {
 	let ty = match nullable || values.null_count() > 0 {
@@ -42,7 +40,7 @@ pub fn execute_logical_op(
 	right: &(FieldRef, ArrayRef),
 	fragment: &Fragment,
 	logical_op: LogicalOp,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (left_data, left_nulls) = split_nulls(left.clone())?;
 	let (right_data, right_nulls) = split_nulls(right.clone())?;
 	let left_bv = left_nulls.as_ref().map(NullBuffer::inner);
@@ -102,7 +100,7 @@ fn type_error(
 	fragment: &Fragment,
 	left: &ColumnView,
 	right: &ColumnView,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let category = if left.is_number() || right.is_number() {
 		OperandCategory::Number
 	} else if left.is_text() || right.is_text() {

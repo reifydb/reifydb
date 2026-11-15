@@ -26,6 +26,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertDictionaryNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -41,7 +42,6 @@ use reifydb_value::{
 
 use super::returning::evaluate_returning;
 use crate::{
-	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
@@ -59,7 +59,7 @@ pub(crate) fn insert_dictionary(
 	plan: InsertDictionaryNode,
 	symbols: &mut SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let namespace_name = plan.target.namespace().name();
 
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -140,7 +140,7 @@ pub(crate) fn insert_dictionary(
 	])
 }
 
-fn cast_to_dictionary_type(source: &ColumnView<'_>, target_type: &ValueType) -> Result<Vec<Value>> {
+fn cast_to_dictionary_type(source: &ColumnView<'_>, target_type: &ValueType) -> Result<Vec<Value>, ValueError> {
 	let defined: Vec<Value> = source.iter().filter(|value| !matches!(value, Value::None { .. })).collect();
 	if defined.is_empty() {
 		return Ok(defined);
@@ -167,13 +167,13 @@ fn cast_to_dictionary_type(source: &ColumnView<'_>, target_type: &ValueType) -> 
 	}
 }
 
-fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value> {
+fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value, ValueError> {
 	let display = value.to_string();
 	check_digest_write_type(&value.get_type(), target_type, || Fragment::internal(&display))?;
 	cast_value(value, target_type)
 }
 
-fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let data = match id_type {
 		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids

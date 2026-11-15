@@ -54,7 +54,6 @@ use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 #[cfg(feature = "sub_flow")]
 use reifydb_value::error::ValueError;
 use reifydb_value::{
-	Result,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
@@ -212,16 +211,16 @@ impl Database {
 	}
 
 	#[instrument(name = "api::database::stop", level = "info", skip(self))]
-	pub fn stop(&mut self) -> Result<()> {
+	pub fn stop(&mut self) -> Result<(), ValueError> {
 		self.shutdown_internal(!self.fast_shutdown)
 	}
 
 	#[instrument(name = "api::database::stop_fast", level = "info", skip(self))]
-	pub fn stop_fast(&mut self) -> Result<()> {
+	pub fn stop_fast(&mut self) -> Result<(), ValueError> {
 		self.shutdown_internal(false)
 	}
 
-	fn shutdown_internal(&mut self, drain: bool) -> Result<()> {
+	fn shutdown_internal(&mut self, drain: bool) -> Result<(), ValueError> {
 		if !self.running {
 			return Ok(());
 		}
@@ -396,7 +395,7 @@ impl Database {
 	}
 
 	/// Admits DDL, DML and queries.
-	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.admin_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -405,7 +404,7 @@ impl Database {
 	}
 
 	/// Admits DML and queries, not DDL.
-	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.command_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -414,7 +413,7 @@ impl Database {
 	}
 
 	/// Read-only; rejects DDL and DML.
-	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -424,7 +423,7 @@ impl Database {
 
 	#[cfg(feature = "column")]
 	/// Read-only; rejects DDL and DML. Scans through the column layout.
-	pub fn query_column_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn query_column_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.query_column_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -433,7 +432,12 @@ impl Database {
 	}
 
 	/// Admits DDL, DML and queries.
-	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn admin_as(
+		&self,
+		identity: IdentityId,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.admin_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -442,7 +446,12 @@ impl Database {
 	}
 
 	/// Admits DML and queries, not DDL.
-	pub fn command_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn command_as(
+		&self,
+		identity: IdentityId,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.command_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -451,7 +460,12 @@ impl Database {
 	}
 
 	/// Read-only; rejects DDL and DML.
-	pub fn query_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+	pub fn query_as(
+		&self,
+		identity: IdentityId,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> Result<Vec<Frame>, ValueError> {
 		let r = self.engine.query_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -467,7 +481,7 @@ impl Database {
 		query: &str,
 		params: impl Into<Params>,
 		hydration: HydrationConfig,
-	) -> Result<Subscription> {
+	) -> Result<Subscription, ValueError> {
 		self.subscribe_as(IdentityId::root(), query, params, hydration)
 	}
 
@@ -481,7 +495,7 @@ impl Database {
 		query: &str,
 		params: impl Into<Params>,
 		hydration: HydrationConfig,
-	) -> Result<Subscription> {
+	) -> Result<Subscription, ValueError> {
 		let store = self.resolve_subscription_store()?;
 		let options = SubscribeOptions {
 			hydration: HydrationConfig {
@@ -514,7 +528,7 @@ impl Database {
 
 	#[cfg(feature = "sub_flow")]
 	#[inline]
-	fn resolve_subscription_store(&self) -> Result<Arc<SubscriptionStore>> {
+	fn resolve_subscription_store(&self) -> Result<Arc<SubscriptionStore>, ValueError> {
 		Ok(self.subsystem::<SubscriptionSubsystem>()
 			.ok_or_else(|| ValueError(Box::new(feature_disabled("subscription"))))?
 			.store()
@@ -528,7 +542,7 @@ impl Database {
 		id: SubscriptionId,
 		identity: IdentityId,
 		hydration: &HydrationConfig,
-	) -> Result<Vec<Frame>> {
+	) -> Result<Vec<Frame>, ValueError> {
 		if !hydration.enabled {
 			return Ok(Vec::new());
 		}
@@ -552,13 +566,13 @@ impl Database {
 		Some(Subscription::new(id, store, Vec::new()))
 	}
 
-	pub fn await_signal(&self) -> Result<()> {
+	pub fn await_signal(&self) -> Result<(), ValueError> {
 		self.await_signal_with_shutdown(|| Ok(()))
 	}
 
-	pub fn await_signal_with_shutdown<F>(&self, on_shutdown: F) -> Result<()>
+	pub fn await_signal_with_shutdown<F>(&self, on_shutdown: F) -> Result<(), ValueError>
 	where
-		F: FnOnce() -> Result<()>,
+		F: FnOnce() -> Result<(), ValueError>,
 	{
 		static RUNNING: AtomicBool = AtomicBool::new(true);
 		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -595,13 +609,13 @@ impl Database {
 		Ok(())
 	}
 
-	pub fn start_and_await_signal(&mut self) -> Result<()> {
+	pub fn start_and_await_signal(&mut self) -> Result<(), ValueError> {
 		self.start_and_await_signal_with_shutdown(|| Ok(()))
 	}
 
-	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
+	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<(), ValueError>
 	where
-		F: FnOnce() -> Result<()>,
+		F: FnOnce() -> Result<(), ValueError>,
 	{
 		info!("Database running, waiting for termination signal...");
 

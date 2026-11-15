@@ -6,7 +6,7 @@ use std::iter::repeat_n;
 use arrow_array::RecordBatch;
 use reifydb_core::{interface::change::Diff, key::operator::state::GroupId};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{
 		row_number::RowNumber,
@@ -42,7 +42,7 @@ fn publish_unkeyed(
 	left: &RecordBatch,
 	row_idx: usize,
 	reuse: Option<RowNumber>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let left_number = require_row_numbers(left)?[row_idx];
 	let ledger = operator.published_ledger();
 	let (id, _) = ledger.publish_unmatched_as(host, GroupId::UNKEYED, left_number, reuse)?;
@@ -55,7 +55,7 @@ fn withdraw_unkeyed(
 	ctx: &JoinContext,
 	pre: &RecordBatch,
 	row_idx: usize,
-) -> Result<Option<(RecordBatch, RowNumber)>> {
+) -> Result<Option<(RecordBatch, RowNumber)>, ValueError> {
 	let ledger = ctx.operator.published_ledger();
 	let published_ctx = PublishedJoinContext {
 		ledger: &ledger,
@@ -72,7 +72,7 @@ impl LatestLeftHashJoin {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match ctx.side {
 			JoinSide::Left if ctx.operator.ignores_right_changes() => {
 				Ok(vec![Diff::insert(publish_unkeyed(host, ctx.operator, post, row_idx, None)?)])
@@ -91,7 +91,7 @@ impl LatestLeftHashJoin {
 		pre: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match ctx.side {
 			JoinSide::Left if ctx.operator.ignores_right_changes() => {
 				Ok(withdraw_unkeyed(host, ctx, pre, row_idx)?
@@ -115,7 +115,7 @@ impl LatestLeftHashJoin {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match ctx.side {
 			JoinSide::Left if ctx.operator.ignores_right_changes() => {
 				let withdrawn = withdraw_unkeyed(host, ctx, pre, row_idx)?;
@@ -136,7 +136,7 @@ impl LatestLeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -179,7 +179,7 @@ impl LatestLeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if ctx.operator.ignores_right_changes() {
 			let ledger = ctx.operator.published_ledger();
 			let published_ctx = PublishedJoinContext {
@@ -218,7 +218,7 @@ impl LatestLeftHashJoin {
 		pre: &RecordBatch,
 		replaces: &[(Hash128, Vec<usize>, Vec<usize>)],
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_numbers = require_row_numbers(pre)?;
 		let operator = ctx.operator;
 		let mut lefts = Vec::new();
@@ -278,7 +278,7 @@ impl LatestLeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -332,7 +332,7 @@ impl LatestLeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_numbers = require_row_numbers(pre)?;
 		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
 		if ctx.operator.ignores_right_changes() {
@@ -382,7 +382,7 @@ impl LatestLeftHashJoin {
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}

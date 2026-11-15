@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 	store::{SingleVersionStore, Tier},
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::metrics::storage::multi::StorageMetricsReader;
 
@@ -43,7 +43,7 @@ impl<S: SingleVersionStore> MetricsReader<S> {
 		}
 	}
 
-	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricsId, CombinedMetrics)>> {
+	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricsId, CombinedMetrics)>, ValueError> {
 		Ok(self.storage
 			.scan_tier(tier)?
 			.into_iter()
@@ -58,7 +58,7 @@ impl<S: SingleVersionStore> MetricsReader<S> {
 			.collect())
 	}
 
-	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<CombinedMetrics>> {
+	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<CombinedMetrics>, ValueError> {
 		Ok(self.storage.get(tier, id)?.map(|storage| CombinedMetrics {
 			storage,
 		}))

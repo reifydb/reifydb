@@ -16,7 +16,7 @@ use reifydb_sdk::flow::operator::{
 };
 use reifydb_sub_flow::operator::extern_c::ExternCOperatorHandle;
 use reifydb_testing_sdk::in_process::transaction::TestFlowTransaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 const OPERATOR: OperatorId = OperatorId(1);
 
@@ -34,7 +34,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> Harness<C> {
 		HarnessBuilder(PhantomData)
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		let output = self.handle.apply(&mut TxnHostContext::new(&mut self.txn, OPERATOR), change)?;
 		self.history.push(output.clone());
 		Ok(output)
@@ -42,7 +42,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> Harness<C> {
 }
 
 impl<C: MountedOperator + OperatorMetadata + 'static> HarnessBuilder<C> {
-	pub fn build(self) -> Result<Harness<C>> {
+	pub fn build(self) -> Result<Harness<C>, ValueError> {
 		// SAFETY: both param pointers are null with zero length, and the handle frees the instance on drop.
 		let instance = unsafe { create_operator_instance::<C>(ptr::null(), 0, ptr::null(), 0, OPERATOR.0) };
 		assert!(!instance.is_null(), "the guest refused to create the operator");

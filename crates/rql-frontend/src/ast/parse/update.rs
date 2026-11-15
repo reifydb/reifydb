@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstUpdate},
 		identifier::UnresolvedObjectIdentifier,
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_update(&mut self) -> Result<AstUpdate<'bump>> {
+	pub(crate) fn parse_update(&mut self) -> Result<AstUpdate<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {

@@ -10,10 +10,10 @@ use reifydb_core::{
 	key::{catalog::WindowedViewGroupKey, namespace::NamespaceWindowedViewGroupKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::windowed_view_group::next_windowed_view_group_id,
@@ -33,7 +33,7 @@ impl CatalogStore {
 	pub(crate) fn create_windowed_view_group(
 		txn: &mut AdminTransaction,
 		to_create: WindowedViewGroupToCreate,
-	) -> Result<WindowedViewGroup> {
+	) -> Result<WindowedViewGroup, ValueError> {
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_windowed_view_group(txn, namespace_id, &to_create.name)?;
 
@@ -48,7 +48,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if CatalogStore::find_windowed_view_group_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -73,7 +73,7 @@ impl CatalogStore {
 		group: WindowedViewGroupId,
 		namespace: NamespaceId,
 		to_create: &WindowedViewGroupToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = windowed_view_group::allocate();
 		windowed_view_group::set_id(&mut row, u64::from(group));
 		windowed_view_group::set_namespace(&mut row, u64::from(namespace));
@@ -92,7 +92,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		group: WindowedViewGroupId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = windowed_view_group_namespace::allocate();
 		windowed_view_group_namespace::set_id(&mut row, u64::from(group));
 		windowed_view_group_namespace::set_name(&mut row, name);

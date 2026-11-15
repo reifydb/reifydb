@@ -23,8 +23,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_value::{
-	Result,
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{datetime::DateTime, identity::IdentityId},
 };
@@ -191,7 +190,7 @@ impl<'a> TestTransaction<'a> {
 		self.inner.accumulator.entries_from(self.baseline)
 	}
 
-	pub fn capture_testing_pre_commit(&mut self) -> Result<()> {
+	pub fn capture_testing_pre_commit(&mut self) -> Result<(), ValueError> {
 		let has_source_changes = self
 			.inner
 			.accumulator
@@ -318,7 +317,10 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get_committed(
+		&mut self,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		match self {
 			Self::Command(txn) => txn.get_committed(keys),
 			Self::Admin(txn) => txn.get_committed(keys),
@@ -327,7 +329,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		match self {
 			Self::Command(txn) => txn.get(keys),
 			Self::Admin(txn) => txn.get(keys),
@@ -336,7 +338,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		match self {
 			Self::Command(txn) => txn.contains(keys),
 			Self::Admin(txn) => txn.contains(keys),
@@ -345,7 +347,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Admin(txn) => txn.read_as_of_version_exclusive(version),
@@ -359,7 +361,7 @@ impl<'a> Transaction<'a> {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.range(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
@@ -375,7 +377,8 @@ impl<'a> Transaction<'a> {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_>, ValueError>
+	{
 		match self {
 			Transaction::Command(txn) => txn.range_row(storage, start, end, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_row(storage, start, end, scope, batch_size),
@@ -392,7 +395,10 @@ impl<'a> Transaction<'a> {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+	) -> Result<
+		Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_>,
+		ValueError,
+	> {
 		match self {
 			Transaction::Command(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_partitioned_row(storage, start, end, scope, batch_size),
@@ -408,7 +414,7 @@ impl<'a> Transaction<'a> {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.range_rev(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, scope, batch_size),
@@ -422,7 +428,7 @@ impl<'a> Transaction<'a> {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.range_rev_untracked(range, scope, batch_size),
 			Transaction::Admin(txn) => txn.range_rev_untracked(range, scope, batch_size),
@@ -431,7 +437,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.mark_range(range),
 			Transaction::Admin(txn) => txn.mark_range(range),
@@ -568,7 +574,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
 	{
@@ -580,7 +586,7 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn begin_single_command<'b, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
+	pub fn begin_single_command<'b, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
 	{
@@ -610,19 +616,19 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		Write::set_rebased(self.write_ops(), entries)
 	}
 
-	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		Write::set(self.write_ops(), entries)
 	}
 
-	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		Write::set_with_pre(self.write_ops(), entries)
 	}
 
-	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError> {
 		Write::remove(self.write_ops(), entries)
 	}
 

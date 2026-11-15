@@ -8,7 +8,7 @@ use reifydb::{
 		error::GithubError,
 		github::{GithubApi, GithubConfig, GithubUser},
 	},
-	value::Result,
+	value::error::ValueError,
 };
 
 pub struct StubGithubApi {
@@ -17,7 +17,7 @@ pub struct StubGithubApi {
 }
 
 impl GithubApi for StubGithubApi {
-	fn exchange_code(&self, _config: &GithubConfig, code: &str) -> Result<String> {
+	fn exchange_code(&self, _config: &GithubConfig, code: &str) -> Result<String, ValueError> {
 		if self.fail_exchange {
 			return Err(GithubError::ExchangeFailed {
 				reason: "stub exchange failure".to_string(),
@@ -28,7 +28,7 @@ impl GithubApi for StubGithubApi {
 		Ok("stub-access-token".to_string())
 	}
 
-	fn fetch_user(&self, access_token: &str) -> Result<GithubUser> {
+	fn fetch_user(&self, access_token: &str) -> Result<GithubUser, ValueError> {
 		assert_eq!(
 			access_token, "stub-access-token",
 			"the user fetch must use the token minted by the code exchange"

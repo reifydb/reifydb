@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::namespace::{convert_namespace, shape::namespace},
 };
 
@@ -17,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_namespace_by_name(
 		rx: &mut Transaction<'_>,
 		name: impl AsRef<str>,
-	) -> Result<Option<Namespace>> {
+	) -> Result<Option<Namespace>, ValueError> {
 		let name = name.as_ref();
 
 		let stream = rx.range(NamespaceKey::full_scan(), RangeScope::All, 1024)?;
@@ -34,7 +35,10 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
+	pub(crate) fn find_namespace(
+		rx: &mut Transaction<'_>,
+		id: NamespaceId,
+	) -> Result<Option<Namespace>, ValueError> {
 		rx.get(&[NamespaceKey::new(id).into()])?.pop().flatten().map(convert_namespace).transpose()
 	}
 }

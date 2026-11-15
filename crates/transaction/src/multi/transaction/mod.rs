@@ -32,7 +32,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::value::duration::Duration;
 use reifydb_wal::lsn::Lsn;
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
@@ -49,6 +49,8 @@ pub mod manager;
 pub mod read;
 pub(crate) mod version;
 pub mod write;
+
+use reifydb_value::error::ValueError;
 
 use crate::multi::{
 	MultiReadTransaction, MultiWriteTransaction,
@@ -94,7 +96,7 @@ where
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
 		lsns: VecDeque<(CommitVersion, Lsn)>,
-	) -> Result<Self>
+	) -> Result<Self, ValueError>
 	where
 		L: 'static,
 	{
@@ -124,7 +126,7 @@ where
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
-	pub fn version(&self) -> Result<CommitVersion> {
+	pub fn version(&self) -> Result<CommitVersion, ValueError> {
 		self.inner.version()
 	}
 }
@@ -134,7 +136,11 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
-	pub fn query(&self, id: TransactionId, version: Option<CommitVersion>) -> Result<TransactionManagerQuery<L>> {
+	pub fn query(
+		&self,
+		id: TransactionId,
+		version: Option<CommitVersion>,
+	) -> Result<TransactionManagerQuery<L>, ValueError> {
 		Ok(if let Some(version) = version {
 			let safe_version = self.inner.version()?;
 			if version > safe_version {
@@ -188,11 +194,11 @@ where
 		self.inner.leases.clone()
 	}
 
-	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard, ValueError> {
 		self.inner.leases.try_acquire_at(version, &self.inner.query)
 	}
 
-	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard> {
+	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard, ValueError> {
 		self.inner.leases.try_acquire_at_cutoff(&self.inner.query)
 	}
 
@@ -200,7 +206,7 @@ where
 		self.inner.leases.restore_at(version)
 	}
 
-	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard), ValueError> {
 		let oracle = self.inner.clone();
 		let (guard, version) = oracle.leases.try_acquire_with(|| {
 			let version = oracle.version()?;
@@ -245,7 +251,7 @@ impl Inner {
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
 		recovery: Recovery,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let version_provider = StandardVersionProvider::new(recovery.last);
 		let tm = TransactionManager::new(
 			version_provider,
@@ -266,7 +272,7 @@ impl Inner {
 		})
 	}
 
-	fn version(&self) -> Result<CommitVersion> {
+	fn version(&self) -> Result<CommitVersion, ValueError> {
 		self.tm.version()
 	}
 
@@ -327,7 +333,7 @@ impl MultiTransaction {
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
 		recovery: Recovery,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		Ok(Self(Arc::new(Inner::new(
 			store,
 			event_bus,
@@ -353,7 +359,7 @@ impl MultiTransaction {
 		self.0.tm.advance_version_to(version);
 	}
 
-	pub fn freeze_commits(&self) -> Result<CommitVersion> {
+	pub fn freeze_commits(&self) -> Result<CommitVersion, ValueError> {
 		self.0.tm.oracle().freeze_commits()
 	}
 
@@ -365,7 +371,7 @@ impl MultiTransaction {
 		&self.0.tm.oracle().wal
 	}
 
-	pub fn store_checkpoint(&self, store: CheckpointedStore) -> Result<Arc<dyn WalCheckpoint>> {
+	pub fn store_checkpoint(&self, store: CheckpointedStore) -> Result<Arc<dyn WalCheckpoint>, ValueError> {
 		let oracle = self.0.tm.oracle();
 		let floor = oracle.wal.floor(store.floor_name()).unwrap_or_else(|err| {
 			panic!("commit log floor {} could not be taken: {err}", store.floor_name())
@@ -395,12 +401,12 @@ impl MultiTransaction {
 	}
 
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
-	pub fn version(&self) -> Result<CommitVersion> {
+	pub fn version(&self) -> Result<CommitVersion, ValueError> {
 		self.0.version()
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "trace", skip(self))]
-	pub fn begin_query(&self, id: TransactionId) -> Result<MultiReadTransaction> {
+	pub fn begin_query(&self, id: TransactionId) -> Result<MultiReadTransaction, ValueError> {
 		MultiReadTransaction::new(self.clone(), id, None)
 	}
 
@@ -409,15 +415,15 @@ impl MultiTransaction {
 		&self,
 		id: TransactionId,
 		lease: &VersionLeaseGuard,
-	) -> Result<MultiReadTransaction> {
+	) -> Result<MultiReadTransaction, ValueError> {
 		MultiReadTransaction::new_with_lease(self.clone(), id, lease.clone())
 	}
 
-	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard, ValueError> {
 		self.0.tm.acquire_version_lease(version)
 	}
 
-	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard> {
+	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard, ValueError> {
 		self.0.tm.acquire_cutoff_lease()
 	}
 
@@ -425,7 +431,7 @@ impl MultiTransaction {
 		self.0.tm.restore_lease(version)
 	}
 
-	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard), ValueError> {
 		self.0.tm.acquire_current_snapshot_lease()
 	}
 
@@ -436,7 +442,7 @@ impl MultiTransaction {
 
 impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self, id: TransactionId) -> Result<MultiWriteTransaction> {
+	pub fn begin_command(&self, id: TransactionId) -> Result<MultiWriteTransaction, ValueError> {
 		MultiWriteTransaction::new(self.clone(), id)
 	}
 }
@@ -448,7 +454,7 @@ impl MultiTransaction {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		version: CommitVersion,
-	) -> Result<Vec<Option<Committed>>> {
+	) -> Result<Vec<Option<Committed>>, ValueError> {
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
 		let found = self.store.get_versioned(ctx, &encoded, version)?;
 		Ok(keys.iter()

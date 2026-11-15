@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, SeriesId},
 	series::Series,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackSeriesChangeOperations for AdminTransaction {
-	fn track_series_created(&mut self, series: Series) -> Result<()> {
+	fn track_series_created(&mut self, series: Series) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(series),
@@ -28,7 +28,7 @@ impl CatalogTrackSeriesChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_series_updated(&mut self, pre: Series, post: Series) -> Result<()> {
+	fn track_series_updated(&mut self, pre: Series, post: Series) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -38,7 +38,7 @@ impl CatalogTrackSeriesChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_series_deleted(&mut self, series: Series) -> Result<()> {
+	fn track_series_deleted(&mut self, series: Series) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(series),
 			post: None,

@@ -13,7 +13,8 @@ use reifydb_core::value::{
 	},
 };
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -159,7 +160,7 @@ impl JoinedColumnsBuilder {
 		left: &RecordBatch,
 		left_idx: usize,
 		right: &RecordBatch,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let right_count = right.num_rows();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), right_count, "row_numbers must match right row count");
@@ -175,7 +176,7 @@ impl JoinedColumnsBuilder {
 		left: &RecordBatch,
 		right: &RecordBatch,
 		right_idx: usize,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let left_count = left.num_rows();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), left_count, "row_numbers must match left row count");
@@ -188,7 +189,7 @@ impl JoinedColumnsBuilder {
 		self.assemble(row_numbers, left, &left_rows, right_columns, vec![right_time; left_count])
 	}
 
-	pub(crate) fn retain_rows(columns: &RecordBatch, keep: &[usize]) -> Result<RecordBatch> {
+	pub(crate) fn retain_rows(columns: &RecordBatch, keep: &[usize]) -> Result<RecordBatch, ValueError> {
 		if keep.len() == columns.num_rows() {
 			return Ok(columns.clone());
 		}
@@ -202,7 +203,7 @@ impl JoinedColumnsBuilder {
 		left_indices: &[usize],
 		right: &RecordBatch,
 		right_indices: &[usize],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let right_count = right_indices.len();
 		reifydb_assertions! {
 			assert_eq!(
@@ -234,7 +235,7 @@ impl JoinedColumnsBuilder {
 		left_indices: &[usize],
 		right: &RecordBatch,
 		right_indices: &[usize],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		reifydb_assertions! {
 			assert_eq!(left_indices.len(), right_indices.len(), "every left row pairs with exactly one right row");
 			assert_eq!(row_numbers.len(), left_indices.len(), "row_numbers must match pair count");
@@ -251,7 +252,7 @@ impl JoinedColumnsBuilder {
 		left_indices: &[usize],
 		right: &RecordBatch,
 		right_rows: &[Option<usize>],
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		reifydb_assertions! {
 			assert_eq!(left_indices.len(), right_rows.len(), "every left row names its slot row or none");
 			assert_eq!(row_numbers.len(), left_indices.len(), "row_numbers must match left row count");
@@ -272,7 +273,7 @@ impl JoinedColumnsBuilder {
 		left: &RecordBatch,
 		left_indices: &[usize],
 		right_shape: &Schema,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let count = left_indices.len();
 		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
@@ -292,7 +293,7 @@ impl JoinedColumnsBuilder {
 			.collect()
 	}
 
-	fn unmatched_right(&self, right_shape: &Schema, count: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn unmatched_right(&self, right_shape: &Schema, count: usize) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		self.included_right_cols
 			.iter()
 			.zip(self.right_column_names.iter())
@@ -307,7 +308,7 @@ impl JoinedColumnsBuilder {
 		left_rows: &[usize],
 		right_columns: Vec<(FieldRef, ArrayRef)>,
 		right_times: Vec<Option<DateTime>>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let gathered = gather(left, left_rows)?;
 		let mut columns: Vec<(FieldRef, ArrayRef)> =
 			user_columns(&gathered).map(|(field, array)| (field.clone(), array.clone())).collect();
@@ -330,7 +331,7 @@ impl JoinedColumnsBuilder {
 		batch(columns)
 	}
 
-	fn joined_time(left: &RecordBatch, right_times: &[Option<DateTime>]) -> Result<Option<ArrayRef>> {
+	fn joined_time(left: &RecordBatch, right_times: &[Option<DateTime>]) -> Result<Option<ArrayRef>, ValueError> {
 		let left_times = row_times(left)?;
 		if left_times.is_empty() {
 			return Ok(None);
@@ -344,7 +345,7 @@ impl JoinedColumnsBuilder {
 	}
 }
 
-fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, ArrayRef)> {
+fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let field_type = from_field(field)?;
 	let Some(value_type) = field_type.value_type else {
 		return Ok(none(name, count));
@@ -363,7 +364,7 @@ fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, Arr
 	}
 }
 
-fn gather(columns: &RecordBatch, rows: &[usize]) -> Result<RecordBatch> {
+fn gather(columns: &RecordBatch, rows: &[usize]) -> Result<RecordBatch, ValueError> {
 	let identity =
 		rows.len() == columns.num_rows() && rows.iter().enumerate().all(|(position, &row)| position == row);
 	match identity {

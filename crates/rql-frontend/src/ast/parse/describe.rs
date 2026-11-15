@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::AstDescribe,
 		parse::{Parser, Precedence},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_describe(&mut self) -> Result<AstDescribe<'bump>> {
+	pub(crate) fn parse_describe(&mut self) -> Result<AstDescribe<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());

@@ -6,7 +6,7 @@ use std::any::Any;
 use reifydb_core::{interface::version::HasVersion, util::ioc::IocContainer};
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub trait Subsystem: Any + HasVersion + Shutdown + Send + Sync {
 	fn name(&self) -> &'static str;
@@ -23,11 +23,11 @@ pub trait SubsystemFactory: Send {
 		builder
 	}
 
-	fn publish_catalog(&self, _ioc: &IocContainer) -> Result<()> {
+	fn publish_catalog(&self, _ioc: &IocContainer) -> Result<(), ValueError> {
 		Ok(())
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>>;
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

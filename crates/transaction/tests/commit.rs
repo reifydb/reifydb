@@ -32,7 +32,7 @@ use reifydb_transaction::{
 	transaction::command::CommandTransaction,
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{Result, error::ValueError, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec, value::duration::Duration};
 
 struct Harness {
 	_actor_system: ActorSystem,
@@ -91,7 +91,7 @@ fn encoded_bytes(value: &str) -> EncodedBytes {
 }
 
 struct Recorder {
-	results: Mutex<Vec<(usize, Result<CommitVersion>)>>,
+	results: Mutex<Vec<(usize, Result<CommitVersion, ValueError>)>>,
 	remaining: AtomicUsize,
 	done: WaiterHandle,
 }
@@ -105,7 +105,7 @@ impl Recorder {
 		})
 	}
 
-	fn completion(self: &Arc<Self>, index: usize) -> Box<dyn FnOnce(Result<Committed>) + Send> {
+	fn completion(self: &Arc<Self>, index: usize) -> Box<dyn FnOnce(Result<Committed, ValueError>) + Send> {
 		let recorder = Arc::clone(self);
 		Box::new(move |result| {
 			recorder.results.lock().push((index, result.map(|committed| committed.version)));
@@ -192,7 +192,7 @@ fn a_failing_apply_rolls_back_its_own_writes_and_the_handle_keeps_committing() {
 			txn.set(vec![(k0_apply.clone().into(), encoded_bytes("should-roll-back"))])?;
 			internal_err!("boom")
 		}),
-		completion: Box::new(move |result: Result<Committed>| {
+		completion: Box::new(move |result: Result<Committed, ValueError>| {
 			if result.is_err() {
 				failures_0.fetch_add(1, Ordering::SeqCst);
 			}

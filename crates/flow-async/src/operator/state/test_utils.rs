@@ -17,7 +17,7 @@ pub mod test {
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
-	use reifydb_value::{Result, value::identity::IdentityId};
+	use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 	use crate::transaction::FlowTransaction;
 
@@ -36,7 +36,7 @@ pub mod test {
 
 	pub fn scan_operator(txn: &mut impl FlowTransaction, operator: OperatorId) -> Vec<MultiVersionRow<TaggedKey>> {
 		txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap()
 	}
 

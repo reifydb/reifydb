@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::internal_err;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowColumns<G, C, X> {
@@ -20,7 +20,7 @@ impl<G, C, X> WindowColumns<G, C, X> {
 		groups: Vec<G>,
 		coords: Vec<Option<C>>,
 		contributions: Vec<X>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let len = index.len();
 		if rows.len() != len || groups.len() != len || coords.len() != len || contributions.len() != len {
 			return internal_err!(
@@ -77,7 +77,7 @@ pub struct RetractRows<G> {
 }
 
 impl<G> RetractRows<G> {
-	pub fn new(rows: Vec<Option<RowNumber>>, groups: Vec<G>) -> Result<Self> {
+	pub fn new(rows: Vec<Option<RowNumber>>, groups: Vec<G>) -> Result<Self, ValueError> {
 		if rows.len() != groups.len() {
 			return internal_err!(
 				"retract rows must share one length (rows={}, groups={})",
@@ -126,5 +126,8 @@ pub trait WindowRows {
 
 	fn diff_count(&self) -> usize;
 
-	fn diff(&mut self, index: usize) -> Result<WindowDiff<Self::Group, Self::Coord, Self::Contribution>>;
+	fn diff(
+		&mut self,
+		index: usize,
+	) -> Result<WindowDiff<Self::Group, Self::Coord, Self::Contribution>, ValueError>;
 }

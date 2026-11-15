@@ -11,11 +11,12 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::relationship::shape::relationship as relationship_shape};
+use crate::{CatalogStore, store::relationship::shape::relationship as relationship_shape};
 
 impl CatalogStore {
-	pub(crate) fn list_relationships(rx: &mut Transaction<'_>) -> Result<Vec<Relationship>> {
+	pub(crate) fn list_relationships(rx: &mut Transaction<'_>) -> Result<Vec<Relationship>, ValueError> {
 		let mut entries = Vec::new();
 		{
 			let stream = rx.range(RelationshipKey::full_scan(), RangeScope::All, 1024)?;
@@ -32,7 +33,7 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn decode_relationship_row(bytes: &EncodedCatalogRow) -> Result<Relationship> {
+pub(crate) fn decode_relationship_row(bytes: &EncodedCatalogRow) -> Result<Relationship, ValueError> {
 	let id = RelationshipId(relationship_shape::get_id(bytes));
 	let namespace = NamespaceId(relationship_shape::get_namespace_id(bytes));
 	let name = relationship_shape::get_name(bytes).to_string();

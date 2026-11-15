@@ -60,8 +60,8 @@ use reifydb_transaction::{
 	wal::flow_wal,
 };
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{duration::Duration, identity::IdentityId},
 };
 
@@ -106,7 +106,7 @@ impl FlowSubsystem {
 		Self::publish_custom_operators(&config.custom_operators, engine);
 	}
 
-	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Result<Self> {
+	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Result<Self, ValueError> {
 		Self::maybe_load_extern_operators(&config, &engine);
 
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
@@ -339,7 +339,7 @@ impl FlowSubsystem {
 }
 
 impl Shutdown for FlowSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return Ok(());
 		}

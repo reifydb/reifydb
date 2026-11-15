@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackPolicyChangeOperations,
 	policy::{Policy, PolicyId},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackPolicyChangeOperations for AdminTransaction {
-	fn track_policy_created(&mut self, policy: Policy) -> Result<()> {
+	fn track_policy_created(&mut self, policy: Policy) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(policy),
@@ -27,7 +27,7 @@ impl CatalogTrackPolicyChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<()> {
+	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +37,7 @@ impl CatalogTrackPolicyChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_policy_deleted(&mut self, policy: Policy) -> Result<()> {
+	fn track_policy_deleted(&mut self, policy: Policy) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(policy),
 			post: None,

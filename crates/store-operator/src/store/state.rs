@@ -41,7 +41,7 @@ use tracing::{Span, field::Empty, instrument, warn};
 #[cfg(reifydb_assertions)]
 use crate::types::LayeredPre;
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{Enumerate, Fetch, Measure, Page as PersistentPage, Persistent},
 	range::RangeSink,
 	store::{
@@ -64,7 +64,7 @@ impl StandardOperatorStore {
 		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 		lsn: Option<Lsn>,
-	) -> Result<()> {
+	) -> Result<(), StoreOperatorError> {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 			verify_group_scope(writes);
@@ -81,7 +81,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
-	pub fn drop_operator(&self, operator: OperatorId) -> Result<()> {
+	pub fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		self.resident.record_drop(DropMarker::OperatorState(operator));
 		self.occupancy.forget(operator);
 		self.census.forget(operator);
@@ -89,7 +89,7 @@ impl StandardOperatorStore {
 		Ok(())
 	}
 
-	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<()> {
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<(), StoreOperatorError> {
 		let occupied = self.occupancy.mask(operator, || self.occupied_keyspaces(operator))?;
 		self.range.invalidate_group(operator, group, occupied);
 		Ok(())
@@ -176,7 +176,10 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::state_sizes", level = "trace", skip(self, probes), fields(probe_count = probes.len()))]
-	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
+	pub fn state_sizes(
+		&self,
+		probes: &[(OperatorId, GroupStateKey)],
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		let mut sizes: Vec<Option<ByteSize>> = Vec::with_capacity(probes.len());
 		let mut residual: HashMap<OperatorId, (Vec<usize>, Vec<&GroupStateKey>)> = HashMap::new();
 		for (index, (operator, key)) in probes.iter().enumerate() {
@@ -220,7 +223,11 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::state_get", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_get(&self, operator: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn state_get(
+		&self,
+		operator: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -281,12 +288,20 @@ impl StandardOperatorStore {
 	}
 
 	#[cfg(reifydb_assertions)]
-	fn durable_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
+	fn durable_get(
+		&self,
+		operator: OperatorId,
+		key: &EncodedKey,
+	) -> Result<Option<EncodedPodRow>, StoreOperatorError> {
 		Ok(self.persistent.get(operator, &[GroupStateKey::bound_unchecked(key.clone())])?.pop().flatten())
 	}
 
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = Empty, batch_size = batch_size))]
-	pub fn range_batch(&self, range: TaggedKeyBoundRange, batch_size: u64) -> Result<OperatorBatch> {
+	pub fn range_batch(
+		&self,
+		range: TaggedKeyBoundRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		let (operator, range) =
 			inner_range(&range).expect("an operator store range must address operator state");
 		Span::current().record("operator", operator.0);
@@ -440,7 +455,7 @@ impl StandardOperatorStore {
 		groups: &[GroupId],
 		batch_size: u64,
 		keyspaces: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut ordered: Vec<GroupId> = groups.to_vec();
@@ -524,7 +539,7 @@ impl StandardOperatorStore {
 		})
 	}
 
-	fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+	fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError> {
 		self.persistent.keyspaces(operator)
 	}
 
@@ -533,7 +548,7 @@ impl StandardOperatorStore {
 		operator: OperatorId,
 		range: &EncodedKeyRange,
 		dropped: bool,
-	) -> Result<Box<dyn PageSource + 'a>> {
+	) -> Result<Box<dyn PageSource + 'a>, StoreOperatorError> {
 		if dropped {
 			return Ok(Box::new(ExhaustedPager));
 		}
@@ -577,7 +592,7 @@ impl StandardOperatorStore {
 		&self,
 		range: TaggedKeyBoundRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, StoreOperatorError> {
 		Ok(self.range_batch(range, limit.unwrap_or(usize::MAX) as u64)?.items)
 	}
 
@@ -588,7 +603,7 @@ impl StandardOperatorStore {
 		group: GroupId,
 		scan: Scan,
 		limit: usize,
-	) -> Result<BufferedRange> {
+	) -> Result<BufferedRange, StoreOperatorError> {
 		let range = group_inner_range(group);
 		let (start, end) = (range.start.as_ref(), range.end.as_ref());
 		Ok(match scan {
@@ -639,7 +654,7 @@ impl OperatorStore {
 		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 		lsn: Option<Lsn>,
-	) -> Result<()> {
+	) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => {
 				store.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes, lsn)
@@ -647,19 +662,22 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn drop_operator(&self, operator: OperatorId) -> Result<()> {
+	pub fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.drop_operator(operator),
 		}
 	}
 
-	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<()> {
+	pub fn invalidate_group(&self, operator: OperatorId, group: GroupId) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.invalidate_group(operator, group),
 		}
 	}
 
-	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
+	pub fn state_sizes(
+		&self,
+		probes: &[(OperatorId, GroupStateKey)],
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.state_sizes(probes),
 		}
@@ -671,13 +689,21 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn state_get(&self, operator: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn state_get(
+		&self,
+		operator: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.state_get(operator, keys),
 		}
 	}
 
-	pub fn range_batch(&self, range: TaggedKeyBoundRange, batch_size: u64) -> Result<OperatorBatch> {
+	pub fn range_batch(
+		&self,
+		range: TaggedKeyBoundRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.range_batch(range, batch_size),
 		}
@@ -689,7 +715,7 @@ impl OperatorStore {
 		groups: &[GroupId],
 		batch_size: u64,
 		keyspaces: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.group_page(operator, groups, batch_size, keyspaces),
 		}
@@ -699,7 +725,7 @@ impl OperatorStore {
 		&self,
 		range: TaggedKeyBoundRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.state_page(range, limit),
 		}
@@ -711,7 +737,7 @@ impl OperatorStore {
 		group: GroupId,
 		scan: Scan,
 		limit: usize,
-	) -> Result<BufferedRange> {
+	) -> Result<BufferedRange, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.state_range(operator, group, scan, limit),
 		}
@@ -944,7 +970,7 @@ pub struct StateLastIter<'a> {
 }
 
 impl Iterator for StateLastIter<'_> {
-	type Item = Result<(EncodedKey, EncodedPodRow)>;
+	type Item = Result<(EncodedKey, EncodedPodRow), StoreOperatorError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.failed {

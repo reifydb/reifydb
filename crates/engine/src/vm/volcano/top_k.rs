@@ -12,7 +12,9 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error, reifydb_assertions,
+	error,
+	error::ValueError,
+	reifydb_assertions,
 	value::{
 		column_view::ColumnView,
 		system_columns::{is_system_field, resolve_column},
@@ -20,12 +22,9 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
-		rank::{enum_name_ranks, rank_rows},
-	},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
+	rank::{enum_name_ranks, rank_rows},
 };
 
 pub(crate) struct TopKNode {
@@ -50,14 +49,18 @@ impl TopKNode {
 
 impl QueryNode for TopKNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "TopKNode::next() called before initialize()");
 		}
@@ -84,7 +87,9 @@ impl QueryNode for TopKNode {
 		let ranked = enum_name_ranks(&columns, &ctx.services, rx)?;
 
 		let key_cols: Vec<_> =
-			self.by.iter().map(|key| Self::resolve_key(&ranked, key)).collect::<Result<Vec<_>>>()?;
+			self.by.iter()
+				.map(|key| Self::resolve_key(&ranked, key))
+				.collect::<Result<Vec<_>, ValueError>>()?;
 
 		let indices = rank_rows(&key_cols, row_count, Some(self.limit))?;
 		Ok(Some(Self::permute(&columns, &indices)?))
@@ -96,7 +101,10 @@ impl QueryNode for TopKNode {
 }
 
 impl TopKNode {
-	fn resolve_key<'b>(columns: &'b RecordBatch, key: &SortKey) -> Result<(ColumnView<'b>, SortDirection)> {
+	fn resolve_key<'b>(
+		columns: &'b RecordBatch,
+		key: &SortKey,
+	) -> Result<(ColumnView<'b>, SortDirection), ValueError> {
 		let index = resolve_column(columns, key.column.fragment())
 			.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
 		let view = ColumnView::try_from((columns.column(index), columns.schema_ref().field(index)))?;
@@ -111,7 +119,7 @@ impl TopKNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		ctx: &mut QueryContext,
-	) -> Result<Option<RecordBatch>> {
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let mut batches = Vec::new();
 		let mut charged = 0usize;
 		let mut total = 0usize;
@@ -129,7 +137,7 @@ impl TopKNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::permute")]
-	fn permute(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+	fn permute(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch, ValueError> {
 		take_rows(columns, indices)
 	}
 }

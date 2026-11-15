@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -27,7 +26,7 @@ use super::RowShape;
 use crate::row::bytes::RowBuilder;
 
 impl RowShape {
-	pub fn write_columns<B: RowBuilder>(&self, rows: &mut [B], columns: &[ColumnView]) -> Result<()> {
+	pub fn write_columns<B: RowBuilder>(&self, rows: &mut [B], columns: &[ColumnView]) -> Result<(), ValueError> {
 		if columns.len() != self.fields().len() || columns.iter().any(|column| column.len() != rows.len()) {
 			return Err(ValueError(Box::new(Diagnostic {
 				code: "INTERNAL_ERROR".to_string(),

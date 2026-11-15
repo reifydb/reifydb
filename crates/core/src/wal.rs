@@ -6,11 +6,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_value::util::cowvec::CowVec;
-use reifydb_wal::{
-	body::Body,
-	error::{Result, WalError},
-	lsn::Lsn,
-};
+use reifydb_wal::{body::Body, error::WalError, lsn::Lsn};
 
 use crate::{
 	common::{CommitVersion, SourceVersion},
@@ -127,7 +123,7 @@ impl Body for CommitRecord {
 		);
 	}
 
-	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
+	fn decode(kind: u32, bytes: &[u8]) -> Result<Self, WalError> {
 		if kind != Self::KIND {
 			return Err(WalError::Body(format!("unknown commit record kind {kind}")));
 		}
@@ -220,7 +216,7 @@ impl Body for SingleRecord {
 		Self::encode_deltas(&self.deltas, out);
 	}
 
-	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
+	fn decode(kind: u32, bytes: &[u8]) -> Result<Self, WalError> {
 		if kind != Self::KIND {
 			return Err(WalError::Body(format!("unknown single record kind {kind}")));
 		}
@@ -266,7 +262,7 @@ impl Body for WalRecord {
 		}
 	}
 
-	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
+	fn decode(kind: u32, bytes: &[u8]) -> Result<Self, WalError> {
 		match kind {
 			CommitRecord::KIND => Ok(Self::Multi(CommitRecord::decode(kind, bytes)?)),
 			SingleRecord::KIND => Ok(Self::Single(SingleRecord::decode(kind, bytes)?)),
@@ -337,7 +333,7 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-	fn take(&mut self, len: usize) -> Result<&'a [u8]> {
+	fn take(&mut self, len: usize) -> Result<&'a [u8], WalError> {
 		let end = self.at.checked_add(len).filter(|end| *end <= self.bytes.len()).ok_or_else(|| {
 			WalError::Body(format!(
 				"truncated at byte {}: needs {len} of {} remaining",
@@ -350,38 +346,38 @@ impl<'a> Reader<'a> {
 		Ok(slice)
 	}
 
-	fn u8(&mut self) -> Result<u8> {
+	fn u8(&mut self) -> Result<u8, WalError> {
 		Ok(self.take(1)?[0])
 	}
 
-	fn u32(&mut self) -> Result<u32> {
+	fn u32(&mut self) -> Result<u32, WalError> {
 		let mut buf = [0u8; 4];
 		buf.copy_from_slice(self.take(4)?);
 		Ok(u32::from_le_bytes(buf))
 	}
 
-	fn u64(&mut self) -> Result<u64> {
+	fn u64(&mut self) -> Result<u64, WalError> {
 		let mut buf = [0u8; 8];
 		buf.copy_from_slice(self.take(8)?);
 		Ok(u64::from_le_bytes(buf))
 	}
 
-	fn bytes(&mut self) -> Result<&'a [u8]> {
+	fn bytes(&mut self) -> Result<&'a [u8], WalError> {
 		let len = self.u32()? as usize;
 		self.take(len)
 	}
 
-	fn encoded(&mut self) -> Result<EncodedBytes> {
+	fn encoded(&mut self) -> Result<EncodedBytes, WalError> {
 		Ok(EncodedBytes(CowVec::new(self.bytes()?.to_vec())))
 	}
 
-	fn key(&mut self) -> Result<TaggedKey> {
+	fn key(&mut self) -> Result<TaggedKey, WalError> {
 		let at = self.at;
 		let key = EncodedKey::new(self.bytes()?);
 		TaggedKey::decode(&key).ok_or_else(|| WalError::Body(format!("undecodable key at byte {at}")))
 	}
 
-	fn delta(&mut self) -> Result<Delta> {
+	fn delta(&mut self) -> Result<Delta, WalError> {
 		let at = self.at;
 		match self.u8()? {
 			OP_SET => {
@@ -429,7 +425,7 @@ impl<'a> Reader<'a> {
 		}
 	}
 
-	fn section(&mut self) -> Result<OperatorSection> {
+	fn section(&mut self) -> Result<OperatorSection, WalError> {
 		let count = self.u32()?;
 		let mut slices = Vec::new();
 		for _ in 0..count {
@@ -440,7 +436,7 @@ impl<'a> Reader<'a> {
 		})
 	}
 
-	fn slice(&mut self) -> Result<OperatorSlice> {
+	fn slice(&mut self) -> Result<OperatorSlice, WalError> {
 		let count = self.u32()?;
 		let mut writes = Vec::new();
 		for _ in 0..count {
@@ -471,7 +467,7 @@ impl<'a> Reader<'a> {
 		})
 	}
 
-	fn state_write(&mut self) -> Result<(OperatorId, GroupStateKey, OperatorStateWrite)> {
+	fn state_write(&mut self) -> Result<(OperatorId, GroupStateKey, OperatorStateWrite), WalError> {
 		let operator = OperatorId(self.u64()?);
 		let key = GroupStateKey::bound_unchecked(EncodedKey::new(self.bytes()?));
 		let at = self.at;
@@ -483,7 +479,7 @@ impl<'a> Reader<'a> {
 		Ok((operator, key, write))
 	}
 
-	fn single_delta(&mut self) -> Result<Delta> {
+	fn single_delta(&mut self) -> Result<Delta, WalError> {
 		let at = self.at;
 		match self.u8()? {
 			OP_SET => {

@@ -23,7 +23,7 @@ use reifydb_macro::operator_state;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, column_view::ColumnView, row_number::RowNumber, system_columns::row_numbers},
 };
 use tracing::instrument;
@@ -78,7 +78,7 @@ impl GateOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let lowered_conditions: Vec<LoweredExpr> =
 			conditions.into_iter().map(|condition| LoweredExpr::new(condition, "gate")).collect();
 
@@ -96,7 +96,7 @@ impl GateOperator {
 		self.parent_schema.clone()
 	}
 
-	fn evaluate(&self, columns: &RecordBatch) -> Result<Vec<bool>> {
+	fn evaluate(&self, columns: &RecordBatch) -> Result<Vec<bool>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -135,11 +135,11 @@ impl GateOperator {
 		Ok(mask)
 	}
 
-	fn is_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<bool> {
+	fn is_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<bool, ValueError> {
 		Ok(get::<_, VisibilityMarker>(host, from_ref(&VisibilityKey(rn)))?.remove(0).is_some())
 	}
 
-	fn mark_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
+	fn mark_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<(), ValueError> {
 		set(
 			host,
 			vec![(
@@ -151,7 +151,7 @@ impl GateOperator {
 		)
 	}
 
-	fn mark_invisible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
+	fn mark_invisible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<(), ValueError> {
 		remove(host, from_ref(&VisibilityKey(rn)))
 	}
 }
@@ -169,7 +169,7 @@ impl HostOperator for GateOperator {
 		None
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		let mut result = Vec::new();
 
@@ -207,7 +207,7 @@ impl GateOperator {
 		host: &mut dyn HostContext,
 		post: &RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let post_row_numbers = row_numbers(post)?;
 		if post_row_numbers.is_empty() {
 			let mask = self.evaluate(post)?;
@@ -242,7 +242,7 @@ impl GateOperator {
 		pre: RecordBatch,
 		post: RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if row_numbers(&post)?.is_empty() {
 			result.push(Diff::update(pre, post));
 			return Ok(());
@@ -280,7 +280,7 @@ impl GateOperator {
 		host: &mut dyn HostContext,
 		pre: RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let pre_row_numbers = row_numbers(&pre)?;
 		if pre_row_numbers.is_empty() {
 			result.push(Diff::Remove {

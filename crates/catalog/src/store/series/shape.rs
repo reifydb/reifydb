@@ -3,9 +3,9 @@
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_macro::catalog_shape;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, error::CatalogError};
+use crate::error::CatalogError;
 
 catalog_shape! {
 	pub(crate) series {
@@ -34,7 +34,7 @@ pub fn serialize_encoding_config(config: &[(String, Value)]) -> Vec<u8> {
 	to_allocvec(config).expect("postcard serialization of an encoding config is total")
 }
 
-pub fn deserialize_encoding_config(name: &str, bytes: &[u8]) -> Result<Vec<(String, Value)>> {
+pub fn deserialize_encoding_config(name: &str, bytes: &[u8]) -> Result<Vec<(String, Value)>, ValueError> {
 	from_bytes(bytes).map_err(|e| {
 		CatalogError::SeriesEncodingConfigCorrupt {
 			name: name.to_string(),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::common::CommitVersion;
 
@@ -18,5 +18,5 @@ pub trait ConsumerPositions: Send + Sync + 'static {
 }
 
 pub trait CheckpointFloor: Send + Sync + 'static {
-	fn floor(&self) -> Result<Option<CommitVersion>>;
+	fn floor(&self) -> Result<Option<CommitVersion>, ValueError>;
 }

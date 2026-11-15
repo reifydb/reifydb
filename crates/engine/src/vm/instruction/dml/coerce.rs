@@ -21,7 +21,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	error::EngineError,
 	vm::volcano::query::{QueryContext, eval_context_from_query},
 };
@@ -71,7 +70,7 @@ pub(crate) fn coerce_value_to_column_type(
 	target: ValueType,
 	column: ResolvedColumn,
 	ctx: &QueryContext,
-) -> Result<Value> {
+) -> Result<Value, ValueError> {
 	if value.get_type() == target {
 		return Ok(value);
 	}
@@ -111,7 +110,7 @@ pub(crate) fn coerce_value_to_column_type(
 	Ok(ColumnView::try_from(&coerced_column)?.get_value(0))
 }
 
-pub(crate) fn series_key(series: &Series, value: &Value) -> Result<Option<u64>> {
+pub(crate) fn series_key(series: &Series, value: &Value) -> Result<Option<u64>, ValueError> {
 	if matches!(value, Value::None { .. }) {
 		return Ok(None);
 	}

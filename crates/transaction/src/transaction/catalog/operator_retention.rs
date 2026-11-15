@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{change::CatalogTrackOperatorRetentionChangeOperations, flow::OperatorId},
 	row::OperatorRetention,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{Change, OperationType::Create},
@@ -17,7 +17,7 @@ impl CatalogTrackOperatorRetentionChangeOperations for AdminTransaction {
 		&mut self,
 		operator: OperatorId,
 		retention: OperatorRetention,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some((operator, retention)),

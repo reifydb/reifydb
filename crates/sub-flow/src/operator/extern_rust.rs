@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_extension::loader::extern_load::ExternLoad;
 use reifydb_flow_async::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::{Result, config::ExtensionParams, error::ValueError, value::constraint::TypeConstraint};
+use reifydb_value::{config::ExtensionParams, error::ValueError, value::constraint::TypeConstraint};
 
 use crate::error::SubFlowError;
 
@@ -24,7 +24,8 @@ pub const EXTERN_RUST_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const EXTERN_RUST_ABI_TAG: u32 = 0x0308;
 
-pub type ExternRustOperatorCreateFn = fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator>;
+pub type ExternRustOperatorCreateFn =
+	fn(OperatorId, &ExtensionParams, &ApplyWith) -> Result<BoxedHostOperator, ValueError>;
 
 pub struct ExternRustOperatorColumn {
 	pub name: String,
@@ -49,7 +50,7 @@ pub fn extern_rust_operator_magic() -> u32 {
 	EXTERN_RUST_OPERATOR_MAGIC
 }
 
-pub fn check_extern_rust_abi_tag(abi_tag: u32) -> Result<()> {
+pub fn check_extern_rust_abi_tag(abi_tag: u32) -> Result<(), ValueError> {
 	if abi_tag != EXTERN_RUST_ABI_TAG {
 		return Err(ValueError::from(SubFlowError::AbiTagMismatch {
 			plugin: abi_tag,
@@ -92,7 +93,7 @@ impl ExternRustOperatorLoader {
 		}
 	}
 
-	fn load_library(&mut self, path: &Path) -> Result<bool> {
+	fn load_library(&mut self, path: &Path) -> Result<bool, ValueError> {
 		self.cache
 			.check_magic(path, b"reifydb_extern_rust_operator_magic\0", EXTERN_RUST_OPERATOR_MAGIC)
 			.map_err(|e| {
@@ -103,7 +104,7 @@ impl ExternRustOperatorLoader {
 			})
 	}
 
-	fn descriptor(&self, path: &Path) -> Result<ExternRustOperatorDescriptor> {
+	fn descriptor(&self, path: &Path) -> Result<ExternRustOperatorDescriptor, ValueError> {
 		let library = self.cache.get(path).ok_or_else(|| {
 			ValueError::from(SubFlowError::LibraryNotLoaded {
 				path: path.display().to_string(),
@@ -129,7 +130,7 @@ impl ExternRustOperatorLoader {
 		Ok(descriptor)
 	}
 
-	pub fn register_operator(&mut self, path: &Path) -> Result<Option<LoadedExternRustOperatorInfo>> {
+	pub fn register_operator(&mut self, path: &Path) -> Result<Option<LoadedExternRustOperatorInfo>, ValueError> {
 		if !self.load_library(path)? {
 			return Ok(None);
 		}
@@ -150,7 +151,7 @@ impl ExternRustOperatorLoader {
 		operator_id: OperatorId,
 		params: &ExtensionParams,
 		with: &ApplyWith,
-	) -> Result<BoxedHostOperator> {
+	) -> Result<BoxedHostOperator, ValueError> {
 		let path = self
 			.operator_paths
 			.get(operator)

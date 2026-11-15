@@ -11,10 +11,7 @@ use reifydb_store_column::{
 };
 use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	vm::volcano::scan::column_decode::{BlockDecoder, Decoded},
-};
+use crate::vm::volcano::scan::column_decode::{BlockDecoder, Decoded};
 
 pub(crate) struct BlockSequenceReader {
 	store: Arc<ColumnStore>,
@@ -55,7 +52,7 @@ impl BlockSequenceReader {
 		self.schema.as_ref()
 	}
 
-	pub(crate) fn next(&mut self) -> Result<Option<RecordBatch>> {
+	pub(crate) fn next(&mut self) -> Result<Option<RecordBatch>, ValueError> {
 		loop {
 			if let Some(reader) = self.current.as_mut() {
 				match reader.next() {

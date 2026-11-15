@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::identity::IdentityKind;
+use reifydb_value::{error::ValueError, value::identity::IdentityKind};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstAlter, AstAlterIdentity, AstCreate, AstCreateIdentity, AstCreateIdentityAttribute,
@@ -20,7 +19,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		kind: IdentityKind,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 
 		let entries = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
@@ -37,7 +36,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_alter_identity(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+	pub(crate) fn parse_alter_identity(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 		let entries = self.parse_body_entries()?;
 
@@ -48,7 +47,10 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_create_identity_attribute(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_identity_attribute(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 		self.consume_operator(Operator::Colon)?;
 		let value_type = self.parse_type()?;
@@ -60,7 +62,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 
 		Ok(AstCreate::Role(AstCreateRole {
@@ -73,7 +75,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		kind: IdentityKind,
-	) -> Result<AstDrop<'bump>> {
+	) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 
@@ -85,7 +87,10 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_identity_attribute(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_identity_attribute(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 
@@ -96,7 +101,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume_identifier()?;
 

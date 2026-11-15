@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstStatement, AstSubQuery},
 		parse::{Parser, Precedence},
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_sub_query(&mut self) -> Result<AstSubQuery<'bump>> {
+	pub(crate) fn parse_sub_query(&mut self) -> Result<AstSubQuery<'bump>, ValueError> {
 		let token = self.consume_operator(OpenCurly)?;
 		let statement = self.parse_sub_query_statement()?;
 		self.consume_operator(CloseCurly)?;
@@ -22,7 +23,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_sub_query_statement(&mut self) -> Result<AstStatement<'bump>> {
+	fn parse_sub_query_statement(&mut self) -> Result<AstStatement<'bump>, ValueError> {
 		let mut nodes = Vec::new();
 		let mut has_pipes = false;
 

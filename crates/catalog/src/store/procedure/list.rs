@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{any::TaggedKey, procedure::ProcedureKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn list_procedures_all(rx: &mut Transaction<'_>) -> Result<Vec<Procedure>> {
+	pub(crate) fn list_procedures_all(rx: &mut Transaction<'_>) -> Result<Vec<Procedure>, ValueError> {
 		let mut ids = Vec::new();
 		{
 			let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::store::{SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
-use reifydb_value::{Result, util::hex::encode};
+use reifydb_value::{error::ValueError, util::hex::encode};
 
 use super::*;
 use crate::error::TransactionError;
@@ -29,7 +29,7 @@ pub struct SingleReadTransaction<'a> {
 
 impl<'a> SingleReadTransaction<'a> {
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> Result<(), ValueError> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
@@ -40,7 +40,7 @@ impl<'a> SingleReadTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	pub fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>, ValueError> {
 		for key in keys {
 			self.check_key_allowed(key)?;
 		}

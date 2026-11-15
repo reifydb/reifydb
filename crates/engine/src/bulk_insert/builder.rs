@@ -55,7 +55,6 @@ use super::{
 	validation::{CoercedTags, coerce_columns},
 };
 use crate::{
-	Result,
 	bulk_insert::storage::{
 		ringbuffer::{PendingRingBufferInsert, RingBufferInsertBuilder},
 		series::{PendingSeriesInsert, SeriesInsertBuilder},
@@ -88,18 +87,18 @@ use crate::{
 pub trait ValidationMode: sealed::Internal + 'static {
 	const VALIDATED: bool;
 
-	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R, ValueError>
 	where
-		F: FnOnce(&mut CommandTransaction) -> Result<R>;
+		F: FnOnce(&mut CommandTransaction) -> Result<R, ValueError>;
 }
 
 pub struct Validated;
 impl ValidationMode for Validated {
 	const VALIDATED: bool = true;
 
-	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R, ValueError>
 	where
-		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+		F: FnOnce(&mut CommandTransaction) -> Result<R, ValueError>,
 	{
 		run_checked(txn, total_rows, body)
 	}
@@ -109,17 +108,17 @@ pub struct Unchecked;
 impl ValidationMode for Unchecked {
 	const VALIDATED: bool = false;
 
-	fn run<F, R>(txn: &mut CommandTransaction, _total_rows: usize, body: F) -> Result<R>
+	fn run<F, R>(txn: &mut CommandTransaction, _total_rows: usize, body: F) -> Result<R, ValueError>
 	where
-		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+		F: FnOnce(&mut CommandTransaction) -> Result<R, ValueError>,
 	{
 		txn.execute_bulk_unchecked(body)
 	}
 }
 
-fn run_checked<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+fn run_checked<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R, ValueError>
 where
-	F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	F: FnOnce(&mut CommandTransaction) -> Result<R, ValueError>,
 {
 	if total_rows > 0 {
 		txn.reserve_writes(total_rows.saturating_mul(2))?;
@@ -208,11 +207,11 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		self.pending_series.push(pending);
 	}
 
-	pub fn execute(self) -> Result<BulkInsertResult> {
+	pub fn execute(self) -> Result<BulkInsertResult, ValueError> {
 		RetryStrategy::default().retry(self.engine.rng(), "bulk_insert", || self.run())
 	}
 
-	fn run(&self) -> Result<BulkInsertResult> {
+	fn run(&self) -> Result<BulkInsertResult, ValueError> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
@@ -276,7 +275,7 @@ fn run_all_pending<V: ValidationMode>(
 	pending_tables: &[PendingTableInsert],
 	pending_ringbuffers: &[PendingRingBufferInsert],
 	pending_series: &[PendingSeriesInsert],
-) -> Result<BulkInsertResult> {
+) -> Result<BulkInsertResult, ValueError> {
 	let mut result = BulkInsertResult::default();
 	for pending in pending_tables {
 		result.tables.push(execute_table_insert::<V>(writer, txn, pending)?);
@@ -309,8 +308,8 @@ fn check_rows<V: ValidationMode>(
 	columns: &[(FieldRef, ArrayRef)],
 	tags: Option<CoercedTags>,
 	rows: usize,
-) -> Result<Checked> {
-	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+) -> Result<Checked, ValueError> {
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 	let mut failure: Option<(usize, ValueError)> = None;
 	let limit = |failure: &Option<(usize, ValueError)>| failure.as_ref().map_or(rows, |(row, _)| *row);
 
@@ -411,7 +410,7 @@ fn first_tag_failure(
 	view: &ColumnView<'_>,
 	variant_tags: &HashMap<SumTypeId, Vec<u8>>,
 	limit: usize,
-) -> Result<Option<(usize, ValueError)>> {
+) -> Result<Option<(usize, ValueError)>, ValueError> {
 	let Some(Constraint::SumType(id)) = column.constraint.constraint() else {
 		return Ok(None);
 	};
@@ -441,7 +440,7 @@ fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -
 	with_row_note(error, name, row)
 }
 
-fn key_column_index(series: &Series) -> Result<usize> {
+fn key_column_index(series: &Series) -> Result<usize, ValueError> {
 	let key_col_name = series.key.column();
 	series.columns
 		.iter()
@@ -456,7 +455,7 @@ fn enforce_write_policies(
 	object: &str,
 	target: PolicyTargetType,
 	columns: &[(FieldRef, ArrayRef)],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let symbols = SymbolTable::new();
 	PolicyEvaluator::new(writer.services, &symbols).enforce_write_policies(
 		&mut Transaction::Command(txn),
@@ -468,7 +467,7 @@ fn enforce_write_policies(
 	)
 }
 
-fn stamp<B: SourceRowBuilder>(row: &mut B, times: &RowTime<'_>, index: usize, now: DateTime) -> Result<()> {
+fn stamp<B: SourceRowBuilder>(row: &mut B, times: &RowTime<'_>, index: usize, now: DateTime) -> Result<(), ValueError> {
 	row.set_timestamps(now, now);
 	if let Some(time) = times.inserted(index, row.as_slice(), now)? {
 		row.set_time(time);
@@ -480,7 +479,7 @@ fn execute_table_insert<V: ValidationMode>(
 	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-) -> Result<TableInsertResult> {
+) -> Result<TableInsertResult, ValueError> {
 	let catalog = writer.catalog;
 	let (namespace, table) = resolve_table(catalog, txn, pending)?;
 	let shape = catalog.get_or_create_table_shape(&mut Transaction::Command(txn), &table)?;
@@ -542,7 +541,7 @@ fn execute_table_insert<V: ValidationMode>(
 	})
 }
 
-fn auto_increment_rows(columns: &[Column], cast: &[(FieldRef, ArrayRef)]) -> Result<Vec<Vec<usize>>> {
+fn auto_increment_rows(columns: &[Column], cast: &[(FieldRef, ArrayRef)]) -> Result<Vec<Vec<usize>>, ValueError> {
 	columns.iter()
 		.zip(cast)
 		.map(|(column, cast)| {
@@ -564,7 +563,7 @@ fn empty_table_result(pending: &PendingTableInsert) -> TableInsertResult {
 	}
 }
 
-fn resolve_namespace(catalog: &Catalog, txn: &mut CommandTransaction, name: &str) -> Result<Namespace> {
+fn resolve_namespace(catalog: &Catalog, txn: &mut CommandTransaction, name: &str) -> Result<Namespace, ValueError> {
 	catalog.find_namespace_by_name(&mut Transaction::Command(txn), name)?.ok_or_else(|| {
 		CatalogError::NotFound {
 			kind: CatalogObjectKind::Namespace,
@@ -580,7 +579,7 @@ fn has_keyed_table(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending_tables: &[PendingTableInsert],
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	for pending in pending_tables {
 		let (_, table) = resolve_table(catalog, txn, pending)?;
 		if get_primary_key(catalog, &mut Transaction::Command(txn), &table)?.is_some() {
@@ -594,7 +593,7 @@ fn resolve_table(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-) -> Result<(Namespace, Table)> {
+) -> Result<(Namespace, Table), ValueError> {
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let table = catalog
 		.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?
@@ -614,7 +613,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-) -> Result<RingBufferInsertResult> {
+) -> Result<RingBufferInsertResult, ValueError> {
 	let catalog = writer.catalog;
 	let (namespace, ringbuffer) = resolve_ringbuffer(catalog, txn, pending)?;
 	let shape = catalog.get_or_create_ringbuffer_shape(&mut Transaction::Command(txn), &ringbuffer)?;
@@ -644,7 +643,7 @@ fn resolve_ringbuffer(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-) -> Result<(Namespace, RingBuffer)> {
+) -> Result<(Namespace, RingBuffer), ValueError> {
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let ringbuffer = catalog
 		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
@@ -668,7 +667,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	shape: &RowShape,
 	columns: Vec<(FieldRef, ArrayRef)>,
 	rows: usize,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let catalog = writer.catalog;
 	enforce_write_policies(writer, txn, namespace, &ringbuffer.name, PolicyTargetType::RingBuffer, &columns)?;
 	let variant_tags = sumtype_variant_tags(catalog, &mut Transaction::Command(txn), &ringbuffer.columns)?;
@@ -731,7 +730,7 @@ fn execute_series_insert<V: ValidationMode>(
 	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
 	pending: &PendingSeriesInsert,
-) -> Result<SeriesInsertResult> {
+) -> Result<SeriesInsertResult, ValueError> {
 	let catalog = writer.catalog;
 	let (namespace, series) = resolve_series(catalog, txn, pending)?;
 	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
@@ -813,7 +812,7 @@ fn resolve_series(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingSeriesInsert,
-) -> Result<(Namespace, Series)> {
+) -> Result<(Namespace, Series), ValueError> {
 	let namespace = resolve_namespace(catalog, txn, &pending.namespace)?;
 	let series = catalog
 		.find_series_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.series)?
@@ -838,7 +837,7 @@ fn insert_series_rows(
 	checked: Checked,
 	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
 	inserted_keys: &mut HashMap<Partition, Vec<u64>>,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let catalog = writer.catalog;
 	let rows = checked.keys.len();
 	let key_index = key_column_index(series)?;
@@ -908,7 +907,7 @@ fn insert_series_rows(
 
 fn renumber_series_rows(storage: StorageId, partition: Partition) -> Rewrite {
 	Arc::new(move |deltas, at_base, at_latest| {
-		let counter = |bytes: Option<&EncodedBytes>| -> Result<u64> {
+		let counter = |bytes: Option<&EncodedBytes>| -> Result<u64, ValueError> {
 			Ok(match bytes {
 				Some(bytes) => {
 					decode_series_partition_metadata(EncodedPodRow::view(bytes))?.sequence_counter

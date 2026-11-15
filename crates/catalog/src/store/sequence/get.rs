@@ -5,10 +5,10 @@ use reifydb_core::{interface::catalog::id::SequenceId, internal};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::sequence::Sequence};
+use crate::{CatalogStore, store::sequence::Sequence};
 
 impl CatalogStore {
-	pub(crate) fn get_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Sequence> {
+	pub(crate) fn get_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Sequence, ValueError> {
 		CatalogStore::find_sequence(rx, sequence_id)?.ok_or_else(|| {
 			ValueError(Box::new(internal!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

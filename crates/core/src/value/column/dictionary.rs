@@ -7,7 +7,7 @@ use arrow_array::ArrayRef;
 use arrow_buffer::NullBuffer;
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -79,8 +79,8 @@ pub fn decode_dictionary_ids(
 	field: &FieldRef,
 	array: &ArrayRef,
 	target: ValueType,
-	resolve: impl FnOnce(&[DictionaryEntryId]) -> Result<Vec<Option<Value>>>,
-) -> Result<(FieldRef, ArrayRef)> {
+	resolve: impl FnOnce(&[DictionaryEntryId]) -> Result<Vec<Option<Value>>, ValueError>,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let view = ColumnView::try_from((array, field.as_ref()))?;
 	let ViewData::DictionaryId {
 		container,

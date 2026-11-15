@@ -8,8 +8,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 use reifydb_value::{
-	Result,
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	value::{duration::Duration, identity::IdentityId},
 };
 
@@ -20,7 +19,7 @@ fn make_db() -> TestDb {
 	db
 }
 
-fn subscribe(db: &TestDb, query: &str, options: SubscribeOptions) -> Result<SubscribeOutcome> {
+fn subscribe(db: &TestDb, query: &str, options: SubscribeOptions) -> Result<SubscribeOutcome, ValueError> {
 	db.engine().subscribe_as(IdentityId::root(), query, Params::None, options)
 }
 

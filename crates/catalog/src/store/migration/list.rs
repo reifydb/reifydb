@@ -7,12 +7,13 @@ use reifydb_core::{
 	key::system::{MigrationEventKey, MigrationKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::{migration_event_from_row, migration_from_row};
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<Migration>> {
+	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<Migration>, ValueError> {
 		let range = MigrationKey::full_scan();
 		let mut results = Vec::new();
 		for entry in txn.range(range, RangeScope::All, 1024)? {
@@ -22,7 +23,7 @@ impl CatalogStore {
 		Ok(results)
 	}
 
-	pub(crate) fn list_migration_events(txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>> {
+	pub(crate) fn list_migration_events(txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>, ValueError> {
 		let range = MigrationEventKey::full_scan();
 		let mut results = Vec::new();
 		for entry in txn.range(range, RangeScope::All, 1024)? {

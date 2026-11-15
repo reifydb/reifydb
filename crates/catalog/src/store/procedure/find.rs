@@ -13,14 +13,17 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{
-	constraint::TypeConstraint,
-	sumtype::{SumTypeId, VariantRef},
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		constraint::TypeConstraint,
+		sumtype::{SumTypeId, VariantRef},
+	},
 };
 use serde_json::from_str;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::procedure::shape::{
 		RUN_AS_CALLER, RUN_AS_SYSTEM, TRIGGER_EVENT, VARIANT_TEST, namespace_procedure, procedure,
 		procedure_param,
@@ -28,7 +31,10 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_procedure(rx: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
+	pub(crate) fn find_procedure(
+		rx: &mut Transaction<'_>,
+		id: ProcedureId,
+	) -> Result<Option<Procedure>, ValueError> {
 		let Some(multi) = rx.get(&[ProcedureKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -40,7 +46,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Procedure>> {
+	) -> Result<Option<Procedure>, ValueError> {
 		let mut found_id = None;
 		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
@@ -61,7 +67,10 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Vec<ProcedureParam>> {
+pub(crate) fn load_params(
+	rx: &mut Transaction<'_>,
+	procedure_id: ProcedureId,
+) -> Result<Vec<ProcedureParam>, ValueError> {
 	let mut entries: Vec<(u16, ProcedureParam)> = Vec::new();
 	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {

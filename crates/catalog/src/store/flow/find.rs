@@ -10,14 +10,15 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace::NamespaceFlowKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::flow::{decode_flow, shape::flow_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
+	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>, ValueError> {
 		let Some(multi) = rx.get(&[FlowKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -29,7 +30,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Flow>> {
+	) -> Result<Option<Flow>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), RangeScope::All, 1024)?;
 

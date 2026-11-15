@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_flow::operator::source::{SourceOperator, sumtype_tags};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::engine::FlowEngineInner;
 
@@ -23,7 +23,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator_id: OperatorId,
 		table: TableId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 		let tags = sumtype_tags(&table.columns);
 
@@ -42,7 +42,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator_id: OperatorId,
 		ringbuffer: RingBufferId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
 		let tags = sumtype_tags(&rb.columns);
 		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
@@ -60,7 +60,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator_id: OperatorId,
 		series: SeriesId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
 		self.operators.insert((flow.id, operator_id), Box::new(SourceOperator::from_series(operator_id, &s)));
@@ -74,7 +74,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator_id: OperatorId,
 		view: ViewId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		let tags = sumtype_tags(view.columns());
 		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));

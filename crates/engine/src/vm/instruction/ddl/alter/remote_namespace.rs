@@ -5,15 +5,15 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::AlterRemoteNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn alter_remote_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterRemoteNamespaceNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let ns_name = plan.namespace.text();
 	let ns_def = services.catalog.get_namespace_by_name(&mut Transaction::Admin(txn), ns_name)?;
 	let grpc_text = plan.grpc.text().to_string();

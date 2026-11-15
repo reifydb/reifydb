@@ -10,10 +10,13 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{err, error, error::Diagnostic, fragment::Fragment};
+use reifydb_value::{
+	err, error,
+	error::{Diagnostic, ValueError},
+	fragment::Fragment,
+};
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, ObjectScanNode, RemoteScanNode,
@@ -22,7 +25,11 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_from(&self, ast: AstFrom<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_from(
+		&self,
+		ast: AstFrom<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstFrom::Source {
 				source,
@@ -112,7 +119,7 @@ impl<'bump> Compiler<'bump> {
 					.nodes
 					.into_iter()
 					.map(ExpressionCompiler::compile)
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 
 				Ok(LogicalPlan::Generator(GeneratorNode {
 					name: generator.name,

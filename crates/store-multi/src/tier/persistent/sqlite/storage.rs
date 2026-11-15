@@ -48,7 +48,8 @@ use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
 };
 use reifydb_value::{
-	Result, error,
+	error,
+	error::ValueError,
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -237,7 +238,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion> {
+	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
 		let opened = match self.inner.opened_high_water.get() {
 			Some(opened) => *opened,
 			None => {
@@ -248,7 +249,7 @@ impl SqlitePersistentStorage {
 		Ok(CommitVersion(opened.max(self.inner.written_high_water.load(Ordering::SeqCst))))
 	}
 
-	pub fn saved_through(&self) -> Result<CommitVersion> {
+	pub fn saved_through(&self) -> Result<CommitVersion, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Err(error!(internal(
@@ -268,7 +269,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	fn probe_high_water(&self) -> Result<u64> {
+	fn probe_high_water(&self) -> Result<u64, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Err(error!(internal(
@@ -293,7 +294,7 @@ impl SqlitePersistentStorage {
 		table: EntryKind,
 		cursor: Option<&EncodedKey>,
 		budget: usize,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		if budget == 0 {
 			return Ok(Vec::new());
 		}
@@ -393,7 +394,7 @@ impl SqlitePersistentStorage {
 		(Self::new(config), guard)
 	}
 
-	fn table_sql(&self, conn: &Connection, table: EntryKind) -> Result<Arc<TableSql>> {
+	fn table_sql(&self, conn: &Connection, table: EntryKind) -> Result<Arc<TableSql>, ValueError> {
 		if let Some(cached) = self.inner.table_sql.get(&table) {
 			return Ok(cached);
 		}
@@ -402,7 +403,7 @@ impl SqlitePersistentStorage {
 		Ok(built)
 	}
 
-	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
+	pub fn count_current(&self, table: EntryKind) -> Result<u64, ValueError> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(0);
@@ -416,7 +417,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>, ValueError> {
 		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(Vec::new());
@@ -445,7 +446,7 @@ impl SqlitePersistentStorage {
 		cutoff: DateTime,
 		cursor: Option<(DateTime, &[u8])>,
 		limit: usize,
-	) -> Result<Vec<(EncodedKey, DateTime)>> {
+	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
@@ -535,7 +536,7 @@ impl SqlitePersistentStorage {
 		version: CommitVersion,
 		entries: &[(EncodedKey, Option<CowVec<u8>>)],
 		accepted: &mut Vec<EncodedKey>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.record_written_version(version);
 		let new_version_bytes = version_to_bytes(version);
 		let mut chunk_stmt = tx
@@ -614,7 +615,7 @@ impl SqlitePersistentStorage {
 		version_bytes: &[u8],
 		removals: &[&EncodedKey],
 		accepted: &mut Vec<EncodedKey>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if removals.is_empty() {
 			return Ok(());
 		}
@@ -669,7 +670,11 @@ impl SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
-	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
+	pub fn set_collecting_accepted(
+		&self,
+		version: CommitVersion,
+		batches: TierBatch,
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		let mut accepted = Vec::new();
 		if batches.is_empty() {
 			return Ok(accepted);
@@ -706,7 +711,7 @@ impl SqlitePersistentStorage {
 		&self,
 		batches: Vec<(CommitVersion, TierBatch)>,
 		saved_through: Option<CommitVersion>,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		let mut accepted = Vec::new();
 		if saved_through.is_none() && batches.iter().all(|(_, batch)| batch.is_empty()) {
 			return Ok(accepted);
@@ -761,7 +766,7 @@ impl SqlitePersistentStorage {
 		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageRowKey>,
 		req: NarrowRangeRequest<'_, StorageRowKey>,
-	) -> Result<RangeBatch<StorageRowKey>> {
+	) -> Result<RangeBatch<StorageRowKey>, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -863,7 +868,7 @@ impl SqlitePersistentStorage {
 		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
 		req: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
-	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+	) -> Result<RangeBatch<StoragePartitionedRowKey>, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -971,7 +976,7 @@ impl SqlitePersistentStorage {
 		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
 		req: NarrowRangeRequest<'_, StorageSeriesKey>,
-	) -> Result<RangeBatch<StorageSeriesKey>> {
+	) -> Result<RangeBatch<StorageSeriesKey>, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -1073,7 +1078,7 @@ impl SqlitePersistentStorage {
 		_ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
 		req: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
-	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -1183,7 +1188,7 @@ impl SqlitePersistentStorage {
 		})
 	}
 
-	fn range_chunk(&self, cursor: &mut RangeCursor, req: RangeChunkRequest<'_>) -> Result<RangeBatch> {
+	fn range_chunk(&self, cursor: &mut RangeCursor, req: RangeChunkRequest<'_>) -> Result<RangeBatch, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -1647,7 +1652,7 @@ impl SqlitePersistentStorage {
 	}
 }
 
-fn write_saved_through(tx: &Transaction<'_>, version: CommitVersion) -> Result<()> {
+fn write_saved_through(tx: &Transaction<'_>, version: CommitVersion) -> Result<(), ValueError> {
 	tx.execute_batch(r#"CREATE TABLE IF NOT EXISTS "multi_meta" (key TEXT PRIMARY KEY, value INTEGER NOT NULL)"#)
 		.map_err(|e| error!(internal(format!("Failed to ensure multi_meta: {}", e))))?;
 	let value = i64::try_from(version.0).expect("a saved-through version fits a sqlite integer");
@@ -1716,7 +1721,7 @@ fn series_columns(schema: SqliteSchema) -> &'static [&'static str] {
 	schema.series_key_columns().expect("only the series schemas reach a series query builder")
 }
 
-fn read_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<(String, String)>> {
+fn read_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<(String, String)>, ValueError> {
 	let mut stmt = conn
 		.prepare(&format!("PRAGMA table_info(\"{}\")", table_name))
 		.map_err(|e| error!(internal(format!("Failed to prepare a layout probe for {}: {}", table_name, e))))?;
@@ -1727,7 +1732,7 @@ fn read_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<(String
 		.map_err(|e| error!(internal(format!("Failed to read the layout of {}: {}", table_name, e))))
 }
 
-fn resolve_schema(conn: &Connection, table: EntryKind) -> Result<SqliteSchema> {
+fn resolve_schema(conn: &Connection, table: EntryKind) -> Result<SqliteSchema, ValueError> {
 	let Some(narrow) = narrow_series_schema(table) else {
 		return Ok(sqlite_schema(table));
 	};
@@ -1749,7 +1754,7 @@ fn source_storage(table: EntryKind) -> Option<StorageId> {
 	}
 }
 
-fn push_key_params(schema: SqliteSchema, key: &[u8], boxed: &mut Vec<Box<dyn ToSql>>) -> Result<()> {
+fn push_key_params(schema: SqliteSchema, key: &[u8], boxed: &mut Vec<Box<dyn ToSql>>) -> Result<(), ValueError> {
 	match schema {
 		SqliteSchema::Blob => {
 			boxed.push(Box::new(key.to_vec()));
@@ -1992,7 +1997,7 @@ impl SqlitePersistentStorage {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		self.get_impl(table, keys, version)
 	}
 
@@ -2002,7 +2007,7 @@ impl SqlitePersistentStorage {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		self.get_impl(table, keys, version)
 	}
 
@@ -2011,7 +2016,7 @@ impl SqlitePersistentStorage {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		let mut out = vec![VersionedGetResult::NotFound; keys.len()];
 		if keys.is_empty() {
 			return Ok(out);
@@ -2091,7 +2096,7 @@ impl SqlitePersistentStorage {
 							)))
 						})
 					})
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				let Some(&i) = index.get(&key_params) else {
 					continue;
 				};
@@ -2124,7 +2129,7 @@ impl SqlitePersistentStorage {
 		keys: &[&[u8]],
 		version: CommitVersion,
 		out: &mut [VersionedGetResult],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let index: HashMap<&[u8], usize> = keys.iter().enumerate().map(|(i, &k)| (k, i)).collect();
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
@@ -2198,14 +2203,14 @@ impl TierStorage for SqlitePersistentStorage {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		match table {
 			EntryKind::Source(_, _) => self.get_source(table, keys, version),
 			_ => self.get_multi(table, keys, version),
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<(), ValueError> {
 		self.set_collecting_accepted(version, batches)?;
 		Ok(())
 	}
@@ -2220,7 +2225,7 @@ impl TierStorage for SqlitePersistentStorage {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		self.range_chunk(
 			cursor,
 			RangeChunkRequest {
@@ -2244,7 +2249,7 @@ impl TierStorage for SqlitePersistentStorage {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		self.range_chunk(
 			cursor,
 			RangeChunkRequest {
@@ -2258,7 +2263,7 @@ impl TierStorage for SqlitePersistentStorage {
 		)
 	}
 
-	fn ensure_table(&self, table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, table: EntryKind) -> Result<(), ValueError> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
@@ -2270,7 +2275,7 @@ impl TierStorage for SqlitePersistentStorage {
 }
 
 impl Shutdown for SqlitePersistentStorage {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("multi store");
 		if let Some(conn) = self.inner.conn.lock().take() {
 			if let Err(e) = pragma::shutdown(&conn) {
@@ -3775,7 +3780,10 @@ mod tests {
 
 	fn typed_pages<K: 'static>(
 		t: EntryKind,
-		mut chunk: impl FnMut(&mut Cursor<RangeStop, K>, NarrowRangeRequest<'static, K>) -> Result<RangeBatch<K>>,
+		mut chunk: impl FnMut(
+			&mut Cursor<RangeStop, K>,
+			NarrowRangeRequest<'static, K>,
+		) -> Result<RangeBatch<K>, ValueError>,
 	) -> usize {
 		let mut served = 0;
 		for descending in [false, true] {

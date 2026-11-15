@@ -74,14 +74,11 @@ use reifydb_core::{
 use reifydb_routine_abi::{Arity, FunctionKind, registry::Routines};
 use reifydb_rql::nodes::TableVirtualScanNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::return_error;
+use reifydb_value::{error::ValueError, return_error};
 
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode},
-		scan::vtable::VirtualScanNode,
-	},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode},
+	scan::vtable::VirtualScanNode,
 };
 
 pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<QueryContext>) -> Box<dyn QueryNode> {
@@ -369,11 +366,15 @@ struct UnknownVirtualScanNode {
 }
 
 impl QueryNode for UnknownVirtualScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		return_error!(virtual_table_not_found(&self.namespace, &self.name));
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Ok(None)
 	}
 

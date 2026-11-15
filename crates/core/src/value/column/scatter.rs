@@ -7,7 +7,7 @@ use arrow_array::{Array, ArrayRef, BooleanArray, make_array};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 	value::{
 		Value,
@@ -44,7 +44,7 @@ pub fn merge_rows(
 	mask: &BooleanBuffer,
 	len: usize,
 	name: &str,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match (old.is_none(), new.is_none()) {
 		(true, true) => return Ok(factory::none(name, len)),
 		(true, false) => {
@@ -79,7 +79,7 @@ pub fn scatter_merge(
 	else_mask: &BooleanBuffer,
 	total_len: usize,
 	name: &str,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match (then.is_none(), other.is_none()) {
 		(true, true) => return Ok(factory::none(name, total_len)),
 		(true, false) => {
@@ -181,7 +181,7 @@ fn scatter_merge_generic(
 	else_mask: &BooleanBuffer,
 	total_len: usize,
 	name: &str,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if !alignable(then, other, total_len) || then_mask.len() < total_len || else_mask.len() < total_len {
 		return Ok(scatter_merge_by_value(then, other, then_mask, else_mask, total_len, name));
 	}
@@ -269,7 +269,7 @@ fn finish_merge(
 	merged: ArrayRef,
 	valid: BooleanBuffer,
 	name: &str,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let optional = validity(source).is_some() || valid.count_set_bits() != valid.len();
 	let nulls = optional.then(|| NullBuffer::new(valid));
 	let data = merged.to_data().into_builder().nulls(nulls).build().map_err(frame_error)?;
@@ -277,7 +277,11 @@ fn finish_merge(
 	Ok((Arc::new(shell.as_ref().clone().with_nullable(optional)), make_array(data)))
 }
 
-fn carry_dictionary_id(merged: (FieldRef, ArrayRef), a: &ColumnView, b: &ColumnView) -> Result<(FieldRef, ArrayRef)> {
+fn carry_dictionary_id(
+	merged: (FieldRef, ArrayRef),
+	a: &ColumnView,
+	b: &ColumnView,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (
 		ViewData::DictionaryId {
 			dictionary_id: left,
@@ -310,7 +314,7 @@ fn scatter_merge_typed(
 	else_mask: &BooleanBuffer,
 	total_len: usize,
 	name: &str,
-) -> Result<Option<(FieldRef, ArrayRef)>> {
+) -> Result<Option<(FieldRef, ArrayRef)>, ValueError> {
 	macro_rules! native_kernel {
 		($variant:ident, $t:ty, $build:path) => {
 			if let (ViewData::$variant(a), ViewData::$variant(b)) = (&then.data, &other.data) {
@@ -390,7 +394,7 @@ fn scatter_merge_typed(
 	Ok(None)
 }
 
-fn finalize(inner: (FieldRef, ArrayRef), validity: Option<BooleanBuffer>) -> Result<(FieldRef, ArrayRef)> {
+fn finalize(inner: (FieldRef, ArrayRef), validity: Option<BooleanBuffer>) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match validity {
 		Some(bv) => with_nulls(inner, NullBuffer::new(bv)),
 		None => Ok(inner),

@@ -14,9 +14,9 @@ use reifydb_rql_frontend::{
 	token::token::Token,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	error::RqlError,
 	expression::ExpressionCompiler,
 	plan::logical::{
@@ -30,7 +30,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstUpdate<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let AstUpdate {
 			token,
 			target,
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 		token: Token<'bump>,
 		target: UnresolvedObjectIdentifier<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let from_ast = AstFrom::Source {
 			token,
 			source: target,
@@ -68,7 +68,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		token: Token<'bump>,
 		assignments: Vec<Ast<'bump>>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let patch_ast = AstPatch {
 			token,
 			assignments,
@@ -81,7 +81,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_optional_take(
 		&self,
 		take: Option<BumpBox<'bump, Ast<'bump>>>,
-	) -> Result<Option<LogicalPlan<'bump>>> {
+	) -> Result<Option<LogicalPlan<'bump>>, ValueError> {
 		let Some(take_box) = take else {
 			return Ok(None);
 		};
@@ -122,7 +122,7 @@ impl<'bump> Compiler<'bump> {
 		pipeline: LogicalPlan<'bump>,
 		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let target_name = target.name.text();
 		let name = target.name;
 		let namespace = target.namespace;
@@ -186,7 +186,7 @@ impl<'bump> Compiler<'bump> {
 }
 
 #[inline]
-fn compile_update_filter<'bump>(filter: BumpBox<'bump, Ast<'bump>>) -> Result<LogicalPlan<'bump>> {
+fn compile_update_filter<'bump>(filter: BumpBox<'bump, Ast<'bump>>) -> Result<LogicalPlan<'bump>, ValueError> {
 	let filter_ast = match BumpBox::into_inner(filter) {
 		Ast::Filter(f) => f,
 		_ => unreachable!("filter should always be Ast::Filter"),

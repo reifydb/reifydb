@@ -19,7 +19,7 @@ use reifydb_core::{
 	ring::{MetadataWrite, Placement, Ring, RingRead, RingStore},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{partition::Partition, row_number::RowNumber},
 };
 
@@ -53,7 +53,7 @@ pub fn ring_row_range(storage: StorageId, partition: Option<Partition>) -> Tagge
 	}
 }
 
-pub fn ring_row_number(key: &TaggedKey) -> Result<RowNumber> {
+pub fn ring_row_number(key: &TaggedKey) -> Result<RowNumber, ValueError> {
 	match key {
 		TaggedKey::Row(key) => Ok(key.row),
 		TaggedKey::PartitionedRow(key) => Ok(key.row),
@@ -62,9 +62,9 @@ pub fn ring_row_number(key: &TaggedKey) -> Result<RowNumber> {
 }
 
 pub fn collect_ring_rows(
-	range: impl Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+	range: impl Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 	limit: usize,
-) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 	let mut rows = Vec::new();
 	for row in range.take(limit) {
 		let row = row?;
@@ -74,13 +74,21 @@ pub fn collect_ring_rows(
 }
 
 pub trait RingCounters<T> {
-	fn metadata(&self, txn: &mut T, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>>;
+	fn metadata(
+		&self,
+		txn: &mut T,
+		partitions: &[Option<Partition>],
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError>;
 
-	fn reserve(&self, txn: &mut T, batch_count: u64) -> Result<u64>;
+	fn reserve(&self, txn: &mut T, batch_count: u64) -> Result<u64, ValueError>;
 
-	fn save_metadata(&self, txn: &mut T, entries: &[(Option<Partition>, RingBufferMetadata)]) -> Result<()>;
+	fn save_metadata(
+		&self,
+		txn: &mut T,
+		entries: &[(Option<Partition>, RingBufferMetadata)],
+	) -> Result<(), ValueError>;
 
-	fn remove_metadata(&self, txn: &mut T, partitions: &[Option<Partition>]) -> Result<()>;
+	fn remove_metadata(&self, txn: &mut T, partitions: &[Option<Partition>]) -> Result<(), ValueError>;
 }
 
 pub struct RingAdapter<'a, T, C> {
@@ -90,11 +98,14 @@ pub struct RingAdapter<'a, T, C> {
 }
 
 impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter<'_, T, C> {
-	fn metadata(&mut self, partitions: &[Option<Partition>]) -> Result<Vec<Option<RingBufferMetadata>>> {
+	fn metadata(
+		&mut self,
+		partitions: &[Option<Partition>],
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		self.counters.metadata(self.txn, partitions)
 	}
 
-	fn rows(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn rows(&mut self, rows: &[(Option<Partition>, RowNumber)]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		if rows.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -108,7 +119,7 @@ impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter
 		partition: Option<Partition>,
 		after: Option<RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		let resume = after.map(|row| ring_row_tagged(self.storage, partition, row));
 		let range = ring_row_range(self.storage, partition).resume_before(resume.as_ref());
 		let rows = collect_ring_rows(self.txn.range_rev_untracked(range.clone(), limit)?, limit)?;
@@ -129,7 +140,7 @@ impl<T: StorageTransaction + Range, C: RingCounters<T>> RingRead for RingAdapter
 }
 
 impl<T: StorageTransaction + Range, C: RingCounters<T>> RingStore for RingAdapter<'_, T, C> {
-	fn reserve(&mut self, batch_count: u64) -> Result<u64> {
+	fn reserve(&mut self, batch_count: u64) -> Result<u64, ValueError> {
 		self.counters.reserve(self.txn, batch_count)
 	}
 }
@@ -160,11 +171,11 @@ impl<'a, T: StorageTransaction + Range> RingMetadata<'a, T> {
 		counters: &C,
 		ring: &mut Ring,
 		requests: &[(Option<Partition>, Vec<RowNumber>)],
-	) -> Result<Vec<Vec<Placement>>> {
+	) -> Result<Vec<Vec<Placement>>, ValueError> {
 		ring.place(&mut self.adapter(counters), requests)
 	}
 
-	pub fn reserve<C: RingCounters<T>>(&mut self, counters: &C, count: usize) -> Result<u64> {
+	pub fn reserve<C: RingCounters<T>>(&mut self, counters: &C, count: usize) -> Result<u64, ValueError> {
 		self.adapter(counters).reserve(count as u64)
 	}
 
@@ -173,11 +184,11 @@ impl<'a, T: StorageTransaction + Range> RingMetadata<'a, T> {
 		counters: &C,
 		ring: &mut Ring,
 		requests: &[(Option<Partition>, Vec<RowNumber>)],
-	) -> Result<Vec<Vec<Option<EncodedBytes>>>> {
+	) -> Result<Vec<Vec<Option<EncodedBytes>>>, ValueError> {
 		ring.remove(&mut self.adapter(counters), requests)
 	}
 
-	pub fn save<C: RingCounters<T>>(&mut self, counters: &C, ring: &Ring) -> Result<()> {
+	pub fn save<C: RingCounters<T>>(&mut self, counters: &C, ring: &Ring) -> Result<(), ValueError> {
 		let mut saved = Vec::new();
 		let mut dropped = Vec::new();
 		for write in ring.writes() {
@@ -207,15 +218,15 @@ impl<'a, T: StorageTransaction> RingWriter<'a, T> {
 		}
 	}
 
-	pub fn insert(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written> {
+	pub fn insert(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written, ValueError> {
 		self.set_tagged(rows)
 	}
 
-	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		self.set_tagged(rows.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)).collect())
 	}
 
-	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 		self.txn.remove_with_pre(rows)?;
 		Ok(Written {
@@ -224,7 +235,7 @@ impl<'a, T: StorageTransaction> RingWriter<'a, T> {
 		})
 	}
 
-	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written> {
+	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written, ValueError> {
 		let written = rows.iter().map(|(_, row, _)| row.clone()).collect();
 		self.txn.set_with_pre(rows)?;
 		Ok(Written {
@@ -245,15 +256,15 @@ impl<'a, T: FlowStorageTransaction> FlowRingWriter<'a, T> {
 		}
 	}
 
-	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.txn.set(keys, rows)
 	}
 
-	pub fn update(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	pub fn update(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.txn.set(keys, rows)
 	}
 
-	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.txn.remove(keys)
 	}
 }
@@ -300,14 +311,14 @@ mod tests {
 	}
 
 	impl Get for Memory {
-		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(keys.iter().map(|key| self.rows.get(&key.encode()).cloned()).collect())
 		}
 	}
 
 	impl Batch for Memory {
-		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 			for (key, row, _) in &entries {
 				self.rows.insert(key.encode(), row.clone());
 			}
@@ -315,7 +326,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 			for (key, _) in &entries {
 				self.rows.remove(&key.encode());
 			}
@@ -323,7 +334,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 			for key in &keys {
 				self.rows.remove(&key.encode());
 			}
@@ -337,10 +348,13 @@ mod tests {
 			&mut self,
 			range: TaggedKeyBoundRange,
 			_batch_size: usize,
-		) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		) -> Result<
+			Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>,
+			ValueError,
+		> {
 			self.ranges += 1;
 			let encoded = range.encode();
-			let rows: Vec<Result<MultiVersionRow<TaggedKey>>> = self
+			let rows: Vec<Result<MultiVersionRow<TaggedKey>, ValueError>> = self
 				.rows
 				.range::<EncodedKey, _>((encoded.start.as_ref(), encoded.end.as_ref()))
 				.map(|(key, bytes)| {
@@ -358,10 +372,13 @@ mod tests {
 			&mut self,
 			range: TaggedKeyBoundRange,
 			_batch_size: usize,
-		) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		) -> Result<
+			Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>,
+			ValueError,
+		> {
 			self.ranges += 1;
 			let encoded = range.encode();
-			let rows: Vec<Result<MultiVersionRow<TaggedKey>>> = self
+			let rows: Vec<Result<MultiVersionRow<TaggedKey>, ValueError>> = self
 				.rows
 				.range::<EncodedKey, _>((encoded.start.as_ref(), encoded.end.as_ref()))
 				.rev()
@@ -380,11 +397,14 @@ mod tests {
 			&mut self,
 			range: TaggedKeyBoundRange,
 			batch_size: usize,
-		) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		) -> Result<
+			Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>,
+			ValueError,
+		> {
 			Range::range_rev(self, range, batch_size)
 		}
 
-		fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+		fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 			self.marked.push(range);
 			Ok(())
 		}
@@ -397,19 +417,19 @@ mod tests {
 	}
 
 	impl FlowGet for FlowMemory {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl FlowBatch for FlowMemory {
-		fn set(&mut self, keys: Vec<EncodedKey>, _rows: Vec<EncodedBytes>) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, _rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 			self.seam.push(Seam::Set(keys.len()));
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 			self.seam.push(Seam::Remove(keys.len()));
 			Ok(())
 		}
@@ -429,12 +449,12 @@ mod tests {
 			&self,
 			_txn: &mut Memory,
 			partitions: &[Option<Partition>],
-		) -> Result<Vec<Option<RingBufferMetadata>>> {
+		) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 			let metadata = self.metadata.borrow();
 			Ok(partitions.iter().map(|partition| metadata.get(partition).copied()).collect())
 		}
 
-		fn reserve(&self, _txn: &mut Memory, batch_count: u64) -> Result<u64> {
+		fn reserve(&self, _txn: &mut Memory, batch_count: u64) -> Result<u64, ValueError> {
 			let base = self.next_base.get().max(100);
 			self.next_base.set(base + batch_count);
 			Ok(base)
@@ -444,7 +464,7 @@ mod tests {
 			&self,
 			_txn: &mut Memory,
 			entries: &[(Option<Partition>, RingBufferMetadata)],
-		) -> Result<()> {
+		) -> Result<(), ValueError> {
 			self.saves.set(self.saves.get() + 1);
 			for (partition, metadata) in entries {
 				self.metadata.borrow_mut().insert(*partition, *metadata);
@@ -452,7 +472,11 @@ mod tests {
 			Ok(())
 		}
 
-		fn remove_metadata(&self, _txn: &mut Memory, partitions: &[Option<Partition>]) -> Result<()> {
+		fn remove_metadata(
+			&self,
+			_txn: &mut Memory,
+			partitions: &[Option<Partition>],
+		) -> Result<(), ValueError> {
 			self.removes.set(self.removes.get() + 1);
 			for partition in partitions {
 				self.metadata.borrow_mut().remove(partition);

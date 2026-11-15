@@ -6,14 +6,12 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql_frontend::ast::ast::AstStatement;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 use tracing::instrument;
 
-use crate::{
-	Result,
-	plan::{
-		logical::{LogicalPlan, compile_logical},
-		physical::{PhysicalPlan, compile_physical},
-	},
+use crate::plan::{
+	logical::{LogicalPlan, compile_logical},
+	physical::{PhysicalPlan, compile_physical},
 };
 
 pub mod logical;
@@ -27,7 +25,7 @@ pub fn plan<'a>(
 	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	statement: AstStatement<'a>,
-) -> Result<Option<PhysicalPlan<'a>>> {
+) -> Result<Option<PhysicalPlan<'a>>, ValueError> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let physical = compile_physical(bump, catalog, routines, rx, logical)?;
 	Ok(physical)
@@ -45,8 +43,8 @@ pub fn plan_with_policy<'a>(
 		&'a Bump,
 		&Catalog,
 		&mut Transaction<'_>,
-	) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
-) -> Result<Option<PhysicalPlan<'a>>> {
+	) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError>,
+) -> Result<Option<PhysicalPlan<'a>>, ValueError> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let logical = policy(logical, bump, catalog, rx)?;
 	let physical = compile_physical(bump, catalog, routines, rx, logical)?;

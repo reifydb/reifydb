@@ -5,7 +5,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::FlowSubsystem;
 use crate::builder::{FlowConfig, FlowConfigurator};
@@ -42,13 +42,13 @@ impl SubsystemFactory for FlowSubsystemFactory {
 		builder
 	}
 
-	fn publish_catalog(&self, ioc: &IocContainer) -> Result<()> {
+	fn publish_catalog(&self, ioc: &IocContainer) -> Result<(), ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		FlowSubsystem::publish_operator_catalog(&self.config, &engine);
 		Ok(())
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		Ok(Box::new(FlowSubsystem::new(self.config, engine, ioc)?))
 	}

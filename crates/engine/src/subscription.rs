@@ -14,7 +14,6 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	params::Params,
 	value::{duration::Duration, identity::IdentityId, partition::ScanPartitions, system_columns::SystemColumn},
@@ -129,9 +128,9 @@ pub trait SubscriptionService: Send + Sync {
 		hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		txn: &mut Transaction<'_>,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 
-	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool>;
+	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool, ValueError>;
 
 	fn hydrate(
 		&self,
@@ -156,7 +155,7 @@ pub struct InstalledHandOffHooks(pub Arc<dyn HandOffHooks>);
 pub fn acquire_hand_off_lease(
 	engine: &StandardEngine,
 	_subscriptions: &[SubscriptionId],
-) -> Result<(CommitVersion, VersionLeaseGuard)> {
+) -> Result<(CommitVersion, VersionLeaseGuard), ValueError> {
 	#[cfg(feature = "testing")]
 	if let Some(InstalledHandOffHooks(hooks)) = engine.ioc().try_resolve::<InstalledHandOffHooks>() {
 		for subscription in _subscriptions {

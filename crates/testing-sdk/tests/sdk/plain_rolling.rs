@@ -18,7 +18,6 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_sdk::{
-	error::Result,
 	flow::operator::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -116,16 +115,20 @@ macro_rules! sum_operator {
 			type Accumulator = PaneSum;
 			type Output = SumOut;
 
-			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 				Ok(Self)
 			}
 
-			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+			fn coord(
+				&self,
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<DateTimeCoord>> {
+							.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 								Ok(row.row_time().map(DateTimeCoord))
 							})
 							.transpose()
@@ -139,12 +142,12 @@ macro_rules! sum_operator {
 				_: &mut impl GuestContext<Windowed>,
 				cols: &impl ColumnsView,
 				rows: &[usize],
-			) -> Result<Vec<Option<(String, f64)>>> {
+			) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|row| -> Result<Option<(String, f64)>> {
+							.map(|row| -> Result<Option<(String, f64)>, SdkError> {
 								let (Some(group), Some(value)) =
 									(row.utf8("group")?, row.f64("value")?)
 								else {
@@ -256,6 +259,7 @@ macro_rules! harness {
 }
 
 pub(crate) use harness;
+use reifydb_sdk::error::SdkError;
 
 fn sums_after(size: u64, pane: u64, feed: &[(u64, f64)]) -> Vec<f64> {
 	let mut h = harness!(SumAnyKind, rolling(size, Some(pane), 3_600_000)).expect("harness");

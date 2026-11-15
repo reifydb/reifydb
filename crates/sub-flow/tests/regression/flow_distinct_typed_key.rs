@@ -28,7 +28,7 @@ use reifydb_flow_async::operator::{
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -132,7 +132,11 @@ fn join(engine: &TestEngine, schema: SchemaRef) -> JoinOperator {
 	.expect("the join operator must build")
 }
 
-fn apply_distinct(engine: &TestEngine, expressions: Vec<Expression>, diffs: Vec<Vec<Diff>>) -> Result<Vec<Change>> {
+fn apply_distinct(
+	engine: &TestEngine,
+	expressions: Vec<Expression>,
+	diffs: Vec<Vec<Diff>>,
+) -> Result<Vec<Change>, ValueError> {
 	let mut operator = distinct(engine, expressions);
 	let mut txn = engine.flow_txn().deferred();
 	let mut outputs = Vec::new();
@@ -156,7 +160,7 @@ fn inserted_rows(output: &Change) -> usize {
 		.sum()
 }
 
-fn error_code<T: Debug>(result: Result<T>) -> String {
+fn error_code<T: Debug>(result: Result<T, ValueError>) -> String {
 	match result {
 		Ok(value) => panic!("expected an error, got {value:?}"),
 		Err(err) => err.diagnostic().code,

@@ -7,16 +7,18 @@ use reifydb_core::{
 	expression::{Expression, IsVariantExpression, name::display_label},
 	value::column::factory,
 };
-use reifydb_value::value::{
-	system_columns::resolve_column,
-	value_type::{
-		ValueType,
-		field::{from_field, is_sumtype_tag},
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		system_columns::resolve_column,
+		value_type::{
+			ValueType,
+			field::{from_field, is_sumtype_tag},
+		},
 	},
 };
 
 use crate::{
-	Result,
 	expression::context::EvalContext,
 	lower::{Node, bool_field, literal, schema::positional},
 };
@@ -76,7 +78,7 @@ fn variant_column(e: &IsVariantExpression) -> String {
 	}
 }
 
-pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantExpression) -> Result<Node> {
+pub(super) fn lower_is_variant(ctx: &EvalContext, operator: &str, e: &IsVariantExpression) -> Result<Node, ValueError> {
 	let column = variant_column(e);
 	let tag = e.tag;
 	let name = e.fragment.text();

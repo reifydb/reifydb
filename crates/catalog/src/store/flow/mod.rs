@@ -18,10 +18,11 @@ use reifydb_core::{
 	},
 	return_internal_error,
 };
+use reifydb_value::error::ValueError;
 
-use crate::{Result, store::flow::shape::flow};
+use crate::store::flow::shape::flow;
 
-pub(crate) fn decode_flow(bytes: &EncodedCatalogRow) -> Result<Flow> {
+pub(crate) fn decode_flow(bytes: &EncodedCatalogRow) -> Result<Flow, ValueError> {
 	let id = FlowId(flow::get_id(bytes));
 	let byte = flow::get_status(bytes);
 	let reason = flow::try_get_reason(bytes);

@@ -12,7 +12,7 @@ use libloading::Symbol;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
-	error::{Result as ExternCResult, SdkError},
+	error::SdkError,
 	procedure::extern_c::wire::{
 		descriptor::ExternCProcedureDescriptor,
 		types::{ExternCProcedureCreateFn, PROCEDURE_ABI_TAG, PROCEDURE_MAGIC},
@@ -28,7 +28,7 @@ pub fn extern_c_procedure_loader() -> &'static RwLock<ProcedureLoader> {
 	GLOBAL_EXTERN_C_PROCEDURE_LOADER.get_or_init(|| RwLock::new(ProcedureLoader::new()))
 }
 
-pub fn check_procedure_abi_tag(abi_tag: u32) -> ExternCResult<()> {
+pub fn check_procedure_abi_tag(abi_tag: u32) -> Result<(), SdkError> {
 	if abi_tag != PROCEDURE_ABI_TAG {
 		return Err(SdkError::Other(format!(
 			"extern-C procedure ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
@@ -51,13 +51,13 @@ impl ProcedureLoader {
 		}
 	}
 
-	pub fn load_procedure_library(&mut self, path: &Path) -> ExternCResult<bool> {
+	pub fn load_procedure_library(&mut self, path: &Path) -> Result<bool, SdkError> {
 		self.cache
 			.check_magic(path, b"extern_c_procedure_magic\0", PROCEDURE_MAGIC)
 			.map_err(|e| SdkError::Other(e.to_string()))
 	}
 
-	fn get_descriptor(&self, path: &Path) -> ExternCResult<ExternCProcedureDescriptor> {
+	fn get_descriptor(&self, path: &Path) -> Result<ExternCProcedureDescriptor, SdkError> {
 		let library = self
 			.cache
 			.get(path)
@@ -91,7 +91,7 @@ impl ProcedureLoader {
 		&mut self,
 		descriptor: &ExternCProcedureDescriptor,
 		path: &Path,
-	) -> ExternCResult<String> {
+	) -> Result<String, SdkError> {
 		check_procedure_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
@@ -101,7 +101,7 @@ impl ProcedureLoader {
 		Ok(name)
 	}
 
-	pub fn register_procedure(&mut self, path: &Path) -> ExternCResult<Option<LoadedProcedureInfo>> {
+	pub fn register_procedure(&mut self, path: &Path) -> Result<Option<LoadedProcedureInfo>, SdkError> {
 		if !self.load_procedure_library(path)? {
 			return Ok(None);
 		}
@@ -122,7 +122,7 @@ impl ProcedureLoader {
 		Ok(Some(info))
 	}
 
-	pub fn load_procedure(&mut self, path: &Path, params: &[u8]) -> ExternCResult<Option<ExternCProcedure>> {
+	pub fn load_procedure(&mut self, path: &Path, params: &[u8]) -> Result<Option<ExternCProcedure>, SdkError> {
 		if !self.load_procedure_library(path)? {
 			return Ok(None);
 		}
@@ -151,7 +151,7 @@ impl ProcedureLoader {
 		Ok(Some(ExternCProcedure::new(name, descriptor, instance)))
 	}
 
-	pub fn create_procedure_by_name(&mut self, name: &str, params: &[u8]) -> ExternCResult<ExternCProcedure> {
+	pub fn create_procedure_by_name(&mut self, name: &str, params: &[u8]) -> Result<ExternCProcedure, SdkError> {
 		let path = self
 			.procedure_paths
 			.get(name)
@@ -184,7 +184,7 @@ impl Default for ProcedureLoader {
 pub fn register_procedures_from_dir(
 	dir: &Path,
 	mut builder: RoutinesConfigurator,
-) -> ExternCResult<RoutinesConfigurator> {
+) -> Result<RoutinesConfigurator, SdkError> {
 	let loader = extern_c_procedure_loader();
 	let mut loader_guard = loader.write();
 

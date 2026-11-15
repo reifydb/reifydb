@@ -27,26 +27,26 @@ use reifydb_evaluate::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::Instruction;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{
-	Value,
-	column_view::ColumnView,
-	frame::frame::Frame,
-	system_columns::{is_system_field, user_columns},
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value,
+		column_view::ColumnView,
+		frame::frame::Frame,
+		system_columns::{is_system_field, user_columns},
+	},
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::{
-		exec::call::{
-			cast_to_declared_return_type, cast_to_parameter_type, check_arity, collect_call_result,
-			declared_return_column, untyped_return_column,
-		},
-		vm::{EMPTY_PARAMS, UdfCall, Vm},
-		volcano::{
-			query::{QueryContext, QueryNode, eval_context_from_query},
-			user_pairs, with_user_columns,
-		},
+use crate::vm::{
+	exec::call::{
+		cast_to_declared_return_type, cast_to_parameter_type, check_arity, collect_call_result,
+		declared_return_column, untyped_return_column,
+	},
+	vm::{EMPTY_PARAMS, UdfCall, Vm},
+	volcano::{
+		query::{QueryContext, QueryNode, eval_context_from_query},
+		user_pairs, with_user_columns,
 	},
 };
 
@@ -98,7 +98,7 @@ impl UdfEvalNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::args")]
-	fn eval_args(call: &LoweredUdfCall, eval_ctx: &EvalContext) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn eval_args(call: &LoweredUdfCall, eval_ctx: &EvalContext) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let mut arg_columns = Vec::with_capacity(call.lowered_args.len());
 		for (lowered_arg, parameter) in call.lowered_args.iter().zip(call.udf.callable.parameters.iter()) {
 			let argument = lowered_arg.evaluate(eval_ctx)?;
@@ -115,7 +115,7 @@ impl UdfEvalNode {
 		call: &LoweredUdfCall,
 		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let mut func_symbols = stored_ctx.symbols.clone();
 		func_symbols.enter_scope();
 
@@ -172,9 +172,9 @@ impl UdfEvalNode {
 		call: &LoweredUdfCall,
 		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
-		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let arg_views = arg_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 		let mut func_symbols = stored_ctx.symbols.clone();
 
 		for row_idx in 0..row_count {
@@ -222,7 +222,7 @@ impl UdfEvalNode {
 
 impl QueryNode for UdfEvalNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		for udf in &self.udf_calls {
 			check_arity(&udf.callable.parameters, udf.arg_expressions.len(), &udf.name, &udf.fragment)?;
 		}
@@ -241,7 +241,7 @@ impl QueryNode for UdfEvalNode {
 					lowered_args,
 				})
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 
 		self.context = Some((Arc::new(ctx.clone()), lowered));
 		self.input.initialize(rx, ctx)?;
@@ -249,7 +249,11 @@ impl QueryNode for UdfEvalNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let Some(mut columns) = self.input.next(rx, ctx)? else {
 			return Ok(None);
 		};
@@ -353,7 +357,7 @@ fn named_after(original: &Expression, rewritten: Expression, udfs: &[ExtractedUd
 	})
 }
 
-pub(crate) fn strip_udf_columns(columns: RecordBatch, udf_names: &[String]) -> Result<RecordBatch> {
+pub(crate) fn strip_udf_columns(columns: RecordBatch, udf_names: &[String]) -> Result<RecordBatch, ValueError> {
 	if udf_names.is_empty() {
 		return Ok(columns);
 	}
@@ -372,7 +376,7 @@ pub(crate) fn evaluate_udfs_no_input(
 	expressions: &[Expression],
 	ctx: &QueryContext,
 	rx: &mut Transaction<'_>,
-) -> Result<Option<(Vec<Expression>, RecordBatch)>> {
+) -> Result<Option<(Vec<Expression>, RecordBatch)>, ValueError> {
 	let mut counter = 0;
 	let mut all_udfs = Vec::new();
 	let rewritten: Vec<Expression> = expressions

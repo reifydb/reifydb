@@ -15,8 +15,6 @@ use reifydb_value::error::ValueError;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::Error as RusqliteError;
 
-pub type Result<T> = std::result::Result<T, StoreOperatorError>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreOperatorError {
 	Backend {

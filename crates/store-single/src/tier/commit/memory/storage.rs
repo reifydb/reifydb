@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, mem::size_of, ops::Bound, sync::Arc};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_runtime::{context::transaction::TransactionContext, sync::rwlock::RwLock};
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
@@ -48,7 +48,7 @@ impl MemoryRowStorage {
 		(map.len(), map.len() * ENTRY_OVERHEAD + payload)
 	}
 
-	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		let mut map = self.inner.data.write();
 		for (key, value) in entries {
 			match value {
@@ -75,7 +75,7 @@ impl MemoryRowStorage {
 
 impl TierStorage for MemoryRowStorage {
 	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, _ctx, keys), fields(keys = keys.len()))]
-	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, _ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError> {
 		let map = self.inner.data.read();
 		Ok(keys.iter().map(|key| map.get(*key).cloned().flatten()).collect())
 	}
@@ -85,13 +85,13 @@ impl TierStorage for MemoryRowStorage {
 		&self,
 		_ctx: &TransactionContext,
 		keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError> {
 		let map = self.inner.data.read();
 		Ok(keys.iter().map(|key| map.get(*key).cloned()).collect())
 	}
 
 	#[instrument(name = "store::single::memory::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
-	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		let mut map = self.inner.data.write();
 		for (key, value) in entries {
 			map.insert(key, value);
@@ -107,7 +107,7 @@ impl TierStorage for MemoryRowStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -152,7 +152,7 @@ impl TierStorage for MemoryRowStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
@@ -191,12 +191,12 @@ impl TierStorage for MemoryRowStorage {
 	}
 
 	#[instrument(name = "store::single::memory::ensure_table", level = "debug", skip(self))]
-	fn ensure_table(&self) -> Result<()> {
+	fn ensure_table(&self) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(name = "store::single::memory::clear_table", level = "debug", skip(self))]
-	fn clear_table(&self) -> Result<()> {
+	fn clear_table(&self) -> Result<(), ValueError> {
 		let mut map = self.inner.data.write();
 		map.clear();
 		Ok(())

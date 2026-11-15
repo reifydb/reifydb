@@ -22,12 +22,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -105,15 +106,25 @@ pub struct ViewToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
+	pub(crate) fn create_deferred_view(
+		txn: &mut AdminTransaction,
+		to_create: ViewToCreate,
+	) -> Result<View, ValueError> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
-	pub(crate) fn create_transactional_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
+	pub(crate) fn create_transactional_view(
+		txn: &mut AdminTransaction,
+		to_create: ViewToCreate,
+	) -> Result<View, ValueError> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
-	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<View> {
+	fn create_view(
+		txn: &mut AdminTransaction,
+		to_create: ViewToCreate,
+		kind: ViewKind,
+	) -> Result<View, ValueError> {
 		Self::validate_view(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_view(txn, namespace_id, &to_create.name)?;
@@ -130,7 +141,7 @@ impl CatalogStore {
 		Ok(Self::built_view(view_id, namespace_id, name, kind, storage, sort, columns))
 	}
 
-	fn validate_view(to_create: &ViewToCreate) -> Result<()> {
+	fn validate_view(to_create: &ViewToCreate) -> Result<(), ValueError> {
 		reject_invalid_column_list(
 			CatalogObjectKind::View,
 			&to_create.name,
@@ -217,7 +228,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_existing_view(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+	fn reject_existing_view(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<(), ValueError> {
 		let Some(view) =
 			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
 		else {
@@ -239,7 +254,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &ViewToCreate,
 		kind: ViewKind,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = view::allocate();
 		view::set_id(&mut row, u64::from(view));
 		view::set_namespace(&mut row, u64::from(namespace));
@@ -322,7 +337,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		view: ViewId,
 		storage: &ViewStorage,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		match storage {
 			ViewStorage::Table {
 				..
@@ -354,7 +369,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		view: ViewId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = view_namespace::allocate();
 		view_namespace::set_id(&mut row, u64::from(view));
 		view_namespace::set_name(&mut row, name);
@@ -366,7 +381,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		view: ViewId,
 		to_create: ViewToCreate,
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 

@@ -8,12 +8,12 @@ use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
-
-use crate::{
-	Result,
-	transaction::operation::{storage::DmlTransaction, table::TableDml},
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
+
+use crate::transaction::operation::{storage::DmlTransaction, table::TableDml};
 
 #[derive(Debug, Clone)]
 pub struct QueueInsertRow {
@@ -25,7 +25,7 @@ pub struct QueueInsertRow {
 }
 
 pub trait QueueOperations {
-	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()>;
+	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<(), ValueError>;
 }
 
 fn row_changes(queue: &Queue, rows: &[QueueInsertRow]) -> Vec<RowChange> {
@@ -43,7 +43,7 @@ fn row_changes(queue: &Queue, rows: &[QueueInsertRow]) -> Vec<RowChange> {
 		.collect()
 }
 
-fn insert_rows<T: TableDml>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
+fn insert_rows<T: TableDml>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow]) -> Result<(), ValueError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -57,19 +57,19 @@ fn insert_rows<T: TableDml>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow])
 }
 
 impl QueueOperations for CommandTransaction {
-	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
+	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<(), ValueError> {
 		insert_rows(self, queue, rows)
 	}
 }
 
 impl QueueOperations for AdminTransaction {
-	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
+	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<(), ValueError> {
 		insert_rows(self, queue, rows)
 	}
 }
 
 impl QueueOperations for Transaction<'_> {
-	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
+	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<(), ValueError> {
 		match self {
 			Transaction::Command(txn) => txn.insert_queue(queue, rows),
 			Transaction::Admin(txn) => txn.insert_queue(queue, rows),

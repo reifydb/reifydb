@@ -15,7 +15,7 @@ use reifydb_flow_async::window::{
 	span::WindowSpan,
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -121,16 +121,16 @@ impl WindowedOperator for TestRollingSum {
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -144,12 +144,12 @@ impl WindowedOperator for TestRollingSum {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, f64)>> {
+					.map(|row| -> Result<Option<(String, f64)>, SdkError> {
 						let (Some(group), Some(value)) =
 							(row.utf8("group")?, row.f64("value")?)
 						else {
@@ -385,16 +385,16 @@ impl WindowedOperator for SealedRollingSum {
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -408,7 +408,7 @@ impl WindowedOperator for SealedRollingSum {
 		ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		TestRollingSum.extract(ctx, cols, rows)
 	}
 
@@ -508,11 +508,11 @@ impl WindowedOperator for CarriedRollingSum {
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		TestRollingSum.coord(cols, rows)
 	}
 
@@ -521,7 +521,7 @@ impl WindowedOperator for CarriedRollingSum {
 		ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		TestRollingSum.extract(ctx, cols, rows)
 	}
 

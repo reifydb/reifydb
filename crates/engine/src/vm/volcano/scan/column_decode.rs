@@ -13,12 +13,11 @@ use reifydb_store_column::{
 	selection::Selection,
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{system_columns::SystemColumn, value_type::field::to_field},
 };
 use vortex_session::VortexSession;
-
-use crate::Result;
 
 pub enum Decoded {
 	Skip(Schema),
@@ -38,7 +37,7 @@ impl BlockDecoder {
 		}
 	}
 
-	pub fn decode(&self, data: BlockData, predicate: Option<&Predicate>) -> Result<Decoded> {
+	pub fn decode(&self, data: BlockData, predicate: Option<&Predicate>) -> Result<Decoded, ValueError> {
 		let Some(header) = data.block_encoding.clone() else {
 			return Ok(Decoded::Block(data));
 		};
@@ -146,7 +145,7 @@ pub(crate) mod tests {
 	};
 	use reifydb_test_harness::block_encoding::{DELTA, DeltaEncoding};
 	use reifydb_value::{
-		Result,
+		error::ValueError,
 		value::{
 			Value,
 			datetime::DateTime,
@@ -166,7 +165,11 @@ pub(crate) mod tests {
 			1
 		}
 
-		fn bind(&self, user: &[FieldRef], config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+		fn bind(
+			&self,
+			user: &[FieldRef],
+			config: &[(String, Value)],
+		) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 			Ok(Box::new(BoundCounting {
 				inner: DeltaEncoding::new().bind(user, config)?,
 				decodes: Arc::clone(&self.decodes),
@@ -184,11 +187,11 @@ pub(crate) mod tests {
 			self.inner.stored_fields()
 		}
 
-		fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+		fn encode(&self, user: RecordBatch) -> Result<RecordBatch, ValueError> {
 			self.inner.encode(user)
 		}
 
-		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch, ValueError> {
 			self.decodes.fetch_add(1, Ordering::SeqCst);
 			self.inner.decode(version, stored)
 		}
@@ -201,7 +204,11 @@ pub(crate) mod tests {
 			1
 		}
 
-		fn bind(&self, user: &[FieldRef], config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+		fn bind(
+			&self,
+			user: &[FieldRef],
+			config: &[(String, Value)],
+		) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 			Ok(Box::new(BoundTruncating(DeltaEncoding::new().bind(user, config)?)))
 		}
 	}
@@ -213,11 +220,11 @@ pub(crate) mod tests {
 			self.0.stored_fields()
 		}
 
-		fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+		fn encode(&self, user: RecordBatch) -> Result<RecordBatch, ValueError> {
 			self.0.encode(user)
 		}
 
-		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch, ValueError> {
 			let user = self.0.decode(version, stored)?;
 			Ok(user.project(&[0]).unwrap())
 		}
@@ -284,7 +291,7 @@ pub(crate) mod tests {
 		)
 	}
 
-	fn decoded(result: Result<Decoded>) -> BlockData {
+	fn decoded(result: Result<Decoded, ValueError>) -> BlockData {
 		match result.unwrap() {
 			Decoded::Block(data) => data,
 			Decoded::Skip(_) => panic!("expected a decoded block, got a skip"),
@@ -297,7 +304,7 @@ pub(crate) mod tests {
 			Some(predicate) => reader.with_predicate(predicate),
 			None => reader,
 		};
-		reader.collect::<Result<Vec<_>>>().unwrap()
+		reader.collect::<Result<Vec<_>, ValueError>>().unwrap()
 	}
 
 	fn int8_values(batches: &[RecordBatch], name: &str) -> Vec<i64> {
@@ -314,7 +321,7 @@ pub(crate) mod tests {
 			.collect()
 	}
 
-	fn error_of(result: Result<Decoded>) -> (String, String) {
+	fn error_of(result: Result<Decoded, ValueError>) -> (String, String) {
 		let Err(err) = result else {
 			panic!("expected the decode to fail");
 		};

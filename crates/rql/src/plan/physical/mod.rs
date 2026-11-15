@@ -54,6 +54,7 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	return_error,
 	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
@@ -61,7 +62,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	error::RqlError,
 	expression::ExpressionCompiler,
 	nodes,
@@ -677,7 +678,7 @@ pub fn compile_physical<'b>(
 	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
-) -> Result<Option<PhysicalPlan<'b>>> {
+) -> Result<Option<PhysicalPlan<'b>>, ValueError> {
 	Compiler {
 		catalog: catalog.clone(),
 		routines: routines.clone(),
@@ -696,7 +697,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
-	) -> Result<Option<PhysicalPlan<'bump>>> {
+	) -> Result<Option<PhysicalPlan<'bump>>, ValueError> {
 		match fold(self.bump, logical)? {
 			Some(tree) => {
 				let tree = optimize_tree(self.bump, &self.routines, tree);
@@ -710,7 +711,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		statements: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
-	) -> Result<Vec<PhysicalPlan<'bump>>> {
+	) -> Result<Vec<PhysicalPlan<'bump>>, ValueError> {
 		let mut branch = Vec::with_capacity(statements.len());
 		for statement in statements {
 			if let Some(plan) = self.compile(rx, statement)? {
@@ -720,7 +721,11 @@ impl<'bump> Compiler<'bump> {
 		Ok(branch)
 	}
 
-	fn compile_tree(&mut self, rx: &mut Transaction<'_>, tree: QueryTree<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_tree(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		tree: QueryTree<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		match tree {
 			QueryTree::Aggregate {
 				node: aggregate,
@@ -906,7 +911,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		aggregate: logical::AggregateNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		let mut vars = Vec::new();
@@ -931,7 +936,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		assert_node: logical::AssertNode,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 
@@ -957,7 +962,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		filter: logical::FilterNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		let vars = extract_variable_names(&filter.condition);
@@ -1231,7 +1236,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		gate: logical::GateNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		let vars = extract_variable_names(&gate.condition);
@@ -1246,7 +1251,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_generator(&mut self, generator: logical::GeneratorNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_generator(
+		&mut self,
+		generator: logical::GeneratorNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::Generator(GeneratorNode {
 			name: self.interner.intern_fragment(&generator.name),
 			expressions: generator.expressions,
@@ -1260,7 +1268,7 @@ impl<'bump> Compiler<'bump> {
 		target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 		returning: Option<Vec<Expression>>,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|i| self.bump_box(i));
 
@@ -1307,7 +1315,7 @@ impl<'bump> Compiler<'bump> {
 		target: MaybeQualifiedRingBufferIdentifier<'bump>,
 		returning: Option<Vec<Expression>>,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|i| self.bump_box(i));
 
@@ -1359,7 +1367,7 @@ impl<'bump> Compiler<'bump> {
 		target: MaybeQualifiedSeriesIdentifier<'bump>,
 		returning: Option<Vec<Expression>>,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|i| self.bump_box(i));
 
@@ -1410,7 +1418,7 @@ impl<'bump> Compiler<'bump> {
 		target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 		returning: Option<Vec<Expression>>,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let input = self.bump_box(input);
 
@@ -1465,7 +1473,7 @@ impl<'bump> Compiler<'bump> {
 		target: MaybeQualifiedRingBufferIdentifier<'bump>,
 		returning: Option<Vec<Expression>>,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let input = self.bump_box(input);
 
@@ -1517,7 +1525,7 @@ impl<'bump> Compiler<'bump> {
 		target: MaybeQualifiedSeriesIdentifier<'bump>,
 		returning: Option<Vec<Expression>>,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let input = self.bump_box(input);
 
@@ -1571,7 +1579,7 @@ impl<'bump> Compiler<'bump> {
 		rql: String,
 		input: BumpBox<'bump, QueryTree<'bump>>,
 		right: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
 
@@ -1604,7 +1612,7 @@ impl<'bump> Compiler<'bump> {
 		rql: String,
 		input: BumpBox<'bump, QueryTree<'bump>>,
 		right: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
 
@@ -1638,7 +1646,7 @@ impl<'bump> Compiler<'bump> {
 		rql: String,
 		input: BumpBox<'bump, QueryTree<'bump>>,
 		right: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
 
@@ -1672,7 +1680,7 @@ impl<'bump> Compiler<'bump> {
 		with: LookupWith,
 		input: BumpBox<'bump, QueryTree<'bump>>,
 		right: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let alias = self.interner.intern_fragment(&alias);
 		let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
@@ -1696,7 +1704,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		order: logical::OrderNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		if let Some(pushed) = try_remote_push_down(&input, || Some(order.rql.clone())) {
@@ -1715,7 +1723,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		changes: logical::ChangesNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		return Ok(PhysicalPlan::Changes(ChangesNode {
 			with: changes.with,
@@ -1730,7 +1738,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		distinct: logical::DistinctNode<'bump>,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		if let Some(pushed) = try_remote_push_down(&input, || Some(distinct.rql.clone())) {
@@ -1793,7 +1801,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		map: logical::MapNode,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 
@@ -1821,7 +1829,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		extend: logical::ExtendNode,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 
@@ -1849,7 +1857,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		patch: logical::PatchNode,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 
@@ -1877,7 +1885,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		apply: logical::ApplyNode<'bump>,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 
@@ -1902,7 +1910,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_source_scan(&mut self, scan: logical::ObjectScanNode) -> Result<PhysicalPlan<'bump>> {
+	fn compile_source_scan(&mut self, scan: logical::ObjectScanNode) -> Result<PhysicalPlan<'bump>, ValueError> {
 		match &scan.source {
 			ResolvedObject::Table(resolved_table) => {
 				if let Some(index) = &scan.index {
@@ -2006,7 +2014,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_remote_scan(&mut self, scan: logical::RemoteScanNode) -> Result<PhysicalPlan<'bump>> {
+	fn compile_remote_scan(&mut self, scan: logical::RemoteScanNode) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
 			address: scan.address,
 			token: scan.token,
@@ -2023,7 +2031,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		take: logical::TakeNode,
 		input: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
 
 		if let Some(pushed) = try_remote_push_down(&input, || Some(format!("TAKE {}", take.take))) {
@@ -2042,7 +2050,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		window: logical::query::window::WindowNode,
 		input: Option<BumpBox<'bump, QueryTree<'bump>>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
 		let input = input.map(|p| self.bump_box(p));
 		return Ok(PhysicalPlan::Window(WindowNode {
@@ -2058,7 +2066,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_variable_source(
 		&mut self,
 		source: logical::VariableSourceNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let variable_expr = VariableExpression {
 			fragment: self.interner.intern_fragment(&source.name),
 		};
@@ -2075,7 +2083,7 @@ impl<'bump> Compiler<'bump> {
 		fragment: BumpFragment<'bump>,
 		input: BumpBox<'bump, QueryTree<'bump>>,
 		right: BumpBox<'bump, QueryTree<'bump>>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
 		let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
 		return Ok(PhysicalPlan::Append(AppendPhysicalNode::Query {
@@ -2089,7 +2097,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		plan: LogicalPlan<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		match plan {
 			LogicalPlan::CreateNamespace(create) => self.compile_create_namespace(rx, create),
 
@@ -2254,7 +2262,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		scope: logical::RunTestsNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		match scope {
 			logical::RunTestsNode::All => {
 				return Ok(PhysicalPlan::RunTests(nodes::RunTestsNode {
@@ -2320,7 +2328,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_create_migration(&mut self, create: logical::CreateMigrationNode) -> Result<PhysicalPlan<'bump>> {
+	fn compile_create_migration(
+		&mut self,
+		create: logical::CreateMigrationNode,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
 			name: create.name,
 			body_source: create.body_source,
@@ -2332,7 +2343,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_alter_remote_namespace(
 		&mut self,
 		alter: logical::AlterRemoteNamespaceNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_name: String = alter.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 		let namespace = Fragment::internal(ns_name);
 		return Ok(PhysicalPlan::AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode {
@@ -2342,7 +2353,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_create_identity(&mut self, node: logical::CreateIdentityNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_create_identity(
+		&mut self,
+		node: logical::CreateIdentityNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut attributes = Vec::with_capacity(node.entries.len());
 		for entry in node.entries {
 			attributes.push(nodes::IdentityAttributeAssignment {
@@ -2358,7 +2372,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_alter_identity(&mut self, node: logical::AlterIdentityNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_alter_identity(
+		&mut self,
+		node: logical::AlterIdentityNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut attributes = Vec::with_capacity(node.entries.len());
 		for entry in node.entries {
 			attributes.push(nodes::IdentityAttributeAssignment {
@@ -2376,7 +2393,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_create_identity_attribute(
 		&mut self,
 		node: logical::CreateIdentityAttributeNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let value_type = convert_data_type_with_constraints(&node.value_type)?.get_type();
 		return Ok(PhysicalPlan::CreateIdentityAttribute(nodes::CreateIdentityAttributeNode {
 			name: self.interner.intern_fragment(&node.name),
@@ -2385,7 +2402,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_grant(&mut self, node: logical::GrantNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_grant(&mut self, node: logical::GrantNode<'bump>) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::Grant(nodes::GrantNode {
 			role: self.interner.intern_fragment(&node.role),
 			user: self.interner.intern_fragment(&node.user),
@@ -2393,7 +2410,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_revoke(&mut self, node: logical::RevokeNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_revoke(&mut self, node: logical::RevokeNode<'bump>) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::Revoke(nodes::RevokeNode {
 			role: self.interner.intern_fragment(&node.role),
 			user: self.interner.intern_fragment(&node.user),
@@ -2401,7 +2418,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_drop_identity(&mut self, node: logical::DropIdentityNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_drop_identity(
+		&mut self,
+		node: logical::DropIdentityNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
 			name: self.interner.intern_fragment(&node.name),
 			kind: node.kind,
@@ -2413,7 +2433,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_drop_identity_attribute(
 		&mut self,
 		node: logical::DropIdentityAttributeNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropIdentityAttribute(nodes::DropIdentityAttributeNode {
 			name: self.interner.intern_fragment(&node.name),
 			if_exists: node.if_exists,
@@ -2421,7 +2441,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_drop_role(&mut self, node: logical::DropRoleNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_drop_role(&mut self, node: logical::DropRoleNode<'bump>) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropRole(nodes::DropRoleNode {
 			name: self.interner.intern_fragment(&node.name),
 			if_exists: node.if_exists,
@@ -2432,7 +2452,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_create_authentication(
 		&mut self,
 		node: logical::CreateAuthenticationNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut method_str = String::new();
 		let mut config = collections::HashMap::new();
 		for entry in &node.entries {
@@ -2455,7 +2475,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_drop_authentication(
 		&mut self,
 		node: logical::DropAuthenticationNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropAuthentication(nodes::DropAuthenticationNode {
 			user: self.interner.intern_fragment(&node.user),
 			method: self.interner.intern_fragment(&node.method),
@@ -2468,7 +2488,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		node: logical::CreatePolicyNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let name = node.name.map(|n| self.interner.intern_fragment(&n));
 		let target_type = node.target_type.as_str().to_string();
 		let (scope_namespace, scope_object) = match &node.scope {
@@ -2521,7 +2541,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_alter_policy(&mut self, node: logical::AlterPolicyNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_alter_policy(
+		&mut self,
+		node: logical::AlterPolicyNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let enable = node.action == AstAlterPolicyAction::Enable;
 		return Ok(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
 			target_type: node.target_type.as_str().to_string(),
@@ -2531,7 +2554,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_drop_policy(&mut self, node: logical::DropPolicyNode<'bump>) -> Result<PhysicalPlan<'bump>> {
+	fn compile_drop_policy(
+		&mut self,
+		node: logical::DropPolicyNode<'bump>,
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropPolicy(nodes::DropPolicyNode {
 			target_type: node.target_type.as_str().to_string(),
 			name: self.interner.intern_fragment(&node.name),
@@ -2543,7 +2569,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_create_authentication_method(
 		&mut self,
 		node: logical::CreateAuthenticationMethodNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::CreateAuthenticationMethod(nodes::CreateAuthenticationMethodNode {
 			name: self.interner.intern_fragment(&node.name),
 			ttl: node.ttl,
@@ -2556,7 +2582,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_alter_authentication_method(
 		&mut self,
 		node: logical::AlterAuthenticationMethodNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::AlterAuthenticationMethod(nodes::AlterAuthenticationMethodNode {
 			name: self.interner.intern_fragment(&node.name),
 			ttl: node.ttl,
@@ -2569,7 +2595,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_drop_authentication_method(
 		&mut self,
 		node: logical::DropAuthenticationMethodNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::DropAuthenticationMethod(nodes::DropAuthenticationMethodNode {
 			name: self.interner.intern_fragment(&node.name),
 			if_exists: node.if_exists,
@@ -2577,7 +2603,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	#[inline(never)]
-	fn compile_assert_block(&mut self, node: logical::AssertBlockNode) -> Result<PhysicalPlan<'bump>> {
+	fn compile_assert_block(&mut self, node: logical::AssertBlockNode) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::AssertBlock(AssertBlockNode {
 			rql: node.rql,
 			expect_error: node.expect_error,
@@ -2590,7 +2616,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		insert: logical::InsertTableNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self
 			.compile(rx, once(BumpBox::into_inner(insert.source)))?
 			.expect("Insert source must produce a plan");
@@ -2636,7 +2662,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		insert_rb: logical::InsertRingBufferNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self
 			.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
 			.expect("Insert source must produce a plan");
@@ -2687,7 +2713,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		insert_queue: logical::InsertQueueNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self
 			.compile(rx, once(BumpBox::into_inner(insert_queue.source)))?
 			.expect("Insert source must produce a plan");
@@ -2761,7 +2787,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		insert_dict: logical::InsertDictionaryNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self
 			.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
 			.expect("Insert source must produce a plan");
@@ -2812,7 +2838,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		insert_series: logical::InsertSeriesNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let input = self
 			.compile(rx, once(BumpBox::into_inner(insert_series.source)))?
 			.expect("Insert source must produce a plan");
@@ -2862,7 +2888,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		declare_node: logical::DeclareNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let value = match declare_node.value {
 			logical::LetValue::Expression(expr) => LetValue::Expression(expr),
 			logical::LetValue::Statement(logical_plans) => match self.compile(rx, logical_plans)? {
@@ -2885,7 +2911,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		assign_node: logical::AssignNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let value = match assign_node.value {
 			logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
 			logical::AssignValue::Statement(logical_plans) => match self.compile(rx, logical_plans)? {
@@ -2908,7 +2934,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		target: BumpFragment<'bump>,
 		source: logical::AppendSourcePlan<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let source = match source {
 			logical::AppendSourcePlan::Statement(logical_plans) => {
 				let mut physical_plans = Vec::new();
@@ -2932,7 +2958,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		conditional_node: logical::ConditionalNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let then_branch = self.compile_branch(rx, conditional_node.then_branch)?;
 
 		let mut else_ifs = Vec::new();
@@ -2961,7 +2987,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		loop_node: logical::LoopNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut body = Vec::new();
 		for statement_plans in loop_node.body {
 			if let Some(physical_plan) = self.compile(rx, statement_plans)? {
@@ -2978,7 +3004,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		while_node: logical::WhileNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut body = Vec::new();
 		for statement_plans in while_node.body {
 			if let Some(physical_plan) = self.compile(rx, statement_plans)? {
@@ -2996,7 +3022,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		for_node: logical::ForNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let iterable = self.compile(rx, for_node.iterable)?.expect("For iterable must produce a plan");
 		let mut body = Vec::new();
 		for statement_plans in for_node.body {
@@ -3016,7 +3042,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		def_node: logical::function::DefineFunctionNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut parameters = Vec::with_capacity(def_node.parameters.len());
 		for p in def_node.parameters {
 			parameters.push(nodes::FunctionParameter {
@@ -3045,7 +3071,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		ret_node: logical::function::ReturnNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let value = match ret_node.value {
 			Some(logical::function::ReturnValue::Expression(expr)) => Some(ReturnValue::Expression(expr)),
 			Some(logical::function::ReturnValue::Statement(logical_plans)) => {
@@ -3068,7 +3094,7 @@ impl<'bump> Compiler<'bump> {
 	fn compile_call_function(
 		&mut self,
 		call_node: logical::function::CallFunctionNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		return Ok(PhysicalPlan::CallFunction(CallFunctionNode {
 			name: self.interner.intern_fragment(&call_node.name),
 			arguments: call_node.arguments,
@@ -3081,7 +3107,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		closure_node: logical::DefineClosureNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let mut parameters = Vec::with_capacity(closure_node.parameters.len());
 		for p in closure_node.parameters {
 			parameters.push(nodes::FunctionParameter {

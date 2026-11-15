@@ -3,7 +3,6 @@
 
 use arrow_buffer::i256;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::LazyFragment,
 	value::{
@@ -62,7 +61,7 @@ macro_rules! impl_scalar_op {
 				l: &L,
 				r: &R,
 				fragment: impl LazyFragment + Copy,
-			) -> Result<Option<<L as Promote<R>>::Output>>
+			) -> Result<Option<<L as Promote<R>>::Output>, ValueError>
 			where
 				L: Promote<R>,
 				R: IsNumber,
@@ -138,7 +137,7 @@ impl ArithContext {
 		value: T,
 		target: &ValueType,
 		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<T>> {
+	) -> Result<Option<T>, ValueError> {
 		match (value.fit_family(target), self.mode()) {
 			(Some(fitted), _) => Ok(Some(fitted)),
 			(None, Mode::None) => Ok(None),

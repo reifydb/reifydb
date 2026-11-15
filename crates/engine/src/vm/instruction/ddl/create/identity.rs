@@ -16,18 +16,19 @@ use reifydb_evaluate::{
 use reifydb_rql::nodes::{CreateIdentityNode, IdentityAttributeAssignment};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	params::Params,
 	value::{Value, column_view::ColumnView, identity::IdentityId},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_identity(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateIdentityNode,
 	params: &Params,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 
 	let resolved = resolve_attribute_assignments(services, txn, &plan.attributes, params)?;
@@ -52,7 +53,7 @@ pub(crate) fn resolve_attribute_assignments(
 	txn: &mut AdminTransaction,
 	assignments: &[IdentityAttributeAssignment],
 	params: &Params,
-) -> Result<Vec<(IdentityAttribute, Value)>> {
+) -> Result<Vec<(IdentityAttribute, Value)>, ValueError> {
 	let mut resolved = Vec::with_capacity(assignments.len());
 	let mut seen = HashSet::new();
 	for assignment in assignments {
@@ -95,7 +96,7 @@ fn evaluate_attribute_value(
 	assignment: &IdentityAttributeAssignment,
 	params: &Params,
 	identity: IdentityId,
-) -> Result<Value> {
+) -> Result<Value, ValueError> {
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 	let base = EvalContext {

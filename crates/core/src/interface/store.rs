@@ -6,7 +6,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
@@ -311,7 +311,7 @@ impl<K> MultiVersionBatch<K> {
 }
 
 pub trait MultiVersionCommit: Send + Sync {
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()>;
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<(), ValueError>;
 }
 
 pub trait MultiVersionGet: Send + Sync {
@@ -320,7 +320,7 @@ pub trait MultiVersionGet: Send + Sync {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError>;
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {
@@ -329,7 +329,7 @@ pub trait MultiVersionGetPrevious: Send + Sync {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError>;
 }
 
 pub trait MultiVersionStore:
@@ -338,19 +338,19 @@ pub trait MultiVersionStore:
 }
 
 pub trait WalCheckpoint: Send + Sync + 'static {
-	fn make_durable(&self) -> Result<CommitVersion>;
+	fn make_durable(&self) -> Result<CommitVersion, ValueError>;
 
-	fn saved_through(&self, version: CommitVersion) -> Result<()>;
+	fn saved_through(&self, version: CommitVersion) -> Result<(), ValueError>;
 }
 
 pub trait WalFloorCheckpoint: Send + Sync + 'static {
-	fn make_durable(&self, through: Lsn) -> Result<()>;
+	fn make_durable(&self, through: Lsn) -> Result<(), ValueError>;
 
-	fn saved_through(&self, through: Lsn) -> Result<()>;
+	fn saved_through(&self, through: Lsn) -> Result<(), ValueError>;
 
-	fn durable_head(&self) -> Result<Option<Lsn>>;
+	fn durable_head(&self) -> Result<Option<Lsn>, ValueError>;
 
-	fn appended_head(&self) -> Result<Option<Lsn>>;
+	fn appended_head(&self) -> Result<Option<Lsn>, ValueError>;
 }
 
 #[derive(Debug, Clone)]
@@ -374,11 +374,15 @@ impl SingleVersionBatch {
 }
 
 pub trait SingleVersionCommit: Send + Sync {
-	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()>;
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<(), ValueError>;
 }
 
 pub trait SingleVersionGet: Send + Sync {
-	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<SingleVersionRow>>, ValueError>;
 }
 
 pub trait SingleVersionRange: Send + Sync {
@@ -387,13 +391,13 @@ pub trait SingleVersionRange: Send + Sync {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch>;
+	) -> Result<SingleVersionBatch, ValueError>;
 
-	fn range(&self, ctx: &TransactionContext, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
+	fn range(&self, ctx: &TransactionContext, range: EncodedKeyRange) -> Result<SingleVersionBatch, ValueError> {
 		self.range_batch(ctx, range, 1024)
 	}
 
-	fn prefix(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
+	fn prefix(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch, ValueError> {
 		self.range(ctx, EncodedKeyRange::prefix(prefix))
 	}
 }
@@ -404,13 +408,17 @@ pub trait SingleVersionRangeRev: Send + Sync {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch>;
+	) -> Result<SingleVersionBatch, ValueError>;
 
-	fn range_rev(&self, ctx: &TransactionContext, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
+	fn range_rev(
+		&self,
+		ctx: &TransactionContext,
+		range: EncodedKeyRange,
+	) -> Result<SingleVersionBatch, ValueError> {
 		self.range_rev_batch(ctx, range, 1024)
 	}
 
-	fn prefix_rev(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
+	fn prefix_rev(&self, ctx: &TransactionContext, prefix: &EncodedKey) -> Result<SingleVersionBatch, ValueError> {
 		self.range_rev(ctx, EncodedKeyRange::prefix(prefix))
 	}
 }

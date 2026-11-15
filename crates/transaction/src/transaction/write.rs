@@ -7,15 +7,15 @@ use reifydb_core::{
 	interface::{catalog::object::ObjectId, change::Change},
 	key::any::TaggedKey,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{change::RowChange, multi::transaction::write::Rebase};
 
 pub trait Write {
-	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()>;
-	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
-	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
-	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()>;
+	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError>;
+	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError>;
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError>;
+	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError>;
 
 	fn track_row_change(&mut self, changes: &[RowChange]);
 

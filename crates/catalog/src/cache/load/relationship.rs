@@ -4,11 +4,12 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::catalog::RelationshipKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::relationship::list::decode_relationship_row};
+use crate::store::relationship::list::decode_relationship_row;
 
-pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = RelationshipKey::full_scan();
 
 	let mut entries = Vec::new();

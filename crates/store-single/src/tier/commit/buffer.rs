@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
+use reifydb_value::{byte_size::ByteSize, count::Count, error::ValueError, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryRowStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -34,7 +34,7 @@ impl SingleCommitBufferTier {
 		}
 	}
 
-	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	pub fn set_without_tombstones(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		match self {
 			Self::Memory(s) => s.set_without_tombstones(entries),
 		}
@@ -69,7 +69,7 @@ impl MetricsCollector for SingleCommitBufferTier {
 
 impl TierStorage for SingleCommitBufferTier {
 	#[inline]
-	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError> {
 		match self {
 			Self::Memory(s) => s.get(ctx, keys),
 		}
@@ -80,14 +80,14 @@ impl TierStorage for SingleCommitBufferTier {
 		&self,
 		ctx: &TransactionContext,
 		keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError> {
 		match self {
 			Self::Memory(s) => s.get_with_tombstone(ctx, keys),
 		}
 	}
 
 	#[inline]
-	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		match self {
 			Self::Memory(s) => s.set(entries),
 		}
@@ -101,7 +101,7 @@ impl TierStorage for SingleCommitBufferTier {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Memory(s) => s.range_next(ctx, cursor, start, end, batch_size),
 		}
@@ -115,21 +115,21 @@ impl TierStorage for SingleCommitBufferTier {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Memory(s) => s.range_rev_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
 	#[inline]
-	fn ensure_table(&self) -> Result<()> {
+	fn ensure_table(&self) -> Result<(), ValueError> {
 		match self {
 			Self::Memory(s) => s.ensure_table(),
 		}
 	}
 
 	#[inline]
-	fn clear_table(&self) -> Result<()> {
+	fn clear_table(&self) -> Result<(), ValueError> {
 		match self {
 			Self::Memory(s) => s.clear_table(),
 		}

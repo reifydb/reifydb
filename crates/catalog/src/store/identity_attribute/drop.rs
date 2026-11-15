@@ -9,14 +9,15 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn drop_identity_attribute(
 		txn: &mut AdminTransaction,
 		attribute: IdentityAttributeId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		{
 			let range = IdentityAttributeValueKey::full_scan();
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;

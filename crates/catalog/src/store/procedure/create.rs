@@ -12,11 +12,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::constraint::TypeConstraint;
+use reifydb_value::{error::ValueError, value::constraint::TypeConstraint};
 use serde_json::to_string;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::procedure::ProcedureToCreate,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
@@ -29,7 +29,10 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_procedure(txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
+	pub(crate) fn create_procedure(
+		txn: &mut AdminTransaction,
+		to_create: ProcedureToCreate,
+	) -> Result<Procedure, ValueError> {
 		let namespace_id = to_create.namespace();
 		let name = to_create.name().clone();
 		let name_text = name.text().to_string();
@@ -60,7 +63,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		id: ProcedureId,
 		to_create: ProcedureToCreate,
-	) -> Result<Procedure> {
+	) -> Result<Procedure, ValueError> {
 		match to_create {
 			ProcedureToCreate::Rql {
 				name,
@@ -143,7 +146,7 @@ fn store_procedure_row(
 	trigger: &RqlTrigger,
 	return_type: &Option<TypeConstraint>,
 	run_as: RunAs,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut row = procedure::allocate();
 	procedure::set_id(&mut row, u64::from(id));
 	procedure::set_namespace(&mut row, u64::from(namespace));
@@ -183,7 +186,7 @@ fn link_procedure_to_namespace(
 	namespace: NamespaceId,
 	procedure: ProcedureId,
 	name: &str,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut row = namespace_procedure::allocate();
 	namespace_procedure::set_id(&mut row, u64::from(procedure));
 	namespace_procedure::set_name(&mut row, name);
@@ -191,7 +194,11 @@ fn link_procedure_to_namespace(
 	Ok(())
 }
 
-fn insert_params(txn: &mut AdminTransaction, procedure: ProcedureId, params: &[ProcedureParam]) -> Result<()> {
+fn insert_params(
+	txn: &mut AdminTransaction,
+	procedure: ProcedureId,
+	params: &[ProcedureParam],
+) -> Result<(), ValueError> {
 	for (index, param) in params.iter().enumerate() {
 		let mut row = procedure_param::allocate();
 		procedure_param::set_procedure_id(&mut row, u64::from(procedure));

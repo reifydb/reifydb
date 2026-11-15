@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 #[cfg(feature = "testing")]
@@ -38,7 +38,11 @@ pub struct MultiReadTransaction {
 }
 
 impl MultiReadTransaction {
-	pub fn new(engine: MultiTransaction, id: TransactionId, version: Option<CommitVersion>) -> Result<Self> {
+	pub fn new(
+		engine: MultiTransaction,
+		id: TransactionId,
+		version: Option<CommitVersion>,
+	) -> Result<Self, ValueError> {
 		let tm = engine.tm.query(id, version)?;
 		Ok(Self {
 			engine,
@@ -49,7 +53,11 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn new_with_lease(engine: MultiTransaction, id: TransactionId, lease: VersionLeaseGuard) -> Result<Self> {
+	pub fn new_with_lease(
+		engine: MultiTransaction,
+		id: TransactionId,
+		lease: VersionLeaseGuard,
+	) -> Result<Self, ValueError> {
 		let version = lease.version();
 		let tm = engine.tm.query(id, Some(version))?;
 		Ok(Self {
@@ -80,7 +88,11 @@ impl MultiReadTransaction {
 		self.op_counts.lock().unwrap().clone()
 	}
 
-	pub fn get(&self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -93,14 +105,14 @@ impl MultiReadTransaction {
 		Ok(self.engine.get(ctx, keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
 	}
 
-	pub fn contains(&self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		Ok(self.get(ctx, keys)?.iter().map(Option::is_some).collect())
 	}
 
-	pub fn scan(&self, ctx: &Arc<TransactionContext>) -> Result<MultiVersionBatch<TaggedKey>> {
+	pub fn scan(&self, ctx: &Arc<TransactionContext>) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 		let items: Vec<_> = self
 			.range(ctx, TaggedKeyBoundRange::all(), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -113,7 +125,7 @@ impl MultiReadTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
@@ -128,7 +140,7 @@ impl MultiReadTransaction {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
@@ -143,7 +155,7 @@ impl MultiReadTransaction {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
@@ -156,7 +168,7 @@ impl MultiReadTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());

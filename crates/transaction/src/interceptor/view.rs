@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::view::View;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::interceptor::chain::InterceptorChain;
 
@@ -19,11 +19,11 @@ impl<'a> ViewPostCreateContext<'a> {
 }
 
 pub trait ViewPostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn ViewPostCreateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPostCreateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPostCreateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -33,14 +33,14 @@ impl InterceptorChain<dyn ViewPostCreateInterceptor + Send + Sync> {
 
 pub struct ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -51,7 +51,7 @@ where
 
 impl<F> Clone for ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -62,16 +62,16 @@ where
 
 impl<F> ViewPostCreateInterceptor for ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_post_create<F>(f: F) -> ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureViewPostCreateInterceptor::new(f)
 }
@@ -89,11 +89,11 @@ impl<'a> ViewPreUpdateContext<'a> {
 }
 
 pub trait ViewPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPreUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewPreUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn ViewPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -103,14 +103,14 @@ impl InterceptorChain<dyn ViewPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureViewPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -121,7 +121,7 @@ where
 
 impl<F> Clone for ClosureViewPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -132,16 +132,16 @@ where
 
 impl<F> ViewPreUpdateInterceptor for ClosureViewPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewPreUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_pre_update<F>(f: F) -> ClosureViewPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureViewPreUpdateInterceptor::new(f)
 }
@@ -161,11 +161,11 @@ impl<'a> ViewPostUpdateContext<'a> {
 }
 
 pub trait ViewPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPostUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewPostUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn ViewPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPostUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPostUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -175,14 +175,14 @@ impl InterceptorChain<dyn ViewPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureViewPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -193,7 +193,7 @@ where
 
 impl<F> Clone for ClosureViewPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -204,16 +204,16 @@ where
 
 impl<F> ViewPostUpdateInterceptor for ClosureViewPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewPostUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_post_update<F>(f: F) -> ClosureViewPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureViewPostUpdateInterceptor::new(f)
 }
@@ -231,11 +231,11 @@ impl<'a> ViewPreDeleteContext<'a> {
 }
 
 pub trait ViewPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn ViewPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -245,14 +245,14 @@ impl InterceptorChain<dyn ViewPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureViewPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -263,7 +263,7 @@ where
 
 impl<F> Clone for ClosureViewPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -274,16 +274,16 @@ where
 
 impl<F> ViewPreDeleteInterceptor for ClosureViewPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_pre_delete<F>(f: F) -> ClosureViewPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureViewPreDeleteInterceptor::new(f)
 }

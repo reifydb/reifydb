@@ -4,7 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_runtime::actor::system::ActorHandle;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	common::CommitVersion,
@@ -21,7 +21,7 @@ pub enum FlowActorMessage {
 	TrailingWake,
 
 	Loaded {
-		outcome: Result<Loaded>,
+		outcome: Result<Loaded, ValueError>,
 	},
 
 	Tick,
@@ -38,12 +38,12 @@ pub enum FlowActorMessage {
 	SliceCommitted {
 		advance_to: CommitVersion,
 		more: bool,
-		result: Result<()>,
+		result: Result<(), ValueError>,
 		committed: Option<CommitVersion>,
 	},
 
 	TickCommitted {
-		result: Result<()>,
+		result: Result<(), ValueError>,
 	},
 
 	CheckpointNow {

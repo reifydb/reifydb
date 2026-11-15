@@ -4,7 +4,7 @@
 use arrow_array::{Array, ArrayRef as ArrowArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::value_type::{ValueType, field::from_field},
 };
 use vortex_array::{
@@ -50,7 +50,7 @@ impl Compressor {
 		}
 	}
 
-	pub fn compress(&self, ty: ValueType, column: &(FieldRef, ArrowArrayRef)) -> Result<ColumnChunks> {
+	pub fn compress(&self, ty: ValueType, column: &(FieldRef, ArrowArrayRef)) -> Result<ColumnChunks, ValueError> {
 		let field_type = from_field(&column.0)?;
 		let imported = to_vortex(&self.session, column)?;
 		let mut ctx = self.session.create_execution_ctx();
@@ -62,7 +62,7 @@ impl Compressor {
 	}
 }
 
-fn constant(array: &ArrayRef, nones: usize, ctx: &mut ExecutionCtx) -> Result<Option<ArrayRef>> {
+fn constant(array: &ArrayRef, nones: usize, ctx: &mut ExecutionCtx) -> Result<Option<ArrayRef>, ValueError> {
 	if array.len() < 2 || nones > 0 || !is_constant(array, ctx).map_err(vortex("constant"))? {
 		return Ok(None);
 	}

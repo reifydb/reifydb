@@ -3,7 +3,7 @@
 
 use reifydb_codec::{reader::Reader, row::catalog::EncodedCatalogRow, typeinfo::decode_value_type};
 use reifydb_core::interface::{catalog::identity::IdentityAttribute, store::MultiVersionRow};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::store::identity_attribute::shape::identity_attribute;
 
@@ -13,7 +13,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_identity_attribute<K>(multi: MultiVersionRow<K>) -> Result<IdentityAttribute> {
+pub(crate) fn convert_identity_attribute<K>(multi: MultiVersionRow<K>) -> Result<IdentityAttribute, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = identity_attribute::get_id(&bytes);
 	let name = identity_attribute::get_name(&bytes).to_string();

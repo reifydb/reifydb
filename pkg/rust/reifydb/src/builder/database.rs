@@ -82,15 +82,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{Value, identity::IdentityId},
 };
 use reifydb_wal::sync::WalMode;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
-use crate::{
-	MigrationStatement, Result, boot::Bootloader, database::Database, health::HealthMonitor, subsystem::Subsystems,
-};
+use crate::{MigrationStatement, boot::Bootloader, database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 pub struct DatabaseBuilder {
 	version_epoch: VersionEpoch,
@@ -351,7 +350,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub fn build(mut self) -> Result<Database> {
+	pub fn build(mut self) -> Result<Database, ValueError> {
 		#[cfg(reifydb_assertions)]
 		self.ioc.resolve::<CatalogCache>()?
 			.mark_pending_config_overrides(self.bootstrap_configs.iter().map(|(key, _)| *key));

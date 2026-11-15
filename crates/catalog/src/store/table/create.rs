@@ -18,7 +18,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -47,10 +47,12 @@ pub struct TableToCreate {
 	pub time: TimeSource,
 }
 
+use reifydb_value::error::ValueError;
+
 use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
-	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
+	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table, ValueError> {
 		Self::validate_table(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_table(txn, namespace_id, &to_create.name)?;
@@ -74,7 +76,7 @@ impl CatalogStore {
 		})
 	}
 
-	fn validate_table(to_create: &TableToCreate) -> Result<()> {
+	fn validate_table(to_create: &TableToCreate) -> Result<(), ValueError> {
 		reject_invalid_column_list(
 			CatalogObjectKind::Table,
 			&to_create.name,
@@ -85,7 +87,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_existing_table(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+	fn reject_existing_table(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<(), ValueError> {
 		let Some(table) = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -109,7 +115,7 @@ impl CatalogStore {
 		table: TableId,
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = table::allocate();
 		table::set_id(&mut row, u64::from(table));
 		table::set_namespace(&mut row, u64::from(namespace));
@@ -129,7 +135,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = table_namespace::allocate();
 		table_namespace::set_id(&mut row, u64::from(table));
 		table_namespace::set_name(&mut row, name);
@@ -137,7 +143,11 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<Vec<Column>> {
+	fn insert_columns(
+		txn: &mut AdminTransaction,
+		table: TableId,
+		to_create: TableToCreate,
+	) -> Result<Vec<Column>, ValueError> {
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
@@ -168,7 +178,7 @@ impl CatalogStore {
 		table_id: TableId,
 		to_create: TableToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
 		Self::validate_table(&to_create)?;
 
@@ -197,7 +207,7 @@ impl CatalogStore {
 		table: TableId,
 		to_create: TableToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::with_capacity(column_ids.len());
 		for (idx, (column_to_create, &col_id)) in
 			to_create.columns.into_iter().zip(column_ids.iter()).enumerate()

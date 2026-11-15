@@ -3,11 +3,12 @@
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::identity::convert_identity};
+use crate::{CatalogStore, store::identity::convert_identity};
 
 impl CatalogStore {
-	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<Identity>> {
+	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<Identity>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(IdentityKey::full_scan(), RangeScope::All, 1024)?;
 

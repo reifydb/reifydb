@@ -75,7 +75,6 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
 	queue::{interceptor::QueueSchedulingInterceptor, wake::QueueWakeRegistry},
 	transaction::operation::completeness::CompletenessWriterImpl,
@@ -96,11 +95,11 @@ impl WithEventBus for StandardEngine {
 }
 
 impl AuthEngine for StandardEngine {
-	fn begin_admin(&self) -> Result<AdminTransaction> {
+	fn begin_admin(&self) -> Result<AdminTransaction, ValueError> {
 		StandardEngine::begin_admin(self, IdentityId::system())
 	}
 
-	fn begin_query(&self) -> Result<QueryTransaction> {
+	fn begin_query(&self) -> Result<QueryTransaction, ValueError> {
 		StandardEngine::begin_query(self, IdentityId::system())
 	}
 
@@ -111,7 +110,7 @@ impl AuthEngine for StandardEngine {
 
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
+	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction, ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!self.is_read_only(),
@@ -136,7 +135,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
+	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction, ValueError> {
 		let id = self.generate_transaction_id();
 		let context = self.transaction_context(id, identity);
 		let interceptors = self.interceptors.create();
@@ -153,7 +152,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "trace", skip(self))]
-	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction> {
+	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction, ValueError> {
 		let id = self.generate_transaction_id();
 		let context = self.transaction_context(id, identity);
 		let mut txn = QueryTransaction::new(self.multi.begin_query(id)?, self.single.clone(), context);
@@ -351,7 +350,7 @@ impl StandardEngine {
 		query: &str,
 		params: Params,
 		options: SubscribeOptions,
-	) -> Result<SubscribeOutcome> {
+	) -> Result<SubscribeOutcome, ValueError> {
 		self.begin_query(identity)
 			.and_then(|mut txn| self.executor.subscribe(&mut txn, query, params, options))
 			.map_err(|mut e| {
@@ -365,7 +364,7 @@ impl StandardEngine {
 		namespace_id: NamespaceId,
 		name: &str,
 		table: T,
-	) -> Result<VTableId> {
+	) -> Result<VTableId, ValueError> {
 		let catalog = self.catalog();
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 
@@ -533,7 +532,7 @@ impl StandardEngine {
 		&self,
 		lease: &VersionLeaseGuard,
 		identity: IdentityId,
-	) -> Result<QueryTransaction> {
+	) -> Result<QueryTransaction, ValueError> {
 		let id = self.generate_transaction_id();
 		let context = self.transaction_context(id, identity);
 		let mut txn = QueryTransaction::new(
@@ -547,12 +546,12 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::acquire_version_lease", level = "trace", skip(self), fields(version = %version.0))]
-	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard, ValueError> {
 		self.multi.acquire_version_lease(version)
 	}
 
 	#[instrument(name = "engine::acquire_current_snapshot_lease", level = "trace", skip(self))]
-	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard), ValueError> {
 		self.multi.acquire_current_snapshot_lease()
 	}
 
@@ -601,7 +600,10 @@ impl StandardEngine {
 		&self.operator_library
 	}
 
-	pub fn apply_operator_names(&self, txn: &mut Transaction<'_>) -> Result<HashMap<OperatorId, String>> {
+	pub fn apply_operator_names(
+		&self,
+		txn: &mut Transaction<'_>,
+	) -> Result<HashMap<OperatorId, String>, ValueError> {
 		let mut names = HashMap::new();
 		for dag in self.catalog.list_flow_dags_asc(txn)? {
 			for id in dag.get_operator_ids() {
@@ -618,7 +620,7 @@ impl StandardEngine {
 		Ok(names)
 	}
 
-	pub fn saved_lookup_floor(&self) -> Result<Option<CommitVersion>> {
+	pub fn saved_lookup_floor(&self) -> Result<Option<CommitVersion>, ValueError> {
 		let mut query = self.begin_query(IdentityId::system())?;
 		let flows = self.catalog().list_flow_dags_asc(&mut Transaction::Query(&mut query))?;
 		let operators = self.operator_state();
@@ -647,7 +649,7 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn current_version(&self) -> Result<CommitVersion> {
+	pub fn current_version(&self) -> Result<CommitVersion, ValueError> {
 		self.multi.current_version()
 	}
 
@@ -722,7 +724,7 @@ impl StandardEngine {
 		self.read_only.load(Ordering::SeqCst)
 	}
 
-	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
+	pub(crate) fn reject_if_read_only(&self) -> Result<(), ValueError> {
 		if self.is_read_only() {
 			return Err(ValueError(Box::new(read_only_rejection(Fragment::None))));
 		}
@@ -737,7 +739,7 @@ impl StandardEngine {
 		self.shutting_down.load(Ordering::SeqCst)
 	}
 
-	pub(crate) fn reject_if_shutting_down(&self, identity: IdentityId) -> Result<()> {
+	pub(crate) fn reject_if_shutting_down(&self, identity: IdentityId) -> Result<(), ValueError> {
 		if self.is_shutting_down() && !identity.is_system() {
 			return Err(TransactionError::ShuttingDown.into());
 		}
@@ -754,7 +756,7 @@ impl StandardEngine {
 }
 
 impl Shutdown for StandardEngine {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		self.interceptors.clear_late();
 		self.executor.ioc.clear();
 		self.executor.virtual_table_registry.clear();

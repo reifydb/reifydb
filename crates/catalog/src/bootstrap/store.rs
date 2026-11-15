@@ -9,9 +9,10 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
+use reifydb_value::error::ValueError;
 
 use super::ensure_namespace;
-use crate::{Result, cache::CatalogCache, catalog::Catalog};
+use crate::{cache::CatalogCache, catalog::Catalog};
 
 pub fn bootstrap_store(
 	multi: &MultiTransaction,
@@ -19,7 +20,7 @@ pub fn bootstrap_store(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
 		multi.begin_command(multi.generate_transaction_id())?,

@@ -4,7 +4,6 @@
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstBlock, AstStatement},
 		parse::{Parser, Precedence, is_block_terminated},
@@ -13,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_block(&mut self) -> Result<AstBlock<'bump>> {
+	pub(crate) fn parse_block(&mut self) -> Result<AstBlock<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut statements = Vec::new();
@@ -53,7 +52,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>> {
+	pub(crate) fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>, ValueError> {
 		let mut nodes = Vec::with_capacity(4);
 		let mut has_pipes = false;
 

@@ -35,8 +35,8 @@ use reifydb_store_commit::VersionedGetResult;
 #[cfg(reifydb_assertions)]
 use reifydb_value::util::hex::display as hex_display;
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, partition::Partition},
@@ -64,10 +64,13 @@ use crate::{
 	wal::check_record_size,
 };
 
-pub type Rebase = Arc<dyn Fn(&EncodedBytes) -> Result<EncodedBytes> + Send + Sync>;
+pub type Rebase = Arc<dyn Fn(&EncodedBytes) -> Result<EncodedBytes, ValueError> + Send + Sync>;
 
-pub type Rewrite =
-	Arc<dyn Fn(&mut CowVec<Delta>, Option<&EncodedBytes>, Option<&EncodedBytes>) -> Result<()> + Send + Sync>;
+pub type Rewrite = Arc<
+	dyn Fn(&mut CowVec<Delta>, Option<&EncodedBytes>, Option<&EncodedBytes>) -> Result<(), ValueError>
+		+ Send
+		+ Sync,
+>;
 
 pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
@@ -126,7 +129,7 @@ pub struct MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::new", level = "debug", skip(engine))]
-	pub fn new(engine: MultiTransaction, id: TransactionId) -> Result<Self> {
+	pub fn new(engine: MultiTransaction, id: TransactionId) -> Result<Self, ValueError> {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
@@ -208,7 +211,7 @@ impl MultiWriteTransaction {
 		self.read_version = Some(CommitVersion(version.0.saturating_sub(1)));
 	}
 
-	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1));
 		Ok(())
 	}
@@ -285,7 +288,7 @@ impl MultiWriteTransaction {
 		self.rewrites.entry(key.clone()).or_insert(rewrite);
 	}
 
-	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		let mut batched: BTreeMap<TaggedKey, EncodedBytes> = BTreeMap::new();
 		let mut writes = Vec::with_capacity(entries.len());
 		for (key, bytes, rebase) in entries {
@@ -315,7 +318,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		entries = entries.len()
 	))]
-	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.set_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)))
 	}
 
@@ -325,7 +328,7 @@ impl MultiWriteTransaction {
 	pub fn set_with_pre(
 		&mut self,
 		entries: impl IntoIterator<Item = (TaggedKey, EncodedBytes, SetPre), IntoIter: ExactSizeIterator>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -374,7 +377,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = entries.len()
 	))]
-	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.remove_deltas(entries.into_iter().map(|(key, pre)| Delta::remove_announced(key, pre)))
 	}
 
@@ -386,7 +389,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		ctx: &TransactionContext,
 		entries: Vec<(TaggedKey, Option<EncodedBytes>)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -455,7 +458,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		key = ?key
 	))]
-	fn remove_unobserved_any(&mut self, ctx: &TransactionContext, key: TaggedKey) -> Result<()> {
+	fn remove_unobserved_any(&mut self, ctx: &TransactionContext, key: TaggedKey) -> Result<(), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -482,7 +485,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		ctx: &TransactionContext,
 		key: &K,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.remove_unobserved_any(ctx, key.clone().into())
 	}
 
@@ -490,7 +493,10 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = entries.len()
 	))]
-	pub fn remove_unobserved_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn remove_unobserved_with_pre(
+		&mut self,
+		entries: Vec<(TaggedKey, EncodedBytes)>,
+	) -> Result<(), ValueError> {
 		self.remove_deltas(entries.into_iter().map(|(key, pre)| Delta::remove_unobserved(key, pre)))
 	}
 
@@ -498,11 +504,11 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 		self.remove_deltas(keys.into_iter().map(Delta::remove_silent))
 	}
 
-	fn remove_deltas(&mut self, deltas: impl ExactSizeIterator<Item = Delta>) -> Result<()> {
+	fn remove_deltas(&mut self, deltas: impl ExactSizeIterator<Item = Delta>) -> Result<(), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -545,7 +551,7 @@ impl MultiWriteTransaction {
 	}
 
 	#[instrument(name = "transaction::multi::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
-	pub fn rollback(&mut self) -> Result<()> {
+	pub fn rollback(&mut self) -> Result<(), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -566,7 +572,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
-	) -> Result<Vec<Option<TransactionValue>>> {
+	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -601,7 +607,11 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn get(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(
+		&mut self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -619,7 +629,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn contains(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -633,7 +643,11 @@ impl MultiWriteTransaction {
 		Ok(self.read_many(ctx, keys)?.iter().map(Option::is_some).collect())
 	}
 
-	fn read_many(&mut self, ctx: &TransactionContext, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	fn read_many(
+		&mut self,
+		ctx: &TransactionContext,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<TransactionValue>>, ValueError> {
 		let version = self.version();
 		let mut found: Vec<Option<TransactionValue>> = Vec::with_capacity(keys.len());
 		let mut unread: Vec<usize> = Vec::new();
@@ -673,7 +687,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
+	fn modify(&mut self, pending: DeltaEntry) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!matches!(pending.key(), TaggedKey::OperatorState(_)),
@@ -689,7 +703,7 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	fn admit(&mut self, entries: u64, size: ByteSize) -> Result<()> {
+	fn admit(&mut self, entries: u64, size: ByteSize) -> Result<(), ValueError> {
 		let cnt = self.count + entries;
 		let size = self.size + size;
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {
@@ -729,7 +743,7 @@ impl MultiWriteTransaction {
 	fn commit_pending(
 		&mut self,
 		mut deltas: CowVec<Delta>,
-	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>)> {
+	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -793,7 +807,7 @@ impl MultiWriteTransaction {
 	fn commit_pending_unchecked(
 		&mut self,
 		deltas: CowVec<Delta>,
-	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>)> {
+	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>), ValueError> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -827,7 +841,12 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	fn prepare_record(&self, deltas: &mut CowVec<Delta>, base: CommitVersion, rebased: bool) -> Result<Prepared> {
+	fn prepare_record(
+		&self,
+		deltas: &mut CowVec<Delta>,
+		base: CommitVersion,
+		rebased: bool,
+	) -> Result<Prepared, ValueError> {
 		let snapshot_keys: Vec<TaggedKey> = deltas
 			.iter()
 			.filter_map(|delta| match delta {
@@ -905,7 +924,7 @@ impl MultiWriteTransaction {
 		CowVec::new(optimize_deltas(deltas, &self.committed_pres))
 	}
 
-	fn resolve_removed_after_set(&mut self) -> Result<()> {
+	fn resolve_removed_after_set(&mut self) -> Result<(), ValueError> {
 		let mut keys = mem::take(&mut self.removed_after_set);
 		if keys.is_empty() {
 			return Ok(());
@@ -1017,11 +1036,11 @@ impl MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::multi::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub fn commit(&mut self) -> Result<CommitVersion> {
+	pub fn commit(&mut self) -> Result<CommitVersion, ValueError> {
 		self.commit_with(|_| {})
 	}
 
-	pub fn commit_with(&mut self, before_publish: impl FnOnce(CommitVersion)) -> Result<CommitVersion> {
+	pub fn commit_with(&mut self, before_publish: impl FnOnce(CommitVersion)) -> Result<CommitVersion, ValueError> {
 		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
 			before_publish(CommitVersion(0));
@@ -1031,7 +1050,7 @@ impl MultiWriteTransaction {
 		self.commit_prepared(deltas, before_publish)
 	}
 
-	fn prepare_commit(&mut self) -> Result<CowVec<Delta>> {
+	fn prepare_commit(&mut self) -> Result<CowVec<Delta>, ValueError> {
 		self.resolve_removed_after_set()?;
 		self.layers = self.raw_layers();
 		Ok(self.build_deltas())
@@ -1046,20 +1065,20 @@ impl MultiWriteTransaction {
 		&mut self,
 		deltas: CowVec<Delta>,
 		before_publish: impl FnOnce(CommitVersion),
-	) -> Result<CommitVersion> {
+	) -> Result<CommitVersion, ValueError> {
 		let (commit_version, lsn, at, deltas) = self.commit_pending(deltas)?;
 		self.finalize_commit(commit_version, lsn, at, deltas, before_publish)
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub(crate) fn commit_unchecked(&mut self) -> Result<Committed> {
+	pub(crate) fn commit_unchecked(&mut self) -> Result<Committed, ValueError> {
 		self.commit_unchecked_with(|_| {})
 	}
 
 	pub(crate) fn commit_unchecked_with(
 		&mut self,
 		before_publish: impl FnOnce(CommitVersion),
-	) -> Result<Committed> {
+	) -> Result<Committed, ValueError> {
 		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
 			before_publish(CommitVersion(0));
@@ -1088,7 +1107,7 @@ impl MultiWriteTransaction {
 		at: DateTime,
 		deltas: CowVec<Delta>,
 		before_publish: impl FnOnce(CommitVersion),
-	) -> Result<CommitVersion> {
+	) -> Result<CommitVersion, ValueError> {
 		reifydb_assertions! {
 			assert_ne!(
 				commit_version, 0,
@@ -1161,7 +1180,7 @@ impl MultiWriteTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1188,7 +1207,7 @@ impl MultiWriteTransaction {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1220,7 +1239,7 @@ impl MultiWriteTransaction {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1257,7 +1276,7 @@ impl MultiWriteTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1282,7 +1301,7 @@ impl MultiWriteTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1308,7 +1327,7 @@ impl MultiWriteTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1332,7 +1351,7 @@ impl MultiWriteTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(feature = "testing")]
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
@@ -1363,7 +1382,7 @@ pub(crate) struct MergePendingIterator<I, K = EncodedKey> {
 impl<I, K> MergePendingIterator<I, K>
 where
 	K: Ord,
-	I: Iterator<Item = Result<MultiVersionRow<K>>>,
+	I: Iterator<Item = Result<MultiVersionRow<K>, ValueError>>,
 {
 	pub(crate) fn new(pending: Vec<(K, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
@@ -1378,9 +1397,9 @@ where
 impl<I, K> Iterator for MergePendingIterator<I, K>
 where
 	K: Ord,
-	I: Iterator<Item = Result<MultiVersionRow<K>>>,
+	I: Iterator<Item = Result<MultiVersionRow<K>, ValueError>>,
 {
-	type Item = Result<MultiVersionRow<K>>;
+	type Item = Result<MultiVersionRow<K>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {

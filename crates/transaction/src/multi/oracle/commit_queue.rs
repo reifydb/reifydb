@@ -24,7 +24,7 @@ use reifydb_core::{
 	interface::operator::OperatorSection,
 	wal::CommitLayer,
 };
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{error::ValueError, reifydb_assertions, util::cowvec::CowVec};
 
 use super::{CommitRebase, CommitShared, CommittedWindow, CreateCommitResult, OracleState, Prepared, SpanTiming};
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider};
@@ -44,7 +44,7 @@ struct CommitPayload {
 	source: Option<SourceVersion>,
 	section: Option<OperatorSection>,
 	layers: Vec<CommitLayer>,
-	result: Option<Result<CreateCommitResult>>,
+	result: Option<Result<CreateCommitResult, ValueError>>,
 	evicted: Vec<CommittedWindow>,
 }
 
@@ -96,7 +96,7 @@ impl CommitRequest {
 		self.state.load(Ordering::Acquire) == DONE
 	}
 
-	fn take_result(&self) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+	fn take_result(&self) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		// SAFETY: DONE was observed with Acquire ordering, so the servicing thread's writes
 		// to payload happened-before this access and it never touches the request again.
 		let payload = unsafe { &mut *self.payload.get() };
@@ -106,7 +106,7 @@ impl CommitRequest {
 	}
 }
 
-fn complete_request(request: *mut CommitRequest, result: Result<CreateCommitResult>) {
+fn complete_request(request: *mut CommitRequest, result: Result<CreateCommitResult, ValueError>) {
 	// SAFETY: the enqueuing thread keeps the request alive and does not touch its payload
 	// until it observes the DONE stored below; the waiter handle is cloned out before DONE
 	// is published, after which the request memory may be reclaimed at any moment.
@@ -246,7 +246,7 @@ where
 		section: OperatorSection,
 		layers: Vec<CommitLayer>,
 		window_size: u64,
-	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let request = CommitRequest::new(
 			version,
 			window_size,

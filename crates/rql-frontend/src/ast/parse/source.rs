@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstConfigPair, AstCreate, AstCreateSource},
 		identifier::{MaybeQualifiedIdentifier, MaybeQualifiedSourceIdentifier},
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_source(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_source(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -53,7 +54,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_config_block(&mut self) -> Result<Vec<AstConfigPair<'bump>>> {
+	pub(crate) fn parse_config_block(&mut self) -> Result<Vec<AstConfigPair<'bump>>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut pairs = Vec::new();

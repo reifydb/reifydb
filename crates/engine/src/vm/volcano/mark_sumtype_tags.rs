@@ -9,12 +9,12 @@ use reifydb_core::{
 	value::{batch::mark_tag_columns, column::headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{constraint::Constraint, sumtype::SumTypeId};
-
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
+use reifydb_value::{
+	error::ValueError,
+	value::{constraint::Constraint, sumtype::SumTypeId},
 };
+
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct MarkSumtypeTagsNode {
 	input: Box<dyn QueryNode>,
@@ -48,17 +48,21 @@ impl MarkSumtypeTagsNode {
 		})
 	}
 
-	fn mark(&self, batch: RecordBatch) -> Result<RecordBatch> {
+	fn mark(&self, batch: RecordBatch) -> Result<RecordBatch, ValueError> {
 		mark_tag_columns(batch, &self.sumtypes)
 	}
 }
 
 impl QueryNode for MarkSumtypeTagsNode {
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.input.initialize(rx, ctx)
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		match self.input.next(rx, ctx)? {
 			Some(batch) => Ok(Some(self.mark(batch)?)),
 			None => Ok(None),

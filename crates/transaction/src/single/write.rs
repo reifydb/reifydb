@@ -12,7 +12,8 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	util::{cowvec::CowVec, hex::encode},
 };
 use reifydb_wal::sync::WalMode;
@@ -64,7 +65,7 @@ impl<'a> SingleWriteTransaction<'a> {
 	}
 
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> Result<(), ValueError> {
 		if self.keys.iter().any(|k| k == key) || self.ranges.iter().any(|range| range.contains(key)) {
 			Ok(())
 		} else {
@@ -75,7 +76,10 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<Vec<Option<SingleVersionRow>>> {
+	pub fn get<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		keys: &[K],
+	) -> Result<Vec<Option<SingleVersionRow>>, ValueError> {
 		let mut encoded_keys = Vec::with_capacity(keys.len());
 		let mut missing = Vec::new();
 		#[cfg(feature = "testing")]
@@ -129,7 +133,10 @@ impl<'a> SingleWriteTransaction<'a> {
 		})
 	}
 
-	pub fn set<K: Into<TaggedKey> + Clone, B: Into<EncodedBytes>>(&mut self, entries: Vec<(K, B)>) -> Result<()> {
+	pub fn set<K: Into<TaggedKey> + Clone, B: Into<EncodedBytes>>(
+		&mut self,
+		entries: Vec<(K, B)>,
+	) -> Result<(), ValueError> {
 		let entries = self.scoped(entries)?;
 		for (key, encoded, bytes) in entries {
 			let delta = Delta::Set {
@@ -142,7 +149,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<(), ValueError> {
 		let entries = self.scoped(keys.iter().map(|key| (key.clone(), ())).collect())?;
 		for (key, encoded, ()) in entries {
 			self.pending.insert(encoded, Delta::remove_silent(key));
@@ -150,7 +157,10 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	fn scoped<K: Into<TaggedKey>, V>(&self, entries: Vec<(K, V)>) -> Result<Vec<(TaggedKey, EncodedKey, V)>> {
+	fn scoped<K: Into<TaggedKey>, V>(
+		&self,
+		entries: Vec<(K, V)>,
+	) -> Result<Vec<(TaggedKey, EncodedKey, V)>, ValueError> {
 		let mut scoped = Vec::with_capacity(entries.len());
 		for (key, value) in entries {
 			let key: TaggedKey = key.into();
@@ -161,7 +171,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(scoped)
 	}
 
-	pub fn commit(&mut self) -> Result<()> {
+	pub fn commit(&mut self) -> Result<(), ValueError> {
 		let deltas = self.drain_pending();
 
 		if !deltas.is_empty() {
@@ -178,7 +188,7 @@ impl<'a> SingleWriteTransaction<'a> {
 	}
 
 	#[inline]
-	fn commit_deltas(&self, deltas: Vec<Delta>) -> Result<()> {
+	fn commit_deltas(&self, deltas: Vec<Delta>) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			let count = deltas.len();
 			assert!(
@@ -217,7 +227,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn rollback(&mut self) -> Result<()> {
+	pub fn rollback(&mut self) -> Result<(), ValueError> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

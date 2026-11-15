@@ -7,11 +7,15 @@ use reifydb_core::{
 	key::catalog::TableKey,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::table::shape::table};
+use crate::{CatalogStore, store::table::shape::table};
 
 impl CatalogStore {
-	pub(crate) fn get_table_pk_id(rx: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
+	pub(crate) fn get_table_pk_id(
+		rx: &mut Transaction<'_>,
+		table_id: TableId,
+	) -> Result<Option<PrimaryKeyId>, ValueError> {
 		let multi = match rx.get(&[TableKey::new(table_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return Ok(None),

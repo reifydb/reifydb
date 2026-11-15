@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{ast::AstPatch, parse::Parser},
 	diagnostic::OperationKind,
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_patch(&mut self) -> Result<AstPatch<'bump>> {
+	pub(crate) fn parse_patch(&mut self) -> Result<AstPatch<'bump>, ValueError> {
 		let (token, assignments, rql) =
 			self.parse_keyword_with_braced_expressions(Keyword::Patch, OperationKind::Patch)?;
 		Ok(AstPatch {

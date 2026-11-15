@@ -63,8 +63,8 @@ use reifydb_transaction::{
 	multi::RangeScope,
 };
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{datetime::DateTime, identity::IdentityId, system_columns::time},
 };
 use reifydb_wal::lsn::Lsn;
@@ -184,7 +184,7 @@ pub struct SinkStep {
 }
 
 impl<O: DurableSink> Harness<O> {
-	pub fn apply_sink(&mut self, change: Change) -> Result<SinkStep> {
+	pub fn apply_sink(&mut self, change: Change) -> Result<SinkStep, ValueError> {
 		let at = coordinate_of(&change)?;
 		let before = self.pending.clone();
 		let mut txn = self.begin(at);
@@ -269,12 +269,12 @@ impl<O: HostOperator> Harness<O> {
 		&self.engine
 	}
 
-	pub fn footprint(&mut self) -> Result<StateFootprint> {
+	pub fn footprint(&mut self) -> Result<StateFootprint, ValueError> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
 		let items = txn
 			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let mut footprint = StateFootprint::default();
 		for item in &items {
 			if let TaggedKey::OperatorState(state) = &item.key
@@ -301,24 +301,24 @@ impl<O: HostOperator> Harness<O> {
 		Ok(footprint)
 	}
 
-	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>, ValueError> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
 		let items = txn
 			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
 			.map(|item| item.map(|item| (item.key.encode(), item.bytes)))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		self.end(txn);
 		Ok(items)
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub fn armed_timers(&mut self) -> Result<Vec<ArmedTimer>> {
+	pub fn armed_timers(&mut self) -> Result<Vec<ArmedTimer>, ValueError> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
 		let items = txn
 			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		self.end(txn);
 		let mut armed = Vec::new();
 		for item in items {
@@ -341,7 +341,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(armed)
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
+	pub fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		let at = coordinate_of(&change)?;
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
@@ -353,7 +353,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
-	pub fn apply_all(&mut self, changes: Vec<Change>) -> Result<Vec<Change>> {
+	pub fn apply_all(&mut self, changes: Vec<Change>) -> Result<Vec<Change>, ValueError> {
 		let Some(first) = changes.first() else {
 			return Ok(Vec::new());
 		};
@@ -371,7 +371,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(outs)
 	}
 
-	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
+	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>, ValueError> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(timer.due);
 		let out = {
@@ -383,7 +383,7 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
-	pub fn settle_timers(&mut self, watermark_ms: i64) -> Result<Vec<Change>> {
+	pub fn settle_timers(&mut self, watermark_ms: i64) -> Result<Vec<Change>, ValueError> {
 		const MAX_ROUNDS: u32 = 4_096;
 		let watermark = DateTime::from_epoch_millis(watermark_ms).expect("a settle watermark is representable");
 		let operator = self.operator.id();
@@ -442,7 +442,7 @@ impl<O: HostOperator> Harness<O> {
 	}
 }
 
-fn coordinate_of(change: &Change) -> Result<DateTime> {
+fn coordinate_of(change: &Change) -> Result<DateTime, ValueError> {
 	let mut latest = None;
 	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
 		latest = latest.max(time(columns)?.iter().copied().max());
@@ -451,15 +451,15 @@ fn coordinate_of(change: &Change) -> Result<DateTime> {
 }
 
 impl<O: HostOperator> Subject for Harness<O> {
-	fn apply(&mut self, change: Change) -> Result<Change> {
+	fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		Harness::apply(self, change)
 	}
 
-	fn footprint(&mut self) -> Result<Option<StateFootprint>> {
+	fn footprint(&mut self) -> Result<Option<StateFootprint>, ValueError> {
 		Harness::footprint(self).map(Some)
 	}
 
-	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>> {
+	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>, ValueError> {
 		Harness::on_timer(
 			self,
 			Timer {

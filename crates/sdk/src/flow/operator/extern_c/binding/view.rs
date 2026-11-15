@@ -27,7 +27,7 @@ use crate::{
 		buffer_check::{bitvec_len, fixed_len},
 		family::family_params,
 	},
-	error::{Result as SdkResult, SdkError},
+	error::SdkError,
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
 		view::{
@@ -54,7 +54,7 @@ impl<'a> ExternCNames<'a> {
 		})
 	}
 
-	fn column(&self, name: &str) -> SdkResult<Option<(BorrowedColumn<'a>, Entries<'a>)>> {
+	fn column(&self, name: &str) -> Result<Option<(BorrowedColumn<'a>, Entries<'a>)>, SdkError> {
 		let positions = self.positions.get_or_init(|| {
 			let mut positions = HashMap::with_capacity(self.columns.column_count());
 			for (index, column) in self.columns.columns().enumerate() {
@@ -89,7 +89,7 @@ fn read_cell<'a, T: BorrowedCell<'a>>(
 	col: &BorrowedColumn<'a>,
 	entries: Entries<'a>,
 	index: usize,
-) -> SdkResult<Option<T>> {
+) -> Result<Option<T>, SdkError> {
 	if !col.defined_at(index)? {
 		return Ok(None);
 	}
@@ -102,7 +102,7 @@ fn read_cell<'a, T: BorrowedCell<'a>>(
 	}
 }
 
-fn value_cell<T: TryFromValue>(value: &Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<T>> {
+fn value_cell<T: TryFromValue>(value: &Value, col: &BorrowedColumn<'_>) -> Result<Option<T>, SdkError> {
 	match value {
 		Value::None {
 			..
@@ -128,7 +128,7 @@ pub struct ExternCRowView<'a> {
 }
 
 impl<'a> ExternCRowView<'a> {
-	fn read<T: BorrowedCell<'a>>(&self, name: &str) -> SdkResult<Option<T>> {
+	fn read<T: BorrowedCell<'a>>(&self, name: &str) -> Result<Option<T>, SdkError> {
 		match self.names.column(name)? {
 			Some((col, entries)) => read_cell(&col, entries, self.index),
 			None => Ok(None),
@@ -246,14 +246,14 @@ impl<'a> RowView for ExternCRowView<'a> {
 }
 
 impl<'a> BorrowedCell<'a> for &'a str {
-	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 		if col.type_code() != ValueKind::Utf8 {
 			return Err(read_error::<&str>(col, ColumnReadReason::WrongType));
 		}
 		col.str_at(index)
 	}
 
-	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 		match value {
 			Value::Utf8(text) => Ok(Some(text.as_str())),
 			Value::None {
@@ -267,14 +267,14 @@ impl<'a> BorrowedCell<'a> for &'a str {
 impl<'a> BorrowedCell<'a> for DictionaryEntryId {
 	const READS_ENTRY_ID: bool = true;
 
-	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 		if col.type_code() != ValueKind::DictionaryId {
 			return Err(read_error::<DictionaryEntryId>(col, ColumnReadReason::WrongType));
 		}
 		col.dictionary_id_at(index)
 	}
 
-	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 		match value {
 			Value::DictionaryId(id) => Ok(Some(*id)),
 			Value::None {
@@ -286,14 +286,14 @@ impl<'a> BorrowedCell<'a> for DictionaryEntryId {
 }
 
 impl<'a> BorrowedCell<'a> for &'a [u8] {
-	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 		if col.type_code() != ValueKind::Blob {
 			return Err(read_error::<&[u8]>(col, ColumnReadReason::WrongType));
 		}
 		col.bytes_at(index)
 	}
 
-	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 		match value {
 			Value::Blob(blob) => Ok(Some(blob.as_bytes())),
 			Value::None {
@@ -305,7 +305,7 @@ impl<'a> BorrowedCell<'a> for &'a [u8] {
 }
 
 impl<'a> BorrowedCell<'a> for bool {
-	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 		if col.type_code() != ValueKind::Boolean {
 			return Err(read_error::<bool>(col, ColumnReadReason::WrongType));
 		}
@@ -313,7 +313,7 @@ impl<'a> BorrowedCell<'a> for bool {
 		Ok(col.data_bytes().get(index / 8).map(|byte| (byte >> (index % 8)) & 1 == 1))
 	}
 
-	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 		value_cell(value, col)
 	}
 }
@@ -321,14 +321,14 @@ impl<'a> BorrowedCell<'a> for bool {
 macro_rules! widening_cell {
 	($t:ty => [$($kind:ident: $source:ty),*]) => {
 		impl<'a> BorrowedCell<'a> for $t {
-			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 				match col.type_code() {
 					$(ValueKind::$kind => Ok(fixed_at::<$source>(col, index)?.map(<$t>::from)),)*
 					_ => Err(read_error::<$t>(col, ColumnReadReason::WrongType)),
 				}
 			}
 
-			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 				value_cell(value, col)
 			}
 		}
@@ -349,7 +349,7 @@ widening_cell!(f32 => [Float4: f32]);
 widening_cell!(f64 => [Float4: f32, Float8: f64]);
 
 impl<'a> BorrowedCell<'a> for Decimal {
-	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 		let does_not_fit = || read_error::<Decimal>(col, ColumnReadReason::DoesNotFit);
 		match col.type_code() {
 			ValueKind::Decimal => match col.family_cell_at::<Decimal>(index)? {
@@ -366,7 +366,7 @@ impl<'a> BorrowedCell<'a> for Decimal {
 		}
 	}
 
-	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 		value_cell(value, col)
 	}
 }
@@ -374,14 +374,14 @@ impl<'a> BorrowedCell<'a> for Decimal {
 macro_rules! temporal_cell {
 	($($t:ty => $kind:ident),*) => {$(
 		impl<'a> BorrowedCell<'a> for $t {
-			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError> {
 				if col.type_code() != ValueKind::$kind {
 					return Err(read_error::<$t>(col, ColumnReadReason::WrongType));
 				}
 				fixed_at::<$t>(col, index)
 			}
 
-			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError> {
 				value_cell(value, col)
 			}
 		}
@@ -397,7 +397,7 @@ pub struct ExternCCursor<'a, T> {
 }
 
 impl<'a, T: BorrowedCell<'a>> ColumnCursor<T> for ExternCCursor<'a, T> {
-	fn get(&self, index: usize) -> SdkResult<Option<T>> {
+	fn get(&self, index: usize) -> Result<Option<T>, SdkError> {
 		if index >= self.col.row_count() {
 			return Err(SdkError::InvalidInput(format!(
 				"row {index} is out of range for column {} with {} rows",
@@ -418,7 +418,7 @@ fn read_error<T: ?Sized>(col: &BorrowedColumn<'_>, reason: ColumnReadReason) -> 
 	}
 }
 
-pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> SdkResult<Option<T>> {
+pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Result<Option<T>, SdkError> {
 	fixed_len(col.data_bytes().len(), col.row_count(), size_of::<T>(), col.name())?;
 	// SAFETY: discharges BorrowedColumn::as_slice - every caller checks `col.type_code()` first and
 	// instantiates `T` as that code's element type, and the host marshals fixed-width columns
@@ -467,7 +467,10 @@ impl<'a> ColumnsView for ExternCColumnsView<'a> {
 		self.names.columns.row_count()
 	}
 
-	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
+	fn column<'c, T: CursorValue<'c> + 'c>(
+		&'c self,
+		name: &str,
+	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError> {
 		Ok(self.names.column(name)?.map(|(col, entries)| ExternCCursor {
 			col,
 			entries,
@@ -485,11 +488,11 @@ impl<'a> ColumnsView for ExternCColumnsView<'a> {
 		})
 	}
 
-	fn pass_source(&self, name: &str) -> SdkResult<Option<PassSource<'_>>> {
+	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError> {
 		Ok(self.names.column(name)?.map(|(col, _)| PassSource::ExternC(col.wire())))
 	}
 
-	fn dictionary_of(&self, name: &str) -> SdkResult<Option<DictionaryId>> {
+	fn dictionary_of(&self, name: &str) -> Result<Option<DictionaryId>, SdkError> {
 		Ok(self.names.column(name)?.and_then(|(col, _)| col.dictionary()))
 	}
 
@@ -507,7 +510,10 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 		BorrowedColumns::row_count(self)
 	}
 
-	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
+	fn column<'c, T: CursorValue<'c> + 'c>(
+		&'c self,
+		name: &str,
+	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError> {
 		Ok(BorrowedColumns::column(self, name)?.map(|col| ExternCCursor {
 			col,
 			entries: None,
@@ -519,11 +525,11 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 		(*self).row(index)
 	}
 
-	fn pass_source(&self, name: &str) -> SdkResult<Option<PassSource<'_>>> {
+	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError> {
 		Ok(BorrowedColumns::column(self, name)?.map(|col| PassSource::ExternC(col.wire())))
 	}
 
-	fn dictionary_of(&self, name: &str) -> SdkResult<Option<DictionaryId>> {
+	fn dictionary_of(&self, name: &str) -> Result<Option<DictionaryId>, SdkError> {
 		Ok(BorrowedColumns::column(self, name)?.and_then(|col| col.dictionary()))
 	}
 

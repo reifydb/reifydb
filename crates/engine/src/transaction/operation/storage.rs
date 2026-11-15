@@ -9,8 +9,7 @@ use reifydb_core::{
 };
 use reifydb_flow::txn::{Batch, Get, Range};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-
-use crate::Result;
+use reifydb_value::error::ValueError;
 
 pub(crate) struct DmlTransaction<'a> {
 	pub(crate) tx: Transaction<'a>,
@@ -25,21 +24,21 @@ impl<'a> DmlTransaction<'a> {
 }
 
 impl Get for DmlTransaction<'_> {
-	fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		Ok(self.tx.get(keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
 }
 
 impl Batch for DmlTransaction<'_> {
-	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		self.tx.set_with_pre(entries)
 	}
 
-	fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.tx.remove(entries.into_iter().map(|(key, pre)| (key, Some(pre))).collect())
 	}
 
-	fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+	fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 		self.tx.remove(keys.into_iter().map(|key| (key, None)).collect())
 	}
 }
@@ -49,7 +48,7 @@ impl Range for DmlTransaction<'_> {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.tx.range(range, RangeScope::All, batch_size)
 	}
 
@@ -57,7 +56,7 @@ impl Range for DmlTransaction<'_> {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.tx.range_rev(range, RangeScope::All, batch_size)
 	}
 
@@ -65,11 +64,11 @@ impl Range for DmlTransaction<'_> {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.tx.range_rev_untracked(range, RangeScope::All, batch_size)
 	}
 
-	fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+	fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 		self.tx.mark_range(range)
 	}
 }

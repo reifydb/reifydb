@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 	catalog::{id::NamespaceId, namespace::Namespace},
 	store::MultiVersionRow,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::store::namespace::shape::namespace;
 
@@ -18,7 +18,7 @@ pub mod list;
 pub mod shape;
 pub mod update;
 
-pub(crate) fn convert_namespace<K>(multi: MultiVersionRow<K>) -> Result<Namespace> {
+pub(crate) fn convert_namespace<K>(multi: MultiVersionRow<K>) -> Result<Namespace, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = NamespaceId(namespace::get_id(&bytes));
 	let name = namespace::get_name(&bytes).to_string();

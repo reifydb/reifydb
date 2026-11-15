@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::OnEmpty, internal_err, key::operator::state::GroupId, state::timer::StateStore};
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::window::{
 	engine::pane::{PaneApplied, PanePublisher, RollingEmit},
@@ -11,10 +11,10 @@ use crate::window::{
 };
 
 pub struct RowPublisher<'f, G, K, O, A, C> {
-	pub key: Option<&'f dyn Fn(&G) -> Result<K>>,
+	pub key: Option<&'f dyn Fn(&G) -> Result<K, ValueError>>,
 	pub finalize: &'f dyn Fn(&G, C, &A) -> Option<O>,
 	pub on_empty: OnEmpty,
-	pub empty: &'f dyn Fn(&O) -> Result<Option<O>>,
+	pub empty: &'f dyn Fn(&O) -> Result<Option<O>, ValueError>,
 }
 
 impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> for RowPublisher<'_, G, K, O, A, C> {
@@ -30,7 +30,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 		prior: Option<RollingPublished<K, O>>,
 		value: Option<&A>,
 		applied: &mut PaneApplied<RollingEmit<G, K, O>>,
-	) -> Result<Option<RollingPublished<K, O>>> {
+	) -> Result<Option<RollingPublished<K, O>>, ValueError> {
 		let out = value.and_then(|value| (self.finalize)(group, newest, value));
 		match (prior, out) {
 			(None, Some(out)) => {
@@ -108,7 +108,7 @@ impl<G: Clone, K: Clone, O: Clone, A, C: WindowAnchor> PanePublisher<G, C, A> fo
 		emit: &mut Self::Emit,
 		published: &mut Self::Published,
 		row: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		published.row_number = row.0;
 		if let Some(post) = emit.post.as_mut() {
 			post.row_number = row.0;

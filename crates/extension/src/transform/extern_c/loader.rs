@@ -11,7 +11,7 @@ use std::{
 use libloading::Symbol;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
-	error::{Result as ExternCResult, SdkError},
+	error::SdkError,
 	transform::extern_c::wire::{
 		descriptor::ExternCTransformDescriptor,
 		types::{ExternCTransformCreateFn, TRANSFORM_ABI_TAG, TRANSFORM_MAGIC},
@@ -30,7 +30,7 @@ pub fn extern_c_transform_loader() -> &'static RwLock<TransformLoader> {
 	GLOBAL_EXTERN_C_TRANSFORM_LOADER.get_or_init(|| RwLock::new(TransformLoader::new()))
 }
 
-pub fn check_transform_abi_tag(abi_tag: u32) -> ExternCResult<()> {
+pub fn check_transform_abi_tag(abi_tag: u32) -> Result<(), SdkError> {
 	if abi_tag != TRANSFORM_ABI_TAG {
 		return Err(SdkError::Other(format!(
 			"extern-C transform ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
@@ -53,13 +53,13 @@ impl TransformLoader {
 		}
 	}
 
-	pub fn load_transform_library(&mut self, path: &Path) -> ExternCResult<bool> {
+	pub fn load_transform_library(&mut self, path: &Path) -> Result<bool, SdkError> {
 		self.cache
 			.check_magic(path, b"extern_c_transform_magic\0", TRANSFORM_MAGIC)
 			.map_err(|e| SdkError::Other(e.to_string()))
 	}
 
-	fn get_descriptor(&self, path: &Path) -> ExternCResult<ExternCTransformDescriptor> {
+	fn get_descriptor(&self, path: &Path) -> Result<ExternCTransformDescriptor, SdkError> {
 		let library = self
 			.cache
 			.get(path)
@@ -93,7 +93,7 @@ impl TransformLoader {
 		&mut self,
 		descriptor: &ExternCTransformDescriptor,
 		path: &Path,
-	) -> ExternCResult<String> {
+	) -> Result<String, SdkError> {
 		check_transform_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
@@ -103,7 +103,7 @@ impl TransformLoader {
 		Ok(name)
 	}
 
-	pub fn register_transform(&mut self, path: &Path) -> ExternCResult<Option<LoadedTransformInfo>> {
+	pub fn register_transform(&mut self, path: &Path) -> Result<Option<LoadedTransformInfo>, SdkError> {
 		if !self.load_transform_library(path)? {
 			return Ok(None);
 		}
@@ -124,7 +124,7 @@ impl TransformLoader {
 		Ok(Some(info))
 	}
 
-	pub fn load_transform(&mut self, path: &Path, params: &[u8]) -> ExternCResult<Option<ExternCTransform>> {
+	pub fn load_transform(&mut self, path: &Path, params: &[u8]) -> Result<Option<ExternCTransform>, SdkError> {
 		if !self.load_transform_library(path)? {
 			return Ok(None);
 		}
@@ -151,7 +151,7 @@ impl TransformLoader {
 		Ok(Some(ExternCTransform::new(descriptor, instance)))
 	}
 
-	pub fn create_transform_by_name(&mut self, name: &str, params: &[u8]) -> ExternCResult<ExternCTransform> {
+	pub fn create_transform_by_name(&mut self, name: &str, params: &[u8]) -> Result<ExternCTransform, SdkError> {
 		let path = self
 			.transform_paths
 			.get(name)
@@ -180,7 +180,7 @@ impl Default for TransformLoader {
 pub fn register_transforms_from_dir(
 	dir: &Path,
 	mut builder: TransformsConfigurator,
-) -> ExternCResult<TransformsConfigurator> {
+) -> Result<TransformsConfigurator, SdkError> {
 	let loader = extern_c_transform_loader();
 	let mut loader_guard = loader.write();
 
@@ -225,6 +225,6 @@ pub fn register_transforms_from_dir(
 	Ok(builder)
 }
 
-pub fn load_transforms_from_dir(dir: &Path) -> ExternCResult<Transforms> {
+pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms, SdkError> {
 	Ok(register_transforms_from_dir(dir, Transforms::builder())?.configure())
 }

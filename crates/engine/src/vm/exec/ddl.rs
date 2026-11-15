@@ -9,12 +9,9 @@ use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	vm::{services::Services, vm::Vm},
-};
+use crate::vm::{services::Services, vm::Vm};
 
-pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction> {
+pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction, ValueError> {
 	match tx {
 		Transaction::Admin(txn) => Ok(txn),
 		Transaction::Test(t) => Ok(&mut *t.inner),
@@ -32,9 +29,9 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		handler: F,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
-		F: FnOnce(&Services, &mut AdminTransaction) -> Result<RecordBatch>,
+		F: FnOnce(&Services, &mut AdminTransaction) -> Result<RecordBatch, ValueError>,
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn)?;
@@ -47,9 +44,9 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		handler: F,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
-		F: FnOnce(&Arc<Services>, &mut AdminTransaction, &SymbolTable) -> Result<RecordBatch>,
+		F: FnOnce(&Arc<Services>, &mut AdminTransaction, &SymbolTable) -> Result<RecordBatch, ValueError>,
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn, &self.symbols)?;

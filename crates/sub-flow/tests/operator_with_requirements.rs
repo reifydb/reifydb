@@ -18,7 +18,7 @@ use reifydb_flow_async::window::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		ManagedMount, ManagedOperator, MountedOperator, NostateMount, NostateOperator, OperatorMetadata,
 		UnmanagedMount, UnmanagedOperator,
@@ -61,11 +61,11 @@ impl OperatorMetadata for NostateProbe {
 }
 
 impl NostateOperator for NostateProbe {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(NostateProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -82,11 +82,11 @@ impl OperatorMetadata for ManagedProbe {
 }
 
 impl ManagedOperator for ManagedProbe {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(ManagedProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -111,11 +111,11 @@ impl UnmanagedOperator for UnmanagedProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(UnmanagedProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -140,11 +140,11 @@ impl UnmanagedOperator for UnmanagedWindowProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(UnmanagedWindowProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -376,16 +376,20 @@ macro_rules! window_probe {
 			type Accumulator = LastValue<i64>;
 			type Output = $output;
 
-			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+			fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 				Ok(Self)
 			}
 
-			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<$coord>>> {
+			fn coord(
+				&self,
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> Result<Vec<Option<$coord>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|_| -> SdkResult<Option<$coord>> { Ok(None) })
+							.map(|_| -> Result<Option<$coord>, SdkError> { Ok(None) })
 							.transpose()
 							.map(Option::flatten)
 					})
@@ -397,12 +401,12 @@ macro_rules! window_probe {
 				_: &mut impl GuestContext<Windowed>,
 				cols: &impl ColumnsView,
 				rows: &[usize],
-			) -> SdkResult<Vec<Option<(u32, i64)>>> {
+			) -> Result<Vec<Option<(u32, i64)>>, SdkError> {
 				rows.iter()
 					.map(|&i| {
 						cols.row(i)
 							.as_ref()
-							.map(|_| -> SdkResult<Option<(u32, i64)>> { Ok(None) })
+							.map(|_| -> Result<Option<(u32, i64)>, SdkError> { Ok(None) })
 							.transpose()
 							.map(Option::flatten)
 					})
@@ -722,11 +726,11 @@ impl WindowedOperator for RefusingWindowProbe {
 	type Accumulator = LastValue<i64>;
 	type Output = GRow;
 
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Err(ValueError::from(CoreError::OperatorWithRetentionNotSupported).into())
 	}
 
-	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -735,7 +739,7 @@ impl WindowedOperator for RefusingWindowProbe {
 		_: &mut impl GuestContext<Windowed>,
 		_: &impl ColumnsView,
 		rows: &[usize],
-	) -> SdkResult<Vec<Option<(u32, i64)>>> {
+	) -> Result<Vec<Option<(u32, i64)>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -779,11 +783,11 @@ impl WindowedOperator for CarryProbe {
 	type Accumulator = LastValue<i64>;
 	type Output = CarryRow;
 
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 
@@ -792,7 +796,7 @@ impl WindowedOperator for CarryProbe {
 		_: &mut impl GuestContext<Windowed>,
 		_: &impl ColumnsView,
 		rows: &[usize],
-	) -> SdkResult<Vec<Option<(u32, i64)>>> {
+	) -> Result<Vec<Option<(u32, i64)>>, SdkError> {
 		Ok(vec![None; rows.len()])
 	}
 

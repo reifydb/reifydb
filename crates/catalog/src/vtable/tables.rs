@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use reifydb_core::interface::catalog::vtable::VTable;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::params::Params;
+use reifydb_value::{error::ValueError, params::Params};
 
 use super::{
 	BaseVTable, Batch, VTableContext,
@@ -70,7 +70,6 @@ use super::{
 		windowed_view_groups::SystemWindowedViewGroups,
 	},
 };
-use crate::Result;
 
 pub type UserVTableDataFunction = Arc<dyn Fn(&Params) -> RecordBatch + Send + Sync>;
 
@@ -217,7 +216,7 @@ impl VTables {
 		}
 	}
 
-	pub fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()> {
+	pub fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<(), ValueError> {
 		match self {
 			Self::Sequences(t) => t.initialize(txn, ctx),
 			Self::Namespaces(t) => t.initialize(txn, ctx),
@@ -299,7 +298,7 @@ impl VTables {
 		}
 	}
 
-	pub fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	pub fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>, ValueError> {
 		match self {
 			Self::Sequences(t) => t.next(txn),
 			Self::Namespaces(t) => t.next(txn),

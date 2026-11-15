@@ -6,10 +6,10 @@ use reifydb_core::{
 	key::identity::{PolicyKey, PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::shape::{policy, policy_op},
@@ -21,7 +21,7 @@ impl CatalogStore {
 	pub(crate) fn create_policy(
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> Result<(Policy, Vec<PolicyOperation>)> {
+	) -> Result<(Policy, Vec<PolicyOperation>), ValueError> {
 		if let Some(ref name) = to_create.name
 			&& (Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some()
 		{

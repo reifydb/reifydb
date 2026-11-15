@@ -31,7 +31,7 @@ use reifydb_store_multi::{
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
 	tier::{TierStorage, persistent::MultiPersistentTier},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, error::ValueError, util::cowvec::CowVec};
 
 use crate::common::without_wal;
 
@@ -104,7 +104,7 @@ fn tier_with_rows(rows: u64) -> (MultiPersistentTier, impl Drop) {
 	(tier, guard)
 }
 
-fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_value::Result<usize> {
+fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> Result<usize, ValueError> {
 	Ok(tier.range_next(
 		&system_ctx(),
 		EntryKind::Source(STORAGE, EntryLayout::Row),

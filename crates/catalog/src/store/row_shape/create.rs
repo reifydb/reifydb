@@ -4,11 +4,10 @@
 use reifydb_codec::{constraint::encode_type_constraint_info, row::shape::RowShape};
 use reifydb_core::key::row::{RowShapeFieldKey, RowShapeKey};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::instrument;
 
 use super::shape::{shape_field, shape_header};
-use crate::Result;
 
 #[instrument(
 	name = "shape_store::create",
@@ -16,7 +15,7 @@ use crate::Result;
 	skip(txn, shape),
 	fields(fingerprint = ?shape.fingerprint(), field_count = shape.field_count())
 )]
-pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> Result<()> {
+pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> Result<(), ValueError> {
 	let fingerprint = shape.fingerprint();
 
 	reifydb_assertions! {

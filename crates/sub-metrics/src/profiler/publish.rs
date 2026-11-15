@@ -7,11 +7,11 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
 use reifydb_profiler::record::AggregateRecord;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 
-pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<RecordBatch> {
+pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Result<RecordBatch, ValueError> {
 	records.sort_by(|a, b| {
 		(Reverse(a.total_us), a.category.name(), &a.span_name, &a.dimensions).cmp(&(
 			Reverse(b.total_us),

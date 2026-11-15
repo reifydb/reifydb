@@ -4,14 +4,7 @@
 use reifydb_codec::log::Position;
 use reifydb_store_log::segment::{Scan, Stop};
 use reifydb_value::value::datetime::DateTime;
-use reifydb_wal::{
-	body::Body,
-	error::{Result, WalError},
-	lsn::Lsn,
-	nop::NopDevice,
-	sync::WalMode,
-	wal::Wal,
-};
+use reifydb_wal::{body::Body, error::WalError, lsn::Lsn, nop::NopDevice, sync::WalMode, wal::Wal};
 
 #[derive(Debug, PartialEq)]
 struct Ping(u64);
@@ -25,7 +18,7 @@ impl Body for Ping {
 		out.extend_from_slice(&self.0.to_le_bytes());
 	}
 
-	fn decode(_kind: u32, bytes: &[u8]) -> Result<Self> {
+	fn decode(_kind: u32, bytes: &[u8]) -> Result<Self, WalError> {
 		let bytes: [u8; 8] = bytes.try_into().map_err(|_| WalError::Body("ping is not 8 bytes".into()))?;
 		Ok(Ping(u64::from_le_bytes(bytes)))
 	}

@@ -12,7 +12,6 @@ use arrow_select::{
 };
 
 use crate::{
-	Result,
 	error::{Diagnostic, ValueError},
 	util::bitmap,
 };
@@ -45,7 +44,7 @@ where
 	}
 }
 
-pub fn rows_in_range(indices: &[usize], len: usize) -> Result<()> {
+pub fn rows_in_range(indices: &[usize], len: usize) -> Result<(), ValueError> {
 	match indices.iter().find(|&&index| index >= len) {
 		Some(index) => Err(ValueError(Box::new(Diagnostic {
 			code: "INTERNAL_ERROR".to_string(),

@@ -8,10 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<View> {
+	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<View, ValueError> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			ValueError(Box::new(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

@@ -22,22 +22,19 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	expression::{branch::BranchLayout, compile::is_truthy, context::EvalContext},
 	lower::{
-		Lowered, Node, bool_field, cast::cast_node, error::into_external, inner_type, is_untyped_none,
-		lower_node, typed_field, udf, volatile,
+		Node, Stop, bool_field, cast::cast_node, error::into_external, inner_type, is_untyped_none, lower_node,
+		typed_field, udf, volatile,
 	},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_if<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	_expression: &'e Expression,
 	e: &'e IfExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let mut conditions = vec![truthy(lower_node(ctx, operator, &e.condition)?)?];
 	let mut branches = vec![lower_node(ctx, operator, &e.then_expr)?];
 	for else_if in &e.else_ifs {
@@ -83,7 +80,7 @@ pub(super) fn lower_if<'e>(
 		});
 	};
 
-	let shaped = |node: Node| -> Result<Expr> {
+	let shaped = |node: Node| -> Result<Expr, ValueError> {
 		if !is_untyped_none(&node.field)? && inner_type(&node.field)? == target {
 			return Ok(node.expr);
 		}
@@ -107,7 +104,7 @@ pub(super) fn lower_if<'e>(
 	})
 }
 
-fn shared_dictionary(nodes: &[&Node]) -> Result<Option<DictionaryId>> {
+fn shared_dictionary(nodes: &[&Node]) -> Result<Option<DictionaryId>, ValueError> {
 	let mut shared = None;
 	for node in nodes {
 		let Some(dictionary) = from_field(&node.field)?.dictionary_id else {
@@ -141,7 +138,7 @@ fn branch_columns<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	node: &Node,
-) -> Lowered<Vec<FieldRef>> {
+) -> Result<Vec<FieldRef>, Stop> {
 	let parts = match expression {
 		Expression::Map(map) if map.expressions.len() != 1 => &map.expressions,
 		Expression::Extend(extend) if extend.expressions.len() != 1 => &extend.expressions,
@@ -156,8 +153,11 @@ fn branch_columns<'e>(
 
 type Described = Vec<(String, ValueType, bool)>;
 
-fn layout(branches: &[Vec<FieldRef>], fragment: &Fragment) -> Result<(Option<ValueType>, Vec<Option<Diagnostic>>)> {
-	let describe = |field: &FieldRef| -> Result<(String, ValueType, bool)> {
+fn layout(
+	branches: &[Vec<FieldRef>],
+	fragment: &Fragment,
+) -> Result<(Option<ValueType>, Vec<Option<Diagnostic>>), ValueError> {
+	let describe = |field: &FieldRef| -> Result<(String, ValueType, bool), ValueError> {
 		let untyped = is_untyped_none(field)?;
 		let value_type = if untyped {
 			ValueType::Any
@@ -168,11 +168,11 @@ fn layout(branches: &[Vec<FieldRef>], fragment: &Fragment) -> Result<(Option<Val
 	};
 	let described = branches
 		.iter()
-		.map(|fields| fields.iter().map(describe).collect::<Result<Described>>())
-		.collect::<Result<Vec<_>>>()?;
+		.map(|fields| fields.iter().map(describe).collect::<Result<Described, ValueError>>())
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let entries =
 		|index: usize| described[index].iter().map(|(name, ty, untyped)| (name.as_str(), ty.clone(), *untyped));
-	let build = |accepted: &[usize]| -> Result<BranchLayout> {
+	let build = |accepted: &[usize]| -> Result<BranchLayout, ValueError> {
 		let mut layout = BranchLayout::new(entries(accepted[0]));
 		for &index in &accepted[1..] {
 			layout.admit(entries(index), fragment)?;
@@ -193,7 +193,7 @@ fn layout(branches: &[Vec<FieldRef>], fragment: &Fragment) -> Result<(Option<Val
 	Ok((Some(build(&accepted)?.types()[0].clone()), mismatches))
 }
 
-fn truthy(node: Node) -> Result<Expr> {
+fn truthy(node: Node) -> Result<Expr, ValueError> {
 	if !is_untyped_none(&node.field)? && inner_type(&node.field)? == ValueType::Boolean {
 		return Ok(node.expr);
 	}
@@ -219,15 +219,15 @@ impl ScalarUDFImpl for TruthyUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("truthy types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(bool_field("truthy", false))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let array = args.args[0].clone().into_array(args.number_rows)?;
 		let view = ColumnView::try_from((&array, args.arg_fields[0].as_ref())).map_err(into_external)?;
 		let values: BooleanArray =
@@ -235,7 +235,7 @@ impl ScalarUDFImpl for TruthyUdf {
 		Ok(ColumnarValue::Array(Arc::new(values)))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

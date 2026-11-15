@@ -9,6 +9,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{Value, column_view::ColumnView},
@@ -19,10 +20,7 @@ use super::common::{
 	JoinContext, JoinSlot, build_eval_columns, load_and_merge_all, materialize_join, resolve_column_names,
 	user_row, user_views,
 };
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query};
 
 #[derive(Clone, Copy, PartialEq)]
 enum NestedLoopMode {
@@ -78,7 +76,7 @@ impl NestedLoopJoinNode {
 
 impl QueryNode for NestedLoopJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context.lowered = self.on.iter().map(|e| LoweredExpr::new(e.clone(), "join_on")).collect();
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -87,7 +85,11 @@ impl QueryNode for NestedLoopJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
 		}
@@ -139,7 +141,7 @@ impl NestedLoopJoinNode {
 		right_columns: &RecordBatch,
 		left_rows: usize,
 		right_rows: usize,
-	) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
+	) -> Result<(Vec<usize>, Vec<Option<usize>>), ValueError> {
 		let mut left_picks: Vec<usize> = Vec::new();
 		let mut right_picks: Vec<Option<usize>> = Vec::new();
 		let left_views = user_views(left_columns)?;

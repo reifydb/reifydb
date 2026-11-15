@@ -15,10 +15,9 @@ use reifydb_rql_frontend::{
 	bump::{BumpBox, BumpFragment},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	error::RqlError,
 	expression::join::JoinConditionCompiler,
 	plan::logical::{
@@ -27,7 +26,10 @@ use crate::{
 	},
 };
 
-pub(crate) fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
+pub(crate) fn build_join_expressions(
+	using: AstUsingClause<'_>,
+	alias: &BumpFragment<'_>,
+) -> Result<Vec<Expression>, ValueError> {
 	let compiler = JoinConditionCompiler::new(Some(alias.to_owned()));
 	let fragment = using.token.fragment.to_owned();
 
@@ -75,7 +77,11 @@ pub(crate) fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFrag
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_join(&self, ast: AstJoin<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_join(
+		&self,
+		ast: AstJoin<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstJoin::InnerJoin {
 				subquery,
@@ -146,7 +152,7 @@ impl<'bump> Compiler<'bump> {
 		subquery: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
-	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>, ValueError> {
 		self.compile_join_subquery_nodes(subquery, alias, tx)
 	}
 
@@ -155,7 +161,7 @@ impl<'bump> Compiler<'bump> {
 		subquery: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
-	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>, ValueError> {
 		self.compile_join_subquery_nodes(subquery, alias, tx)
 	}
 
@@ -164,7 +170,7 @@ impl<'bump> Compiler<'bump> {
 		subquery: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
-	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>, ValueError> {
 		let mut nodes = subquery.statement.nodes.into_iter();
 		let Some(first) = nodes.next() else {
 			return Err(RqlError::MissingInput {
@@ -214,7 +220,7 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		let remaining: Vec<LogicalPlan<'bump>> =
-			nodes.map(|node| self.compile_single(node, tx)).collect::<Result<_>>()?;
+			nodes.map(|node| self.compile_single(node, tx)).collect::<Result<_, ValueError>>()?;
 
 		let mut result = BumpVec::with_capacity_in(1, self.bump);
 		if remaining.is_empty() {
@@ -237,7 +243,7 @@ fn resolve_join_plan<'bump>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedObjectIdentifier,
-) -> Result<LogicalPlan<'bump>> {
+) -> Result<LogicalPlan<'bump>, ValueError> {
 	let resolved = resolver::resolve_unresolved_source(catalog, tx, unresolved)?;
 	match resolved {
 		ResolvedSource::Object(p) => Ok(SourceScan(ObjectScanNode {

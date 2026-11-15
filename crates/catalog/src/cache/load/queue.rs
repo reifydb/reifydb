@@ -13,17 +13,18 @@ use reifydb_core::{
 	key::queue::QueueKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::queue::{
 		decode_queue_time,
 		shape::{decode_deduplicate, decode_dispatch, decode_partition_by, queue},
 	},
 };
 
-pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = QueueKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -43,7 +44,7 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_queue<K>(multi: MultiVersionRow<K>) -> Result<Queue> {
+fn convert_queue<K>(multi: MultiVersionRow<K>) -> Result<Queue, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = QueueId(queue::get_id(&bytes));
 	let namespace = NamespaceId(queue::get_namespace(&bytes));

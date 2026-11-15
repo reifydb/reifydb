@@ -12,7 +12,7 @@ use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_commit::{
 	MultiVersionScope, RangeBatch, RangeCursor, TierBatch, VersionedGetResult, store::CommitStore,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	fn get(
@@ -21,9 +21,9 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>>;
+	) -> Result<Vec<VersionedGetResult>, ValueError>;
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<(), ValueError>;
 
 	fn range_next(
 		&self,
@@ -34,7 +34,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch>;
+	) -> Result<RangeBatch, ValueError>;
 
 	fn range_rev_next(
 		&self,
@@ -45,9 +45,9 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch>;
+	) -> Result<RangeBatch, ValueError>;
 
-	fn ensure_table(&self, table: EntryKind) -> Result<()>;
+	fn ensure_table(&self, table: EntryKind) -> Result<(), ValueError>;
 }
 
 impl TierStorage for CommitStore {
@@ -57,11 +57,11 @@ impl TierStorage for CommitStore {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		Ok(keys.iter().map(|&key| CommitStore::get(self, table, key, version)).collect())
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<(), ValueError> {
 		CommitStore::set(self, version, batches);
 		Ok(())
 	}
@@ -75,7 +75,7 @@ impl TierStorage for CommitStore {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		Ok(CommitStore::range_next(self, table, cursor, start, end, scope, batch_size))
 	}
 
@@ -88,11 +88,11 @@ impl TierStorage for CommitStore {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		Ok(CommitStore::range_rev_next(self, table, cursor, start, end, scope, batch_size))
 	}
 
-	fn ensure_table(&self, table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, table: EntryKind) -> Result<(), ValueError> {
 		CommitStore::ensure_table(self, table);
 		Ok(())
 	}

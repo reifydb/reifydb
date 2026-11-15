@@ -387,7 +387,11 @@ struct RecordingReaper {
 }
 
 impl Reaper for RecordingReaper {
-	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+	fn reap(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(GroupStateKey, EncodedPodRow)],
+	) -> Result<(), ValueError> {
 		let keys: Vec<GroupStateKey> = rows.iter().map(|(key, _)| key.clone()).collect();
 		self.seen.extend_from_slice(&keys);
 		store.state_remove(&keys)

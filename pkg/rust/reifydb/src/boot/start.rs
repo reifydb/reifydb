@@ -9,14 +9,17 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, params::Params, value::identity::IdentityId};
 use tracing::info;
 
-use crate::{MigrationStatement, Result};
+use crate::MigrationStatement;
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-pub(crate) fn ensure_storage_version(ctx: &Arc<TransactionContext>, single: &SingleTransaction) -> Result<()> {
+pub(crate) fn ensure_storage_version(
+	ctx: &Arc<TransactionContext>,
+	single: &SingleTransaction,
+) -> Result<(), ValueError> {
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	};
@@ -40,7 +43,7 @@ pub(crate) fn ensure_storage_version(ctx: &Arc<TransactionContext>, single: &Sin
 
 /// This tuning must be in effect before migrations run. Lifecycle actors belong to the lifecycle
 /// subsystem, not to this phase.
-pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
+pub(crate) fn configure_store(engine: &StandardEngine) -> Result<(), ValueError> {
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(s) => s.clone(),
 	};
@@ -54,7 +57,7 @@ pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 
 /// Registration is a no-op for an already-registered name whose content hash is unchanged, and
 /// fails with `MigrationHashMismatch` when the content has changed since registration.
-pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationStatement]) -> Result<()> {
+pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationStatement]) -> Result<(), ValueError> {
 	if migrations.is_empty() {
 		return Ok(());
 	}
@@ -101,7 +104,7 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	Ok(())
 }
 
-fn run_admin_system(engine: &StandardEngine, rql: &str) -> Result<()> {
+fn run_admin_system(engine: &StandardEngine, rql: &str) -> Result<(), ValueError> {
 	let result = engine.admin_as(IdentityId::system(), rql, Params::None);
 	match result.error {
 		Some(e) => Err(e),

@@ -4,15 +4,15 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::authentication::Authentication, key::identity::AuthenticationKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::authentication::{convert_authentication, shape::authentication},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<Authentication>> {
+	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<Authentication>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
@@ -28,7 +28,7 @@ impl CatalogStore {
 	pub(crate) fn list_authentications_by_identity(
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<Authentication>> {
+	) -> Result<Vec<Authentication>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 

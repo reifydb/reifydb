@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::CommitVersion;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	TransactionId,
@@ -27,11 +27,11 @@ impl<'a> PrePublishContext<'a> {
 }
 
 pub trait PrePublishInterceptor: Send + Sync {
-	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<()>;
+	fn intercept(&self, ctx: &mut PrePublishContext<'_>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn PrePublishInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: PrePublishContext<'_>) -> Result<()> {
+	pub fn execute(&self, mut ctx: PrePublishContext<'_>) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -63,11 +63,11 @@ impl PostCommitContext {
 }
 
 pub trait PostCommitInterceptor: Send + Sync {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()>;
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: PostCommitContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: PostCommitContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -77,14 +77,14 @@ impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
 
 pub struct ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -95,7 +95,7 @@ where
 
 impl<F> Clone for ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync + Clone,
+	F: Fn(&mut PostCommitContext) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -106,16 +106,16 @@ where
 
 impl<F> PostCommitInterceptor for ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn post_commit<F>(f: F) -> ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync + Clone + 'static,
+	F: Fn(&mut PostCommitContext) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosurePostCommitInterceptor::new(f)
 }

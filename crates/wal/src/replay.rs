@@ -9,7 +9,7 @@ use reifydb_value::value::datetime::DateTime;
 use crate::{
 	body::Body,
 	device::{ReadFrom, RecordCursor},
-	error::{Result, WalError},
+	error::WalError,
 	lsn::Lsn,
 };
 
@@ -41,7 +41,7 @@ impl<'a, T, L: ReadFrom> Replay<'a, T, L> {
 }
 
 impl<T: Body, L: ReadFrom> Iterator for Replay<'_, T, L> {
-	type Item = Result<Replayed<T>>;
+	type Item = Result<Replayed<T>, WalError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		while self.buffered.is_empty() {
@@ -63,7 +63,7 @@ impl<T: Body, L: ReadFrom> Iterator for Replay<'_, T, L> {
 	}
 }
 
-fn decode<T: Body>(record: Record) -> Result<Replayed<T>> {
+fn decode<T: Body>(record: Record) -> Result<Replayed<T>, WalError> {
 	let lsn = Lsn::from_version(record.version).unwrap_or(Lsn::FIRST);
 	let kind = record.kind.as_u32();
 	match T::decode(kind, &record.payload) {

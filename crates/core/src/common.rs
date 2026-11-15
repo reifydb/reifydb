@@ -8,7 +8,7 @@ use std::{
 	str::FromStr,
 };
 
-use reifydb_value::{Result as ValueResult, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::{error::CoreError, operator_with::ApplyWith};
@@ -295,7 +295,7 @@ impl WindowRequirements {
 		WINDOW_KIND_SETS.get(usize::try_from(mask).ok()?).copied()
 	}
 
-	pub fn check(&self, with: &ApplyWith) -> ValueResult<()> {
+	pub fn check(&self, with: &ApplyWith) -> Result<(), ValueError> {
 		let kind = match (&with.window, self.takes_window) {
 			(Some(kind), true) => kind,
 			(Some(kind), false) => {

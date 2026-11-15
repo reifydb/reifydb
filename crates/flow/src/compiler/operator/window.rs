@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	aggregate::AggregateContext,
@@ -33,7 +33,7 @@ impl From<WindowNode> for WindowCompiler {
 }
 
 impl CompileOperator for WindowCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		validate_flow_aggregations(
 			&compiler.routines,
 			&self.aggregations,

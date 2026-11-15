@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::{fmt, sync::Arc};
 
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 #[cfg(not(target_arch = "wasm32"))]
 use reqwest::{
 	blocking::Client,
@@ -42,9 +42,9 @@ pub struct GithubUser {
 }
 
 pub trait GithubApi: Send + Sync {
-	fn exchange_code(&self, config: &GithubConfig, code: &str) -> Result<String>;
+	fn exchange_code(&self, config: &GithubConfig, code: &str) -> Result<String, ValueError>;
 
-	fn fetch_user(&self, access_token: &str) -> Result<GithubUser>;
+	fn fetch_user(&self, access_token: &str) -> Result<GithubUser, ValueError>;
 }
 
 pub fn build_authorize_url(config: &GithubConfig, state: &str) -> String {
@@ -62,7 +62,7 @@ pub struct HttpGithubApi;
 #[cfg(not(target_arch = "wasm32"))]
 impl HttpGithubApi {
 	#[allow(clippy::disallowed_types)]
-	fn client(&self) -> Result<Client> {
+	fn client(&self) -> Result<Client, ValueError> {
 		Client::builder()
 			.connect_timeout(Duration::from_secs(10))
 			.timeout(Duration::from_secs(10))
@@ -73,7 +73,7 @@ impl HttpGithubApi {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl GithubApi for HttpGithubApi {
-	fn exchange_code(&self, config: &GithubConfig, code: &str) -> Result<String> {
+	fn exchange_code(&self, config: &GithubConfig, code: &str) -> Result<String, ValueError> {
 		let response = self
 			.client()?
 			.post("https://github.com/login/oauth/access_token")
@@ -102,7 +102,7 @@ impl GithubApi for HttpGithubApi {
 		Err(exchange_failed(reason))
 	}
 
-	fn fetch_user(&self, access_token: &str) -> Result<GithubUser> {
+	fn fetch_user(&self, access_token: &str) -> Result<GithubUser, ValueError> {
 		let response = self
 			.client()?
 			.get("https://api.github.com/user")
@@ -150,11 +150,11 @@ pub struct UnsupportedGithubApi;
 
 #[cfg(target_arch = "wasm32")]
 impl GithubApi for UnsupportedGithubApi {
-	fn exchange_code(&self, _config: &GithubConfig, _code: &str) -> Result<String> {
+	fn exchange_code(&self, _config: &GithubConfig, _code: &str) -> Result<String, ValueError> {
 		Err(unsupported())
 	}
 
-	fn fetch_user(&self, _access_token: &str) -> Result<GithubUser> {
+	fn fetch_user(&self, _access_token: &str) -> Result<GithubUser, ValueError> {
 		Err(unsupported())
 	}
 }

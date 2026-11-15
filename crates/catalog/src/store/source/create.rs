@@ -9,11 +9,11 @@ use reifydb_core::{
 	key::{catalog::SourceKey, namespace::NamespaceSourceKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use serde_json::to_string;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::source::next_object_id,
@@ -32,7 +32,10 @@ pub struct SourceToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_source(txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
+	pub(crate) fn create_source(
+		txn: &mut AdminTransaction,
+		to_create: SourceToCreate,
+	) -> Result<Source, ValueError> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_source) = CatalogStore::find_source_by_name(
@@ -70,7 +73,7 @@ impl CatalogStore {
 		source: SourceId,
 		namespace: NamespaceId,
 		to_create: &SourceToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let config_json = to_string(&to_create.config).map_err(|e| CatalogError::SourceConfigEncode {
 			name: to_create.name.text().to_string(),
 			reason: e.to_string(),
@@ -96,7 +99,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		source: SourceId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = source_namespace::allocate();
 		source_namespace::set_id(&mut row, u64::from(source));
 		source_namespace::set_name(&mut row, name);

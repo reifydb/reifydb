@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_flow_async::window::driver::rows::{RetractRows, WindowColumns, WindowDiff, WindowRows};
-use reifydb_value::{Result, error::ValueError, value::diff_type::DiffType};
+use reifydb_value::{error::ValueError, value::diff_type::DiffType};
 
 use crate::{
 	error::SdkError,
@@ -50,7 +50,7 @@ fn columns<A: WindowedOperator>(
 	aggregator: &A,
 	ctx: &mut impl GuestContext,
 	cols: &impl ColumnsView,
-) -> Result<WindowColumns<A::GroupKey, A::Coord, Contribution<A>>> {
+) -> Result<WindowColumns<A::GroupKey, A::Coord, Contribution<A>>, ValueError> {
 	let extracted = extract_rows(aggregator, ctx, cols, &all_rows(cols))?;
 	let numbers = cols.row_numbers();
 	let mut index = Vec::with_capacity(extracted.len());
@@ -72,7 +72,7 @@ fn retracts<A: WindowedOperator>(
 	aggregator: &A,
 	ctx: &mut impl GuestContext,
 	cols: &impl ColumnsView,
-) -> Result<RetractRows<A::GroupKey>> {
+) -> Result<RetractRows<A::GroupKey>, ValueError> {
 	let all = all_rows(cols);
 	let extracted = batch_len::<A, _>(aggregator.extract(ctx, cols, &all)?, all.len(), "extract_batch")?;
 	let numbers = cols.row_numbers();
@@ -105,7 +105,7 @@ where
 		self.change.diff_count()
 	}
 
-	fn diff(&mut self, index: usize) -> Result<WindowDiff<A::GroupKey, A::Coord, Contribution<A>>> {
+	fn diff(&mut self, index: usize) -> Result<WindowDiff<A::GroupKey, A::Coord, Contribution<A>>, ValueError> {
 		let change = self.change;
 		let Some(diff) = change.diff(index) else {
 			return Err(SdkError::Other(format!(

@@ -30,6 +30,7 @@ use reifydb_flow::writer::series::{SeriesDeleteTally, SeriesRowAddress, apply_se
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
@@ -52,7 +53,6 @@ use super::{
 	},
 };
 use crate::{
-	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
 	transaction::operation::series::{emit_series_remove_change, remove_series_rows},
@@ -73,7 +73,7 @@ pub(crate) fn delete_series(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let DeleteSeriesNode {
 		input,
 		target,
@@ -113,7 +113,7 @@ pub(crate) fn delete_series(
 		.filter_map(|((partition, tally), metadata)| {
 			let mut metadata = metadata?;
 			apply_series_metadata_after_delete(&mut metadata, &tally);
-			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<(), ValueError> {
 				apply_series_metadata_after_delete(latest, &tally);
 				Ok(())
 			};
@@ -137,7 +137,7 @@ fn resolve_delete_series_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedSeries,
-) -> Result<(Namespace, Series)> {
+) -> Result<(Namespace, Series), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -161,7 +161,7 @@ fn run_series_delete_with_input(
 	has_tag: bool,
 	has_returning: bool,
 	caller: IdentityId,
-) -> Result<SeriesDeleteOutcome> {
+) -> Result<SeriesDeleteOutcome, ValueError> {
 	let context = build_series_delete_query_context(exec, target, params, caller);
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
@@ -195,7 +195,7 @@ fn compile_series_delete_input(
 	txn: &mut Transaction<'_>,
 	input_plan: QueryPlan,
 	context: &QueryContext,
-) -> Result<Box<dyn QueryNode>> {
+) -> Result<Box<dyn QueryNode>, ValueError> {
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, context)?;
 	Ok(input_node)
@@ -210,7 +210,7 @@ fn drive_series_delete_input(
 	target: &SeriesTarget<'_>,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<SeriesDeleteOutcome> {
+) -> Result<SeriesDeleteOutcome, ValueError> {
 	let series = target.series;
 	let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
@@ -322,7 +322,7 @@ fn drive_series_delete_input(
 	Ok((deleted_by_partition, returned_rows))
 }
 
-fn series_delete_keys(series: &Series, columns: &RecordBatch) -> Result<Vec<u64>> {
+fn series_delete_keys(series: &Series, columns: &RecordBatch) -> Result<Vec<u64>, ValueError> {
 	let key_column = series.key.column();
 	let view = column_view(columns, key_column)?.ok_or_else(|| {
 		internal_error!("delete of series {} has no key column {} in its input", series.name, key_column)
@@ -336,7 +336,7 @@ fn series_delete_keys(series: &Series, columns: &RecordBatch) -> Result<Vec<u64>
 		.collect()
 }
 
-fn series_delete_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>> {
+fn series_delete_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>, ValueError> {
 	if !has_tag {
 		return Ok(vec![None; rows]);
 	}
@@ -363,7 +363,7 @@ fn build_series_delete_pre_columns_from_input(
 	series: &Series,
 	columns: &RecordBatch,
 	removed: SeriesRemovedRows,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 	pre_col_vec.push(series.key_column_data(removed.key_values));
 	let taken = take_rows(columns, &removed.row_indices)?;
@@ -379,7 +379,7 @@ fn build_series_delete_pre_columns_from_input(
 }
 
 #[inline]
-fn delete_series_result(namespace: &str, series: &str, deleted: u64) -> Result<RecordBatch> {
+fn delete_series_result(namespace: &str, series: &str, deleted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),

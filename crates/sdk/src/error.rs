@@ -86,5 +86,3 @@ impl From<ValueError> for SdkError {
 		SdkError::Engine(err)
 	}
 }
-
-pub type Result<T, E = SdkError> = std::result::Result<T, E>;

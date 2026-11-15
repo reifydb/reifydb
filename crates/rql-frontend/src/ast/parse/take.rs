@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstLiteral, AstTake, AstTakeValue},
 		parse::{Parser, Precedence},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_take(&mut self) -> Result<AstTake<'bump>> {
+	pub(crate) fn parse_take(&mut self) -> Result<AstTake<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Take)?;
 
 		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);

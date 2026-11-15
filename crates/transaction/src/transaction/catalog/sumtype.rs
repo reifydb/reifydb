@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSumTypeChangeOperations, id::NamespaceId, sumtype::SumType,
 };
-use reifydb_value::{Result, value::sumtype::SumTypeId};
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 
 use crate::{
 	change::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogTrackSumTypeChangeOperations for AdminTransaction {
-	fn track_sumtype_created(&mut self, sumtype: SumType) -> Result<()> {
+	fn track_sumtype_created(&mut self, sumtype: SumType) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(sumtype),
@@ -26,7 +26,7 @@ impl CatalogTrackSumTypeChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_sumtype_deleted(&mut self, sumtype: SumType) -> Result<()> {
+	fn track_sumtype_deleted(&mut self, sumtype: SumType) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(sumtype),
 			post: None,

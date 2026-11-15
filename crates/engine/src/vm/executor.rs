@@ -49,7 +49,6 @@ use tracing::instrument;
 #[cfg(not(reifydb_single_threaded))]
 use crate::remote;
 use crate::{
-	Result,
 	policy::PolicyEvaluator,
 	subscription::{SubscriptionContext, SubscriptionServiceRef},
 	vm::{
@@ -107,7 +106,7 @@ impl Executor {
 		err: &ValueError,
 		rql: &str,
 		params: Params,
-	) -> Result<Option<Vec<Frame>>> {
+	) -> Result<Option<Vec<Frame>>, ValueError> {
 		if let Some(ref registry) = self.0.remote_registry
 			&& remote::is_remote_query(err)
 			&& let Some(namespace) = self.compiler.remote_target(tx, rql)?
@@ -125,7 +124,7 @@ impl RqlExecutor for Executor {
 	}
 }
 
-fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
+fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<(), ValueError> {
 	match params {
 		Params::Positional(values) => {
 			for (index, value) in values.iter().enumerate() {
@@ -143,7 +142,7 @@ fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 	Ok(())
 }
 
-fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
+fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<(), ValueError> {
 	let identity = tx.identity();
 	let attributes = catalog.list_identity_attributes(tx)?;
 	if let Some(kind) = identity.sentinel_kind() {
@@ -237,7 +236,7 @@ fn build_metrics(statements: Vec<StatementMetrics>) -> ExecutionMetrics {
 
 struct RunUnitOutcome {
 	symbols: SymbolTable,
-	run_result: Result<()>,
+	run_result: Result<(), ValueError>,
 	execute_duration: Duration,
 }
 
@@ -351,7 +350,7 @@ fn error_result(error: ValueError, metrics: ExecutionMetrics) -> ExecutionResult
 	}
 }
 
-fn extract_rows_affected(result: &[Frame]) -> Result<u64> {
+fn extract_rows_affected(result: &[Frame]) -> Result<u64, ValueError> {
 	if result.len() == 1 {
 		let batch = &result[0].batch;
 		for (field, array) in batch.schema_ref().fields().iter().zip(batch.columns()) {
@@ -373,7 +372,7 @@ fn extract_rows_affected(result: &[Frame]) -> Result<u64> {
 
 impl Executor {
 	#[instrument(name = "executor::setup_symbols", level = "debug", skip_all)]
-	fn setup_symbols(&self, params: &Params, tx: &mut Transaction<'_>) -> Result<SymbolTable> {
+	fn setup_symbols(&self, params: &Params, tx: &mut Transaction<'_>) -> Result<SymbolTable, ValueError> {
 		let mut symbols = SymbolTable::new();
 		populate_symbols(&mut symbols, params)?;
 		populate_identity(&mut symbols, &self.catalog, tx)?;
@@ -381,7 +380,7 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::compile", level = "debug", skip(self, tx), fields(rql = %rql))]
-	fn compile_query(&self, tx: &mut Transaction<'_>, rql: &str) -> Result<CompilationResult> {
+	fn compile_query(&self, tx: &mut Transaction<'_>, rql: &str) -> Result<CompilationResult, ValueError> {
 		self.compiler.compile_with_policy(tx, rql, inject_from_policies)
 	}
 
@@ -458,7 +457,7 @@ impl Executor {
 	}
 
 	#[inline]
-	fn enforce_admin_policy(&self, symbols: &SymbolTable, txn: &mut AdminTransaction) -> Result<()> {
+	fn enforce_admin_policy(&self, symbols: &SymbolTable, txn: &mut AdminTransaction) -> Result<(), ValueError> {
 		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
 			&mut Transaction::Admin(txn),
 			SessionOp::Admin,
@@ -607,7 +606,7 @@ impl Executor {
 	}
 
 	#[inline]
-	fn enforce_test_policy(&self, symbols: &SymbolTable, txn: &mut TestTransaction<'_>) -> Result<()> {
+	fn enforce_test_policy(&self, symbols: &SymbolTable, txn: &mut TestTransaction<'_>) -> Result<(), ValueError> {
 		let session_type = txn.session_type;
 		let session_default_deny = txn.session_default_deny;
 		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
@@ -743,7 +742,7 @@ impl Executor {
 		query: &str,
 		params: Params,
 		options: SubscribeOptions,
-	) -> Result<SubscribeOutcome> {
+	) -> Result<SubscribeOutcome, ValueError> {
 		if options.hydration.max_rows == Some(0) {
 			return Err(ValueError(Box::new(subscription::hydration_max_rows_zero())));
 		}

@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	error::FlowAsyncError,
@@ -45,7 +45,7 @@ pub struct DueTimers {
 pub struct TimerWheel;
 
 impl TimerWheel {
-	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<(), ValueError> {
 		if !timer.kind.is_maintenance() {
 			txn.state_set(
 				operator,
@@ -85,7 +85,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<(), ValueError> {
 		if timer.kind.is_maintenance() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
@@ -101,7 +101,7 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		kind: TimerKind,
 		moves: &[TimerMove],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let moving: Vec<&TimerMove> = moves.iter().filter(|timer| timer.before != timer.after).collect();
 		reifydb_assertions! {
 			assert!(
@@ -146,7 +146,7 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		kind: TimerKind,
 		key: &EncodedKey,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(
 				kind.is_maintenance(),
@@ -166,7 +166,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Result<Option<TimerDue>> {
+	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Result<Option<TimerDue>, ValueError> {
 		let mut start = Bound::Unbounded;
 		loop {
 			let wheel = GroupStateRange::Keyspace {
@@ -208,7 +208,7 @@ impl TimerWheel {
 		watermark: DateTime,
 		limit: usize,
 		from: Option<&TimerWheelKey>,
-	) -> Result<DueTimers> {
+	) -> Result<DueTimers, ValueError> {
 		if limit == 0 {
 			return Ok(DueTimers {
 				timers: Vec::new(),
@@ -261,7 +261,7 @@ impl TimerWheel {
 			txn.state_get(operator, &maintenance_indices)?
 				.iter()
 				.map(|row| row.as_ref().map(decode_payload::<DateTime>).transpose())
-				.collect::<Result<_>>()?
+				.collect::<Result<_, ValueError>>()?
 		};
 		let mut armed = armed.into_iter();
 
@@ -307,11 +307,15 @@ fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	)
 }
 
-fn armed_key(row: &EncodedPodRow) -> Result<EncodedKey> {
+fn armed_key(row: &EncodedPodRow) -> Result<EncodedKey, ValueError> {
 	Ok(EncodedKey::new(&decode_payload::<Vec<u8>>(row)?))
 }
 
-fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<DateTime>> {
+fn armed_at(
+	operator: OperatorId,
+	txn: &mut impl FlowTransaction,
+	index: &GroupStateKey,
+) -> Result<Option<DateTime>, ValueError> {
 	match txn.state_get(operator, from_ref(index))?.pop().flatten() {
 		Some(row) => Ok(Some(decode_payload::<DateTime>(&row)?)),
 		None => Ok(None),

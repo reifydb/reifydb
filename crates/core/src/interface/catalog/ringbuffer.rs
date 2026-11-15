@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::{Result, value::partition::Partition};
+use reifydb_value::{error::ValueError, value::partition::Partition};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -67,7 +67,7 @@ pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedPodRo
 	EncodedPodRow::new(&bytes)
 }
 
-pub fn decode_ringbuffer_metadata(row: &EncodedPodRow) -> Result<RingBufferMetadata> {
+pub fn decode_ringbuffer_metadata(row: &EncodedPodRow) -> Result<RingBufferMetadata, ValueError> {
 	let bytes = row.body();
 	if bytes.len() != RINGBUFFER_METADATA_WIDTH {
 		return_internal_error!(

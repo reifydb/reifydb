@@ -22,7 +22,7 @@ use reifydb_value::{
 };
 
 use super::coerce::RowCoercer;
-use crate::{Result, error::EngineError, vm::instruction::dml::series_insert::VariantTags};
+use crate::{error::EngineError, vm::instruction::dml::series_insert::VariantTags};
 
 const TAG: &str = "tag";
 
@@ -42,7 +42,7 @@ pub(super) fn coerce_columns(
 	sumtype: Option<&SumType>,
 	source_name: &str,
 	coercer: &RowCoercer,
-) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<CoercedTags>)> {
+) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<CoercedTags>), ValueError> {
 	let segment = Segment {
 		columns,
 		tagged: sumtype.is_some(),
@@ -72,13 +72,17 @@ fn coerce_batch(
 	first_row: usize,
 	builders: &mut [ColumnBuilder],
 	tags: Option<&mut VariantTags<'_>>,
-) -> Result<usize> {
+) -> Result<usize, ValueError> {
 	let rows = batch.num_rows();
 	if rows == 0 {
 		return Ok(0);
 	}
 
-	let views = segment.columns.iter().map(|col| column_view(batch, &col.name)).collect::<Result<Vec<_>>>()?;
+	let views = segment
+		.columns
+		.iter()
+		.map(|col| column_view(batch, &col.name))
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let mut failure: Option<(usize, ValueError)> = None;
 	for ((builder, column), view) in builders.iter_mut().zip(segment.columns).zip(&views) {
 		let limit = failure.as_ref().map_or(rows, |(row, _)| *row);
@@ -171,7 +175,7 @@ fn collect_rows_to_columns(
 	first_row: usize,
 	builders: &mut [ColumnBuilder],
 	tags: Option<&mut VariantTags<'_>>,
-) -> Result<usize> {
+) -> Result<usize, ValueError> {
 	let columns = segment.columns;
 	let source_name = segment.source_name;
 	let num_cols = columns.len();
@@ -220,7 +224,7 @@ fn collect_rows_to_columns(
 	Ok(rows.len())
 }
 
-fn params_batch(segment: &Segment<'_>, rows: &[Params]) -> Result<Option<RecordBatch>> {
+fn params_batch(segment: &Segment<'_>, rows: &[Params]) -> Result<Option<RecordBatch>, ValueError> {
 	let cell = |params: &Params, index: usize, name: &str| match params {
 		Params::Named(map) => map.get(name).cloned(),
 		Params::Positional(vals) => vals.get(index).cloned(),
@@ -263,7 +267,12 @@ fn params_column(name: &str, values: Vec<Option<Value>>) -> ParamsColumn {
 	ParamsColumn::Typed(builder.finish(name))
 }
 
-fn coerce_rows(segment: &Segment<'_>, rows: &[Params], first_row: usize, builders: &mut [ColumnBuilder]) -> Result<()> {
+fn coerce_rows(
+	segment: &Segment<'_>,
+	rows: &[Params],
+	first_row: usize,
+	builders: &mut [ColumnBuilder],
+) -> Result<(), ValueError> {
 	let columns = segment.columns;
 	let source_name = segment.source_name;
 	let coercer = segment.coercer;

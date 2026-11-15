@@ -10,10 +10,10 @@ use reifydb_core::{
 	key::column::ColumnBlockKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::column_block::find::{
 		collect_series_block_ids, collect_series_partition_block_ids, collect_table_block_ids,
 		decode_column_block,
@@ -21,7 +21,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_column_blocks(rx: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>> {
+	pub(crate) fn list_column_blocks(rx: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>, ValueError> {
 		let mut out = Vec::new();
 		let mut stream = rx.range(ColumnBlockKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
@@ -35,7 +35,7 @@ impl CatalogStore {
 	pub(crate) fn list_column_blocks_for_series(
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let ids = collect_series_block_ids(rx, series_id)?;
 		let mut out = Vec::with_capacity(ids.len());
 		for id in ids {
@@ -58,7 +58,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
 		partition: Partition,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let ids = collect_series_partition_block_ids(rx, series_id, partition)?;
 		let mut out = Vec::with_capacity(ids.len());
 		for id in ids {
@@ -80,7 +80,7 @@ impl CatalogStore {
 	pub(crate) fn list_column_blocks_for_table(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Vec<ColumnBlock>> {
+	) -> Result<Vec<ColumnBlock>, ValueError> {
 		let ids = collect_table_block_ids(rx, table_id)?;
 		let mut out = Vec::with_capacity(ids.len());
 		for id in ids {

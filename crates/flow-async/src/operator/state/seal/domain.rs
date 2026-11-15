@@ -11,7 +11,7 @@ use reifydb_core::{
 	state::timer::{TimerKind, TimerMove},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration},
 };
 
@@ -35,13 +35,13 @@ pub trait SealDomain: Coord {
 
 	fn arms_timer() -> bool;
 
-	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>, ValueError>;
 
-	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError>;
 
-	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Self::SealSpan) -> Result<()>;
+	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Self::SealSpan) -> Result<(), ValueError>;
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self>;
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError>;
 
 	fn horizon(frontier: Self, seal_span: Self::SealSpan) -> Self;
 
@@ -51,14 +51,14 @@ pub trait SealDomain: Coord {
 		lag: Option<Self::Span>,
 		before: Option<u64>,
 		after: Option<u64>,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 
 	fn rearm_seal(
 		store: &mut dyn WindowStore,
 		seal_span: Self::SealSpan,
 		before: Option<u64>,
 		after: Option<u64>,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 
 	fn seal_move(
 		seal_span: Self::SealSpan,
@@ -67,9 +67,9 @@ pub trait SealDomain: Coord {
 		after: Option<u64>,
 	) -> Option<TimerMove>;
 
-	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Self::SealSpan) -> Result<()>;
+	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Self::SealSpan) -> Result<(), ValueError>;
 
-	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>> {
+	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>, ValueError> {
 		with.reject_retention()?;
 		Ok(None)
 	}
@@ -86,7 +86,7 @@ impl SealDomain for DateTimeCoord {
 		true
 	}
 
-	fn seal_span_of(with: &ApplyWith) -> Result<Option<Duration>> {
+	fn seal_span_of(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -100,12 +100,12 @@ impl SealDomain for DateTimeCoord {
 		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.seal_span().duration()))
 	}
 
-	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Duration>> {
+	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Duration>, ValueError> {
 		with.check_retention()?;
 		Ok(with.retention)
 	}
 
-	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
+	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>, ValueError> {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
 		};
@@ -134,12 +134,12 @@ impl SealDomain for DateTimeCoord {
 		})
 	}
 
-	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Duration) -> Result<()> {
+	fn observe(store: &mut dyn WindowStore, newest: Self, seal_span: Duration) -> Result<(), ValueError> {
 		let at = newest.0.saturating_add(seal_span).saturating_add(SEAL_GATE_STEP);
 		store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 	}
 
-	fn frontier(store: &mut dyn WindowStore) -> Result<Self> {
+	fn frontier(store: &mut dyn WindowStore) -> Result<Self, ValueError> {
 		let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 		let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
 		Ok(Self::from_order(ledger.max(watermark)))
@@ -157,7 +157,7 @@ impl SealDomain for DateTimeCoord {
 		lag: Option<Duration>,
 		before: Option<u64>,
 		after: Option<u64>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let span = RollingOverTime::new(size, lag.unwrap_or_default()).span();
 		EvictionGate::new(span).rearm(store, &EncodedKey::new(ROLLING_DECAY_TIMER_KEY), before, after)
 	}
@@ -167,7 +167,7 @@ impl SealDomain for DateTimeCoord {
 		seal_span: Duration,
 		before: Option<u64>,
 		after: Option<u64>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		rearm_seal(store, SealRule::of(seal_span), &EncodedKey::new(Vec::new()), before, after)
 	}
 
@@ -180,7 +180,7 @@ impl SealDomain for DateTimeCoord {
 		Some(seal_move(SealRule::of(seal_span), key, before, after))
 	}
 
-	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Duration) -> Result<()> {
+	fn arm_reap(store: &mut dyn WindowStore, fired: DateTime, seal_span: Duration) -> Result<(), ValueError> {
 		store.arm_timer(fired.saturating_add(seal_span), TimerKind::Maintenance, &EncodedKey::new(Vec::new()))
 	}
 }

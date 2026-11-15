@@ -6,14 +6,15 @@ use reifydb_core::{
 	key::flow::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::flow_edge::shape::{flow_edge, flow_edge_by_flow},
 };
 
 impl CatalogStore {
-	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdge) -> Result<()> {
+	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdge) -> Result<(), ValueError> {
 		let mut row = flow_edge::allocate();
 		flow_edge::set_id(&mut row, u64::from(edge_def.id));
 		flow_edge::set_flow(&mut row, u64::from(edge_def.flow));

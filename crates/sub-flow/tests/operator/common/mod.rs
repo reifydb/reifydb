@@ -11,7 +11,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	error::{Result as SdkResult, SdkError},
+	error::SdkError,
 	flow::operator::{
 		NostateOperator, OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -78,11 +78,11 @@ impl UnmanagedOperator for ParityWindow {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(ParityWindow)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		let mut emissions: Vec<(i64, i64)> = Vec::new();
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -167,11 +167,11 @@ impl OperatorMetadata for RowNumberProbe {
 }
 
 impl NostateOperator for RowNumberProbe {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(RowNumberProbe)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		// A row-number key is a SUFFIX - the host frames it under the guest row mapping itself.
 		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_numbers(GroupId::ROOT, &[key])?.remove(0);
@@ -199,11 +199,11 @@ impl OperatorMetadata for NoopOperator {
 }
 
 impl NostateOperator for NoopOperator {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(NoopOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -221,11 +221,11 @@ impl OperatorMetadata for ErroringOperator {
 }
 
 impl NostateOperator for ErroringOperator {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(ErroringOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Err(SdkError::Other("operator apply must abort, not return Err".to_string()))
 	}
 }

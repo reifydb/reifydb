@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{error::TransactionError, multi::watermark::watermark::WaterMark};
 
@@ -21,7 +21,11 @@ impl VersionLeases {
 		})
 	}
 
-	pub fn try_acquire(self: &Arc<Self>, version: CommitVersion, qdu: CommitVersion) -> Result<VersionLeaseGuard> {
+	pub fn try_acquire(
+		self: &Arc<Self>,
+		version: CommitVersion,
+		qdu: CommitVersion,
+	) -> Result<VersionLeaseGuard, ValueError> {
 		let mut leases = self.inner.lock();
 		Self::insert_locked(self, &mut leases, version, qdu)
 	}
@@ -30,7 +34,7 @@ impl VersionLeases {
 		self: &Arc<Self>,
 		version: CommitVersion,
 		watermark: &WaterMark,
-	) -> Result<VersionLeaseGuard> {
+	) -> Result<VersionLeaseGuard, ValueError> {
 		self.try_acquire_with(|| Ok((version, watermark.done_until(), ()))).map(|(guard, ())| guard)
 	}
 
@@ -42,16 +46,16 @@ impl VersionLeases {
 		}))
 	}
 
-	pub fn try_acquire_at_cutoff(self: &Arc<Self>, watermark: &WaterMark) -> Result<VersionLeaseGuard> {
+	pub fn try_acquire_at_cutoff(self: &Arc<Self>, watermark: &WaterMark) -> Result<VersionLeaseGuard, ValueError> {
 		let mut leases = self.inner.lock();
 		let qdu = watermark.done_until();
 		let cutoff = leases.keys().next().copied().unwrap_or(CommitVersion(u64::MAX)).min(qdu);
 		Self::insert_locked(self, &mut leases, cutoff, qdu)
 	}
 
-	pub fn try_acquire_with<F, T>(self: &Arc<Self>, f: F) -> Result<(VersionLeaseGuard, T)>
+	pub fn try_acquire_with<F, T>(self: &Arc<Self>, f: F) -> Result<(VersionLeaseGuard, T), ValueError>
 	where
-		F: FnOnce() -> Result<(CommitVersion, CommitVersion, T)>,
+		F: FnOnce() -> Result<(CommitVersion, CommitVersion, T), ValueError>,
 	{
 		let mut leases = self.inner.lock();
 		let (version, qdu, extra) = f()?;
@@ -68,7 +72,7 @@ impl VersionLeases {
 		leases: &mut BTreeMap<CommitVersion, u32>,
 		version: CommitVersion,
 		qdu: CommitVersion,
-	) -> Result<VersionLeaseGuard> {
+	) -> Result<VersionLeaseGuard, ValueError> {
 		let cutoff = leases.keys().next().copied().unwrap_or(CommitVersion(u64::MAX)).min(qdu);
 		if version < cutoff {
 			return Err(TransactionError::SnapshotVersionEvicted {

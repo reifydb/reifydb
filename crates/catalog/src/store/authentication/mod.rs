@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{catalog::authentication::Authentication, store::MultiVersionRow};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
 use crate::{error::CatalogError, store::authentication::shape::authentication};
@@ -16,7 +16,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_authentication<K>(multi: MultiVersionRow<K>) -> Result<Authentication> {
+pub(crate) fn convert_authentication<K>(multi: MultiVersionRow<K>) -> Result<Authentication, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = authentication::get_id(&bytes);
 	let identity = authentication::get_identity(&bytes);

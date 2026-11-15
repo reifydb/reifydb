@@ -18,7 +18,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
@@ -131,7 +131,7 @@ impl MetricsCollector for FlowHealthRegistry {
 	}
 }
 
-pub fn stored_poisoned(engine: &StandardEngine) -> Result<Vec<(FlowId, String)>> {
+pub fn stored_poisoned(engine: &StandardEngine) -> Result<Vec<(FlowId, String)>, ValueError> {
 	let mut query = engine.begin_query(IdentityId::system())?;
 	let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query))?;
 	Ok(flows.into_iter()

@@ -11,14 +11,14 @@ use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::{
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::Checkpoint,
 	store::{OperatorStore, StandardOperatorStore},
 };
 
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::checkpoint_set", level = "debug", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
+	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<(), StoreOperatorError> {
 		if let Some(current) = self.checkpoint_get(flow)?
 			&& checkpoint.version < current.version
 		{
@@ -31,7 +31,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::check_checkpoints", level = "trace", skip_all, fields(checkpoint_count = checkpoints.len()))]
-	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<()> {
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<(), StoreOperatorError> {
 		for (flow, checkpoint) in checkpoints {
 			if let Some(current) = self.checkpoint_get(*flow)?
 				&& checkpoint.version < current.version
@@ -45,13 +45,13 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::checkpoint_remove", level = "debug", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
+	pub fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError> {
 		self.resident.record_checkpoint_delete(flow);
 		Ok(())
 	}
 
 	#[instrument(name = "store::operator::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError> {
 		if let Some(entry) = self.resident.lookup_checkpoint(flow) {
 			return Ok(entry);
 		}
@@ -59,7 +59,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		let pinned = self.pins.floor();
 		let buffered = self.resident.checkpoint_floor();
 		self.checkpoint_interlock();
@@ -68,7 +68,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::checkpoint_lsn_floor", level = "trace", skip(self))]
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		let buffered = self.resident.checkpoint_lsn_floor();
 		self.checkpoint_interlock();
 		let durable = self.persistent.checkpoint_lsn_floor()?;
@@ -76,7 +76,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
-	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
+	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {
 		let buffered = self.resident.checkpoint_entries();
 		self.checkpoint_interlock();
 		let mut merged: BTreeSet<FlowId> = self.persistent.checkpoint_list()?.into_iter().collect();
@@ -91,43 +91,43 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
+	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_set(flow, checkpoint),
 		}
 	}
 
-	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<()> {
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.check_checkpoints(checkpoints),
 		}
 	}
 
-	pub fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
+	pub fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_remove(flow),
 		}
 	}
 
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_get(flow),
 		}
 	}
 
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_floor(),
 		}
 	}
 
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_lsn_floor(),
 		}
 	}
 
-	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
+	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {
 		match self {
 			Self::Standard(store) => store.checkpoint_list(),
 		}

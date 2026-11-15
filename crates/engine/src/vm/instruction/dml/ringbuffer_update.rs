@@ -34,6 +34,7 @@ use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::nodes::UpdateRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -54,7 +55,6 @@ use super::{
 	table_insert::cast_partitions,
 };
 use crate::{
-	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::{RingBufferOperations, ringbuffer_key},
 	vm::{
@@ -74,7 +74,7 @@ pub(crate) fn update_ringbuffer(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let UpdateRingBufferNode {
 		input,
 		target,
@@ -237,7 +237,7 @@ fn resolve_update_ringbuffer_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedRingBuffer,
-) -> Result<(Namespace, RingBuffer)> {
+) -> Result<(Namespace, RingBuffer), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -282,7 +282,7 @@ fn enforce_old_row_policies(
 	row_numbers: &[RowNumber],
 	rows: &[EncodedBytes],
 	compiled: Option<&CompiledWritePolicies>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(compiled) = compiled.filter(|compiled| compiled.reads_row()) else {
 		return Ok(());
 	};
@@ -294,7 +294,7 @@ fn enforce_old_row_policies(
 }
 
 #[inline]
-fn update_ringbuffer_result(namespace: &str, ringbuffer: &str, updated: u64) -> Result<RecordBatch> {
+fn update_ringbuffer_result(namespace: &str, ringbuffer: &str, updated: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),

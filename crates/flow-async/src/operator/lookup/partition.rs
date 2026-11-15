@@ -12,7 +12,7 @@ use reifydb_core::{
 	value::column::cast::{cast_column_data, cast_value, convert::TargetConvert},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -45,7 +45,7 @@ impl DictionaryMemo {
 		dictionary: DictionaryId,
 		values: &[Value],
 		intern: bool,
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		let mut seen = HashSet::new();
 		let missing: Vec<Value> = values
 			.iter()
@@ -120,7 +120,7 @@ impl<'a> PartitionLookup<'a> {
 		host: &mut dyn HostContext,
 		memo: &mut DictionaryMemo,
 		values: &[Value],
-	) -> Result<Option<Partition>> {
+	) -> Result<Option<Partition>, ValueError> {
 		if self.partition_by.len() != values.len() {
 			return internal_err!(
 				"lookup hashes {} values against {} partition columns",
@@ -157,8 +157,9 @@ impl<'a> PartitionLookup<'a> {
 		memo: &mut DictionaryMemo,
 		columns: &[(FieldRef, ArrayRef)],
 		rows: usize,
-	) -> Result<Vec<RowKey>> {
-		let views: Vec<ColumnView> = columns.iter().map(ColumnView::try_from).collect::<Result<_>>()?;
+	) -> Result<Vec<RowKey>, ValueError> {
+		let views: Vec<ColumnView> =
+			columns.iter().map(ColumnView::try_from).collect::<Result<_, ValueError>>()?;
 		let full: Vec<usize> = (0..rows).filter(|&row| views.iter().all(|view| view.is_defined(row))).collect();
 		let mut keys = vec![RowKey::Missing; rows];
 		if full.is_empty() {
@@ -186,7 +187,7 @@ impl<'a> PartitionLookup<'a> {
 		memo: &mut DictionaryMemo,
 		views: &[ColumnView],
 		full: &[usize],
-	) -> Result<Option<Vec<RowKey>>> {
+	) -> Result<Option<Vec<RowKey>>, ValueError> {
 		if self.partition_by.len() != views.len() {
 			return Ok(None);
 		}

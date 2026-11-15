@@ -32,7 +32,7 @@ use reifydb_value::{
 use tracing::{debug, instrument};
 
 use crate::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::Row},
@@ -96,7 +96,7 @@ where
 	}
 
 	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Routed<A>> {
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Result<Routed<A>, SdkError> {
 		let mut buckets: Routed<A> = Routing::default();
 
 		for di in 0..change.diff_count() {
@@ -135,7 +135,7 @@ where
 		cols: &C,
 		buckets: &mut Routed<A>,
 		is_add: bool,
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let extracted = extract_rows(&self.aggregator, ctx, cols, &all_rows(cols))?;
 		self.push_extracted(extracted, buckets, is_add);
 		Ok(())
@@ -161,7 +161,7 @@ where
 		inserts: &[(RowNumber, DateTime, A::Output)],
 		updates: &[(RowNumber, DateTime, Option<A::Output>, A::Output)],
 		removes: &[(RowNumber, DateTime, A::Output)],
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
@@ -196,7 +196,7 @@ where
 		engine: &mut CarryEngine<A>,
 		store: &mut GuestAsHost<'_, C>,
 		horizon: A::Coord,
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		if horizon > <A::Coord as Coord>::from_order(0) {
 			engine.expire(store, horizon, |group, window_start| Self::row_key(group, window_start))?;
 		}
@@ -209,7 +209,7 @@ where
 		ctx: &mut impl GuestContext,
 		buckets: &mut Buckets<A>,
 		seal_span: SealSpan<A>,
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let mut store = GuestAsHost(ctx);
 		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
@@ -242,7 +242,7 @@ where
 		ctx: &mut impl GuestContext,
 		buckets: Buckets<A>,
 		order: &WindowOrder<A>,
-	) -> Result<WindowResults<A>> {
+	) -> Result<WindowResults<A>, SdkError> {
 		let Self {
 			aggregator,
 			engine,
@@ -302,7 +302,7 @@ where
 		None
 	}
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		let idle_retention = <A::Coord as SealDomain>::idle_retention_of(with)?;
 		with.require_window("tumbling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
@@ -327,7 +327,7 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<(), SdkError> {
 		let Some(seal_span) = self.seal_span else {
 			return Ok(());
 		};
@@ -339,7 +339,7 @@ where
 		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {
 		let routing = self.route(ctx, &change)?;
 		if routing.is_empty() {
 			return Ok(());

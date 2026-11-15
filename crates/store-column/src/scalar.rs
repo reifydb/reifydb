@@ -3,7 +3,6 @@
 
 use reifydb_core::value::column::builder::ColumnBuilder;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{
 		Value,
@@ -20,7 +19,12 @@ use crate::{
 	error::{StoreColumnError, vortex},
 };
 
-pub fn to_scalar(session: &VortexSession, name: &str, column: &ColumnChunks, value: &Value) -> Result<Scalar> {
+pub fn to_scalar(
+	session: &VortexSession,
+	name: &str,
+	column: &ColumnChunks,
+	value: &Value,
+) -> Result<Scalar, ValueError> {
 	let rejected = || -> ValueError {
 		StoreColumnError::PredicateValue {
 			column: name.to_string(),
@@ -49,7 +53,12 @@ pub fn to_scalar(session: &VortexSession, name: &str, column: &ColumnChunks, val
 	array.execute_scalar(0, &mut session.create_execution_ctx()).map_err(vortex("predicate"))
 }
 
-pub fn to_value(session: &VortexSession, name: &str, column: &ColumnChunks, scalar: Scalar) -> Result<Value> {
+pub fn to_value(
+	session: &VortexSession,
+	name: &str,
+	column: &ColumnChunks,
+	scalar: Scalar,
+) -> Result<Value, ValueError> {
 	let one = ConstantArray::new(scalar, 1).into_array();
 	let exported = to_arrow(session, name, &column.field_type, one)?;
 	Ok(ColumnView::try_from(&exported)?.get_value(0))

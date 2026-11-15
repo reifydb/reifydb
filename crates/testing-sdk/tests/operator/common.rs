@@ -38,7 +38,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -190,16 +190,16 @@ impl WindowedOperator for VolumeTumbling {
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -213,12 +213,12 @@ impl WindowedOperator for VolumeTumbling {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, f64)>> {
+					.map(|row| -> Result<Option<(String, f64)>, SdkError> {
 						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
 						else {
 							return Ok(None);
@@ -306,16 +306,16 @@ impl WindowedOperator for MinTumbling {
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -329,12 +329,12 @@ impl WindowedOperator for MinTumbling {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, OrdF64)>>> {
+	) -> Result<Vec<Option<(String, OrdF64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, OrdF64)>> {
+					.map(|row| -> Result<Option<(String, OrdF64)>, SdkError> {
 						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
 						else {
 							return Ok(None);
@@ -461,16 +461,16 @@ impl WindowedOperator for OhlcvImmutableTumbling {
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -484,12 +484,12 @@ impl WindowedOperator for OhlcvImmutableTumbling {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (DateTimeCoord, OrdF64))>>> {
+	) -> Result<Vec<Option<(String, (DateTimeCoord, OrdF64))>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, (DateTimeCoord, OrdF64))>> {
+					.map(|row| -> Result<Option<(String, (DateTimeCoord, OrdF64))>, SdkError> {
 						let (Some(group), Some(slot), Some(price)) =
 							(row.utf8("group")?, row.u64("slot")?, row.f64("price")?)
 						else {
@@ -611,16 +611,16 @@ impl WindowedOperator for RollingSum {
 	type Accumulator = WindowSum;
 	type Output = RollingOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -634,12 +634,12 @@ impl WindowedOperator for RollingSum {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, f64)>> {
+					.map(|row| -> Result<Option<(String, f64)>, SdkError> {
 						let (Some(group), Some(value)) =
 							(row.utf8("group")?, row.f64("value")?)
 						else {
@@ -708,16 +708,16 @@ impl WindowedOperator for TopVolumeRollingTopK {
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type Output = BTreeMap<u32, TopOut>;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -731,12 +731,12 @@ impl WindowedOperator for TopVolumeRollingTopK {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+	) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, (u64, f64))>> {
+					.map(|row| -> Result<Option<(String, (u64, f64))>, SdkError> {
 						let (Some(group), Some(trader), Some(volume)) =
 							(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
 						else {
@@ -824,16 +824,16 @@ impl WindowedOperator for TwapCarry {
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(TwapCarry)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -847,12 +847,12 @@ impl WindowedOperator for TwapCarry {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+	) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, (u64, f64))>> {
+					.map(|row| -> Result<Option<(String, (u64, f64))>, SdkError> {
 						let (Some(group), Some(ts), Some(price)) =
 							(row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
 						else {

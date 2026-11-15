@@ -10,10 +10,13 @@ use reifydb_core::{
 	key::column::{ColumnBlockKey, SeriesColumnBlockKey, TableColumnBlockKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::{Value, partition::Partition};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, partition::Partition},
+};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::{
 		column_block::shape::{column_block, serialize_partition_values, serialize_stats},
 		sequence::system::SystemSequence,
@@ -33,7 +36,7 @@ impl CatalogStore {
 	pub(crate) fn create_column_block(
 		txn: &mut AdminTransaction,
 		to_create: ColumnBlockToCreate,
-	) -> Result<ColumnBlock> {
+	) -> Result<ColumnBlock, ValueError> {
 		let id = SystemSequence::next_column_block_id(txn)?;
 		Self::store_column_block(txn, id, &to_create)?;
 		Self::link_column_block(txn, id, &to_create.source)?;
@@ -52,7 +55,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		id: ColumnBlockId,
 		to_create: &ColumnBlockToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = column_block::allocate();
 		column_block::set_id(&mut row, u64::from(id));
 		column_block::set_namespace(&mut row, u64::from(to_create.namespace));
@@ -96,7 +99,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		id: ColumnBlockId,
 		source: &ColumnBlockSource,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let row = EncodedPodRow::new(&u64::from(id).to_be_bytes());
 
 		match source {

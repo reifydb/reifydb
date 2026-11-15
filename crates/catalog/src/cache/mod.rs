@@ -89,6 +89,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -99,10 +100,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	error::{CatalogError, CatalogObjectKind},
-};
+use crate::error::{CatalogError, CatalogObjectKind};
 
 pub type MultiVersionBinding = MultiVersionContainer<Binding>;
 pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
@@ -390,7 +388,7 @@ impl CatalogCache {
 		Self(Arc::new(inner))
 	}
 
-	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
+	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<(), ValueError> {
 		let key = (def.namespace, def.name.clone());
 
 		if self.vtable_user_by_name.contains_key(&key) {
@@ -413,7 +411,7 @@ impl CatalogCache {
 		Ok(())
 	}
 
-	pub fn unregister_vtable_user(&self, namespace: NamespaceId, name: &str) -> Result<()> {
+	pub fn unregister_vtable_user(&self, namespace: NamespaceId, name: &str) -> Result<(), ValueError> {
 		let key = (namespace, name.to_string());
 
 		if let Some(entry) = self.vtable_user_by_name.remove(&key) {
@@ -513,7 +511,7 @@ impl CatalogCache {
 			.collect()
 	}
 
-	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<()> {
+	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<(), ValueError> {
 		let _guard = self.write_lock.lock();
 		let value = key.accept(value).map_err(|e| CatalogError::from((key, e)))?;
 

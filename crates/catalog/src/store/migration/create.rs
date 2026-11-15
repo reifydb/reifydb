@@ -6,10 +6,10 @@ use reifydb_core::{
 	key::system::{MigrationEventKey, MigrationKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::util::hash::Hash128;
+use reifydb_value::{error::ValueError, util::hash::Hash128};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::{
 		migration::shape::{migration as migration_shape, migration_event as event_shape},
 		sequence::system::SystemSequence,
@@ -24,7 +24,10 @@ pub struct MigrationToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_migration(txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
+	pub(crate) fn create_migration(
+		txn: &mut AdminTransaction,
+		to_create: MigrationToCreate,
+	) -> Result<Migration, ValueError> {
 		let migration_id = SystemSequence::next_migration_id(txn)?;
 
 		let mut row = migration_shape::allocate();
@@ -49,7 +52,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		migration: &Migration,
 		action: MigrationAction,
-	) -> Result<MigrationEvent> {
+	) -> Result<MigrationEvent, ValueError> {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;
 
 		let mut row = event_shape::allocate();

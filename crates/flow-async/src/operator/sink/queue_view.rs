@@ -44,7 +44,7 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, partition::Partition, row_number::RowNumber, system_columns::user_columns},
 };
 use tracing::instrument;
@@ -77,7 +77,7 @@ impl SinkQueueViewOperator {
 		queue: Queue,
 		shape: RowShape,
 		runtime_context: RuntimeContext,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let user_columns =
 			view.def().columns().iter().filter(|c| c.name != QueueView::CHANGE_COLUMN).cloned().collect();
 		Ok(Self {
@@ -98,7 +98,7 @@ impl SinkQueueViewOperator {
 		typed_key::<RingbufferNextRow>(GroupId::ROOT, &RingbufferNextRowKey {})
 	}
 
-	fn reserve_rows(&self, txn: &mut DeferredTransaction, count: u64) -> Result<u64> {
+	fn reserve_rows(&self, txn: &mut DeferredTransaction, count: u64) -> Result<u64, ValueError> {
 		let key = self.next_row_key();
 		let base = match txn.state_get(self.operator, slice::from_ref(&key))?.pop().flatten() {
 			Some(row) => decode_u64(&row, NEXT_ROW_STATE)?,
@@ -108,7 +108,7 @@ impl SinkQueueViewOperator {
 		Ok(base)
 	}
 
-	fn with_change(&self, columns: &RecordBatch, change: &str) -> Result<RecordBatch> {
+	fn with_change(&self, columns: &RecordBatch, change: &str) -> Result<RecordBatch, ValueError> {
 		let mut user: Vec<(FieldRef, ArrayRef)> =
 			user_columns(columns).map(|(field, array)| (field.clone(), array.clone())).collect();
 		user.push(factory::utf8_repeated(QueueView::CHANGE_COLUMN, change, columns.num_rows()));
@@ -122,7 +122,7 @@ impl SinkQueueViewOperator {
 		view: &View,
 		rows: &RecordBatch,
 		change: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if rows.num_rows() == 0 {
 			return Ok(());
 		}
@@ -180,7 +180,7 @@ impl DurableSink for SinkQueueViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change_keeping(txn, change, &self.user_columns)?;
 		let resolved = self.view.clone();
 		let view = resolved.def();

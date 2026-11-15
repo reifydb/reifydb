@@ -4,13 +4,12 @@
 use std::fmt;
 
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 };
 
 pub trait Shutdown {
-	fn shutdown(&self) -> Result<()>;
+	fn shutdown(&self) -> Result<(), ValueError>;
 }
 
 pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
@@ -41,7 +40,7 @@ impl ShutdownErrors {
 		}
 	}
 
-	pub fn step(&mut self, part: &'static str, result: Result<()>) {
+	pub fn step(&mut self, part: &'static str, result: Result<(), ValueError>) {
 		let Err(err) = result else {
 			return;
 		};
@@ -57,7 +56,7 @@ impl ShutdownErrors {
 		self.failed.push(format!("{part}: {reason}"));
 	}
 
-	pub fn finish(self) -> Result<()> {
+	pub fn finish(self) -> Result<(), ValueError> {
 		if self.failed.is_empty() {
 			return Ok(());
 		}

@@ -15,15 +15,15 @@ use reifydb_core::{
 	key::series::SeriesKey as SeriesStorageKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 
 use super::CatalogCache;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::series::{decode_series_encoding, decode_series_time, shape::series},
 };
 
-pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = SeriesStorageKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -51,7 +51,7 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_series<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Series> {
+fn convert_series<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<Series, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SeriesId(series::get_id(&bytes));
 	let namespace = NamespaceId(series::get_namespace(&bytes));

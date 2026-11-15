@@ -18,7 +18,7 @@ use reifydb_evaluate::expression::context::EvalContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, column_view::ColumnView, value_type::ValueType},
 };
 use tracing::instrument;
@@ -49,7 +49,7 @@ impl FilterOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		Ok(Self {
 			parent_schema,
 			operator,
@@ -66,7 +66,7 @@ impl FilterOperator {
 		txn: &mut T,
 		literals: &mut Option<BoundLiterals>,
 		columns: &RecordBatch,
-	) -> Result<Vec<bool>> {
+	) -> Result<Vec<bool>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -115,7 +115,7 @@ impl FilterOperator {
 	}
 
 	#[instrument(name = "flow::operator::filter::passing", level = "trace", skip_all, fields(rows = columns.num_rows()))]
-	fn filter_passing(&self, columns: &RecordBatch, mask: &[bool]) -> Result<RecordBatch> {
+	fn filter_passing(&self, columns: &RecordBatch, mask: &[bool]) -> Result<RecordBatch, ValueError> {
 		let passing_indices: Vec<usize> =
 			mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
 
@@ -132,7 +132,7 @@ impl FilterOperator {
 		self.operator
 	}
 
-	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change, ValueError> {
 		let mut result = Vec::new();
 		let mut literals = None;
 
@@ -171,7 +171,7 @@ impl FilterOperator {
 		literals: &mut Option<BoundLiterals>,
 		post: &RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mask = self.evaluate(txn, literals, post)?;
 		let passing = self.filter_passing(post, &mask)?;
 		if passing.num_columns() > 0 {
@@ -188,7 +188,7 @@ impl FilterOperator {
 		literals: &mut Option<BoundLiterals>,
 		pre: &RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mask = self.evaluate(txn, literals, pre)?;
 		let passing = self.filter_passing(pre, &mask)?;
 		if passing.num_columns() > 0 {
@@ -206,7 +206,7 @@ impl FilterOperator {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let pre_mask = self.evaluate(txn, literals, pre)?;
 		let post_mask = self.evaluate(txn, literals, post)?;
 
@@ -237,6 +237,6 @@ impl FilterOperator {
 	}
 }
 
-fn extract(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+fn extract(columns: &RecordBatch, indices: &[usize]) -> Result<RecordBatch, ValueError> {
 	forward_system_columns(&take_rows(columns, indices)?)
 }

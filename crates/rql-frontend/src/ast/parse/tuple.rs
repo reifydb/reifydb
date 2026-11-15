@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::AstTuple,
 		parse::{Parser, Precedence},
@@ -15,12 +16,12 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_tuple(&mut self) -> Result<AstTuple<'bump>> {
+	pub(crate) fn parse_tuple(&mut self) -> Result<AstTuple<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 		self.parse_tuple_call(token)
 	}
 
-	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'bump>) -> Result<AstTuple<'bump>> {
+	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'bump>) -> Result<AstTuple<'bump>, ValueError> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;

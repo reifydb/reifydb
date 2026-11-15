@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_value::{config::ExtensionParams, error::ValueError};
 
 use crate::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		column::operator::OperatorColumn,
 		context::{ClassValue, GuestContext, Managed, Nostate, Unmanaged},
@@ -41,11 +41,11 @@ pub trait OperatorMetadata {
 }
 
 pub trait ManagedOperator: OperatorMetadata + Send + Sync + Sized {
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>;
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<(), SdkError>;
 
-	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Managed>, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Managed>, _timer: Timer<'_>) -> Result<(), SdkError> {
 		Ok(())
 	}
 
@@ -59,11 +59,11 @@ pub trait UnmanagedOperator: OperatorMetadata + Send + Sync + Sized {
 
 	const WINDOW: WindowRequirements;
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>;
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError>;
 
-	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _timer: Timer<'_>) -> Result<(), SdkError> {
 		Ok(())
 	}
 
@@ -73,11 +73,11 @@ pub trait UnmanagedOperator: OperatorMetadata + Send + Sync + Sized {
 }
 
 pub trait NostateOperator: OperatorMetadata + Send + Sync + Sized {
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>;
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<(), SdkError>;
 
-	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Nostate>, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Nostate>, _timer: Timer<'_>) -> Result<(), SdkError> {
 		Ok(())
 	}
 
@@ -94,11 +94,11 @@ pub trait MountedOperator: Send + Sync + Sized {
 
 	const UNMANAGED_BECAUSE: Option<&'static str>;
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>;
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Self::Class>, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext<Self::Class>, change: impl ChangeView) -> Result<(), SdkError>;
 
-	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Self::Class>, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext<Self::Class>, _timer: Timer<'_>) -> Result<(), SdkError> {
 		Ok(())
 	}
 
@@ -136,7 +136,7 @@ impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		with.reject_window()?;
 		with.check_retention()?;
 		if with.effective_retention()?.is_none() {
@@ -145,11 +145,11 @@ impl<T: ManagedOperator> MountedOperator for ManagedMount<T> {
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> Result<(), SdkError> {
 		self.0.apply(ctx, change)
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext<Managed>, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Managed>, timer: Timer<'_>) -> Result<(), SdkError> {
 		self.0.on_timer(ctx, timer)
 	}
 
@@ -182,17 +182,17 @@ impl<T: UnmanagedOperator> MountedOperator for UnmanagedMount<T> {
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = Some(T::UNMANAGED_BECAUSE);
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		with.reject_retention()?;
 		T::WINDOW.check(with)?;
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		self.0.apply(ctx, change)
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> Result<(), SdkError> {
 		self.0.on_timer(ctx, timer)
 	}
 
@@ -230,18 +230,18 @@ impl<T: NostateOperator> MountedOperator for NostateMount<T> {
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		if *with != ApplyWith::default() {
 			return Err(ValueError::from(CoreError::OperatorWithNotAccepted).into());
 		}
 		Ok(Self(T::create(operator_id, params, with)?))
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Nostate>, change: impl ChangeView) -> Result<(), SdkError> {
 		self.0.apply(ctx, change)
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext<Nostate>, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Nostate>, timer: Timer<'_>) -> Result<(), SdkError> {
 		self.0.on_timer(ctx, timer)
 	}
 

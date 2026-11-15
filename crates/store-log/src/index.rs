@@ -17,7 +17,7 @@ use reifydb_runtime::io::fs::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	partition::index_base_of,
 	segment::{Scan, discard, read_exact, scan_from, staging, write_all},
 };
@@ -44,7 +44,7 @@ impl<F: Filesystem> Index<F> {
 		base_version: LogVersion,
 		base_index: LogIndex,
 		interval: ByteSize,
-	) -> Result<Self>
+	) -> Result<Self, StoreLogError>
 	where
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
@@ -70,7 +70,7 @@ impl<F: Filesystem> Index<F> {
 		})
 	}
 
-	pub fn recover(fs: &F, path: &Path, interval: ByteSize, log: &Scan) -> Result<(Self, Recovery)>
+	pub fn recover(fs: &F, path: &Path, interval: ByteSize, log: &Scan) -> Result<(Self, Recovery), StoreLogError>
 	where
 		F: OpenMut,
 	{
@@ -98,7 +98,12 @@ impl<F: Filesystem> Index<F> {
 		Ok((index, recovery))
 	}
 
-	pub fn append(&mut self, version: LogVersion, index: LogIndex, position: Position) -> Result<bool> {
+	pub fn append(
+		&mut self,
+		version: LogVersion,
+		index: LogIndex,
+		position: Position,
+	) -> Result<bool, StoreLogError> {
 		if !self.due(position) {
 			return Ok(false);
 		}
@@ -113,26 +118,26 @@ impl<F: Filesystem> Index<F> {
 		Ok(true)
 	}
 
-	pub fn truncate_to(&mut self, index: LogIndex) -> Result<()> {
+	pub fn truncate_to(&mut self, index: LogIndex) -> Result<(), StoreLogError> {
 		self.entries.retain(|entry| entry.index < index);
 		self.file.truncate(self.end())?;
 		Ok(self.file.sync_data()?)
 	}
 
-	pub fn rebase(&mut self, base_index: LogIndex) -> Result<()> {
+	pub fn rebase(&mut self, base_index: LogIndex) -> Result<(), StoreLogError> {
 		self.header.base_index = base_index;
 		self.header.timestamps = None;
 		write_all(&self.file, &self.path, 0, &self.header.encode())?;
 		Ok(self.file.sync_data()?)
 	}
 
-	pub fn seal(&mut self, timestamps: Option<TimestampRange>) -> Result<()> {
+	pub fn seal(&mut self, timestamps: Option<TimestampRange>) -> Result<(), StoreLogError> {
 		self.header.timestamps = timestamps;
 		write_all(&self.file, &self.path, 0, &self.header.encode())?;
 		Ok(self.file.sync_data()?)
 	}
 
-	pub fn sync(&self) -> Result<()> {
+	pub fn sync(&self) -> Result<(), StoreLogError> {
 		Ok(self.file.sync_data()?)
 	}
 
@@ -164,19 +169,24 @@ impl<F: Filesystem> Index<F> {
 	}
 }
 
-pub fn read<F: Open>(fs: &F, path: &Path) -> Result<(Header, Vec<Entry>)> {
+pub fn read<F: Open>(fs: &F, path: &Path) -> Result<(Header, Vec<Entry>), StoreLogError> {
 	let file = fs.open(path)?;
 	let len = file.len()?;
 	load(&file, path, len)
 }
 
-pub fn header<F: Open>(fs: &F, path: &Path) -> Result<Header> {
+pub fn header<F: Open>(fs: &F, path: &Path) -> Result<Header, StoreLogError> {
 	let file = fs.open(path)?;
 	let len = file.len()?;
 	head(&file, path, len)
 }
 
-pub fn find<F: Open>(fs: &F, path: &Path, entries: &[Entry], version: LogVersion) -> Result<Option<Record>> {
+pub fn find<F: Open>(
+	fs: &F,
+	path: &Path,
+	entries: &[Entry],
+	version: LogVersion,
+) -> Result<Option<Record>, StoreLogError> {
 	let scan = scan_from(fs, path, position_of(entries, version))?;
 	Ok(scan.records.into_iter().find(|record| record.version == version))
 }
@@ -185,7 +195,12 @@ pub fn position_of(entries: &[Entry], version: LogVersion) -> Position {
 	at_or_before(entries.partition_point(|entry| entry.version <= version), entries)
 }
 
-pub fn find_at<F: Open>(fs: &F, path: &Path, entries: &[Entry], index: LogIndex) -> Result<Option<Record>> {
+pub fn find_at<F: Open>(
+	fs: &F,
+	path: &Path,
+	entries: &[Entry],
+	index: LogIndex,
+) -> Result<Option<Record>, StoreLogError> {
 	let scan = scan_from(fs, path, position_of_index(entries, index))?;
 	Ok(scan.records.into_iter().find(|record| record.index == index))
 }
@@ -202,7 +217,7 @@ fn at_or_before(at: usize, entries: &[Entry]) -> Position {
 	}
 }
 
-fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
+fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header, StoreLogError> {
 	if len < HEADER_BYTES as u64 {
 		return Err(StoreLogError::IndexShort {
 			path: path.to_path_buf(),
@@ -231,7 +246,7 @@ fn head<H: Pread>(file: &H, path: &Path, len: u64) -> Result<Header> {
 	Ok(header)
 }
 
-fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>)> {
+fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>), StoreLogError> {
 	let header = head(file, path, len)?;
 	let count = ((len - HEADER_BYTES as u64) / ENTRY_BYTES as u64) as usize;
 	let mut entries = Vec::with_capacity(count);

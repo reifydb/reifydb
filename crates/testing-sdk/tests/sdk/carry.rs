@@ -18,7 +18,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -78,7 +78,7 @@ impl Probe {
 		})
 	}
 
-	fn contribution(row: &impl RowView) -> Result<Option<(String, (u64, f64))>> {
+	fn contribution(row: &impl RowView) -> Result<Option<(String, (u64, f64))>, SdkError> {
 		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
 		else {
 			return Ok(None);
@@ -102,16 +102,16 @@ impl WindowedOperator for Probe {
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -125,12 +125,14 @@ impl WindowedOperator for Probe {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+	) -> Result<Vec<Option<(String, (u64, f64))>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> Result<Option<(String, (u64, f64))>> { Probe::contribution(row) })
+					.map(|row| -> Result<Option<(String, (u64, f64))>, SdkError> {
+						Probe::contribution(row)
+					})
 					.transpose()
 					.map(Option::flatten)
 			})

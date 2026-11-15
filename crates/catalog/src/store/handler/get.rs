@@ -6,11 +6,12 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<Handler> {
+	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<Handler, ValueError> {
 		match Self::find_handler(rx, handler)? {
 			Some(def) => Ok(def),
 			None => return_internal_error!("Handler with ID {:?} not found in catalog.", handler),

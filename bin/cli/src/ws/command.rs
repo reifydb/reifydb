@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::error::Error;
+
 use reifydb_client::{Frame, WireFormat, WsClient};
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-pub async fn execute_command(host: &str, port: u16, token: Option<String>, statements: &str) -> Result<()> {
+pub async fn execute_command(
+	host: &str,
+	port: u16,
+	token: Option<String>,
+	statements: &str,
+) -> Result<(), Box<dyn Error>> {
 	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Frames)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;

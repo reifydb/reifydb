@@ -13,12 +13,13 @@ use reifydb_core::{
 	key::catalog::SinkKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
 use super::CatalogCache;
-use crate::{Result, error::CatalogError, store::sink::shape::sink};
+use crate::{error::CatalogError, store::sink::shape::sink};
 
-pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = SinkKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -32,7 +33,7 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	Ok(())
 }
 
-fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
+fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SinkId(sink::get_id(&bytes));
 	let namespace = NamespaceId(sink::get_namespace(&bytes));

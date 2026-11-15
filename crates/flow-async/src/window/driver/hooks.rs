@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -44,5 +44,5 @@ pub trait WindowHooks {
 		value: &<Self::Accumulator as WindowAccumulator>::Output,
 	) -> Option<Self::Row>;
 
-	fn emit(&mut self, emits: WindowEmits<Self::Row>) -> Result<Self::Out>;
+	fn emit(&mut self, emits: WindowEmits<Self::Row>) -> Result<Self::Out, ValueError>;
 }

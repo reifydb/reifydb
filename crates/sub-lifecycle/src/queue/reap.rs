@@ -31,7 +31,7 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
 		row_number::RowNumber,
@@ -81,7 +81,7 @@ impl QueueLeaseReapTask {
 		}
 	}
 
-	fn queues(&self) -> Result<Vec<Queue>> {
+	fn queues(&self) -> Result<Vec<Queue>, ValueError> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query_txn);
 		let mut queues = self.engine.catalog().list_queues(&mut txn)?;
@@ -106,7 +106,7 @@ impl QueueLeaseReapTask {
 		partition: Partition,
 		after: Option<&EncodedKey>,
 		limit: usize,
-	) -> Result<Vec<Candidate>> {
+	) -> Result<Vec<Candidate>, ValueError> {
 		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
@@ -134,7 +134,12 @@ impl QueueLeaseReapTask {
 			.collect())
 	}
 
-	fn attempt_record(&self, queue: QueueId, row: RowNumber, attempt: u32) -> Result<Option<QueueAttemptRecord>> {
+	fn attempt_record(
+		&self,
+		queue: QueueId,
+		row: RowNumber,
+		attempt: u32,
+	) -> Result<Option<QueueAttemptRecord>, ValueError> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		Ok(query_txn
 			.get(&[QueueAttemptKey::new(queue, row, attempt).into()])?
@@ -143,7 +148,13 @@ impl QueueLeaseReapTask {
 			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 	}
 
-	fn write_lost_attempt(&self, queue: QueueId, row: RowNumber, attempt: u32, now: DateTime) -> Result<()> {
+	fn write_lost_attempt(
+		&self,
+		queue: QueueId,
+		row: RowNumber,
+		attempt: u32,
+		now: DateTime,
+	) -> Result<(), ValueError> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let key = QueueAttemptKey::new(queue, row, attempt);
 		if txn.get(&[key.clone().into()])?.pop().flatten().is_some() {
@@ -178,7 +189,12 @@ impl QueueLeaseReapTask {
 		}
 	}
 
-	fn decide(&self, queue: &Queue, candidate: &Candidate, now: DateTime) -> Result<QueueAckTransition> {
+	fn decide(
+		&self,
+		queue: &Queue,
+		candidate: &Candidate,
+		now: DateTime,
+	) -> Result<QueueAckTransition, ValueError> {
 		let attempt = candidate.state.attempt;
 		let Some(record) = self.attempt_record(queue.id, candidate.row, attempt)? else {
 			self.write_lost_attempt(queue.id, candidate.row, attempt, now)?;

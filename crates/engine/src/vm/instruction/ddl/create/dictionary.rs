@@ -6,15 +6,15 @@ use reifydb_catalog::catalog::dictionary::DictionaryToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::batch::single_row};
 use reifydb_rql::nodes::CreateDictionaryNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_dictionary(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(existing) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

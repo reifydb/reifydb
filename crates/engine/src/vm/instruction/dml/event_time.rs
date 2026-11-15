@@ -5,8 +5,9 @@ use reifydb_core::{
 	common::TimeSource, expression::Expression, interface::catalog::namespace::Namespace, internal_error,
 };
 use reifydb_rql::query::QueryPlan;
+use reifydb_value::error::ValueError;
 
-use crate::{Result, error::EngineError};
+use crate::error::EngineError;
 
 pub(crate) fn reject_event_time_assignment(
 	kind: &'static str,
@@ -14,7 +15,7 @@ pub(crate) fn reject_event_time_assignment(
 	name: &str,
 	time: &TimeSource,
 	input: &QueryPlan,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(column) = time.ts() else {
 		return Ok(());
 	};

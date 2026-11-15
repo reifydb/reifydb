@@ -16,11 +16,12 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
+use crate::{CatalogStore, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
+	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<(), ValueError> {
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			txn.remove(vec![(NamespaceViewKey::new(view_def.namespace(), view).into(), None)])?;
 			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
@@ -38,7 +39,11 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn drop_view_family_metadata(txn: &mut AdminTransaction, view: ViewId, kind: ViewStorageKind) -> Result<()> {
+	fn drop_view_family_metadata(
+		txn: &mut AdminTransaction,
+		view: ViewId,
+		kind: ViewStorageKind,
+	) -> Result<(), ValueError> {
 		match kind {
 			ViewStorageKind::Table => Ok(()),
 			ViewStorageKind::RingBuffer => {

@@ -25,7 +25,7 @@ pub mod tests {
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
-	use reifydb_value::Result;
+	use reifydb_value::error::ValueError;
 
 	use super::*;
 	use crate::{
@@ -61,7 +61,7 @@ pub mod tests {
 					_ => (multi.key.encode(), multi.bytes),
 				})
 			})
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap()
 	}
 

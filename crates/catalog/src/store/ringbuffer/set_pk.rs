@@ -8,15 +8,16 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
+use crate::{CatalogStore, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
 	pub(crate) fn set_ringbuffer_primary_key(
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let multi = match txn.get(&[RingBufferKey::new(ringbuffer_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return_internal_error!(format!(

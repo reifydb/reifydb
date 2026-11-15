@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::ViewScanNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -25,7 +25,7 @@ impl From<ViewScanNode> for ViewScanCompiler {
 }
 
 impl CompileOperator for ViewScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		if self.view_scan.source.def().storage_kind() == ViewStorageKind::Queue {
 			return Err(ValueError(Box::new(flow_queue_view_source_not_supported(
 				self.view_scan.source.def().name(),

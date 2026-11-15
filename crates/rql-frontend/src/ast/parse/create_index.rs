@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::IndexType, sort::SortDirection};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstCreate, AstCreateIndex, AstIndexColumn},
 		identifier::MaybeQualifiedIndexIdentifier,
@@ -20,11 +20,14 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn peek_is_index_creation(&mut self) -> Result<bool> {
+	pub(crate) fn peek_is_index_creation(&mut self) -> Result<bool, ValueError> {
 		Ok(matches!(self.current()?.kind, TokenKind::Keyword(Index) | TokenKind::Keyword(Unique)))
 	}
 
-	pub(crate) fn parse_create_index(&mut self, create_token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_index(
+		&mut self,
+		create_token: Token<'bump>,
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let index_type = self.parse_index_type()?;
 
 		let name_token = self.consume_identifier()?;
@@ -61,7 +64,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_index_type(&mut self) -> Result<IndexType> {
+	fn parse_index_type(&mut self) -> Result<IndexType, ValueError> {
 		if self.consume_if(TokenKind::Keyword(Unique))?.is_some() {
 			self.consume_keyword(Index)?;
 			Ok(IndexType::Unique)
@@ -71,7 +74,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_index_columns(&mut self) -> Result<Vec<AstIndexColumn<'bump>>> {
+	fn parse_index_columns(&mut self) -> Result<Vec<AstIndexColumn<'bump>>, ValueError> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;

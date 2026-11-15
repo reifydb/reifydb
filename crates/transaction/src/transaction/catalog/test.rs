@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, TestId},
 	test::Test,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackTestChangeOperations for AdminTransaction {
-	fn track_test_created(&mut self, test: Test) -> Result<()> {
+	fn track_test_created(&mut self, test: Test) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(test),
@@ -28,7 +28,7 @@ impl CatalogTrackTestChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_test_deleted(&mut self, test: Test) -> Result<()> {
+	fn track_test_deleted(&mut self, test: Test) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(test),
 			post: None,

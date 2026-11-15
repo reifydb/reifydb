@@ -26,7 +26,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -59,10 +59,15 @@ pub struct SeriesToCreate {
 	pub encoding: Option<SeriesEncoding>,
 }
 
+use reifydb_value::error::ValueError;
+
 use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
-	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
+	pub(crate) fn create_series(
+		txn: &mut AdminTransaction,
+		to_create: SeriesToCreate,
+	) -> Result<Series, ValueError> {
 		Self::validate_series(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_series(txn, namespace_id, &to_create.name)?;
@@ -74,7 +79,7 @@ impl CatalogStore {
 		Ok(Self::built_series(series_id, to_create, columns))
 	}
 
-	fn validate_series(to_create: &SeriesToCreate) -> Result<()> {
+	fn validate_series(to_create: &SeriesToCreate) -> Result<(), ValueError> {
 		reject_invalid_column_list(
 			CatalogObjectKind::Series,
 			&to_create.name,
@@ -106,7 +111,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(series) = CatalogStore::find_series_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -131,7 +136,7 @@ impl CatalogStore {
 		series_id: SeriesId,
 		namespace_id: NamespaceId,
 		to_create: &SeriesToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		Self::store_series(txn, series_id, namespace_id, to_create)?;
 		Self::link_series_to_namespace(txn, namespace_id, series_id, to_create.name.text())
 	}
@@ -141,7 +146,7 @@ impl CatalogStore {
 		series_id: SeriesId,
 		namespace: NamespaceId,
 		to_create: &SeriesToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = series::allocate();
 		series::set_id(&mut row, u64::from(series_id));
 		series::set_namespace(&mut row, u64::from(namespace));
@@ -182,7 +187,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		series_id: SeriesId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = series_namespace::allocate();
 		series_namespace::set_id(&mut row, u64::from(series_id));
 		series_namespace::set_name(&mut row, name);
@@ -196,7 +201,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		series_id: SeriesId,
 		to_create: &SeriesToCreate,
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.iter().enumerate() {
 			columns.push(CatalogStore::create_column(
@@ -219,7 +224,7 @@ impl CatalogStore {
 		Ok(columns)
 	}
 
-	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
+	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<(), ValueError> {
 		let row = encode_series_partition_metadata(&SeriesPartitionMetadata::new());
 		txn.set(vec![(
 			SeriesPartitionMetadataKey::new(series_id, Partition::default()).into(),
@@ -233,7 +238,7 @@ impl CatalogStore {
 		series_id: SeriesId,
 		to_create: SeriesToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Series> {
+	) -> Result<Series, ValueError> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
 		Self::validate_series(&to_create)?;
 
@@ -249,7 +254,7 @@ impl CatalogStore {
 		series_id: SeriesId,
 		to_create: &SeriesToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, (col, &col_id)) in to_create.columns.iter().zip(column_ids.iter()).enumerate() {
 			columns.push(CatalogStore::create_column_with_id(

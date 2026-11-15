@@ -13,7 +13,7 @@ use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{
 		Enumerate, Measure,
 		memory::{MemoryPersistent, row_bytes},
@@ -27,7 +27,7 @@ impl Measure for MemoryPersistent {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<ByteSize>>> {
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(vec![None; keys.len()]);
@@ -38,7 +38,7 @@ impl Measure for MemoryPersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::bytes", level = "trace", skip_all)]
-	fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let total = rows
 			.get(&operator)
@@ -73,7 +73,7 @@ impl MemoryPersistent {
 
 impl Enumerate for MemoryPersistent {
 	#[instrument(name = "store::operator::persistent::memory::census", level = "trace", skip_all)]
-	fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let mut counted: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
 		for (operator, rows) in rows.iter() {
@@ -99,12 +99,12 @@ impl Enumerate for MemoryPersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::operators", level = "trace", skip_all)]
-	fn operators(&self) -> Result<Vec<OperatorId>> {
+	fn operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		Ok(self.0.rows.lock().keys().copied().collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::keyspaces", level = "trace", skip_all)]
-	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(Vec::new());

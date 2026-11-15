@@ -5,15 +5,15 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropSeriesNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_series(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropSeriesNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let Some(series_id) = plan.series_id else {
 		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

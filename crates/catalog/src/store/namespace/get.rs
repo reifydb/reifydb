@@ -8,10 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Namespace> {
+	pub(crate) fn get_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Namespace, ValueError> {
 		CatalogStore::find_namespace(rx, namespace)?.ok_or_else(|| {
 			ValueError(Box::new(internal!(
 				"Namespace with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

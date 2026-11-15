@@ -35,7 +35,6 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	params::Params,
 	value::{
@@ -224,7 +223,12 @@ impl Db {
 		txn.commit().unwrap()
 	}
 
-	fn backfill(&self, tx: Transaction<'_>, sources: &[ObjectId], batch_size: u64) -> (Result<()>, Vec<Change>) {
+	fn backfill(
+		&self,
+		tx: Transaction<'_>,
+		sources: &[ObjectId],
+		batch_size: u64,
+	) -> (Result<(), ValueError>, Vec<Change>) {
 		let mut changes = Vec::new();
 		let result = run(self.executor.services(), tx, &set(sources), size(batch_size), |_, change| {
 			changes.push(change);

@@ -6,10 +6,10 @@ use reifydb_core::{
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{namespace::shape::namespace, sequence::system::SystemSequence},
 };
@@ -25,7 +25,10 @@ pub struct NamespaceToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_namespace(txn: &mut AdminTransaction, to_create: NamespaceToCreate) -> Result<Namespace> {
+	pub(crate) fn create_namespace(
+		txn: &mut AdminTransaction,
+		to_create: NamespaceToCreate,
+	) -> Result<Namespace, ValueError> {
 		if let Some(namespace) =
 			Self::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
 		{
@@ -46,7 +49,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		to_create: NamespaceToCreate,
-	) -> Result<Namespace> {
+	) -> Result<Namespace, ValueError> {
 		Self::store_namespace(txn, namespace_id, to_create)
 	}
 
@@ -54,7 +57,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		to_create: NamespaceToCreate,
-	) -> Result<Namespace> {
+	) -> Result<Namespace, ValueError> {
 		let namespace = Self::normalized_namespace(namespace_id, to_create);
 
 		let mut row = namespace::allocate();

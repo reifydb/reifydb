@@ -5,7 +5,7 @@ use std::{num::NonZeroU64, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{common::CommitVersion, interface::catalog::object::ObjectId};
-use reifydb_value::{Result, error::ValueError, value::partition::ScanPartitions};
+use reifydb_value::{error::ValueError, value::partition::ScanPartitions};
 
 use crate::backfill::Scan;
 
@@ -87,7 +87,7 @@ impl<S: Scan> Scan for TestingScan<S> {
 		self.scan.version()
 	}
 
-	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()> {
+	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<(), ValueError> {
 		self.open_partition(source, ScanPartitions::All, batch_size)
 	}
 
@@ -96,7 +96,7 @@ impl<S: Scan> Scan for TestingScan<S> {
 		source: ObjectId,
 		partitions: ScanPartitions,
 		batch_size: NonZeroU64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.call();
 		self.hooks.during_open(source);
 		if let Outcome::Err(error) = self.hooks.on_open(source) {
@@ -108,7 +108,7 @@ impl<S: Scan> Scan for TestingScan<S> {
 		Ok(())
 	}
 
-	fn next(&mut self) -> Result<Option<RecordBatch>> {
+	fn next(&mut self) -> Result<Option<RecordBatch>, ValueError> {
 		self.call();
 		let Some(source) = self.opened else {
 			panic!("testing scan pulled before any source was opened");

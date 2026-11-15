@@ -16,7 +16,7 @@ use reifydb_core::{
 	internal_err,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		partition::ScanPartitions,
 		system_columns::{SystemColumn, keep_system_columns, require_updated_at},
@@ -37,26 +37,26 @@ const LIVE_SYSTEM_COLUMNS: [SystemColumn; 5] = [
 pub trait Scan {
 	fn version(&self) -> CommitVersion;
 
-	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()>;
+	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<(), ValueError>;
 
 	fn open_partition(
 		&mut self,
 		source: ObjectId,
 		_partitions: ScanPartitions,
 		batch_size: NonZeroU64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.open(source, batch_size)
 	}
 
-	fn next(&mut self) -> Result<Option<RecordBatch>>;
+	fn next(&mut self) -> Result<Option<RecordBatch>, ValueError>;
 }
 
 pub fn backfill<S: Scan>(
 	scan: &mut S,
 	sources: &BTreeSet<ObjectId>,
 	batch_size: NonZeroU64,
-	consume: impl FnMut(&mut S, Change) -> Result<()>,
-) -> Result<()> {
+	consume: impl FnMut(&mut S, Change) -> Result<(), ValueError>,
+) -> Result<(), ValueError> {
 	let sources = sources.iter().map(|&source| (source, ScanPartitions::All)).collect();
 	backfill_partitioned(scan, &sources, batch_size, consume)
 }
@@ -65,8 +65,8 @@ pub fn backfill_partitioned<S: Scan>(
 	scan: &mut S,
 	sources: &BTreeMap<ObjectId, ScanPartitions>,
 	batch_size: NonZeroU64,
-	mut consume: impl FnMut(&mut S, Change) -> Result<()>,
-) -> Result<()> {
+	mut consume: impl FnMut(&mut S, Change) -> Result<(), ValueError>,
+) -> Result<(), ValueError> {
 	let version = ChangeVersion::from(scan.version());
 	for (&source, partitions) in sources {
 		if matches!(partitions, ScanPartitions::Nothing)
@@ -85,7 +85,7 @@ pub fn backfill_partitioned<S: Scan>(
 	Ok(())
 }
 
-fn snapshot_change(source: ObjectId, version: ChangeVersion, chunk: &RecordBatch) -> Result<Change> {
+fn snapshot_change(source: ObjectId, version: ChangeVersion, chunk: &RecordBatch) -> Result<Change, ValueError> {
 	let Some(changed_at) = require_updated_at(chunk)?.iter().copied().max() else {
 		return internal_err!(
 			"snapshot chunk of {} rows from {:?} has no updated_at stamps",

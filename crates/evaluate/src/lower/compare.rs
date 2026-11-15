@@ -17,19 +17,16 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	expression::{
 		compare::{GreaterThanEqual, LessThanEqual, cast_to, compare_columns, field_compare_target},
 		context::EvalContext,
 		logic::execute_logical_op,
 	},
 	lower::{
-		Lowered, Node, bool_field, error::into_external, inner_type, is_untyped_none, literal::none_bool,
+		Node, Stop, bool_field, error::into_external, inner_type, is_untyped_none, literal::none_bool,
 		lower_node, typed_field, udf, volatile,
 	},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_compare<'e>(
 	ctx: &EvalContext,
@@ -38,7 +35,7 @@ pub(super) fn lower_compare<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: Fragment,
 	(binary_op, df_op): (BinaryOp, Operator),
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	let field = bool_field(display_label(expression).text(), left.field.is_nullable() || right.field.is_nullable());
@@ -82,7 +79,7 @@ pub(super) fn lower_between<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	between: &'e BetweenExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let value = lower_node(ctx, operator, &between.value)?;
 	let lower = lower_node(ctx, operator, &between.lower)?;
 	let upper = lower_node(ctx, operator, &between.upper)?;
@@ -101,7 +98,7 @@ pub(super) fn lower_between<'e>(
 	})
 }
 
-fn check_between(value: &Node, bound: &Node, fragment: &Fragment) -> Result<()> {
+fn check_between(value: &Node, bound: &Node, fragment: &Fragment) -> Result<(), ValueError> {
 	if is_untyped_none(&value.field)? || is_untyped_none(&bound.field)? {
 		return Ok(());
 	}
@@ -188,20 +185,20 @@ impl ScalarUDFImpl for CompareCast {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("compare_cast types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(typed_field(self.name(), self.target.clone(), args.arg_fields[0].is_nullable()))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let column = (args.arg_fields[0].clone(), args.args[0].clone().into_array(args.number_rows)?);
 		Ok(ColumnarValue::Array(cast_to(&column, &self.target).map_err(into_external)?))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }
@@ -222,15 +219,15 @@ impl ScalarUDFImpl for EnumText {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("enum_text types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(typed_field(self.name(), ValueType::Utf8, args.arg_fields[0].is_nullable()))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let array = args.args[0].clone().into_array(args.number_rows)?;
 		let lowered: LargeStringArray = match array.data_type() {
 			DataType::LargeUtf8 => {
@@ -242,7 +239,7 @@ impl ScalarUDFImpl for EnumText {
 		Ok(ColumnarValue::Array(Arc::new(lowered)))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }
@@ -264,15 +261,15 @@ impl ScalarUDFImpl for BetweenUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("between types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(bool_field(self.name(), args.arg_fields.iter().any(|field| field.is_nullable())))
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let ScalarFunctionArgs {
 			args: values,
 			arg_fields,
@@ -283,7 +280,7 @@ impl ScalarUDFImpl for BetweenUdf {
 			.into_iter()
 			.zip(values)
 			.map(|(field, value)| Ok((field, value.into_array(number_rows)?)))
-			.collect::<DfResult<Vec<(FieldRef, ArrayRef)>>>()?;
+			.collect::<Result<Vec<(FieldRef, ArrayRef)>, DataFusionError>>()?;
 		let ge = compare_columns::<GreaterThanEqual>(
 			&columns[0],
 			&columns[1],
@@ -303,7 +300,7 @@ impl ScalarUDFImpl for BetweenUdf {
 		Ok(ColumnarValue::Array(result))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

@@ -7,10 +7,10 @@ use reifydb_core::{
 	key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::dictionary::DictionaryId;
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::dictionary::shape::{dictionary, dictionary_namespace},
 };
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_dictionary(
 		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
-	) -> Result<Option<Dictionary>> {
+	) -> Result<Option<Dictionary>, ValueError> {
 		let Some(multi) = rx.get(&[DictionaryKey::new(dictionary_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -45,7 +45,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Dictionary>> {
+	) -> Result<Option<Dictionary>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 

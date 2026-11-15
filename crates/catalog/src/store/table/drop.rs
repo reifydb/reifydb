@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{catalog::TableKey, namespace::NamespaceTableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
+use crate::{CatalogStore, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
+	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<(), ValueError> {
 		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
 			txn.remove(vec![(NamespaceTableKey::new(table_def.namespace, table).into(), None)])?;
 		}

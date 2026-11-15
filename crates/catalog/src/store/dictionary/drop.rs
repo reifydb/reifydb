@@ -3,12 +3,12 @@
 
 use reifydb_core::key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::dictionary::DictionaryId;
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
+	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<(), ValueError> {
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
 			txn.remove(vec![(
 				NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary).into(),

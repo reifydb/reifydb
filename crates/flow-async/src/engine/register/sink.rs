@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_flow::operator::{first_input, sink::table::TableSink};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	engine::FlowEngineInner,
@@ -29,7 +29,7 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -50,7 +50,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		view: ViewId,
 		capacity: u64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -86,7 +86,7 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -118,7 +118,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		view: ViewId,
 		key: SeriesKey,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;

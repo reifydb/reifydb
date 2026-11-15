@@ -13,7 +13,7 @@ use reifydb_value::{
 use serde_json::to_string;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::{authentication::shape::authentication, sequence::system::SystemSequence},
 };
 
@@ -23,7 +23,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		method: &str,
 		properties: BTreeMap<String, String>,
-	) -> Result<Authentication> {
+	) -> Result<Authentication, ValueError> {
 		let id = SystemSequence::next_authentication_id(txn)?;
 
 		let properties_json = to_string(&properties).map_err(|e| {

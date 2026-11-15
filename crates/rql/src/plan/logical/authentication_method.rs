@@ -13,10 +13,9 @@ use reifydb_rql_frontend::{
 		token::{Literal, Token, TokenKind},
 	},
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration},
 	nodes::AlterMethodTtl,
 	plan::logical::{
@@ -29,7 +28,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_authentication_method(
 		&self,
 		ast: AstCreateAuthenticationMethod<'bump>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateAuthenticationMethod(CreateAuthenticationMethodNode {
 			name: ast.name,
 			ttl: compile_method_ttl(&ast.ttl)?,
@@ -41,7 +40,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_authentication_method(
 		&self,
 		ast: AstAlterAuthenticationMethod<'bump>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let ttl = match &ast.ttl {
 			Some(token) => AlterMethodTtl::Set(compile_method_ttl(token)?),
 			None => AlterMethodTtl::Keep,
@@ -58,7 +57,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_drop_authentication_method(
 		&self,
 		ast: AstDropAuthenticationMethod<'bump>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::DropAuthenticationMethod(DropAuthenticationMethodNode {
 			name: ast.name,
 			if_exists: ast.if_exists,
@@ -66,7 +65,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_method_ttl(token: &Token<'_>) -> Result<Option<Duration>> {
+fn compile_method_ttl(token: &Token<'_>) -> Result<Option<Duration>, ValueError> {
 	if token.fragment.text() == FOREVER {
 		return Ok(None);
 	}

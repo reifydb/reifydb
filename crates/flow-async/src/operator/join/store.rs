@@ -25,7 +25,6 @@ use reifydb_core::{
 	state::typed::{TypedStateStore, typed_key},
 };
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	util::{cowvec::CowVec, hash::Hash128},
 	value::row_number::RowNumber,
@@ -73,7 +72,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<Option<EncodedPodRow>> {
+	) -> Result<Option<EncodedPodRow>, ValueError> {
 		let suffix = Asc(row_number);
 		match self.side {
 			JoinSide::Left => Ok(host.state_get_in::<JoinLeft>(group, from_ref(&suffix))?.pop().flatten()),
@@ -89,7 +88,7 @@ impl Store {
 		group: GroupId,
 		from: Bound<&Asc<RowNumber>>,
 		limit: Option<usize>,
-	) -> Result<Vec<(Asc<RowNumber>, EncodedPodRow)>> {
+	) -> Result<Vec<(Asc<RowNumber>, EncodedPodRow)>, ValueError> {
 		match self.side {
 			JoinSide::Left => host.state_scan_in::<JoinLeft>(group, from, limit),
 			JoinSide::Right => host.state_scan_in::<JoinRight>(group, from, limit),
@@ -100,7 +99,7 @@ impl Store {
 		&self,
 		host: &mut dyn HostContext,
 		rows: Vec<(GroupId, RowNumber, EncodedPodRow)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if rows.is_empty() {
 			return Ok(());
 		}
@@ -122,11 +121,15 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<Option<EncodedBytes>> {
+	) -> Result<Option<EncodedBytes>, ValueError> {
 		Ok(self.read_row(host, group, row_number)?.as_ref().map(body_bytes))
 	}
 
-	pub(crate) fn held_rows(&self, host: &mut dyn HostContext, rows: &[(GroupId, RowNumber)]) -> Result<Vec<bool>> {
+	pub(crate) fn held_rows(
+		&self,
+		host: &mut dyn HostContext,
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<Vec<bool>, ValueError> {
 		let keys = rows
 			.iter()
 			.map(|(group, number)| match self.side {
@@ -143,7 +146,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_numbers: &[RowNumber],
-	) -> Result<Vec<bool>> {
+	) -> Result<Vec<bool>, ValueError> {
 		let suffixes: Vec<Asc<RowNumber>> = row_numbers.iter().copied().map(Asc).collect();
 		let batch = match self.side {
 			JoinSide::Left => host.state_batch_in::<JoinLeft>(group, &suffixes)?,
@@ -168,7 +171,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_numbers: &[RowNumber],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let suffixes: Vec<Asc<RowNumber>> = row_numbers.iter().copied().map(Asc).collect();
 		match self.side {
 			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &suffixes),
@@ -183,7 +186,7 @@ impl Store {
 		hash: &Hash128,
 		after: Option<&RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		self.rows_for_group(host, self.group_of(hash), after, limit)
 	}
 
@@ -193,7 +196,7 @@ impl Store {
 		group: GroupId,
 		after: Option<&RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		let after = after.copied().map(Asc);
 		let from = match &after {
 			Some(suffix) => Bound::Excluded(suffix),
@@ -205,18 +208,22 @@ impl Store {
 			.collect())
 	}
 
-	pub(crate) fn holds_rows(&self, host: &mut dyn HostContext, group: GroupId) -> Result<bool> {
+	pub(crate) fn holds_rows(&self, host: &mut dyn HostContext, group: GroupId) -> Result<bool, ValueError> {
 		Ok(!self.scan_rows(host, group, Bound::Unbounded, Some(1))?.is_empty())
 	}
 
-	pub(crate) fn row_numbers_in(&self, host: &mut dyn HostContext, group: GroupId) -> Result<Vec<RowNumber>> {
+	pub(crate) fn row_numbers_in(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+	) -> Result<Vec<RowNumber>, ValueError> {
 		Ok(self.scan_rows(host, group, Bound::Unbounded, None)?
 			.into_iter()
 			.map(|(suffix, _)| suffix.0)
 			.collect())
 	}
 
-	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool> {
+	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool, ValueError> {
 		self.holds_rows(host, self.group_of(hash))
 	}
 
@@ -224,7 +231,7 @@ impl Store {
 		&self,
 		host: &mut dyn HostContext,
 		fingerprint: RowShapeFingerprint,
-	) -> Result<Option<RowShape>> {
+	) -> Result<Option<RowShape>, ValueError> {
 		let key = self.schema_key(fingerprint);
 		if let Some(cached) = host.row_shape_cache().get(key.as_encoded()).cloned() {
 			return Ok(Some(cached));
@@ -249,7 +256,7 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn set_row_shape(&self, host: &mut dyn HostContext, shape: &RowShape) -> Result<()> {
+	pub(crate) fn set_row_shape(&self, host: &mut dyn HostContext, shape: &RowShape) -> Result<(), ValueError> {
 		let key = self.schema_key(shape.fingerprint());
 		if host.row_shape_cache().contains_key(key.as_encoded()) {
 			return Ok(());
@@ -307,7 +314,7 @@ mod tests {
 		txn: &mut DeferredTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
-	) -> Result<Option<EncodedBytes>> {
+	) -> Result<Option<EncodedBytes>, ValueError> {
 		let group = store.group_of(hash);
 		store.get_row_in(&mut b(txn, operator), group, row_number)
 	}

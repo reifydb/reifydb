@@ -18,7 +18,7 @@ use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(feature = "column")]
 use reifydb_store_column::{compress::Compressor, store::ColumnStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 #[cfg(feature = "column")]
 use crate::column::actor::{
@@ -70,7 +70,7 @@ impl Default for StorageSubsystemFactory {
 
 impl SubsystemFactory for StorageSubsystemFactory {
 	#[cfg(feature = "column")]
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
@@ -130,7 +130,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 	}
 
 	#[cfg(not(feature = "column"))]
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		Ok(Box::new(StorageSubsystem::new()))
 	}
 }

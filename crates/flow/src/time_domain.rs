@@ -19,14 +19,14 @@ use reifydb_core::{
 	operator_with::{JoinWith, LookupWith, WindowWith},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 fn declared_source_domain(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	flow: &FlowDag,
 	path: &mut HashSet<FlowId>,
-) -> Result<TimeDomain> {
+) -> Result<TimeDomain, ValueError> {
 	if !path.insert(flow.id) {
 		return Err(ValueError(Box::new(internal!(
 			"flow {} reaches itself through its own sources",
@@ -75,7 +75,7 @@ fn declared_source_domain(
 	Ok(resolved.unwrap_or(TimeDomain::None))
 }
 
-fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag> {
+fn view_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag, ValueError> {
 	let Some(def) = catalog.find_view(&mut txn.reborrow(), view)? else {
 		return Err(ValueError(Box::new(internal!("view {} has no catalog entry", view.0))));
 	};
@@ -100,17 +100,25 @@ fn upstream_view_domain(
 	txn: &mut Transaction<'_>,
 	view: ViewId,
 	path: &mut HashSet<FlowId>,
-) -> Result<TimeDomain> {
+) -> Result<TimeDomain, ValueError> {
 	let dag = view_flow_dag(catalog, txn, view)?;
 
 	declared_source_domain(catalog, txn, &dag, path)
 }
 
-pub fn source_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<TimeDomain> {
+pub fn source_time_domain(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+) -> Result<TimeDomain, ValueError> {
 	declared_source_domain(catalog, txn, flow, &mut HashSet::new())
 }
 
-pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+pub fn check_window_time_requirements(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+) -> Result<(), ValueError> {
 	let flow_name = format!("flow {}", flow.id.0);
 
 	let mut lagged = false;
@@ -141,7 +149,11 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 	Ok(())
 }
 
-pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+pub fn check_join_retention_requirements(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	flow: &FlowDag,
+) -> Result<(), ValueError> {
 	let flow_name = format!("flow {}", flow.id.0);
 	let mut retained = Vec::new();
 
@@ -192,7 +204,7 @@ pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transactio
 	Ok(())
 }
 
-fn side_input(operator: &FlowNode, side: usize) -> Result<OperatorId> {
+fn side_input(operator: &FlowNode, side: usize) -> Result<OperatorId, ValueError> {
 	match operator.inputs.get(side) {
 		Some(input) => Ok(*input),
 		None => Err(ValueError(Box::new(internal!("operator {} has no input {}", operator.id.0, side)))),
@@ -204,7 +216,7 @@ fn fed_by_event_time_only(
 	txn: &mut Transaction<'_>,
 	flow: &FlowDag,
 	input: OperatorId,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let mut path = HashSet::from([flow.id]);
 	let mut seen = HashSet::new();
 	let mut pending = vec![input];
@@ -235,7 +247,7 @@ fn source_is_event(
 	txn: &mut Transaction<'_>,
 	source: &OperatorDef,
 	path: &mut HashSet<FlowId>,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	match source {
 		OperatorDef::SourceTable {
 			time_domain,
@@ -261,7 +273,7 @@ fn view_is_event(
 	txn: &mut Transaction<'_>,
 	view: ViewId,
 	path: &mut HashSet<FlowId>,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	let dag = view_flow_dag(catalog, txn, view)?;
 
 	if !path.insert(dag.id) {
@@ -399,7 +411,7 @@ mod tests {
 			self
 		}
 
-		fn resolve(self, txn: &mut AdminTransaction) -> Result<TimeDomain> {
+		fn resolve(self, txn: &mut AdminTransaction) -> Result<TimeDomain, ValueError> {
 			source_time_domain(&Catalog::testing(), &mut Transaction::Admin(txn), &self.builder.build())
 		}
 
@@ -629,7 +641,7 @@ mod tests {
 		)
 	}
 
-	fn check_retention(harness: Harness, txn: &mut AdminTransaction) -> Result<()> {
+	fn check_retention(harness: Harness, txn: &mut AdminTransaction) -> Result<(), ValueError> {
 		check_join_retention_requirements(
 			&Catalog::testing(),
 			&mut Transaction::Admin(txn),

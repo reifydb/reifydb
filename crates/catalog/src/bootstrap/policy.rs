@@ -14,8 +14,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 const OPEN_CALL_BODY: &str = "filter { true }";
 
@@ -32,7 +33,7 @@ pub fn bootstrap_call_policies(
 	single: &SingleTransaction,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut missing = Vec::new();
 	{
 		let mut qt = QueryTransaction::new(

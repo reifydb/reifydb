@@ -12,13 +12,13 @@ use reifydb_core::interface::catalog::{
 use reifydb_rql_frontend::ast::ast::{AstColumnProperty, AstCreateSeries, AstTimestampPrecision};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::{AstErrorKind, TypeError},
+	error::{AstErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateSeriesNode, LogicalPlan,
 		create::{
@@ -35,7 +35,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateSeries<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut columns: Vec<SeriesColumnToCreate> = vec![];
 
 		let series_ns_segments: Vec<&str> = ast.series.namespace.iter().map(|n| n.text()).collect();

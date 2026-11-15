@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 		parse::Parser,
@@ -16,17 +17,17 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>, ValueError> {
 		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
-	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>, ValueError> {
 		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
-	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> Result<UnqualifiedIdentifier<'bump>, ValueError> {
 		let first_token = self.advance()?;
 
 		let is_identifier_like = |token: &Token| {
@@ -102,7 +103,9 @@ impl<'bump> Parser<'bump> {
 		Ok(UnqualifiedIdentifier::from_fragment(fragment))
 	}
 
-	pub(crate) fn parse_double_colon_separated_identifiers(&mut self) -> Result<Vec<UnqualifiedIdentifier<'bump>>> {
+	pub(crate) fn parse_double_colon_separated_identifiers(
+		&mut self,
+	) -> Result<Vec<UnqualifiedIdentifier<'bump>>, ValueError> {
 		let mut segments = vec![self.parse_identifier_with_hyphens()?];
 		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
 			self.consume_operator(Operator::DoubleColon)?;
@@ -111,7 +114,7 @@ impl<'bump> Parser<'bump> {
 		Ok(segments)
 	}
 
-	pub(crate) fn parse_column_identifier(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
+	pub(crate) fn parse_column_identifier(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>, ValueError> {
 		let mut ns_table_segments = self.parse_double_colon_separated_identifiers()?;
 
 		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
@@ -133,7 +136,7 @@ impl<'bump> Parser<'bump> {
 
 	fn segments_to_column_identifier(
 		mut segments: Vec<UnqualifiedIdentifier<'bump>>,
-	) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
+	) -> Result<MaybeQualifiedColumnIdentifier<'bump>, ValueError> {
 		match segments.len() {
 			1 => {
 				let col = segments.remove(0);

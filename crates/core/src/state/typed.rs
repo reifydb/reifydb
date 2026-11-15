@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use crate::{
 	key::{
@@ -133,19 +133,23 @@ pub fn typed_key<K: Keyspace>(group: GroupId, suffix: &K::Suffix) -> GroupStateK
 }
 
 pub trait TypedStateStore: StateStore {
-	fn state_get_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<Vec<Option<EncodedPodRow>>>
+	fn state_get_in<K>(
+		&mut self,
+		group: GroupId,
+		suffixes: &[K::Suffix],
+	) -> Result<Vec<Option<EncodedPodRow>>, ValueError>
 	where
 		K: Keyspace;
 
-	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch>
+	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch, ValueError>
 	where
 		K: Keyspace;
 
-	fn state_set_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<()>
+	fn state_set_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<(), ValueError>
 	where
 		K: Keyspace;
 
-	fn state_remove_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<()>
+	fn state_remove_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<(), ValueError>
 	where
 		K: Keyspace;
 
@@ -154,13 +158,17 @@ pub trait TypedStateStore: StateStore {
 		group: GroupId,
 		from: Bound<&K::Suffix>,
 		limit: Option<usize>,
-	) -> Result<Vec<(K::Suffix, EncodedPodRow)>>
+	) -> Result<Vec<(K::Suffix, EncodedPodRow)>, ValueError>
 	where
 		K: Keyspace;
 }
 
 impl<T: StateStore + ?Sized> TypedStateStore for T {
-	fn state_get_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<Vec<Option<EncodedPodRow>>>
+	fn state_get_in<K>(
+		&mut self,
+		group: GroupId,
+		suffixes: &[K::Suffix],
+	) -> Result<Vec<Option<EncodedPodRow>>, ValueError>
 	where
 		K: Keyspace,
 	{
@@ -168,21 +176,21 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		self.state_get(&keys)
 	}
 
-	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch>
+	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch, ValueError>
 	where
 		K: Keyspace,
 	{
 		self.state_batch(suffixes.iter().map(|suffix| typed_key::<K>(group, suffix)).collect())
 	}
 
-	fn state_set_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<()>
+	fn state_set_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<(), ValueError>
 	where
 		K: Keyspace,
 	{
 		self.state_set(rows.into_iter().map(|(suffix, row)| (typed_key::<K>(group, &suffix), row)).collect())
 	}
 
-	fn state_remove_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<()>
+	fn state_remove_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<(), ValueError>
 	where
 		K: Keyspace,
 	{
@@ -195,7 +203,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		group: GroupId,
 		from: Bound<&K::Suffix>,
 		limit: Option<usize>,
-	) -> Result<Vec<(K::Suffix, EncodedPodRow)>>
+	) -> Result<Vec<(K::Suffix, EncodedPodRow)>, ValueError>
 	where
 		K: Keyspace,
 	{

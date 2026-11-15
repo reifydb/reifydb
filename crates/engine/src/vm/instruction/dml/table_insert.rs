@@ -33,6 +33,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertTableNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
@@ -49,7 +50,6 @@ use super::{
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 };
 use crate::{
-	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	transaction::operation::table::{TableInsert, TableOperations},
@@ -73,7 +73,7 @@ pub(crate) fn insert_table(
 	plan: InsertTableNode,
 	symbols: &mut SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let InsertTableNode {
 		input,
 		target,
@@ -135,7 +135,11 @@ pub(crate) struct EncodedTableRows {
 	pub(crate) distinct: Vec<(Partition, Vec<Value>)>,
 }
 
-pub(crate) fn table_batch_partitions(table: &Table, cast: &CastColumns, encoded: &mut EncodedTableRows) -> Result<()> {
+pub(crate) fn table_batch_partitions(
+	table: &Table,
+	cast: &CastColumns,
+	encoded: &mut EncodedTableRows,
+) -> Result<(), ValueError> {
 	let batch = cast_partitions(&table.columns, &table.partition_by, cast)?;
 	encoded.partitions.extend(batch.rows);
 	encoded.distinct.extend(batch.distinct);
@@ -146,12 +150,12 @@ pub(crate) fn cast_partitions(
 	columns: &[Column],
 	partition_by: &[String],
 	cast: &CastColumns,
-) -> Result<BatchPartitions> {
+) -> Result<BatchPartitions, ValueError> {
 	let indices = partition_col_indices(columns, partition_by);
 	if indices.is_empty() {
 		return Ok(BatchPartitions::default());
 	}
-	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>, ValueError>>()?;
 	let batch = partitions_of_batch(&keys);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
@@ -172,7 +176,7 @@ pub(crate) fn write_table_rows(
 	shape: &RowShape,
 	encoded: &mut EncodedTableRows,
 	violation: &Violation<'_>,
-) -> Result<Vec<RowNumber>> {
+) -> Result<Vec<RowNumber>, ValueError> {
 	resolve_partitions(txn, ObjectId::Table(table.id), &encoded.distinct, &mut HashMap::new())?;
 	if encoded.rows.is_empty() {
 		return Ok(Vec::new());
@@ -214,7 +218,7 @@ fn resolve_insert_table_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedTable,
-) -> Result<(Namespace, Table)> {
+) -> Result<(Namespace, Table), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -259,7 +263,7 @@ fn validate_and_encode_input_rows(
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
 	fragments: &InputFragments,
-) -> Result<EncodedTableRows> {
+) -> Result<EncodedTableRows, ValueError> {
 	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &target.table.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &target.table.columns,
@@ -316,7 +320,7 @@ fn validate_and_encode_input_rows(
 }
 
 #[inline]
-fn insert_table_result(namespace: &str, table: &str, inserted: u64) -> Result<RecordBatch> {
+fn insert_table_result(namespace: &str, table: &str, inserted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),

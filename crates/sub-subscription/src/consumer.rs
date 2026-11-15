@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::ValueError, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
 	worker::{SubscriptionWorkerMessage, worker_name},
 };
 
-pub type Reply = Box<dyn FnOnce(Result<()>) + Send>;
+pub type Reply = Box<dyn FnOnce(Result<(), ValueError>) + Send>;
 
 pub struct SubscriptionCommitLogConsumer {
 	engine: StandardEngine,
@@ -67,7 +67,7 @@ impl SubscriptionCommitLogConsumer {
 		}
 	}
 
-	fn lift_batch(&self, entries: &[Arc<CommitEntry>]) -> Result<(Vec<Change>, bool)> {
+	fn lift_batch(&self, entries: &[Arc<CommitEntry>]) -> Result<(Vec<Change>, bool), ValueError> {
 		let catalog = self.engine.catalog();
 		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query);
@@ -96,7 +96,7 @@ struct DispatchBarrier {
 }
 
 impl DispatchBarrier {
-	fn complete_one(&self, result: Result<()>) {
+	fn complete_one(&self, result: Result<(), ValueError>) {
 		if let Err(e) = result {
 			let mut slot = self.error.lock();
 			if slot.is_none() {
@@ -134,7 +134,7 @@ impl WorkerDone {
 		(self.worker, self.outstanding.clone())
 	}
 
-	pub fn complete(mut self, result: Result<()>) {
+	pub fn complete(mut self, result: Result<(), ValueError>) {
 		if let Some(barrier) = self.barrier.take() {
 			self.outstanding.store(false, Ordering::Release);
 			barrier.complete_one(result);
@@ -301,8 +301,8 @@ mod tests {
 
 	use super::*;
 
-	fn capture() -> (Reply, Arc<Mutex<Option<Result<()>>>>) {
-		let slot: Arc<Mutex<Option<Result<()>>>> = Arc::new(Mutex::new(None));
+	fn capture() -> (Reply, Arc<Mutex<Option<Result<(), ValueError>>>>) {
+		let slot: Arc<Mutex<Option<Result<(), ValueError>>>> = Arc::new(Mutex::new(None));
 		let slot_for_reply = slot.clone();
 		let reply: Reply = Box::new(move |r| *slot_for_reply.lock() = Some(r));
 		(reply, slot)

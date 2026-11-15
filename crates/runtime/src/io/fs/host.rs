@@ -9,8 +9,8 @@ use std::{
 };
 
 use crate::io::fs::{
-	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename, Result,
-	SyncData, SyncDir, Truncate, Unlink,
+	Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename, SyncData,
+	SyncDir, Truncate, Unlink,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -40,13 +40,13 @@ impl Filesystem for HostFs {
 }
 
 impl Mkdir for HostFs {
-	fn mkdir(&self, path: &Path) -> Result<()> {
+	fn mkdir(&self, path: &Path) -> Result<(), FsError> {
 		fs::create_dir(path).map_err(|err| FsError::from_io(path, err))
 	}
 }
 
 impl Create for HostFs {
-	fn create(&self, path: &Path, len: u64) -> Result<HostFileMut> {
+	fn create(&self, path: &Path, len: u64) -> Result<HostFileMut, FsError> {
 		let file = OpenOptions::new()
 			.create_new(true)
 			.read(true)
@@ -62,7 +62,7 @@ impl Create for HostFs {
 }
 
 impl Open for HostFs {
-	fn open(&self, path: &Path) -> Result<HostFile> {
+	fn open(&self, path: &Path) -> Result<HostFile, FsError> {
 		let file = OpenOptions::new().read(true).open(path).map_err(|err| FsError::from_io(path, err))?;
 		Ok(HostFile {
 			path: path.to_path_buf(),
@@ -72,7 +72,7 @@ impl Open for HostFs {
 }
 
 impl OpenMut for HostFs {
-	fn open_mut(&self, path: &Path) -> Result<HostFileMut> {
+	fn open_mut(&self, path: &Path) -> Result<HostFileMut, FsError> {
 		let file = OpenOptions::new()
 			.read(true)
 			.write(true)
@@ -86,7 +86,7 @@ impl OpenMut for HostFs {
 }
 
 impl ReadDir for HostFs {
-	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, FsError> {
 		let mut entries = Vec::new();
 		for entry in fs::read_dir(path).map_err(|err| FsError::from_io(path, err))? {
 			let entry = entry.map_err(|err| FsError::from_io(path, err))?;
@@ -98,67 +98,67 @@ impl ReadDir for HostFs {
 }
 
 impl Rename for HostFs {
-	fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+	fn rename(&self, from: &Path, to: &Path) -> Result<(), FsError> {
 		fs::rename(from, to).map_err(|err| FsError::from_io(from, err))
 	}
 }
 
 impl Unlink for HostFs {
-	fn unlink(&self, path: &Path) -> Result<()> {
+	fn unlink(&self, path: &Path) -> Result<(), FsError> {
 		fs::remove_file(path).map_err(|err| FsError::from_io(path, err))
 	}
 }
 
 impl RemoveDir for HostFs {
-	fn remove_dir(&self, path: &Path) -> Result<()> {
+	fn remove_dir(&self, path: &Path) -> Result<(), FsError> {
 		fs::remove_dir_all(path).map_err(|err| FsError::from_io(path, err))
 	}
 }
 
 impl SyncDir for HostFs {
-	fn sync_dir(&self, path: &Path) -> Result<()> {
+	fn sync_dir(&self, path: &Path) -> Result<(), FsError> {
 		File::open(path).and_then(|dir| dir.sync_all()).map_err(|err| FsError::from_io(path, err))
 	}
 }
 
 impl Pread for HostFile {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.file.read_at(buf, offset).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl Len for HostFile {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.file.metadata().map(|meta| meta.len()).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl Pread for HostFileMut {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.file.read_at(buf, offset).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl Pwrite for HostFileMut {
-	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize> {
+	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
 		self.file.write_at(buf, offset).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl SyncData for HostFileMut {
-	fn sync_data(&self) -> Result<()> {
+	fn sync_data(&self) -> Result<(), FsError> {
 		self.file.sync_data().map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl Truncate for HostFileMut {
-	fn truncate(&self, len: u64) -> Result<()> {
+	fn truncate(&self, len: u64) -> Result<(), FsError> {
 		self.file.set_len(len).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }
 
 impl Len for HostFileMut {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.file.metadata().map(|meta| meta.len()).map_err(|err| FsError::from_io(&self.path, err))
 	}
 }

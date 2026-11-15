@@ -29,6 +29,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
+	error::ValueError,
 	reifydb_assertions,
 	value::{
 		datetime::DateTime,
@@ -44,12 +45,9 @@ use super::{
 	merge::{MergeLayout, PartitionMerge},
 	partition_array, scan_headers, source_system_columns,
 };
-use crate::{
-	Result,
-	vm::volcano::{
-		decode_dictionary_column,
-		query::{QueryContext, QueryNode},
-	},
+use crate::vm::volcano::{
+	decode_dictionary_column,
+	query::{QueryContext, QueryNode},
 };
 
 pub struct SeriesScanNode {
@@ -78,7 +76,7 @@ impl SeriesScanNode {
 		variant_tag: Option<u8>,
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let mut columns = vec![series.def().key.column()];
 		if series.def().tag.is_some() {
 			columns.push("tag");
@@ -135,7 +133,8 @@ impl SeriesScanNode {
 		scope: RangeScope,
 		batch_size: u64,
 		oldest_first: bool,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'rx>, ValueError>
+	{
 		if oldest_first {
 			return rx.range_rev(range, scope, batch_size as usize);
 		}
@@ -144,11 +143,11 @@ impl SeriesScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::drain")]
 	fn drain_batch(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 		batch_size: u64,
 		partitioned: bool,
 		has_tag: bool,
-	) -> Result<SeriesBatch> {
+	) -> Result<SeriesBatch, ValueError> {
 		let mut batch = SeriesBatch::default();
 		let mut count = 0;
 
@@ -207,7 +206,7 @@ impl SeriesScanNode {
 		scanned: SeriesBatch,
 		has_tag: bool,
 		partitioned: bool,
-	) -> Result<Option<RecordBatch>> {
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let series = self.series.def();
 		let mut result_columns = Vec::new();
 
@@ -315,12 +314,16 @@ pub(crate) fn empty_series_columns(series: &Series) -> Vec<(FieldRef, ArrayRef)>
 
 impl QueryNode for SeriesScanNode {
 	#[instrument(name = "volcano::scan::series::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::series::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "SeriesScanNode::next() called before initialize()");
 		}

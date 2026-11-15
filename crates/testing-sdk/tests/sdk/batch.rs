@@ -7,7 +7,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -60,10 +60,10 @@ impl MountedOperator for EmitOpInsert {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows = [
 			Bar {
 				mint: "SOL".to_string(),
@@ -137,10 +137,10 @@ impl MountedOperator for EmitOpEmpty {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows: [Bar; 0] = [];
 		ctx.emit_insert(&rows, &[], &[])
 	}
@@ -166,10 +166,10 @@ impl MountedOperator for EmitOpUpdate {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		ctx.emit_update(
 			&[Bar {
 				mint: "PRE".to_string(),
@@ -228,10 +228,10 @@ impl MountedOperator for EmitOpRemove {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows = [
 			Bar {
 				mint: "X".to_string(),
@@ -279,10 +279,10 @@ impl MountedOperator for EmitOpBig {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows: Vec<Bar> = (0..100u64)
 			.map(|i| Bar {
 				mint: format!("MINT{}", i),
@@ -331,10 +331,10 @@ impl MountedOperator for EmitOpOptU64 {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows = [
 			OptU64Row {
 				v: None,
@@ -395,10 +395,10 @@ impl MountedOperator for EmitOpOptStr {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows = [
 			OptStrRow {
 				s: None,
@@ -459,10 +459,10 @@ impl MountedOperator for EmitOpOptBlob {
 	type Class = Windowed;
 	const WINDOW: WindowRequirements = NO_WINDOW;
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
-	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<(), SdkError> {
 		let rows = [
 			OptBlobRow {
 				b: None,

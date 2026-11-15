@@ -24,7 +24,6 @@ use reifydb_core::{
 	state::typed::{SuffixBytes, typed_key},
 };
 use reifydb_value::{
-	Result,
 	error::{IntoDiagnostic, ValueError},
 	value::row_number::RowNumber,
 };
@@ -49,7 +48,7 @@ pub fn group_mapping_key(group: GroupId) -> GroupStateKey {
 	typed_key::<GroupRowMapping>(group, &())
 }
 
-pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateKey> {
+pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateKey, ValueError> {
 	let mut id = [0u8; GUEST_MAPPING_KEY_LEN];
 	let bytes = key.as_slice();
 	if bytes.len() > GUEST_MAPPING_KEY_LEN {
@@ -73,7 +72,7 @@ pub fn counter_key() -> GroupStateKey {
 	row_number_counter_key()
 }
 
-fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64> {
+fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64, ValueError> {
 	let mut counter = txn.state_batch(operator, vec![counter_key()])?;
 	let seed = match counter.value(0) {
 		Some(row) => decode::<u64>(row)?,
@@ -88,7 +87,7 @@ fn resolve_or_mint(
 	txn: &mut impl FlowTransaction,
 	operator: OperatorId,
 	map_keys: Vec<GroupStateKey>,
-) -> Result<Vec<(RowNumber, bool)>> {
+) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 	let mut batch = txn.state_batch(operator, map_keys)?;
 
 	let mut results: Vec<Option<(RowNumber, bool)>> = vec![None; batch.len()];
@@ -136,8 +135,9 @@ pub trait RowNumberExtension: FlowTransaction {
 		operator: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		let map_keys = keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>>>()?;
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
+		let map_keys =
+			keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>, ValueError>>()?;
 		resolve_or_mint(self, operator, map_keys)
 	}
 
@@ -145,7 +145,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		&mut self,
 		operator: OperatorId,
 		keys: &[JoinRowMappingKey],
-	) -> Result<Vec<(RowNumber, bool)>> {
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		resolve_or_mint(self, operator, keys.iter().map(join_mapping_key).collect())
 	}
 
@@ -153,7 +153,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		&mut self,
 		operator: OperatorId,
 		groups: &[GroupId],
-	) -> Result<Vec<(RowNumber, bool)>> {
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		resolve_or_mint(self, operator, groups.iter().map(|group| group_mapping_key(*group)).collect())
 	}
 
@@ -161,7 +161,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		&mut self,
 		operator: OperatorId,
 		groups: &[GroupId],
-	) -> Result<Vec<Option<RowNumber>>> {
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| group_mapping_key(*group)).collect();
 		let answers = self.state_get(operator, &map_keys)?;
 
@@ -179,8 +179,9 @@ pub trait RowNumberExtension: FlowTransaction {
 		operator: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
-	) -> Result<Vec<Option<RowNumber>>> {
-		let map_keys = keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>>>()?;
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
+		let map_keys =
+			keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>, ValueError>>()?;
 		self.resolve_row_numbers(operator, map_keys)
 	}
 
@@ -188,7 +189,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		&mut self,
 		operator: OperatorId,
 		keys: &[JoinRowMappingKey],
-	) -> Result<Vec<Option<RowNumber>>> {
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.resolve_row_numbers(operator, keys.iter().map(join_mapping_key).collect())
 	}
 
@@ -196,7 +197,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		&mut self,
 		operator: OperatorId,
 		map_keys: Vec<GroupStateKey>,
-	) -> Result<Vec<Option<RowNumber>>> {
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		let answers = self.state_get(operator, &map_keys)?;
 
 		let mut results: Vec<Option<RowNumber>> = vec![None; map_keys.len()];
@@ -208,15 +209,21 @@ pub trait RowNumberExtension: FlowTransaction {
 		Ok(results)
 	}
 
-	fn remove_row_number(&mut self, operator: OperatorId, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<(), ValueError> {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		let map_keys = keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>>>()?;
+		let map_keys =
+			keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>, ValueError>>()?;
 		self.state_remove(operator, &map_keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<(), ValueError> {
 		if groups.is_empty() {
 			return Ok(());
 		}
@@ -224,22 +231,30 @@ pub trait RowNumberExtension: FlowTransaction {
 		self.state_remove(operator, &keys)
 	}
 
-	fn mint_row_numbers(&mut self, operator: OperatorId, count: usize) -> Result<RowNumber> {
+	fn mint_row_numbers(&mut self, operator: OperatorId, count: usize) -> Result<RowNumber, ValueError> {
 		Ok(RowNumber(mint(self, operator, count as u64)?))
 	}
 
-	fn set_row_numbers_for_groups(&mut self, operator: OperatorId, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+	fn set_row_numbers_for_groups(
+		&mut self,
+		operator: OperatorId,
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<(), ValueError> {
 		if rows.is_empty() {
 			return Ok(());
 		}
 		let encoded = rows
 			.iter()
 			.map(|(group, row)| Ok((group_mapping_key(*group), row.0.encode_state()?)))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		self.state_set(operator, encoded)
 	}
 
-	fn remove_join_row_numbers(&mut self, operator: OperatorId, keys: &[JoinRowMappingKey]) -> Result<()> {
+	fn remove_join_row_numbers(
+		&mut self,
+		operator: OperatorId,
+		keys: &[JoinRowMappingKey],
+	) -> Result<(), ValueError> {
 		if keys.is_empty() {
 			return Ok(());
 		}
@@ -252,7 +267,12 @@ pub trait RowNumberExtension: FlowTransaction {
 		self.state_write_batch(operator, batch)
 	}
 
-	fn remove_join_row_numbers_for_left(&mut self, operator: OperatorId, tag: u8, left: u64) -> Result<()> {
+	fn remove_join_row_numbers_for_left(
+		&mut self,
+		operator: OperatorId,
+		tag: u8,
+		left: u64,
+	) -> Result<(), ValueError> {
 		let high = JoinRowMappingKey {
 			tag: Asc(tag),
 			left: Desc(left),

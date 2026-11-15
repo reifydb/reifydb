@@ -37,7 +37,7 @@ use reifydb_runtime::actor::{
 use reifydb_store_column::{block::BlockData, compress::Compressor, device::BlockFileKey, store::ColumnStore};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	params::Params,
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
@@ -151,7 +151,7 @@ impl TableMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		table: &Table,
 		current: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(materialized) = state.last_seen.get(&table.id).copied() {
 			let changed = self.changes.changed_at(table.id);
 			if materialized == current || changed.is_none_or(|changed| changed <= materialized) {
@@ -168,7 +168,7 @@ impl TableMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		table: &Table,
 		version: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			let scan_version = query_txn.version();
 			assert!(
@@ -206,7 +206,7 @@ impl TableMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		table: &Table,
 		context: &Arc<QueryContext>,
-	) -> Result<Vec<RecordBatch>> {
+	) -> Result<Vec<RecordBatch>, ValueError> {
 		let mut tx: Transaction<'_> = query_txn.into();
 		let resolved = self.engine.catalog().resolve_table(&mut tx, table.id)?;
 		let mut scan = TableScanNode::new(resolved, None, Arc::clone(context), &mut tx)?;
@@ -225,7 +225,7 @@ impl TableMaterializationActor {
 		table: &Table,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<BlockData> {
+	) -> Result<BlockData, ValueError> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
 		schema.extend(system_column_schema(&table.time, !table.partition_by.is_empty()));
@@ -233,7 +233,12 @@ impl TableMaterializationActor {
 	}
 
 	#[inline]
-	fn store_table_block(&self, table: &Table, version: CommitVersion, data: Arc<BlockData>) -> Result<()> {
+	fn store_table_block(
+		&self,
+		table: &Table,
+		version: CommitVersion,
+		data: Arc<BlockData>,
+	) -> Result<(), ValueError> {
 		let row_count = data.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
@@ -267,7 +272,7 @@ impl TableMaterializationActor {
 	}
 }
 
-fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
+fn commit_admin(mut admin: AdminTransaction) -> Result<(), ValueError> {
 	admin.commit()?;
 	Ok(())
 }

@@ -32,7 +32,7 @@ use reifydb_core::{
 };
 use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::{byte_size::ByteSize, error::ValueError};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -42,11 +42,11 @@ use crate::{
 
 const PENDING_LAST_PAGE: usize = 64;
 
-pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
+pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow, ValueError> {
 	Ok(value.encode_state()?)
 }
 
-pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
+pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T, ValueError> {
 	Ok(decode(row)?)
 }
 
@@ -90,7 +90,11 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_get(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(
+		&mut self,
+		id: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 		let mut answers: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
 		let mut missed: Vec<usize> = Vec::new();
 		for (slot, key) in keys.iter().enumerate() {
@@ -127,7 +131,7 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_batch(&mut self, id: OperatorId, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+	fn state_batch(&mut self, id: OperatorId, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 		let batch = StateBatch::read(keys, |keys| self.state_get(id, keys))?;
 		for slot in 0..batch.len() {
 			self.state_classify(id, batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
@@ -139,7 +143,7 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		write_count = field::Empty
 	))]
-	fn state_write_batch(&mut self, id: OperatorId, batch: StateBatch) -> Result<()> {
+	fn state_write_batch(&mut self, id: OperatorId, batch: StateBatch) -> Result<(), ValueError> {
 		let writes: Vec<_> =
 			batch.into_writes().into_iter().map(|(key, write)| (scoped_key(id, &key), write)).collect();
 		Span::current().record("write_count", writes.len());
@@ -151,7 +155,7 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = rows.len()
 	))]
-	fn state_set(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		for (key, _) in &rows {
 			check_batch_key(key)?;
 		}
@@ -167,7 +171,7 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_remove(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 		check_batch_keys(keys)?;
 		let writes = keys
 			.iter()
@@ -190,7 +194,11 @@ pub trait StateExtension: FlowTransaction {
 		rows_fetched = field::Empty,
 		rows_tombstoned = field::Empty
 	))]
-	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch<TaggedKey>> {
+	fn state_range(
+		&mut self,
+		id: OperatorId,
+		query: StateRange,
+	) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 		let before = ScanCounters::sample();
 		let operator_range = query.range.for_operator(id);
 		let batch_size = match query.page {
@@ -227,7 +235,7 @@ pub trait StateExtension: FlowTransaction {
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
-	) -> Result<MultiVersionBatch<TaggedKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 		let ordered = sweep_order(groups);
 		let prefix = EncodedKey::new(node_prefix(id));
 		let mut merged = BTreeMap::new();
@@ -260,7 +268,7 @@ pub trait StateExtension: FlowTransaction {
 			limit.saturating_add(pending.len()).saturating_add(1) as u64,
 			keyspaces,
 		)?;
-		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = page
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>, ValueError>> = page
 			.into_iter()
 			.map(|(inner, row)| {
 				let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
@@ -291,7 +299,11 @@ pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
 		operator_id = id.0
 	))]
-	fn state_last(&mut self, id: OperatorId, range: GroupStateRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+	fn state_last(
+		&mut self,
+		id: OperatorId,
+		range: GroupStateRange,
+	) -> Result<Option<MultiVersionRow<TaggedKey>>, ValueError> {
 		let prefix = node_prefix(id);
 		let operator_range = range.for_operator(id);
 		let prefixed_range = operator_range.encode();
@@ -388,7 +400,10 @@ impl<T: FlowTransaction> StateExtension for T {}
 
 const UNDECODABLE_STATE_KEY: &str = "a scoped operator-state key must decode";
 
-fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Result<Option<(EncodedKey, EncodedKey, EncodedBytes)>> {
+fn next_stored(
+	scan: &mut StateLastIter<'_>,
+	prefix: &[u8],
+) -> Result<Option<(EncodedKey, EncodedKey, EncodedBytes)>, ValueError> {
 	scan.next()
 		.transpose()
 		.map(|entry| {

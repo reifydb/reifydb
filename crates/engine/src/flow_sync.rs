@@ -35,17 +35,20 @@ use reifydb_flow_sync::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{
-	Value,
-	datetime::DateTime,
-	dictionary::{DictionaryEntryId, DictionaryId},
-	sumtype::SumTypeId,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		sumtype::SumTypeId,
+	},
 };
 use smallvec::smallvec;
 
-use crate::{Result, backfill, transaction::operation::dictionary::DictionaryOperations, vm::services::Services};
+use crate::{backfill, transaction::operation::dictionary::DictionaryOperations, vm::services::Services};
 
-pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>) -> Result<()> {
+pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>) -> Result<(), ValueError> {
 	let mut txn = FlowTransaction {
 		tx,
 		catalog: &services.catalog,
@@ -58,7 +61,7 @@ pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>)
 	run(&mut txn, &services.routines, &services.runtime_context)
 }
 
-pub(crate) fn load_flow_diff_need(catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
+pub(crate) fn load_flow_diff_need(catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<(), ValueError> {
 	if tx.flow_diff_need_loaded() {
 		return Ok(());
 	}
@@ -74,7 +77,7 @@ pub(crate) fn backfill_transactional_view(
 	services: &Arc<Services>,
 	mut tx: Transaction<'_>,
 	view: ViewId,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let flow = view_flow(&services.catalog, &mut tx, view)?;
 	let mut nodes = build_flow(services, tx.reborrow(), &flow)?;
 	backfill::run(services, tx.reborrow(), &flow_sources(&flow), query_batch_size(services)?, |scan, change| {
@@ -85,21 +88,21 @@ pub(crate) fn backfill_transactional_view(
 	Ok(())
 }
 
-fn view_flow(catalog: &Catalog, tx: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag> {
+fn view_flow(catalog: &Catalog, tx: &mut Transaction<'_>, view: ViewId) -> Result<FlowDag, ValueError> {
 	match catalog.list_flow_dags_asc(tx)?.into_iter().find(|flow| flow.sink_views().any(|sink| sink == view)) {
 		Some(flow) => Ok(flow),
 		None => internal_err!("transactional view {:?} has no flow to backfill", view),
 	}
 }
 
-fn query_batch_size(services: &Services) -> Result<NonZeroU64> {
+fn query_batch_size(services: &Services) -> Result<NonZeroU64, ValueError> {
 	match NonZeroU64::new(u64::from(services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize))) {
 		Some(batch_size) => Ok(batch_size),
 		None => internal_err!("QUERY_ROW_BATCH_SIZE is 0, which its config validation rejects"),
 	}
 }
 
-fn build_flow(services: &Services, tx: Transaction<'_>, flow: &FlowDag) -> Result<Vec<(OperatorId, Node)>> {
+fn build_flow(services: &Services, tx: Transaction<'_>, flow: &FlowDag) -> Result<Vec<(OperatorId, Node)>, ValueError> {
 	let mut txn = FlowTransaction {
 		tx,
 		catalog: &services.catalog,
@@ -118,7 +121,7 @@ fn feed_flow(
 	flow: &FlowDag,
 	nodes: &mut [(OperatorId, Node)],
 	change: Change,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut txn = FlowTransaction {
 		tx,
 		catalog: &services.catalog,
@@ -156,18 +159,18 @@ impl Changes for FlowTransaction<'_> {
 }
 
 impl FlowGet for FlowTransaction<'_> {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
 		Ok(self.tx.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
 }
 
 impl FlowBatch for FlowTransaction<'_> {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.tx.set(keys.iter().map(tagged).zip(rows).collect())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
 		let committed = self.tx.get_committed(&keys)?;
 		self.tx.remove(keys
@@ -179,7 +182,7 @@ impl FlowBatch for FlowTransaction<'_> {
 }
 
 impl Emit for FlowTransaction<'_> {
-	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<(), ValueError> {
 		let object = ObjectId::view(view);
 		self.tx.touch_flow_object(object);
 		if self.tx.wants_flow_diff(object) {
@@ -195,41 +198,49 @@ impl Emit for FlowTransaction<'_> {
 }
 
 impl Lookup for FlowTransaction<'_> {
-	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
+	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>, ValueError> {
 		Ok(self.catalog.list_transactional_flow_dags(&mut self.tx)?.to_vec())
 	}
 
-	fn view(&mut self, id: ViewId) -> Result<View> {
+	fn view(&mut self, id: ViewId) -> Result<View, ValueError> {
 		self.catalog.get_view(&mut self.tx, id)
 	}
 
-	fn table(&mut self, id: TableId) -> Result<Table> {
+	fn table(&mut self, id: TableId) -> Result<Table, ValueError> {
 		self.catalog.get_table(&mut self.tx, id)
 	}
 
-	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType> {
+	fn sumtype(&mut self, id: SumTypeId) -> Result<SumType, ValueError> {
 		self.catalog.get_sumtype(&mut self.tx, id)
 	}
 }
 
 impl Resolve for FlowTransaction<'_> {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		self.catalog.find_dictionary(&mut self.tx, id)
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.tx.get_from_dictionary(dictionary, ids)
 	}
 }
 
 impl Find for FlowTransaction<'_> {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.tx.find_in_dictionary(dictionary, values)
 	}
 }
 
 impl Intern for FlowTransaction<'_> {
-	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		self.tx.intern_values(dictionary, values.to_vec())
 	}
 }

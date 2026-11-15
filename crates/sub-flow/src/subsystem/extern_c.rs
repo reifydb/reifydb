@@ -8,11 +8,11 @@ use reifydb_core::event::{
 	operator::{OperatorColumn, OperatorLoadedEvent},
 };
 use reifydb_extension::operator::extern_c::loader::{ColumnInfo, extern_c_operator_loader};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::{info, instrument};
 
 #[instrument(name = "flow::subsystem::load_extern_c_operators", level = "info", skip(event_bus), fields(dir = ?dir))]
-pub fn load_extern_c_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
+pub fn load_extern_c_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<(), ValueError> {
 	let loader = extern_c_operator_loader();
 
 	let entries = read_dir(dir).unwrap();

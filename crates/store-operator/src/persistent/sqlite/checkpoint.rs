@@ -10,7 +10,7 @@ use rusqlite::params;
 use tracing::instrument;
 
 use crate::{
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::sqlite::{
 		SqlitePersistent,
 		sql::{
@@ -22,7 +22,7 @@ use crate::{
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
@@ -39,7 +39,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_floor", level = "trace", skip(self))]
-	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
@@ -54,7 +54,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_lsn_floor", level = "trace", skip(self))]
-	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
@@ -69,7 +69,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_list", level = "trace", skip(self))]
-	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
+	pub fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);
@@ -84,7 +84,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::saved_lsn", level = "trace", skip(self))]
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(StoreOperatorError::Closed);

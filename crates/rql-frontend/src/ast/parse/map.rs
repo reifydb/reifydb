@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::AstMap,
 		parse::{Parser, reject_duplicate_aliases},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_map(&mut self) -> Result<AstMap<'bump>> {
+	pub(crate) fn parse_map(&mut self) -> Result<AstMap<'bump>, ValueError> {
 		let (token, nodes, rql) =
 			self.parse_keyword_with_braced_expressions(Keyword::Map, OperationKind::Map)?;
 		reject_duplicate_aliases(&nodes)?;

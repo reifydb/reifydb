@@ -5,7 +5,7 @@ use std::{fmt::Debug, hash::Hash};
 
 use reifydb_codec::row::operator::state::StateCodec;
 use reifydb_core::key::operator::state::GroupId;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	operator::state::{
@@ -28,7 +28,7 @@ pub fn close_through<G, C, A>(
 	seal_span: C::SealSpan,
 	budget: usize,
 	may_retire: bool,
-) -> Result<bool>
+) -> Result<bool, ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 	C: SealDomain + WindowAnchor + Hash,
@@ -55,7 +55,7 @@ pub fn seal<G, C, A>(
 	seal_span: C::SealSpan,
 	budget: usize,
 	may_retire: bool,
-) -> Result<()>
+) -> Result<(), ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 	C: SealDomain + WindowAnchor + Hash,
@@ -79,7 +79,7 @@ pub fn reap<G, C, A>(
 	fired: FiredAt,
 	seal_span: C::SealSpan,
 	budget: usize,
-) -> Result<DrainOutcome>
+) -> Result<DrainOutcome, ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug + StateCodec,
 	C: SealDomain + WindowAnchor + Hash,

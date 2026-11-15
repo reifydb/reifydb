@@ -9,8 +9,8 @@ pub mod extern_wasm;
 pub mod registry;
 
 use arrow_array::RecordBatch;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 pub trait Transform: Send + Sync {
-	fn apply(&self, ctx: &context::TransformContext, input: RecordBatch) -> Result<RecordBatch>;
+	fn apply(&self, ctx: &context::TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError>;
 }

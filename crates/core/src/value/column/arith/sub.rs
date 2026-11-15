@@ -4,8 +4,7 @@
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::{BinaryOp, TypeError},
+	error::{BinaryOp, TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
@@ -32,7 +31,7 @@ pub fn sub_columns(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	sub_columns_inner(ctx, left, right, &|| fragment.fragment())
 }
 
@@ -41,7 +40,7 @@ fn sub_columns_inner(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: &dyn Fn() -> Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Sub, left.get_type(), right.get_type());
@@ -58,7 +57,7 @@ fn sub_columns_inner(
 						(Some(lv), Some(rv)) => lv.try_sub(*rv).map_err(|e| (*e).into()),
 						_ => Err(length_mismatch(l.len(), r.len(), &fragment.fragment())),
 					})
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				Ok(factory::duration(fragment.fragment().text(), values))
 			}
 
@@ -78,7 +77,7 @@ fn sub_numeric<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -107,7 +106,7 @@ fn sub_numeric_clone<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

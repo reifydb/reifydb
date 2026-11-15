@@ -32,7 +32,6 @@ use reifydb_export::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	params::Params,
 	value::{Value, constraint::Constraint, identity::IdentityId},
@@ -41,29 +40,29 @@ use reifydb_value::{
 use crate::Database;
 
 impl Database {
-	pub fn export(&self, options: &ExportOptions) -> Result<String> {
+	pub fn export(&self, options: &ExportOptions) -> Result<String, ValueError> {
 		let model = self.build_export_model(options)?;
 		render_script(&model, options)
 			.map_err(|e| ValueError(Box::new(internal!("export rendering failed: {}", e))))
 	}
 
-	pub fn export_to_file(&self, options: &ExportOptions, path: impl AsRef<Path>) -> Result<()> {
+	pub fn export_to_file(&self, options: &ExportOptions, path: impl AsRef<Path>) -> Result<(), ValueError> {
 		let script = self.export(options)?;
 		fs::write(path, script)
 			.map_err(|e| ValueError(Box::new(internal!("failed to write export file: {}", e))))
 	}
 
-	pub fn import(&self, rql: &str) -> Result<()> {
+	pub fn import(&self, rql: &str) -> Result<(), ValueError> {
 		self.admin_as_root(rql, Params::None).map(|_| ())
 	}
 
-	pub fn import_from_file(&self, path: impl AsRef<Path>) -> Result<()> {
+	pub fn import_from_file(&self, path: impl AsRef<Path>) -> Result<(), ValueError> {
 		let rql = fs::read_to_string(path)
 			.map_err(|e| ValueError(Box::new(internal!("failed to read import file: {}", e))))?;
 		self.import(&rql)
 	}
 
-	fn build_export_model(&self, options: &ExportOptions) -> Result<ExportModel> {
+	fn build_export_model(&self, options: &ExportOptions) -> Result<ExportModel, ValueError> {
 		let catalog = self.catalog();
 
 		let (
@@ -373,7 +372,7 @@ impl Database {
 		namespace_id: u64,
 		name: &str,
 		ring: bool,
-	) -> Result<ObjectRows> {
+	) -> Result<ObjectRows, ValueError> {
 		let ns = resolver.namespaces.get(&namespace_id).ok_or_else(|| {
 			ValueError(Box::new(internal!("namespace id {} not resolvable for export", namespace_id)))
 		})?;

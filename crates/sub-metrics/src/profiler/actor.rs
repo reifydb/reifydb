@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	sync::rwlock::RwLock,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
@@ -106,7 +106,7 @@ impl ProfilerCollectorActor {
 		}
 	}
 
-	fn publish(&self, state: &mut ProfilerActorState) -> Result<()> {
+	fn publish(&self, state: &mut ProfilerActorState) -> Result<(), ValueError> {
 		let Some(targets) = &state.targets else {
 			return Ok(());
 		};
@@ -141,7 +141,7 @@ impl ProfilerCollectorActor {
 	}
 }
 
-fn append_spans_snapshot(engine: &StandardEngine, columns: &RecordBatch) -> Result<()> {
+fn append_spans_snapshot(engine: &StandardEngine, columns: &RecordBatch) -> Result<(), ValueError> {
 	let row_count = columns.num_rows();
 	if row_count == 0 {
 		return Ok(());

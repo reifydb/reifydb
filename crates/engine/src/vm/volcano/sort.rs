@@ -22,12 +22,9 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
-		rank::{enum_name_ranks, rank_rows},
-	},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode, charge_query_memory_bytes, ensure_sort_key_orderable},
+	rank::{enum_name_ranks, rank_rows},
 };
 
 pub(crate) struct SortNode {
@@ -50,7 +47,7 @@ impl SortNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		ctx: &mut QueryContext,
-	) -> Result<Option<RecordBatch>> {
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let mut batches = Vec::new();
 		let mut charged = 0usize;
 		let mut total = 0usize;
@@ -70,14 +67,18 @@ impl SortNode {
 
 impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 		}
@@ -100,7 +101,7 @@ impl QueryNode for SortNode {
 }
 
 impl SortNode {
-	fn sort_indices(&self, input: &RecordBatch) -> Result<Vec<usize>> {
+	fn sort_indices(&self, input: &RecordBatch) -> Result<Vec<usize>, ValueError> {
 		let key_refs = self
 			.by
 			.iter()
@@ -114,13 +115,13 @@ impl SortNode {
 				}
 				Ok::<_, ValueError>((view, key.direction.clone()))
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 
 		rank_rows(&key_refs, input.num_rows(), None)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
-	fn permute(input: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
+	fn permute(input: &RecordBatch, indices: &[usize]) -> Result<RecordBatch, ValueError> {
 		take_rows(input, indices)
 	}
 }

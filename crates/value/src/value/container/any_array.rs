@@ -10,7 +10,7 @@ use arrow_array::{
 use postcard::{from_bytes, to_allocvec};
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 	value::{Value, container::varlen_array, value_type::ValueType},
 };
@@ -85,7 +85,7 @@ pub fn as_string(array: &LargeBinaryArray, index: usize) -> String {
 	}
 }
 
-pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> Result<LargeBinaryArray> {
+pub fn reorder(array: &LargeBinaryArray, indices: &[usize]) -> Result<LargeBinaryArray, ValueError> {
 	kernel::rows_in_range(indices, array.len())?;
 	let mut builder = LargeBinaryBuilder::with_capacity(indices.len(), varlen_array::compact_parts(array).0.len());
 	for &index in indices {

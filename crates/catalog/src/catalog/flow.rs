@@ -17,11 +17,11 @@ use reifydb_transaction::{
 	change::TransactionalFlowChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{error, fragment::Fragment};
+use reifydb_value::{error, error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	store::{flow::create::FlowToCreate as StoreFlowToCreate, sequence::flow as flow_sequence},
 };
@@ -43,7 +43,7 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self, txn))]
-	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
+	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(flow) = self.cache.find_flow_at(id, cmd.version()) {
@@ -115,7 +115,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Flow>> {
+	) -> Result<Option<Flow>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, cmd.version()) {
@@ -205,7 +205,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self, txn))]
-	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Flow> {
+	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Flow, ValueError> {
 		self.find_flow(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -215,7 +215,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::find_dag", level = "trace", skip(self, txn))]
-	pub fn find_flow_dag(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDag>> {
+	pub fn find_flow_dag(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDag>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(entry) = self.cache.find_flow_entry_at(id, cmd.version()) {
@@ -293,7 +293,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get_dag", level = "trace", skip(self, txn))]
-	pub fn get_flow_dag(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<FlowDag> {
+	pub fn get_flow_dag(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<FlowDag, ValueError> {
 		self.find_flow_dag(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow DAG with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -303,7 +303,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::create", level = "info", skip(self, txn, to_create, dag))]
-	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate, dag: FlowDag) -> Result<Flow> {
+	pub fn create_flow(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: FlowToCreate,
+		dag: FlowDag,
+	) -> Result<Flow, ValueError> {
 		let flow = CatalogStore::create_flow(txn, dag.id(), to_create.into())?;
 		for (_, node) in dag.graph.nodes() {
 			CatalogStore::create_operator(txn, flow.id, node)?;
@@ -319,7 +324,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::drop", level = "info", skip(self, txn))]
-	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: Flow) -> Result<()> {
+	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: Flow) -> Result<(), ValueError> {
 		let dag = self.get_flow_dag(&mut Transaction::Admin(&mut *txn), flow.id)?;
 		CatalogStore::drop_flow(txn, flow.id)?;
 		txn.track_flow_deleted(FlowEntry {
@@ -330,7 +335,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::list_all", level = "trace", skip(self, txn))]
-	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Flow>> {
+	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Flow>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.list_all_flows_at(cmd.version())),
 			Transaction::Admin(admin) => {
@@ -364,7 +369,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::list_dags_asc", level = "trace", skip(self, txn))]
-	pub fn list_flow_dags_asc(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowDag>> {
+	pub fn list_flow_dags_asc(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowDag>, ValueError> {
 		let mut entries = match txn.reborrow() {
 			Transaction::Command(cmd) => self.cache.list_flow_entries_at(cmd.version()),
 			Transaction::Admin(admin) => {
@@ -399,7 +404,7 @@ impl Catalog {
 		Ok(entries.into_iter().map(|entry| entry.dag).collect())
 	}
 
-	pub fn list_transactional_flow_dags(&self, txn: &mut Transaction<'_>) -> Result<Arc<[FlowDag]>> {
+	pub fn list_transactional_flow_dags(&self, txn: &mut Transaction<'_>) -> Result<Arc<[FlowDag]>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.transactional_flows_at(cmd.version())),
 			Transaction::Query(qry) => Ok(self.cache.transactional_flows_at(qry.version())),
@@ -415,7 +420,7 @@ impl Catalog {
 		}
 	}
 
-	fn is_transactional(&self, txn: &mut Transaction<'_>, dag: &FlowDag) -> Result<bool> {
+	fn is_transactional(&self, txn: &mut Transaction<'_>, dag: &FlowDag) -> Result<bool, ValueError> {
 		for view in dag.sink_views() {
 			if self.find_view(txn, view)?.is_some_and(|def| def.kind() == ViewKind::Transactional) {
 				return Ok(true);
@@ -425,12 +430,22 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::update_name", level = "debug", skip(self, txn))]
-	pub fn update_flow_name(&self, txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
+	pub fn update_flow_name(
+		&self,
+		txn: &mut AdminTransaction,
+		flow_id: FlowId,
+		new_name: String,
+	) -> Result<(), ValueError> {
 		CatalogStore::update_flow_name(txn, flow_id, new_name)
 	}
 
 	#[instrument(name = "catalog::flow::poison", level = "debug", skip(self, txn))]
-	pub fn poison_flow(&self, txn: &mut AdminTransaction, flow_id: FlowId, reason: String) -> Result<()> {
+	pub fn poison_flow(
+		&self,
+		txn: &mut AdminTransaction,
+		flow_id: FlowId,
+		reason: String,
+	) -> Result<(), ValueError> {
 		let Some(pre) = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)? else {
 			return Ok(());
 		};
@@ -458,17 +473,17 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::next_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_id(&self, txn: &mut AdminTransaction) -> Result<FlowId> {
+	pub fn next_flow_id(&self, txn: &mut AdminTransaction) -> Result<FlowId, ValueError> {
 		flow_sequence::next_flow_id(txn)
 	}
 
 	#[instrument(name = "catalog::flow::next_node_id", level = "trace", skip(self, txn))]
-	pub fn next_operator_id(&self, txn: &mut AdminTransaction) -> Result<OperatorId> {
+	pub fn next_operator_id(&self, txn: &mut AdminTransaction) -> Result<OperatorId, ValueError> {
 		flow_sequence::next_operator_id(txn)
 	}
 
 	#[instrument(name = "catalog::flow::next_edge_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_edge_id(&self, txn: &mut AdminTransaction) -> Result<FlowEdgeId> {
+	pub fn next_flow_edge_id(&self, txn: &mut AdminTransaction) -> Result<FlowEdgeId, ValueError> {
 		flow_sequence::next_flow_edge_id(txn)
 	}
 }

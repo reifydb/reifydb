@@ -3,12 +3,9 @@
 
 use rusqlite::{Connection, ToSql};
 
-use crate::{
-	SqliteConfig,
-	error::{SqliteError, SqliteResult},
-};
+use crate::{SqliteConfig, error::SqliteError};
 
-pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
+pub fn apply(conn: &Connection, config: &SqliteConfig) -> Result<(), SqliteError> {
 	if let Some(page_size) = config.page_size {
 		set(conn, "page_size", page_size.as_bytes() as u32)?;
 	}
@@ -33,7 +30,7 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	Ok(())
 }
 
-pub fn apply_read_only(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
+pub fn apply_read_only(conn: &Connection, config: &SqliteConfig) -> Result<(), SqliteError> {
 	set(conn, "query_only", true)?;
 	if let Some(temp_store) = config.temp_store {
 		set(conn, "temp_store", temp_store.as_str())?;
@@ -48,17 +45,17 @@ pub fn apply_read_only(conn: &Connection, config: &SqliteConfig) -> SqliteResult
 	Ok(())
 }
 
-pub fn shrink_memory(conn: &Connection) -> SqliteResult<()> {
+pub fn shrink_memory(conn: &Connection) -> Result<(), SqliteError> {
 	set(conn, "shrink_memory", 0)
 }
 
-pub fn shutdown(conn: &Connection) -> SqliteResult<()> {
+pub fn shutdown(conn: &Connection) -> Result<(), SqliteError> {
 	set(conn, "wal_checkpoint", "TRUNCATE")?;
 	set(conn, "cache_size", 0)?;
 	Ok(())
 }
 
-fn set<V: ToSql>(conn: &Connection, name: &str, value: V) -> SqliteResult<()> {
+fn set<V: ToSql>(conn: &Connection, name: &str, value: V) -> Result<(), SqliteError> {
 	conn.pragma_update(None, name, value).map_err(|source| SqliteError::Pragma {
 		name: name.into(),
 		source,

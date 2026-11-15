@@ -76,7 +76,6 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	reifydb_assertions,
 	value::{
@@ -184,7 +183,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
-	) -> Result<Option<RingBufferMetadata>> {
+	) -> Result<Option<RingBufferMetadata>, ValueError> {
 		let key = self.meta_key(partition);
 		let Some(row) = self.state_get(txn, slice::from_ref(&key))?.pop().flatten() else {
 			return Ok(None);
@@ -197,7 +196,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
 		metadata: &RingBufferMetadata,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let key = self.meta_key(partition);
 		let row = EncodedPodRow::new(encode_ringbuffer_metadata(metadata).as_slice());
 		self.state_set(txn, vec![(key, row)])
@@ -209,7 +208,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
 		mvcc: &EncodedKey,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			let mirrored = self.read_meta_mirror(txn, partition)?;
 			let stored = txn.get(slice::from_ref(mvcc))?.pop().flatten().map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row))).transpose()?;
@@ -227,7 +226,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<RingBufferMetadata>>> {
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		let mirrors: Vec<GroupStateKey> =
 			partitions.iter().map(|partition| self.meta_key(*partition)).collect();
 		let mut found: Vec<Option<RingBufferMetadata>> = self
@@ -236,7 +235,7 @@ impl SinkRingBufferViewOperator {
 			.map(|row| {
 				row.map(|row| decode_ringbuffer_metadata(&EncodedPodRow::new(row.body()))).transpose()
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let misses: Vec<usize> = (0..partitions.len()).filter(|&index| found[index].is_none()).collect();
 		if misses.is_empty() {
 			return Ok(found);
@@ -260,7 +259,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		entries: &[(Option<Partition>, RingBufferMetadata)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if entries.is_empty() {
 			return Ok(());
 		}
@@ -287,7 +286,11 @@ impl SinkRingBufferViewOperator {
 		Ok(())
 	}
 
-	fn remove_metadata(&self, txn: &mut DeferredTransaction, partitions: &[Option<Partition>]) -> Result<()> {
+	fn remove_metadata(
+		&self,
+		txn: &mut DeferredTransaction,
+		partitions: &[Option<Partition>],
+	) -> Result<(), ValueError> {
 		if partitions.is_empty() {
 			return Ok(());
 		}
@@ -305,7 +308,7 @@ impl SinkRingBufferViewOperator {
 		Ok(())
 	}
 
-	fn save_ring(&self, txn: &mut DeferredTransaction, ring: &Ring) -> Result<()> {
+	fn save_ring(&self, txn: &mut DeferredTransaction, ring: &Ring) -> Result<(), ValueError> {
 		RingMetadata::new(txn, self.storage).save(self, ring)
 	}
 
@@ -313,14 +316,14 @@ impl SinkRingBufferViewOperator {
 		typed_key::<RingbufferNextRow>(GroupId::ROOT, &RingbufferNextRowKey {})
 	}
 
-	fn read_next_row(&self, txn: &mut DeferredTransaction) -> Result<u64> {
+	fn read_next_row(&self, txn: &mut DeferredTransaction) -> Result<u64, ValueError> {
 		match self.state_get(txn, &[self.next_row_key()])?.pop().flatten() {
 			Some(row) => decode_u64(&row, "RingBufferNextRow"),
 			None => Ok(1),
 		}
 	}
 
-	fn write_next_row(&self, txn: &mut DeferredTransaction, next_row: u64) -> Result<()> {
+	fn write_next_row(&self, txn: &mut DeferredTransaction, next_row: u64) -> Result<(), ValueError> {
 		self.state_set(txn, vec![(self.next_row_key(), encode_u64(next_row, "RingBufferNextRow")?)])
 	}
 
@@ -332,7 +335,11 @@ impl SinkRingBufferViewOperator {
 		)
 	}
 
-	fn forwards(&self, txn: &mut DeferredTransaction, source_rns: &[RowNumber]) -> Result<Vec<Option<RowNumber>>> {
+	fn forwards(
+		&self,
+		txn: &mut DeferredTransaction,
+		source_rns: &[RowNumber],
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		let keys: Vec<GroupStateKey> = source_rns.iter().map(|rn| self.forward_key(*rn)).collect();
 		self.state_get(txn, &keys)?
 			.into_iter()
@@ -381,7 +388,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		rows: &[(Option<Partition>, RowNumber)],
-	) -> Result<Vec<Option<RowNumber>>> {
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		let keys: Vec<GroupStateKey> =
 			rows.iter().map(|(partition, rn)| self.row_entry_key(*partition, *rn)).collect();
 		self.state_get(txn, &keys)?
@@ -395,7 +402,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		rows: &[(Option<Partition>, RowNumber)],
 		removes: &mut Vec<GroupStateKey>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		for (&(partition, rn), source) in rows.iter().zip(self.row_sources(txn, rows)?) {
 			if let Some(source) = source {
 				removes.push(self.forward_key(source));
@@ -411,11 +418,11 @@ impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<RingBufferMetadata>>> {
+	) -> Result<Vec<Option<RingBufferMetadata>>, ValueError> {
 		self.read_metadata(txn, partitions)
 	}
 
-	fn reserve(&self, txn: &mut DeferredTransaction, batch_count: u64) -> Result<u64> {
+	fn reserve(&self, txn: &mut DeferredTransaction, batch_count: u64) -> Result<u64, ValueError> {
 		let base = self.read_next_row(txn)?;
 		self.write_next_row(txn, base + batch_count)?;
 		Ok(base)
@@ -425,16 +432,20 @@ impl RingCounters<DeferredTransaction> for SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		entries: &[(Option<Partition>, RingBufferMetadata)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		self.write_metadata(txn, entries)
 	}
 
-	fn remove_metadata(&self, txn: &mut DeferredTransaction, partitions: &[Option<Partition>]) -> Result<()> {
+	fn remove_metadata(
+		&self,
+		txn: &mut DeferredTransaction,
+		partitions: &[Option<Partition>],
+	) -> Result<(), ValueError> {
 		SinkRingBufferViewOperator::remove_metadata(self, txn, partitions)
 	}
 }
 
-pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
+pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow, ValueError> {
 	encode(&value).map_err(|e| {
 		ValueError::from(FlowAsyncError::Encode {
 			state,
@@ -443,7 +454,7 @@ pub(super) fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRo
 	})
 }
 
-pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
+pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64, ValueError> {
 	decode(row).map_err(|e| {
 		ValueError::from(FlowAsyncError::Decode {
 			state,
@@ -452,7 +463,7 @@ pub(super) fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64
 	})
 }
 
-fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow> {
+fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow, ValueError> {
 	encode(&value).map_err(|e| {
 		ValueError::from(FlowAsyncError::Encode {
 			state,
@@ -461,7 +472,7 @@ fn encode_i64(value: i64, state: &'static str) -> Result<EncodedPodRow> {
 	})
 }
 
-fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
+fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64, ValueError> {
 	decode(row).map_err(|e| {
 		ValueError::from(FlowAsyncError::Decode {
 			state,
@@ -470,7 +481,7 @@ fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 	})
 }
 
-fn sequence_ordered_runs(batches: &[RecordBatch]) -> Result<Vec<RecordBatch>> {
+fn sequence_ordered_runs(batches: &[RecordBatch]) -> Result<Vec<RecordBatch>, ValueError> {
 	let mut by_sequence: Vec<Vec<u64>> = Vec::with_capacity(batches.len());
 	for batch in batches {
 		by_sequence.push(sequences(batch)?.to_vec());
@@ -516,21 +527,25 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		keys: &[GroupStateKey],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
 		txn.state_get(self.operator, keys)
 	}
 
-	fn state_set(&self, txn: &mut DeferredTransaction, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(
+		&self,
+		txn: &mut DeferredTransaction,
+		rows: Vec<(GroupStateKey, EncodedPodRow)>,
+	) -> Result<(), ValueError> {
 		if rows.is_empty() {
 			return Ok(());
 		}
 		txn.state_set(self.operator, rows)
 	}
 
-	fn state_remove(&self, txn: &mut DeferredTransaction, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&self, txn: &mut DeferredTransaction, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 		if keys.is_empty() {
 			return Ok(());
 		}
@@ -547,7 +562,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change_keeping(txn, change, self.view.def().columns())?;
 		let resolved = self.view.clone();
 		let view = resolved.def();
@@ -613,7 +628,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 
-	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind != TimerKind::RowTtl || self.ttl.is_none() {
 			return Ok(None);
 		}
@@ -634,7 +649,7 @@ impl SinkRingBufferViewOperator {
 		RingBufferMetadataKey::encoded_of(self.storage, partition)
 	}
 
-	fn timer_partition(&self, key: &EncodedKey) -> Result<Option<Partition>> {
+	fn timer_partition(&self, key: &EncodedKey) -> Result<Option<Partition>, ValueError> {
 		RingBufferMetadataKey::decode(key).and_then(|decoded| decoded.partition()).ok_or_else(|| {
 			ValueError::from(FlowAsyncError::Decode {
 				state: "RingBufferMetadataKey",
@@ -647,7 +662,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<i64>>> {
+	) -> Result<Vec<Option<i64>>, ValueError> {
 		let keys: Vec<GroupStateKey> = partitions.iter().map(|&partition| self.arm_key(partition)).collect();
 		self.state_get(txn, &keys)?
 			.into_iter()
@@ -662,7 +677,7 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut DeferredTransaction,
 		partitions: &[Option<Partition>],
-	) -> Result<Vec<Option<i64>>> {
+	) -> Result<Vec<Option<i64>>, ValueError> {
 		let mut store = RingAdapter {
 			txn,
 			counters: self,
@@ -676,7 +691,11 @@ impl SinkRingBufferViewOperator {
 			.collect())
 	}
 
-	fn sync_row_ttl_timer(&self, txn: &mut DeferredTransaction, partitions: &[Option<Partition>]) -> Result<()> {
+	fn sync_row_ttl_timer(
+		&self,
+		txn: &mut DeferredTransaction,
+		partitions: &[Option<Partition>],
+	) -> Result<(), ValueError> {
 		if self.ttl.is_none() || partitions.is_empty() {
 			return Ok(());
 		}
@@ -719,7 +738,12 @@ impl SinkRingBufferViewOperator {
 		self.state_remove(txn, &removes)
 	}
 
-	fn evict_due(&self, txn: &mut DeferredTransaction, partition: Option<Partition>, at: i64) -> Result<bool> {
+	fn evict_due(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+		at: i64,
+	) -> Result<bool, ValueError> {
 		let Some(ttl_ms) = self.ttl.and_then(|ttl| ttl.milliseconds().ok()) else {
 			return Ok(false);
 		};
@@ -756,7 +780,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		view: &View,
 		source: &RecordBatch,
-	) -> Result<Vec<(Option<Partition>, Vec<usize>)>> {
+	) -> Result<Vec<(Option<Partition>, Vec<usize>)>, ValueError> {
 		if !self.is_partitioned() {
 			return Ok(vec![(None, (0..source.num_rows()).collect())]);
 		}
@@ -779,7 +803,7 @@ impl SinkRingBufferViewOperator {
 		ring: &mut Ring,
 		inserts: &mut Vec<RecordBatch>,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		for run in sequence_ordered_runs(&take(inserts))? {
 			self.apply_ringbuffer_insert(txn, view, ring, &run, touched)?;
 		}
@@ -794,7 +818,7 @@ impl SinkRingBufferViewOperator {
 		ring: &mut Ring,
 		post: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if post.num_rows() == 0 {
 			return Ok(());
 		}
@@ -895,7 +919,7 @@ impl SinkRingBufferViewOperator {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() != post.num_rows() {
 			return internal_err!(
 				"ringbuffer update has {} pre rows but {} post rows",
@@ -983,7 +1007,7 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		pre: &RecordBatch,
 		post: &RecordBatch,
-	) -> Result<Vec<usize>> {
+	) -> Result<Vec<usize>, ValueError> {
 		if !self.is_partitioned() || post.num_rows() == 0 {
 			return Ok(Vec::new());
 		}
@@ -1013,7 +1037,7 @@ impl SinkRingBufferViewOperator {
 		ring: &mut Ring,
 		pre: &RecordBatch,
 		touched: &mut IndexSet<Option<Partition>>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre.num_rows() == 0 {
 			return Ok(());
 		}
@@ -1337,7 +1361,7 @@ mod tests {
 			end,
 		};
 		txn.range(range.for_operator(op.operator), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap()
 			.len()
 	}

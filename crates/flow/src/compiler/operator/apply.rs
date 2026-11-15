@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::ApplyNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -30,7 +30,7 @@ impl From<ApplyNode> for ApplyCompiler {
 }
 
 impl CompileOperator for ApplyCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

@@ -3,7 +3,7 @@
 
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::runtime::Handle;
 
 use crate::{
@@ -36,7 +36,7 @@ impl OtelSubsystemFactory {
 }
 
 impl SubsystemFactory for OtelSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		if let Some(subsystem) = self.subsystem {
 			Ok(Box::new(subsystem))
 		} else if let Some(config_fn) = self.config_fn {

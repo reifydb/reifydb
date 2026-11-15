@@ -2,9 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use bumpalo::Bump;
+use reifydb_value::error::ValueError;
 use tracing::instrument;
 
-use crate::{Result, ast::ast::AstStatement, token::tokenize};
+use crate::{ast::ast::AstStatement, token::tokenize};
 
 #[allow(clippy::module_inception)]
 pub mod ast;
@@ -12,7 +13,7 @@ pub mod identifier;
 pub(crate) mod parse;
 
 #[instrument(name = "rql::parse", level = "trace", skip(bump, str))]
-pub fn parse_str<'b>(bump: &'b Bump, str: &'b str) -> Result<Vec<AstStatement<'b>>> {
+pub fn parse_str<'b>(bump: &'b Bump, str: &'b str) -> Result<Vec<AstStatement<'b>>, ValueError> {
 	let tokens = tokenize(bump, str)?;
 	let statements = parse::parse(bump, str, tokens.into_iter().collect())?;
 	Ok(statements)

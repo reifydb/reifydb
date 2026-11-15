@@ -11,11 +11,16 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_column(txn: &mut AdminTransaction, object: ObjectId, column_id: ColumnId) -> Result<()> {
+	pub(crate) fn drop_column(
+		txn: &mut AdminTransaction,
+		object: ObjectId,
+		column_id: ColumnId,
+	) -> Result<(), ValueError> {
 		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();

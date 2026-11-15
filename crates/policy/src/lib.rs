@@ -25,7 +25,7 @@ use reifydb_rql::plan::logical::{
 };
 use reifydb_rql_frontend::{ast::parse_str, bump::BumpBox};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::identity::IdentityId};
 use tracing::instrument;
 
 #[instrument(name = "policy::inject", level = "debug", skip_all)]
@@ -34,7 +34,7 @@ pub fn inject_from_policies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
+) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError> {
 	let identity = tx.identity();
 
 	if identity.is_privileged() {
@@ -49,7 +49,7 @@ fn inject_plans<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
+) -> Result<BumpVec<'a, LogicalPlan<'a>>, ValueError> {
 	let mut result = BumpVec::with_capacity_in(plans.len() + 4, bump);
 	for plan in plans {
 		match plan {
@@ -67,7 +67,7 @@ fn inject_plan<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<LogicalPlan<'a>> {
+) -> Result<LogicalPlan<'a>, ValueError> {
 	match plan {
 		scan @ LogicalPlan::SourceScan(_) => {
 			let mut steps = BumpVec::with_capacity_in(4, bump);
@@ -125,7 +125,7 @@ fn inject_plan<'a>(
 						then_branch: inject_bodies(branch.then_branch, bump, catalog, tx)?,
 					})
 				})
-				.collect::<Result<_>>()?;
+				.collect::<Result<_, ValueError>>()?;
 			node.else_branch =
 				node.else_branch.map(|branch| inject_bodies(branch, bump, catalog, tx)).transpose()?;
 			Ok(LogicalPlan::Conditional(node))
@@ -205,7 +205,7 @@ fn inject_bodies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<Vec<BumpVec<'a, LogicalPlan<'a>>>> {
+) -> Result<Vec<BumpVec<'a, LogicalPlan<'a>>>, ValueError> {
 	bodies.into_iter().map(|plans| inject_plans(plans, bump, catalog, tx)).collect()
 }
 
@@ -214,7 +214,7 @@ fn inject_boxed<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<BumpBox<'a, LogicalPlan<'a>>> {
+) -> Result<BumpBox<'a, LogicalPlan<'a>>, ValueError> {
 	Ok(BumpBox::new_in(inject_plan(BumpBox::into_inner(plan), bump, catalog, tx)?, bump))
 }
 
@@ -224,7 +224,7 @@ fn inject_scan_with_policies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let LogicalPlan::SourceScan(scan) = &step else {
 		unreachable!("inject_scan_with_policies called with non-SourceScan");
 	};
@@ -285,7 +285,7 @@ fn compile_and_push_from_op<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let statements = parse_str(bump, bump.alloc_str(&op.body_source))?;
 	for stmt in statements {
 		let logical = compile_logical(bump, catalog, tx, stmt)?;
@@ -326,7 +326,7 @@ pub fn resolve_write_policies(
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
-) -> Result<Vec<(Policy, PolicyOperation)>> {
+) -> Result<Vec<(Policy, PolicyOperation)>, ValueError> {
 	if identity.is_privileged() {
 		return Ok(vec![]);
 	}

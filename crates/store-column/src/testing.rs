@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, SyncDir, Unlink, testing::Continue},
 	sync::Arc,
 };
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 use vortex_session::VortexSession;
 
 use crate::{
@@ -102,7 +102,7 @@ impl<F> WriteBlock for TestingColumnStore<F>
 where
 	F: Filesystem + Create + Mkdir + OpenMut + SyncDir + Send + Sync + 'static,
 {
-	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
+	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<(), ValueError> {
 		self.call();
 		match self.0.hooks.on_write(key) {
 			WriteOutcome::Land => self.0.store.write(key, data),
@@ -118,7 +118,7 @@ where
 impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for TestingColumnStore<F> {
 	type File = F::File;
 
-	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>> {
+	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>, ValueError> {
 		self.call();
 		match self.0.hooks.on_open(key) {
 			OpenOutcome::Honest => self.0.store.open(key),
@@ -128,7 +128,7 @@ impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for TestingColumnSt
 }
 
 impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for TestingColumnStore<F> {
-	fn remove(&self, key: &BlockFileKey) -> Result<()> {
+	fn remove(&self, key: &BlockFileKey) -> Result<(), ValueError> {
 		self.call();
 		match self.0.hooks.on_remove(key) {
 			RemoveOutcome::Land => self.0.store.remove(key),
@@ -138,7 +138,7 @@ impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for TestingColu
 }
 
 impl<F: Filesystem + ReadDir + Send + Sync + 'static> ListBlocks for TestingColumnStore<F> {
-	fn list(&self) -> Result<Vec<BlockFileKey>> {
+	fn list(&self) -> Result<Vec<BlockFileKey>, ValueError> {
 		self.call();
 		self.0.store.list()
 	}

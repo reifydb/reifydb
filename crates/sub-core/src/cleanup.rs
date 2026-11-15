@@ -3,14 +3,11 @@
 
 use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::SubscriptionId};
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
-use reifydb_value::{
-	Result as TypeResult,
-	error::{Diagnostic, ValueError},
-};
+use reifydb_value::error::{Diagnostic, ValueError};
 #[cfg(not(reifydb_single_threaded))]
 use tokio::task::spawn_blocking;
 
-pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
+pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> Result<(), ValueError> {
 	unregister(engine, subscription_id).map_err(|cause| {
 		ValueError(Box::new(Diagnostic {
 			cause: Some(cause.0),
@@ -19,13 +16,13 @@ pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: Subsc
 	})
 }
 
-fn unregister(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
+fn unregister(engine: &StandardEngine, subscription_id: SubscriptionId) -> Result<(), ValueError> {
 	engine.ioc().resolve::<SubscriptionServiceRef>()?.unregister_subscription(&subscription_id)?;
 	Ok(())
 }
 
 #[cfg(not(reifydb_single_threaded))]
-pub async fn cleanup_subscription(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
+pub async fn cleanup_subscription(engine: &StandardEngine, subscription_id: SubscriptionId) -> Result<(), ValueError> {
 	let engine = engine.clone();
 
 	spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await.map_err(|e| {

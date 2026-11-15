@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRowBuilder};
 use reifydb_core::interface::catalog::ringbuffer::RingBuffer;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
@@ -23,11 +23,11 @@ impl<'a> RingBufferRowPreInsertContext<'a> {
 }
 
 pub trait RingBufferRowPreInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferRowPreInsertContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -39,14 +39,14 @@ impl InterceptorChain<dyn RingBufferRowPreInsertInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -57,7 +57,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -68,16 +68,16 @@ where
 
 impl<F> RingBufferRowPreInsertInterceptor for ClosureRingBufferRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_pre_insert<F>(f: F) -> ClosureRingBufferRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureRingBufferRowPreInsertInterceptor::new(f)
 }
@@ -100,11 +100,11 @@ impl<'a> RingBufferRowPostInsertContext<'a> {
 }
 
 pub trait RingBufferRowPostInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPostInsertInterceptor + Send + Sync> {
-	pub fn execute<'a>(&self, mut ctx: RingBufferRowPostInsertContext<'a>) -> Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -114,14 +114,14 @@ impl InterceptorChain<dyn RingBufferRowPostInsertInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -132,7 +132,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -143,16 +143,20 @@ where
 
 impl<F> RingBufferRowPostInsertInterceptor for ClosureRingBufferRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_post_insert<F>(f: F) -> ClosureRingBufferRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPostInsertContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureRingBufferRowPostInsertInterceptor::new(f)
 }
@@ -179,11 +183,11 @@ impl<'a> RingBufferRowPreUpdateContext<'a> {
 }
 
 pub trait RingBufferRowPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferRowPreUpdateContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -195,14 +199,14 @@ impl InterceptorChain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -213,7 +217,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -224,16 +228,16 @@ where
 
 impl<F> RingBufferRowPreUpdateInterceptor for ClosureRingBufferRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_pre_update<F>(f: F) -> ClosureRingBufferRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureRingBufferRowPreUpdateInterceptor::new(f)
 }
@@ -264,11 +268,11 @@ impl<'a> RingBufferRowPostUpdateContext<'a> {
 }
 
 pub trait RingBufferRowPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPostUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferRowPostUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -278,14 +282,14 @@ impl InterceptorChain<dyn RingBufferRowPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -296,7 +300,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -307,16 +311,20 @@ where
 
 impl<F> RingBufferRowPostUpdateInterceptor for ClosureRingBufferRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_post_update<F>(f: F) -> ClosureRingBufferRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPostUpdateContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureRingBufferRowPostUpdateInterceptor::new(f)
 }
@@ -336,11 +344,11 @@ impl<'a> RingBufferRowPreDeleteContext<'a> {
 }
 
 pub trait RingBufferRowPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferRowPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -350,14 +358,14 @@ impl InterceptorChain<dyn RingBufferRowPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -368,7 +376,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -379,16 +387,16 @@ where
 
 impl<F> RingBufferRowPreDeleteInterceptor for ClosureRingBufferRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_pre_delete<F>(f: F) -> ClosureRingBufferRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureRingBufferRowPreDeleteInterceptor::new(f)
 }
@@ -411,11 +419,11 @@ impl<'a> RingBufferRowPostDeleteContext<'a> {
 }
 
 pub trait RingBufferRowPostDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPostDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferRowPostDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -425,14 +433,14 @@ impl InterceptorChain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureRingBufferRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureRingBufferRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -443,7 +451,7 @@ where
 
 impl<F> Clone for ClosureRingBufferRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -454,16 +462,20 @@ where
 
 impl<F> RingBufferRowPostDeleteInterceptor for ClosureRingBufferRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn ringbuffer_row_post_delete<F>(f: F) -> ClosureRingBufferRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut RingBufferRowPostDeleteContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureRingBufferRowPostDeleteInterceptor::new(f)
 }
@@ -475,7 +487,7 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		rows: &mut [EncodedRingBufferRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPreInsertContext::new(ringbuffer, rows);
 		txn.ringbuffer_row_pre_insert_interceptors().execute(ctx)
 	}
@@ -485,7 +497,7 @@ impl RingBufferRowInterceptor {
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
 		bytes_slice: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, ids, bytes_slice);
 		txn.ringbuffer_row_post_insert_interceptors().execute(ctx)
 	}
@@ -495,7 +507,7 @@ impl RingBufferRowInterceptor {
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
 		rows: &mut [EncodedRingBufferRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPreUpdateContext::new(ringbuffer, ids, rows);
 		txn.ringbuffer_row_pre_update_interceptors().execute(ctx)
 	}
@@ -506,12 +518,16 @@ impl RingBufferRowInterceptor {
 		ids: &[RowNumber],
 		posts: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, ids, posts, pres);
 		txn.ringbuffer_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, ringbuffer: &RingBuffer, ids: &[RowNumber]) -> Result<()> {
+	pub fn pre_delete(
+		txn: &mut impl WithInterceptors,
+		ringbuffer: &RingBuffer,
+		ids: &[RowNumber],
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPreDeleteContext::new(ringbuffer, ids);
 		txn.ringbuffer_row_pre_delete_interceptors().execute(ctx)
 	}
@@ -521,7 +537,7 @@ impl RingBufferRowInterceptor {
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
 		deleted: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, ids, deleted);
 		txn.ringbuffer_row_post_delete_interceptors().execute(ctx)
 	}

@@ -15,6 +15,7 @@ use reifydb_rql::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	value::{
 		Value,
 		constraint::TypeConstraint,
@@ -28,7 +29,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, error::EvaluateError};
+use crate::error::EvaluateError;
 
 pub fn field_label(field: &Field) -> String {
 	match is_sumtype_tag(field) {
@@ -93,7 +94,7 @@ impl Variable {
 		)
 	}
 
-	pub fn into_column(self) -> Result<(FieldRef, ArrayRef)> {
+	pub fn into_column(self) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let batch = match self {
 			Variable::Columns {
 				batch,
@@ -174,7 +175,7 @@ impl SymbolTable {
 		Arc::make_mut(&mut self.inner).scopes.push(new_scope);
 	}
 
-	pub fn exit_scope(&mut self) -> Result<()> {
+	pub fn exit_scope(&mut self) -> Result<(), ValueError> {
 		if self.inner.scopes.len() <= 1 {
 			return Err(error!(internal!("Cannot exit global scope")));
 		}
@@ -182,11 +183,11 @@ impl SymbolTable {
 		Ok(())
 	}
 
-	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
+	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> Result<(), ValueError> {
 		self.set_in_current_scope(name, variable, mutable)
 	}
 
-	pub fn reassign(&mut self, name: String, variable: Variable) -> Result<()> {
+	pub fn reassign(&mut self, name: String, variable: Variable) -> Result<(), ValueError> {
 		let inner = Arc::make_mut(&mut self.inner);
 
 		for scope in inner.scopes.iter_mut().rev() {
@@ -215,7 +216,12 @@ impl SymbolTable {
 		.into())
 	}
 
-	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
+	pub fn set_in_current_scope(
+		&mut self,
+		name: String,
+		variable: Variable,
+		mutable: bool,
+	) -> Result<(), ValueError> {
 		let inner = Arc::make_mut(&mut self.inner);
 		let current_scope = inner.scopes.last_mut().unwrap();
 
@@ -252,14 +258,14 @@ impl SymbolTable {
 		);
 	}
 
-	pub fn enum_field(&self, batch: &RecordBatch, field: &str) -> Result<Option<Value>> {
+	pub fn enum_field(&self, batch: &RecordBatch, field: &str) -> Result<Option<Value>, ValueError> {
 		let Some(index) = sumtype_tag_position(batch, field) else {
 			return Ok(None);
 		};
 		self.enum_value(batch.schema_ref().field(index), batch.column(index), 0)
 	}
 
-	pub fn enum_value(&self, field: &Field, array: &ArrayRef, row: usize) -> Result<Option<Value>> {
+	pub fn enum_value(&self, field: &Field, array: &ArrayRef, row: usize) -> Result<Option<Value>, ValueError> {
 		let Some(id) = from_field(field)?.sumtype else {
 			return Ok(None);
 		};

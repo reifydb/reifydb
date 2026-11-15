@@ -13,8 +13,7 @@ use reifydb_evaluate::expression::{
 	prefix::prefix_apply,
 };
 use reifydb_value::{
-	Result,
-	error::Diagnostic,
+	error::{Diagnostic, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -37,7 +36,7 @@ fn compare<Op: CompareOp>(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef
 	.1
 }
 
-fn add(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
+fn add(left: (FieldRef, ArrayRef), right: (FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let ctx = EvalContext::testing();
 	let fragment = Fragment::testing_empty();
 	add_columns(&ctx.arith(), &factory::rename(left, "left"), &factory::rename(right, "right"), &fragment)

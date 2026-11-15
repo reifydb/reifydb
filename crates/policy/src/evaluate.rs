@@ -3,7 +3,7 @@
 
 use arrow_array::RecordBatch;
 use reifydb_core::expression::Expression;
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 pub trait PolicyEvaluator {
 	fn evaluate_condition(
@@ -12,5 +12,5 @@ pub trait PolicyEvaluator {
 		batch: &RecordBatch,
 		row_count: usize,
 		identity: IdentityId,
-	) -> Result<bool>;
+	) -> Result<bool, ValueError>;
 }

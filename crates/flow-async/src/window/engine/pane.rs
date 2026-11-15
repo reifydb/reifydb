@@ -25,7 +25,7 @@ use reifydb_core::{
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -282,14 +282,14 @@ pub trait PanePublisher<G, C, A> {
 		prior: Option<Self::Published>,
 		value: Option<&A>,
 		applied: &mut PaneApplied<Self::Emit>,
-	) -> Result<Option<Self::Published>>;
+	) -> Result<Option<Self::Published>, ValueError>;
 
 	fn assign_row_number(
 		&self,
 		emit: &mut Self::Emit,
 		published: &mut Self::Published,
 		row: RowNumber,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 }
 
 struct Panes<'s, A> {
@@ -309,7 +309,7 @@ fn pane_range(group: GroupId, start: Bound<u64>, end: Bound<u64>) -> GroupStateR
 	}
 }
 
-fn pane_of(key: &GroupStateKey) -> Result<u64> {
+fn pane_of(key: &GroupStateKey) -> Result<u64, ValueError> {
 	match PaneKey::decode(key) {
 		Some((_, pane)) => Ok(pane),
 		None => internal_err!("a rolling pane row carries no pane order"),
@@ -339,7 +339,7 @@ where
 		}
 	}
 
-	fn get(&mut self, pane: u64) -> Result<Option<RollingPane<A>>> {
+	fn get(&mut self, pane: u64) -> Result<Option<RollingPane<A>>, ValueError> {
 		if let Some(row) = self.overlay.get(&pane) {
 			return Ok(row.clone());
 		}
@@ -355,7 +355,7 @@ where
 		self.overlay.insert(pane, row);
 	}
 
-	fn scan(&mut self, start: Bound<u64>, end: Bound<u64>) -> Result<BTreeMap<u64, RollingPane<A>>> {
+	fn scan(&mut self, start: Bound<u64>, end: Bound<u64>) -> Result<BTreeMap<u64, RollingPane<A>>, ValueError> {
 		let mut out = BTreeMap::new();
 		if !is_ordered(start, end) {
 			return Ok(out);
@@ -377,7 +377,7 @@ where
 		Ok(out)
 	}
 
-	fn first(&mut self) -> Result<Option<u64>> {
+	fn first(&mut self) -> Result<Option<u64>, ValueError> {
 		let deleted = self.overlay.values().filter(|row| row.is_none()).count();
 		let mut stored = None;
 		for (key, _) in
@@ -396,7 +396,7 @@ where
 		})
 	}
 
-	fn flush(self) -> Result<&'s mut dyn StateStore> {
+	fn flush(self) -> Result<&'s mut dyn StateStore, ValueError> {
 		let Self {
 			store,
 			group,
@@ -433,7 +433,7 @@ where
 	A: WindowAccumulator,
 	RollingPane<A>: OperatorState,
 {
-	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A> {
+	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A, ValueError> {
 		match self.get(pane)? {
 			Some(mut row) => {
 				(merge.compact)(&mut row.pane);
@@ -443,7 +443,7 @@ where
 		}
 	}
 
-	fn partial(&mut self, pane: u64) -> Result<A> {
+	fn partial(&mut self, pane: u64) -> Result<A, ValueError> {
 		match self.get(pane)?.and_then(|row| row.partial) {
 			Some(partial) => Ok(partial),
 			None => internal_err!(
@@ -452,7 +452,7 @@ where
 		}
 	}
 
-	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<()> {
+	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<(), ValueError> {
 		let Some(mut row) = self.get(pane)? else {
 			return internal_err!("the rolling queue converts pane {pane}, which holds no row");
 		};
@@ -462,7 +462,7 @@ where
 		Ok(())
 	}
 
-	fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>> {
+	fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>, ValueError> {
 		if below <= from {
 			return Ok(None);
 		}
@@ -574,7 +574,7 @@ where
 		}
 	}
 
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
 		self.expiry.earliest(store)
 	}
 
@@ -598,7 +598,7 @@ where
 		cutoff: Option<C>,
 		new_accumulator: &dyn Fn() -> A,
 		publisher: &P,
-	) -> Result<PaneApplied<P::Emit>>
+	) -> Result<PaneApplied<P::Emit>, ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -661,7 +661,12 @@ where
 		Ok(applied)
 	}
 
-	pub fn expire<P>(&mut self, store: &mut dyn StateStore, cutoff: C, publisher: &P) -> Result<Vec<P::Emit>>
+	pub fn expire<P>(
+		&mut self,
+		store: &mut dyn StateStore,
+		cutoff: C,
+		publisher: &P,
+	) -> Result<Vec<P::Emit>, ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -705,7 +710,7 @@ where
 		store: &mut dyn StateStore,
 		groups: &PaneGroups<G, C, Contribution<A>>,
 		cutoff: Option<u64>,
-	) -> Result<BTreeMap<u64, bool>>
+	) -> Result<BTreeMap<u64, bool>, ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -763,7 +768,7 @@ where
 		store: &mut dyn StateStore,
 		mut groups: PaneGroups<G, C, Contribution<A>>,
 		cutoff: Option<u64>,
-	) -> Result<PaneGroups<G, C, Contribution<A>>>
+	) -> Result<PaneGroups<G, C, Contribution<A>>, ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -801,7 +806,7 @@ where
 		new_accumulator: &dyn Fn() -> A,
 		publisher: &P,
 		applied: &mut PaneApplied<P::Emit>,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -1028,7 +1033,7 @@ where
 		cutoff: Option<u64>,
 		publisher: &P,
 		applied: &mut PaneApplied<P::Emit>,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		P: PanePublisher<G, C, A>,
 		RollingGroup<CountedAccumulator<A>, P::Published, Contribution<A>>: OperatorState + HeapSize,
@@ -1159,7 +1164,7 @@ mod tests {
 	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
-		Result as ValueResult,
+		error::ValueError,
 		util::hash::Hash128,
 		value::{datetime::DateTime, duration::Duration},
 	};
@@ -1660,7 +1665,7 @@ mod tests {
 		PaneEngine::queue(WindowEngineConfig::builder().build(), spans, Merge::of())
 	}
 
-	fn no_empty(_: &i64) -> ValueResult<Option<i64>> {
+	fn no_empty(_: &i64) -> Result<Option<i64>, ValueError> {
 		Ok(None)
 	}
 
@@ -1670,7 +1675,7 @@ mod tests {
 		pane: u64,
 		value: i64,
 		cutoff: Option<u64>,
-		zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>>,
+		zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>>,
 	) -> Emits {
 		let mut groups: PaneGroups<u32, DateTimeCoord, (u64, i64)> = BTreeMap::new();
 		let mut events = PaneEvents::default();
@@ -1698,7 +1703,7 @@ mod tests {
 		engine: &mut PaneEngine<u32, DateTimeCoord, Tally>,
 		store: &mut MockStore,
 		cutoff: u64,
-		zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>>,
+		zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>>,
 	) -> Emits {
 		engine.expire(
 			store,
@@ -1726,8 +1731,8 @@ mod tests {
 	#[test]
 	fn an_emptied_window_updates_to_its_zero_row_keeps_the_row_number_and_leaves_the_expiry_index() {
 		// a remove here would free the row number, and a still-indexed zero row would re-expire forever.
-		let zero = |prior: &i64| -> ValueResult<Option<i64>> { Ok((*prior != 0).then_some(0)) };
-		let zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>> = Some(&zero);
+		let zero = |prior: &i64| -> Result<Option<i64>, ValueError> { Ok((*prior != 0).then_some(0)) };
+		let zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>> = Some(&zero);
 		let mut engine = tally_engine();
 		let mut store = MockStore::default();
 		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();
@@ -1753,8 +1758,8 @@ mod tests {
 	fn a_retraction_that_empties_the_window_zeroes_once_and_the_later_expiry_stays_silent() {
 		// the emptied group stays indexed, so without the already-zero check its expiry re-emits zero over
 		// zero.
-		let zero = |prior: &i64| -> ValueResult<Option<i64>> { Ok((*prior != 0).then_some(0)) };
-		let zero: Option<&dyn Fn(&i64) -> ValueResult<Option<i64>>> = Some(&zero);
+		let zero = |prior: &i64| -> Result<Option<i64>, ValueError> { Ok((*prior != 0).then_some(0)) };
+		let zero: Option<&dyn Fn(&i64) -> Result<Option<i64>, ValueError>> = Some(&zero);
 		let mut engine = tally_engine();
 		let mut store = MockStore::default();
 		let [inserted] = tally_insert(&mut engine, &mut store, 1_000, 5, None, zero).try_into().ok().unwrap();

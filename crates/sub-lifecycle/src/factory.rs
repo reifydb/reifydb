@@ -23,7 +23,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::{info, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -52,7 +52,7 @@ impl Default for LifecycleSubsystemFactory {
 }
 
 impl SubsystemFactory for LifecycleSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let registry = ioc.resolve::<LifecycleRegistry>()?;

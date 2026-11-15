@@ -6,16 +6,16 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropDictionaryNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 use super::dependent::find_column_dependents;
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_dictionary(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropDictionaryNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let Some(dictionary_id) = plan.dictionary_id else {
 		return single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

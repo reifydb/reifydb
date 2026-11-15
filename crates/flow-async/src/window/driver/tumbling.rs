@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::StateStore,
 };
-use reifydb_value::{Result, util::hash::Hash128};
+use reifydb_value::{error::ValueError, util::hash::Hash128};
 
 use crate::{
 	operator::{
@@ -46,7 +46,7 @@ struct Reindexed<G, C> {
 	new: Option<u64>,
 }
 
-fn prior_meta(store: &mut dyn StateStore, group: GroupId) -> Result<Option<EngineMeta>> {
+fn prior_meta(store: &mut dyn StateStore, group: GroupId) -> Result<Option<EngineMeta>, ValueError> {
 	Ok(get_classified::<_, EngineMeta>(store, from_ref(&EngineMetaKey(group)))?.remove(0))
 }
 
@@ -56,7 +56,7 @@ pub fn finish_tumbling<H>(
 	routed: Routed<H::Group, H::Coord, Contributions<H>>,
 	hooks: &mut H,
 	anchor: ExpiryAnchor,
-) -> Result<H::Out>
+) -> Result<H::Out, ValueError>
 where
 	H: WindowHooks,
 	H::Group: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -95,40 +95,41 @@ where
 		.collect();
 	let mut prefetched = Prefetched::read(store, keys)?;
 	let mut reindexed = Vec::with_capacity(arrival.len());
-	let mut reindex = |group: &H::Group, span: WindowSpan<H::Coord>, kind: Option<EmitKind>| -> Result<()> {
-		let (id, key) = id_of(group, span.start);
-		let window_start = span.start.to_order();
-		let prior = prior_meta(&mut prefetched, id)?;
-		let prior_last = prior.as_ref().map(|meta| meta.last_event_time);
-		let prior_index = prior.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-		if kind == Some(EmitKind::Remove) {
-			return Ok(());
-		}
-		let batch_max = window_max_coord.get(&(group.clone(), span)).map(|coord| coord.to_order());
-		let last_event_time = prior_last.max(batch_max);
-		reindexed.push(Reindexed {
-			group: group.clone(),
-			window_start: span.start,
-			id,
-			slot_key: key.clone(),
-			prior: prior_index,
-			new: anchor.of(window_start, last_event_time),
-		});
-		let Some(last_event_time) = last_event_time else {
-			return internal_err!(
-				"window {window_start} of group {group:?} has neither a stored nor a routed event time"
-			);
+	let mut reindex =
+		|group: &H::Group, span: WindowSpan<H::Coord>, kind: Option<EmitKind>| -> Result<(), ValueError> {
+			let (id, key) = id_of(group, span.start);
+			let window_start = span.start.to_order();
+			let prior = prior_meta(&mut prefetched, id)?;
+			let prior_last = prior.as_ref().map(|meta| meta.last_event_time);
+			let prior_index = prior.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
+			if kind == Some(EmitKind::Remove) {
+				return Ok(());
+			}
+			let batch_max = window_max_coord.get(&(group.clone(), span)).map(|coord| coord.to_order());
+			let last_event_time = prior_last.max(batch_max);
+			reindexed.push(Reindexed {
+				group: group.clone(),
+				window_start: span.start,
+				id,
+				slot_key: key.clone(),
+				prior: prior_index,
+				new: anchor.of(window_start, last_event_time),
+			});
+			let Some(last_event_time) = last_event_time else {
+				return internal_err!(
+					"window {window_start} of group {group:?} has neither a stored nor a routed event time"
+				);
+			};
+			set(
+				&mut prefetched,
+				vec![(
+					EngineMetaKey(id),
+					EngineMeta {
+						last_event_time,
+					},
+				)],
+			)
 		};
-		set(
-			&mut prefetched,
-			vec![(
-				EngineMetaKey(id),
-				EngineMeta {
-					last_event_time,
-				},
-			)],
-		)
-	};
 	for r in &results {
 		reindex(&r.group, r.span, Some(r.kind))?;
 	}

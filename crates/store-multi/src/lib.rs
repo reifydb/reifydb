@@ -10,7 +10,6 @@ use reifydb_core::{
 	event::EventBus,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_value::Result;
 
 pub mod filter;
 pub mod flush;
@@ -48,7 +47,7 @@ use reifydb_store_commit::{
 	MultiVersionScope, VersionedGetResult,
 	store::{CommitStore, MultiCommitMetrics},
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
 use tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics};
 
@@ -202,7 +201,7 @@ impl MultiStore {
 }
 
 impl Shutdown for MultiStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			MultiStore::Standard(store) => store.shutdown(),
 		}
@@ -216,7 +215,7 @@ impl MultiVersionGet for MultiStore {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionGet::get(store, ctx, keys, version),
 		}
@@ -225,7 +224,7 @@ impl MultiVersionGet for MultiStore {
 
 impl MultiVersionCommit for MultiStore {
 	#[inline]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<(), ValueError> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionCommit::commit(store, deltas, version),
 		}
@@ -239,18 +238,19 @@ impl MultiVersionGetPrevious for MultiStore {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		match self {
 			MultiStore::Standard(store) => store.get_previous(ctx, keys, before_version),
 		}
 	}
 }
 
-pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a>;
+pub type MultiVersionRangeIterator<'a> =
+	Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'a>;
 pub type MultiVersionRowRangeIterator<'a> =
-	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + 'a>;
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + 'a>;
 pub type MultiVersionPartitionedRowRangeIterator<'a> =
-	Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + 'a>;
+	Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + 'a>;
 
 impl MultiStore {
 	pub fn range(
@@ -340,7 +340,7 @@ impl MultiStore {
 		ctx: &TransactionContext,
 		keys: &[EncodedKey],
 		version: CommitVersion,
-	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
+	) -> Result<HashMap<EncodedKey, VersionedGetResult>, ValueError> {
 		match self {
 			MultiStore::Standard(store) => store.get_versioned(ctx, keys, version),
 		}

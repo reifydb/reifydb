@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::xxh3_128,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -42,17 +42,17 @@ fn mapping_key(key: &EncodedKey) -> EncodedKey {
 }
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
-	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.0.arm_timer(due, kind, key)?;
 		Ok(())
 	}
 
-	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.0.disarm_timer(due, kind, key)?;
 		Ok(())
 	}
 
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), ValueError> {
 		if moves.is_empty() {
 			return Ok(());
 		}
@@ -60,19 +60,19 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 		Ok(self.0.flow_watermark()?)
 	}
 }
 
 impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		Ok(self.0.reclaim_group_identities(groups, limit)?)
 	}
 }
 
 impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
-	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 		let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
 		self.0.window_state().get_bytes(keys, &mut |key, row| {
 			found.insert(key, row);
@@ -85,7 +85,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		self.0.state_retires_groups()
 	}
 
-	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 		if keys.is_empty() {
 			return Ok(());
 		}
@@ -93,7 +93,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		if rows.is_empty() {
 			return Ok(());
 		}
@@ -101,11 +101,11 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 		Ok(self.0.window_state().batch_bytes(keys)?)
 	}
 
-	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 		self.0.window_state().write_batch_bytes(batch)?;
 		Ok(())
 	}
@@ -114,7 +114,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		let (group, keyspace, start, end) = confine(range);
 		let mut out = Vec::new();
 		self.0.window_state().range_bytes_visit(
@@ -131,7 +131,12 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(out)
 	}
 
-	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+	fn group_sweep(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep, ValueError> {
 		let (rows, complete) = self.0.window_state().sweep_bytes(&sweep_order(groups), limit, keyspaces)?;
 		Ok(GroupSweep {
 			rows,
@@ -139,43 +144,54 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		})
 	}
 
-	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		let (group, keyspace, start, end) = confine(range);
 		Ok(self.0.window_state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 
-	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
 		Ok(self.0.get_or_create_row_numbers(group, &keys)?)
 	}
 
-	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		Ok(self.0.get_or_create_row_numbers_for_groups(groups)?)
 	}
 
-	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
 		Ok(self.0.get_row_numbers(group, &keys)?)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), ValueError> {
 		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
 		Ok(self.0.remove_row_number(group, &keys)?)
 	}
 
-	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), ValueError> {
 		Ok(self.0.remove_row_number_for_group(groups)?)
 	}
 
-	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, ValueError> {
 		Ok(self.0.mint_row_numbers(count)?)
 	}
 
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		Ok(self.0.get_row_numbers_for_groups(groups)?)
 	}
 
-	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 		Ok(self.0.set_row_numbers_for_groups(rows)?)
 	}
 

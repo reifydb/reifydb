@@ -15,14 +15,15 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::ringbuffer::{decode_ringbuffer_time, shape::ringbuffer},
 };
 
-pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = RingBufferKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -50,7 +51,7 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 	Ok(())
 }
 
-fn convert_ringbuffer<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<RingBuffer> {
+fn convert_ringbuffer<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>) -> Result<RingBuffer, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = RingBufferId(ringbuffer::get_id(&bytes));
 	let namespace = NamespaceId(ringbuffer::get_namespace(&bytes));

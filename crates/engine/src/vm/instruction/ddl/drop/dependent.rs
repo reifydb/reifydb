@@ -7,15 +7,14 @@ use reifydb_core::{
 	interface::catalog::flow::Flow,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-
-use crate::Result;
+use reifydb_value::error::ValueError;
 
 pub(crate) fn find_column_dependents(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	columns: &[ColumnInfo],
 	check: impl Fn(&ColumnInfo) -> Option<String>,
-) -> Result<Vec<String>> {
+) -> Result<Vec<String>, ValueError> {
 	let mut dependents = Vec::new();
 	for info in columns {
 		if let Some(suffix) = check(info) {
@@ -40,7 +39,7 @@ pub(crate) fn find_flow_dependents(
 	dags: &[FlowDag],
 	flows: &[Flow],
 	check: impl Fn(&OperatorDef) -> bool,
-) -> Result<Vec<String>> {
+) -> Result<Vec<String>, ValueError> {
 	let mut dependents = Vec::new();
 	for dag in dags {
 		if dag.get_operator_ids().any(|id| dag.get_operator(&id).is_some_and(|node| check(&node.ty)))

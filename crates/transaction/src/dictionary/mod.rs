@@ -22,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::xxh3_128,
 	value::{
 		Value,
@@ -158,7 +158,11 @@ impl DictionaryAllocatorRegistry {
 		}
 	}
 
-	pub fn intern_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<InternOutcome>> {
+	pub fn intern_batch(
+		&self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<InternOutcome>, ValueError> {
 		let serialized = serialize_values(dictionary, values)?;
 		let hashes: Vec<[u8; 16]> = serialized.iter().map(|bytes| xxh3_128(bytes).0.to_be_bytes()).collect();
 
@@ -258,7 +262,11 @@ impl DictionaryAllocatorRegistry {
 		outcomes(dictionary, resolved, &created_ids)
 	}
 
-	pub fn find(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	pub fn find(
+		&self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		let serialized = serialize_values(dictionary, values)?;
 		let (firsts, slot_of) = distinct_positions(serialized.iter().map(Vec::as_slice));
 		let mut answers: Vec<Option<DictionaryEntryId>> = Vec::with_capacity(firsts.len());
@@ -268,7 +276,7 @@ impl DictionaryAllocatorRegistry {
 		Ok(slot_of.into_iter().map(|distinct| answers[distinct]).collect())
 	}
 
-	pub fn get_batch(&self, dictionary: &Dictionary, ids: &[u128]) -> Result<Vec<Option<Arc<[u8]>>>> {
+	pub fn get_batch(&self, dictionary: &Dictionary, ids: &[u128]) -> Result<Vec<Option<Arc<[u8]>>>, ValueError> {
 		let (firsts, slot_of) = distinct_positions(ids.iter().copied());
 		let mut answers: Vec<Option<Arc<[u8]>>> = Vec::with_capacity(firsts.len());
 		for index in firsts {
@@ -277,7 +285,11 @@ impl DictionaryAllocatorRegistry {
 		Ok(slot_of.into_iter().map(|distinct| answers[distinct].clone()).collect())
 	}
 
-	fn find_one(&self, dictionary: &Dictionary, value_bytes: &[u8]) -> Result<Option<DictionaryEntryId>> {
+	fn find_one(
+		&self,
+		dictionary: &Dictionary,
+		value_bytes: &[u8],
+	) -> Result<Option<DictionaryEntryId>, ValueError> {
 		self.refuse_dropped(dictionary)?;
 		let hash = xxh3_128(value_bytes).0.to_be_bytes();
 
@@ -306,7 +318,7 @@ impl DictionaryAllocatorRegistry {
 		}
 	}
 
-	fn get_one(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
+	fn get_one(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>, ValueError> {
 		self.refuse_dropped(dictionary)?;
 		if let Some(value) = self.resolve_value(dictionary.id, id) {
 			return Ok(Some(value));
@@ -331,7 +343,7 @@ impl DictionaryAllocatorRegistry {
 			.clone()
 	}
 
-	fn seed_if_needed(&self, dictionary: &Dictionary, slot: &DictSlot) -> Result<()> {
+	fn seed_if_needed(&self, dictionary: &Dictionary, slot: &DictSlot) -> Result<(), ValueError> {
 		if slot.seeded.load(Ordering::Acquire) {
 			return Ok(());
 		}
@@ -363,7 +375,7 @@ impl DictionaryAllocatorRegistry {
 		self.inner.slots.remove(&dictionary);
 	}
 
-	fn refuse_dropped(&self, dictionary: &Dictionary) -> Result<()> {
+	fn refuse_dropped(&self, dictionary: &Dictionary) -> Result<(), ValueError> {
 		if self.inner.dropped.contains(&dictionary.id) {
 			return Err(DictionaryError::Dropped {
 				dictionary: dictionary.id,
@@ -390,7 +402,7 @@ fn outcomes(
 	dictionary: &Dictionary,
 	resolved: Vec<Option<u128>>,
 	created_ids: &HashSet<u128>,
-) -> Result<Vec<InternOutcome>> {
+) -> Result<Vec<InternOutcome>, ValueError> {
 	resolved.into_iter()
 		.map(|id| {
 			let id = id.expect("every interned value must resolve to an id");
@@ -402,7 +414,7 @@ fn outcomes(
 		.collect()
 }
 
-fn serialize_values(dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Vec<u8>>> {
+fn serialize_values(dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Vec<u8>>, ValueError> {
 	values.iter()
 		.map(|value| {
 			let canonical = match (value, dictionary.value_type.scale()) {
@@ -441,7 +453,7 @@ fn decode_entry_id(
 	value_bytes: &[u8],
 	hash: [u8; 16],
 	existing: &EncodedBytes,
-) -> Result<u128> {
+) -> Result<u128, ValueError> {
 	if existing.len() < 16 {
 		return Err(DictionaryError::TruncatedEntry {
 			dictionary: dictionary.id,
@@ -504,11 +516,11 @@ mod tests {
 	}
 
 	impl DictionaryStore for MockStore {
-		fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>, ValueError> {
 			Ok(self.inner.lock().rows.get(key).cloned())
 		}
 
-		fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {
+		fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>, ValueError> {
 			let inner = self.inner.lock();
 			let mut max: Option<u128> = None;
 			for key in inner.rows.keys() {
@@ -521,7 +533,11 @@ mod tests {
 			Ok(max)
 		}
 
-		fn commit_entries(&self, _dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()> {
+		fn commit_entries(
+			&self,
+			_dictionary: DictionaryId,
+			writes: &[DictEntryWrite],
+		) -> Result<(), ValueError> {
 			let mut inner = self.inner.lock();
 			for write in writes {
 				inner.rows.insert(write.entry_key.encode(), write.entry_value.clone().into_bytes());

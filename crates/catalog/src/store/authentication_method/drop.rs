@@ -5,14 +5,15 @@ use reifydb_core::{
 	interface::catalog::authentication_method::AuthenticationMethodId, key::identity::AuthenticationMethodKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn drop_authentication_method(
 		txn: &mut AdminTransaction,
 		method: AuthenticationMethodId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		txn.remove(vec![(AuthenticationMethodKey::new(method).into(), None)])?;
 		Ok(())
 	}

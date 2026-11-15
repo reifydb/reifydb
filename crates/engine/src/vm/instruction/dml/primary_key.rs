@@ -34,7 +34,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, bulk_insert::coerce::with_row_note};
+use crate::bulk_insert::coerce::with_row_note;
 
 pub struct PrimaryKeyEncoder {
 	shape: IndexShape,
@@ -42,7 +42,7 @@ pub struct PrimaryKeyEncoder {
 }
 
 impl PrimaryKeyEncoder {
-	pub fn new(pk_def: &PrimaryKey, table: &Table) -> Result<Self> {
+	pub fn new(pk_def: &PrimaryKey, table: &Table) -> Result<Self, ValueError> {
 		if let Some(column) = pk_def
 			.columns
 			.iter()
@@ -191,7 +191,11 @@ impl PrimaryKeyEncoder {
 	}
 }
 
-pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Table) -> Result<Option<PrimaryKey>> {
+pub fn get_primary_key(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	table: &Table,
+) -> Result<Option<PrimaryKey>, ValueError> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
 		catalog.find_primary_key(txn, table.id)
 	} else {
@@ -212,7 +216,7 @@ pub(crate) fn checked_primary_keys(
 	shape: &RowShape,
 	rows: &[EncodedTableRowBuilder],
 	violation: &Violation<'_>,
-) -> Result<Vec<EncodedIndexKey>> {
+) -> Result<Vec<EncodedIndexKey>, ValueError> {
 	let mut seen = HashSet::with_capacity(rows.len());
 	let mut keys = Vec::with_capacity(rows.len());
 	let mut duplicate = None;
@@ -284,7 +288,7 @@ impl<'a> PrimaryKeyIndex<'a> {
 		txn: &mut Transaction<'_>,
 		table: &Table,
 		values: &EncodedBytes,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let fingerprint = read_fingerprint(values);
 		let shape = match self.shapes.entry(fingerprint) {
 			Entry::Occupied(entry) => entry.into_mut(),
@@ -309,11 +313,11 @@ impl<'a> PrimaryKeyIndex<'a> {
 		Ok(())
 	}
 
-	pub fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+	pub fn write(self, txn: &mut Transaction<'_>) -> Result<(), ValueError> {
 		txn.remove(self.removes)
 	}
 
-	pub fn write_silent(self, txn: &mut CommandTransaction) -> Result<()> {
+	pub fn write_silent(self, txn: &mut CommandTransaction) -> Result<(), ValueError> {
 		txn.remove_silent(self.removes.into_iter().map(|(key, _)| key).collect())
 	}
 }

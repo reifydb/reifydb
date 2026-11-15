@@ -22,6 +22,7 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, value_type::ValueType},
 };
@@ -29,7 +30,6 @@ use tracing::info;
 
 use super::{ensure_namespace, series_col};
 use crate::{
-	Result,
 	cache::CatalogCache,
 	catalog::{
 		Catalog,
@@ -48,7 +48,7 @@ pub fn bootstrap_metric_ringbuffers(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
 		multi.begin_command(multi.generate_transaction_id())?,
@@ -189,7 +189,7 @@ pub(super) fn ensure_snapshot_series(
 	series_id: SeriesId,
 	columns: Vec<SeriesColumnToCreate>,
 	column_ids: &[ColumnId],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut *admin), ns, "snapshots")?.is_none() {
 		catalog_api.create_series_with_id(
 			&mut *admin,
@@ -218,7 +218,7 @@ pub(super) fn ensure_snapshot_ttl(
 	catalog_api: &Catalog,
 	admin: &mut AdminTransaction,
 	series_id: SeriesId,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let storage = StorageId::Series(series_id);
 	let settings = RowSettings {
 		ttl: Some(Ttl {

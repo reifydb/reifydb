@@ -70,7 +70,6 @@ use super::{
 	},
 };
 use crate::{
-	Result,
 	error::EngineError,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
@@ -96,7 +95,7 @@ pub(crate) fn insert_series(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let InsertSeriesNode {
 		input,
 		target,
@@ -328,7 +327,7 @@ fn enforce_series_write_policies(
 	namespace: &Namespace,
 	series: &Series,
 	columns: &RecordBatch,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
 		txn,
 		namespace.name(),
@@ -354,7 +353,7 @@ fn finalize_series_insert(
 	returning: &Option<Vec<Expression>>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let now = services.runtime_context.clock.now();
 	let updates: Vec<(Partition, SeriesPartitionMetadata, Vec<u64>)> = metadata_by_partition
 		.into_iter()
@@ -380,7 +379,7 @@ fn resolve_insert_series_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedSeries,
-) -> Result<(Namespace, Series)> {
+) -> Result<(Namespace, Series), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -393,7 +392,7 @@ fn resolve_insert_series_target(
 	Ok((namespace, series))
 }
 
-pub(crate) fn series_partition_indices(series: &Series) -> Result<Vec<usize>> {
+pub(crate) fn series_partition_indices(series: &Series) -> Result<Vec<usize>, ValueError> {
 	series.partition_by
 		.iter()
 		.map(|name| {
@@ -408,7 +407,7 @@ pub(crate) fn series_key_partitioned(series: &Series) -> bool {
 	series.partition_by.iter().any(|name| name == series.key.column())
 }
 
-fn generate_partition_keys(services: &Services, series: &Series, keys: &mut [Option<u64>]) -> Result<()> {
+fn generate_partition_keys(services: &Services, series: &Series, keys: &mut [Option<u64>]) -> Result<(), ValueError> {
 	for key in keys.iter_mut().filter(|key| key.is_none()) {
 		*key = Some(match &series.key {
 			SeriesKey::DateTime {
@@ -434,7 +433,7 @@ pub(crate) fn series_batch_partitions(
 	series: &Series,
 	cast: &CastColumns,
 	key: Option<&ColumnView<'_>>,
-) -> Result<BatchPartitions> {
+) -> Result<BatchPartitions, ValueError> {
 	let indices = series_partition_indices(series)?;
 	if indices.is_empty() {
 		return Ok(BatchPartitions::default());
@@ -451,7 +450,7 @@ pub(crate) fn series_batch_partitions(
 			)),
 			(false, _) => cast.view(index),
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let batch = partitions_of_batch(&views);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
@@ -480,8 +479,8 @@ pub(crate) fn assign_series_keys(
 	keys: Vec<Option<u64>>,
 	tags: &[Option<u8>],
 	metadata: &mut HashMap<Partition, SeriesPartitionMetadata>,
-	mut generate: impl FnMut(&SeriesPartitionMetadata) -> Result<u64>,
-) -> Result<AssignedKeys> {
+	mut generate: impl FnMut(&SeriesPartitionMetadata) -> Result<u64, ValueError>,
+) -> Result<AssignedKeys, ValueError> {
 	let storage_id = StorageId::series(series.id);
 	let partitioned = !partitions.is_empty();
 	let first_number = match partitioned {
@@ -557,7 +556,11 @@ fn build_insert_series_query_context(
 }
 
 #[inline]
-fn generate_series_key(services: &Arc<Services>, series: &Series, metadata: &SeriesPartitionMetadata) -> Result<u64> {
+fn generate_series_key(
+	services: &Arc<Services>,
+	series: &Series,
+	metadata: &SeriesPartitionMetadata,
+) -> Result<u64, ValueError> {
 	match &series.key {
 		SeriesKey::DateTime {
 			precision,
@@ -643,7 +646,7 @@ impl<'a> VariantTags<'a> {
 	}
 }
 
-pub(crate) fn resolve_variant_tag(sumtype: &SumType, value: &Value, fragment: Fragment) -> Result<u8> {
+pub(crate) fn resolve_variant_tag(sumtype: &SumType, value: &Value, fragment: Fragment) -> Result<u8, ValueError> {
 	let tag = match value {
 		Value::Utf8(name) => sumtype.variants.iter().find(|v| v.name.eq_ignore_ascii_case(name)).map(|v| v.tag),
 		_ => value
@@ -666,7 +669,7 @@ fn track_series_insert_flow_change(
 	columns: Vec<(FieldRef, ArrayRef)>,
 	row_numbers: &[RowNumber],
 	rows: &[EncodedBytes],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -689,13 +692,13 @@ pub(crate) fn write_inserted_series_metadata(
 	partitions: Vec<(Partition, SeriesPartitionMetadata, Vec<u64>)>,
 	now: DateTime,
 	refuse_moved_counter: bool,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let updates: Vec<_> = partitions
 		.into_iter()
 		.map(|(partition, mut metadata, keys)| {
 			metadata.last_write_at = now;
 			let numbered_from = metadata.sequence_counter - keys.len() as u64;
-			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+			let change = move |latest: &mut SeriesPartitionMetadata| -> Result<(), ValueError> {
 				if refuse_moved_counter && latest.sequence_counter != numbered_from {
 					return Err(TransactionError::Conflict.into());
 				}
@@ -713,7 +716,7 @@ pub(crate) fn write_inserted_series_metadata(
 }
 
 #[inline]
-fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Result<RecordBatch> {
+fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("series", Value::Utf8(series.to_string())),

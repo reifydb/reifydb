@@ -6,7 +6,7 @@ use std::fmt::{self, Display, Formatter};
 use arrow_array::RecordBatch;
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::unicode::UnicodeWidthStr,
 	value::{Value, column_view::ColumnView, diff_type::DiffType, system_columns::SystemColumn},
 };
@@ -52,7 +52,7 @@ impl Frame {
 			.collect()
 	}
 
-	fn views(&self) -> Result<Vec<(String, ColumnView<'_>)>> {
+	fn views(&self) -> Result<Vec<(String, ColumnView<'_>)>, ValueError> {
 		let schema = self.batch.schema_ref();
 		self.batch
 			.columns()

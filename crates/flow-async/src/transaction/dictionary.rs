@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use postcard::from_bytes;
 use reifydb_core::{interface::catalog::dictionary::Dictionary, internal_error};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -26,7 +26,7 @@ pub trait DictionaryExtension: FlowTransaction {
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.dictionary_allocators().find(dictionary, values)
 	}
 
@@ -35,7 +35,7 @@ pub trait DictionaryExtension: FlowTransaction {
 		&mut self,
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>> {
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		let raw: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
 		let answers = self.dictionary_allocators().get_batch(dictionary, &raw)?;
 		let mut decoded: HashMap<u128, Value> = HashMap::new();

@@ -14,7 +14,7 @@ use reifydb_core::{
 	value::column::builder::ColumnBuilder,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		constraint::TypeConstraint,
 		datetime::DateTime,
@@ -87,14 +87,14 @@ impl HostOperator for ApplyOperator {
 		self.retention
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let changed_at = change.changed_at;
 		let mut out = self.inner.apply(host, change)?;
 		stamp_output_created(&mut out.diffs, changed_at)?;
 		Ok(out)
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		if timer.kind == TimerKind::Reclaim {
 			reclaim(host, timer.due)?;
 			return Ok(None);
@@ -124,7 +124,10 @@ pub fn declared_schema<'a>(columns: impl IntoIterator<Item = (&'a str, &'a TypeC
 	(!fields.is_empty()).then(|| Arc::new(Schema::new(fields)))
 }
 
-pub fn output_schema_of(parent: Option<SchemaRef>, declared: Option<SchemaRef>) -> Result<Option<SchemaRef>> {
+pub fn output_schema_of(
+	parent: Option<SchemaRef>,
+	declared: Option<SchemaRef>,
+) -> Result<Option<SchemaRef>, ValueError> {
 	let Some(declared) = declared else {
 		return Ok(parent);
 	};
@@ -152,7 +155,7 @@ pub fn output_schema_of(parent: Option<SchemaRef>, declared: Option<SchemaRef>) 
 			field_type.dictionary_id = Some(dictionary);
 			Ok(Arc::new(to_field(field.name(), &field_type)))
 		})
-		.collect::<Result<Vec<FieldRef>>>()?;
+		.collect::<Result<Vec<FieldRef>, ValueError>>()?;
 	Ok(Some(Arc::new(Schema::new(fields))))
 }
 
@@ -185,7 +188,7 @@ pub fn engine_retention(with: &ApplyWith) -> Option<Duration> {
 
 const RECLAIM_BATCH: usize = 256;
 
-fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<()> {
+fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<(), ValueError> {
 	let mut retry = !drain(host, &mut StoreReaper, RECLAIM_BATCH)?.queue_is_empty();
 	let due = expiry_due::<CustomManagedDue, Vec<u8>>(host, fired.to_order(), None, RECLAIM_BATCH)?;
 	retry |= due.len() == RECLAIM_BATCH;
@@ -219,7 +222,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 	}
@@ -406,11 +409,15 @@ mod reclaim_tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			_timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			self.timers.fetch_add(1, Ordering::SeqCst);
 			Ok(None)
 		}
@@ -445,7 +452,7 @@ mod reclaim_tests {
 		millis: i64,
 		retention: Option<Duration>,
 		key: &GroupStateKey,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(millis)),
 		});

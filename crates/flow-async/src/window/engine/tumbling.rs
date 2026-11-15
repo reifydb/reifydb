@@ -26,7 +26,8 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -101,7 +102,11 @@ where
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+	fn reap(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(GroupStateKey, EncodedPodRow)],
+	) -> Result<(), ValueError> {
 		let window_keyspace = self.family.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR);
 		let mut kept: Vec<(GroupId, RowNumber)> = Vec::new();
 		for (key, row) in rows {
@@ -157,7 +162,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		entries: &[WindowReindex<'_, G, S>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut drops = Vec::new();
 		let mut sets = Vec::new();
 		for entry in entries.iter().filter(|entry| entry.prior != entry.new) {
@@ -200,7 +205,7 @@ where
 		order: &[(G, WindowSpan<S>)],
 		slot_key: K,
 		new_accumulator: NA,
-	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>>
+	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>, ValueError>
 	where
 		K: Fn(&G, S) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
@@ -249,7 +254,7 @@ where
 		order: &[(G, WindowSpan<S>)],
 		slot_resolved: &SlotResolved<G, S>,
 		new_accumulator: &NA,
-	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>>
+	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>, ValueError>
 	where
 		NA: Fn() -> Accumulator,
 	{
@@ -456,7 +461,7 @@ where
 		store: &mut dyn StateStore,
 		threshold: u64,
 		budget: usize,
-	) -> Result<Vec<ExpiredWindow<G, S>>> {
+	) -> Result<Vec<ExpiredWindow<G, S>>, ValueError> {
 		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> = self.expiry.due(store, threshold, budget)?;
 
 		let mut out: Vec<ExpiredWindow<G, S>> = Vec::with_capacity(due.len());
@@ -490,7 +495,7 @@ where
 		Ok(out)
 	}
 
-	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
+	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>, ValueError> {
 		if let Some(known) = self.earliest {
 			reifydb_assertions! {
 				let grounded = crate::operator::state::expiry::expiry_earliest::<TumblingExpiry>(store)?;
@@ -517,7 +522,7 @@ mod tests {
 		key::operator::state::{GroupId, KeyspaceMask},
 		state::timer::StateStore,
 	};
-	use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
+	use reifydb_value::{error::ValueError, util::hash::Hash128, value::datetime::DateTime};
 
 	use crate::{
 		factory::coord::event_coord_at_millis,
@@ -560,7 +565,7 @@ mod tests {
 		engine: &mut TumblingEngine<u32, DateTimeCoord, SumAccumulator>,
 		store: &mut MockStore,
 		buckets: TumblingBuckets<u32, DateTimeCoord, Vec<i64>>,
-	) -> Result<Vec<WindowResult<u32, DateTimeCoord, i64>>> {
+	) -> Result<Vec<WindowResult<u32, DateTimeCoord, i64>>, ValueError> {
 		let order = order_of(&buckets);
 		engine.apply(store, buckets, &order, slot_key, SumAccumulator::default)
 	}

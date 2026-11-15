@@ -20,11 +20,13 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::Transaction,
 };
-use reifydb_value::value::{identity::IdentityId, partition::Partition, row_number::RowNumber};
+use reifydb_value::{
+	error::ValueError,
+	value::{identity::IdentityId, partition::Partition, row_number::RowNumber},
+};
 use tracing::{info, instrument};
 
 use crate::{
-	Result,
 	engine::StandardEngine,
 	queue::partition::{ordered_by_index, partition_by_indices, placement_of},
 };
@@ -32,7 +34,7 @@ use crate::{
 const HYDRATE_BATCH: usize = 1024;
 
 #[instrument(name = "queue::hydrate", level = "info", skip_all)]
-pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64> {
+pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64, ValueError> {
 	let catalog = engine.catalog();
 	let single = engine.single().clone();
 	let ctx = Arc::new(TransactionContext::system(engine.runtime_context().clone()));
@@ -58,7 +60,7 @@ fn hydrate_queue(
 	single: &SingleTransaction,
 	txn: &mut Transaction<'_>,
 	queue: &Queue,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let ordered_by = ordered_by_index(queue)?;
 	let partition_by = partition_by_indices(queue);
 
@@ -142,13 +144,18 @@ fn flush(
 	queue: QueueId,
 	partition: Partition,
 	items: &mut Vec<QueueAdmission>,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let admitted = admit_ready_items(ctx, single, queue, partition, items)?;
 	items.clear();
 	Ok(admitted)
 }
 
-fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, queue: &Queue, row: &EncodedQueueRow) -> Result<RowShape> {
+fn load_shape(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	queue: &Queue,
+	row: &EncodedQueueRow,
+) -> Result<RowShape, ValueError> {
 	let fingerprint = row.fingerprint();
 	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("RowShape with fingerprint {:?} not found for queue {}", fingerprint, queue.name)

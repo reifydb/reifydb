@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::{CatalogTrackMigrationChangeOperations, CatalogTrackMigrationEventChangeOperations},
 	migration::{Migration, MigrationEvent},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{Change, OperationType::Create, TransactionalMigrationChanges},
@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl CatalogTrackMigrationChangeOperations for AdminTransaction {
-	fn track_migration_created(&mut self, migration: Migration) -> Result<()> {
+	fn track_migration_created(&mut self, migration: Migration) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(migration),
@@ -25,7 +25,7 @@ impl CatalogTrackMigrationChangeOperations for AdminTransaction {
 }
 
 impl CatalogTrackMigrationEventChangeOperations for AdminTransaction {
-	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<()> {
+	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(event),

@@ -8,7 +8,7 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	device::{Append, Device, Flush, Mark, ReadFrom, Reclaim, RecordCursor},
-	error::Result,
+	error::WalError,
 };
 
 #[derive(Default)]
@@ -32,7 +32,7 @@ impl NopDevice {
 pub struct NopCursor;
 
 impl RecordCursor for NopCursor {
-	fn next_batch(&mut self, _max: usize) -> Result<Vec<Record>> {
+	fn next_batch(&mut self, _max: usize) -> Result<Vec<Record>, WalError> {
 		Ok(Vec::new())
 	}
 }
@@ -40,22 +40,22 @@ impl RecordCursor for NopCursor {
 impl Device for NopDevice {}
 
 impl Append for NopDevice {
-	fn append(&self, record: &Record) -> Result<Position> {
+	fn append(&self, record: &Record) -> Result<Position, WalError> {
 		self.last.store(record.version.as_u64(), Ordering::Release);
 		Ok(Position::ZERO)
 	}
 
-	fn head(&self) -> Result<Option<LogVersion>> {
+	fn head(&self) -> Result<Option<LogVersion>, WalError> {
 		Ok(self.last())
 	}
 }
 
 impl Flush for NopDevice {
-	fn flush(&self) -> Result<()> {
+	fn flush(&self) -> Result<(), WalError> {
 		Ok(())
 	}
 
-	fn durable(&self) -> Result<Option<LogVersion>> {
+	fn durable(&self) -> Result<Option<LogVersion>, WalError> {
 		Ok(self.last())
 	}
 }
@@ -66,39 +66,39 @@ impl ReadFrom for NopDevice {
 	where
 		Self: 'a;
 
-	fn read_from(&self, _from: LogVersion) -> Result<NopCursor> {
+	fn read_from(&self, _from: LogVersion) -> Result<NopCursor, WalError> {
 		Ok(NopCursor)
 	}
 }
 
 impl Reclaim for NopDevice {
-	fn start(&self) -> Result<Option<LogVersion>> {
+	fn start(&self) -> Result<Option<LogVersion>, WalError> {
 		Ok(None)
 	}
 
-	fn committed(&self) -> Result<LogIndex> {
+	fn committed(&self) -> Result<LogIndex, WalError> {
 		Ok(LogIndex::ZERO)
 	}
 
-	fn drop_below(&self, _index: LogIndex) -> Result<()> {
+	fn drop_below(&self, _index: LogIndex) -> Result<(), WalError> {
 		Ok(())
 	}
 
-	fn bytes(&self) -> Result<ByteSize> {
+	fn bytes(&self) -> Result<ByteSize, WalError> {
 		Ok(ByteSize::ZERO)
 	}
 }
 
 impl Mark for NopDevice {
-	fn register(&self, _id: &str) -> Result<()> {
+	fn register(&self, _id: &str) -> Result<(), WalError> {
 		Ok(())
 	}
 
-	fn record(&self, _id: &str, _version: LogVersion) -> Result<()> {
+	fn record(&self, _id: &str, _version: LogVersion) -> Result<(), WalError> {
 		Ok(())
 	}
 
-	fn readers(&self) -> Result<Vec<(String, LogVersion)>> {
+	fn readers(&self) -> Result<Vec<(String, LogVersion)>, WalError> {
 		Ok(Vec::new())
 	}
 }

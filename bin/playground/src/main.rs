@@ -6,13 +6,13 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb::{
-	Database, Frame, IdentityId, Result, allocator, server, transaction::transaction::command::CommandTransaction,
-	value::params::Params,
+	Database, Frame, IdentityId, ValueError, allocator, server,
+	transaction::transaction::command::CommandTransaction, value::params::Params,
 };
 
 allocator::set_global_allocator!();
 
-fn show(label: &str, rql: &str, outcome: Result<Vec<Frame>>) {
+fn show(label: &str, rql: &str, outcome: Result<Vec<Frame>, ValueError>) {
 	println!("\n--- {label} ---");
 	println!("> {rql}");
 	match outcome {

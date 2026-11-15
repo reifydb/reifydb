@@ -10,9 +10,10 @@ use reifydb_core::{
 	key::{catalog::TableKey, namespace::NamespaceTableKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::table::{
 		decode_table_time,
 		shape::{table, table_namespace},
@@ -20,7 +21,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<Table>> {
+	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<Table>, ValueError> {
 		let Some(multi) = rx.get(&[TableKey::new(table).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -50,7 +51,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Table>> {
+	) -> Result<Option<Table>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), RangeScope::All, 1024)?;
 

@@ -72,7 +72,6 @@ use super::{
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 };
 use crate::{
-	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	queue::partition::ordered_by_index,
@@ -102,7 +101,7 @@ pub(crate) fn insert_queue(
 	plan: InsertQueueNode,
 	symbols: &mut SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let InsertQueueNode {
 		input,
 		target,
@@ -244,7 +243,7 @@ fn resolve_duplicates(
 	queue: &Queue,
 	pending: &[PendingItem],
 	now: DateTime,
-) -> Result<Vec<Outcome>> {
+) -> Result<Vec<Outcome>, ValueError> {
 	let mut lookups: HashMap<&[u8], usize> = HashMap::new();
 	let mut record_keys = Vec::new();
 	for key in pending.iter().filter_map(|item| item.deduplication_key.as_deref()) {
@@ -328,7 +327,7 @@ fn project_returning(
 	returning_exprs: &[Expression],
 	returned: &[ReturnedRow],
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let rows: Vec<(RowNumber, EncodedBytes)> =
 		returned.iter().map(|row| (row.row_number, row.encoded.clone())).collect();
 	let columns = decode_rows_to_columns(shape, &rows)?;
@@ -344,7 +343,7 @@ fn project_returning(
 	evaluate_returning(services, symbols, returning_exprs, columns, caller)
 }
 
-fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
+fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>, ValueError> {
 	let Some(deduplicate) = &queue.deduplicate else {
 		return Ok(None);
 	};
@@ -358,7 +357,7 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 	Ok(Some(indices))
 }
 
-fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> Result<Vec<Vec<u8>>> {
+fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> Result<Vec<Vec<u8>>, ValueError> {
 	let mut keys: Vec<KeySerializer> = rows.iter().map(|_| KeySerializer::new()).collect();
 	for &index in indices {
 		let field = &shape.fields()[index];
@@ -386,13 +385,13 @@ fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> 
 }
 
 #[inline]
-fn truncate_to_declared(columns: RecordBatch, declared: usize) -> Result<RecordBatch> {
+fn truncate_to_declared(columns: RecordBatch, declared: usize) -> Result<RecordBatch, ValueError> {
 	let kept: Vec<(FieldRef, ArrayRef)> =
 		user_columns(&columns).take(declared).map(|(field, array)| (field.clone(), array.clone())).collect();
 	rebuild_with_user_columns(&columns, kept)
 }
 
-fn rebuild_with_user_columns(source: &RecordBatch, user: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
+fn rebuild_with_user_columns(source: &RecordBatch, user: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch, ValueError> {
 	let mut out = batch(user)?;
 	for column in SystemColumn::ALL {
 		if let Some(array) = system_column(source, column) {
@@ -407,7 +406,7 @@ fn resolve_insert_queue_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedQueue,
-) -> Result<(Namespace, Queue)> {
+) -> Result<(Namespace, Queue), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -453,7 +452,7 @@ fn validate_and_encode_input_rows(
 	fragments: &InputFragments,
 	has_deduplication: bool,
 	has_not_before: bool,
-) -> Result<Vec<PendingItem>> {
+) -> Result<Vec<PendingItem>, ValueError> {
 	let mut mutable_context = (**context).clone();
 	let declared_key_indices = declared_key_indices(target.queue)?;
 	let ordered_by = ordered_by_index(target.queue)?;
@@ -576,7 +575,7 @@ fn validate_and_encode_input_rows(
 	Ok(pending)
 }
 
-fn named_view<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+fn named_view<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>, ValueError> {
 	user_columns(columns)
 		.filter(|(field, _)| field.name() == name)
 		.last()
@@ -608,7 +607,7 @@ fn statement_key_failure(
 	})
 }
 
-fn statement_key_bytes(view: &ColumnView<'_>) -> Result<Vec<Vec<u8>>> {
+fn statement_key_bytes(view: &ColumnView<'_>) -> Result<Vec<Vec<u8>>, ValueError> {
 	let mut keys: Vec<KeySerializer> = (0..view.len()).map(|_| KeySerializer::new()).collect();
 	if matches!(
 		view.base_type(),
@@ -665,7 +664,12 @@ fn read_not_before(
 }
 
 #[inline]
-fn insert_queue_result(namespace: &str, queue: &str, inserted: u64, duplicates: u64) -> Result<RecordBatch> {
+fn insert_queue_result(
+	namespace: &str,
+	queue: &str,
+	inserted: u64,
+	duplicates: u64,
+) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("queue", Value::Utf8(queue.to_string())),

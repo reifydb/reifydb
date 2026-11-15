@@ -3,11 +3,12 @@
 
 use reifydb_core::key::namespace::NamespaceKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::namespace};
+use crate::store::namespace;
 
-pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = NamespaceKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 

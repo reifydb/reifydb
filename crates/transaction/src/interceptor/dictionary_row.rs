@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::dictionary::Dictionary;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, dictionary::DictionaryEntryId},
 };
 
@@ -25,11 +25,11 @@ impl<'a> DictionaryRowPreInsertContext<'a> {
 }
 
 pub trait DictionaryRowPreInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPreInsertContext) -> Result<(), ValueError> {
 		let original_len = ctx.values.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -41,14 +41,14 @@ impl InterceptorChain<dyn DictionaryRowPreInsertInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -59,7 +59,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -70,16 +70,16 @@ where
 
 impl<F> DictionaryRowPreInsertInterceptor for ClosureDictionaryRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_pre_insert<F>(f: F) -> ClosureDictionaryRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureDictionaryRowPreInsertInterceptor::new(f)
 }
@@ -102,11 +102,11 @@ impl<'a> DictionaryRowPostInsertContext<'a> {
 }
 
 pub trait DictionaryRowPostInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPostInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPostInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPostInsertContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -116,14 +116,14 @@ impl InterceptorChain<dyn DictionaryRowPostInsertInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -134,7 +134,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -145,16 +145,20 @@ where
 
 impl<F> DictionaryRowPostInsertInterceptor for ClosureDictionaryRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_post_insert<F>(f: F) -> ClosureDictionaryRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPostInsertContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureDictionaryRowPostInsertInterceptor::new(f)
 }
@@ -177,11 +181,11 @@ impl<'a> DictionaryRowPreUpdateContext<'a> {
 }
 
 pub trait DictionaryRowPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPreUpdateContext) -> Result<(), ValueError> {
 		let original_len = ctx.values.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -193,14 +197,14 @@ impl InterceptorChain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -211,7 +215,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -222,16 +226,16 @@ where
 
 impl<F> DictionaryRowPreUpdateInterceptor for ClosureDictionaryRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_pre_update<F>(f: F) -> ClosureDictionaryRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureDictionaryRowPreUpdateInterceptor::new(f)
 }
@@ -262,11 +266,11 @@ impl<'a> DictionaryRowPostUpdateContext<'a> {
 }
 
 pub trait DictionaryRowPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPostUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPostUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -276,14 +280,14 @@ impl InterceptorChain<dyn DictionaryRowPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -294,7 +298,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -305,16 +309,20 @@ where
 
 impl<F> DictionaryRowPostUpdateInterceptor for ClosureDictionaryRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_post_update<F>(f: F) -> ClosureDictionaryRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPostUpdateContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureDictionaryRowPostUpdateInterceptor::new(f)
 }
@@ -334,11 +342,11 @@ impl<'a> DictionaryRowPreDeleteContext<'a> {
 }
 
 pub trait DictionaryRowPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -348,14 +356,14 @@ impl InterceptorChain<dyn DictionaryRowPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -366,7 +374,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -377,16 +385,16 @@ where
 
 impl<F> DictionaryRowPreDeleteInterceptor for ClosureDictionaryRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_pre_delete<F>(f: F) -> ClosureDictionaryRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureDictionaryRowPreDeleteInterceptor::new(f)
 }
@@ -409,11 +417,11 @@ impl<'a> DictionaryRowPostDeleteContext<'a> {
 }
 
 pub trait DictionaryRowPostDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPostDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: DictionaryRowPostDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -423,14 +431,14 @@ impl InterceptorChain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureDictionaryRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureDictionaryRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -441,7 +449,7 @@ where
 
 impl<F> Clone for ClosureDictionaryRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -452,16 +460,20 @@ where
 
 impl<F> DictionaryRowPostDeleteInterceptor for ClosureDictionaryRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn dictionary_row_post_delete<F>(f: F) -> ClosureDictionaryRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut DictionaryRowPostDeleteContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureDictionaryRowPostDeleteInterceptor::new(f)
 }
@@ -473,7 +485,7 @@ impl DictionaryRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
 		values: &mut [Value],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPreInsertContext::new(dictionary, values);
 		txn.dictionary_row_pre_insert_interceptors().execute(ctx)
 	}
@@ -483,7 +495,7 @@ impl DictionaryRowInterceptor {
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
 		values: &[Value],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPostInsertContext::new(dictionary, ids, values);
 		txn.dictionary_row_post_insert_interceptors().execute(ctx)
 	}
@@ -493,7 +505,7 @@ impl DictionaryRowInterceptor {
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
 		values: &mut [Value],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPreUpdateContext::new(dictionary, ids, values);
 		txn.dictionary_row_pre_update_interceptors().execute(ctx)
 	}
@@ -504,7 +516,7 @@ impl DictionaryRowInterceptor {
 		ids: &[DictionaryEntryId],
 		posts: &[Value],
 		pres: &[Value],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPostUpdateContext::new(dictionary, ids, posts, pres);
 		txn.dictionary_row_post_update_interceptors().execute(ctx)
 	}
@@ -513,7 +525,7 @@ impl DictionaryRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPreDeleteContext::new(dictionary, ids);
 		txn.dictionary_row_pre_delete_interceptors().execute(ctx)
 	}
@@ -523,7 +535,7 @@ impl DictionaryRowInterceptor {
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],
 		values: &[Value],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = DictionaryRowPostDeleteContext::new(dictionary, ids, values);
 		txn.dictionary_row_post_delete_interceptors().execute(ctx)
 	}

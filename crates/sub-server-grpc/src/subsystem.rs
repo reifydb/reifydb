@@ -26,7 +26,7 @@ use reifydb_runtime::{
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::{accept::accept_admitted, state::AppState};
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::{
 	io::{AsyncRead, AsyncWrite, ReadBuf},
 	net::{TcpListener, TcpStream},
@@ -69,7 +69,7 @@ impl GrpcSubsystem {
 		handle: Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let connection_semaphore = Arc::new(Semaphore::new(state.max_connections()));
 		let subsystem = Self {
 			bind_addr,
@@ -154,7 +154,7 @@ impl GrpcSubsystem {
 		registry: Arc<SubscriptionRegistry>,
 		sub_shutdown_rx: watch::Receiver<bool>,
 		poller_stop_tx: watch::Sender<bool>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
 			*self.poller_stop_tx.lock() = Some(poller_stop_tx);
@@ -185,7 +185,7 @@ impl GrpcSubsystem {
 		Ok(())
 	}
 
-	fn spawn_admin_server(&self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<(), ValueError> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(());
 		};
@@ -215,7 +215,7 @@ impl GrpcSubsystem {
 	}
 
 	#[inline]
-	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
+	fn bind_listener(&self, addr: &str) -> Result<TcpListener, ValueError> {
 		self.handle.block_on(TcpListener::bind(addr)).map_err(|e| {
 			CoreError::SubsystemBindFailed {
 				addr: addr.to_string(),
@@ -241,7 +241,7 @@ impl HasVersion for GrpcSubsystem {
 }
 
 impl Shutdown for GrpcSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("grpc");
 		self.close_registry();
 		self.signal_subscription_and_poller_stop();
@@ -332,7 +332,7 @@ impl Subsystem for GrpcSubsystem {
 }
 
 #[inline]
-fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
+fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr, ValueError> {
 	listener.local_addr().map_err(|e| {
 		CoreError::SubsystemAddressUnavailable {
 			reason: e.to_string(),

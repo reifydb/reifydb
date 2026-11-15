@@ -20,17 +20,14 @@ use reifydb_evaluate::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::variant::resolve_enum_equality;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::column_view::ColumnView};
+use reifydb_value::{error::ValueError, fragment::Fragment, reifydb_assertions, value::column_view::ColumnView};
 use tracing::instrument;
 
 use super::{NoopNode, with_system_headers, with_user_columns};
-use crate::{
-	Result,
-	vm::volcano::{
-		inline::enum_operand,
-		query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
-		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
-	},
+use crate::vm::volcano::{
+	inline::enum_operand,
+	query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
+	udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 };
 
 pub(crate) struct MapNode {
@@ -57,7 +54,7 @@ impl MapNode {
 
 impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
 				resolve_enum_equality(expr, source, &ctx.services.catalog, rx, &mut |e| {
@@ -88,7 +85,11 @@ impl QueryNode for MapNode {
 	}
 
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		}
@@ -115,7 +116,7 @@ impl QueryNode for MapNode {
 }
 
 impl Transform for MapNode {
-	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		let (stored_ctx, lowered) = self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
 		let row_count = input.num_rows();
@@ -158,12 +159,12 @@ impl MapNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::map::eval")]
-	fn eval_projection(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	fn eval_projection(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		lowered.evaluate(exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::map::assemble")]
-	fn assemble(input: &RecordBatch, new_columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
+	fn assemble(input: &RecordBatch, new_columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch, ValueError> {
 		with_user_columns(new_columns, input)
 	}
 }
@@ -189,7 +190,7 @@ impl MapWithoutInputNode {
 
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
 			self.udf_columns = Some(udf_cols);
@@ -201,7 +202,11 @@ impl QueryNode for MapWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		}

@@ -3,11 +3,12 @@
 
 use reifydb_core::{interface::catalog::identity::Role, key::identity::RoleKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::role::convert_role};
+use crate::{CatalogStore, store::role::convert_role};
 
 impl CatalogStore {
-	pub(crate) fn list_all_roles(rx: &mut Transaction<'_>) -> Result<Vec<Role>> {
+	pub(crate) fn list_all_roles(rx: &mut Transaction<'_>) -> Result<Vec<Role>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(RoleKey::full_scan(), RangeScope::All, 1024)?;
 

@@ -9,7 +9,7 @@ use reifydb_codec::{
 	tag::{TypeTag, ValueKind},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
@@ -37,7 +37,7 @@ enum Cell<'a> {
 	Blob(&'a [u8]),
 }
 
-pub fn extend_keys(view: &ColumnView, rows: &mut [KeySerializer]) -> Result<()> {
+pub fn extend_keys(view: &ColumnView, rows: &mut [KeySerializer]) -> Result<(), ValueError> {
 	match &view.data {
 		ViewData::Float4(array) => {
 			let none = none_bytes(view);
@@ -96,7 +96,7 @@ pub fn extend_keys(view: &ColumnView, rows: &mut [KeySerializer]) -> Result<()> 
 	Ok(())
 }
 
-pub fn extend_value_bytes(view: &ColumnView, rows: &mut [Vec<u8>]) -> Result<()> {
+pub fn extend_value_bytes(view: &ColumnView, rows: &mut [Vec<u8>]) -> Result<(), ValueError> {
 	let none = to_stdvec(&Value::None {
 		inner: view.base_type(),
 	})
@@ -119,7 +119,7 @@ pub fn extend_value_bytes(view: &ColumnView, rows: &mut [Vec<u8>]) -> Result<()>
 	})
 }
 
-pub fn value_key_hashes(views: &[ColumnView], rows: usize) -> Result<Vec<Option<Hash128>>> {
+pub fn value_key_hashes(views: &[ColumnView], rows: usize) -> Result<Vec<Option<Hash128>>, ValueError> {
 	let mut bytes = vec![Vec::new(); rows];
 	let mut none = vec![false; rows];
 	for view in views {
@@ -139,8 +139,8 @@ fn postcard_into<T: Serialize + ?Sized>(row: &mut Vec<u8>, value: &T) {
 fn for_each_cell<'a>(
 	view: &ColumnView<'a>,
 	rows: usize,
-	mut visit: impl FnMut(usize, Cell<'a>) -> Result<()>,
-) -> Result<()> {
+	mut visit: impl FnMut(usize, Cell<'a>) -> Result<(), ValueError>,
+) -> Result<(), ValueError> {
 	match &view.data {
 		ViewData::Bool(array) => cells(view, rows, &mut visit, |i| Cell::Value(Value::Boolean(array.value(i)))),
 		ViewData::Float4(array) => cells(view, rows, &mut visit, |i| Cell::Value(array.value(i).to_value())),
@@ -221,9 +221,9 @@ fn for_each_cell<'a>(
 fn cells<'a>(
 	view: &ColumnView<'a>,
 	rows: usize,
-	visit: &mut impl FnMut(usize, Cell<'a>) -> Result<()>,
+	visit: &mut impl FnMut(usize, Cell<'a>) -> Result<(), ValueError>,
 	cell: impl Fn(usize) -> Cell<'a>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let nulls = view.logical_nulls();
 	for index in 0..rows {
 		match nulls.as_ref().is_some_and(|nulls| !(index < nulls.len() && nulls.is_valid(index))) {

@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, RingBufferId},
 	ringbuffer::RingBuffer,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
-	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()> {
+	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(ringbuffer),
@@ -28,7 +28,7 @@ impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()> {
+	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(ringbuffer),
 			post: None,

@@ -9,11 +9,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
+	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<(), ValueError> {
 		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		if let Some(flow) = flow {

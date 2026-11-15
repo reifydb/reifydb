@@ -25,14 +25,14 @@ use super::{
 	check_flow_dag, count_windowed_nodes, extract_view_sort, prepare_flow_plan, split_at_windowed_node,
 	view_storage,
 };
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_deferred_windowed_view_group(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateDeferredWindowedViewGroupNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	reject_taken_group_name(services, txn, &plan.namespace, &plan.group)?;
 
 	let mut member_plans: Vec<(QueryPlan, View)> = Vec::with_capacity(plan.members.len());
@@ -142,7 +142,7 @@ fn reject_taken_group_name(
 	txn: &mut AdminTransaction,
 	namespace: &Namespace,
 	group: &Fragment,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let name = group.text();
 	let taken = if services.catalog.find_view_by_name(&mut Transaction::Admin(txn), namespace.id(), name)?.is_some()
 	{

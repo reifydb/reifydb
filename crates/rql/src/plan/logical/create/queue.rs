@@ -15,6 +15,7 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, TypeConstraint},
@@ -23,7 +24,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	duration::{DurationBound, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
@@ -41,7 +42,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateQueue<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let mut columns: Vec<QueueColumnToCreate> = vec![];
 
 		let queue_ns_segments: Vec<&str> = ast.queue.namespace.iter().map(|n| n.text()).collect();
@@ -185,7 +186,7 @@ pub(crate) fn compile_dispatch(
 	ast: &AstQueueDispatch<'_>,
 	columns: &[QueueColumnToCreate],
 	namespace: &[&str],
-) -> Result<QueueDispatch> {
+) -> Result<QueueDispatch, ValueError> {
 	match ast {
 		AstQueueDispatch::Fifo(fifo) => {
 			let ordered_by = match &fifo.ordered_by {
@@ -200,7 +201,11 @@ pub(crate) fn compile_dispatch(
 	}
 }
 
-fn compile_column_reference(token: &Token<'_>, columns: &[QueueColumnToCreate], namespace: &[&str]) -> Result<String> {
+fn compile_column_reference(
+	token: &Token<'_>,
+	columns: &[QueueColumnToCreate],
+	namespace: &[&str],
+) -> Result<String, ValueError> {
 	let column = token.fragment.text();
 	if !columns.iter().any(|c| c.name.text() == column) {
 		return Err(CatalogError::NotFound {
@@ -218,7 +223,7 @@ fn compile_deduplicate(
 	ast: Option<&AstQueueDeduplicate<'_>>,
 	columns: &[QueueColumnToCreate],
 	namespace: &[&str],
-) -> Result<Option<QueueDeduplicate>> {
+) -> Result<Option<QueueDeduplicate>, ValueError> {
 	let Some(ast) = ast else {
 		return Ok(None);
 	};
@@ -257,7 +262,7 @@ fn compile_deduplicate(
 	}))
 }
 
-pub(crate) fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention> {
+pub(crate) fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetention, ValueError> {
 	let Some(ast) = ast else {
 		return Ok(QueueRetention::default());
 	};
@@ -272,7 +277,7 @@ pub(crate) fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<Q
 	})
 }
 
-pub(crate) fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
+pub(crate) fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry, ValueError> {
 	let Some(ast) = ast else {
 		return Ok(QueueRetry::default());
 	};

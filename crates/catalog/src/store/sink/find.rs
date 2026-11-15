@@ -10,16 +10,17 @@ use reifydb_core::{
 	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::CatalogError,
 	store::sink::shape::{sink, sink_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_sink(rx: &mut Transaction<'_>, id: SinkId) -> Result<Option<Sink>> {
+	pub(crate) fn find_sink(rx: &mut Transaction<'_>, id: SinkId) -> Result<Option<Sink>, ValueError> {
 		let Some(multi) = rx.get(&[SinkKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -53,7 +54,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Sink>> {
+	) -> Result<Option<Sink>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSinkKey::full_scan(namespace), RangeScope::All, 1024)?;
 

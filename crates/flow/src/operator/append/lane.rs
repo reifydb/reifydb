@@ -7,7 +7,7 @@ use reifydb_core::{
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::catalog::flow::OperatorId,
 };
-use reifydb_value::{Result, error::ValueError, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::error::FlowGraphError;
 
@@ -71,7 +71,7 @@ fn is_append(dag: &FlowDag, node: OperatorId) -> bool {
 	matches!(dag.get_operator(&node).map(|n| &n.ty), Some(OperatorDef::Append { .. }))
 }
 
-fn resolve_down(dag: &FlowDag, mut node: OperatorId) -> Result<OperatorId> {
+fn resolve_down(dag: &FlowDag, mut node: OperatorId) -> Result<OperatorId, ValueError> {
 	loop {
 		let found = dag.get_operator(&node).ok_or_else(|| missing(node))?;
 		if !preserves_row_numbers(&found.ty) {
@@ -84,7 +84,7 @@ fn resolve_down(dag: &FlowDag, mut node: OperatorId) -> Result<OperatorId> {
 	}
 }
 
-fn chain_parent(dag: &FlowDag, node: OperatorId) -> Result<Option<OperatorId>> {
+fn chain_parent(dag: &FlowDag, node: OperatorId) -> Result<Option<OperatorId>, ValueError> {
 	let mut frontier = vec![node];
 	let mut parent = None;
 	while let Some(current) = frontier.pop() {
@@ -111,7 +111,7 @@ fn chain_parent(dag: &FlowDag, node: OperatorId) -> Result<Option<OperatorId>> {
 	Ok(parent)
 }
 
-fn chain_root(dag: &FlowDag, node: OperatorId) -> Result<OperatorId> {
+fn chain_root(dag: &FlowDag, node: OperatorId) -> Result<OperatorId, ValueError> {
 	let mut current = node;
 	while let Some(parent) = chain_parent(dag, current)? {
 		current = parent;
@@ -119,7 +119,7 @@ fn chain_root(dag: &FlowDag, node: OperatorId) -> Result<OperatorId> {
 	Ok(current)
 }
 
-fn count_leaves(dag: &FlowDag, node: OperatorId) -> Result<u64> {
+fn count_leaves(dag: &FlowDag, node: OperatorId) -> Result<u64, ValueError> {
 	if !is_append(dag, node) {
 		return Ok(1);
 	}
@@ -136,7 +136,7 @@ fn walk(
 	node: OperatorId,
 	next_lane: &mut u64,
 	out: &mut HashMap<OperatorId, [Option<u64>; 2]>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let found = dag.get_operator(&node).ok_or_else(|| missing(node))?;
 	if found.inputs.len() != 2 {
 		return Err(ValueError::from(FlowGraphError::NodeInputArity {
@@ -165,7 +165,7 @@ fn missing(node: OperatorId) -> ValueError {
 	})
 }
 
-pub fn assign_lanes(dag: &FlowDag, node: OperatorId) -> Result<AppendLanes> {
+pub fn assign_lanes(dag: &FlowDag, node: OperatorId) -> Result<AppendLanes, ValueError> {
 	let root = chain_root(dag, node)?;
 	let leaves = count_leaves(dag, root)?;
 	if leaves > MAX_LANES {

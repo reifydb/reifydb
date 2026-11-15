@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{error::ValueError, value::Value};
 use vortex_array::{
 	IntoArray, VortexSessionExecute, arrays::ConstantArray, builtins::ArrayBuiltins,
 	scalar_fn::fns::operators::Operator,
@@ -48,7 +48,7 @@ pub enum Predicate {
 	Not(Box<Predicate>),
 }
 
-pub fn evaluate(data: &BlockData, predicate: &Predicate, session: &VortexSession) -> Result<Selection> {
+pub fn evaluate(data: &BlockData, predicate: &Predicate, session: &VortexSession) -> Result<Selection, ValueError> {
 	let len = data.len();
 	let mask = evaluate_mask(data, predicate, len, session)?;
 	Ok(mask_to_selection(mask))
@@ -59,7 +59,7 @@ fn evaluate_mask(
 	predicate: &Predicate,
 	len: usize,
 	session: &VortexSession,
-) -> Result<BooleanBuffer> {
+) -> Result<BooleanBuffer, ValueError> {
 	match predicate {
 		Predicate::Eq(col, v) => compare_mask(data, col, v, Operator::Eq, session),
 		Predicate::Ne(col, v) => compare_mask(data, col, v, Operator::NotEq, session),
@@ -100,7 +100,7 @@ fn compare_mask(
 	rhs: &Value,
 	op: Operator,
 	session: &VortexSession,
-) -> Result<BooleanBuffer> {
+) -> Result<BooleanBuffer, ValueError> {
 	let ch = column(data, col)?;
 	if ch.chunks.is_empty() {
 		return Ok(BooleanBuffer::new_unset(0));
@@ -117,7 +117,7 @@ fn compare_mask(
 	Ok(mask.finish())
 }
 
-fn is_none_mask(ch: &ColumnChunks, session: &VortexSession) -> Result<BooleanBuffer> {
+fn is_none_mask(ch: &ColumnChunks, session: &VortexSession) -> Result<BooleanBuffer, ValueError> {
 	let mut ctx = session.create_execution_ctx();
 	let mut mask = BooleanBufferBuilder::new(ch.len());
 	for chunk in &ch.chunks {
@@ -132,7 +132,7 @@ fn to_bits(mask: &Mask) -> BooleanBuffer {
 	BooleanBuffer::from(mask.to_bit_buffer())
 }
 
-fn column<'a>(data: &'a BlockData, col: &ColRef) -> Result<&'a ColumnChunks> {
+fn column<'a>(data: &'a BlockData, col: &ColRef) -> Result<&'a ColumnChunks, ValueError> {
 	data.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
 		StoreColumnError::ColumnNotInSchema {
 			operation: "predicate::evaluate",

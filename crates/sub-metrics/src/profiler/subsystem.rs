@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::{info, instrument};
 
 use super::{
@@ -52,7 +52,7 @@ impl ProfilerCollector {
 		&self.actor_ref
 	}
 
-	fn stop(&self) -> Result<()> {
+	fn stop(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("profiler");
 		self.scope.shutdown();
 		if let Some(handle) = self.handle.lock().take()
@@ -123,7 +123,7 @@ impl ProfilerSubsystem {
 
 impl Shutdown for ProfilerSubsystem {
 	#[instrument(name = "profiler::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return Ok(());
 		}

@@ -21,7 +21,7 @@ use reifydb::{
 		sync::{condvar::Condvar, mutex::Mutex},
 	},
 	sdk::{
-		error::Result as SdkResult,
+		error::SdkError,
 		flow::operator::{
 			NostateOperator, OperatorMetadata,
 			column::operator::OperatorColumn,
@@ -115,11 +115,11 @@ impl OperatorMetadata for Wedged {
 }
 
 impl NostateOperator for Wedged {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Wedged)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		GATE.pass();
 		Ok(())
 	}

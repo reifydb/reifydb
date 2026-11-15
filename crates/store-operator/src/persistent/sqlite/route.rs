@@ -20,7 +20,7 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
 	types::{OperatorStateCensus, RetiredRows},
 };
@@ -158,7 +158,7 @@ pub(super) fn get(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Result<Vec<Option<Vec<u8>>>> {
+) -> Result<Vec<Option<Vec<u8>>>, StoreOperatorError> {
 	read_many::<Payloads>(conn, operator, tables, keys)
 }
 
@@ -167,7 +167,7 @@ pub(super) fn sizes_many(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Result<Vec<Option<u64>>> {
+) -> Result<Vec<Option<u64>>, StoreOperatorError> {
 	read_many::<Sizes>(conn, operator, tables, keys)
 }
 
@@ -176,7 +176,7 @@ fn read_many<R: BatchRead>(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Result<Vec<Option<R::Out>>> {
+) -> Result<Vec<Option<R::Out>>, StoreOperatorError> {
 	let mut items: Vec<GetManyItem> = keys
 		.iter()
 		.enumerate()
@@ -194,7 +194,7 @@ fn read_many<R: BatchRead>(
 			}
 			Ok((keyspace, position, group, suffix))
 		})
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, StoreOperatorError>>()?;
 	items.sort_unstable_by_key(|(keyspace, position, _, _)| (*keyspace, *position));
 	let mut answers = vec![None; keys.len()];
 	for run in items.chunk_by(|left, right| left.0 == right.0) {

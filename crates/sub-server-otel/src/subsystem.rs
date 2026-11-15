@@ -29,7 +29,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tokio::runtime::Handle;
 use tracing::info;
 
@@ -46,7 +46,7 @@ pub struct OtelSubsystem {
 }
 
 impl OtelSubsystem {
-	pub fn new(config: OtelConfig, handle: Handle) -> Result<Self> {
+	pub fn new(config: OtelConfig, handle: Handle) -> Result<Self, ValueError> {
 		let subsystem = Self {
 			config,
 			running: Arc::new(AtomicBool::new(false)),
@@ -80,7 +80,7 @@ impl OtelSubsystem {
 			.and_then(|guard| guard.as_ref().map(|provider| provider.tracer("reifydb")))
 	}
 
-	fn build_provider_in_runtime(&self) -> Result<SdkTracerProvider> {
+	fn build_provider_in_runtime(&self) -> Result<SdkTracerProvider, ValueError> {
 		#[cfg(not(feature = "otlp"))]
 		{
 			return Err(CoreError::SubsystemFeatureDisabled {
@@ -154,7 +154,7 @@ impl HasVersion for OtelSubsystem {
 }
 
 impl Shutdown for OtelSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
 			return Ok(());
 		}

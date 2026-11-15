@@ -29,7 +29,7 @@ use reifydb_store::{
 };
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{Page as PersistentPage, Persistent, PersistentTier},
 	range::{
 		TypedPartition,
@@ -42,7 +42,7 @@ use crate::{
 pub(crate) type Page = Vec<(EncodedKey, EncodedPodRow)>;
 
 pub(crate) trait PageSource {
-	fn next_page(&mut self, limit: u64) -> Result<Page>;
+	fn next_page(&mut self, limit: u64) -> Result<Page, StoreOperatorError>;
 
 	fn is_exhausted(&self) -> bool;
 
@@ -76,7 +76,7 @@ fn decoded(batch: OperatorBatch) -> Vec<(EncodedKey, EncodedPodRow)> {
 }
 
 impl PageSource for PersistentPager<'_> {
-	fn next_page(&mut self, limit: u64) -> Result<Page> {
+	fn next_page(&mut self, limit: u64) -> Result<Page, StoreOperatorError> {
 		if self.persistent.is_absent() {
 			self.exhausted = true;
 			return Ok(Vec::new());
@@ -136,7 +136,7 @@ impl PageSource for GroupPager<'_> {
 		self.ceiling.as_ref()
 	}
 
-	fn next_page(&mut self, limit: u64) -> Result<Page> {
+	fn next_page(&mut self, limit: u64) -> Result<Page, StoreOperatorError> {
 		if self.exhausted || self.persistent.is_absent() {
 			self.exhausted = true;
 			return Ok(Vec::new());
@@ -246,7 +246,7 @@ impl<'a, K: Keyspace> TierPager<'a, K> {
 }
 
 impl<K: Keyspace> PageSource for TierPager<'_, K> {
-	fn next_page(&mut self, limit: u64) -> Result<Page> {
+	fn next_page(&mut self, limit: u64) -> Result<Page, StoreOperatorError> {
 		loop {
 			if let Some((interval, materializable, consumed)) = self.pending.take() {
 				if self.persistent.is_absent() {
@@ -447,7 +447,7 @@ impl<'a> GroupKeyspacePager<'a> {
 }
 
 impl PageSource for GroupKeyspacePager<'_> {
-	fn next_page(&mut self, limit: u64) -> Result<Page> {
+	fn next_page(&mut self, limit: u64) -> Result<Page, StoreOperatorError> {
 		loop {
 			let Some(source) = self.current.as_mut() else {
 				let Some(keyspace) = self.keyspaces.get(self.at).copied() else {
@@ -477,7 +477,7 @@ impl PageSource for GroupKeyspacePager<'_> {
 pub(crate) struct ExhaustedPager;
 
 impl PageSource for ExhaustedPager {
-	fn next_page(&mut self, _limit: u64) -> Result<Page> {
+	fn next_page(&mut self, _limit: u64) -> Result<Page, StoreOperatorError> {
 		Ok(Vec::new())
 	}
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::authentication::Authentication;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::interceptor::chain::InterceptorChain;
 
@@ -19,11 +19,11 @@ impl<'a> AuthenticationPostCreateContext<'a> {
 }
 
 pub trait AuthenticationPostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut AuthenticationPostCreateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn AuthenticationPostCreateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: AuthenticationPostCreateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: AuthenticationPostCreateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -33,14 +33,14 @@ impl InterceptorChain<dyn AuthenticationPostCreateInterceptor + Send + Sync> {
 
 pub struct ClosureAuthenticationPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureAuthenticationPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -51,7 +51,7 @@ where
 
 impl<F> Clone for ClosureAuthenticationPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -62,16 +62,20 @@ where
 
 impl<F> AuthenticationPostCreateInterceptor for ClosureAuthenticationPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut AuthenticationPostCreateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn authentication_post_create<F>(f: F) -> ClosureAuthenticationPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut AuthenticationPostCreateContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureAuthenticationPostCreateInterceptor::new(f)
 }
@@ -89,11 +93,11 @@ impl<'a> AuthenticationPreDeleteContext<'a> {
 }
 
 pub trait AuthenticationPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut AuthenticationPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn AuthenticationPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: AuthenticationPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: AuthenticationPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -103,14 +107,14 @@ impl InterceptorChain<dyn AuthenticationPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureAuthenticationPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureAuthenticationPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -121,7 +125,7 @@ where
 
 impl<F> Clone for ClosureAuthenticationPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -132,16 +136,20 @@ where
 
 impl<F> AuthenticationPreDeleteInterceptor for ClosureAuthenticationPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut AuthenticationPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn authentication_pre_delete<F>(f: F) -> ClosureAuthenticationPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut AuthenticationPreDeleteContext<'a>) -> Result<(), ValueError>
+		+ Send
+		+ Sync
+		+ Clone
+		+ 'static,
 {
 	ClosureAuthenticationPreDeleteInterceptor::new(f)
 }

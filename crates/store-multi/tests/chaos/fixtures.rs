@@ -20,7 +20,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
-use reifydb_value::{Result as ValueResult, byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, util::cowvec::CowVec};
 
 /// Commit buffer + SQLite persistent + read tiers on sync_only pools, so the timer-driven flush and
 /// compaction actors never fire on their own and the run stays a pure function of the seed.
@@ -50,12 +50,12 @@ pub fn sync_persistent_store_with_tiers(
 pub struct NoWalCheckpoint;
 
 impl WalCheckpoint for NoWalCheckpoint {
-	fn make_durable(&self) -> ValueResult<CommitVersion> {
+	fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
 		Ok(CommitVersion(i64::MAX as u64))
 	}
 
-	fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+	fn saved_through(&self, _version: CommitVersion) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

@@ -14,7 +14,7 @@ use reifydb_core::{
 use tracing::instrument;
 
 use crate::{
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{Fetch, Page, memory::MemoryPersistent},
 	types::OperatorBatch,
 };
@@ -89,7 +89,7 @@ impl Fetch for MemoryPersistent {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(vec![None; keys.len()]);
@@ -106,7 +106,7 @@ impl Page for MemoryPersistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		_occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(OperatorBatch::empty());
@@ -127,7 +127,7 @@ impl Page for MemoryPersistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		_occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(OperatorBatch::empty());
@@ -152,7 +152,7 @@ impl Page for MemoryPersistent {
 		groups: &[GroupId],
 		batch: u64,
 		mask: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
 			return Ok(OperatorBatch::empty());

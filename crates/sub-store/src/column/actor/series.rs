@@ -65,7 +65,6 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	params::Params,
@@ -182,7 +181,7 @@ impl SeriesMaterializationActor {
 		catalog: &Catalog,
 		series: &Series,
 		now_wall: DateTime,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let partitions = self.partitions_of(state, query_txn, series)?;
 		let ids: Vec<Partition> = partitions.iter().map(|(partition, _)| *partition).collect();
 		let found = catalog.find_series_metadata(&mut Transaction::Query(&mut *query_txn), series.id, &ids)?;
@@ -231,14 +230,19 @@ impl SeriesMaterializationActor {
 		Ok(())
 	}
 
-	fn drop_partition_blocks(&self, series: &Series, partition: Partition) -> Result<()> {
+	fn drop_partition_blocks(&self, series: &Series, partition: Partition) -> Result<(), ValueError> {
 		if self.drop_blocks_outside(series, partition, 0..0)? {
 			self.reset_dirty_mark(series, partition)?;
 		}
 		Ok(())
 	}
 
-	fn drop_blocks_outside(&self, series: &Series, partition: Partition, live: Range<u64>) -> Result<bool> {
+	fn drop_blocks_outside(
+		&self,
+		series: &Series,
+		partition: Partition,
+		live: Range<u64>,
+	) -> Result<bool, ValueError> {
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
@@ -272,7 +276,7 @@ impl SeriesMaterializationActor {
 		Ok(true)
 	}
 
-	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<()> {
+	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<(), ValueError> {
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
 		let mut tx = Transaction::Admin(&mut admin);
@@ -286,7 +290,7 @@ impl SeriesMaterializationActor {
 		}
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
-		let change = |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+		let change = |latest: &mut SeriesPartitionMetadata| -> Result<(), ValueError> {
 			latest.dirty_from_key = u64::MAX;
 			latest.dirty_to_key = 0;
 			Ok(())
@@ -300,7 +304,7 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		partition: Partition,
 		observed: &SeriesPartitionMetadata,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if observed.dirty_from_key >= observed.dirty_to_key {
 			return Ok(());
 		}
@@ -318,7 +322,7 @@ impl SeriesMaterializationActor {
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
 		let observed = observed.clone();
-		let change = move |latest: &mut SeriesPartitionMetadata| -> Result<()> {
+		let change = move |latest: &mut SeriesPartitionMetadata| -> Result<(), ValueError> {
 			if unchanged_since_scan(latest, &observed) {
 				latest.dirty_from_key = u64::MAX;
 				latest.dirty_to_key = 0;
@@ -334,7 +338,7 @@ impl SeriesMaterializationActor {
 		state: &mut SeriesMaterializationState,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-	) -> Result<Vec<(Partition, Vec<Value>)>> {
+	) -> Result<Vec<(Partition, Vec<Value>)>, ValueError> {
 		if let Some(cached) = state.partitions.get(&series.id) {
 			return Ok(cached.clone());
 		}
@@ -351,7 +355,7 @@ impl SeriesMaterializationActor {
 		&self,
 		query_txn: &mut QueryTransaction,
 		series: &Series,
-	) -> Result<Vec<(Partition, Vec<Value>)>> {
+	) -> Result<Vec<(Partition, Vec<Value>)>, ValueError> {
 		let mut partitions = Vec::new();
 		let mut tx = Transaction::Query(query_txn);
 		let stream = tx.range(PartitionKey::full_scan(ObjectId::Series(series.id)), RangeScope::All, 1024)?;
@@ -364,7 +368,12 @@ impl SeriesMaterializationActor {
 		Ok(partitions)
 	}
 
-	fn materialize_bucket(&self, series: &Series, scope: PartitionScope<'_>, bucket: &Bucket) -> Result<()> {
+	fn materialize_bucket(
+		&self,
+		series: &Series,
+		scope: PartitionScope<'_>,
+		bucket: &Bucket,
+	) -> Result<(), ValueError> {
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let sealed_at_commit_version = admin.version();
 		let resolved_series = self.resolve_series_target(&mut Transaction::Admin(&mut admin), series)?;
@@ -420,7 +429,11 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	fn resolve_series_target(&self, tx: &mut Transaction<'_>, series: &Series) -> Result<ResolvedSeries> {
+	fn resolve_series_target(
+		&self,
+		tx: &mut Transaction<'_>,
+		series: &Series,
+	) -> Result<ResolvedSeries, ValueError> {
 		let catalog = self.engine.catalog();
 		let namespace_def =
 			catalog.find_namespace(tx, series.namespace)?.ok_or_else(|| missing_namespace(series))?;
@@ -438,7 +451,7 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		bucket: &Bucket,
 		tags: &[Option<u8>],
-	) -> Result<Vec<RecordBatch>> {
+	) -> Result<Vec<RecordBatch>, ValueError> {
 		let services = self.engine.services();
 		let memory = query_budget(&services);
 		let context = Arc::new(QueryContext {
@@ -477,7 +490,7 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	fn bucket_scan_tags(&self, tx: &mut Transaction<'_>, series: &Series) -> Result<Vec<Option<u8>>> {
+	fn bucket_scan_tags(&self, tx: &mut Transaction<'_>, series: &Series) -> Result<Vec<Option<u8>>, ValueError> {
 		let Some(sumtype) = series.tag else {
 			return Ok(vec![None]);
 		};
@@ -497,7 +510,7 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<(BlockData, Vec<ColumnStats>)> {
+	) -> Result<(BlockData, Vec<ColumnStats>), ValueError> {
 		let schema = scan_output_schema(series);
 		self.encode_columns(series, arrow_columns_from_batches(&schema, &batches, version)?)
 	}
@@ -506,7 +519,7 @@ impl SeriesMaterializationActor {
 		&self,
 		series: &Series,
 		columns: Vec<(String, ValueType, (FieldRef, ArrayRef))>,
-	) -> Result<(BlockData, Vec<ColumnStats>)> {
+	) -> Result<(BlockData, Vec<ColumnStats>), ValueError> {
 		let stats = stats_from_arrow(&columns, self.block_store.session())?;
 		let data = match &series.encoding {
 			None => compress_columns(columns, &self.compressor)?,
@@ -523,7 +536,7 @@ impl SeriesMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		catalog: &Catalog,
 		now: DateTime,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let named: HashSet<(u64, u64)> = catalog
 			.list_column_blocks(&mut Transaction::Query(query_txn))?
 			.iter()
@@ -550,7 +563,12 @@ impl SeriesMaterializationActor {
 		Ok(())
 	}
 
-	fn merge_windows(&self, series: &Series, scope: PartitionScope<'_>, now_wall: DateTime) -> Result<()> {
+	fn merge_windows(
+		&self,
+		series: &Series,
+		scope: PartitionScope<'_>,
+		now_wall: DateTime,
+	) -> Result<(), ValueError> {
 		if self.merge_buckets == 0 {
 			return Ok(());
 		}
@@ -595,7 +613,7 @@ impl SeriesMaterializationActor {
 		scope: PartitionScope<'_>,
 		window: Range<u64>,
 		inputs: &[ColumnBlock],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let decoder = BlockDecoder::new(self.block_encodings.clone(), self.block_store.session().clone());
 		let mut per_block = Vec::with_capacity(inputs.len());
 		for block in inputs {
@@ -672,7 +690,10 @@ impl SeriesMaterializationActor {
 		commit_admin(admin)
 	}
 
-	fn block_columns(&self, data: &BlockData) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>> {
+	fn block_columns(
+		&self,
+		data: &BlockData,
+	) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>, ValueError> {
 		let session = self.block_store.session();
 		let mut columns = Vec::with_capacity(data.columns.len());
 		for ((name, ty, _), chunks) in data.schema.iter().zip(&data.columns) {
@@ -696,7 +717,7 @@ impl SeriesMaterializationActor {
 		bucket: &Bucket,
 		keys: &[TaggedKey],
 		data: Arc<BlockData>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
@@ -722,7 +743,7 @@ impl SeriesMaterializationActor {
 	}
 }
 
-fn skip_on_conflict(result: Result<()>) -> Result<()> {
+fn skip_on_conflict(result: Result<(), ValueError>) -> Result<(), ValueError> {
 	match result {
 		Err(e) if is_conflict(&e) => Ok(()),
 		other => other,
@@ -733,7 +754,7 @@ fn unchanged_since_scan(current: &SeriesPartitionMetadata, observed: &SeriesPart
 	current == observed
 }
 
-fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
+fn commit_admin(mut admin: AdminTransaction) -> Result<(), ValueError> {
 	admin.commit()?;
 	Ok(())
 }
@@ -808,7 +829,10 @@ impl Actor for SeriesMaterializationActor {
 	}
 }
 
-fn merge_order(series: &Series, columns: &[(String, ValueType, (FieldRef, ArrayRef))]) -> Result<UInt32Array> {
+fn merge_order(
+	series: &Series,
+	columns: &[(String, ValueType, (FieldRef, ArrayRef))],
+) -> Result<UInt32Array, ValueError> {
 	let descending = Some(SortOptions {
 		descending: true,
 		nulls_first: false,

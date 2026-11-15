@@ -8,7 +8,7 @@ use reifydb_core::{
 		operator::state::{GroupId, GroupStateKey, GroupStateRange},
 	},
 };
-use reifydb_value::{Result, count::Count, reifydb_assertions};
+use reifydb_value::{count::Count, error::ValueError, reifydb_assertions};
 
 use crate::{
 	operator::state::reclaim::ReclaimOutcome,
@@ -21,7 +21,7 @@ pub trait ReclaimExtension: StateExtension {
 		operator: OperatorId,
 		groups: &[GroupId],
 		limit: usize,
-	) -> Result<Vec<ReclaimOutcome>> {
+	) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		let mut left = limit;
 		let mut outcomes = Vec::with_capacity(groups.len());
 		for group in groups {
@@ -44,7 +44,7 @@ pub trait ReclaimExtension: StateExtension {
 		operator: OperatorId,
 		group: GroupId,
 		limit: usize,
-	) -> Result<ReclaimOutcome> {
+	) -> Result<ReclaimOutcome, ValueError> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_root(),
@@ -64,7 +64,7 @@ pub trait ReclaimExtension: StateExtension {
 		operator: OperatorId,
 		group: GroupId,
 		limit: usize,
-	) -> Result<ReclaimOutcome> {
+	) -> Result<ReclaimOutcome, ValueError> {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}

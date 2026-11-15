@@ -6,10 +6,10 @@ use reifydb_transaction::{
 	change::TransactionalSinkChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::sink::create::SinkToCreate as StoreSinkToCreate};
+use crate::{CatalogStore, catalog::Catalog, store::sink::create::SinkToCreate as StoreSinkToCreate};
 
 #[derive(Debug, Clone)]
 pub struct SinkToCreate {
@@ -41,7 +41,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Sink>> {
+	) -> Result<Option<Sink>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(sink) = self.cache.find_sink_by_name_at(namespace, name, cmd.version()) {
@@ -123,21 +123,21 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sink::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
+	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink, ValueError> {
 		let sink = CatalogStore::create_sink(txn, to_create.into())?;
 		txn.track_sink_created(sink.clone())?;
 		Ok(sink)
 	}
 
 	#[instrument(name = "catalog::sink::drop", level = "info", skip(self, txn))]
-	pub fn drop_sink(&self, txn: &mut AdminTransaction, sink: Sink) -> Result<()> {
+	pub fn drop_sink(&self, txn: &mut AdminTransaction, sink: Sink) -> Result<(), ValueError> {
 		CatalogStore::drop_sink(txn, sink.id)?;
 		txn.track_sink_deleted(sink)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::sink::list_all", level = "trace", skip(self, txn))]
-	pub fn list_sinks_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sink>> {
+	pub fn list_sinks_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sink>, ValueError> {
 		CatalogStore::list_sinks_all(txn)
 	}
 }

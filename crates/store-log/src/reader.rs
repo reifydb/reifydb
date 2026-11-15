@@ -12,7 +12,7 @@ use reifydb_runtime::io::fs::{
 };
 
 use crate::{
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	segment::{STAGING_SUFFIX, discard, parent, read_exact, staging, write_all},
 };
 
@@ -23,7 +23,7 @@ pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlin
 	fs: &F,
 	dir: &Path,
 	id: &str,
-) -> Result<()> {
+) -> Result<(), StoreLogError> {
 	let path = path_of(dir, id)?;
 	make_dir(fs, &dir.join(DIR_NAME))?;
 	match fs.open(&path) {
@@ -34,7 +34,7 @@ pub fn register<F: Filesystem + Create + Mkdir + Open + Rename + SyncDir + Unlin
 	publish(fs, &path, LogVersion::ZERO)
 }
 
-pub fn unregister<F: Filesystem + Unlink>(fs: &F, dir: &Path, id: &str) -> Result<()> {
+pub fn unregister<F: Filesystem + Unlink>(fs: &F, dir: &Path, id: &str) -> Result<(), StoreLogError> {
 	discard(fs, &path_of(dir, id)?)
 }
 
@@ -43,7 +43,7 @@ pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	dir: &Path,
 	id: &str,
 	version: LogVersion,
-) -> Result<()> {
+) -> Result<(), StoreLogError> {
 	let path = path_of(dir, id)?;
 	match fs.open(&path) {
 		Ok(_) => {}
@@ -53,11 +53,11 @@ pub fn record<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
 	publish(fs, &path, version)
 }
 
-pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<LogVersion> {
+pub fn version_of<F: Filesystem + Open>(fs: &F, dir: &Path, id: &str) -> Result<LogVersion, StoreLogError> {
 	hint_or_start(fs, &path_of(dir, id)?)
 }
 
-pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>> {
+pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Option<LogVersion>, StoreLogError> {
 	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
 		Ok(entries) => entries,
 		Err(FsError::NotFound(_)) => return Ok(None),
@@ -74,7 +74,7 @@ pub fn floor<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Optio
 	Ok(lowest)
 }
 
-pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<(String, LogVersion)>> {
+pub fn readers<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<(String, LogVersion)>, StoreLogError> {
 	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
 		Ok(entries) => entries,
 		Err(FsError::NotFound(_)) => return Ok(Vec::new()),
@@ -99,7 +99,7 @@ pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + SyncDir + Unlink
 	fs: &F,
 	dir: &Path,
 	ceiling: LogVersion,
-) -> Result<()> {
+) -> Result<(), StoreLogError> {
 	let entries = match fs.read_dir(&dir.join(DIR_NAME)) {
 		Ok(entries) => entries,
 		Err(FsError::NotFound(_)) => return Ok(()),
@@ -116,7 +116,7 @@ pub fn clamp<F: Filesystem + Create + Open + ReadDir + Rename + SyncDir + Unlink
 	Ok(())
 }
 
-pub fn path_of(dir: &Path, id: &str) -> Result<PathBuf> {
+pub fn path_of(dir: &Path, id: &str) -> Result<PathBuf, StoreLogError> {
 	if !valid(id) {
 		return Err(StoreLogError::InvalidReaderId {
 			dir: dir.to_path_buf(),
@@ -136,11 +136,11 @@ fn valid(id: &str) -> bool {
 	id.chars().all(|at| at.is_ascii_alphanumeric() || at == '-' || at == '_' || at == '.')
 }
 
-fn hint_or_start<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
+fn hint_or_start<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion, StoreLogError> {
 	Ok(read(fs, path)?.unwrap_or(LogVersion::ZERO))
 }
 
-fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>> {
+fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>, StoreLogError> {
 	let file = fs.open(path)?;
 	if file.len()? < HINT_BYTES as u64 {
 		return Ok(None);
@@ -152,7 +152,11 @@ fn read<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Option<LogVersion>>
 	Ok(Hint::decode(&raw).map(|hint| hint.version))
 }
 
-fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(fs: &F, path: &Path, version: LogVersion) -> Result<()> {
+fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(
+	fs: &F,
+	path: &Path,
+	version: LogVersion,
+) -> Result<(), StoreLogError> {
 	let staged = staging(path);
 	discard(fs, &staged)?;
 	let file = fs.create(&staged, HINT_BYTES as u64)?;
@@ -162,7 +166,7 @@ fn publish<F: Filesystem + Create + Rename + SyncDir + Unlink>(fs: &F, path: &Pa
 	Ok(fs.sync_dir(parent(path))?)
 }
 
-fn make_dir<F: Filesystem + Mkdir + SyncDir>(fs: &F, path: &Path) -> Result<()> {
+fn make_dir<F: Filesystem + Mkdir + SyncDir>(fs: &F, path: &Path) -> Result<(), StoreLogError> {
 	match fs.mkdir(path) {
 		Ok(()) => Ok(fs.sync_dir(parent(path))?),
 		Err(FsError::AlreadyExists(_)) => Ok(()),

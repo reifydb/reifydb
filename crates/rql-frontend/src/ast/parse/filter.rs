@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{ast::AstFilter, parse::Parser},
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_filter(&mut self) -> Result<AstFilter<'bump>> {
+	pub(crate) fn parse_filter(&mut self) -> Result<AstFilter<'bump>, ValueError> {
 		let (token, node, rql) = self.parse_keyword_with_optional_braces_single(Keyword::Filter)?;
 		Ok(AstFilter {
 			token,

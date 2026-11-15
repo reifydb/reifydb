@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::{
 	dictionary::{
@@ -68,7 +68,7 @@ macro_rules! define_filtered_interceptor {
 	) => {
 		pub struct $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
 			filter: InterceptFilter,
 			handler: F,
@@ -76,7 +76,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
 				Self {
@@ -88,7 +88,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> Clone for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync + Clone,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -100,9 +100,9 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $trait_name for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
-			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
+			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<(), ValueError> {
 				let entity_name = ctx.$entity_field.name();
 				let name_matches =
 					self.filter.name.as_ref().map_or(true, |n| n.as_str() == entity_name);
@@ -123,7 +123,7 @@ macro_rules! define_filtered_interceptor {
 	) => {
 		pub struct $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
 			filter: InterceptFilter,
 			handler: F,
@@ -131,7 +131,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
 				Self {
@@ -143,7 +143,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> Clone for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync + Clone,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -155,9 +155,9 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $trait_name for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<(), ValueError> + Send + Sync,
 		{
-			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
+			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<(), ValueError> {
 				let entity_name = ctx.$entity_field.$name_method();
 				let name_matches =
 					self.filter.name.as_ref().map_or(true, |n| n.as_str() == entity_name);

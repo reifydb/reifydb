@@ -6,10 +6,7 @@ use reifydb_core::{error::diagnostic::query::unsupported_in_column_layout, value
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct UnsupportedColumnScanNode {
 	what: String,
@@ -24,11 +21,15 @@ impl UnsupportedColumnScanNode {
 }
 
 impl QueryNode for UnsupportedColumnScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Err(ValueError(Box::new(unsupported_in_column_layout(&self.what))))
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Err(ValueError(Box::new(unsupported_in_column_layout(&self.what))))
 	}
 

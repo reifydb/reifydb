@@ -4,12 +4,16 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowSettingsKey, row::RowSettings};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use super::decode_row_settings;
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn find_row_settings(rx: &mut Transaction<'_>, storage: StorageId) -> Result<Option<RowSettings>> {
+	pub fn find_row_settings(
+		rx: &mut Transaction<'_>,
+		storage: StorageId,
+	) -> Result<Option<RowSettings>, ValueError> {
 		let value = rx.get(&[RowSettingsKey::new(storage).into()])?.pop().flatten();
 		Ok(value.and_then(|v| decode_row_settings(EncodedCatalogRow::view(&v.bytes))))
 	}

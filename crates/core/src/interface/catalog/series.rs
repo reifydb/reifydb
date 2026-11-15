@@ -5,7 +5,7 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -297,7 +297,7 @@ pub fn encode_series_partition_metadata(metadata: &SeriesPartitionMetadata) -> E
 	EncodedPodRow::new(&bytes)
 }
 
-pub fn decode_series_partition_metadata(row: &EncodedPodRow) -> Result<SeriesPartitionMetadata> {
+pub fn decode_series_partition_metadata(row: &EncodedPodRow) -> Result<SeriesPartitionMetadata, ValueError> {
 	let bytes = row.body();
 	if bytes.len() != SERIES_PARTITION_METADATA_WIDTH {
 		return_internal_error!(

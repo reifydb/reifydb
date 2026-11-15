@@ -3,7 +3,7 @@
 
 use reifydb_core::common::CommitVersion;
 use reifydb_store_commit::MultiVersionScope;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction};
 
@@ -40,7 +40,7 @@ pub mod types;
 pub mod watermark;
 
 impl MultiTransaction {
-	pub fn current_version(&self) -> Result<CommitVersion> {
+	pub fn current_version(&self) -> Result<CommitVersion, ValueError> {
 		self.tm.version()
 	}
 

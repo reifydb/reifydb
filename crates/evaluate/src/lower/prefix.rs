@@ -10,25 +10,22 @@ use arrow_schema::{DataType, FieldRef};
 use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature};
 use reifydb_core::expression::{Expression, PrefixExpression, PrefixOperator, name::display_label};
-use reifydb_value::{fragment::Fragment, reifydb_assertions};
+use reifydb_value::{error::ValueError, fragment::Fragment, reifydb_assertions};
 
 use crate::{
-	Result,
 	expression::{context::EvalContext, prefix::prefix_apply},
 	lower::{
-		Lowered, Node, empty_of, error::into_external, inner_type, is_untyped_none, lower_node, typed_field,
-		udf, volatile,
+		Node, Stop, empty_of, error::into_external, inner_type, is_untyped_none, lower_node, typed_field, udf,
+		volatile,
 	},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_prefix<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
 	prefix: &'e PrefixExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let inner = lower_node(ctx, operator, &prefix.expression)?;
 	let label = display_label(expression);
 	if is_untyped_none(&inner.field)? {
@@ -52,7 +49,12 @@ pub(super) fn lower_prefix<'e>(
 	})
 }
 
-fn prefix_field(name: &str, input: &FieldRef, operator: &PrefixOperator, fragment: &Fragment) -> Result<FieldRef> {
+fn prefix_field(
+	name: &str,
+	input: &FieldRef,
+	operator: &PrefixOperator,
+	fragment: &Fragment,
+) -> Result<FieldRef, ValueError> {
 	let (probe, _) = prefix_apply(&empty_of(input), operator, fragment)?;
 	Ok(typed_field(name, inner_type(&probe)?, input.is_nullable()))
 }
@@ -105,15 +107,15 @@ impl ScalarUDFImpl for PrefixUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("prefix types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		prefix_field(self.name(), &args.arg_fields[0], &self.operator, &self.fragment).map_err(into_external)
 	}
 
-	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		let ScalarFunctionArgs {
 			args: values,
 			arg_fields,
@@ -127,7 +129,7 @@ impl ScalarUDFImpl for PrefixUdf {
 		Ok(ColumnarValue::Array(array))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

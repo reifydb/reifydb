@@ -7,15 +7,15 @@ use reifydb_core::{
 	row::OperatorRetention,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
 use super::encode_operator_retention;
-use crate::Result;
 
 pub fn create_operator_retention(
 	txn: &mut AdminTransaction,
 	operator: OperatorId,
 	retention: &OperatorRetention,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let value = encode_operator_retention(retention);
 	txn.set(vec![(OperatorRetentionKey::new(operator).into(), value.into())])?;
 	txn.track_operator_retention_created(operator, retention.clone())?;

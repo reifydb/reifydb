@@ -31,8 +31,8 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -64,29 +64,29 @@ impl<'a, T: FlowTransaction> CountingHost<'a, T> {
 }
 
 impl<T: FlowTransaction> TimerStore for CountingHost<'_, T> {
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), ValueError> {
 		self.record("rearm_timers", moves.len());
 		self.inner.rearm_timers(kind, moves)
 	}
 
-	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.record("arm_timer", 1);
 		self.inner.arm_timer(due, kind, key)
 	}
 
-	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.record("disarm_timer", 1);
 		self.inner.disarm_timer(due, kind, key)
 	}
 
-	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>, ValueError> {
 		self.record("flow_watermark", 1);
 		self.inner.flow_watermark()
 	}
 }
 
 impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
-	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError> {
 		self.record("state_get", keys.len());
 		self.inner.state_get(keys)
 	}
@@ -95,22 +95,22 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.state_classify(key, pre)
 	}
 
-	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<(), ValueError> {
 		self.record("state_remove", keys.len());
 		self.inner.state_remove(keys)
 	}
 
-	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 		self.record("state_batch", keys.len());
 		self.inner.state_batch(keys)
 	}
 
-	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<(), ValueError> {
 		self.record("state_write_batch", batch.len());
 		self.inner.state_write_batch(batch)
 	}
 
-	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), ValueError> {
 		self.record("state_set", rows.len());
 		self.inner.state_set(rows)
 	}
@@ -119,7 +119,7 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.record("state_page", 1);
 		self.inner.state_page(range, limit)
 	}
@@ -128,63 +128,79 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.record("state_page_inner", 1);
 		self.inner.state_page_inner(range, limit)
 	}
 
-	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+	fn group_sweep(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep, ValueError> {
 		self.record("group_sweep", groups.len());
 		self.record("group_sweep_limit", limit);
 		self.inner.group_sweep(groups, limit, keyspaces)
 	}
 
-	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<(), ValueError> {
 		self.record("remove_root_siblings", swept.len());
 		self.inner.remove_root_siblings(swept)
 	}
 
-	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.record("state_last", 1);
 		self.inner.state_last(range)
 	}
 
-	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.record("get_or_create_row_numbers", keys.len());
 		self.inner.get_or_create_row_numbers(group, keys)
 	}
 
-	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.record("get_or_create_row_numbers_for_groups", groups.len());
 		self.inner.get_or_create_row_numbers_for_groups(groups)
 	}
 
-	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber> {
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, ValueError> {
 		self.record("mint_row_numbers", count);
 		self.inner.mint_row_numbers(count)
 	}
 
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.record("get_row_numbers_for_groups", groups.len());
 		self.inner.get_row_numbers_for_groups(groups)
 	}
 
-	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), ValueError> {
 		self.record("set_row_numbers_for_groups", rows.len());
 		self.inner.set_row_numbers_for_groups(rows)
 	}
 
-	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.record("get_row_numbers", keys.len());
 		self.inner.get_row_numbers(group, keys)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), ValueError> {
 		self.record("remove_row_number", keys.len());
 		self.inner.remove_row_number(group, keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), ValueError> {
 		self.record("remove_row_number_for_group", groups.len());
 		self.inner.remove_row_number_for_group(groups)
 	}
@@ -195,19 +211,23 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 }
 
 impl<T: FlowTransaction> IdentityReclaim for CountingHost<'_, T> {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		self.record("reclaim_identities", groups.len());
 		self.inner.reclaim_identities(groups, limit)
 	}
 }
 
 impl<T: FlowTransaction> Resolve for CountingHost<'_, T> {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		self.record("dictionary", 1);
 		self.inner.dictionary(id)
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.record("resolve", ids.len());
 		self.inner.resolve(dictionary, ids)
 	}
@@ -222,32 +242,36 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.wall_now()
 	}
 
-	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<(), ValueError> {
 		self.record("disarm_timer_by_key", 1);
 		self.inner.disarm_timer_by_key(kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<(), ValueError> {
 		self.record("join_expiry_arm", rows.len());
 		self.inner.join_expiry_arm(side, rows)
 	}
 
-	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+	fn join_expiry_clear(
+		&mut self,
+		side: u8,
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<Vec<Option<DateTime>>, ValueError> {
 		self.record("join_expiry_clear", rows.len());
 		self.inner.join_expiry_clear(side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 		self.record("join_expiry_free", entries.len());
 		self.inner.join_expiry_free(entries)
 	}
 
-	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
+	fn join_expiry_min(&mut self) -> Result<Option<DateTime>, ValueError> {
 		self.record("join_expiry_min", 1);
 		self.inner.join_expiry_min()
 	}
 
-	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage> {
+	fn join_due_page(&mut self, at: DateTime, budget: usize, start: &DueStart) -> Result<JoinDuePage, ValueError> {
 		self.record("join_due_page", 1);
 		self.inner.join_due_page(at, budget, start)
 	}
@@ -260,7 +284,7 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.row_shape_cache()
 	}
 
-	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.record("state_range", 1);
 		self.inner.state_range(range)
 	}
@@ -269,7 +293,7 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, ValueError> {
 		self.record("state_range_limited", 1);
 		self.inner.state_range_limited(range, limit)
 	}
@@ -278,33 +302,40 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		&mut self,
 		range: GroupStateRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), ValueError>,
+	) -> Result<(), ValueError> {
 		self.record("state_range_limited_visit", 1);
 		self.inner.state_range_limited_visit(range, limit, visit)
 	}
 
-	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>> {
+	fn reclaim_group_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>, ValueError> {
 		self.record("reclaim_group_identities", groups.len());
 		self.inner.reclaim_group_identities(groups, limit)
 	}
 
-	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>> {
+	fn get_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<Option<RowNumber>>, ValueError> {
 		self.record("get_join_row_numbers", keys.len());
 		self.inner.get_join_row_numbers(keys)
 	}
 
-	fn get_or_create_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<Vec<(RowNumber, bool)>> {
+	fn get_or_create_join_row_numbers(
+		&mut self,
+		keys: &[JoinRowMappingKey],
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		self.record("get_or_create_join_row_numbers", keys.len());
 		self.inner.get_or_create_join_row_numbers(keys)
 	}
 
-	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<()> {
+	fn remove_join_row_numbers(&mut self, keys: &[JoinRowMappingKey]) -> Result<(), ValueError> {
 		self.record("remove_join_row_numbers", keys.len());
 		self.inner.remove_join_row_numbers(keys)
 	}
 
-	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()> {
+	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<(), ValueError> {
 		self.record("remove_join_row_numbers_for_left", 1);
 		self.inner.remove_join_row_numbers_for_left(tag, left)
 	}
@@ -318,7 +349,7 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.record("dictionary_find", values.len());
 		self.inner.dictionary_find(dictionary, values)
 	}
@@ -327,12 +358,16 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		&mut self,
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>> {
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.record("dictionary_get", ids.len());
 		self.inner.dictionary_get(dictionary, ids)
 	}
 
-	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn dictionary_intern(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		self.record("dictionary_intern", values.len());
 		self.inner.dictionary_intern(dictionary, values)
 	}
@@ -342,7 +377,7 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		storage: StorageId,
 		version: CommitVersion,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 		self.record("lookup_read", partitions.len());
 		self.inner.lookup_read(storage, version, partitions)
 	}
@@ -356,7 +391,7 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		storage: StorageId,
 		at: LookupAt,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>, ValueError> {
 		self.record("lookup_read", partitions.len());
 		self.inner.lookup_read_at(storage, at, partitions)
 	}

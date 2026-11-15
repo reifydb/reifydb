@@ -29,7 +29,6 @@ use reifydb_runtime::context::{
 	transaction::TransactionContext,
 };
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	params::Params,
 	reifydb_assertions,
@@ -205,7 +204,7 @@ impl CommandTransaction {
 		self.marker_source = Some((ioc, clock));
 	}
 
-	pub fn attach_marker(&mut self, t0s: Arc<[Instant]>) -> Result<()> {
+	pub fn attach_marker(&mut self, t0s: Arc<[Instant]>) -> Result<(), ValueError> {
 		self.check_active()?;
 		let Some(pending) = self.pending_markers_mut() else {
 			return Ok(());
@@ -214,7 +213,7 @@ impl CommandTransaction {
 		self.poison_on_marker_error(attached)
 	}
 
-	pub fn attach_view_markers(&mut self, view: ViewId, markers: Vec<Marker>) -> Result<()> {
+	pub fn attach_view_markers(&mut self, view: ViewId, markers: Vec<Marker>) -> Result<(), ValueError> {
 		self.check_active()?;
 		let Some(pending) = self.pending_markers_mut() else {
 			return Ok(());
@@ -232,7 +231,7 @@ impl CommandTransaction {
 		self.pending_markers.as_deref_mut()
 	}
 
-	fn poison_on_marker_error(&mut self, attached: StdResult<(), TransactionError>) -> Result<()> {
+	fn poison_on_marker_error(&mut self, attached: StdResult<(), TransactionError>) -> Result<(), ValueError> {
 		attached.map_err(|err| {
 			let err = ValueError::from(err);
 			self.poison(*err.0.clone());
@@ -262,7 +261,7 @@ impl CommandTransaction {
 		&self.event_bus
 	}
 
-	fn check_active(&self) -> Result<()> {
+	fn check_active(&self) -> Result<(), ValueError> {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => Err(TransactionError::AlreadyCommitted.into()),
@@ -280,7 +279,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
-	pub fn commit(&mut self) -> Result<CommitVersion> {
+	pub fn commit(&mut self) -> Result<CommitVersion, ValueError> {
 		self.check_active()?;
 		let markers = self.pending_markers.take();
 		let (mut multi, row_changes) = self.take_for_commit();
@@ -316,7 +315,7 @@ impl CommandTransaction {
 		mut multi: MultiWriteTransaction,
 		row_changes: Vec<RowChange>,
 		version: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let changes = TransactionalCatalogChanges::default();
 		#[cfg(feature = "testing")]
 		{
@@ -329,13 +328,13 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::post_commit", level = "trace", skip_all)]
-	fn run_post_commit(&self, ctx: PostCommitContext) -> Result<()> {
+	fn run_post_commit(&self, ctx: PostCommitContext) -> Result<(), ValueError> {
 		self.interceptors.post_commit.execute(ctx)
 	}
 
-	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
+	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R, ValueError>
 	where
-		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+		F: FnOnce(&mut CommandTransaction) -> Result<R, ValueError>,
 	{
 		self.disable_conflict_tracking()?;
 		let r = match body(self) {
@@ -350,7 +349,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
-	pub fn commit_unchecked(&mut self) -> Result<Committed> {
+	pub fn commit_unchecked(&mut self) -> Result<Committed, ValueError> {
 		self.check_active()?;
 		let markers = self.pending_markers.take();
 		let (mut multi, row_changes) = self.take_for_commit();
@@ -363,7 +362,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
-	pub fn rollback(&mut self) -> Result<()> {
+	pub fn rollback(&mut self) -> Result<(), ValueError> {
 		self.check_active()?;
 		if let Some(mut multi) = self.cmd.take() {
 			self.state = TransactionState::RolledBack;
@@ -374,10 +373,10 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
-	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R, ValueError> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -385,7 +384,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::begin_single_query", level = "trace", skip(self, keys))]
-	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -394,7 +393,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::begin_single_command", level = "trace", skip(self, keys))]
-	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
+	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -433,7 +432,10 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get_committed(
+		&mut self,
+		keys: &[TaggedKey],
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
@@ -445,7 +447,7 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
@@ -457,57 +459,57 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>, ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains(&self.context, keys)
 	}
 
 	#[inline]
-	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
 		Ok(())
 	}
 
-	pub fn stamp_source(&mut self, source: SourceVersion) -> Result<()> {
+	pub fn stamp_source(&mut self, source: SourceVersion) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().stamp_source(source);
 		Ok(())
 	}
 
-	pub fn begin_layer(&mut self, source: SourceVersion) -> Result<()> {
+	pub fn begin_layer(&mut self, source: SourceVersion) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().begin_layer(source);
 		Ok(())
 	}
 
-	pub fn push_operator_slice(&mut self, slice: OperatorSlice) -> Result<()> {
+	pub fn push_operator_slice(&mut self, slice: OperatorSlice) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().push_operator_slice(slice);
 		Ok(())
 	}
 
 	#[inline]
-	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	pub fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_rebased(entries)
 	}
 
 	#[inline]
-	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) -> Result<()> {
+	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().rewrite_on(key, rewrite);
 		Ok(())
 	}
 
 	#[inline]
-	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(entries)
 	}
 
 	#[inline]
-	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_with_pre(entries)
 	}
@@ -518,45 +520,48 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn reserve_writes(&mut self, additional: usize) -> Result<()> {
+	pub fn reserve_writes(&mut self, additional: usize) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().reserve_writes(additional);
 		Ok(())
 	}
 
 	#[inline]
-	pub fn disable_conflict_tracking(&mut self) -> Result<()> {
+	pub fn disable_conflict_tracking(&mut self) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().disable_conflict_tracking();
 		Ok(())
 	}
 
 	#[inline]
-	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_with_pre(entries)
 	}
 
 	#[inline]
-	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(&self.context, entries)
 	}
 
 	#[inline]
-	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_unobserved(&self.context, key)
 	}
 
 	#[inline]
-	pub fn remove_unobserved_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn remove_unobserved_with_pre(
+		&mut self,
+		entries: Vec<(TaggedKey, EncodedBytes)>,
+	) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_unobserved_with_pre(entries)
 	}
 
 	#[inline]
-	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+	pub fn remove_silent(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_silent(keys)
 	}
@@ -567,7 +572,7 @@ impl CommandTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(&self.context, range, scope, batch_size))
 	}
@@ -579,7 +584,8 @@ impl CommandTransaction {
 		end: Bound<StorageRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>> + Send + '_>, ValueError>
+	{
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_row(&self.context, storage, start, end, scope, batch_size))
 	}
@@ -592,7 +598,10 @@ impl CommandTransaction {
 		end: Bound<StoragePartitionedRowKey>,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_>> {
+	) -> Result<
+		Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>> + Send + '_>,
+		ValueError,
+	> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_partitioned_row(
 			&self.context,
@@ -610,7 +619,7 @@ impl CommandTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_persistence(&self.context, range, scope, batch_size))
 	}
@@ -621,7 +630,7 @@ impl CommandTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(&self.context, range, scope, batch_size))
 	}
@@ -632,13 +641,13 @@ impl CommandTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(&self.context, range, scope, batch_size))
 	}
 
 	#[inline]
-	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<()> {
+	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().mark_range(range);
 		Ok(())
@@ -650,7 +659,7 @@ impl CommandTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev_persistence(&self.context, range, scope, batch_size))
 	}
@@ -664,30 +673,30 @@ impl WithEventBus for CommandTransaction {
 
 impl Read for CommandTransaction {
 	#[inline]
-	fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		CommandTransaction::get(self, keys)
 	}
 	#[inline]
-	fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		CommandTransaction::get_committed(self, keys)
 	}
 }
 
 impl Write for CommandTransaction {
 	#[inline]
-	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<()> {
+	fn set_rebased(&mut self, entries: Vec<(TaggedKey, EncodedBytes, Rebase)>) -> Result<(), ValueError> {
 		CommandTransaction::set_rebased(self, entries)
 	}
 	#[inline]
-	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		CommandTransaction::set(self, entries)
 	}
 	#[inline]
-	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 		CommandTransaction::set_with_pre(self, entries)
 	}
 	#[inline]
-	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<(), ValueError> {
 		CommandTransaction::remove(self, entries)
 	}
 	#[inline]

@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::txn::Intern;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::instrument;
 
 use crate::{engine::FlowEngineInner, operator::host::TxnHostContext, transaction::FlowTransaction};
@@ -27,7 +27,7 @@ impl FlowEngineInner {
 		txn: &mut T,
 		flow_id: FlowId,
 		cursor: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -57,7 +57,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		version: ChangeVersion,
 		topo: &[OperatorId],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		for operator_id in topo {
 			let Some(operator) = self.operators.get_mut(&(flow.id, *operator_id)) else {

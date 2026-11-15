@@ -11,10 +11,9 @@ use reifydb_rql_frontend::{
 	bump::BumpFragment,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	nodes::{CreateRelationshipNode, RelationshipJunction},
 	plan::{
 		logical::{self, resolver::DEFAULT_NAMESPACE},
@@ -27,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateRelationshipNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let namespace = resolve_relationship_namespace(self, rx, &create.source)?;
 		let (source_table, source_column) =
 			resolve_table_column(self, rx, namespace, &create.source, &create.source_column)?;
@@ -82,7 +81,7 @@ fn resolve_relationship_namespace<'bump>(
 	compiler: &Compiler<'bump>,
 	rx: &mut Transaction<'_>,
 	source: &MaybeQualifiedTableIdentifier<'_>,
-) -> Result<NamespaceId> {
+) -> Result<NamespaceId, ValueError> {
 	let segments: Vec<&str> = source.namespace.iter().map(|n| n.text()).collect();
 	if segments.is_empty() {
 		let Some(ns) = compiler.catalog.find_namespace_by_name(rx, DEFAULT_NAMESPACE)? else {
@@ -114,7 +113,7 @@ fn resolve_table_column<'bump>(
 	default_namespace: NamespaceId,
 	table: &MaybeQualifiedTableIdentifier<'_>,
 	column: &BumpFragment<'_>,
-) -> Result<(TableId, ColumnId)> {
+) -> Result<(TableId, ColumnId), ValueError> {
 	let namespace = if table.namespace.is_empty() {
 		default_namespace
 	} else {

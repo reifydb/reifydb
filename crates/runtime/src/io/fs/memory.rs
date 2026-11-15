@@ -12,7 +12,7 @@ use std::{
 use crate::{
 	io::fs::{
 		Create, Filesystem, FsError, Len, Mkdir, Open, OpenMut, Pread, Pwrite, ReadDir, RemoveDir, Rename,
-		Result, SyncData, SyncDir, Truncate, Unlink,
+		SyncData, SyncDir, Truncate, Unlink,
 	},
 	sync::mutex::Mutex,
 };
@@ -148,7 +148,7 @@ impl MemoryFileState {
 		}
 	}
 
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		let data = self.data.lock();
 		let offset = offset as usize;
 		if offset >= data.len {
@@ -163,7 +163,7 @@ impl MemoryFileState {
 		Ok(read)
 	}
 
-	fn write_masked(&self, offset: u64, buf: &[u8], mask: &SectorMask) -> Result<usize> {
+	fn write_masked(&self, offset: u64, buf: &[u8], mask: &SectorMask) -> Result<usize, FsError> {
 		if buf.is_empty() {
 			return Ok(0);
 		}
@@ -189,17 +189,17 @@ impl MemoryFileState {
 		Ok(buf.len())
 	}
 
-	fn sync_data(&self) -> Result<()> {
+	fn sync_data(&self) -> Result<(), FsError> {
 		self.data.lock().sync();
 		Ok(())
 	}
 
-	fn truncate(&self, len: u64) -> Result<()> {
+	fn truncate(&self, len: u64) -> Result<(), FsError> {
 		self.data.lock().resize(len as usize, self.sector_bytes);
 		Ok(())
 	}
 
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		Ok(self.data.lock().len as u64)
 	}
 
@@ -284,7 +284,7 @@ impl MemoryFs {
 	}
 
 	#[cfg(feature = "testing")]
-	pub(crate) fn detach(&self, path: &Path) -> Result<Arc<MemoryFileState>> {
+	pub(crate) fn detach(&self, path: &Path) -> Result<Arc<MemoryFileState>, FsError> {
 		self.0.state.lock().files.remove(path).ok_or_else(|| FsError::NotFound(path.to_path_buf()))
 	}
 
@@ -305,7 +305,7 @@ pub struct MemoryFileMut {
 }
 
 impl MemoryFileMut {
-	pub fn write_masked(&self, offset: u64, buf: &[u8], mask: &SectorMask) -> Result<usize> {
+	pub fn write_masked(&self, offset: u64, buf: &[u8], mask: &SectorMask) -> Result<usize, FsError> {
 		self.state.write_masked(offset, buf, mask)
 	}
 
@@ -344,7 +344,7 @@ impl Filesystem for MemoryFs {
 }
 
 impl Mkdir for MemoryFs {
-	fn mkdir(&self, path: &Path) -> Result<()> {
+	fn mkdir(&self, path: &Path) -> Result<(), FsError> {
 		let mut state = self.0.state.lock();
 		if !state.parent_is_dir(path) {
 			return Err(FsError::NotFound(path.to_path_buf()));
@@ -359,7 +359,7 @@ impl Mkdir for MemoryFs {
 }
 
 impl Create for MemoryFs {
-	fn create(&self, path: &Path, len: u64) -> Result<MemoryFileMut> {
+	fn create(&self, path: &Path, len: u64) -> Result<MemoryFileMut, FsError> {
 		let mut state = self.0.state.lock();
 		if !state.parent_is_dir(path) {
 			return Err(FsError::NotFound(path.to_path_buf()));
@@ -377,7 +377,7 @@ impl Create for MemoryFs {
 }
 
 impl Open for MemoryFs {
-	fn open(&self, path: &Path) -> Result<MemoryFile> {
+	fn open(&self, path: &Path) -> Result<MemoryFile, FsError> {
 		let state = self.0.state.lock();
 		state.files
 			.get(path)
@@ -390,7 +390,7 @@ impl Open for MemoryFs {
 }
 
 impl OpenMut for MemoryFs {
-	fn open_mut(&self, path: &Path) -> Result<MemoryFileMut> {
+	fn open_mut(&self, path: &Path) -> Result<MemoryFileMut, FsError> {
 		let state = self.0.state.lock();
 		state.files
 			.get(path)
@@ -403,7 +403,7 @@ impl OpenMut for MemoryFs {
 }
 
 impl ReadDir for MemoryFs {
-	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, FsError> {
 		let state = self.0.state.lock();
 		if !state.dirs.contains(path) {
 			if state.files.contains_key(path) {
@@ -424,7 +424,7 @@ impl ReadDir for MemoryFs {
 }
 
 impl Rename for MemoryFs {
-	fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+	fn rename(&self, from: &Path, to: &Path) -> Result<(), FsError> {
 		let mut state = self.0.state.lock();
 		let Some(file) = state.files.remove(from) else {
 			return Err(FsError::NotFound(from.to_path_buf()));
@@ -439,14 +439,14 @@ impl Rename for MemoryFs {
 }
 
 impl Unlink for MemoryFs {
-	fn unlink(&self, path: &Path) -> Result<()> {
+	fn unlink(&self, path: &Path) -> Result<(), FsError> {
 		let mut state = self.0.state.lock();
 		state.files.remove(path).map(|_| ()).ok_or_else(|| FsError::NotFound(path.to_path_buf()))
 	}
 }
 
 impl RemoveDir for MemoryFs {
-	fn remove_dir(&self, path: &Path) -> Result<()> {
+	fn remove_dir(&self, path: &Path) -> Result<(), FsError> {
 		let mut state = self.0.state.lock();
 		if !state.dirs.contains(path) {
 			return Err(FsError::NotFound(path.to_path_buf()));
@@ -459,7 +459,7 @@ impl RemoveDir for MemoryFs {
 }
 
 impl SyncDir for MemoryFs {
-	fn sync_dir(&self, path: &Path) -> Result<()> {
+	fn sync_dir(&self, path: &Path) -> Result<(), FsError> {
 		let mut state = self.0.state.lock();
 		if !state.dirs.contains(path) {
 			return Err(FsError::NotFound(path.to_path_buf()));
@@ -470,44 +470,44 @@ impl SyncDir for MemoryFs {
 }
 
 impl Pread for MemoryFile {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.state.pread(offset, buf)
 	}
 }
 
 impl Len for MemoryFile {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.state.len()
 	}
 }
 
 impl Pread for MemoryFileMut {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		self.state.pread(offset, buf)
 	}
 }
 
 impl Pwrite for MemoryFileMut {
-	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize> {
+	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
 		let mask = SectorMask::full(sector_span(offset, buf.len(), self.state.sector_bytes));
 		self.state.write_masked(offset, buf, &mask)
 	}
 }
 
 impl SyncData for MemoryFileMut {
-	fn sync_data(&self) -> Result<()> {
+	fn sync_data(&self) -> Result<(), FsError> {
 		self.state.sync_data()
 	}
 }
 
 impl Truncate for MemoryFileMut {
-	fn truncate(&self, len: u64) -> Result<()> {
+	fn truncate(&self, len: u64) -> Result<(), FsError> {
 		self.state.truncate(len)
 	}
 }
 
 impl Len for MemoryFileMut {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		self.state.len()
 	}
 }

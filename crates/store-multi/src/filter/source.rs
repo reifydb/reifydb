@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::store::EntryKind;
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
 use reifydb_store::filter::FilterDomain;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{filter::MultiKeys, tier::persistent::sqlite::storage::SqlitePersistentStorage};
 
@@ -71,7 +71,7 @@ impl KeyFilterSource for MultiCurrentKeySource {
 		self.cursor = None;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice, ValueError> {
 		self.ensure_listed();
 		let mut hashes = Vec::with_capacity(budget);
 		while hashes.len() < budget {

@@ -14,7 +14,6 @@ use arrow_array::{
 use arrow_schema::{ArrowError, Field, FieldRef, Schema};
 
 use crate::{
-	Result,
 	error::ValueError,
 	value::{
 		column_view::ColumnView,
@@ -116,7 +115,7 @@ pub fn system_column(batch: &RecordBatch, column: SystemColumn) -> Option<&Array
 	position(batch, column.name()).map(|index| batch.column(index))
 }
 
-pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber], ValueError> {
 	let Some(array) = present::<UInt64Array>(batch, SystemColumn::RowNumbers)? else {
 		return Ok(&[]);
 	};
@@ -125,29 +124,29 @@ pub fn row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
 	Ok(unsafe { slice::from_raw_parts(values.as_ptr().cast::<RowNumber>(), values.len()) })
 }
 
-pub fn sequences(batch: &RecordBatch) -> Result<&[u64]> {
+pub fn sequences(batch: &RecordBatch) -> Result<&[u64], ValueError> {
 	let Some(array) = present::<UInt64Array>(batch, SystemColumn::Sequence)? else {
 		return Ok(&[]);
 	};
 	Ok(array.values())
 }
 
-pub fn partitions(batch: &RecordBatch) -> Result<Vec<Partition>> {
+pub fn partitions(batch: &RecordBatch) -> Result<Vec<Partition>, ValueError> {
 	let Some(array) = present::<FixedSizeBinaryArray>(batch, SystemColumn::Partitions)? else {
 		return Ok(Vec::new());
 	};
 	Ok(wides::<u128>(array).into_iter().map(Partition).collect())
 }
 
-pub fn created_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn created_at(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	datetime_column(batch, SystemColumn::CreatedAt)
 }
 
-pub fn updated_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn updated_at(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	datetime_column(batch, SystemColumn::UpdatedAt)
 }
 
-pub fn time(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn time(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	datetime_column(batch, SystemColumn::Time)
 }
 
@@ -203,7 +202,7 @@ impl<'a> RowTimes<'a> {
 }
 
 #[allow(clippy::disallowed_methods)]
-pub fn row_times(batch: &RecordBatch) -> Result<RowTimes<'_>> {
+pub fn row_times(batch: &RecordBatch) -> Result<RowTimes<'_>, ValueError> {
 	let Some(array) = system_column(batch, SystemColumn::Time) else {
 		return Ok(RowTimes::EMPTY);
 	};
@@ -217,44 +216,55 @@ pub fn row_times(batch: &RecordBatch) -> Result<RowTimes<'_>> {
 	Ok(RowTimes::new(datetimes(array), array.nulls().map(|nulls| (nulls.validity(), nulls.offset()))))
 }
 
-pub fn require_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+pub fn require_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber], ValueError> {
 	require(batch, SystemColumn::RowNumbers)?;
 	row_numbers(batch)
 }
 
-pub fn require_created_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn require_created_at(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	require(batch, SystemColumn::CreatedAt)?;
 	created_at(batch)
 }
 
-pub fn require_updated_at(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn require_updated_at(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	require(batch, SystemColumn::UpdatedAt)?;
 	updated_at(batch)
 }
 
-pub fn require_time(batch: &RecordBatch) -> Result<&[DateTime]> {
+pub fn require_time(batch: &RecordBatch) -> Result<&[DateTime], ValueError> {
 	require(batch, SystemColumn::Time)?;
 	time(batch)
 }
 
-pub fn commit_versions(batch: &RecordBatch) -> Result<&[u64]> {
+pub fn commit_versions(batch: &RecordBatch) -> Result<&[u64], ValueError> {
 	match present::<UInt64Array>(batch, SystemColumn::CommitVersion)? {
 		Some(array) => Ok(array.values()),
 		None => Ok(&[]),
 	}
 }
 
-pub fn with_system_column(batch: RecordBatch, column: SystemColumn, array: ArrayRef) -> Result<RecordBatch> {
+pub fn with_system_column(
+	batch: RecordBatch,
+	column: SystemColumn,
+	array: ArrayRef,
+) -> Result<RecordBatch, ValueError> {
 	stamp_system_columns(batch, vec![(column, array)])
 }
 
-pub fn stamp_system_columns(batch: RecordBatch, stamps: Vec<(SystemColumn, ArrayRef)>) -> Result<RecordBatch> {
+pub fn stamp_system_columns(
+	batch: RecordBatch,
+	stamps: Vec<(SystemColumn, ArrayRef)>,
+) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema();
 	let fields: Vec<FieldRef> = schema.fields().iter().cloned().collect();
 	stamped(schema.metadata().clone(), fields, batch.columns().to_vec(), batch.num_rows(), stamps)
 }
 
-pub fn restamp_row_numbers(batch: &RecordBatch, keep: &[SystemColumn], row_numbers: ArrayRef) -> Result<RecordBatch> {
+pub fn restamp_row_numbers(
+	batch: &RecordBatch,
+	keep: &[SystemColumn],
+	row_numbers: ArrayRef,
+) -> Result<RecordBatch, ValueError> {
 	let schema = batch.schema_ref();
 	let (fields, columns): (Vec<FieldRef>, Vec<ArrayRef>) = schema
 		.fields()
@@ -278,7 +288,7 @@ fn stamped(
 	mut columns: Vec<ArrayRef>,
 	num_rows: usize,
 	stamps: Vec<(SystemColumn, ArrayRef)>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let mut row_count = num_rows;
 	for (column, array) in stamps {
 		let field = system_field(column, array.logical_null_count() > 0);
@@ -311,7 +321,7 @@ fn stamped(
 	.map_err(arrow_error)
 }
 
-pub fn keep_system_columns(batch: &RecordBatch, keep: &[SystemColumn]) -> Result<RecordBatch> {
+pub fn keep_system_columns(batch: &RecordBatch, keep: &[SystemColumn]) -> Result<RecordBatch, ValueError> {
 	let indices: Vec<usize> = batch
 		.schema_ref()
 		.fields()
@@ -337,7 +347,7 @@ pub fn user_columns(batch: &RecordBatch) -> impl Iterator<Item = (&FieldRef, &Ar
 	batch.schema_ref().fields().iter().zip(batch.columns()).filter(|(field, _)| !is_system_field(field))
 }
 
-pub fn column_view<'a>(batch: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+pub fn column_view<'a>(batch: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>, ValueError> {
 	match position(batch, name) {
 		Some(index) => ColumnView::try_from((batch.column(index), batch.schema_ref().field(index))).map(Some),
 		None => Ok(None),
@@ -359,7 +369,7 @@ pub fn sumtype_tag_position(batch: &RecordBatch, name: &str) -> Option<usize> {
 	batch.schema_ref().fields().iter().position(|field| field.name() == &tag && is_sumtype_tag(field))
 }
 
-pub fn check_user_columns(batch: &RecordBatch) -> Result<()> {
+pub fn check_user_columns(batch: &RecordBatch) -> Result<(), ValueError> {
 	if batch.num_rows() > 0 && batch.num_columns() == 0 {
 		return Err(field_error(format!("a batch of {} rows has no columns", batch.num_rows())));
 	}
@@ -370,7 +380,7 @@ fn position(batch: &RecordBatch, name: &str) -> Option<usize> {
 	batch.schema_ref().fields().iter().position(|field| field.name() == name)
 }
 
-fn present<T: 'static>(batch: &RecordBatch, column: SystemColumn) -> Result<Option<&T>> {
+fn present<T: 'static>(batch: &RecordBatch, column: SystemColumn) -> Result<Option<&T>, ValueError> {
 	let Some(array) = system_column(batch, column) else {
 		return Ok(None);
 	};
@@ -386,14 +396,14 @@ fn present<T: 'static>(batch: &RecordBatch, column: SystemColumn) -> Result<Opti
 	})
 }
 
-fn require(batch: &RecordBatch, column: SystemColumn) -> Result<()> {
+fn require(batch: &RecordBatch, column: SystemColumn) -> Result<(), ValueError> {
 	match system_column(batch, column) {
 		Some(_) => Ok(()),
 		None => Err(field_error(format!("system column {} is missing", column.name()))),
 	}
 }
 
-fn datetime_column(batch: &RecordBatch, column: SystemColumn) -> Result<&[DateTime]> {
+fn datetime_column(batch: &RecordBatch, column: SystemColumn) -> Result<&[DateTime], ValueError> {
 	match present::<TimestampNanosecondArray>(batch, column)? {
 		Some(array) => Ok(datetimes(array)),
 		None => Ok(&[]),

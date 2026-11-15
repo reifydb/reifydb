@@ -12,6 +12,7 @@ mod runner;
 mod worker;
 
 use std::{
+	error::Error,
 	process,
 	sync::{
 		Arc,
@@ -37,8 +38,6 @@ use runner::{Runner, select_query};
 use tokio::{runtime::Builder, spawn, task::JoinSet, time};
 use worker::Worker;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
 fn main() {
 	allocator::verify();
 	let _ = default_provider().install_default();
@@ -62,7 +61,7 @@ fn is_already_exists(message: &str) -> bool {
 	message.contains("already exists") || message.contains("ALREADY_EXISTS")
 }
 
-async fn async_main() -> Result<()> {
+async fn async_main() -> Result<(), Box<dyn Error>> {
 	let config = Config::parse();
 
 	if config.list {

@@ -17,14 +17,12 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::Result;
-
 #[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(
 	input: RecordBatch,
 	dictionaries: &[Option<(Dictionary, ValueType)>],
 	rx: &mut Transaction,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if dictionaries.iter().all(Option::is_none) {
 		return Ok(input);
 	}
@@ -53,7 +51,7 @@ pub(crate) fn decode_dictionary_column(
 	dictionary: &Dictionary,
 	target: ValueType,
 	rx: &mut Transaction,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	decode_dictionary_ids(field, array, target, |ids| rx.get_from_dictionary(dictionary, ids))
 }
 
@@ -73,7 +71,10 @@ pub(crate) fn with_system_headers(user: Vec<Fragment>, from: &ColumnHeaders) -> 
 	}
 }
 
-pub(crate) fn with_user_columns(user: Vec<(FieldRef, ArrayRef)>, from: &RecordBatch) -> Result<RecordBatch> {
+pub(crate) fn with_user_columns(
+	user: Vec<(FieldRef, ArrayRef)>,
+	from: &RecordBatch,
+) -> Result<RecordBatch, ValueError> {
 	let mut columns = user;
 	for (field, array) in from.schema_ref().fields().iter().zip(from.columns()) {
 		if is_system_field(field) {
@@ -85,14 +86,19 @@ pub(crate) fn with_user_columns(user: Vec<(FieldRef, ArrayRef)>, from: &RecordBa
 
 use query::{QueryContext, QueryNode};
 use reifydb_core::value::column::headers::ColumnHeaders;
+use reifydb_value::error::ValueError;
 
 pub(crate) struct NoopNode;
 
 impl QueryNode for NoopNode {
-	fn initialize<'a>(&mut self, _: &mut Transaction<'a>, _: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _: &mut Transaction<'a>, _: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
-	fn next<'a>(&mut self, _: &mut Transaction<'a>, _: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_: &mut Transaction<'a>,
+		_: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Ok(None)
 	}
 	fn headers(&self) -> Option<ColumnHeaders> {

@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
-use reifydb_value::{Result, error::ValueError, fragment::Fragment, value::duration::Duration};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::duration::Duration};
 
 pub mod operator;
 pub mod source;
@@ -53,7 +53,7 @@ pub fn compile_flow(
 	plan: QueryPlan,
 	sink: Option<&View>,
 	flow_id: FlowId,
-) -> Result<FlowDag> {
+) -> Result<FlowDag, ValueError> {
 	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
@@ -65,7 +65,7 @@ pub fn compile_group_flow(
 	prefix: QueryPlan,
 	members: Vec<(QueryPlan, View)>,
 	flow_id: FlowId,
-) -> Result<FlowDag> {
+) -> Result<FlowDag, ValueError> {
 	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile_group(&mut Transaction::Admin(txn), prefix, members)
 }
@@ -77,7 +77,7 @@ pub fn compile_subscription_flow_ephemeral(
 	plan: QueryPlan,
 	subscription_id: SubscriptionId,
 	flow_id: FlowId,
-) -> Result<FlowDag> {
+) -> Result<FlowDag, ValueError> {
 	let compiler = FlowCompiler::new_ephemeral(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile_with_subscription_id(txn, plan, subscription_id)
 }
@@ -129,7 +129,7 @@ impl FlowCompiler {
 		}
 	}
 
-	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		if self.ephemeral {
 			self.local_node_counter += 1;
 			Ok(OperatorId(self.local_node_counter))
@@ -138,7 +138,7 @@ impl FlowCompiler {
 		}
 	}
 
-	fn next_edge_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowEdgeId> {
+	fn next_edge_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowEdgeId, ValueError> {
 		if self.ephemeral {
 			self.local_edge_counter += 1;
 			Ok(FlowEdgeId(self.local_edge_counter))
@@ -147,14 +147,23 @@ impl FlowCompiler {
 		}
 	}
 
-	pub(crate) fn add_edge(&mut self, txn: &mut Transaction<'_>, from: &OperatorId, to: &OperatorId) -> Result<()> {
+	pub(crate) fn add_edge(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		from: &OperatorId,
+		to: &OperatorId,
+	) -> Result<(), ValueError> {
 		let edge_id = self.next_edge_id(txn)?;
 		let flow_id = self.builder.id();
 		self.builder.add_edge(FlowEdge::new(edge_id, flow_id, *from, *to))?;
 		Ok(())
 	}
 
-	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: OperatorDef) -> Result<OperatorId> {
+	pub(crate) fn add_node(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		node_type: OperatorDef,
+	) -> Result<OperatorId, ValueError> {
 		let operator_id = self.next_node_id(txn)?;
 		self.builder.add_node(FlowNode::new(operator_id, node_type));
 		Ok(operator_id)
@@ -165,7 +174,7 @@ impl FlowCompiler {
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
 		retention: Option<Duration>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if self.ephemeral {
 			return Ok(());
 		}
@@ -186,7 +195,7 @@ impl FlowCompiler {
 		txn: &mut Transaction<'_>,
 		plan: QueryPlan,
 		sink: Option<&View>,
-	) -> Result<FlowDag> {
+	) -> Result<FlowDag, ValueError> {
 		validate_sort_terminal(&plan)?;
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(txn, plan)?;
@@ -203,7 +212,7 @@ impl FlowCompiler {
 		txn: &mut Transaction<'_>,
 		prefix: QueryPlan,
 		members: Vec<(QueryPlan, View)>,
-	) -> Result<FlowDag> {
+	) -> Result<FlowDag, ValueError> {
 		if contains_sort(&prefix) {
 			return Err(ValueError(Box::new(flow_sort_must_be_terminal())));
 		}
@@ -224,7 +233,7 @@ impl FlowCompiler {
 		txn: &mut Transaction<'_>,
 		sink_view: &View,
 		root_node_id: &OperatorId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let node_type = match sink_view {
 			View::Table(_) => OperatorDef::SinkTableView {
 				view: sink_view.id(),
@@ -246,7 +255,7 @@ impl FlowCompiler {
 	}
 
 	#[inline]
-	fn build_validated_flow(self) -> Result<FlowDag> {
+	fn build_validated_flow(self) -> Result<FlowDag, ValueError> {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {
@@ -262,7 +271,7 @@ impl FlowCompiler {
 		txn: &mut Transaction<'_>,
 		plan: QueryPlan,
 		subscription_id: SubscriptionId,
-	) -> Result<FlowDag> {
+	) -> Result<FlowDag, ValueError> {
 		validate_subscription_plan(&plan)?;
 		let root_node_id = self.compile_plan(txn, plan)?;
 
@@ -285,7 +294,11 @@ impl FlowCompiler {
 		Ok(flow)
 	}
 
-	pub(crate) fn compile_plan(&mut self, txn: &mut Transaction<'_>, plan: QueryPlan) -> Result<OperatorId> {
+	pub(crate) fn compile_plan(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		plan: QueryPlan,
+	) -> Result<OperatorId, ValueError> {
 		match plan {
 			QueryPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow
@@ -364,7 +377,7 @@ impl FlowCompiler {
 	}
 }
 
-fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
+fn validate_subscription_plan(plan: &QueryPlan) -> Result<(), ValueError> {
 	match plan {
 		QueryPlan::Filter(n) => validate_subscription_plan(&n.input),
 		QueryPlan::RowParameterLookup(n) => validate_subscription_plan(&n.fallback),
@@ -393,7 +406,7 @@ fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
 	}
 }
 
-fn validate_sort_terminal(plan: &QueryPlan) -> Result<()> {
+fn validate_sort_terminal(plan: &QueryPlan) -> Result<(), ValueError> {
 	let has_deeper_sort = match plan {
 		QueryPlan::Sort(n) => contains_sort(&n.input),
 		other => contains_sort(other),
@@ -460,7 +473,7 @@ fn has_window(flow: &FlowDag) -> bool {
 	})
 }
 
-fn validate_temporal_operators(flow: &FlowDag) -> Result<()> {
+fn validate_temporal_operators(flow: &FlowDag) -> Result<(), ValueError> {
 	if has_window(flow) && !flow.has_timed_source() {
 		return Err(ValueError(Box::new(flow_window_requires_a_timed_source())));
 	}
@@ -483,5 +496,5 @@ fn has_real_source(flow: &FlowDag) -> bool {
 }
 
 pub(crate) trait CompileOperator {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId>;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError>;
 }

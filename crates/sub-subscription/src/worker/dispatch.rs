@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_flow_async::engine::FlowEngineInner;
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::warn;
 
 use super::{SubscriptionFlowState, SubscriptionWorkerActor, SubscriptionWorkerState};
@@ -25,7 +25,7 @@ impl SubscriptionWorkerActor {
 		state: &mut SubscriptionWorkerState,
 		to_version: CommitVersion,
 		changes: &[Change],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if state.flows.is_empty() || !state.flow_engine.has_sources() {
 			state.carry_lease = None;
 			return Ok(());

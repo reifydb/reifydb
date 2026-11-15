@@ -3,20 +3,20 @@
 
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
 
 const STEPS_PER_OPERATION: usize = 2;
 
 pub trait DabaPanes<A> {
-	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A>;
+	fn value(&mut self, merge: Merge<A>, pane: u64) -> Result<A, ValueError>;
 
-	fn partial(&mut self, pane: u64) -> Result<A>;
+	fn partial(&mut self, pane: u64) -> Result<A, ValueError>;
 
-	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<()>;
+	fn set_partial(&mut self, merge: Merge<A>, pane: u64, partial: A) -> Result<(), ValueError>;
 
-	fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>>;
+	fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>, ValueError>;
 }
 
 #[operator_state]
@@ -102,7 +102,13 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 		self.end
 	}
 
-	pub fn push(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>, pane: u64, value: &A) -> Result<()> {
+	pub fn push(
+		&mut self,
+		merge: Merge<A>,
+		panes: &mut dyn DabaPanes<A>,
+		pane: u64,
+		value: &A,
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(
 				self.is_empty() || pane >= self.end,
@@ -116,7 +122,7 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 		self.fixup(merge, panes)
 	}
 
-	pub fn pop(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<()> {
+	pub fn pop(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(self.front_len > 0, "a pop from a queue whose front is empty");
 		}
@@ -124,7 +130,12 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 		self.fixup(merge, panes)
 	}
 
-	pub fn query(&self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>, front: Option<u64>) -> Result<Option<A>> {
+	pub fn query(
+		&self,
+		merge: Merge<A>,
+		panes: &mut dyn DabaPanes<A>,
+		front: Option<u64>,
+	) -> Result<Option<A>, ValueError> {
 		if self.front_len == 0 {
 			return Ok(self.back.clone());
 		}
@@ -151,7 +162,7 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 		}))
 	}
 
-	fn fixup(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<()> {
+	fn fixup(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<(), ValueError> {
 		if self.mid.is_none() && self.back_len > self.front_len {
 			self.mid = self.back.take();
 			self.l = self.b;
@@ -167,7 +178,7 @@ impl<A: WindowAccumulator> DabaQueue<A> {
 		Ok(())
 	}
 
-	fn step(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<()> {
+	fn step(&mut self, merge: Merge<A>, panes: &mut dyn DabaPanes<A>) -> Result<(), ValueError> {
 		let Some(mid) = &self.mid else {
 			return Ok(());
 		};
@@ -210,7 +221,7 @@ mod tests {
 
 	use reifydb_core::metrics::heap::HeapSize;
 	use reifydb_macro::operator_state;
-	use reifydb_value::Result;
+	use reifydb_value::error::ValueError;
 
 	use super::{DabaPanes, DabaQueue, Merge};
 	use crate::window::accumulator::{MergeAccumulator, WindowAccumulator};
@@ -302,14 +313,14 @@ mod tests {
 	}
 
 	impl DabaPanes<Trail> for Panes {
-		fn value(&mut self, merge: Merge<Trail>, pane: u64) -> Result<Trail> {
+		fn value(&mut self, merge: Merge<Trail>, pane: u64) -> Result<Trail, ValueError> {
 			self.reads += 1;
 			let mut value = self.rows.get(&pane).expect("value of a missing pane").0.clone();
 			(merge.compact)(&mut value);
 			Ok(value)
 		}
 
-		fn partial(&mut self, pane: u64) -> Result<Trail> {
+		fn partial(&mut self, pane: u64) -> Result<Trail, ValueError> {
 			self.reads += 1;
 			Ok(self.rows
 				.get(&pane)
@@ -317,14 +328,14 @@ mod tests {
 				.expect("partial of a pane never converted"))
 		}
 
-		fn set_partial(&mut self, merge: Merge<Trail>, pane: u64, partial: Trail) -> Result<()> {
+		fn set_partial(&mut self, merge: Merge<Trail>, pane: u64, partial: Trail) -> Result<(), ValueError> {
 			let row = self.rows.get_mut(&pane).expect("partial set on a missing pane");
 			(merge.compact)(&mut row.0);
 			row.1 = Some(partial);
 			Ok(())
 		}
 
-		fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>> {
+		fn last_below(&mut self, from: u64, below: u64) -> Result<Option<u64>, ValueError> {
 			self.lookups += 1;
 			Ok(self.rows.range(from..below).next_back().map(|(pane, _)| *pane))
 		}

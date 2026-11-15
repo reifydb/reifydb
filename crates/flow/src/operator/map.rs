@@ -20,7 +20,7 @@ use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::value_type::{
 		ValueType,
 		field::{FieldType, is_sumtype_tag, to_field},
@@ -57,7 +57,7 @@ impl MapOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 		let references = expressions.iter().map(column_reference).collect();
 
@@ -98,7 +98,7 @@ impl MapOperator {
 		txn: &mut T,
 		literals: &mut Option<BoundLiterals>,
 		columns: &RecordBatch,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(empty_batch());
@@ -180,7 +180,7 @@ impl MapOperator {
 		self.operator
 	}
 
-	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change, ValueError> {
 		let mut result = Vec::new();
 		let mut literals = None;
 

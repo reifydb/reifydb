@@ -6,16 +6,16 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		entries: &[(Option<Partition>, RingBufferMetadata)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if entries.is_empty() {
 			return Ok(());
 		}
@@ -35,7 +35,7 @@ impl CatalogStore {
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 		partitions: &[Option<Partition>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if partitions.is_empty() {
 			return Ok(());
 		}

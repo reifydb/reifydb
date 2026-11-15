@@ -4,7 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::{interface::change::Diff, key::operator::state::GroupId};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{
 		row_number::RowNumber,
@@ -36,7 +36,7 @@ impl LatestInnerHashJoin {
 		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -46,7 +46,7 @@ impl LatestInnerHashJoin {
 		_pre: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -57,7 +57,7 @@ impl LatestInnerHashJoin {
 		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -69,7 +69,7 @@ impl LatestInnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -115,7 +115,7 @@ impl LatestInnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if ctx.operator.ignores_right_changes() {
 			let ledger = ctx.operator.published_ledger();
 			let published_ctx = PublishedJoinContext {
@@ -159,7 +159,7 @@ impl LatestInnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -213,7 +213,7 @@ impl LatestInnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_numbers = require_row_numbers(pre)?;
 		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
 		if ctx.operator.ignores_right_changes() {
@@ -268,7 +268,7 @@ impl LatestInnerHashJoin {
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -375,7 +375,7 @@ pub(crate) fn republished_slot(
 	pre: &RecordBatch,
 	post: &RecordBatch,
 	idx: usize,
-) -> Result<Option<(RecordBatch, RowNumber)>> {
+) -> Result<Option<(RecordBatch, RowNumber)>, ValueError> {
 	let left = require_row_numbers(pre)?[idx];
 	if left != require_row_numbers(post)?[idx] {
 		return Ok(None);

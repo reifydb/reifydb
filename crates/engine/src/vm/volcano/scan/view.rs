@@ -32,6 +32,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
+	error::ValueError,
 	reifydb_assertions,
 	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumn, value_type::ValueType},
 };
@@ -43,10 +44,7 @@ use super::{
 	merge::{MergeLayout, PartitionMerge},
 	scan_headers, source_system_columns, storage_partitioned_row,
 };
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<TaggedKey>, bool);
 
@@ -101,7 +99,7 @@ impl ViewScanNode {
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let mut storage_types = Vec::with_capacity(view.columns().len());
 		let mut dictionaries = Vec::with_capacity(view.columns().len());
 
@@ -169,7 +167,11 @@ impl ViewScanNode {
 		self
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		first: &EncodedBytes,
+	) -> Result<RowShape, ValueError> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -196,7 +198,8 @@ impl ViewScanNode {
 		range: TaggedKeyBoundRange,
 		batch_size: u64,
 		oldest_first: bool,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'rx>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'rx>, ValueError>
+	{
 		if oldest_first {
 			return rx.range_rev(range, RangeScope::All, batch_size as usize);
 		}
@@ -206,9 +209,9 @@ impl ViewScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain")]
 	fn drain_batch(
 		&self,
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>>,
 		batch_size: u64,
-	) -> Result<DrainedBatch> {
+	) -> Result<DrainedBatch, ValueError> {
 		let mut batch = Vec::new();
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
@@ -271,9 +274,9 @@ impl ViewScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain_partitioned")]
 	fn drain_batch_partitioned(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>>,
 		batch_size: u64,
-	) -> Result<DrainedPartitionedBatch> {
+	) -> Result<DrainedPartitionedBatch, ValueError> {
 		let mut batch = Vec::new();
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
@@ -316,7 +319,7 @@ impl ViewScanNode {
 		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
 		append_rows(columns, &shape, bytes_vec, row_numbers)
 	}
@@ -324,12 +327,16 @@ impl ViewScanNode {
 
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "volcano::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		guard_view_read(&self.view, rx, &ctx.services)
 	}
 
 	#[instrument(name = "volcano::scan::view::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		}

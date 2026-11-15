@@ -7,15 +7,16 @@ use reifydb_core::{
 	key::column::ColumnKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::column::shape::object_column};
+use crate::{CatalogStore, store::column::shape::object_column};
 
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
 		object: impl Into<ObjectId>,
 		column_name: &str,
-	) -> Result<Option<Column>> {
+	) -> Result<Option<Column>, ValueError> {
 		let mut stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
 
 		let mut found_id = None;

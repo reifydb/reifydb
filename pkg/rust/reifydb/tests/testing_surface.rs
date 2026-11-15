@@ -17,7 +17,7 @@ use reifydb::{
 		operator_with::ApplyWith,
 	},
 	sdk::{
-		error::Result as SdkResult,
+		error::SdkError,
 		flow::operator::{
 			NostateMount, NostateOperator, OperatorMetadata,
 			column::operator::OperatorColumn,
@@ -43,11 +43,11 @@ impl OperatorMetadata for Counting {
 }
 
 impl NostateOperator for Counting {
-	fn create(_node: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_node: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Counting(Arc::new(AtomicUsize::new(0))))
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		self.0.fetch_add(1, Ordering::SeqCst);
 		Ok(())
 	}

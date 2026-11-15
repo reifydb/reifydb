@@ -5,23 +5,18 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::{AlterAuthenticationMethodNode, AlterMethodTtl};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{
-	Result,
-	vm::{
-		instruction::ddl::create::authentication_method::{
-			check_promote_guest, configure_method, registered_provider,
-		},
-		services::Services,
-	},
+use crate::vm::{
+	instruction::ddl::create::authentication_method::{check_promote_guest, configure_method, registered_provider},
+	services::Services,
 };
 
 pub(crate) fn alter_authentication_method(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterAuthenticationMethodNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let name = plan.name.text();
 	let mut method =
 		services.catalog.get_authentication_method_by_name(&mut Transaction::Admin(&mut *txn), name)?;

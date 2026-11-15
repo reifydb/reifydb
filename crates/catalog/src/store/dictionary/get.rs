@@ -3,12 +3,15 @@
 
 use reifydb_core::{interface::catalog::dictionary::Dictionary, return_internal_error};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::dictionary::DictionaryId;
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_dictionary(rx: &mut Transaction<'_>, dictionary: DictionaryId) -> Result<Dictionary> {
+	pub(crate) fn get_dictionary(
+		rx: &mut Transaction<'_>,
+		dictionary: DictionaryId,
+	) -> Result<Dictionary, ValueError> {
 		match Self::find_dictionary(rx, dictionary)? {
 			Some(dict) => Ok(dict),
 			None => return_internal_error!(

@@ -28,11 +28,12 @@ use reifydb_test_harness::engine::AsEngine;
 use reifydb_transaction::wal::{WalCommitLog, WalConfigurator};
 use reifydb_value::{
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration as ValueDuration},
 };
 use reifydb_wal::lsn::Lsn;
 
-use crate::{Database, Frame, Result, SqliteConfig, WithSubsystem, embedded};
+use crate::{Database, Frame, SqliteConfig, WithSubsystem, embedded};
 
 pub struct TestDb {
 	db: Database,
@@ -130,20 +131,20 @@ impl TestDb {
 		self.db.query_column_as_root(rql, ()).unwrap()
 	}
 
-	pub fn try_admin(&self, rql: &str) -> Result<Vec<Frame>> {
+	pub fn try_admin(&self, rql: &str) -> Result<Vec<Frame>, ValueError> {
 		self.db.admin_as_root(rql, ())
 	}
 
-	pub fn try_command(&self, rql: &str) -> Result<Vec<Frame>> {
+	pub fn try_command(&self, rql: &str) -> Result<Vec<Frame>, ValueError> {
 		self.db.command_as_root(rql, ())
 	}
 
-	pub fn try_query(&self, rql: &str) -> Result<Vec<Frame>> {
+	pub fn try_query(&self, rql: &str) -> Result<Vec<Frame>, ValueError> {
 		self.db.query_as_root(rql, ())
 	}
 
 	#[cfg(feature = "column")]
-	pub fn try_query_column(&self, rql: &str) -> Result<Vec<Frame>> {
+	pub fn try_query_column(&self, rql: &str) -> Result<Vec<Frame>, ValueError> {
 		self.db.query_column_as_root(rql, ())
 	}
 

@@ -21,8 +21,6 @@ use crate::io::fs::memory::{MemoryFile, MemoryFileMut, MemoryFs};
 #[cfg(feature = "testing")]
 use crate::io::fs::testing::{TestingFile, TestingFileMut, TestingFs};
 
-pub type Result<T> = std::result::Result<T, FsError>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsError {
 	NotFound(PathBuf),
@@ -86,61 +84,61 @@ pub trait Filesystem {
 }
 
 pub trait Mkdir: Filesystem {
-	fn mkdir(&self, path: &Path) -> Result<()>;
+	fn mkdir(&self, path: &Path) -> Result<(), FsError>;
 }
 
 pub trait Create: Filesystem {
-	fn create(&self, path: &Path, len: u64) -> Result<Self::FileMut>;
+	fn create(&self, path: &Path, len: u64) -> Result<Self::FileMut, FsError>;
 }
 
 pub trait Open: Filesystem {
-	fn open(&self, path: &Path) -> Result<Self::File>;
+	fn open(&self, path: &Path) -> Result<Self::File, FsError>;
 }
 
 pub trait OpenMut: Filesystem {
-	fn open_mut(&self, path: &Path) -> Result<Self::FileMut>;
+	fn open_mut(&self, path: &Path) -> Result<Self::FileMut, FsError>;
 }
 
 pub trait ReadDir: Filesystem {
-	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
+	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, FsError>;
 }
 
 pub trait Rename: Filesystem {
-	fn rename(&self, from: &Path, to: &Path) -> Result<()>;
+	fn rename(&self, from: &Path, to: &Path) -> Result<(), FsError>;
 }
 
 pub trait Unlink: Filesystem {
-	fn unlink(&self, path: &Path) -> Result<()>;
+	fn unlink(&self, path: &Path) -> Result<(), FsError>;
 }
 
 pub trait RemoveDir: Filesystem {
-	fn remove_dir(&self, path: &Path) -> Result<()>;
+	fn remove_dir(&self, path: &Path) -> Result<(), FsError>;
 }
 
 pub trait SyncDir: Filesystem {
-	fn sync_dir(&self, path: &Path) -> Result<()>;
+	fn sync_dir(&self, path: &Path) -> Result<(), FsError>;
 }
 
 pub trait Pread {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize>;
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError>;
 }
 
 pub trait Pwrite {
-	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize>;
+	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize, FsError>;
 }
 
 pub trait SyncData {
-	fn sync_data(&self) -> Result<()>;
+	fn sync_data(&self) -> Result<(), FsError>;
 }
 
 pub trait Truncate {
-	fn truncate(&self, len: u64) -> Result<()>;
+	fn truncate(&self, len: u64) -> Result<(), FsError>;
 }
 
 pub trait Len {
-	fn len(&self) -> Result<u64>;
+	fn len(&self) -> Result<u64, FsError>;
 
-	fn is_empty(&self) -> Result<bool> {
+	fn is_empty(&self) -> Result<bool, FsError> {
 		self.len().map(|len| len == 0)
 	}
 }
@@ -176,7 +174,7 @@ impl Filesystem for Fs {
 }
 
 impl Mkdir for Fs {
-	fn mkdir(&self, path: &Path) -> Result<()> {
+	fn mkdir(&self, path: &Path) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.mkdir(path),
@@ -188,7 +186,7 @@ impl Mkdir for Fs {
 }
 
 impl Create for Fs {
-	fn create(&self, path: &Path, len: u64) -> Result<FileMut> {
+	fn create(&self, path: &Path, len: u64) -> Result<FileMut, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.create(path, len).map(FileMut::Host),
@@ -200,7 +198,7 @@ impl Create for Fs {
 }
 
 impl Open for Fs {
-	fn open(&self, path: &Path) -> Result<File> {
+	fn open(&self, path: &Path) -> Result<File, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.open(path).map(File::Host),
@@ -212,7 +210,7 @@ impl Open for Fs {
 }
 
 impl OpenMut for Fs {
-	fn open_mut(&self, path: &Path) -> Result<FileMut> {
+	fn open_mut(&self, path: &Path) -> Result<FileMut, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.open_mut(path).map(FileMut::Host),
@@ -224,7 +222,7 @@ impl OpenMut for Fs {
 }
 
 impl ReadDir for Fs {
-	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+	fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.read_dir(path),
@@ -236,7 +234,7 @@ impl ReadDir for Fs {
 }
 
 impl Rename for Fs {
-	fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+	fn rename(&self, from: &Path, to: &Path) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.rename(from, to),
@@ -248,7 +246,7 @@ impl Rename for Fs {
 }
 
 impl Unlink for Fs {
-	fn unlink(&self, path: &Path) -> Result<()> {
+	fn unlink(&self, path: &Path) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.unlink(path),
@@ -260,7 +258,7 @@ impl Unlink for Fs {
 }
 
 impl RemoveDir for Fs {
-	fn remove_dir(&self, path: &Path) -> Result<()> {
+	fn remove_dir(&self, path: &Path) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.remove_dir(path),
@@ -272,7 +270,7 @@ impl RemoveDir for Fs {
 }
 
 impl SyncDir for Fs {
-	fn sync_dir(&self, path: &Path) -> Result<()> {
+	fn sync_dir(&self, path: &Path) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			Fs::Host(fs) => fs.sync_dir(path),
@@ -284,7 +282,7 @@ impl SyncDir for Fs {
 }
 
 impl Pread for File {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			File::Host(file) => file.pread(offset, buf),
@@ -296,7 +294,7 @@ impl Pread for File {
 }
 
 impl Len for File {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			File::Host(file) => file.len(),
@@ -308,7 +306,7 @@ impl Len for File {
 }
 
 impl Pread for FileMut {
-	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+	fn pread(&self, offset: u64, buf: &mut [u8]) -> Result<usize, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			FileMut::Host(file) => file.pread(offset, buf),
@@ -320,7 +318,7 @@ impl Pread for FileMut {
 }
 
 impl Pwrite for FileMut {
-	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize> {
+	fn pwrite(&self, offset: u64, buf: &[u8]) -> Result<usize, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			FileMut::Host(file) => file.pwrite(offset, buf),
@@ -332,7 +330,7 @@ impl Pwrite for FileMut {
 }
 
 impl SyncData for FileMut {
-	fn sync_data(&self) -> Result<()> {
+	fn sync_data(&self) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			FileMut::Host(file) => file.sync_data(),
@@ -344,7 +342,7 @@ impl SyncData for FileMut {
 }
 
 impl Truncate for FileMut {
-	fn truncate(&self, len: u64) -> Result<()> {
+	fn truncate(&self, len: u64) -> Result<(), FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			FileMut::Host(file) => file.truncate(len),
@@ -356,7 +354,7 @@ impl Truncate for FileMut {
 }
 
 impl Len for FileMut {
-	fn len(&self) -> Result<u64> {
+	fn len(&self) -> Result<u64, FsError> {
 		match self {
 			#[cfg(reifydb_target = "host")]
 			FileMut::Host(file) => file.len(),

@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::LazyFragment,
 	value::{number::safe::convert::SafeConvert, value_type::get::GetType},
 };
@@ -14,7 +13,7 @@ use crate::interface::{
 };
 
 pub trait Convert {
-	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>, ValueError>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
@@ -42,7 +41,7 @@ impl TargetConvert<'_> {
 }
 
 impl Convert for TargetConvert<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>, ValueError>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,

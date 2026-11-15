@@ -20,7 +20,8 @@ use reifydb_core::{
 };
 use reifydb_evaluate::expression::context::EvalContext;
 use reifydb_value::{
-	Result, error,
+	error,
+	error::ValueError,
 	fragment::Fragment,
 	util::hash::{Hash128, xxh3_128},
 	value::{
@@ -41,7 +42,7 @@ use crate::operator::{
 const CARRIED_SYSTEM_COLUMNS: [SystemColumn; 3] =
 	[SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
 
-fn ensure_distinct_keyable(view: &ColumnView) -> Result<()> {
+fn ensure_distinct_keyable(view: &ColumnView) -> Result<(), ValueError> {
 	let ty = view.get_type();
 	if !ty.is_scalar() {
 		return Err(error!(distinct_key_unkeyable(Fragment::internal(view.field.name()), ty)));
@@ -49,7 +50,7 @@ fn ensure_distinct_keyable(view: &ColumnView) -> Result<()> {
 	Ok(())
 }
 
-fn row_hashes(key_columns: &[ColumnView], row_count: usize) -> Result<Vec<Hash128>> {
+fn row_hashes(key_columns: &[ColumnView], row_count: usize) -> Result<Vec<Hash128>, ValueError> {
 	for view in key_columns {
 		ensure_distinct_keyable(view)?;
 	}
@@ -60,7 +61,7 @@ fn row_hashes(key_columns: &[ColumnView], row_count: usize) -> Result<Vec<Hash12
 	Ok(rows.into_iter().map(|row| xxh3_128(row.to_encoded_key().as_bytes())).collect())
 }
 
-fn restamped(columns: &RecordBatch, row_numbers: Vec<u64>) -> Result<RecordBatch> {
+fn restamped(columns: &RecordBatch, row_numbers: Vec<u64>) -> Result<RecordBatch, ValueError> {
 	restamp_row_numbers(columns, &CARRIED_SYSTEM_COLUMNS, Arc::new(UInt64Array::from(row_numbers)))
 }
 
@@ -165,7 +166,7 @@ impl<'a> Output<'a> {
 		group.numbers.push(stable_rn.0);
 	}
 
-	fn side(&self, layout: &DistinctLayout, cells: Vec<Cell>, numbers: &[u64]) -> Result<RecordBatch> {
+	fn side(&self, layout: &DistinctLayout, cells: Vec<Cell>, numbers: &[u64]) -> Result<RecordBatch, ValueError> {
 		let mut indices = Vec::with_capacity(cells.len());
 		let mut stored = Vec::new();
 		let mut batch = self.post;
@@ -186,7 +187,7 @@ impl<'a> Output<'a> {
 		restamped(&source, numbers.to_vec())
 	}
 
-	fn finish(mut self, layout: &DistinctLayout) -> Result<Vec<Diff>> {
+	fn finish(mut self, layout: &DistinctLayout) -> Result<Vec<Diff>, ValueError> {
 		let mut diffs = Vec::new();
 		for group in take(&mut self.epochs).into_iter().flatten() {
 			let diff = match group.kind {
@@ -208,7 +209,7 @@ impl DistinctPlan {
 		host: &mut dyn HostContext,
 		state: &mut DistinctState,
 		groups: &[GroupId],
-	) -> Result<Vec<(RowNumber, bool)>> {
+	) -> Result<Vec<(RowNumber, bool)>, ValueError> {
 		if groups.iter().any(|group| state.withdrawn.contains(group)) {
 			let withdrawn: Vec<GroupId> = state.withdrawn.drain(..).collect();
 			host.remove_row_number_for_group(&withdrawn)?;
@@ -216,7 +217,7 @@ impl DistinctPlan {
 		host.get_or_create_row_numbers_for_groups(groups)
 	}
 
-	pub(super) fn compute_hashes(&self, columns: &RecordBatch) -> Result<Vec<Hash128>> {
+	pub(super) fn compute_hashes(&self, columns: &RecordBatch) -> Result<Vec<Hash128>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -242,8 +243,10 @@ impl DistinctPlan {
 				let col = lowered_expr.evaluate(&exec_ctx)?;
 				expr_columns.push(col);
 			}
-			let key_columns: Vec<ColumnView> =
-				expr_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+			let key_columns: Vec<ColumnView> = expr_columns
+				.iter()
+				.map(ColumnView::try_from)
+				.collect::<Result<Vec<_>, ValueError>>()?;
 			row_hashes(&key_columns, row_count)
 		}
 	}
@@ -255,7 +258,7 @@ impl DistinctPlan {
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &RecordBatch,
 		hashes: &[Hash128],
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -344,7 +347,7 @@ impl DistinctPlan {
 		pre_columns: &RecordBatch,
 		post_columns: &RecordBatch,
 		(pre_hashes, post_hashes): (&[Hash128], &[Hash128]),
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let row_count = post_columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -482,7 +485,7 @@ impl DistinctPlan {
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &RecordBatch,
 		hashes: &[Hash128],
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());

@@ -26,7 +26,7 @@ use reifydb_value::byte_size::ByteSize;
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::{Apply, Checkpoint, Enumerate, Fetch, Measure, Page, Persistent, memory::MemoryPersistent},
 	types::{Applied, FlushBatch, OperatorBatch, OperatorStateCensus},
 };
@@ -80,11 +80,11 @@ pub trait PersistentHooks: Send + Sync {
 
 	fn during_apply(&self, _batch: &FlushBatch) {}
 
-	fn on_enumerate(&self) -> Result<()> {
+	fn on_enumerate(&self) -> Result<(), StoreOperatorError> {
 		Ok(())
 	}
 
-	fn on_measure(&self, _operator: OperatorId) -> Result<()> {
+	fn on_measure(&self, _operator: OperatorId) -> Result<(), StoreOperatorError> {
 		Ok(())
 	}
 
@@ -146,7 +146,7 @@ impl TestingPersistent {
 	}
 }
 
-fn shorten(mut batch: OperatorBatch, outcome: ReadOutcome) -> Result<OperatorBatch> {
+fn shorten(mut batch: OperatorBatch, outcome: ReadOutcome) -> Result<OperatorBatch, StoreOperatorError> {
 	match outcome {
 		ReadOutcome::Clean => Ok(batch),
 		ReadOutcome::Absent => Ok(OperatorBatch::empty()),
@@ -170,7 +170,7 @@ impl Fetch for TestingPersistent {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		self.call();
 		keys.iter()
 			.map(|key| {
@@ -194,7 +194,7 @@ impl Page for TestingPersistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		self.call();
 		let page = self.0.durable.range_batch(operator, range, batch, occupied)?;
 		let outcome = self.0.hooks.on_page(operator, page.items.len());
@@ -207,7 +207,7 @@ impl Page for TestingPersistent {
 		range: EncodedKeyRange,
 		batch: u64,
 		occupied: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		self.call();
 		let page = self.0.durable.last_batch(operator, range, batch, occupied)?;
 		let outcome = self.0.hooks.on_page(operator, page.items.len());
@@ -220,7 +220,7 @@ impl Page for TestingPersistent {
 		groups: &[GroupId],
 		batch: u64,
 		mask: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		self.call();
 		let page = self.0.durable.group_page(operator, groups, batch, mask)?;
 		let outcome = self.0.hooks.on_page(operator, page.items.len());
@@ -233,32 +233,32 @@ impl Measure for TestingPersistent {
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
-	) -> Result<Vec<Option<ByteSize>>> {
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		self.call();
 		self.0.hooks.on_measure(operator)?;
 		self.0.durable.state_sizes(operator, keys)
 	}
 
-	fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
+	fn bytes(&self, operator: OperatorId) -> Result<ByteSize, StoreOperatorError> {
 		self.call();
 		self.0.durable.bytes(operator)
 	}
 }
 
 impl Enumerate for TestingPersistent {
-	fn census(&self) -> Result<Vec<OperatorStateCensus>> {
+	fn census(&self) -> Result<Vec<OperatorStateCensus>, StoreOperatorError> {
 		self.call();
 		self.0.hooks.on_enumerate()?;
 		self.0.durable.census()
 	}
 
-	fn operators(&self) -> Result<Vec<OperatorId>> {
+	fn operators(&self) -> Result<Vec<OperatorId>, StoreOperatorError> {
 		self.call();
 		self.0.hooks.on_enumerate()?;
 		self.0.durable.operators()
 	}
 
-	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
+	fn keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>, StoreOperatorError> {
 		self.call();
 		self.0.hooks.on_enumerate()?;
 		self.0.durable.keyspaces(operator)
@@ -266,12 +266,12 @@ impl Enumerate for TestingPersistent {
 }
 
 impl Checkpoint for TestingPersistent {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>, StoreOperatorError> {
 		self.call();
 		self.0.durable.checkpoint_get(flow)
 	}
 
-	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<(), StoreOperatorError> {
 		self.call();
 		match self.0.hooks.on_checkpoint(flow) {
 			ApplyOutcome::Land => self.0.durable.checkpoint_set(flow, checkpoint),
@@ -280,7 +280,7 @@ impl Checkpoint for TestingPersistent {
 		}
 	}
 
-	fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
+	fn checkpoint_remove(&self, flow: FlowId) -> Result<(), StoreOperatorError> {
 		self.call();
 		match self.0.hooks.on_checkpoint_remove(flow) {
 			ApplyOutcome::Land => self.0.durable.checkpoint_remove(flow),
@@ -289,24 +289,24 @@ impl Checkpoint for TestingPersistent {
 		}
 	}
 
-	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
+	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>, StoreOperatorError> {
 		self.call();
 		self.0.durable.checkpoint_floor()
 	}
 
-	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>, StoreOperatorError> {
 		self.call();
 		self.0.durable.checkpoint_lsn_floor()
 	}
 
-	fn checkpoint_list(&self) -> Result<Vec<FlowId>> {
+	fn checkpoint_list(&self) -> Result<Vec<FlowId>, StoreOperatorError> {
 		self.call();
 		self.0.durable.checkpoint_list()
 	}
 }
 
 impl Apply for TestingPersistent {
-	fn apply(&self, batch: &FlushBatch) -> Result<Applied> {
+	fn apply(&self, batch: &FlushBatch) -> Result<Applied, StoreOperatorError> {
 		self.call();
 		let applied = match self.0.hooks.on_apply(batch) {
 			ApplyOutcome::Land => self.0.durable.apply(batch),
@@ -336,7 +336,7 @@ impl Apply for TestingPersistent {
 		applied
 	}
 
-	fn drop_operator(&self, operator: OperatorId) -> Result<()> {
+	fn drop_operator(&self, operator: OperatorId) -> Result<(), StoreOperatorError> {
 		self.call();
 		match self.0.hooks.on_drop(operator) {
 			ApplyOutcome::Land => self.0.durable.drop_operator(operator),

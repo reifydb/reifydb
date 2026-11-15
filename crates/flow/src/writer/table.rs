@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{partition::Partition, row_number::RowNumber},
 };
 
@@ -62,7 +62,7 @@ impl<'a, T: StorageTransaction> TableWriter<'a, T> {
 		&mut self,
 		rows: Vec<(TaggedKey, EncodedBytes)>,
 		index: Vec<(TaggedKey, EncodedBytes)>,
-	) -> Result<Written> {
+	) -> Result<Written, ValueError> {
 		let mut written = Vec::with_capacity(rows.len());
 		let mut entries = Vec::with_capacity(rows.len() + index.len());
 		for (key, row) in rows {
@@ -77,7 +77,7 @@ impl<'a, T: StorageTransaction> TableWriter<'a, T> {
 		})
 	}
 
-	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written> {
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<Written, ValueError> {
 		let written = rows.iter().map(|(_, row, _)| row.clone()).collect();
 		self.txn.set_with_pre(rows)?;
 		Ok(Written {
@@ -86,7 +86,7 @@ impl<'a, T: StorageTransaction> TableWriter<'a, T> {
 		})
 	}
 
-	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 		self.txn.remove_with_pre(rows)?;
 		Ok(Written {
@@ -107,11 +107,11 @@ impl<'a, T: FlowStorageTransaction> FlowTableWriter<'a, T> {
 		}
 	}
 
-	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	pub fn insert(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.txn.set(keys, rows)
 	}
 
-	pub fn update(&mut self, rows: Vec<(EncodedKey, EncodedKey, EncodedBytes)>) -> Result<()> {
+	pub fn update(&mut self, rows: Vec<(EncodedKey, EncodedKey, EncodedBytes)>) -> Result<(), ValueError> {
 		let mut writes = KeyWrites::with_capacity(rows.len());
 		for (pre_key, post_key, row) in rows {
 			if pre_key.as_slice() != post_key.as_slice() {
@@ -126,7 +126,7 @@ impl<'a, T: FlowStorageTransaction> FlowTableWriter<'a, T> {
 		self.txn.set(set_keys, set_rows)
 	}
 
-	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.txn.remove(keys)
 	}
 }
@@ -195,24 +195,24 @@ mod tests {
 	}
 
 	impl Get for Recording {
-		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 			self.calls.push(Call::SetWithPre(entries));
 			Ok(())
 		}
 
-		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 			self.calls.push(Call::RemoveWithPre(entries));
 			Ok(())
 		}
 
-		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 			self.calls.push(Call::RemoveTagged(keys));
 			Ok(())
 		}
@@ -225,19 +225,19 @@ mod tests {
 	}
 
 	impl FlowGet for FlowRecording {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl FlowBatch for FlowRecording {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 			self.calls.push(Call::Set(keys, rows));
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 			self.calls.push(Call::Remove(keys));
 			Ok(())
 		}
@@ -247,12 +247,12 @@ mod tests {
 	struct Defaulted(Vec<Call>);
 
 	impl FlowBatch for Defaulted {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 			self.0.push(Call::Set(keys, rows));
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 			self.0.push(Call::Remove(keys));
 			Ok(())
 		}

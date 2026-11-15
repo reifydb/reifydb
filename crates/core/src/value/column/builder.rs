@@ -18,7 +18,7 @@ use arrow_array::{
 use arrow_buffer::{Buffer, NullBuffer, bit_util, i256};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		column_view::{ColumnView, ViewData},
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -292,7 +292,7 @@ impl<T: WideInt> WideBuilder<T> {
 		append_fixed(&mut self.builder, &row);
 	}
 
-	pub(crate) fn append_array(&mut self, array: &FixedSizeBinaryArray) -> Result<()> {
+	pub(crate) fn append_array(&mut self, array: &FixedSizeBinaryArray) -> Result<(), ValueError> {
 		append_fixed_array(&mut self.builder, array)
 	}
 
@@ -492,7 +492,7 @@ impl ColumnBuilder {
 		}
 	}
 
-	pub fn extend(&mut self, other: &ColumnView) -> Result<()> {
+	pub fn extend(&mut self, other: &ColumnView) -> Result<(), ValueError> {
 		match (self.is_untyped_none(), other.is_untyped_none()) {
 			(true, true) => {
 				let len = self.len() + other.len();
@@ -521,7 +521,7 @@ impl ColumnBuilder {
 		Ok(())
 	}
 
-	pub fn append_values(&mut self, other: &ColumnView) -> Result<()> {
+	pub fn append_values(&mut self, other: &ColumnView) -> Result<(), ValueError> {
 		let nones = other.none_count();
 		if nones == other.len() {
 			self.append_nones(other.len());
@@ -594,7 +594,7 @@ impl ColumnBuilder {
 		}
 	}
 
-	fn append_view(&mut self, other: &ColumnView) -> Result<()> {
+	fn append_view(&mut self, other: &ColumnView) -> Result<(), ValueError> {
 		match (&mut self.inner, &other.data) {
 			(TypedBuilder::Bool(l), ViewData::Bool(r)) => l.append_array(r),
 			(TypedBuilder::Int1(l), ViewData::Int1(r)) => l.append_array(r),
@@ -1049,7 +1049,10 @@ fn fixed_size_builder(array: &FixedSizeBinaryArray) -> FixedSizeBinaryBuilder {
 	builder
 }
 
-pub(crate) fn append_fixed_array(builder: &mut FixedSizeBinaryBuilder, array: &FixedSizeBinaryArray) -> Result<()> {
+pub(crate) fn append_fixed_array(
+	builder: &mut FixedSizeBinaryBuilder,
+	array: &FixedSizeBinaryArray,
+) -> Result<(), ValueError> {
 	builder.append_array(array).map_err(|e| internal_error!("fixed size append failed: {}", e))
 }
 
@@ -1072,7 +1075,10 @@ where
 	builder
 }
 
-pub(crate) fn append_varlen<T>(builder: &mut GenericByteBuilder<T>, array: &GenericByteArray<T>) -> Result<()>
+pub(crate) fn append_varlen<T>(
+	builder: &mut GenericByteBuilder<T>,
+	array: &GenericByteArray<T>,
+) -> Result<(), ValueError>
 where
 	T: ByteArrayType<Offset = i64>,
 {

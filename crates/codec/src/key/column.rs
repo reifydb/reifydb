@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -30,7 +30,11 @@ enum Cell {
 	Value(Value),
 }
 
-pub fn extend_column_with_direction(view: &ColumnView, direction: SortOrder, rows: &mut [KeySerializer]) -> Result<()> {
+pub fn extend_column_with_direction(
+	view: &ColumnView,
+	direction: SortOrder,
+	rows: &mut [KeySerializer],
+) -> Result<(), ValueError> {
 	let ascending = matches!(direction, SortOrder::Asc);
 	match &view.data {
 		ViewData::Enum {
@@ -217,8 +221,8 @@ fn typed(
 	view: &ColumnView,
 	rows: &mut [KeySerializer],
 	ascending: bool,
-	mut write: impl FnMut(&mut KeySerializer, usize, &[u8]) -> Result<Cell>,
-) -> Result<()> {
+	mut write: impl FnMut(&mut KeySerializer, usize, &[u8]) -> Result<Cell, ValueError>,
+) -> Result<(), ValueError> {
 	let base = view.base_type();
 	let flip = ascending == keycode_type_descending(&base);
 	let none = [
@@ -247,7 +251,7 @@ fn typed(
 	Ok(())
 }
 
-fn extend_cell(row: &mut KeySerializer, value: &Value, ascending: bool) -> Result<()> {
+fn extend_cell(row: &mut KeySerializer, value: &Value, ascending: bool) -> Result<(), ValueError> {
 	let ty = match value {
 		Value::None {
 			inner,

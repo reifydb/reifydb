@@ -15,7 +15,7 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, fragment::Fragment, value::system_columns::SystemColumn};
+use reifydb_value::{error, error::ValueError, fragment::Fragment, value::system_columns::SystemColumn};
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -131,7 +131,7 @@ fn ensure_natural_join_shares_a_column(
 	left: &QueryPlan,
 	right: &QueryPlan,
 	right_name: &str,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let (Some(left_names), Some(right_names)) = (output_column_names(left), output_column_names(right)) else {
 		return Ok(());
 	};
@@ -146,7 +146,7 @@ fn ensure_natural_join_shares_a_column(
 	)))
 }
 
-fn ensure_pick_columns_exist(pick: Option<&JoinPick>, right: &QueryPlan, right_name: &str) -> Result<()> {
+fn ensure_pick_columns_exist(pick: Option<&JoinPick>, right: &QueryPlan, right_name: &str) -> Result<(), ValueError> {
 	let (Some(pick), Some(right_names)) = (pick, output_column_names(right)) else {
 		return Ok(());
 	};
@@ -199,7 +199,7 @@ pub(crate) fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, 
 }
 
 impl CompileOperator for JoinCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let source_name = extract_source_name(&self.right);
 		let effective_alias = self.alias.or(source_name).unwrap_or_else(|| "other".to_string());
 

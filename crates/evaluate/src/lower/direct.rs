@@ -14,7 +14,6 @@ use reifydb_routine_abi::Function;
 use reifydb_value::{error::ValueError, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
-	Result,
 	expression::{call::call_builtin, compile::type_column, context::EvalContext},
 	lower::{LoweredExpr, variant::children},
 };
@@ -33,7 +32,11 @@ pub(super) struct Direct {
 }
 
 impl Direct {
-	pub(super) fn new(ctx: &EvalContext, operator: &'static str, expression: &Expression) -> Result<Self> {
+	pub(super) fn new(
+		ctx: &EvalContext,
+		operator: &'static str,
+		expression: &Expression,
+	) -> Result<Self, ValueError> {
 		let (call, alias) = match expression {
 			Expression::Call(call) => (call, None),
 			Expression::Alias(alias) => match alias.expression.as_ref() {
@@ -70,7 +73,7 @@ impl Direct {
 		})
 	}
 
-	pub(super) fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	pub(super) fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		self.function.arity().check(&self.call.func.0, self.call.args.len())?;
 		let mut columns = Vec::with_capacity(self.arguments.len());
 		for argument in &self.arguments {
@@ -103,7 +106,11 @@ pub(super) struct Spliced {
 }
 
 impl Spliced {
-	pub(super) fn new(ctx: &EvalContext, operator: &'static str, expression: &Expression) -> Result<Self> {
+	pub(super) fn new(
+		ctx: &EvalContext,
+		operator: &'static str,
+		expression: &Expression,
+	) -> Result<Self, ValueError> {
 		let mut found = Vec::new();
 		collect(ctx, expression, &mut found);
 		let mut calls = Vec::with_capacity(found.len());
@@ -117,7 +124,7 @@ impl Spliced {
 		})
 	}
 
-	pub(super) fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	pub(super) fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let mut columns: Vec<(FieldRef, ArrayRef)> = ctx
 			.batch
 			.schema_ref()

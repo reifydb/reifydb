@@ -35,7 +35,7 @@ use reifydb_flow::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use crate::{node::Node, txn::Lookup};
 
@@ -44,7 +44,7 @@ pub fn build<T: Lookup>(
 	flow: &FlowDag,
 	routines: &Routines,
 	runtime_context: &RuntimeContext,
-) -> Result<Vec<(OperatorId, Node)>> {
+) -> Result<Vec<(OperatorId, Node)>, ValueError> {
 	let ctx = Arc::new(FlowContext::default());
 	let mut nodes: Vec<(OperatorId, Node)> = Vec::new();
 	for operator_id in flow.topological_order() {
@@ -178,7 +178,7 @@ pub fn build<T: Lookup>(
 	Ok(nodes)
 }
 
-fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&Node> {
+fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&Node, ValueError> {
 	nodes.iter().find(|(id, _)| *id == input).map(|(_, node)| node).ok_or_else(|| {
 		ValueError::from(FlowGraphError::ParentOperatorNotFound {
 			input: format!("{:?}", input),
@@ -186,7 +186,7 @@ fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&No
 	})
 }
 
-fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<SchemaRef>> {
+fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<SchemaRef>, ValueError> {
 	Ok(require_parent(nodes, input)?.output_schema())
 }
 

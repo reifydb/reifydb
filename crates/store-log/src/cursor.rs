@@ -7,7 +7,7 @@ use reifydb_codec::log::{LogVersion, Position, record::Record};
 use reifydb_runtime::io::fs::{Filesystem, Len, Open, ReadDir};
 
 use crate::{
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	index::{position_of, read},
 	partition::{bases_in, index_name, log_name, rebuildable},
 	segment::{Stop, Torn, scan_upto},
@@ -26,7 +26,12 @@ pub struct Cursor<'a, F: Filesystem> {
 }
 
 impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
-	pub fn open(fs: &'a F, dir: &Path, after: Option<LogVersion>, torn: Option<Torn>) -> Result<Self> {
+	pub fn open(
+		fs: &'a F,
+		dir: &Path,
+		after: Option<LogVersion>,
+		torn: Option<Torn>,
+	) -> Result<Self, StoreLogError> {
 		let bases = bases_in(fs, dir)?;
 		let Some(oldest) = bases.first().copied() else {
 			return Err(StoreLogError::NotFound(dir.to_path_buf()));
@@ -61,7 +66,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		})
 	}
 
-	pub fn next_batch(&mut self, max: usize) -> Result<Vec<Record>> {
+	pub fn next_batch(&mut self, max: usize) -> Result<Vec<Record>, StoreLogError> {
 		let mut out = Vec::new();
 		while out.len() < max {
 			let path = self.dir.join(log_name(self.bases[self.at]));
@@ -127,7 +132,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		self.position
 	}
 
-	fn reclaimed_or(&self, missing: PathBuf) -> Result<StoreLogError> {
+	fn reclaimed_or(&self, missing: PathBuf) -> Result<StoreLogError, StoreLogError> {
 		let bases = bases_in(self.fs, &self.dir)?;
 		let base = self.bases[self.at];
 		if bases.contains(&base) {
@@ -140,7 +145,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 		})
 	}
 
-	fn followed(&mut self) -> Result<bool> {
+	fn followed(&mut self) -> Result<bool, StoreLogError> {
 		if self.at + 1 < self.bases.len() {
 			return Ok(true);
 		}
@@ -160,7 +165,7 @@ impl<'a, F: Filesystem + Open + ReadDir> Cursor<'a, F> {
 }
 
 #[cfg(test)]
-pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<Record>> {
+pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Result<Vec<Record>, StoreLogError> {
 	let mut cursor = Cursor::open(fs, dir, None, None)?;
 	let mut out = Vec::new();
 	loop {
@@ -172,7 +177,7 @@ pub(crate) fn drain<F: Filesystem + Open + ReadDir>(fs: &F, dir: &Path) -> Resul
 	}
 }
 
-fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion> {
+fn first_version<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<LogVersion, StoreLogError> {
 	match scan_upto(fs, path, Position::ZERO, None, 1, None)?.records.first() {
 		Some(record) => Ok(record.version),
 		None => Err(StoreLogError::SegmentIncomplete {
@@ -189,7 +194,7 @@ fn seek<F: Filesystem + Open>(
 	from: Position,
 	after: LogVersion,
 	torn: Option<Position>,
-) -> Result<(Position, Option<LogVersion>)> {
+) -> Result<(Position, Option<LogVersion>), StoreLogError> {
 	let mut at = from;
 	let mut last = None;
 	loop {

@@ -35,8 +35,8 @@ use reifydb_sub_lifecycle::{
 	store::flush::PersistentFlushTask,
 };
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	util::cowvec::CowVec,
 	value::{Value, duration::Duration},
 };
@@ -46,12 +46,12 @@ const ROWS: u8 = 8;
 struct NoWalCheckpoint;
 
 impl WalCheckpoint for NoWalCheckpoint {
-	fn make_durable(&self) -> Result<CommitVersion> {
+	fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
 		Ok(CommitVersion(i64::MAX as u64))
 	}
 
-	fn saved_through(&self, _version: CommitVersion) -> Result<()> {
+	fn saved_through(&self, _version: CommitVersion) -> Result<(), ValueError> {
 		Ok(())
 	}
 }

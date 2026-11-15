@@ -6,11 +6,12 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowId},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
+	pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag, ValueError> {
 		Self::ensure_flow_exist(txn, flow_id)?;
 		let node_defs = CatalogStore::list_operators_by_flow(txn, flow_id)?;
 		let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
@@ -30,7 +31,7 @@ impl CatalogStore {
 		Ok(flow)
 	}
 
-	fn ensure_flow_exist(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<()> {
+	fn ensure_flow_exist(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<(), ValueError> {
 		CatalogStore::get_flow(txn, flow_id)?;
 		Ok(())
 	}

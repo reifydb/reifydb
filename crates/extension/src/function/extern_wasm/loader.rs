@@ -5,14 +5,14 @@ use std::{fs, path::Path, sync::Arc};
 
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_sdk::error::SdkError;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::ExternWasmScalarFunction;
 
 pub fn register_extern_wasm_scalar_functions_from_dir(
 	dir: &Path,
 	mut builder: RoutinesConfigurator,
-) -> Result<RoutinesConfigurator> {
+) -> Result<RoutinesConfigurator, ValueError> {
 	let entries = fs::read_dir(dir).map_err(|e| {
 		SdkError::Other(format!("Failed to read WASM scalar function directory {}: {}", dir.display(), e))
 	})?;

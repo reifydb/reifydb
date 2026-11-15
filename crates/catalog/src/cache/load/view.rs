@@ -13,14 +13,15 @@ use reifydb_core::{
 	key::catalog::ViewKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	cache::CatalogCache,
 	store::view::{find::decode_view, shape::view},
 };
 
-pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = ViewKey::full_scan();
 	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 

@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::ViewKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<View>> {
+	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<View>, ValueError> {
 		let mut result = Vec::new();
 
 		let mut view_ids = Vec::new();

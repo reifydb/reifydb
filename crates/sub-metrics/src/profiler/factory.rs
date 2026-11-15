@@ -20,7 +20,7 @@ use reifydb_profiler::{
 };
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::{
 	accumulator::ProfilerAccumulator,
@@ -69,7 +69,10 @@ impl ProfilerSubsystemFactory {
 	}
 
 	#[inline]
-	fn build_subsystem(configurator: Option<Configurator>, ioc: &IocContainer) -> Result<ProfilerSubsystem> {
+	fn build_subsystem(
+		configurator: Option<Configurator>,
+		ioc: &IocContainer,
+	) -> Result<ProfilerSubsystem, ValueError> {
 		let cfg = match configurator {
 			Some(f) => f(ProfilerConfigurator::new()),
 			None => ProfilerConfigurator::default(),
@@ -127,7 +130,7 @@ impl Default for ProfilerSubsystemFactory {
 }
 
 impl SubsystemFactory for ProfilerSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let spec = MetricsDomain::ProfilerSpans.spec();
 		let current_cache = CurrentCache::new(spec.columns(Surface::Current));

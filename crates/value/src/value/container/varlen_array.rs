@@ -10,7 +10,7 @@ use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer, OffsetBuffer};
 use arrow_select::filter::FilterPredicate;
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 	value::{Value, blob::Blob, value_type::ValueType},
 };
@@ -107,7 +107,7 @@ where
 	attach_nulls(selected, nulls)
 }
 
-pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> Result<GenericByteArray<T>>
+pub fn reorder<T>(array: &GenericByteArray<T>, indices: &[usize]) -> Result<GenericByteArray<T>, ValueError>
 where
 	T: ByteArrayType<Offset = i64>,
 {

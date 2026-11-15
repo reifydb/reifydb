@@ -5,7 +5,7 @@ use arrow_array::{Array, ArrayRef};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	util::bitmap::and_nulls,
 	value::{column_view::ColumnView, value_type::ValueType},
@@ -34,12 +34,12 @@ pub fn combine_option_bitvecs(a: Option<&NullBuffer>, b: Option<&NullBuffer>) ->
 	}
 }
 
-fn filter_column(column: (FieldRef, ArrayRef), mask: &BooleanBuffer) -> Result<(FieldRef, ArrayRef)> {
+fn filter_column(column: (FieldRef, ArrayRef), mask: &BooleanBuffer) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let filtered = filter(&batch(vec![column])?, mask)?;
 	Ok((filtered.schema_ref().fields()[0].clone(), filtered.column(0).clone()))
 }
 
-fn empty_like(column: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
+fn empty_like(column: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), ValueError> {
 	Ok(ColumnBuilder::like(&ColumnView::try_from(column)?, 0).finish(column.0.name()))
 }
 
@@ -47,8 +47,8 @@ pub fn arith_op_unwrap_option(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
-	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
-) -> Result<(FieldRef, ArrayRef)> {
+	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), ValueError>,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (left_data, left_nulls) = split_nulls(left.clone())?;
 	let (right_data, right_nulls) = split_nulls(right.clone())?;
 	let len = output_len(left_data.1.len(), right_data.1.len());
@@ -110,8 +110,8 @@ pub fn binary_op_unwrap_option(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
-	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
-) -> Result<(FieldRef, ArrayRef)> {
+	inner: impl FnOnce(&(FieldRef, ArrayRef), &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), ValueError>,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (left_data, left_nulls) = split_nulls(left.clone())?;
 	let (right_data, right_nulls) = split_nulls(right.clone())?;
 
@@ -138,8 +138,8 @@ pub fn binary_op_unwrap_option(
 
 pub fn unary_op_unwrap_option(
 	col: &(FieldRef, ArrayRef),
-	inner: impl FnOnce(&(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
-) -> Result<(FieldRef, ArrayRef)> {
+	inner: impl FnOnce(&(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), ValueError>,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let (inner_data, nulls) = split_nulls(col.clone())?;
 
 	if is_all_none(nulls.as_ref()) {

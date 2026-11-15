@@ -4,7 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::interface::change::Diff;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{row_number::RowNumber, system_columns::require_row_numbers},
 };
@@ -33,7 +33,7 @@ impl InnerHashJoin {
 		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -43,7 +43,7 @@ impl InnerHashJoin {
 		_pre: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -54,7 +54,7 @@ impl InnerHashJoin {
 		_post: &RecordBatch,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		Ok(Vec::new())
 	}
 
@@ -65,7 +65,7 @@ impl InnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -117,7 +117,7 @@ impl InnerHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -200,7 +200,7 @@ impl InnerHashJoin {
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -227,7 +227,7 @@ impl InnerHashJoin {
 		row_idx: usize,
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
 		if ctx.operator.ignores_right_changes() {

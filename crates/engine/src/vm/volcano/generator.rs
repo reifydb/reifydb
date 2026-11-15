@@ -13,6 +13,7 @@ use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_routine_abi::{Function, Procedure, context::FunctionContext};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, column_view::ColumnView},
@@ -20,7 +21,6 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	Result,
 	error::EngineError,
 	vm::{
 		callable::{CallSite, ProcedureCall, invoke_procedure_routine},
@@ -53,7 +53,7 @@ impl GeneratorNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::generator::eval_params")]
-	fn eval_params(&self, session: &EvalContext<'_>) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn eval_params(&self, session: &EvalContext<'_>) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let evaluation_ctx = session.with_eval_empty();
 
 		let mut evaluated_columns = Vec::new();
@@ -70,7 +70,7 @@ impl GeneratorNode {
 		txn: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
 		evaluated_columns: Vec<(FieldRef, ArrayRef)>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		match self.generator.as_ref().unwrap() {
 			GeneratorImpl::Function(generator) => {
 				let mut fn_ctx = FunctionContext {
@@ -85,7 +85,7 @@ impl GeneratorNode {
 				let values: Vec<Value> = evaluated_columns
 					.iter()
 					.map(|col| Ok(ColumnView::try_from(col)?.get_value(0)))
-					.collect::<Result<_>>()?;
+					.collect::<Result<_, ValueError>>()?;
 				let params = Params::Positional(Arc::new(values));
 				invoke_procedure_routine(
 					&stored_ctx.services,
@@ -107,7 +107,7 @@ impl GeneratorNode {
 
 impl QueryNode for GeneratorNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::generator::initialize")]
-	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let name = self.function_name.text();
@@ -129,7 +129,11 @@ impl QueryNode for GeneratorNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::generator::next")]
-	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		txn: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.exhausted {
 			return Ok(None);
 		}

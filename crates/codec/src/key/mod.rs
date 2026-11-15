@@ -23,10 +23,7 @@ pub(crate) mod varint;
 
 use std::{f32, f64};
 
-use reifydb_value::{
-	Result,
-	error::{TypeError, ValueError},
-};
+use reifydb_value::error::{TypeError, ValueError};
 
 use crate::key::buf::KeyBuf;
 
@@ -61,7 +58,7 @@ pub fn encode_bool(value: bool) -> u8 {
 	}
 }
 
-pub fn decode_bool(byte: u8) -> Result<bool> {
+pub fn decode_bool(byte: u8) -> Result<bool, ValueError> {
 	match byte {
 		0x00 => Ok(true),
 		0x01 => Ok(false),
@@ -191,7 +188,7 @@ pub fn decode_u64(bytes: [u8; 8]) -> u64 {
 	!u64::from_be_bytes(bytes)
 }
 
-pub fn decode_u64_from(input: &mut &[u8]) -> Result<u64> {
+pub fn decode_u64_from(input: &mut &[u8]) -> Result<u64, ValueError> {
 	if input.len() < 8 {
 		return Err(ValueError::from(TypeError::SerdeKeycode {
 			message: "unexpected end of key while decoding u64".to_string(),
@@ -313,7 +310,7 @@ pub fn encode_u128_varint<B: ByteSink>(value: u128, output: &mut B) {
 	}
 }
 
-pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
+pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128, ValueError> {
 	if input.is_empty() {
 		return Err(ValueError::from(TypeError::SerdeKeycode {
 			message: "unexpected end of key while decoding u128 varint".to_string(),

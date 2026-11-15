@@ -26,7 +26,6 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_value::{
-	Result as ValueResult,
 	config::ExtensionParams,
 	error::ValueError,
 	util::hash::xxh3_128,
@@ -34,7 +33,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::OutputRows},
@@ -90,7 +89,7 @@ where
 		prior: Option<Ranking<A>>,
 		value: Option<&A::Accumulator>,
 		applied: &mut PaneApplied<TopKRow<Rw<A>>>,
-	) -> ValueResult<Option<Ranking<A>>> {
+	) -> Result<Option<Ranking<A>>, ValueError> {
 		let prior = prior.unwrap_or_default();
 		let ranking: BTreeMap<Sk<A>, Rw<A>> = match value {
 			Some(value) => rolling_output(self.aggregator, self.settings, self.pane, group, newest, value)
@@ -138,7 +137,7 @@ where
 		_emit: &mut Self::Emit,
 		_published: &mut Self::Published,
 		_row: RowNumber,
-	) -> ValueResult<()> {
+	) -> Result<(), ValueError> {
 		internal_err!("a top-k publisher never defers a row number")
 	}
 }
@@ -179,7 +178,7 @@ where
 		}
 	}
 
-	fn emit(&mut self, emits: Vec<TopKRow<Rw<A>>>) -> ValueResult<Vec<TopKRow<Rw<A>>>> {
+	fn emit(&mut self, emits: Vec<TopKRow<Rw<A>>>) -> Result<Vec<TopKRow<Rw<A>>>, ValueError> {
 		Ok(emits)
 	}
 }
@@ -222,7 +221,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 	for<'a> &'a Sk<A>: IntoEncodedKey,
 {
-	fn emit_rows(ctx: &mut impl GuestContext, rows: Vec<TopKRow<Rw<A>>>) -> Result<()> {
+	fn emit_rows(ctx: &mut impl GuestContext, rows: Vec<TopKRow<Rw<A>>>) -> Result<(), SdkError> {
 		let mut inserts: Vec<(RowNumber, DateTime, Rw<A>)> = Vec::new();
 		let mut updates: Vec<(RowNumber, DateTime, Rw<A>, Rw<A>)> = Vec::new();
 		let mut removes: Vec<(RowNumber, DateTime, Rw<A>)> = Vec::new();
@@ -296,7 +295,7 @@ where
 		None
 	}
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		with.reject_retention()?;
 		with.require_window("rolling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
@@ -339,7 +338,7 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<(), SdkError> {
 		if self.seal_span.is_none() || !<A::Coord as SealDomain>::arms_timer() {
 			return Ok(());
 		}
@@ -360,7 +359,7 @@ where
 		Self::emit_rows(ctx, rows)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {
 		let routed =
 			route_rolling(&mut SdkRows::new(&self.aggregator, ctx, &change), Some(self.pane), &|group| {
 				GroupId::window(xxh3_128(group.into_encoded_key().as_slice()), 0)

@@ -3,7 +3,7 @@
 
 use reifydb_value::{config::ExtensionParams, params::Params};
 
-use crate::{error::Result, procedure::extern_c::binding::context::ExternCProcedureContext};
+use crate::{error::SdkError, procedure::extern_c::binding::context::ExternCProcedureContext};
 
 pub trait ExternCProcedureMetadata {
 	const NAME: &'static str;
@@ -14,11 +14,11 @@ pub trait ExternCProcedureMetadata {
 }
 
 pub trait ExternCProcedure: 'static {
-	fn new(params: &ExtensionParams) -> Result<Self>
+	fn new(params: &ExtensionParams) -> Result<Self, SdkError>
 	where
 		Self: Sized;
 
-	fn call(&mut self, ctx: &mut ExternCProcedureContext, params: Params) -> Result<()>;
+	fn call(&mut self, ctx: &mut ExternCProcedureContext, params: Params) -> Result<(), SdkError>;
 }
 
 pub trait ExternCProcedureWithMetadata: ExternCProcedure + ExternCProcedureMetadata {}

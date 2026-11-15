@@ -9,12 +9,9 @@ use reifydb_core::{
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::params::Params;
+use reifydb_value::{error::ValueError, params::Params};
 
-use crate::{
-	Result,
-	system::{SystemCatalog, ids::vtable::*},
-};
+use crate::system::{SystemCatalog, ids::vtable::*};
 
 #[derive(Debug)]
 pub struct Batch {
@@ -40,9 +37,9 @@ pub enum VTableContext {
 }
 
 pub trait BaseVTable: Send + Sync {
-	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()>;
+	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<(), ValueError>;
 
-	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>, ValueError>;
 
 	fn vtable(&self) -> &VTable;
 }
@@ -50,7 +47,7 @@ pub trait BaseVTable: Send + Sync {
 pub struct VTableRegistry;
 
 impl VTableRegistry {
-	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTable>>> {
+	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTable>>, ValueError> {
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table()),
 			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table()),
@@ -105,7 +102,7 @@ impl VTableRegistry {
 		})
 	}
 
-	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTable>>> {
+	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTable>>, ValueError> {
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table(),
 			SystemCatalog::get_system_namespaces_table(),

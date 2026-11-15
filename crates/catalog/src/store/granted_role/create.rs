@@ -6,16 +6,16 @@ use reifydb_core::{
 	key::identity::GrantedRoleKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
-use crate::{CatalogStore, Result, store::granted_role::shape::granted_role};
+use crate::{CatalogStore, store::granted_role::shape::granted_role};
 
 impl CatalogStore {
 	pub(crate) fn grant_role(
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		role: RoleId,
-	) -> Result<GrantedRole> {
+	) -> Result<GrantedRole, ValueError> {
 		let mut row = granted_role::allocate();
 		granted_role::set_identity(&mut row, identity);
 		granted_role::set_role_id(&mut row, role);

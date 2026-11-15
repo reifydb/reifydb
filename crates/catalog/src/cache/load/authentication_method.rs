@@ -3,11 +3,12 @@
 
 use reifydb_core::key::identity::AuthenticationMethodKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::authentication_method::convert_authentication_method};
+use crate::store::authentication_method::convert_authentication_method;
 
-pub(crate) fn load_authentication_methods(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_authentication_methods(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let stream = rx.range(AuthenticationMethodKey::full_scan(), RangeScope::All, 1024)?;
 
 	for entry in stream {

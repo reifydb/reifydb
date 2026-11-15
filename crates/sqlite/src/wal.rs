@@ -15,7 +15,7 @@ use std::{
 
 use rusqlite::{Connection, ffi};
 
-use crate::error::{SqliteError, SqliteResult};
+use crate::error::SqliteError;
 
 pub struct WalConnection {
 	conn: Connection,
@@ -26,7 +26,7 @@ pub struct WalConnection {
 }
 
 impl WalConnection {
-	pub fn new(conn: Connection, threshold: u32) -> SqliteResult<Self> {
+	pub fn new(conn: Connection, threshold: u32) -> Result<Self, SqliteError> {
 		conn.pragma_update(None, "wal_autocheckpoint", 0).map_err(|source| SqliteError::Pragma {
 			name: "wal_autocheckpoint".into(),
 			source,
@@ -57,14 +57,14 @@ impl WalConnection {
 		self.markers.borrow_mut().push_back((self.frames.load(Ordering::Acquire), marker));
 	}
 
-	pub fn checkpoint_if_due(&self) -> SqliteResult<()> {
+	pub fn checkpoint_if_due(&self) -> Result<(), SqliteError> {
 		if self.frames.load(Ordering::Acquire) < self.threshold.get() {
 			return Ok(());
 		}
 		self.checkpoint("PRAGMA wal_checkpoint(PASSIVE)")
 	}
 
-	pub fn shutdown(&self) -> SqliteResult<()> {
+	pub fn shutdown(&self) -> Result<(), SqliteError> {
 		self.checkpoint("PRAGMA wal_checkpoint(TRUNCATE)")?;
 		self.conn.pragma_update(None, "cache_size", 0).map_err(|source| SqliteError::Pragma {
 			name: "cache_size".into(),
@@ -80,7 +80,7 @@ impl WalConnection {
 		self.progress.clone()
 	}
 
-	fn checkpoint(&self, statement: &str) -> SqliteResult<()> {
+	fn checkpoint(&self, statement: &str) -> Result<(), SqliteError> {
 		let (log, done) = self
 			.conn
 			.query_row(statement, [], |row| Ok((row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))

@@ -11,8 +11,6 @@ use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 use crate::lsn::Lsn;
 
-pub type Result<T> = std::result::Result<T, WalError>;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WalError {
 	Log(StoreLogError),

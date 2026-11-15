@@ -17,17 +17,15 @@ use reifydb_value::{
 
 use crate::{
 	expression::context::EvalContext,
-	lower::{Lowered, Node, error::into_external, lower_node, udf, volatile},
+	lower::{Node, Stop, error::into_external, lower_node, udf, volatile},
 };
-
-type DfResult<T> = std::result::Result<T, DataFusionError>;
 
 pub(super) fn lower_field_access<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
 	access: &'e FieldAccessExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let object = lower_node(ctx, operator, &access.object)?;
 	let field = Arc::new(object.field.as_ref().clone().with_name(display_label(expression).text()));
 	Ok(Node {
@@ -86,19 +84,19 @@ impl ScalarUDFImpl for FieldAccessUdf {
 		&self.signature
 	}
 
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+	fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType, DataFusionError> {
 		internal_err!("field_access types its output through return_field_from_args")
 	}
 
-	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
+	fn return_field_from_args(&self, args: ReturnFieldArgs) -> Result<FieldRef, DataFusionError> {
 		Ok(args.arg_fields[0].clone())
 	}
 
-	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> Result<ColumnarValue, DataFusionError> {
 		Err(into_external(field_not_found(&self.field)))
 	}
 
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+	fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>, DataFusionError> {
 		Ok(arg_types.to_vec())
 	}
 }

@@ -15,7 +15,7 @@ use reifydb_value::{byte_size::ByteSize, clock::ClockNow, value::duration::Durat
 
 use crate::{
 	cursor::Cursor,
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	partition::{Config, Partition, sync},
 	reader::{readers, record, register, unregister, version_of},
 	segment::{Scan, discard, parent, staging, write_all},
@@ -49,7 +49,13 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	pub fn create_detached(fs: F, clock: C, dir: &Path, config: Config, partitions: u32) -> Result<Self> {
+	pub fn create_detached(
+		fs: F,
+		clock: C,
+		dir: &Path,
+		config: Config,
+		partitions: u32,
+	) -> Result<Self, StoreLogError> {
 		if partitions == 0 {
 			return Err(StoreLogError::MetaCorrupt(dir.join(META_NAME)));
 		}
@@ -74,7 +80,7 @@ where
 				)?;
 				Ok(Writer::detached(fs.clone(), partition))
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, StoreLogError>>()?;
 		publish(&fs, &dir.join(META_NAME), &meta)?;
 		Ok(Self {
 			fs,
@@ -84,7 +90,7 @@ where
 		})
 	}
 
-	pub fn open_detached(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>)> {
+	pub fn open_detached(fs: F, clock: C, dir: &Path) -> Result<(Self, Vec<Scan>), StoreLogError> {
 		let meta = load(&fs, &dir.join(META_NAME))?;
 		let config = Config {
 			segment_bytes: meta.segment_bytes,
@@ -108,19 +114,19 @@ where
 		Ok((log, scans))
 	}
 
-	pub fn append(&self, partition: u32, record: &Record) -> Result<Position> {
+	pub fn append(&self, partition: u32, record: &Record) -> Result<Position, StoreLogError> {
 		self.writer(partition)?.commit(record)
 	}
 
-	pub fn truncate_from(&self, partition: u32, index: LogIndex) -> Result<()> {
+	pub fn truncate_from(&self, partition: u32, index: LogIndex) -> Result<(), StoreLogError> {
 		self.writer(partition)?.truncate_from(index)
 	}
 
-	pub fn compact_to(&self, partition: u32, index: LogIndex) -> Result<()> {
+	pub fn compact_to(&self, partition: u32, index: LogIndex) -> Result<(), StoreLogError> {
 		self.with(partition, |found| found.compact_to(index))?
 	}
 
-	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>> {
+	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>, StoreLogError> {
 		self.with(partition, |found| {
 			if index < found.commit_index() {
 				return Ok(Vec::new());
@@ -131,19 +137,19 @@ where
 		})?
 	}
 
-	pub fn flush(&self, partition: u32) -> Result<()> {
+	pub fn flush(&self, partition: u32) -> Result<(), StoreLogError> {
 		self.writer(partition)?.flush()
 	}
 
-	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<()> {
+	pub fn rebase(&self, partition: u32, index: LogIndex, term: Term) -> Result<(), StoreLogError> {
 		self.writer(partition)?.rebase(index, term)
 	}
 
-	pub fn durable(&self, partition: u32) -> Result<Option<LogVersion>> {
+	pub fn durable(&self, partition: u32) -> Result<Option<LogVersion>, StoreLogError> {
 		Ok(self.writer(partition)?.durable())
 	}
 
-	pub fn sync(&self) -> Result<()> {
+	pub fn sync(&self) -> Result<(), StoreLogError> {
 		for writer in &self.writers {
 			let (dir, base) = writer.with(|partition| (partition.dir().to_path_buf(), partition.base()));
 			sync(&self.fs, &dir, base)?;
@@ -151,7 +157,7 @@ where
 		Ok(())
 	}
 
-	pub fn purge(&self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>> {
+	pub fn purge(&self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>, StoreLogError> {
 		let mut dropped = Vec::with_capacity(self.writers.len());
 		for (at, writer) in self.writers.iter().enumerate() {
 			dropped.push((at as u32, writer.with(|partition| partition.purge(ttl))?));
@@ -159,33 +165,33 @@ where
 		Ok(dropped)
 	}
 
-	pub fn register(&self, partition: u32, id: &str) -> Result<()> {
+	pub fn register(&self, partition: u32, id: &str) -> Result<(), StoreLogError> {
 		register(&self.fs, &self.dir_of(partition)?, id)
 	}
 
-	pub fn unregister(&self, partition: u32, id: &str) -> Result<()> {
+	pub fn unregister(&self, partition: u32, id: &str) -> Result<(), StoreLogError> {
 		unregister(&self.fs, &self.dir_of(partition)?, id)
 	}
 
-	pub fn record(&self, partition: u32, id: &str, version: LogVersion) -> Result<()> {
+	pub fn record(&self, partition: u32, id: &str, version: LogVersion) -> Result<(), StoreLogError> {
 		record(&self.fs, &self.dir_of(partition)?, id, version)
 	}
 
-	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>> {
+	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>, StoreLogError> {
 		let dir = self.dir_of(partition)?;
 		let after = version_of(&self.fs, &dir, id)?;
 		let torn = self.writer(partition)?.with(|partition| partition.torn());
 		Cursor::open(&self.fs, &dir, (after != LogVersion::ZERO).then_some(after), torn)
 	}
 
-	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>> {
+	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>, StoreLogError> {
 		let dir = self.dir_of(partition)?;
 		let after = LogVersion::new(version.as_u64().saturating_sub(1));
 		let torn = self.writer(partition)?.with(|partition| partition.torn());
 		Cursor::open(&self.fs, &dir, Some(after), torn)
 	}
 
-	pub fn readers(&self, partition: u32) -> Result<Vec<(String, LogVersion)>> {
+	pub fn readers(&self, partition: u32) -> Result<Vec<(String, LogVersion)>, StoreLogError> {
 		readers(&self.fs, &self.dir_of(partition)?)
 	}
 
@@ -201,36 +207,36 @@ where
 		&self.dir
 	}
 
-	pub fn dir_of(&self, partition: u32) -> Result<PathBuf> {
+	pub fn dir_of(&self, partition: u32) -> Result<PathBuf, StoreLogError> {
 		self.writer(partition)?;
 		Ok(self.dir.join(partition_name(partition)))
 	}
 
-	pub fn base(&self, partition: u32) -> Result<LogVersion> {
+	pub fn base(&self, partition: u32) -> Result<LogVersion, StoreLogError> {
 		Ok(self.writer(partition)?.with(|partition| partition.base()))
 	}
 
-	pub fn bases(&self, partition: u32) -> Result<Vec<LogVersion>> {
+	pub fn bases(&self, partition: u32) -> Result<Vec<LogVersion>, StoreLogError> {
 		Ok(self.writer(partition)?.with(|partition| partition.bases().to_vec()))
 	}
 
-	pub fn commit_index(&self, partition: u32) -> Result<LogIndex> {
+	pub fn commit_index(&self, partition: u32) -> Result<LogIndex, StoreLogError> {
 		Ok(self.writer(partition)?.with(|partition| partition.commit_index()))
 	}
 
-	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize> {
+	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize, StoreLogError> {
 		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
 	}
 
-	pub fn bytes(&self, partition: u32) -> Result<ByteSize> {
+	pub fn bytes(&self, partition: u32) -> Result<ByteSize, StoreLogError> {
 		self.with(partition, |found| found.bytes())?
 	}
 
-	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R> {
+	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R, StoreLogError> {
 		Ok(self.writer(partition)?.with(act))
 	}
 
-	fn writer(&self, partition: u32) -> Result<&Writer<F, C>> {
+	fn writer(&self, partition: u32) -> Result<&Writer<F, C>, StoreLogError> {
 		self.writers.get(partition as usize).ok_or_else(|| StoreLogError::NoSuchPartition {
 			dir: self.dir.clone(),
 			requested: partition,
@@ -243,7 +249,11 @@ pub fn partition_name(at: u32) -> String {
 	format!("p{at}")
 }
 
-fn publish<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(fs: &F, path: &Path, meta: &Meta) -> Result<()>
+fn publish<F: Filesystem + Create + Open + Rename + SyncDir + Unlink>(
+	fs: &F,
+	path: &Path,
+	meta: &Meta,
+) -> Result<(), StoreLogError>
 where
 	F::FileMut: SyncData,
 {
@@ -262,7 +272,7 @@ where
 	Ok(())
 }
 
-fn load<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Meta> {
+fn load<F: Filesystem + Open>(fs: &F, path: &Path) -> Result<Meta, StoreLogError> {
 	let file = fs.open(path)?;
 	let len = file.len()?;
 	if len < META_BYTES as u64 {

@@ -19,7 +19,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	value::{
@@ -45,7 +44,7 @@ impl SourceOperator {
 		operator: OperatorId,
 		columns: &[Column],
 		sumtypes: HashMap<String, SumTypeId>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		Ok(Self {
 			operator,
 			schema: mark_schema(&catalog_schema(columns), &sumtypes)?,
@@ -71,18 +70,22 @@ impl SourceOperator {
 		Some(self.schema.clone())
 	}
 
-	pub fn apply(&self, change: Change) -> Result<Change> {
+	pub fn apply(&self, change: Change) -> Result<Change, ValueError> {
 		let commit = change.version.commit;
 		let diffs = change
 			.diffs
 			.into_iter()
 			.map(|diff| stamp_commit_version(diff, commit, &self.sumtypes))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(Change::from_flow(self.operator, change.version, diffs, change.changed_at))
 	}
 }
 
-fn stamp_commit_version(diff: Diff, commit: CommitVersion, sumtypes: &HashMap<String, SumTypeId>) -> Result<Diff> {
+fn stamp_commit_version(
+	diff: Diff,
+	commit: CommitVersion,
+	sumtypes: &HashMap<String, SumTypeId>,
+) -> Result<Diff, ValueError> {
 	let stamp = |batch: RecordBatch| {
 		let versions: ArrayRef = Arc::new(UInt64Array::from(vec![commit.0; batch.num_rows()]));
 		with_system_column(mark_tag_columns(batch, sumtypes)?, SystemColumn::CommitVersion, versions)
@@ -114,11 +117,15 @@ fn stamp_commit_version(diff: Diff, commit: CommitVersion, sumtypes: &HashMap<St
 	})
 }
 
-pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, change: Change) -> Result<Change> {
+pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, change: Change) -> Result<Change, ValueError> {
 	decode_change_keeping(txn, change, &[])
 }
 
-pub fn decode_change_keeping<T: Resolve + ?Sized>(txn: &mut T, mut change: Change, kept: &[Column]) -> Result<Change> {
+pub fn decode_change_keeping<T: Resolve + ?Sized>(
+	txn: &mut T,
+	mut change: Change,
+	kept: &[Column],
+) -> Result<Change, ValueError> {
 	for diff in change.diffs.iter_mut() {
 		match diff {
 			Diff::Insert {
@@ -144,8 +151,8 @@ pub fn decode_change_keeping<T: Resolve + ?Sized>(txn: &mut T, mut change: Chang
 
 pub fn decoded_schema(
 	schema: &SchemaRef,
-	mut dictionary: impl FnMut(DictionaryId) -> Result<Option<Dictionary>>,
-) -> Result<SchemaRef> {
+	mut dictionary: impl FnMut(DictionaryId) -> Result<Option<Dictionary>, ValueError>,
+) -> Result<SchemaRef, ValueError> {
 	let mut fields = Vec::with_capacity(schema.fields().len());
 	for field in schema.fields() {
 		let field_type = from_field(field)?;
@@ -188,8 +195,8 @@ pub fn sumtype_tags(columns: &[Column]) -> HashMap<String, SumTypeId> {
 pub fn expand_enum_groups(
 	parent: Option<&SchemaRef>,
 	expressions: Vec<Expression>,
-	mut sumtype: impl FnMut(SumTypeId) -> Result<SumType>,
-) -> Result<Vec<Expression>> {
+	mut sumtype: impl FnMut(SumTypeId) -> Result<SumType, ValueError>,
+) -> Result<Vec<Expression>, ValueError> {
 	let Some(parent) = parent else {
 		return Ok(expressions);
 	};
@@ -246,7 +253,7 @@ pub fn expand_enum_groups(
 	Ok(expanded)
 }
 
-pub fn mark_schema(schema: &SchemaRef, sumtypes: &HashMap<String, SumTypeId>) -> Result<SchemaRef> {
+pub fn mark_schema(schema: &SchemaRef, sumtypes: &HashMap<String, SumTypeId>) -> Result<SchemaRef, ValueError> {
 	let fields = schema
 		.fields()
 		.iter()
@@ -254,11 +261,11 @@ pub fn mark_schema(schema: &SchemaRef, sumtypes: &HashMap<String, SumTypeId>) ->
 			Some(id) => mark_field(field, *id),
 			None => Ok(field.clone()),
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	Ok(Arc::new(Schema::new(fields)))
 }
 
-pub fn schema_sumtypes(schema: &SchemaRef) -> Result<HashMap<String, SumTypeId>> {
+pub fn schema_sumtypes(schema: &SchemaRef) -> Result<HashMap<String, SumTypeId>, ValueError> {
 	let mut sumtypes = HashMap::new();
 	for field in schema.fields() {
 		if let Some(id) = from_field(field)?.sumtype {
@@ -268,7 +275,7 @@ pub fn schema_sumtypes(schema: &SchemaRef) -> Result<HashMap<String, SumTypeId>>
 	Ok(sumtypes)
 }
 
-pub fn mark_diffs(diffs: &mut [Diff], sumtypes: &HashMap<String, SumTypeId>) -> Result<()> {
+pub fn mark_diffs(diffs: &mut [Diff], sumtypes: &HashMap<String, SumTypeId>) -> Result<(), ValueError> {
 	if sumtypes.is_empty() {
 		return Ok(());
 	}
@@ -297,7 +304,10 @@ fn column_field(column: &Column) -> (FieldRef, ArrayRef) {
 	builder.finish(&column.name)
 }
 
-pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {
+pub fn decode_dictionary_columns<T: Resolve + ?Sized>(
+	columns: &mut RecordBatch,
+	txn: &mut T,
+) -> Result<(), ValueError> {
 	decode_dictionary_columns_where(columns, txn, &|_, _| false)
 }
 
@@ -305,7 +315,7 @@ pub fn decode_dictionary_columns_except<T: Resolve + ?Sized>(
 	columns: &mut RecordBatch,
 	txn: &mut T,
 	kept: &[(String, DictionaryId)],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	decode_dictionary_columns_where(columns, txn, &|name, id| kept.iter().any(|(n, d)| n == name && *d == id))
 }
 
@@ -317,7 +327,7 @@ fn decode_dictionary_columns_where<T: Resolve + ?Sized>(
 	columns: &mut RecordBatch,
 	txn: &mut T,
 	keep: &dyn Fn(&str, DictionaryId) -> bool,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let dict_columns: Vec<(usize, Dictionary)> = {
 		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
 		for (pos, (field, array)) in columns.schema_ref().fields().iter().zip(columns.columns()).enumerate() {
@@ -340,7 +350,7 @@ fn decode_dictionary_columns_where<T: Resolve + ?Sized>(
 				})?;
 				Ok((pos, dictionary))
 			})
-			.collect::<Result<Vec<_>>>()?
+			.collect::<Result<Vec<_>, ValueError>>()?
 	};
 
 	if dict_columns.is_empty() {

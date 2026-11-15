@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, ProcedureId},
 	procedure::Procedure,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackProcedureChangeOperations for AdminTransaction {
-	fn track_procedure_created(&mut self, procedure: Procedure) -> Result<()> {
+	fn track_procedure_created(&mut self, procedure: Procedure) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(procedure),
@@ -28,7 +28,7 @@ impl CatalogTrackProcedureChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_procedure_deleted(&mut self, procedure: Procedure) -> Result<()> {
+	fn track_procedure_deleted(&mut self, procedure: Procedure) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(procedure),
 			post: None,

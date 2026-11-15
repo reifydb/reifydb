@@ -86,7 +86,7 @@ use reifydb_transaction::{
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -202,7 +202,7 @@ pub(crate) fn deferred_storage_get(
 	query: Option<&MultiReadTransaction>,
 	state_query: Option<&MultiReadTransaction>,
 	keys: &[EncodedKey],
-) -> Result<Vec<Option<EncodedBytes>>> {
+) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 	let mut rows = vec![None; keys.len()];
 	let mut operator_state: BTreeMap<OperatorId, (Vec<usize>, Vec<GroupStateKey>)> = BTreeMap::new();
 	let (mut state_slots, mut state_keys) = (Vec::new(), Vec::new());
@@ -255,7 +255,7 @@ pub(crate) fn deferred_storage_range<'a>(
 	range: TaggedKeyBoundRange,
 	scope: RangeScope,
 	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'a> {
 	let target = match range_read_from(&range) {
 		ReadFrom::OperatorState => {
 			return Box::new(OperatorStateRangeIter::new(
@@ -275,7 +275,7 @@ pub(crate) fn deferred_fetch_state(
 	operators: Option<&OperatorStore>,
 	id: OperatorId,
 	keys: &[GroupStateKey],
-) -> Result<Vec<Option<EncodedBytes>>> {
+) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 	if keys.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -368,15 +368,19 @@ impl FlowTransaction for DeferredTransaction {
 		self.row_shape_cache.entry(operator).or_default()
 	}
 
-	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
+	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change, ValueError> {
 		sink.apply(self, change)
 	}
 
-	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn run_durable_sink_timer(
+		&mut self,
+		sink: &mut dyn DurableSink,
+		timer: Timer,
+	) -> Result<Option<TimedOutput>, ValueError> {
 		sink.on_timer(self, timer)
 	}
 
-	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		#[cfg(test)]
 		{
 			self.storage_counts.get_many_calls += 1;
@@ -395,7 +399,7 @@ impl FlowTransaction for DeferredTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		#[cfg(test)]
 		{
 			self.storage_counts.ranges += 1;
@@ -412,7 +416,11 @@ impl FlowTransaction for DeferredTransaction {
 		)
 	}
 
-	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn fetch_state(
+		&mut self,
+		id: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		#[cfg(test)]
 		if !keys.is_empty() {
 			self.storage_counts.state_fetch_calls += 1;
@@ -422,18 +430,18 @@ impl FlowTransaction for DeferredTransaction {
 }
 
 impl FlowGet for DeferredTransaction {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		pending_get(self, keys)
 	}
 }
 
 impl FlowBatch for DeferredTransaction {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.pending_mut().remove(keys);
 		Ok(())
 	}
@@ -444,7 +452,7 @@ impl Range for DeferredTransaction {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		Ok(FlowTransaction::range(self, range, RangeScope::All, batch_size))
 	}
 
@@ -452,11 +460,11 @@ impl Range for DeferredTransaction {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		Range::range_rev(self, range, batch_size)
 	}
 
-	fn mark_range(&mut self, _range: TaggedKeyBoundRange) -> Result<()> {
+	fn mark_range(&mut self, _range: TaggedKeyBoundRange) -> Result<(), ValueError> {
 		Ok(())
 	}
 
@@ -464,7 +472,7 @@ impl Range for DeferredTransaction {
 		&mut self,
 		range: TaggedKeyBoundRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>, ValueError> {
 		#[cfg(test)]
 		{
 			self.storage_counts.ranges += 1;
@@ -489,7 +497,7 @@ impl Range for DeferredTransaction {
 }
 
 impl Emit for DeferredTransaction {
-	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<(), ValueError> {
 		self.emitted |= diff.row_count() > 0;
 		if let Some(captured) = &mut self.captured {
 			captured.push((view, diff));
@@ -499,23 +507,31 @@ impl Emit for DeferredTransaction {
 }
 
 impl Resolve for DeferredTransaction {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		Ok(self.find_dictionary(id))
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.get_from_dictionary(dictionary, ids)
 	}
 }
 
 impl Find for DeferredTransaction {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.find_in_dictionary(dictionary, values)
 	}
 }
 
 impl Intern for DeferredTransaction {
-	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		if values.is_empty() {
 			return Ok(Vec::new());
 		}

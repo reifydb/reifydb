@@ -12,7 +12,7 @@ use reifydb_core::{
 	common::OnEmpty, interface::catalog::flow::OperatorId, internal_err, key::operator::state::GroupId,
 	metrics::heap::HeapSize, state::timer::TimerKind,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	operator::{
@@ -74,15 +74,15 @@ pub trait RollingHooks {
 		&self,
 	) -> impl PanePublisher<Self::Group, Self::Coord, Self::Accumulator, Published = Self::Published, Emit = Self::Emit>;
 
-	fn emit(&mut self, emits: Vec<Self::Emit>) -> Result<Self::Out>;
+	fn emit(&mut self, emits: Vec<Self::Emit>) -> Result<Self::Out, ValueError>;
 }
 
 pub struct RowHooks<'h, G, K, O, A, C> {
 	pub new_accumulator: &'h dyn Fn() -> A,
-	pub key: Option<&'h dyn Fn(&G) -> Result<K>>,
+	pub key: Option<&'h dyn Fn(&G) -> Result<K, ValueError>>,
 	pub finalize: &'h dyn Fn(&G, C, &A) -> Option<O>,
 	pub on_empty: OnEmpty,
-	pub empty: &'h dyn Fn(&O) -> Result<Option<O>>,
+	pub empty: &'h dyn Fn(&O) -> Result<Option<O>, ValueError>,
 }
 
 impl<G, K, O, A, C> RollingHooks for RowHooks<'_, G, K, O, A, C>
@@ -115,7 +115,7 @@ where
 		}
 	}
 
-	fn emit(&mut self, emits: Vec<RollingEmit<G, K, O>>) -> Result<Vec<RollingEmit<G, K, O>>> {
+	fn emit(&mut self, emits: Vec<RollingEmit<G, K, O>>) -> Result<Vec<RollingEmit<G, K, O>>, ValueError> {
 		Ok(emits)
 	}
 }
@@ -127,7 +127,11 @@ fn pane_of<C: Coord>(coord: C, pane: Option<C::Span>) -> C {
 	}
 }
 
-fn located<G, C: Coord, X>(columns: &WindowColumns<G, C, X>, row: usize, pane: Option<C::Span>) -> Result<(C, u64)> {
+fn located<G, C: Coord, X>(
+	columns: &WindowColumns<G, C, X>,
+	row: usize,
+	pane: Option<C::Span>,
+) -> Result<(C, u64), ValueError> {
 	let Some(coord) = columns.coords()[row] else {
 		return internal_err!("a rolling row at batch position {} carries no coordinate", columns.index()[row]);
 	};
@@ -141,7 +145,7 @@ pub fn route_rolling<R>(
 	rows: &mut R,
 	pane: Option<<R::Coord as Coord>::Span>,
 	group_id: &dyn Fn(&R::Group) -> GroupId,
-) -> Result<RoutedPanes<R::Group, R::Coord, R::Contribution>>
+) -> Result<RoutedPanes<R::Group, R::Coord, R::Contribution>, ValueError>
 where
 	R: WindowRows,
 	R::Group: Clone + Ord,
@@ -264,7 +268,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		&self,
 		rows: &mut R,
 		group_id: &dyn Fn(&R::Group) -> GroupId,
-	) -> Result<RoutedPanes<R::Group, C, R::Contribution>>
+	) -> Result<RoutedPanes<R::Group, C, R::Contribution>, ValueError>
 	where
 		R: WindowRows<Coord = C>,
 		R::Group: Clone + Ord,
@@ -283,7 +287,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		store: &mut dyn WindowStore,
 		routed: RoutedPanes<H::Group, C, Contribution<H::Accumulator>>,
 		hooks: &mut H,
-	) -> Result<H::Out>
+	) -> Result<H::Out, ValueError>
 	where
 		H: RollingHooks<Coord = C>,
 		H::Group: Clone + Ord + Hash + Debug + StateCodec,
@@ -321,7 +325,7 @@ impl<C: SealDomain> RollingRunner<C> {
 		kind: TimerKind,
 		fired: FiredAt,
 		hooks: &mut H,
-	) -> Result<H::Out>
+	) -> Result<H::Out, ValueError>
 	where
 		H: RollingHooks<Coord = C>,
 		H::Group: Clone + Ord + Hash + Debug + StateCodec,

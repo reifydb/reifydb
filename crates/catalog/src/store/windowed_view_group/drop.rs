@@ -6,14 +6,15 @@ use reifydb_core::{
 	key::{catalog::WindowedViewGroupKey, namespace::NamespaceWindowedViewGroupKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn drop_windowed_view_group(
 		txn: &mut AdminTransaction,
 		group_id: WindowedViewGroupId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let group = CatalogStore::find_windowed_view_group(&mut Transaction::Admin(&mut *txn), group_id)?;
 
 		if let Some(group) = group {

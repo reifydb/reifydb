@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackDictionaryChangeOperations, dictionary::Dictionary, id::NamespaceId,
 };
-use reifydb_value::{Result, value::dictionary::DictionaryId};
+use reifydb_value::{error::ValueError, value::dictionary::DictionaryId};
 
 use crate::{
 	change::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogTrackDictionaryChangeOperations for AdminTransaction {
-	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<()> {
+	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(dictionary),
@@ -26,7 +26,7 @@ impl CatalogTrackDictionaryChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<()> {
+	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(dictionary),
 			post: None,

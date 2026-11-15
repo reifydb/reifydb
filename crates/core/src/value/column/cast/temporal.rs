@@ -4,7 +4,6 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
 	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -27,7 +26,7 @@ pub fn to_temporal(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if let ViewData::Utf8 {
 		container,
 		..
@@ -67,7 +66,7 @@ macro_rules! impl_to_temporal {
 			container: &LargeStringArray,
 			name: &str,
 			lazy_fragment: impl LazyFragment,
-		) -> Result<(FieldRef, ArrayRef)> {
+		) -> Result<(FieldRef, ArrayRef), ValueError> {
 			let mut out = ColumnBuilder::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_valid(idx) {

@@ -7,11 +7,12 @@ use reifydb_core::{
 	key::{any::TaggedKey, flow::FlowKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::flow::decode_flow};
+use crate::{CatalogStore, store::flow::decode_flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
+	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(FlowKey::full_scan(), RangeScope::All, 1024)?;

@@ -6,11 +6,11 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	sumtype::{SumType, SumTypeKind, Variant},
 };
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 use serde_json::from_str;
 
 use self::shape::sumtype;
-use crate::{Result, error::CatalogError};
+use crate::error::CatalogError;
 
 pub mod create;
 pub mod drop;
@@ -19,7 +19,7 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-pub(crate) fn sumtype_from_bytes(bytes: &EncodedCatalogRow) -> Result<SumType> {
+pub(crate) fn sumtype_from_bytes(bytes: &EncodedCatalogRow) -> Result<SumType, ValueError> {
 	let id = SumTypeId(sumtype::get_id(bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(bytes));
 	let name = sumtype::get_name(bytes).to_string();

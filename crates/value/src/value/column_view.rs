@@ -13,7 +13,6 @@ use arrow_buffer::NullBuffer;
 use arrow_schema::{Field, FieldRef};
 
 use crate::{
-	Result,
 	error::{ColumnReadReason, TypeError, ValueError},
 	util::float_format::{format_f32, format_f64},
 	value::{
@@ -106,7 +105,7 @@ pub struct ColumnView<'a> {
 impl<'a> TryFrom<(&'a ArrayRef, &'a Field)> for ColumnView<'a> {
 	type Error = ValueError;
 
-	fn try_from((array, field): (&'a ArrayRef, &'a Field)) -> Result<Self> {
+	fn try_from((array, field): (&'a ArrayRef, &'a Field)) -> Result<Self, ValueError> {
 		if array.data_type() != field.data_type() {
 			return Err(field_error(format!(
 				"column {} holds arrow type {}, but its field says {}",
@@ -125,12 +124,12 @@ impl<'a> TryFrom<(&'a ArrayRef, &'a Field)> for ColumnView<'a> {
 impl<'a> TryFrom<&'a (FieldRef, ArrayRef)> for ColumnView<'a> {
 	type Error = ValueError;
 
-	fn try_from((field, array): &'a (FieldRef, ArrayRef)) -> Result<Self> {
+	fn try_from((field, array): &'a (FieldRef, ArrayRef)) -> Result<Self, ValueError> {
 		ColumnView::try_from((array, field.as_ref()))
 	}
 }
 
-fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>> {
+fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>, ValueError> {
 	let field_type = from_field(field)?;
 	let Some(value_type) = field_type.value_type else {
 		return Ok(ViewData::None {
@@ -202,7 +201,7 @@ fn view_data<'a>(array: &'a ArrayRef, field: &'a Field) -> Result<ViewData<'a>> 
 	})
 }
 
-fn downcast<'a, T: 'static>(array: &'a ArrayRef, field: &Field) -> Result<&'a T> {
+fn downcast<'a, T: 'static>(array: &'a ArrayRef, field: &Field) -> Result<&'a T, ValueError> {
 	array.as_any().downcast_ref::<T>().ok_or_else(|| {
 		field_error(format!(
 			"column {} holds arrow type {}, which is not a {}",
@@ -642,7 +641,7 @@ impl<'a> ColumnView<'a> {
 		}
 	}
 
-	pub fn get_as<T: FromColumnView>(&self, index: usize) -> Result<Option<T>> {
+	pub fn get_as<T: FromColumnView>(&self, index: usize) -> Result<Option<T>, ValueError> {
 		if self.none_at(index) {
 			return Ok(None);
 		}

@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{from_str, json};
 
 use crate::{
-	Result,
 	error::{Diagnostic, ValueError},
 	value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -117,7 +116,7 @@ pub fn named(name: &str, field_type: FieldType, array: ArrayRef) -> (FieldRef, A
 	(Arc::new(to_field(name, &field_type)), array)
 }
 
-pub fn from_field(field: &Field) -> Result<FieldType> {
+pub fn from_field(field: &Field) -> Result<FieldType, ValueError> {
 	let mut field_type = FieldType::default();
 	let bare = match field.extension_type_name() {
 		None if *field.data_type() == DataType::Null => return Ok(field_type),
@@ -180,7 +179,7 @@ fn details_fit(bare: Option<&ValueType>, field_type: &FieldType) -> bool {
 	max_bytes_fit && dictionary_fit && sumtype_fit && declared_fit
 }
 
-fn untagged(field: &Field) -> Result<ValueType> {
+fn untagged(field: &Field) -> Result<ValueType, ValueError> {
 	Ok(match field.data_type() {
 		DataType::Boolean => ValueType::Boolean,
 		DataType::Int8 => ValueType::Int1,
@@ -212,7 +211,7 @@ fn untagged(field: &Field) -> Result<ValueType> {
 	})
 }
 
-fn decimal(precision: u8, scale: i8) -> Result<ValueType> {
+fn decimal(precision: u8, scale: i8) -> Result<ValueType, ValueError> {
 	let precision = Precision::try_new(precision)?;
 	let scale = u8::try_from(scale).map_err(|_| field_error(format!("decimal scale {scale} is negative")))?;
 	Ok(ValueType::Decimal {
@@ -221,11 +220,11 @@ fn decimal(precision: u8, scale: i8) -> Result<ValueType> {
 	})
 }
 
-fn tagged<E: ExtensionType>(field: &Field) -> Result<E> {
+fn tagged<E: ExtensionType>(field: &Field) -> Result<E, ValueError> {
 	field.try_extension_type::<E>().map_err(|error| field_error(format!("field {}: {error}", field.name())))
 }
 
-pub fn enum_name(field: &Field) -> Result<Option<String>> {
+pub fn enum_name(field: &Field) -> Result<Option<String>, ValueError> {
 	match field.extension_type_name() == Some(EnumTag::NAME) {
 		true => Ok(Some(tagged::<EnumTag>(field)?.0)),
 		false => Ok(None),

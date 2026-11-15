@@ -3,11 +3,12 @@
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::identity::shape::identity};
+use crate::{CatalogStore, store::identity::shape::identity};
 
 impl CatalogStore {
-	pub(crate) fn update_identity(txn: &mut AdminTransaction, entity: &Identity) -> Result<()> {
+	pub(crate) fn update_identity(txn: &mut AdminTransaction, entity: &Identity) -> Result<(), ValueError> {
 		let mut row = identity::allocate();
 		identity::set_identity(&mut row, entity.id);
 		identity::set_name(&mut row, &entity.name);

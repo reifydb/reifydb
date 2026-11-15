@@ -16,7 +16,7 @@ use reifydb_core::value::{
 };
 use reifydb_evaluate::{expression::branch::BranchLayout, stack::Variable};
 use reifydb_value::{
-	error::{RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -28,10 +28,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	vm::{exec::call::cast_to_declared_return_type, stack::ControlFlow, vm::Vm},
-};
+use crate::vm::{exec::call::cast_to_declared_return_type, stack::ControlFlow, vm::Vm};
 
 pub(crate) fn value_is_truthy(value: &Value) -> bool {
 	match value {
@@ -92,7 +89,7 @@ pub(crate) fn merge_by_mask(
 	existing: &RecordBatch,
 	new_value: &RecordBatch,
 	mask: &BooleanBuffer,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let len = existing.num_rows();
 	reifydb_assertions! {
 		assert_eq!(new_value.num_rows(), len);
@@ -110,7 +107,7 @@ pub(crate) fn merge_by_mask(
 				old_field.name(),
 			)
 		})
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, ValueError>>()?;
 
 	batch(merged_columns)
 }
@@ -121,7 +118,7 @@ fn scatter_merge_batches(
 	then_mask: &BooleanBuffer,
 	else_mask: &BooleanBuffer,
 	total_len: usize,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let merged: Vec<(FieldRef, ArrayRef)> = user_columns(then_cols)
 		.zip(user_columns(else_cols))
 		.map(|((then_field, then_array), (else_field, else_array))| {
@@ -134,7 +131,7 @@ fn scatter_merge_batches(
 				then_field.name(),
 			)
 		})
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, ValueError>>()?;
 
 	batch(merged)
 }
@@ -145,14 +142,14 @@ pub(crate) fn scatter_merge_variables(
 	then_mask: &BooleanBuffer,
 	else_mask: &BooleanBuffer,
 	total_len: usize,
-) -> Result<Variable> {
+) -> Result<Variable, ValueError> {
 	let then_cols = variable_to_columns(then_var)?;
 	let else_cols = variable_to_columns(else_var)?;
 
 	Ok(Variable::columns(scatter_merge_batches(&then_cols, &else_cols, then_mask, else_mask, total_len)?))
 }
 
-fn named_types<'c>(columns: &'c RecordBatch, name: &'c str) -> Result<Vec<(&'c str, ValueType, bool)>> {
+fn named_types<'c>(columns: &'c RecordBatch, name: &'c str) -> Result<Vec<(&'c str, ValueType, bool)>, ValueError> {
 	user_columns(columns)
 		.map(|(field, array)| {
 			let ty = ColumnView::try_from((array, field.as_ref()))?.get_type().inner_type().clone();
@@ -176,7 +173,7 @@ fn variable_columns(var: &Variable) -> Option<&RecordBatch> {
 	}
 }
 
-fn variable_to_columns(var: &Variable) -> Result<RecordBatch> {
+fn variable_to_columns(var: &Variable) -> Result<RecordBatch, ValueError> {
 	match var {
 		Variable::Columns {
 			batch: c,
@@ -190,7 +187,7 @@ fn variable_to_columns(var: &Variable) -> Result<RecordBatch> {
 	}
 }
 
-pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer> {
+pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BooleanBuffer, ValueError> {
 	let cols = match var {
 		Variable::Columns {
 			batch: c,
@@ -238,7 +235,11 @@ impl<'a> Vm<'a> {
 		self.is_masked() || self.pending_return.is_some()
 	}
 
-	fn align_types(&self, left: &RecordBatch, right: &RecordBatch) -> Result<(RecordBatch, RecordBatch)> {
+	fn align_types(
+		&self,
+		left: &RecordBatch,
+		right: &RecordBatch,
+	) -> Result<(RecordBatch, RecordBatch), ValueError> {
 		let ctx = self.eval_ctx();
 		let mut aligned_left = Vec::with_capacity(left.num_columns());
 		let mut aligned_right = Vec::with_capacity(right.num_columns());
@@ -274,11 +275,11 @@ impl<'a> Vm<'a> {
 		left: &RecordBatch,
 		right: &RecordBatch,
 		declared: &TypeConstraint,
-	) -> Result<(RecordBatch, RecordBatch)> {
+	) -> Result<(RecordBatch, RecordBatch), ValueError> {
 		let ctx = self.eval_ctx();
 		let fragment = self.udf_call.fragment.clone();
 		let target = declared.get_type();
-		let cast = |columns: &RecordBatch| -> Result<RecordBatch> {
+		let cast = |columns: &RecordBatch| -> Result<RecordBatch, ValueError> {
 			let mut out = Vec::with_capacity(columns.num_columns());
 			for (field, array) in user_columns(columns) {
 				let data = ColumnView::try_from((array, field.as_ref()))?;
@@ -307,7 +308,7 @@ impl<'a> Vm<'a> {
 		&self,
 		returning: &RecordBatch,
 		pending: &RecordBatch,
-	) -> Result<(RecordBatch, RecordBatch)> {
+	) -> Result<(RecordBatch, RecordBatch), ValueError> {
 		let ctx = self.eval_ctx();
 		let mut filled_returning = Vec::with_capacity(returning.num_columns());
 		let mut filled_pending = Vec::with_capacity(pending.num_columns());
@@ -342,7 +343,7 @@ impl<'a> Vm<'a> {
 		Ok((batch(filled_returning)?, batch(filled_pending)?))
 	}
 
-	pub(crate) fn exec_return_value_masked(&mut self, columns: RecordBatch) -> Result<()> {
+	pub(crate) fn exec_return_value_masked(&mut self, columns: RecordBatch) -> Result<(), ValueError> {
 		let write_mask = self.effective_mask();
 
 		let already_returned =
@@ -396,7 +397,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn finalize_masked_return(&mut self) -> Result<()> {
+	pub(crate) fn finalize_masked_return(&mut self) -> Result<(), ValueError> {
 		let Some(pending) = self.pending_return.take() else {
 			return Ok(());
 		};
@@ -425,7 +426,7 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	pub(crate) fn exec_jump_if_false_pop_columnar(&mut self, target_addr: usize) -> Result<bool> {
+	pub(crate) fn exec_jump_if_false_pop_columnar(&mut self, target_addr: usize) -> Result<bool, ValueError> {
 		let var = self.stack.pop()?;
 		let bool_bv = extract_bool_bitvec(&var)?;
 
@@ -480,7 +481,7 @@ impl<'a> Vm<'a> {
 		Ok(false)
 	}
 
-	pub(crate) fn exec_jump_if_true_pop_columnar(&mut self, target_addr: usize) -> Result<bool> {
+	pub(crate) fn exec_jump_if_true_pop_columnar(&mut self, target_addr: usize) -> Result<bool, ValueError> {
 		let var = self.stack.pop()?;
 		let bool_bv = extract_bool_bitvec(&var)?;
 
@@ -526,7 +527,7 @@ impl<'a> Vm<'a> {
 		self.active_mask = Some(active_rows);
 	}
 
-	pub(crate) fn exec_break_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
+	pub(crate) fn exec_break_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<(), ValueError> {
 		let breaking_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
 			loop_state.broken_mask = &loop_state.broken_mask | &breaking_rows;
@@ -557,7 +558,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_continue_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
+	pub(crate) fn exec_continue_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<(), ValueError> {
 		let continuing_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
 			let remaining = &loop_state.active_mask & &!&continuing_rows;
@@ -583,7 +584,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_jump_masked(&mut self, addr: usize) -> Result<bool> {
+	pub(crate) fn exec_jump_masked(&mut self, addr: usize) -> Result<bool, ValueError> {
 		if let Some(frame) = self.mask_stack.last_mut()
 			&& frame.phase == MaskPhase::Then
 		{
@@ -618,7 +619,7 @@ impl<'a> Vm<'a> {
 		Ok(true)
 	}
 
-	pub(crate) fn check_mask_merge_point(&mut self) -> Result<bool> {
+	pub(crate) fn check_mask_merge_point(&mut self) -> Result<bool, ValueError> {
 		let should_merge =
 			self.mask_stack.last().is_some_and(|f| f.phase == MaskPhase::Else && self.ip == f.end_addr);
 
@@ -677,7 +678,7 @@ impl<'a> Vm<'a> {
 		Ok(true)
 	}
 
-	pub(crate) fn exec_store_var_masked(&mut self, name: &str, new_value: Variable) -> Result<()> {
+	pub(crate) fn exec_store_var_masked(&mut self, name: &str, new_value: Variable) -> Result<(), ValueError> {
 		let mask = self.effective_mask();
 
 		match self.symbols.get(name) {

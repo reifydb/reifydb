@@ -6,15 +6,15 @@ use reifydb_catalog::catalog::queue::QueueToCreate;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::CreateQueueNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_queue(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateQueueNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(existing) = services.catalog.find_queue_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),

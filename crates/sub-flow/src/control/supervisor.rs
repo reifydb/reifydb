@@ -48,13 +48,13 @@ use reifydb_runtime::{
 	context::{clock::Clock, transaction::TransactionContext},
 };
 use reifydb_store_operator::{
-	error::Result,
+	error::StoreOperatorError,
 	store::{OperatorStore, pin::CheckpointPin},
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
-	Result as ValueResult,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use reifydb_wal::lsn::Lsn;
@@ -117,7 +117,7 @@ pub enum FlowSupervisorMessage {
 	TryJoin,
 
 	Loaded {
-		outcome: ValueResult<Loaded>,
+		outcome: Result<Loaded, ValueError>,
 	},
 
 	Poisoned {
@@ -472,7 +472,7 @@ impl FlowSupervisor {
 		&self,
 		state: &mut SupervisorState,
 		ctx: &Context<FlowSupervisorMessage>,
-		outcome: ValueResult<Loaded>,
+		outcome: Result<Loaded, ValueError>,
 	) {
 		state.loading = false;
 		let loaded = outcome.unwrap_or_else(|e| {
@@ -1354,7 +1354,7 @@ fn retire_flow(
 	operators: &OperatorStore,
 	flows: &mut BTreeMap<FlowId, FlowActorHandle>,
 	flow_id: FlowId,
-) -> Result<bool> {
+) -> Result<bool, StoreOperatorError> {
 	let Some(handle) = flows.remove(&flow_id) else {
 		operators.checkpoint_remove(flow_id)?;
 		return Ok(false);
@@ -1405,7 +1405,7 @@ fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<FlowC
 	}
 }
 
-fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>) -> Result<()> {
+fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>) -> Result<(), StoreOperatorError> {
 	for operator in operators.stored_operators()? {
 		if owned.contains(&operator) {
 			continue;
@@ -1415,7 +1415,7 @@ fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>
 	Ok(())
 }
 
-fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<()> {
+fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<(), StoreOperatorError> {
 	for flow_id in operators.checkpoint_list()? {
 		if known.contains(&flow_id) {
 			continue;

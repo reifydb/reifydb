@@ -16,7 +16,7 @@ use reifydb_core::{
 	value::batch::take_rows,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		column_view::ColumnView,
 		container::temporal_array::datetime_array,
@@ -49,7 +49,7 @@ impl ChangesOperator {
 		host: &mut dyn HostContext,
 		reserve: &mut RowNumberReserve,
 		rows: RecordBatch,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let apart = match self.with.update {
 			UpdateTo::Update => APART_FROM_SOURCE_NUMBERS,
 			UpdateTo::Insert | UpdateTo::Drop => 0,
@@ -61,7 +61,7 @@ impl ChangesOperator {
 		with_system_column(rows, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(numbers)))
 	}
 
-	fn moved(&self, pre: &RecordBatch, post: &RecordBatch) -> Result<Vec<usize>> {
+	fn moved(&self, pre: &RecordBatch, post: &RecordBatch) -> Result<Vec<usize>, ValueError> {
 		let mut views = Vec::with_capacity(self.with.update_on.len());
 		for name in &self.with.update_on {
 			let (Some(before), Some(after)) = (column_view(pre, name)?, column_view(post, name)?) else {
@@ -74,7 +74,7 @@ impl ChangesOperator {
 			.collect())
 	}
 
-	fn update_rows(&self, pre: &RecordBatch, post: RecordBatch) -> Result<RecordBatch> {
+	fn update_rows(&self, pre: &RecordBatch, post: RecordBatch) -> Result<RecordBatch, ValueError> {
 		if self.with.update_on.is_empty() {
 			return Ok(post);
 		}
@@ -90,7 +90,7 @@ fn differs(before: &ColumnView<'_>, after: &ColumnView<'_>, row: usize) -> bool 
 	before.get_value(row) != after.get_value(row)
 }
 
-fn timed(rows: RecordBatch, at: DateTime) -> Result<RecordBatch> {
+fn timed(rows: RecordBatch, at: DateTime) -> Result<RecordBatch, ValueError> {
 	let times = datetime_array(vec![at; rows.num_rows()]);
 	with_system_column(rows, SystemColumn::Time, Arc::new(times))
 }
@@ -104,7 +104,7 @@ impl HostOperator for ChangesOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let mut reserve = RowNumberReserve::default();
 		let mut diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {

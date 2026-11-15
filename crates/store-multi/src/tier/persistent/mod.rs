@@ -17,7 +17,7 @@ use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdo
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::{coverage::cursor::Cursor, filter::KeyFilter, metrics::PageCacheMetrics};
 use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult};
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::value::datetime::DateTime;
 
 use crate::{
 	filter::MultiKeys,
@@ -27,6 +27,7 @@ use crate::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
+use reifydb_value::error::ValueError;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
 
@@ -53,7 +54,7 @@ impl MultiPersistentTier {
 		ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageRowKey>,
 		request: NarrowRangeRequest<'_, StorageRowKey>,
-	) -> Result<RangeBatch<StorageRowKey>> {
+	) -> Result<RangeBatch<StorageRowKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_chunk_row(ctx, cursor, request),
 		}
@@ -64,7 +65,7 @@ impl MultiPersistentTier {
 		ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
 		request: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
-	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+	) -> Result<RangeBatch<StoragePartitionedRowKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_chunk_partitioned(ctx, cursor, request),
 		}
@@ -75,7 +76,7 @@ impl MultiPersistentTier {
 		ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
 		request: NarrowRangeRequest<'_, StorageSeriesKey>,
-	) -> Result<RangeBatch<StorageSeriesKey>> {
+	) -> Result<RangeBatch<StorageSeriesKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_chunk_series(ctx, cursor, request),
 		}
@@ -86,7 +87,7 @@ impl MultiPersistentTier {
 		ctx: &TransactionContext,
 		cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
 		request: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
-	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_chunk_partitioned_series(ctx, cursor, request),
 		}
@@ -100,7 +101,7 @@ impl MultiPersistentTier {
 		_ctx: &TransactionContext,
 		_cursor: &mut Cursor<RangeStop, StorageRowKey>,
 		_request: NarrowRangeRequest<'_, StorageRowKey>,
-	) -> Result<RangeBatch<StorageRowKey>> {
+	) -> Result<RangeBatch<StorageRowKey>, ValueError> {
 		match *self {}
 	}
 
@@ -109,7 +110,7 @@ impl MultiPersistentTier {
 		_ctx: &TransactionContext,
 		_cursor: &mut Cursor<RangeStop, StoragePartitionedRowKey>,
 		_request: NarrowRangeRequest<'_, StoragePartitionedRowKey>,
-	) -> Result<RangeBatch<StoragePartitionedRowKey>> {
+	) -> Result<RangeBatch<StoragePartitionedRowKey>, ValueError> {
 		match *self {}
 	}
 
@@ -118,7 +119,7 @@ impl MultiPersistentTier {
 		_ctx: &TransactionContext,
 		_cursor: &mut Cursor<RangeStop, StorageSeriesKey>,
 		_request: NarrowRangeRequest<'_, StorageSeriesKey>,
-	) -> Result<RangeBatch<StorageSeriesKey>> {
+	) -> Result<RangeBatch<StorageSeriesKey>, ValueError> {
 		match *self {}
 	}
 
@@ -127,7 +128,7 @@ impl MultiPersistentTier {
 		_ctx: &TransactionContext,
 		_cursor: &mut Cursor<RangeStop, StoragePartitionedSeriesKey>,
 		_request: NarrowRangeRequest<'_, StoragePartitionedSeriesKey>,
-	) -> Result<RangeBatch<StoragePartitionedSeriesKey>> {
+	) -> Result<RangeBatch<StoragePartitionedSeriesKey>, ValueError> {
 		match *self {}
 	}
 }
@@ -138,7 +139,7 @@ pub trait PersistentRangeLayout: NarrowLayout {
 		persistent: &MultiPersistentTier,
 		cursor: &mut Cursor<RangeStop, Self>,
 		request: NarrowRangeRequest<'_, Self>,
-	) -> Result<RangeBatch<Self>>;
+	) -> Result<RangeBatch<Self>, ValueError>;
 }
 
 impl PersistentRangeLayout for StorageRowKey {
@@ -147,7 +148,7 @@ impl PersistentRangeLayout for StorageRowKey {
 		persistent: &MultiPersistentTier,
 		cursor: &mut Cursor<RangeStop, Self>,
 		request: NarrowRangeRequest<'_, Self>,
-	) -> Result<RangeBatch<Self>> {
+	) -> Result<RangeBatch<Self>, ValueError> {
 		persistent.range_next_row(ctx, cursor, request)
 	}
 }
@@ -158,7 +159,7 @@ impl PersistentRangeLayout for StoragePartitionedRowKey {
 		persistent: &MultiPersistentTier,
 		cursor: &mut Cursor<RangeStop, Self>,
 		request: NarrowRangeRequest<'_, Self>,
-	) -> Result<RangeBatch<Self>> {
+	) -> Result<RangeBatch<Self>, ValueError> {
 		persistent.range_next_partitioned_row(ctx, cursor, request)
 	}
 }
@@ -169,7 +170,7 @@ impl PersistentRangeLayout for StorageSeriesKey {
 		persistent: &MultiPersistentTier,
 		cursor: &mut Cursor<RangeStop, Self>,
 		request: NarrowRangeRequest<'_, Self>,
-	) -> Result<RangeBatch<Self>> {
+	) -> Result<RangeBatch<Self>, ValueError> {
 		persistent.range_next_series(ctx, cursor, request)
 	}
 }
@@ -180,13 +181,13 @@ impl PersistentRangeLayout for StoragePartitionedSeriesKey {
 		persistent: &MultiPersistentTier,
 		cursor: &mut Cursor<RangeStop, Self>,
 		request: NarrowRangeRequest<'_, Self>,
-	) -> Result<RangeBatch<Self>> {
+	) -> Result<RangeBatch<Self>, ValueError> {
 		persistent.range_next_partitioned_series(ctx, cursor, request)
 	}
 }
 
 impl Shutdown for MultiPersistentTier {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.shutdown(),
@@ -237,19 +238,23 @@ impl MultiPersistentTier {
 		cutoff: DateTime,
 		cursor: Option<(DateTime, &[u8])>,
 		limit: usize,
-	) -> Result<Vec<(EncodedKey, DateTime)>> {
+	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.expired_keys(table, cutoff, cursor, limit),
 		}
 	}
 
-	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.list_current_entries(),
 		}
 	}
 
-	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
+	pub fn set_collecting_accepted(
+		&self,
+		version: CommitVersion,
+		batches: TierBatch,
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.set_collecting_accepted(version, batches),
 		}
@@ -259,13 +264,13 @@ impl MultiPersistentTier {
 		&self,
 		batches: Vec<(CommitVersion, TierBatch)>,
 		saved_through: Option<CommitVersion>,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.persist_sweep(batches, saved_through),
 		}
 	}
 
-	pub fn saved_through(&self) -> Result<CommitVersion> {
+	pub fn saved_through(&self) -> Result<CommitVersion, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.saved_through(),
 		}
@@ -277,7 +282,7 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion> {
+	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.install_floor(),
 		}
@@ -304,11 +309,11 @@ impl MultiPersistentTier {
 		_cutoff: DateTime,
 		_cursor: Option<(DateTime, &[u8])>,
 		_limit: usize,
-	) -> Result<Vec<(EncodedKey, DateTime)>> {
+	) -> Result<Vec<(EncodedKey, DateTime)>, ValueError> {
 		match *self {}
 	}
 
-	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>, ValueError> {
 		match *self {}
 	}
 
@@ -316,11 +321,11 @@ impl MultiPersistentTier {
 		&self,
 		_batches: Vec<(CommitVersion, TierBatch)>,
 		_saved_through: Option<CommitVersion>,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, ValueError> {
 		match *self {}
 	}
 
-	pub fn saved_through(&self) -> Result<CommitVersion> {
+	pub fn saved_through(&self) -> Result<CommitVersion, ValueError> {
 		Ok(CommitVersion(0))
 	}
 
@@ -328,7 +333,7 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn install_floor(&self) -> Result<CommitVersion> {
+	pub fn install_floor(&self) -> Result<CommitVersion, ValueError> {
 		match *self {}
 	}
 }
@@ -341,13 +346,13 @@ impl TierStorage for MultiPersistentTier {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.get(ctx, table, keys, version),
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(s) => s.set(version, batches),
 		}
@@ -362,7 +367,7 @@ impl TierStorage for MultiPersistentTier {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_next(ctx, table, cursor, start, end, scope, batch_size),
 		}
@@ -377,13 +382,13 @@ impl TierStorage for MultiPersistentTier {
 		end: Bound<&[u8]>,
 		scope: MultiVersionScope,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_rev_next(ctx, table, cursor, start, end, scope, batch_size),
 		}
 	}
 
-	fn ensure_table(&self, table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, table: EntryKind) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(s) => s.ensure_table(table),
 		}
@@ -398,11 +403,11 @@ impl TierStorage for MultiPersistentTier {
 		_table: EntryKind,
 		_keys: &[&[u8]],
 		_version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		match *self {}
 	}
 
-	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<()> {
+	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<(), ValueError> {
 		match *self {}
 	}
 
@@ -415,7 +420,7 @@ impl TierStorage for MultiPersistentTier {
 		_end: Bound<&[u8]>,
 		_scope: MultiVersionScope,
 		_batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match *self {}
 	}
 
@@ -428,11 +433,11 @@ impl TierStorage for MultiPersistentTier {
 		_end: Bound<&[u8]>,
 		_scope: MultiVersionScope,
 		_batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match *self {}
 	}
 
-	fn ensure_table(&self, _table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, _table: EntryKind) -> Result<(), ValueError> {
 		match *self {}
 	}
 }

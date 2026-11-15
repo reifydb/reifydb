@@ -9,15 +9,15 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateNamespaceNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
 	let mut parent_id = NamespaceId::ROOT;

@@ -3,16 +3,16 @@
 
 use reifydb_core::{interface::catalog::identity::GrantedRole, key::identity::GrantedRoleKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
-use crate::{CatalogStore, Result, store::granted_role::convert_granted_role};
+use crate::{CatalogStore, store::granted_role::convert_granted_role};
 
 impl CatalogStore {
 	#[allow(dead_code)]
 	pub(crate) fn find_roles_for_identity(
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<GrantedRole>> {
+	) -> Result<Vec<GrantedRole>, ValueError> {
 		let mut result = Vec::new();
 		let range = GrantedRoleKey::identity_scan(identity);
 		let stream = rx.range(range, RangeScope::All, 1024)?;

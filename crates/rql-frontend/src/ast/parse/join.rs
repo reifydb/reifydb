@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::JoinType;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
 		parse::{Parser, Precedence},
@@ -19,7 +19,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_join(&mut self) -> Result<AstJoin<'bump>> {
+	pub(crate) fn parse_join(&mut self) -> Result<AstJoin<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Join)?;
 		let subquery = self.parse_sub_query()?;
@@ -40,7 +40,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_natural_join(&mut self) -> Result<AstJoin<'bump>> {
+	pub(crate) fn parse_natural_join(&mut self) -> Result<AstJoin<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Natural)?;
 
@@ -72,7 +72,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_inner_join(&mut self) -> Result<AstJoin<'bump>> {
+	pub(crate) fn parse_inner_join(&mut self) -> Result<AstJoin<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
@@ -95,7 +95,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_left_join(&mut self) -> Result<AstJoin<'bump>> {
+	pub(crate) fn parse_left_join(&mut self) -> Result<AstJoin<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
@@ -118,7 +118,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>> {
+	pub(crate) fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>, ValueError> {
 		let using_token = self.consume_keyword(Using)?;
 		let mut pairs = Vec::new();
 

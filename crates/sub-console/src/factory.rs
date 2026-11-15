@@ -4,7 +4,7 @@
 use reifydb_core::{error::CoreError, util::ioc::IocContainer};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server_ws::acceptor::WsStreamAcceptor;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 use tokio::runtime::Handle;
 
 use crate::{
@@ -29,7 +29,7 @@ impl ConsoleSubsystemFactory {
 }
 
 impl SubsystemFactory for ConsoleSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let config = (self.config_fn)();
 
 		let acceptor = ioc

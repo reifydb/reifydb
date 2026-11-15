@@ -8,9 +8,12 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::{Value, blob::Blob, identity::IdentityId};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, blob::Blob, identity::IdentityId},
+};
 
-use crate::{CatalogStore, Result, store::identity_attribute_value::shape::identity_attribute_value};
+use crate::{CatalogStore, store::identity_attribute_value::shape::identity_attribute_value};
 
 impl CatalogStore {
 	pub(crate) fn set_identity_attribute_value(
@@ -18,7 +21,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		attribute: IdentityAttributeId,
 		value: Value,
-	) -> Result<IdentityAttributeValue> {
+	) -> Result<IdentityAttributeValue, ValueError> {
 		let encoded = match encode_value(&value) {
 			Ok(bytes) => bytes,
 			Err(e) => return_internal_error!("failed to encode identity attribute value: {}", e),

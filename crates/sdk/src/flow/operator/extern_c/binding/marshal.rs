@@ -7,7 +7,7 @@ use reifydb_core::interface::{
 	catalog::object::ObjectId,
 	change::{Change, ChangeOrigin, Diff},
 };
-use reifydb_value::{Result, value::diff_type::DiffType};
+use reifydb_value::{error::ValueError, value::diff_type::DiffType};
 use tracing::instrument;
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
 
 impl Arena {
 	#[instrument(name = "flow::marshal::change", level = "trace", skip_all, fields(diff_count = change.diffs.len()))]
-	pub fn marshal_change(&mut self, change: &Change) -> Result<ExternCChange> {
+	pub fn marshal_change(&mut self, change: &Change) -> Result<ExternCChange, ValueError> {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
@@ -111,7 +111,7 @@ impl Arena {
 	}
 
 	#[instrument(name = "flow::marshal::diff", level = "trace", skip_all, fields(diff_type = ?diff.kind()))]
-	fn marshal_diff(&mut self, diff: &Diff) -> Result<ExternCDiff> {
+	fn marshal_diff(&mut self, diff: &Diff) -> Result<ExternCDiff, ValueError> {
 		Ok(match diff {
 			Diff::Insert {
 				post,

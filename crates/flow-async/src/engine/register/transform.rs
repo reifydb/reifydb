@@ -39,7 +39,6 @@ use reifydb_flow::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
 	config::ExtensionParams,
 	error,
 	error::ValueError,
@@ -74,7 +73,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -99,7 +98,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -122,7 +121,7 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		with: ChangesWith,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
@@ -140,7 +139,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let input = first_input(inputs)?;
 		let parent_schema = self.parent_schema(flow_id, input)?;
 		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
@@ -173,7 +172,7 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let input = first_input(inputs)?;
 		let parent_schema = self.parent_schema(flow_id, input)?;
 		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
@@ -203,7 +202,7 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert((flow_id, operator_id), Box::new(SortOperator::new(parent_schema, operator_id)));
 		Ok(())
@@ -217,7 +216,7 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		limit: usize,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators
 			.insert((flow_id, operator_id), Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
@@ -239,7 +238,7 @@ impl FlowEngineInner {
 		natural: bool,
 		with: JoinWith,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if inputs.len() != 2 {
 			return Err(ValueError::from(FlowGraphError::NodeInputArity {
 				operator: "Join",
@@ -339,7 +338,7 @@ impl FlowEngineInner {
 		alias: Option<String>,
 		with: LookupWith,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let expected = match with.emit {
 			Emit::On | Emit::After(_) => 2,
 			Emit::Off => 1,
@@ -457,7 +456,7 @@ impl FlowEngineInner {
 		expressions: Vec<Expression>,
 		_with: DistinctWith,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		let expressions = expand_enum_groups(parent_schema.as_ref(), expressions, |id| {
 			self.catalog.get_sumtype(&mut txn.reborrow(), id)
@@ -483,7 +482,7 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut parent_schemas = Vec::with_capacity(inputs.len());
 
 		for input_node_id in inputs {
@@ -515,7 +514,7 @@ impl FlowEngineInner {
 		operator: String,
 		params: Vec<Expression>,
 		with: ApplyWith,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let values = evaluate_operator_params(params.as_slice(), &self.routines, &self.runtime_context)?;
 		let params = ExtensionParams::new(operator.as_str(), values);
 		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
@@ -543,7 +542,7 @@ impl FlowEngineInner {
 		aggregations: Vec<Expression>,
 		with: WindowWith,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		let group_by = expand_enum_groups(parent_schema.as_ref(), group_by, |id| {
 			self.catalog.get_sumtype(&mut txn.reborrow(), id)
@@ -574,7 +573,7 @@ impl FlowEngineInner {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		_with: AggregateWith,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		let by = expand_enum_groups(parent_schema.as_ref(), by, |id| {
 			self.catalog.get_sumtype(&mut txn.reborrow(), id)
@@ -597,7 +596,7 @@ fn ensure_lookup_key_types(
 	left_schema: &Schema,
 	columns: &[Column],
 	partition_by: &[String],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (key, name) in left.iter().zip(partition_by) {
 		let Some(right_column) = columns.iter().find(|column| &column.name == name) else {
 			continue;
@@ -622,7 +621,7 @@ fn ensure_join_key_types(
 	right: &[Expression],
 	left_schema: &Schema,
 	right_schema: &Schema,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (left_key, right_key) in left.iter().zip(right) {
 		let (Some(left_type), Some(right_type)) =
 			(key_type(left_key, left_schema)?, key_type(right_key, right_schema)?)
@@ -640,7 +639,7 @@ fn ensure_join_key_types(
 	Ok(())
 }
 
-fn key_type(key: &Expression, schema: &Schema) -> Result<Option<ValueType>> {
+fn key_type(key: &Expression, schema: &Schema) -> Result<Option<ValueType>, ValueError> {
 	let name = match key {
 		Expression::Column(ColumnExpression(column)) => column.name.text(),
 		Expression::AccessSource(access) => access.column.name.text(),

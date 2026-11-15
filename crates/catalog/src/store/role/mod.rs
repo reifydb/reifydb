@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{catalog::identity::Role, store::MultiVersionRow};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::store::role::shape::role;
 
@@ -13,7 +13,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_role<K>(multi: MultiVersionRow<K>) -> Result<Role> {
+pub(crate) fn convert_role<K>(multi: MultiVersionRow<K>) -> Result<Role, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = role::get_id(&bytes);
 	let name = role::get_name(&bytes).to_string();

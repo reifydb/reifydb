@@ -10,7 +10,7 @@ use reifydb_flow_async::{
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{builder::CustomOperators, operator::provider::StandardOperatorProvider};
 
@@ -21,7 +21,7 @@ pub(crate) struct FlowRegistrationProbe {
 }
 
 impl FlowRegistrationCheck for FlowRegistrationProbe {
-	fn check(&self, txn: &mut AdminTransaction, dag: &FlowDag) -> Result<()> {
+	fn check(&self, txn: &mut AdminTransaction, dag: &FlowDag) -> Result<(), ValueError> {
 		let mut probe = FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),

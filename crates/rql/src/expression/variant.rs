@@ -12,12 +12,11 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	return_error,
 	value::{constraint::Constraint, sumtype::SumTypeId, value_type::ValueType},
 };
-
-use crate::Result;
 
 pub enum EnumOperand {
 	Name(Fragment, Option<String>),
@@ -26,7 +25,7 @@ pub enum EnumOperand {
 	Other,
 }
 
-pub fn text_literal(expression: &Expression) -> Result<EnumOperand> {
+pub fn text_literal(expression: &Expression) -> Result<EnumOperand, ValueError> {
 	match expression {
 		Expression::Constant(ConstantExpression::Text {
 			fragment,
@@ -42,7 +41,7 @@ pub fn check_enum(
 	r#enum: Option<&str>,
 	fragment: &Fragment,
 	col_name: &str,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(r#enum) = r#enum else {
 		return Ok(());
 	};
@@ -67,7 +66,7 @@ pub fn declared_sumtype_id(source: &ResolvedObject, col_name: &str) -> Option<Su
 	}
 }
 
-pub fn variant_by_name(sumtype: &SumType, name: &Fragment) -> Result<usize> {
+pub fn variant_by_name(sumtype: &SumType, name: &Fragment) -> Result<usize, ValueError> {
 	match sumtype.variants.iter().position(|v| v.name.eq_ignore_ascii_case(name.text())) {
 		Some(index) => Ok(index),
 		None => return_error!(sumtype_variant_not_found(name.clone(), &sumtype.name)),
@@ -79,8 +78,8 @@ pub fn resolve_enum_equality(
 	source: &ResolvedObject,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
-	operand: &mut dyn FnMut(&Expression) -> Result<EnumOperand>,
-) -> Result<()> {
+	operand: &mut dyn FnMut(&Expression) -> Result<EnumOperand, ValueError>,
+) -> Result<(), ValueError> {
 	for child in children_mut(expr) {
 		resolve_enum_equality(child, source, catalog, rx, operand)?;
 	}

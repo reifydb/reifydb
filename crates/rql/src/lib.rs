@@ -12,13 +12,10 @@ use reifydb_rql_frontend::{
 	bump::BumpFragment,
 	diagnostic::AstError,
 };
-use reifydb_value::{
-	Result,
-	value::{
-		constraint::{Constraint, TypeConstraint, precision::Precision, scale::Scale},
-		digest::{Digest, DigestError, literal::parse_accuracy},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	constraint::{Constraint, TypeConstraint, precision::Precision, scale::Scale},
+	digest::{Digest, DigestError, literal::parse_accuracy},
+	value_type::ValueType,
 };
 
 pub mod compiler;
@@ -32,7 +29,7 @@ pub mod optimize;
 pub mod plan;
 pub mod query;
 
-pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
+pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType, ValueError> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {
 		"bool" => ValueType::Boolean,
 		"boolean" => ValueType::Boolean,
@@ -68,7 +65,7 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 	})
 }
 
-pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeConstraint> {
+pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeConstraint, ValueError> {
 	match ast {
 		AstType::Unconstrained(name) if is_digest(name) => Err(AstError::DigestAccuracyMissing {
 			fragment: name.to_owned(),
@@ -145,19 +142,19 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 	}
 }
 
-fn parse_number_literal(s: &str) -> Result<usize> {
+fn parse_number_literal(s: &str) -> Result<usize, ValueError> {
 	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
 }
 
-fn parse_type_parameter(s: &str) -> Result<u8> {
+fn parse_type_parameter(s: &str) -> Result<u8, ValueError> {
 	Ok(u8::try_from(parse_number_literal(s)?).unwrap_or(u8::MAX))
 }
 
-fn parse_precision(s: &str) -> Result<Precision> {
+fn parse_precision(s: &str) -> Result<Precision, ValueError> {
 	Precision::try_new(parse_type_parameter(s)?)
 }
 
-pub(crate) fn convert_procedure_param_type(ast: &AstType) -> Result<TypeConstraint> {
+pub(crate) fn convert_procedure_param_type(ast: &AstType) -> Result<TypeConstraint, ValueError> {
 	match ast {
 		AstType::Unconstrained(name) if is_list(name) => Err(AstError::ListItemMissing {
 			fragment: name.to_owned(),
@@ -175,7 +172,7 @@ fn is_list(name: &BumpFragment<'_>) -> bool {
 	name.text().eq_ignore_ascii_case("list")
 }
 
-fn convert_list_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType> {
+fn convert_list_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType, ValueError> {
 	let item = match params {
 		[] => {
 			return Err(AstError::ListItemMissing {
@@ -220,7 +217,7 @@ fn is_digest(name: &BumpFragment<'_>) -> bool {
 	name.text().eq_ignore_ascii_case("digest")
 }
 
-fn convert_digest_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType> {
+fn convert_digest_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>]) -> Result<ValueType, ValueError> {
 	let (input, accuracy) = match params {
 		[] => {
 			return Err(AstError::DigestAccuracyMissing {
@@ -297,6 +294,7 @@ fn convert_digest_type(name: &BumpFragment<'_>, params: &[AstTypeParameter<'_>])
 }
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_value::error::ValueError;
 
 pub struct RqlVersion;
 

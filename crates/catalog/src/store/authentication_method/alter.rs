@@ -5,14 +5,15 @@ use reifydb_core::{
 	interface::catalog::authentication_method::AuthenticationMethod, key::identity::AuthenticationMethodKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::authentication_method::encode_authentication_method};
+use crate::{CatalogStore, store::authentication_method::encode_authentication_method};
 
 impl CatalogStore {
 	pub(crate) fn alter_authentication_method(
 		txn: &mut AdminTransaction,
 		method: &AuthenticationMethod,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let row = encode_authentication_method(method)?;
 		txn.set(vec![(AuthenticationMethodKey::new(method.id).into(), row.freeze().into())])?;
 		Ok(())

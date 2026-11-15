@@ -4,12 +4,12 @@
 use std::{fs, path::Path};
 
 use reifydb_sdk::error::SdkError;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use super::ExternWasmTransform;
 use crate::transform::registry::Transforms;
 
-pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
+pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms, ValueError> {
 	let entries = fs::read_dir(dir).map_err(|e| {
 		SdkError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))
 	})?;

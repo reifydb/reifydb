@@ -7,19 +7,20 @@ use reifydb_core::{
 	key::identity::RoleKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::role::{convert_role, shape::role},
 };
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>> {
+	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>, ValueError> {
 		rx.get(&[RoleKey::new(id).into()])?.pop().flatten().map(convert_role).transpose()
 	}
 
-	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
+	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>, ValueError> {
 		let stream = rx.range(RoleKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

@@ -4,7 +4,7 @@
 use reifydb_value::config::ExtensionParams;
 
 use crate::{
-	error::Result, flow::operator::change::BorrowedColumns,
+	error::SdkError, flow::operator::change::BorrowedColumns,
 	transform::extern_c::binding::context::ExternCTransformContext,
 };
 
@@ -17,11 +17,11 @@ pub trait ExternCTransformMetadata {
 }
 
 pub trait ExternCTransform: 'static {
-	fn new(params: &ExtensionParams) -> Result<Self>
+	fn new(params: &ExtensionParams) -> Result<Self, SdkError>
 	where
 		Self: Sized;
 
-	fn transform(&mut self, ctx: &mut ExternCTransformContext, input: BorrowedColumns<'_>) -> Result<()>;
+	fn transform(&mut self, ctx: &mut ExternCTransformContext, input: BorrowedColumns<'_>) -> Result<(), SdkError>;
 }
 
 pub trait ExternCTransformWithMetadata: ExternCTransform + ExternCTransformMetadata {}

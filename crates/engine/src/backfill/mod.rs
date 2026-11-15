@@ -22,19 +22,13 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_flow::backfill::testing::{InstalledScanHooks, TestingScan};
 use reifydb_flow::backfill::{Scan, backfill_partitioned};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params, value::partition::ScanPartitions};
+use reifydb_value::{error::ValueError, fragment::Fragment, params::Params, value::partition::ScanPartitions};
 
-use crate::{
-	Result,
-	vm::{
-		services::Services,
-		volcano::{
-			query::{QueryContext, QueryNode, query_budget},
-			scan::{
-				ringbuffer::RingBufferScan, series::SeriesScanNode, table::TableScanNode,
-				view::ViewScanNode,
-			},
-		},
+use crate::vm::{
+	services::Services,
+	volcano::{
+		query::{QueryContext, QueryNode, query_budget},
+		scan::{ringbuffer::RingBufferScan, series::SeriesScanNode, table::TableScanNode, view::ViewScanNode},
 	},
 };
 
@@ -46,8 +40,8 @@ pub fn run<'a>(
 	tx: Transaction<'a>,
 	sources: &BTreeSet<ObjectId>,
 	batch_size: NonZeroU64,
-	consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
-) -> Result<()> {
+	consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<(), ValueError>,
+) -> Result<(), ValueError> {
 	let sources = sources.iter().map(|&source| (source, ScanPartitions::All)).collect();
 	run_partitioned(services, tx, &sources, batch_size, consume)
 }
@@ -57,8 +51,8 @@ pub fn run_partitioned<'a>(
 	tx: Transaction<'a>,
 	sources: &BTreeMap<ObjectId, ScanPartitions>,
 	batch_size: NonZeroU64,
-	mut consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
-) -> Result<()> {
+	mut consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<(), ValueError>,
+) -> Result<(), ValueError> {
 	let mut scan = TransactionScan {
 		services: Arc::clone(services),
 		tx,
@@ -98,7 +92,7 @@ impl<'a> TransactionScan<'a> {
 		source: ObjectId,
 		partitions: ScanPartitions,
 		context: &Arc<QueryContext>,
-	) -> Result<(Box<dyn QueryNode>, bool)> {
+	) -> Result<(Box<dyn QueryNode>, bool), ValueError> {
 		let catalog = &self.services.catalog;
 		let tx = &mut self.tx;
 		match source {
@@ -180,7 +174,7 @@ impl Scan for TransactionScan<'_> {
 		self.tx.version()
 	}
 
-	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()> {
+	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<(), ValueError> {
 		self.open_partition(source, ScanPartitions::All, batch_size)
 	}
 
@@ -189,7 +183,7 @@ impl Scan for TransactionScan<'_> {
 		source: ObjectId,
 		partitions: ScanPartitions,
 		batch_size: NonZeroU64,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let context = Arc::new(QueryContext {
 			services: Arc::clone(&self.services),
 			source: None,
@@ -209,7 +203,7 @@ impl Scan for TransactionScan<'_> {
 		Ok(())
 	}
 
-	fn next(&mut self) -> Result<Option<RecordBatch>> {
+	fn next(&mut self) -> Result<Option<RecordBatch>, ValueError> {
 		let Some(opened) = self.opened.as_mut() else {
 			return internal_err!("transaction scan pulled before any source was opened");
 		};

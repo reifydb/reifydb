@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 use subtle::ConstantTimeEq;
 
 use crate::error::AuthError;
@@ -17,7 +17,7 @@ impl AuthenticationProvider for TokenProvider {
 		"token"
 	}
 
-	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
+	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, ValueError> {
 		let token = if let Some(explicit) = config.get("token") {
 			explicit.clone()
 		} else {
@@ -32,7 +32,7 @@ impl AuthenticationProvider for TokenProvider {
 		&self,
 		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
+	) -> Result<AuthStep, ValueError> {
 		let credential = credentials.get("token").ok_or_else(|| ValueError::from(AuthError::MissingToken))?;
 		let token = stored.get("token").ok_or_else(|| ValueError::from(AuthError::MissingToken))?;
 

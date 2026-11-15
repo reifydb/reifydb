@@ -4,7 +4,7 @@
 use arrow_array::RecordBatch;
 use reifydb_core::interface::change::Diff;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{row_number::RowNumber, system_columns::require_row_numbers},
 };
@@ -34,7 +34,7 @@ impl LeftHashJoin {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match ctx.side {
 			JoinSide::Left => Ok(ctx
 				.operator
@@ -50,7 +50,7 @@ impl LeftHashJoin {
 		pre: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let row_number = require_row_numbers(pre)?[row_idx];
 
 		match ctx.side {
@@ -71,7 +71,7 @@ impl LeftHashJoin {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match ctx.side {
 			JoinSide::Left => {
 				let unmatched_pre =
@@ -97,7 +97,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -115,7 +115,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		add_to_state_entry_batch(host, &ctx.state.left, key_hash, ctx.rows, indices)?;
 
 		if ctx.operator.ignores_right_changes() {
@@ -148,7 +148,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let is_first = is_first_right_row(host, &ctx.state.right, key_hash)?;
 
 		let mut result = Vec::new();
@@ -190,7 +190,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -208,7 +208,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let result = if ctx.operator.ignores_right_changes() {
 			let ledger = ctx.operator.published_ledger();
 			let published_ctx = PublishedJoinContext {
@@ -259,7 +259,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let mut result = Vec::new();
 
 		if !ctx.operator.ignores_right_changes() {
@@ -322,7 +322,7 @@ impl LeftHashJoin {
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -353,7 +353,7 @@ impl LeftHashJoin {
 		row_idx: usize,
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
 		if ctx.operator.ignores_right_changes() {
@@ -410,7 +410,7 @@ impl LeftHashJoin {
 		row_idx: usize,
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
 		if ctx.operator.ignores_right_changes() {

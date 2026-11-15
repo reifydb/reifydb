@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use super::{
 	graph::DirectedGraph,
@@ -69,7 +69,7 @@ impl FlowBuilder {
 		node_id
 	}
 
-	pub fn add_edge(&mut self, edge: FlowEdge) -> Result<()> {
+	pub fn add_edge(&mut self, edge: FlowEdge) -> Result<(), ValueError> {
 		let source = edge.source;
 		let target = edge.target;
 

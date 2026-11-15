@@ -18,7 +18,7 @@ use reifydb_core::{
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -89,11 +89,11 @@ impl UnmanagedOperator for Alarm {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Alarm)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		// Emits nothing. Every row this operator produces comes out of on_timer, so a view row is
 		// proof that a callback ran - not that a change passed through.
 		for i in 0..change.diff_count() {
@@ -121,7 +121,7 @@ impl UnmanagedOperator for Alarm {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> Result<(), SdkError> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let key = group_key(g);
 		let group = GroupId::of(&key);
@@ -303,13 +303,13 @@ impl UnmanagedOperator for Snooze {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Snooze {
 			disarm_offset_ms: params.i64_or("disarm_offset", 0),
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		// The session-window shape reduced to essentials: every row pushes the group's wake-up
 		// later, so the instant armed a moment ago must be cancelled rather than left to fire.
 		for i in 0..change.diff_count() {
@@ -349,7 +349,7 @@ impl UnmanagedOperator for Snooze {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext<Unmanaged>, timer: Timer<'_>) -> Result<(), SdkError> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let group = GroupId::of(&group_key(g));
 		let fired_at = timer.due.to_millis();

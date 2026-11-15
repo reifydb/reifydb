@@ -8,7 +8,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstAlter, AstAlterAuthenticationMethod, AstAuthenticationMethodSetting, AstBodyEntry,
@@ -35,7 +34,10 @@ struct MethodSettings<'bump> {
 }
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_authentication(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstCreate<'bump>, ValueError> {
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume_identifier()?;
 		let entries = self.parse_body_entries()?;
@@ -47,7 +49,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume_identifier()?;
@@ -67,7 +69,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn consume_method_word(&mut self) -> Result<bool> {
+	pub(crate) fn consume_method_word(&mut self) -> Result<bool, ValueError> {
 		let current = self.current()?;
 		if current.kind == TokenKind::Identifier && current.fragment.text().eq_ignore_ascii_case(METHOD) {
 			self.advance()?;
@@ -76,7 +78,7 @@ impl<'bump> Parser<'bump> {
 		Ok(false)
 	}
 
-	pub(crate) fn expect_method_word(&mut self) -> Result<()> {
+	pub(crate) fn expect_method_word(&mut self) -> Result<(), ValueError> {
 		if self.consume_method_word()? {
 			return Ok(());
 		}
@@ -90,7 +92,10 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_create_authentication_method(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_authentication_method(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let name = self.consume_identifier()?;
 		self.consume_keyword(Keyword::With)?;
 		let settings = self.parse_authentication_method_settings()?;
@@ -118,7 +123,10 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_alter_authentication_method(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+	pub(crate) fn parse_alter_authentication_method(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstAlter<'bump>, ValueError> {
 		let name = self.consume_identifier()?;
 		self.consume_keyword(Keyword::With)?;
 		let settings = self.parse_authentication_method_settings()?;
@@ -132,7 +140,10 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_drop_authentication_method(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_authentication_method(
+		&mut self,
+		token: Token<'bump>,
+	) -> Result<AstDrop<'bump>, ValueError> {
 		let if_exists = self.parse_if_exists()?;
 		let name = self.consume_identifier()?;
 
@@ -143,7 +154,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_authentication_method_settings(&mut self) -> Result<MethodSettings<'bump>> {
+	fn parse_authentication_method_settings(&mut self) -> Result<MethodSettings<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut seen: Vec<Token<'bump>> = Vec::new();
@@ -191,7 +202,7 @@ impl<'bump> Parser<'bump> {
 		Ok(parsed)
 	}
 
-	fn consume_setting_text(&mut self, key: &Token<'bump>) -> Result<Token<'bump>> {
+	fn consume_setting_text(&mut self, key: &Token<'bump>) -> Result<Token<'bump>, ValueError> {
 		let current = self.current()?;
 		if current.kind == TokenKind::Literal(Literal::Text) {
 			return self.advance();
@@ -210,7 +221,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_body_entries(&mut self) -> Result<Vec<AstBodyEntry<'bump>>> {
+	pub(crate) fn parse_body_entries(&mut self) -> Result<Vec<AstBodyEntry<'bump>>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 

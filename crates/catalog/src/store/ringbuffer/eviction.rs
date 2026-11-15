@@ -11,9 +11,9 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 const TTL_VISIBLE: u8 = 0b10;
 const KNOWN_FLAGS: u8 = TTL_VISIBLE;
@@ -23,14 +23,17 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		storage: StorageId,
 		eviction: EvictionVisibility,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(key) = eviction_key(storage) else {
 			return Ok(());
 		};
 		set_flag(txn, key, TTL_VISIBLE, eviction == EvictionVisibility::Visible)
 	}
 
-	pub(crate) fn find_ttl_eviction(rx: &mut Transaction<'_>, storage: StorageId) -> Result<EvictionVisibility> {
+	pub(crate) fn find_ttl_eviction(
+		rx: &mut Transaction<'_>,
+		storage: StorageId,
+	) -> Result<EvictionVisibility, ValueError> {
 		let Some(key) = eviction_key(storage) else {
 			return Ok(EvictionVisibility::Silent);
 		};
@@ -40,7 +43,7 @@ impl CatalogStore {
 		})
 	}
 
-	pub(crate) fn drop_eviction(txn: &mut AdminTransaction, storage: StorageId) -> Result<()> {
+	pub(crate) fn drop_eviction(txn: &mut AdminTransaction, storage: StorageId) -> Result<(), ValueError> {
 		let Some(key) = eviction_key(storage) else {
 			return Ok(());
 		};
@@ -61,7 +64,7 @@ fn eviction_key(storage: StorageId) -> Option<TaggedKey> {
 	}
 }
 
-fn set_flag(txn: &mut AdminTransaction, key: TaggedKey, flag: u8, on: bool) -> Result<()> {
+fn set_flag(txn: &mut AdminTransaction, key: TaggedKey, flag: u8, on: bool) -> Result<(), ValueError> {
 	if !on {
 		return Ok(());
 	}
@@ -70,7 +73,7 @@ fn set_flag(txn: &mut AdminTransaction, key: TaggedKey, flag: u8, on: bool) -> R
 	Ok(())
 }
 
-fn read_flags(rx: &mut Transaction<'_>, key: TaggedKey) -> Result<u8> {
+fn read_flags(rx: &mut Transaction<'_>, key: TaggedKey) -> Result<u8, ValueError> {
 	let Some(multi) = rx.get(&[key])?.pop().flatten() else {
 		return Ok(0);
 	};

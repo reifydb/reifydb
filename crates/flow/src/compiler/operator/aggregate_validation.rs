@@ -14,7 +14,6 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_value::{
-	Result,
 	error::{Diagnostic, ValueError},
 	value::digest::DigestError,
 };
@@ -30,7 +29,7 @@ pub(crate) fn validate_flow_aggregations(
 	context: AggregateContext,
 	window: Option<&WindowKind>,
 	sink: Option<&View>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if aggregations.is_empty() {
 		return Err(ValueError(Box::new(flow_unsupported_aggregate_expression("<none>"))));
 	}

@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_rql_frontend::ast::identifier::UnresolvedObjectIdentifier;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::ValueError, fragment::Fragment};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::error::{IdentifierError, ObjectNotFoundError};
 
@@ -41,7 +41,7 @@ pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedObjectIdentifier,
-) -> Result<ResolvedSource> {
+) -> Result<ResolvedSource, ValueError> {
 	let (namespace_str, ns_def) = resolve_namespace_context(catalog, tx, unresolved)?;
 	let name_str = unresolved.name.text();
 
@@ -57,7 +57,7 @@ fn resolve_namespace_context(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedObjectIdentifier,
-) -> Result<(String, Namespace)> {
+) -> Result<(String, Namespace), ValueError> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
 	} else {
@@ -92,7 +92,7 @@ fn probe_object_in_namespace(
 	ns_def: &Namespace,
 	namespace_str: &str,
 	name_str: &str,
-) -> Result<ResolvedSource> {
+) -> Result<ResolvedSource, ValueError> {
 	let namespace_fragment = Fragment::internal(ns_def.name());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
 	let name_fragment = Fragment::internal(name_str);

@@ -32,7 +32,7 @@ use reifydb_runtime::{
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{identity::IdentityId, partition::ScanPartitions},
 };
 use tracing::error;
@@ -63,7 +63,7 @@ pub enum SubscriptionWorkerMessage {
 		flow_dag: FlowDag,
 		ctx: SubscriptionContext,
 		hydration_enabled: bool,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
+		reply: Box<dyn FnOnce(Result<(), ValueError>) + Send>,
 	},
 
 	Unregister {
@@ -217,7 +217,7 @@ impl SubscriptionWorkerActor {
 		flow_dag: FlowDag,
 		ctx: SubscriptionContext,
 		hydration_enabled: bool,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
+		reply: Box<dyn FnOnce(Result<(), ValueError>) + Send>,
 	) {
 		if state.flows.contains_key(&flow_id) {
 			reply(Ok(()));

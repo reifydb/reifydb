@@ -3,11 +3,12 @@
 
 use reifydb_core::key::{any::TaggedKey, procedure::ProcedureKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
-pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let mut entries = Vec::new();
 	{
 		let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;

@@ -52,7 +52,6 @@ use reifydb_runtime::{
 use reifydb_store_operator::store::pin::CheckpointPin;
 use reifydb_transaction::{error::TransactionError, multi::lease::VersionLeaseGuard};
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
 	error::ValueError,
 	reifydb_assertions,
@@ -314,7 +313,7 @@ impl FlowActor {
 		self.unit_ids().into_iter().any(|flow_id| self.flow_tracker.has_readers(flow_id))
 	}
 
-	fn restore_lookup_lease(&self) -> Result<Option<VersionLeaseGuard>> {
+	fn restore_lookup_lease(&self) -> Result<Option<VersionLeaseGuard>, ValueError> {
 		if !self.has_lookup {
 			return Ok(None);
 		}
@@ -379,7 +378,7 @@ impl FlowActor {
 		Some(target)
 	}
 
-	fn rebuild_flow_engine(&self, state: &mut FlowActorState) -> Result<()> {
+	fn rebuild_flow_engine(&self, state: &mut FlowActorState) -> Result<(), ValueError> {
 		let mut flow_engine = self.build_flow_engine();
 		self.register_flow(&mut flow_engine)?;
 		state.flow_engine = flow_engine;
@@ -439,7 +438,7 @@ impl FlowActor {
 		)
 	}
 
-	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
+	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<(), ValueError> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		flow_engine.register(&mut txn, self.flow.clone())?;
 		for (member, _) in &self.members {
@@ -801,7 +800,7 @@ impl FlowActor {
 		items: &[Arc<CommitEntry>],
 		advance_to: CommitVersion,
 		more: bool,
-	) -> Result<SliceStep> {
+	) -> Result<SliceStep, ValueError> {
 		let computer = self.lookup_computer(state);
 		catch_unwind(AssertUnwindSafe(|| {
 			computer.compute_pulled(
@@ -830,7 +829,7 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		step: Result<SliceStep>,
+		step: Result<SliceStep, ValueError>,
 		reads: Option<&UpstreamReads>,
 	) {
 		match step {
@@ -906,7 +905,12 @@ impl FlowActor {
 		}
 	}
 
-	fn on_loaded(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, outcome: Result<Loaded>) {
+	fn on_loaded(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		outcome: Result<Loaded, ValueError>,
+	) {
 		state.awaiting_load = false;
 		if state.poisoned {
 			return;
@@ -993,7 +997,7 @@ impl FlowActor {
 		ctx: &Context<FlowActorMessage>,
 		advance_to: CommitVersion,
 		more: bool,
-		result: Result<()>,
+		result: Result<(), ValueError>,
 		committed: Option<CommitVersion>,
 	) {
 		state.committing = false;
@@ -1079,7 +1083,12 @@ impl FlowActor {
 		}
 	}
 
-	fn on_tick_committed(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, result: Result<()>) {
+	fn on_tick_committed(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		result: Result<(), ValueError>,
+	) {
 		state.committing = false;
 		match result {
 			Ok(()) => {
@@ -2817,7 +2826,7 @@ mod pull_protocol {
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
 				.range(&system_ctx(), OperatorStateKey::node_range(operator), RangeScope::All, 1024)
-				.collect::<Result<Vec<_>>>()
+				.collect::<Result<Vec<_>, ValueError>>()
 				.expect("scan the operator's state range");
 			assert!(
 				leaked.is_empty(),
@@ -2967,7 +2976,7 @@ mod pull_protocol {
 					.expect("query");
 			let rows: Vec<_> = query
 				.range(&system_ctx(), TaggedKeyBoundRange::all(), RangeScope::All, 100_000)
-				.collect::<Result<Vec<_>>>()
+				.collect::<Result<Vec<_>, ValueError>>()
 				.expect("scan for the ringbuffer metadata row")
 				.into_iter()
 				.filter(|row| row.key.kind() == KeyTag::RingBufferMetadata)
@@ -3062,7 +3071,6 @@ mod tick_failures {
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
-		Result as ValueResult,
 		error::{Diagnostic, ValueError},
 		factory::time::at_millis,
 		value::{
@@ -3106,11 +3114,15 @@ mod tick_failures {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			_timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			Err(ValueError(Box::new(Diagnostic {
 				code: "TEST_TIMER_HANDLER_FAILED".to_string(),
 				message: "the timer handler failed".to_string(),
@@ -3132,11 +3144,15 @@ mod tick_failures {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			_timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			Ok(None)
 		}
 	}
@@ -3154,11 +3170,15 @@ mod tick_failures {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> ValueResult<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			let user = batch(vec![int4("id", [1])]).unwrap();
 			let system: [(SystemColumn, ArrayRef); 4] = [
 				(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))),
@@ -3189,12 +3209,16 @@ mod tick_failures {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			self.rows.fetch_add(change.row_count(), Ordering::SeqCst);
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			_timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			Ok(None)
 		}
 	}

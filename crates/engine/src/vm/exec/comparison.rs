@@ -14,12 +14,15 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::logic::execute_logical_op, lower::LoweredExpr, stack::Variable};
-use reifydb_value::{error::LogicalOp, fragment::Fragment};
+use reifydb_value::{
+	error::{LogicalOp, ValueError},
+	fragment::Fragment,
+};
 
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	fn exec_columnar_cmp(&mut self, compare: fn(&CompareExprs) -> &LoweredExpr) -> Result<()> {
+	fn exec_columnar_cmp(&mut self, compare: fn(&CompareExprs) -> &LoweredExpr) -> Result<(), ValueError> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
 		let fragment = Fragment::internal("vm_cmp");
@@ -34,7 +37,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	fn exec_columnar_logic(&mut self, logic: fn(&LogicExprs) -> &LoweredExpr) -> Result<()> {
+	fn exec_columnar_logic(&mut self, logic: fn(&LogicExprs) -> &LoweredExpr) -> Result<(), ValueError> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
 		let fragment = Fragment::internal("vm_logic");
@@ -49,39 +52,39 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_cmp_eq(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_eq(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.eq)
 	}
 
-	pub(crate) fn exec_cmp_ne(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_ne(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.ne)
 	}
 
-	pub(crate) fn exec_cmp_lt(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_lt(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.lt)
 	}
 
-	pub(crate) fn exec_cmp_le(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_le(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.le)
 	}
 
-	pub(crate) fn exec_cmp_gt(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_gt(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.gt)
 	}
 
-	pub(crate) fn exec_cmp_ge(&mut self) -> Result<()> {
+	pub(crate) fn exec_cmp_ge(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_cmp(|compare| &compare.ge)
 	}
 
-	pub(crate) fn exec_logic_and(&mut self) -> Result<()> {
+	pub(crate) fn exec_logic_and(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_logic(|logic| &logic.and)
 	}
 
-	pub(crate) fn exec_logic_or(&mut self) -> Result<()> {
+	pub(crate) fn exec_logic_or(&mut self) -> Result<(), ValueError> {
 		self.exec_columnar_logic(|logic| &logic.or)
 	}
 
-	pub(crate) fn exec_logic_xor(&mut self) -> Result<()> {
+	pub(crate) fn exec_logic_xor(&mut self) -> Result<(), ValueError> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
 		let fragment = Fragment::internal("vm_logic");
@@ -93,7 +96,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_logic_not(&mut self) -> Result<()> {
+	pub(crate) fn exec_logic_not(&mut self) -> Result<(), ValueError> {
 		let column = self.pop_as_column()?;
 		let row_count = column.1.len();
 		let operands = batch(vec![rename(column, "value")])?;

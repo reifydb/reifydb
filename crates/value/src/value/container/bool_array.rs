@@ -6,7 +6,7 @@ use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_select::filter::FilterPredicate;
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 	value::{Value, value_type::ValueType},
 };
@@ -48,7 +48,7 @@ pub fn filter_with(array: &BooleanArray, predicate: &FilterPredicate) -> Boolean
 	BooleanArray::new(selected.into_parts().0, nulls)
 }
 
-pub fn reorder(array: &BooleanArray, indices: &[usize]) -> Result<BooleanArray> {
+pub fn reorder(array: &BooleanArray, indices: &[usize]) -> Result<BooleanArray, ValueError> {
 	kernel::rows_in_range(indices, array.len())?;
 	Ok(BooleanArray::new(
 		bitmap::reorder(array.values(), indices),

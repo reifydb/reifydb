@@ -4,10 +4,9 @@
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{interface::catalog::sumtype::SumTypeKind, internal_error};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	nodes::DispatchNode,
 	plan::{
 		logical,
@@ -20,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		dispatch: logical::DispatchNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = dispatch.on_event.namespace.iter().map(|n| n.text()).collect();
 		let ns_name: String = if ns_segments.is_empty() {
 			"default".to_string()

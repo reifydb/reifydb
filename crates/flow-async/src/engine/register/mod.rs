@@ -37,7 +37,7 @@ use reifydb_flow::{
 	time_domain::{check_join_retention_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::ValueError, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::{info, instrument};
 
 use crate::{
@@ -48,12 +48,16 @@ use crate::{
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<(), ValueError> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
 	}
 
 	#[instrument(name = "flow::register_with_transaction", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
+	pub fn register_with_transaction(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: FlowDag,
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 			assert!(
@@ -118,7 +122,7 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	fn mark_untimed_view_sources(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+	fn mark_untimed_view_sources(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<(), ValueError> {
 		let mut reads: Vec<(OperatorId, ViewId)> = flow
 			.get_operator_ids()
 			.filter_map(|id| match flow.get_operator(&id).map(|node| &node.ty) {
@@ -155,7 +159,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator: &FlowNode,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let operator_id = operator.id;
 		let inputs = operator.inputs.clone();
 
@@ -205,7 +209,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		operator: &FlowNode,
 		ctx: &Arc<FlowContext>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		reifydb_assertions! {
 			assert!(!self.operators.contains_key(&(flow.id, operator.id)), "Operator already registered");
 		}
@@ -352,7 +356,7 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator> {
+	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator, ValueError> {
 		self.operators.get(&(flow_id, input)).ok_or_else(|| {
 			ValueError::from(FlowGraphError::ParentOperatorNotFound {
 				input: format!("{:?}", input),
@@ -360,7 +364,7 @@ impl FlowEngineInner {
 		})
 	}
 
-	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<SchemaRef>> {
+	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<SchemaRef>, ValueError> {
 		Ok(self.require_parent(flow_id, input)?.output_schema())
 	}
 
@@ -369,7 +373,7 @@ impl FlowEngineInner {
 		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		input: OperatorId,
-	) -> Result<Option<SchemaRef>> {
+	) -> Result<Option<SchemaRef>, ValueError> {
 		self.parent_schema(flow_id, input)?
 			.map(|schema| decoded_schema(&schema, |id| self.catalog.find_dictionary(txn, id)))
 			.transpose()

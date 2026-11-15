@@ -11,10 +11,10 @@ use reifydb_rql_frontend::{
 	diagnostic::AstError,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_column_name},
 };
 
@@ -47,7 +47,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAlterTable<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let table = ast.table;
 
 		let action = match ast.action {

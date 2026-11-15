@@ -3,9 +3,10 @@
 
 use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
 use reifydb_core::interface::{catalog::authentication_method::AuthenticationMethod, store::MultiVersionRow};
+use reifydb_value::error::ValueError;
 use serde_json::{from_str, to_string};
 
-use crate::{Result, error::CatalogError, store::authentication_method::shape::authentication_method};
+use crate::{error::CatalogError, store::authentication_method::shape::authentication_method};
 
 pub mod alter;
 pub mod create;
@@ -14,7 +15,7 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_authentication_method<K>(multi: MultiVersionRow<K>) -> Result<AuthenticationMethod> {
+pub(crate) fn convert_authentication_method<K>(multi: MultiVersionRow<K>) -> Result<AuthenticationMethod, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let name = authentication_method::get_name(&bytes).to_string();
 	let properties = from_str(authentication_method::get_properties(&bytes)).map_err(|e| {
@@ -33,7 +34,9 @@ pub(crate) fn convert_authentication_method<K>(multi: MultiVersionRow<K>) -> Res
 	})
 }
 
-pub(crate) fn encode_authentication_method(method: &AuthenticationMethod) -> Result<EncodedCatalogRowBuilder> {
+pub(crate) fn encode_authentication_method(
+	method: &AuthenticationMethod,
+) -> Result<EncodedCatalogRowBuilder, ValueError> {
 	let properties = to_string(&method.properties).map_err(|e| CatalogError::AuthenticationMethodProperties {
 		method: method.name.clone(),
 		reason: e.to_string(),

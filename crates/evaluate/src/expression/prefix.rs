@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::{arith::option::unary_op_unwrap_option, factory},
 };
 use reifydb_value::{
-	error::{LogicalOp, OperandCategory, TypeError},
+	error::{LogicalOp, OperandCategory, TypeError, ValueError},
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -20,7 +20,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, expression::logic::bool_column};
+use crate::expression::logic::bool_column;
 
 macro_rules! prefix_signed_int {
 	($column:expr, $values:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{
@@ -128,7 +128,7 @@ pub fn prefix_apply(
 	column: &(FieldRef, ArrayRef),
 	operator: &PrefixOperator,
 	fragment: &Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if ColumnView::try_from(column)?.is_untyped_none() && !matches!(operator, PrefixOperator::Not(_)) {
 		return Ok(column.clone());
 	}

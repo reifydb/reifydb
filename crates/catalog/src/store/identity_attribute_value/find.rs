@@ -6,16 +6,16 @@ use reifydb_core::{
 	key::identity::IdentityAttributeValueKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
-use crate::{CatalogStore, Result, store::identity_attribute_value::convert_identity_attribute_value};
+use crate::{CatalogStore, store::identity_attribute_value::convert_identity_attribute_value};
 
 impl CatalogStore {
 	pub(crate) fn find_identity_attribute_value(
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
 		attribute: IdentityAttributeId,
-	) -> Result<Option<IdentityAttributeValue>> {
+	) -> Result<Option<IdentityAttributeValue>, ValueError> {
 		rx.get(&[IdentityAttributeValueKey::new(identity, attribute).into()])?
 			.pop()
 			.flatten()
@@ -26,7 +26,7 @@ impl CatalogStore {
 	pub(crate) fn find_identity_attribute_values_for_identity(
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<IdentityAttributeValue>> {
+	) -> Result<Vec<IdentityAttributeValue>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(IdentityAttributeValueKey::identity_scan(identity), RangeScope::All, 1024)?;
 
@@ -41,7 +41,7 @@ impl CatalogStore {
 	pub(crate) fn find_identity_attribute_values_for_attribute(
 		rx: &mut Transaction<'_>,
 		attribute: IdentityAttributeId,
-	) -> Result<Vec<IdentityAttributeValue>> {
+	) -> Result<Vec<IdentityAttributeValue>, ValueError> {
 		let mut result = Vec::new();
 		let stream = rx.range(IdentityAttributeValueKey::full_scan(), RangeScope::All, 1024)?;
 

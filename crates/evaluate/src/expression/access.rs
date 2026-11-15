@@ -8,11 +8,9 @@ use reifydb_core::{
 	error::diagnostic::query::column_not_found, expression::AccessObjectExpression,
 	interface::identifier::ColumnObject,
 };
-use reifydb_value::{error, fragment::Fragment, value::system_columns::is_system_field};
+use reifydb_value::{error, error::ValueError, fragment::Fragment, value::system_columns::is_system_field};
 
-use crate::Result;
-
-pub(crate) fn access_position(batch: &RecordBatch, expr: &AccessObjectExpression) -> Result<usize> {
+pub(crate) fn access_position(batch: &RecordBatch, expr: &AccessObjectExpression) -> Result<usize, ValueError> {
 	let source = match &expr.column.object {
 		ColumnObject::Qualified {
 			name,

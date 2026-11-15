@@ -4,8 +4,7 @@
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::{BinaryOp, TypeError},
+	error::{BinaryOp, TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
@@ -31,7 +30,7 @@ pub fn mul_columns(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	mul_columns_inner(ctx, left, right, &|| fragment.fragment())
 }
 
@@ -40,7 +39,7 @@ fn mul_columns_inner(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: &dyn Fn() -> Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Mul, left.get_type(), right.get_type());
@@ -65,7 +64,7 @@ fn mul_numeric<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -94,7 +93,7 @@ fn mul_numeric_clone<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

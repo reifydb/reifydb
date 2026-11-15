@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::id::NamespaceId;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::framework::{
 	accumulator::PublishedSurface,
@@ -56,7 +56,7 @@ impl MetricsSurfaces {
 		}
 	}
 
-	pub fn register_all(&self, engine: &StandardEngine) -> Result<()> {
+	pub fn register_all(&self, engine: &StandardEngine) -> Result<(), ValueError> {
 		for entry in &self.entries {
 			if entry.domain == MetricsDomain::ProfilerSpans {
 				continue;

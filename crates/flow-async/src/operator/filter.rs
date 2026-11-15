@@ -4,7 +4,7 @@
 use arrow_schema::SchemaRef;
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
 use reifydb_flow::operator::filter::FilterOperator;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::operator::{
 	HostOperator,
@@ -20,7 +20,7 @@ impl HostOperator for FilterOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		self.apply(&mut HostFind(host), change)
 	}
 

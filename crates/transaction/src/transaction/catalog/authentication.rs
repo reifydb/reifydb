@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	authentication::{Authentication, AuthenticationId},
 	change::CatalogTrackAuthenticationChangeOperations,
 };
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackAuthenticationChangeOperations for AdminTransaction {
-	fn track_authentication_created(&mut self, auth: Authentication) -> Result<()> {
+	fn track_authentication_created(&mut self, auth: Authentication) -> Result<(), ValueError> {
 		self.interceptors.authentication_post_create.execute(AuthenticationPostCreateContext::new(&auth))?;
 		let change = Change {
 			pre: None,
@@ -29,7 +29,7 @@ impl CatalogTrackAuthenticationChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<()> {
+	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<(), ValueError> {
 		self.interceptors.authentication_pre_delete.execute(AuthenticationPreDeleteContext::new(&auth))?;
 		let change = Change {
 			pre: Some(auth),

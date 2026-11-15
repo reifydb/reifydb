@@ -10,12 +10,13 @@ use reifydb_core::{
 	key::catalog::SinkKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 use serde_json::from_str;
 
-use crate::{CatalogStore, Result, error::CatalogError, store::sink::shape::sink};
+use crate::{CatalogStore, error::CatalogError, store::sink::shape::sink};
 
 impl CatalogStore {
-	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<Sink>> {
+	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<Sink>, ValueError> {
 		let mut result = Vec::new();
 
 		let stream = rx.range(SinkKey::full_scan(), RangeScope::All, 1024)?;

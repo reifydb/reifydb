@@ -6,10 +6,7 @@ use reifydb_core::{error::diagnostic::query::append_requires_deferred_view, valu
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::ValueError, fragment::Fragment};
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct UnsupportedAppendNode {
 	fragment: Fragment,
@@ -24,11 +21,15 @@ impl UnsupportedAppendNode {
 }
 
 impl QueryNode for UnsupportedAppendNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Err(ValueError(Box::new(append_requires_deferred_view(self.fragment.clone()))))
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Err(ValueError(Box::new(append_requires_deferred_view(self.fragment.clone()))))
 	}
 

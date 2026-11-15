@@ -5,12 +5,13 @@ use reifydb_codec::typeinfo::encode_value_type;
 use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity::IdentityAttributeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{blob::Blob, value_type::ValueType},
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{identity_attribute::shape::identity_attribute, sequence::system::SystemSequence},
 };
@@ -20,7 +21,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		name: &str,
 		value_type: ValueType,
-	) -> Result<IdentityAttribute> {
+	) -> Result<IdentityAttribute, ValueError> {
 		if (Self::find_identity_attribute_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some() {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::IdentityAttribute,

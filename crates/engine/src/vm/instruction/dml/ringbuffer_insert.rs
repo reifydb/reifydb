@@ -33,6 +33,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
@@ -50,7 +51,6 @@ use super::{
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 };
 use crate::{
-	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::{RingBufferOperations, place_ring_rows, reserve_ring_rows, save_ring},
@@ -72,7 +72,7 @@ pub(crate) fn insert_ringbuffer(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let InsertRingBufferNode {
 		input,
 		target,
@@ -120,7 +120,7 @@ fn compile_and_initialize_input<'a>(
 	input: QueryPlan,
 	txn: &mut Transaction<'a>,
 	context: &Arc<QueryContext>,
-) -> Result<Box<dyn QueryNode>> {
+) -> Result<Box<dyn QueryNode>, ValueError> {
 	let mut input_node = compile(input, txn, context.clone());
 	input_node.initialize(txn, context)?;
 	Ok(input_node)
@@ -139,7 +139,7 @@ fn drive_ringbuffer_insert(
 	fragments: &InputFragments,
 	has_returning: bool,
 	ring: &mut Ring,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>), ValueError> {
 	let namespace = target_data.namespace;
 	let ringbuffer = target_data.ringbuffer;
 	let mut verified = HashMap::new();
@@ -225,7 +225,7 @@ pub(crate) fn insert_ringbuffer_chunks(
 	partitions: &[Partition],
 	ring: &mut Ring,
 	mut returned: Option<&mut Vec<(RowNumber, EncodedBytes)>>,
-) -> Result<u64> {
+) -> Result<u64, ValueError> {
 	let mut start = 0;
 	while start < rows.len() {
 		let mut held: Vec<(Option<Partition>, Vec<usize>)> = Vec::new();
@@ -290,7 +290,7 @@ fn finalize_ringbuffer_insert(
 	returned_rows: &[(RowNumber, EncodedBytes)],
 	inserted_count: u64,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let ringbuffer = target_data.ringbuffer;
 	save_ring(&services.catalog, txn, ringbuffer, ring)?;
 
@@ -319,7 +319,7 @@ fn resolve_insert_ringbuffer_target_and_shape(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedRingBuffer,
-) -> Result<(Namespace, RingBuffer, RowShape)> {
+) -> Result<(Namespace, RingBuffer, RowShape), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -357,7 +357,7 @@ fn build_insert_ringbuffer_query_context(
 }
 
 #[inline]
-fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) -> Result<RecordBatch> {
+fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
@@ -385,6 +385,7 @@ mod tests {
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
+		error::ValueError,
 		params::Params,
 		value::{identity::IdentityId, value_type::ValueType},
 	};
@@ -392,18 +393,15 @@ mod tests {
 	use super::{
 		InputFragments, Ring, RingBufferTarget, build_insert_ringbuffer_query_context, drive_ringbuffer_insert,
 	};
-	use crate::{
-		Result,
-		vm::{
-			services::Services,
-			volcano::query::{QueryContext, QueryNode},
-		},
+	use crate::vm::{
+		services::Services,
+		volcano::query::{QueryContext, QueryNode},
 	};
 
 	struct NegativeZeroNode;
 
 	impl QueryNode for NegativeZeroNode {
-		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 			Ok(())
 		}
 
@@ -411,7 +409,7 @@ mod tests {
 			&mut self,
 			_rx: &mut Transaction<'a>,
 			_ctx: &mut QueryContext,
-		) -> Result<Option<RecordBatch>> {
+		) -> Result<Option<RecordBatch>, ValueError> {
 			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
 			Ok(Some(RecordBatch::try_from_iter([("c", column)]).unwrap()))
 		}

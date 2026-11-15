@@ -12,7 +12,6 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	metrics::collect::MetricsCollector,
 };
-use reifydb_value::Result;
 
 pub mod config;
 pub mod flush;
@@ -29,7 +28,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdown};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 use store::{SingleCommitGuard, SinglePersistentProbeMetrics, StandardSingleStore};
 use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
@@ -109,13 +108,13 @@ impl SingleStore {
 		}
 	}
 
-	pub fn commit_logged(&self, deltas: CowVec<Delta>, lsn: Lsn) -> Result<()> {
+	pub fn commit_logged(&self, deltas: CowVec<Delta>, lsn: Lsn) -> Result<(), ValueError> {
 		match self {
 			SingleStore::Standard(store) => store.commit_logged(deltas, lsn),
 		}
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, ValueError> {
 		match self {
 			SingleStore::Standard(store) => store.saved_lsn(),
 		}
@@ -129,7 +128,7 @@ impl SingleStore {
 }
 
 impl Shutdown for SingleStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			SingleStore::Standard(store) => store.shutdown(),
 		}
@@ -138,7 +137,11 @@ impl Shutdown for SingleStore {
 
 impl SingleVersionGet for SingleStore {
 	#[inline]
-	fn get(&self, ctx: &TransactionContext, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	fn get(
+		&self,
+		ctx: &TransactionContext,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<SingleVersionRow>>, ValueError> {
 		match self {
 			SingleStore::Standard(store) => SingleVersionGet::get(store, ctx, keys),
 		}
@@ -147,7 +150,7 @@ impl SingleVersionGet for SingleStore {
 
 impl SingleVersionCommit for SingleStore {
 	#[inline]
-	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<(), ValueError> {
 		match self {
 			SingleStore::Standard(store) => SingleVersionCommit::commit(store, deltas),
 		}
@@ -161,7 +164,7 @@ impl SingleVersionRange for SingleStore {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch> {
+	) -> Result<SingleVersionBatch, ValueError> {
 		match self {
 			SingleStore::Standard(store) => SingleVersionRange::range_batch(store, ctx, range, batch_size),
 		}
@@ -175,7 +178,7 @@ impl SingleVersionRangeRev for SingleStore {
 		ctx: &TransactionContext,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<SingleVersionBatch> {
+	) -> Result<SingleVersionBatch, ValueError> {
 		match self {
 			SingleStore::Standard(store) => {
 				SingleVersionRangeRev::range_rev_batch(store, ctx, range, batch_size)

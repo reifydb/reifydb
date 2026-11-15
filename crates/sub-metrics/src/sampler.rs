@@ -28,9 +28,9 @@ use reifydb_store_operator::{range::tiers::RangeKeyspaceMetrics, store::Operator
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
 	count::Count,
+	error::ValueError,
 	value::{
 		Value, datetime::DateTime, digest::Digest, duration::Duration, identity::IdentityId,
 		value_type::ValueType,
@@ -140,7 +140,7 @@ impl MetricsSamplerActor {
 		}
 	}
 
-	fn append_snapshot(&self, published: &PublishedSurface) -> Result<()> {
+	fn append_snapshot(&self, published: &PublishedSurface) -> Result<(), ValueError> {
 		let Some(path) = published.domain.snapshots_path() else {
 			return Ok(());
 		};
@@ -156,7 +156,7 @@ impl MetricsSamplerActor {
 		Ok(())
 	}
 
-	fn sample_and_publish(&self, state: &mut SamplerState) -> Result<()> {
+	fn sample_and_publish(&self, state: &mut SamplerState) -> Result<(), ValueError> {
 		let started = self.clock.now();
 		let read_smaps = smaps_due(state.last_smaps, started);
 		if read_smaps {
@@ -577,7 +577,7 @@ fn sweep_markers(engine: &StandardEngine) {
 	}
 }
 
-fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
+fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>, ValueError> {
 	let Some(reader) = engine.ioc().try_resolve::<Arc<dyn LatencyReader>>() else {
 		return Ok(Vec::new());
 	};
@@ -606,7 +606,7 @@ fn latency_rows(engine: &StandardEngine) -> Result<Vec<MetricsRow>> {
 	Ok(rows)
 }
 
-fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>> {
+fn latency_measures(latency: ViewLatency) -> Result<Vec<Measure>, ValueError> {
 	let mut measures = vec![level_count("samples", latency.n)];
 	digest_measures(&mut measures, ["p50", "p90"], "p100", "digest", latency.p100, latency.end_to_end)?;
 	digest_measures(
@@ -627,7 +627,7 @@ fn digest_measures(
 	digest_metric: &'static str,
 	p100: Duration,
 	digest: Digest,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if digest.count() > 0 {
 		for (metric, p) in percentiles.into_iter().zip([0.5, 0.9]) {
 			let Value::Duration(value) = digest.percentile_value(p).map_err(|cause| {

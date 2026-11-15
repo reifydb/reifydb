@@ -22,7 +22,8 @@ use reifydb_flow::operator::source::decode_change;
 use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{
 		diff_type::DiffType,
 		row_number::RowNumber,
@@ -50,7 +51,7 @@ impl EnumNames {
 		Self(names)
 	}
 
-	fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, batch: RecordBatch) -> Result<RecordBatch, ValueError> {
 		if self.0.is_empty() {
 			return Ok(batch);
 		}
@@ -79,7 +80,7 @@ impl EnumNames {
 					})
 					.transpose()
 				})
-				.collect::<Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>, ValueError>>()?;
 			let enum_type = ValueType::Enum(r#enum.clone());
 			let enum_type = FieldType::from(match field_type.value_type {
 				Some(ValueType::Option(_)) => ValueType::Option(Box::new(enum_type)),
@@ -132,7 +133,7 @@ impl EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn stage(&self, batch: &RecordBatch, op: DiffType) -> Result<()> {
+	fn stage(&self, batch: &RecordBatch, op: DiffType) -> Result<(), ValueError> {
 		let batch = self.names.apply(keep_system_columns(batch, &self.keep)?)?;
 		reifydb_assertions! {
 			assert!(
@@ -147,7 +148,7 @@ impl EphemeralSinkPlan {
 	}
 }
 
-fn staged_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
+fn staged_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber], ValueError> {
 	if batch.num_rows() == 0 {
 		return Ok(&[]);
 	}
@@ -163,7 +164,7 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		let plan = self.plan.clone();
 		let state = &mut self.state;
@@ -191,7 +192,7 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn apply_insert(&self, state: &mut DeliveredState, post: &RecordBatch) -> Result<()> {
+	fn apply_insert(&self, state: &mut DeliveredState, post: &RecordBatch) -> Result<(), ValueError> {
 		let row_count = post.num_rows();
 		let post_row_numbers = staged_row_numbers(post)?;
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
@@ -217,7 +218,12 @@ impl EphemeralSinkPlan {
 		Ok(())
 	}
 
-	fn apply_update(&self, state: &mut DeliveredState, pre: &RecordBatch, post: &RecordBatch) -> Result<()> {
+	fn apply_update(
+		&self,
+		state: &mut DeliveredState,
+		pre: &RecordBatch,
+		post: &RecordBatch,
+	) -> Result<(), ValueError> {
 		let row_count = post.num_rows();
 		let pre_row_numbers = staged_row_numbers(pre)?;
 		let post_row_numbers = staged_row_numbers(post)?;
@@ -264,7 +270,7 @@ impl EphemeralSinkPlan {
 		Ok(())
 	}
 
-	fn apply_remove(&self, state: &mut DeliveredState, pre: &RecordBatch) -> Result<()> {
+	fn apply_remove(&self, state: &mut DeliveredState, pre: &RecordBatch) -> Result<(), ValueError> {
 		let row_count = pre.num_rows();
 		let pre_row_numbers = staged_row_numbers(pre)?;
 		let mut remove_indices: Vec<usize> = Vec::new();

@@ -7,14 +7,15 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::TableKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::table::{decode_table_time, shape::table},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_tables(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
+	pub(crate) fn list_tables(rx: &mut Transaction<'_>) -> Result<Vec<Table>, ValueError> {
 		let mut result = Vec::new();
 
 		let mut table_ids = Vec::new();

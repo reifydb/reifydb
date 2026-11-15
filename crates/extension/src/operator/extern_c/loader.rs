@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	common::extern_c::wire::buffer::ExternCBuffer,
-	error::{Result as ExternCResult, SdkError},
+	error::SdkError,
 	flow::{
 		extern_c::wire::schema::ExternCOperatorColumns,
 		operator::extern_c::wire::{
@@ -37,7 +37,7 @@ pub fn extern_c_operator_loader() -> &'static RwLock<ExternCOperatorLoader> {
 	GLOBAL_EXTERN_C_OPERATOR_LOADER.get_or_init(|| RwLock::new(ExternCOperatorLoader::new()))
 }
 
-pub fn check_operator_abi_tag(abi_tag: u32) -> ExternCResult<()> {
+pub fn check_operator_abi_tag(abi_tag: u32) -> Result<(), SdkError> {
 	if abi_tag != OPERATOR_ABI_TAG {
 		return Err(SdkError::Other(format!(
 			"extern-C operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
@@ -61,13 +61,13 @@ impl ExternCOperatorLoader {
 		}
 	}
 
-	pub fn load_operator_library(&mut self, path: &Path) -> ExternCResult<bool> {
+	pub fn load_operator_library(&mut self, path: &Path) -> Result<bool, SdkError> {
 		self.cache
 			.check_magic(path, b"extern_c_operator_magic\0", OPERATOR_MAGIC)
 			.map_err(|e| SdkError::Other(e.to_string()))
 	}
 
-	fn get_descriptor(&self, path: &Path) -> ExternCResult<ExternCOperatorDescriptor> {
+	fn get_descriptor(&self, path: &Path) -> Result<ExternCOperatorDescriptor, SdkError> {
 		let library = self
 			.cache
 			.get(path)
@@ -107,7 +107,7 @@ impl ExternCOperatorLoader {
 		&mut self,
 		descriptor: &ExternCOperatorDescriptor,
 		path: &Path,
-	) -> ExternCResult<(String, u32)> {
+	) -> Result<(String, u32), SdkError> {
 		check_operator_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
@@ -117,7 +117,7 @@ impl ExternCOperatorLoader {
 		Ok((operator, descriptor.abi_tag))
 	}
 
-	pub fn register_operator(&mut self, path: &Path) -> ExternCResult<Option<LoadedOperatorInfo>> {
+	pub fn register_operator(&mut self, path: &Path) -> Result<Option<LoadedOperatorInfo>, SdkError> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
@@ -153,7 +153,7 @@ impl ExternCOperatorLoader {
 		params: &[u8],
 		with: &[u8],
 		operator_id: OperatorId,
-	) -> ExternCResult<Option<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)>> {
+	) -> Result<Option<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)>, SdkError> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
@@ -187,7 +187,7 @@ impl ExternCOperatorLoader {
 		operator_id: OperatorId,
 		params: &[u8],
 		with: &[u8],
-	) -> ExternCResult<(ExternCOperatorDescriptor, OperatorClass, *mut c_void)> {
+	) -> Result<(ExternCOperatorDescriptor, OperatorClass, *mut c_void), SdkError> {
 		let path = self
 			.operator_paths
 			.get(operator)
@@ -218,12 +218,12 @@ pub struct LoadedOperatorInfo {
 	pub unmanaged_because: Option<String>,
 }
 
-pub fn decode_class(class: u8) -> ExternCResult<OperatorClass> {
+pub fn decode_class(class: u8) -> Result<OperatorClass, SdkError> {
 	OperatorClass::from_u8(class)
 		.ok_or_else(|| SdkError::Other(format!("extern-C operator declares an unknown class {}", class)))
 }
 
-pub fn decode_window(window: &ExternCWindowRequirements) -> ExternCResult<WindowRequirements> {
+pub fn decode_window(window: &ExternCWindowRequirements) -> Result<WindowRequirements, SdkError> {
 	let kinds = WindowRequirements::kinds_from_bitmask(window.kinds).ok_or_else(|| {
 		SdkError::Other(format!("extern-C operator declares unknown window kinds {:#x}", window.kinds))
 	})?;

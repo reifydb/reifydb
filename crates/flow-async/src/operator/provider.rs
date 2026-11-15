@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::flow::OperatorId, operator_with::ApplyWith};
 use reifydb_flow::error::FlowGraphError;
-use reifydb_value::{Result, config::ExtensionParams, error::ValueError};
+use reifydb_value::{config::ExtensionParams, error::ValueError};
 
 use crate::operator::BoxedHostOperator;
 
@@ -13,7 +13,7 @@ pub trait OperatorProvider: Send + Sync {
 		operator_id: OperatorId,
 		params: &ExtensionParams,
 		with: &ApplyWith,
-	) -> Result<BoxedHostOperator>;
+	) -> Result<BoxedHostOperator, ValueError>;
 }
 
 pub struct EmptyOperatorProvider;
@@ -24,7 +24,7 @@ impl OperatorProvider for EmptyOperatorProvider {
 		_operator_id: OperatorId,
 		params: &ExtensionParams,
 		_with: &ApplyWith,
-	) -> Result<BoxedHostOperator> {
+	) -> Result<BoxedHostOperator, ValueError> {
 		Err(ValueError::from(FlowGraphError::UnknownOperator {
 			operator: params.name().to_string(),
 		}))

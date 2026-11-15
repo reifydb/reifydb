@@ -9,15 +9,15 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateEventNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_event(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateEventNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let mut variants = Vec::with_capacity(plan.variants.len());
 	for (tag, variant) in plan.variants.iter().enumerate() {
 		let mut fields = Vec::with_capacity(variant.columns.len());

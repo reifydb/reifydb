@@ -26,7 +26,7 @@ use crate::{
 		key_ref::ExternCKeyRef,
 		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_OK},
 	},
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
 		context::{GuestBound, check_row_number_keys},
 		extern_c::{
@@ -72,7 +72,7 @@ unsafe fn take_buffer(ctx: &ExternCContext, buffer: ExternCBuffer) -> EncodedByt
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len()
 ))]
-pub(crate) fn batch_read(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+pub(crate) fn batch_read(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, SdkError> {
 	if keys.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -108,7 +108,7 @@ pub(crate) fn batch_read(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Ve
 	operator_id = ctx.operator_id().0,
 	slot_count = batch.len()
 ))]
-pub(crate) fn batch_write(ctx: &mut ExternCContext, batch: &StateBatch) -> Result<()> {
+pub(crate) fn batch_write(ctx: &mut ExternCContext, batch: &StateBatch) -> Result<(), SdkError> {
 	let slots: Vec<ExternCBatchSlot> = (0..batch.len())
 		.map(|slot| {
 			let (op, value) = match batch.op(slot) {
@@ -157,7 +157,7 @@ fn slice(bytes: &[u8]) -> ExternCStateSlice {
 	operator_id = ctx.operator_id().0,
 	row_count = rows.len()
 ))]
-pub(crate) fn set(ctx: &mut ExternCContext, rows: &[(EncodedKey, EncodedBytes)]) -> Result<()> {
+pub(crate) fn set(ctx: &mut ExternCContext, rows: &[(EncodedKey, EncodedBytes)]) -> Result<(), SdkError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -195,7 +195,7 @@ pub(crate) fn set(ctx: &mut ExternCContext, rows: &[(EncodedKey, EncodedBytes)])
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len()
 ))]
-pub(crate) fn remove(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<()> {
+pub(crate) fn remove(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<(), SdkError> {
 	if keys.is_empty() {
 		return Ok(());
 	}
@@ -222,7 +222,7 @@ pub(crate) fn remove(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<()
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn get(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub(crate) fn get(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>, SdkError> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -285,7 +285,7 @@ pub(crate) fn range(
 	start: GuestBound<'_>,
 	end: GuestBound<'_>,
 	limit: usize,
-) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>, SdkError> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
@@ -323,7 +323,7 @@ pub(crate) fn sweep(
 	groups: &[GroupId],
 	limit: usize,
 	keyspaces: KeyspaceMask,
-) -> Result<(Vec<(EncodedKey, EncodedBytes)>, bool)> {
+) -> Result<(Vec<(EncodedKey, EncodedBytes)>, bool), SdkError> {
 	let wire: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 	let mut complete = 0u8;
@@ -360,7 +360,7 @@ pub(crate) fn sweep(
 unsafe fn collect_iterator_results(
 	ctx: &ExternCContext,
 	iterator: *mut ExternCStateIterator,
-) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>, SdkError> {
 	if iterator.is_null() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -446,7 +446,7 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {
 pub(crate) fn get_or_create_row_numbers_for_groups(
 	ctx: &mut ExternCContext,
 	groups: &[GroupId],
-) -> Result<Vec<(RowNumber, bool)>> {
+) -> Result<Vec<(RowNumber, bool)>, SdkError> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -477,7 +477,12 @@ pub(crate) fn get_or_create_row_numbers_for_groups(
 	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
-pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+pub(crate) fn arm_timer(
+	ctx: &mut ExternCContext,
+	due: DateTime,
+	kind: TimerKind,
+	key: &EncodedKey,
+) -> Result<(), SdkError> {
 	let bytes = key.as_bytes();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
@@ -499,7 +504,7 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind
 	Ok(())
 }
 
-pub(crate) fn rearm_timers(ctx: &mut ExternCContext, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+pub(crate) fn rearm_timers(ctx: &mut ExternCContext, kind: TimerKind, moves: &[TimerMove]) -> Result<(), SdkError> {
 	if moves.is_empty() {
 		return Ok(());
 	}
@@ -543,7 +548,7 @@ pub(crate) fn reclaim_group_identities(
 	ctx: &mut ExternCContext,
 	groups: &[GroupId],
 	limit: usize,
-) -> Result<Vec<ReclaimOutcome>> {
+) -> Result<Vec<ReclaimOutcome>, SdkError> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -582,7 +587,7 @@ pub(crate) fn reclaim_group_identities(
 		.collect())
 }
 
-pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>> {
+pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>, SdkError> {
 	let mut bits = 0u64;
 	let mut present = 0u8;
 
@@ -603,7 +608,12 @@ pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime
 	Ok((present != 0).then(|| DateTime::from_order(bits)))
 }
 
-pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+pub(crate) fn disarm_timer(
+	ctx: &mut ExternCContext,
+	due: DateTime,
+	kind: TimerKind,
+	key: &EncodedKey,
+) -> Result<(), SdkError> {
 	let bytes = key.as_bytes();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
@@ -629,7 +639,7 @@ pub(crate) fn get_or_create_row_numbers(
 	ctx: &mut ExternCContext,
 	group: GroupId,
 	keys: &[EncodedKey],
-) -> Result<Vec<(RowNumber, bool)>> {
+) -> Result<Vec<(RowNumber, bool)>, SdkError> {
 	if keys.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -665,7 +675,7 @@ pub(crate) fn get_row_numbers(
 	ctx: &mut ExternCContext,
 	group: GroupId,
 	keys: &[EncodedKey],
-) -> Result<Vec<Option<RowNumber>>> {
+) -> Result<Vec<Option<RowNumber>>, SdkError> {
 	if keys.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -694,7 +704,7 @@ pub(crate) fn get_row_numbers(
 	Ok(row_numbers.into_iter().zip(present).map(|(rn, present)| (present != 0).then_some(RowNumber(rn))).collect())
 }
 
-pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, keys: &[EncodedKey]) -> Result<(), SdkError> {
 	check_row_number_keys(keys)?;
 	if keys.is_empty() {
 		return Ok(());
@@ -719,7 +729,7 @@ pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, keys: 
 	}
 }
 
-pub(crate) fn remove_row_number_for_group(ctx: &mut ExternCContext, groups: &[GroupId]) -> Result<()> {
+pub(crate) fn remove_row_number_for_group(ctx: &mut ExternCContext, groups: &[GroupId]) -> Result<(), SdkError> {
 	if groups.is_empty() {
 		return Ok(());
 	}
@@ -743,7 +753,7 @@ pub(crate) fn remove_row_number_for_group(ctx: &mut ExternCContext, groups: &[Gr
 	}
 }
 
-pub(crate) fn mint_row_numbers(ctx: &mut ExternCContext, count: usize) -> Result<RowNumber> {
+pub(crate) fn mint_row_numbers(ctx: &mut ExternCContext, count: usize) -> Result<RowNumber, SdkError> {
 	let mut first = 0u64;
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
@@ -766,7 +776,7 @@ pub(crate) fn mint_row_numbers(ctx: &mut ExternCContext, count: usize) -> Result
 pub(crate) fn get_row_numbers_for_groups(
 	ctx: &mut ExternCContext,
 	groups: &[GroupId],
-) -> Result<Vec<Option<RowNumber>>> {
+) -> Result<Vec<Option<RowNumber>>, SdkError> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -797,7 +807,10 @@ pub(crate) fn get_row_numbers_for_groups(
 	Ok(row_numbers.into_iter().zip(present).map(|(rn, present)| (present != 0).then_some(RowNumber(rn))).collect())
 }
 
-pub(crate) fn set_row_numbers_for_groups(ctx: &mut ExternCContext, rows: &[(GroupId, RowNumber)]) -> Result<()> {
+pub(crate) fn set_row_numbers_for_groups(
+	ctx: &mut ExternCContext,
+	rows: &[(GroupId, RowNumber)],
+) -> Result<(), SdkError> {
 	if rows.is_empty() {
 		return Ok(());
 	}

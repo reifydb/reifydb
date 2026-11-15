@@ -3,14 +3,15 @@
 
 use reifydb_core::interface::catalog::procedure::RunAs;
 use reifydb_rql_frontend::ast::{ast::AstCreateHandler, identifier::MaybeQualifiedProcedureIdentifier};
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateProcedureNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateProcedureNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_handler(&self, ast: AstCreateHandler<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_handler(
+		&self,
+		ast: AstCreateHandler<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateProcedure(CreateProcedureNode {
 			procedure: MaybeQualifiedProcedureIdentifier {
 				namespace: ast.name.namespace,

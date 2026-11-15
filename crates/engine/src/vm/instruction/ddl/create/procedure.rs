@@ -10,15 +10,15 @@ use reifydb_core::{
 use reifydb_policy::error::PolicyError;
 use reifydb_rql::nodes::CreateProcedureNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_procedure(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateProcedureNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if plan.run_as == RunAs::System && !txn.context().identity.current.is_privileged() {
 		return Err(PolicyError::RunAsSystemDenied {
 			procedure: format!("{}::{}", plan.namespace.name(), plan.name.text()),

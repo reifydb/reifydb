@@ -9,7 +9,7 @@ use reifydb_flow_async::window::{
 	span::WindowSpan,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::{Hash128, xxh3_128},
 };
 
@@ -58,7 +58,7 @@ where
 		self.aggregator.build_output(group, span, value)
 	}
 
-	fn emit(&mut self, emits: WindowEmits<A::Output>) -> Result<WindowEmits<A::Output>> {
+	fn emit(&mut self, emits: WindowEmits<A::Output>) -> Result<WindowEmits<A::Output>, ValueError> {
 		Ok(emits)
 	}
 }

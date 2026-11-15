@@ -14,19 +14,16 @@ use reifydb_rql::{
 	nodes::MigrateNode,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{
-	Result,
-	vm::{services::Services, vm::Vm},
-};
+use crate::vm::{services::Services, vm::Vm};
 
 pub(crate) fn execute_migrate(
 	vm: &mut Vm,
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: MigrateNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let txn = require_admin_txn(tx)?;
 	let pending = list_pending_migrations(services, txn)?;
 	let to_apply = pick_migrations_to_apply(pending, plan.target.as_deref());
@@ -40,7 +37,7 @@ pub(crate) fn execute_migrate(
 }
 
 #[inline]
-fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction> {
+fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction, ValueError> {
 	match tx {
 		Transaction::Admin(txn) => Ok(txn),
 		Transaction::Test(t) => Ok(&mut *t.inner),
@@ -49,7 +46,7 @@ fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTra
 }
 
 #[inline]
-fn list_pending_migrations(services: &Arc<Services>, txn: &mut AdminTransaction) -> Result<Vec<Migration>> {
+fn list_pending_migrations(services: &Arc<Services>, txn: &mut AdminTransaction) -> Result<Vec<Migration>, ValueError> {
 	let mut migrations = services.catalog.list_migrations(&mut Transaction::Admin(&mut *txn))?;
 	migrations.sort_by_key(|a| a.id);
 	let events = services.catalog.list_migration_events(&mut Transaction::Admin(&mut *txn))?;
@@ -86,7 +83,7 @@ fn apply_migration(
 	services: &Arc<Services>,
 	txn: &mut AdminTransaction,
 	migration: &Migration,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let compiled = services.compiler.compile(&mut Transaction::Admin(&mut *txn), &migration.body)?;
 	match compiled {
 		CompilationResult::Ready(compiled_list) => run_compiled_ready(vm, services, txn, &compiled_list),
@@ -100,7 +97,7 @@ fn run_compiled_ready(
 	services: &Arc<Services>,
 	txn: &mut AdminTransaction,
 	compiled_list: &[Compiled],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let saved_ip = vm.ip;
 	let mut migration_result = Vec::new();
 	for compiled_unit in compiled_list.iter() {
@@ -122,7 +119,7 @@ fn run_compiled_incremental(
 	services: &Arc<Services>,
 	txn: &mut AdminTransaction,
 	mut state: IncrementalCompilation,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let saved_ip = vm.ip;
 	let mut migration_result = Vec::new();
 	while let Some(compiled_unit) =

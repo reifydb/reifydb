@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::state::timer::{TimerKind, TimerMove, TimerStore};
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::operator::state::seal::rule::{EvictionRule, SealRule};
 
@@ -13,7 +13,7 @@ pub fn rearm_seal(
 	key: &EncodedKey,
 	before: Option<u64>,
 	after: Option<u64>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if before == after {
 		return Ok(());
 	}
@@ -51,7 +51,7 @@ impl EvictionGate {
 		key: &EncodedKey,
 		before: Option<u64>,
 		after: Option<u64>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if before == after {
 			return Ok(());
 		}

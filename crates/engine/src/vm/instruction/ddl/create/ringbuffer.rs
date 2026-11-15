@@ -10,16 +10,16 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
 use super::sumtype::expand_sumtype_columns;
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_ringbuffer(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateRingBufferNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),

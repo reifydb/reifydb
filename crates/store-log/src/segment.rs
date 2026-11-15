@@ -12,7 +12,7 @@ use reifydb_runtime::io::fs::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-use crate::error::{Result, StoreLogError};
+use crate::error::StoreLogError;
 
 pub const STAGING_SUFFIX: &str = ".staging";
 
@@ -48,7 +48,7 @@ pub struct Segment<F: Filesystem> {
 }
 
 impl<F: Filesystem> Segment<F> {
-	pub fn create(fs: &F, path: &Path, capacity: ByteSize) -> Result<Self>
+	pub fn create(fs: &F, path: &Path, capacity: ByteSize) -> Result<Self, StoreLogError>
 	where
 		F: Create + Open + Rename + SyncDir + Unlink,
 	{
@@ -73,7 +73,7 @@ impl<F: Filesystem> Segment<F> {
 		})
 	}
 
-	pub fn recover(fs: &F, path: &Path) -> Result<(Self, Scan)>
+	pub fn recover(fs: &F, path: &Path) -> Result<(Self, Scan), StoreLogError>
 	where
 		F: OpenMut,
 	{
@@ -93,7 +93,7 @@ impl<F: Filesystem> Segment<F> {
 		Ok((segment, scan))
 	}
 
-	pub fn append(&mut self, record: &Record) -> Result<Position> {
+	pub fn append(&mut self, record: &Record) -> Result<Position, StoreLogError> {
 		if let Some(capacity) = self.regrow.take() {
 			self.reset(capacity)?;
 		}
@@ -118,7 +118,7 @@ impl<F: Filesystem> Segment<F> {
 		Ok(offset)
 	}
 
-	pub fn reset(&mut self, capacity: ByteSize) -> Result<()> {
+	pub fn reset(&mut self, capacity: ByteSize) -> Result<(), StoreLogError> {
 		self.file.truncate(0)?;
 		self.file.truncate(capacity.as_bytes())?;
 		self.file.sync_data()?;
@@ -133,7 +133,7 @@ impl<F: Filesystem> Segment<F> {
 		self.regrow = Some(capacity);
 	}
 
-	pub fn truncate_to(&mut self, position: Position) -> Result<()> {
+	pub fn truncate_to(&mut self, position: Position) -> Result<(), StoreLogError> {
 		self.file.truncate(position.as_u64())?;
 		self.file.sync_data()?;
 		self.head = position;
@@ -141,7 +141,7 @@ impl<F: Filesystem> Segment<F> {
 		Ok(())
 	}
 
-	pub fn seal(&mut self) -> Result<()> {
+	pub fn seal(&mut self) -> Result<(), StoreLogError> {
 		self.capacity = ByteSize::from_bytes(self.head.as_u64());
 		self.file.truncate(self.head.as_u64())?;
 		Ok(self.file.sync_data()?)
@@ -164,11 +164,11 @@ impl<F: Filesystem> Segment<F> {
 	}
 }
 
-pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan> {
+pub fn scan<F: Open>(fs: &F, path: &Path) -> Result<Scan, StoreLogError> {
 	scan_from(fs, path, Position::ZERO)
 }
 
-pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan> {
+pub fn scan_from<F: Open>(fs: &F, path: &Path, from: Position) -> Result<Scan, StoreLogError> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
 	walk(&file, path, capacity, from, None, None, true, None)
@@ -181,7 +181,7 @@ pub fn scan_upto<F: Open>(
 	after: Option<LogVersion>,
 	limit: usize,
 	torn: Option<Position>,
-) -> Result<Scan> {
+) -> Result<Scan, StoreLogError> {
 	let file = fs.open(path)?;
 	let capacity = ByteSize::from_bytes(file.len()?);
 	walk(&file, path, capacity, from, after, Some(limit), true, torn)
@@ -196,7 +196,7 @@ fn walk<H: Pread>(
 	limit: Option<usize>,
 	strict: bool,
 	torn: Option<Position>,
-) -> Result<Scan> {
+) -> Result<Scan, StoreLogError> {
 	let mut records = Vec::new();
 	let mut position = from;
 	let mut previous = after;
@@ -277,7 +277,7 @@ fn clean(records: Vec<Record>, position: Position, stop: Stop, first_corrupt: Op
 	}
 }
 
-fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan>> {
+fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan, StoreLogError>> {
 	first_corrupt.map(|first| {
 		Err(StoreLogError::SegmentCorrupt {
 			path: path.to_path_buf(),
@@ -286,7 +286,7 @@ fn escalated(path: &Path, first_corrupt: Option<Position>) -> Option<Result<Scan
 	})
 }
 
-pub(crate) fn read_exact<H: Pread>(file: &H, mut offset: u64, buf: &mut [u8]) -> Result<bool> {
+pub(crate) fn read_exact<H: Pread>(file: &H, mut offset: u64, buf: &mut [u8]) -> Result<bool, StoreLogError> {
 	let mut read = 0;
 	while read < buf.len() {
 		let n = file.pread(offset, &mut buf[read..])?;
@@ -299,7 +299,7 @@ pub(crate) fn read_exact<H: Pread>(file: &H, mut offset: u64, buf: &mut [u8]) ->
 	Ok(true)
 }
 
-pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: &[u8]) -> Result<()> {
+pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: &[u8]) -> Result<(), StoreLogError> {
 	let mut written = 0;
 	while written < buf.len() {
 		let n = file.pwrite(offset, &buf[written..])?;
@@ -315,7 +315,7 @@ pub(crate) fn write_all<H: Pwrite>(file: &H, path: &Path, mut offset: u64, buf: 
 	Ok(())
 }
 
-pub fn sync_path<F: Filesystem + OpenMut>(fs: &F, path: &Path) -> Result<()> {
+pub fn sync_path<F: Filesystem + OpenMut>(fs: &F, path: &Path) -> Result<(), StoreLogError> {
 	Ok(fs.open_mut(path)?.sync_data()?)
 }
 
@@ -325,7 +325,7 @@ pub fn staging(path: &Path) -> PathBuf {
 	PathBuf::from(name)
 }
 
-pub fn discard<F: Unlink>(fs: &F, path: &Path) -> Result<()> {
+pub fn discard<F: Unlink>(fs: &F, path: &Path) -> Result<(), StoreLogError> {
 	match fs.unlink(path) {
 		Err(FsError::NotFound(_)) => Ok(()),
 		other => Ok(other?),

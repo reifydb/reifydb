@@ -4,8 +4,7 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::{BinaryOp, TypeError},
+	error::{BinaryOp, TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
@@ -34,7 +33,7 @@ pub fn add_columns(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	add_columns_inner(ctx, left, right, &|| fragment.fragment())
 }
 
@@ -43,7 +42,7 @@ fn add_columns_inner(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: &dyn Fn() -> Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Add, left.get_type(), right.get_type());
@@ -60,7 +59,7 @@ fn add_columns_inner(
 						(Some(lv), Some(rv)) => lv.try_add(*rv).map_err(|e| (*e).into()),
 						_ => Err(length_mismatch(l.len(), r.len(), &fragment.fragment())),
 					})
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				Ok(factory::duration(fragment.fragment().text(), values))
 			}
 
@@ -110,7 +109,7 @@ fn add_numeric<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -139,7 +138,7 @@ fn add_numeric_clone<L, R>(
 	r: &[R],
 	target: ValueType,
 	fragment: impl LazyFragment + Copy,
-) -> Result<(FieldRef, ArrayRef)>
+) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
@@ -194,7 +193,7 @@ fn concat_strings(
 	r: &LargeStringArray,
 	target: ValueType,
 	fragment: Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	reifydb_assertions! {
 		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
@@ -218,7 +217,7 @@ fn concat_string_with_other(
 	string_is_left: bool,
 	target: ValueType,
 	fragment: Fragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	reifydb_assertions! {
 		assert!(
 			string_data.len() == other_data.len() || string_data.len() == 1 || other_data.len() == 1

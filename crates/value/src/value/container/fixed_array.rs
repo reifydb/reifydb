@@ -6,7 +6,7 @@ use arrow_buffer::{MutableBuffer, NullBuffer};
 use arrow_select::filter::FilterPredicate;
 
 use crate::{
-	Result,
+	error::ValueError,
 	util::{bitmap, kernel},
 };
 
@@ -39,7 +39,7 @@ pub fn filter_with(array: &FixedSizeBinaryArray, predicate: &FilterPredicate) ->
 	attach_nulls(selected, nulls)
 }
 
-pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> Result<FixedSizeBinaryArray> {
+pub fn reorder(array: &FixedSizeBinaryArray, indices: &[usize]) -> Result<FixedSizeBinaryArray, ValueError> {
 	let width = array.value_length() as usize;
 	kernel::rows_in_range(indices, array.len())?;
 	let bytes = &array.value_data()[..array.len() * width];

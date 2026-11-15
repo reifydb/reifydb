@@ -50,7 +50,7 @@ use tracing::{Span, field::Empty, instrument};
 use crate::persistent::Fetch;
 use crate::{
 	actor::{Waker, resident_evict::EvictMessage, resident_flush::FlushMessage},
-	error::Result,
+	error::StoreOperatorError,
 	persistent::{Apply, Enumerate, Persistent, PersistentTier},
 	range::{OperatorRangeTier, RangeSink},
 	resident::slot::{Slot, SlotInner},
@@ -1061,7 +1061,7 @@ impl Resident {
 	}
 
 	#[instrument(name = "store::operator::resident::persist", level = "debug", skip_all)]
-	fn persist(&self, batch: &Arc<FlushBatch>) -> Result<Applied> {
+	fn persist(&self, batch: &Arc<FlushBatch>) -> Result<Applied, StoreOperatorError> {
 		#[cfg(test)]
 		{
 			let interlock = self.shared.persist_interlock.lock().take();

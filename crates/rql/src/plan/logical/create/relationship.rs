@@ -3,18 +3,16 @@
 
 use reifydb_rql_frontend::{ast::ast::AstCreateRelationship, bump::BumpBox};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateRelationshipNode, LogicalPlan, RelationshipJunctionNode},
-};
+use crate::plan::logical::{Compiler, CreateRelationshipNode, LogicalPlan, RelationshipJunctionNode};
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_relationship(
 		&self,
 		ast: AstCreateRelationship<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let node = CreateRelationshipNode {
 			name: ast.name,
 			source: ast.source,

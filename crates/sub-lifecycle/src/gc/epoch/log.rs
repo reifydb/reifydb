@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochSeconds, EpochSpan};
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 const RANGE_BATCH: usize = 256;
 
@@ -40,7 +40,7 @@ impl EpochLog {
 		}
 	}
 
-	pub fn write(&mut self, at: EpochSeconds, version: CommitVersion) -> Result<bool> {
+	pub fn write(&mut self, at: EpochSeconds, version: CommitVersion) -> Result<bool, ValueError> {
 		if version.0 == 0 {
 			return Ok(false);
 		}
@@ -61,7 +61,7 @@ impl EpochLog {
 		Ok(true)
 	}
 
-	pub fn read_since(&self, oldest: EpochSeconds, now: EpochSeconds) -> Result<Vec<Sample>> {
+	pub fn read_since(&self, oldest: EpochSeconds, now: EpochSeconds) -> Result<Vec<Sample>, ValueError> {
 		let bucket = self.bucket();
 		let mut samples = Vec::new();
 
@@ -86,7 +86,7 @@ impl EpochLog {
 		Ok(samples)
 	}
 
-	pub fn expired_before(&self, oldest: EpochSeconds, budget: usize) -> Result<Vec<VersionEpochKey>> {
+	pub fn expired_before(&self, oldest: EpochSeconds, budget: usize) -> Result<Vec<VersionEpochKey>, ValueError> {
 		let mut expired = Vec::new();
 
 		let txn = self.engine.begin_query(IdentityId::system())?;
@@ -110,7 +110,7 @@ impl EpochLog {
 		Ok(expired)
 	}
 
-	pub fn durable_count(&self) -> Result<u64> {
+	pub fn durable_count(&self) -> Result<u64, ValueError> {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		let mut count = 0u64;
 		for entry in txn.range(

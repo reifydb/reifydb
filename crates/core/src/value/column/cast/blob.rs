@@ -4,8 +4,7 @@
 use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		blob::Blob,
@@ -16,7 +15,7 @@ use reifydb_value::{
 
 use crate::value::column::builder::ColumnBuilder;
 
-pub fn to_blob(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+pub fn to_blob(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef), ValueError> {
 	match &data.data {
 		ViewData::Utf8 {
 			container,

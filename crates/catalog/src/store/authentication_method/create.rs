@@ -6,10 +6,10 @@ use reifydb_core::{
 	key::identity::AuthenticationMethodKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{authentication_method::encode_authentication_method, sequence::system::SystemSequence},
 };
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn create_authentication_method(
 		txn: &mut AdminTransaction,
 		to_create: AuthenticationMethodToCreate,
-	) -> Result<AuthenticationMethod> {
+	) -> Result<AuthenticationMethod, ValueError> {
 		if Self::find_authentication_method_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
 			.is_some()
 		{

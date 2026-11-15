@@ -15,7 +15,7 @@ use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	state::timer::{StateStore, TimerMove},
 };
-use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -97,8 +97,13 @@ impl<G: Clone, C: Copy, X: Clone> SessionRows<G, C, X> {
 		}
 	}
 
-	fn update(&mut self, diff: usize, pre: &WindowColumns<G, C, X>, post: &WindowColumns<G, C, X>) -> Result<()> {
-		let number = |columns: &WindowColumns<G, C, X>, row: usize| -> Result<RowNumber> {
+	fn update(
+		&mut self,
+		diff: usize,
+		pre: &WindowColumns<G, C, X>,
+		post: &WindowColumns<G, C, X>,
+	) -> Result<(), ValueError> {
+		let number = |columns: &WindowColumns<G, C, X>, row: usize| -> Result<RowNumber, ValueError> {
 			match columns.rows()[row] {
 				Some(number) => Ok(number),
 				None => internal_err!(
@@ -153,7 +158,7 @@ impl<G: Clone, C: Copy, X: Clone> SessionRows<G, C, X> {
 	}
 }
 
-pub fn route_session<R>(rows: &mut R) -> Result<SessionRows<R::Group, R::Coord, R::Contribution>>
+pub fn route_session<R>(rows: &mut R) -> Result<SessionRows<R::Group, R::Coord, R::Contribution>, ValueError>
 where
 	R: WindowRows,
 	R::Group: Clone,
@@ -186,7 +191,7 @@ pub fn tracker_key(hash: Hash128) -> EncodedKey {
 	EncodedKey::new(hash.0.to_be_bytes())
 }
 
-pub fn tracker_hash(key: &[u8]) -> Result<Hash128> {
+pub fn tracker_hash(key: &[u8]) -> Result<Hash128, ValueError> {
 	match <[u8; 16]>::try_from(key) {
 		Ok(bytes) => Ok(Hash128(u128::from_be_bytes(bytes))),
 		Err(_) => internal_err!("a session tracker timer must be keyed by a 16 byte group hash, got {key:?}"),
@@ -206,7 +211,7 @@ pub fn load_open_sessions<C: Coord>(
 	store: &mut dyn StateStore,
 	hashes: &[Hash128],
 	gap: C::Span,
-) -> Result<Vec<OpenSessions<C>>> {
+) -> Result<Vec<OpenSessions<C>>, ValueError> {
 	let partitions: Vec<GroupId> = hashes.iter().map(|hash| GroupId::hashed(*hash)).collect();
 	let states = WindowMeta::new().load_open_sessions_of(store, &partitions)?;
 	Ok(states.into_iter().map(|state| open_sessions_of(gap, state)).collect())
@@ -302,14 +307,14 @@ where
 		}
 	}
 
-	fn hash(&self, group: &G) -> Result<Hash128> {
+	fn hash(&self, group: &G) -> Result<Hash128, ValueError> {
 		match self.identities.get(group) {
 			Some((hash, _)) => Ok(*hash),
 			None => internal_err!("session group {group:?} has no identity"),
 		}
 	}
 
-	pub(crate) fn load(&mut self, store: &mut dyn StateStore) -> Result<()> {
+	pub(crate) fn load(&mut self, store: &mut dyn StateStore) -> Result<(), ValueError> {
 		let mut hashes: Vec<Hash128> = self.identities.values().map(|(hash, _)| *hash).collect();
 		hashes.sort();
 		hashes.dedup();
@@ -331,7 +336,7 @@ where
 		Ok(())
 	}
 
-	fn group(&mut self, store: &mut dyn StateStore, hash: Hash128) -> Result<&mut OpenSessions<C>> {
+	fn group(&mut self, store: &mut dyn StateStore, hash: Hash128) -> Result<&mut OpenSessions<C>, ValueError> {
 		let Some(group) = self.groups.get_mut(&hash) else {
 			return internal_err!("session group {hash:?} was not loaded before the batch touched it");
 		};
@@ -360,7 +365,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: &[(&G, RowNumber)],
-	) -> Result<Vec<GroupStateKey>> {
+	) -> Result<Vec<GroupStateKey>, ValueError> {
 		let mut keys = Vec::new();
 		for (group, row) in rows {
 			let hash = self.hash(group)?;
@@ -372,7 +377,12 @@ where
 		Ok(keys)
 	}
 
-	pub(crate) fn indexed(&mut self, store: &mut dyn StateStore, group: &G, row: RowNumber) -> Result<bool> {
+	pub(crate) fn indexed(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: &G,
+		row: RowNumber,
+	) -> Result<bool, ValueError> {
 		let hash = self.hash(group)?;
 		Ok(!Mint::new(&mut self.meta).membership(store, GroupId::hashed(hash), row)?.is_empty())
 	}
@@ -389,7 +399,7 @@ where
 		from: u64,
 		to: u64,
 		members: &[Member<C>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let partition = GroupId::hashed(hash);
 		for member in members {
 			let item: X::Item =
@@ -412,7 +422,7 @@ where
 		at: C,
 		row: RowNumber,
 		contribution: X::Item,
-	) -> Result<bool> {
+	) -> Result<bool, ValueError> {
 		let hash = self.hash(group)?;
 		let horizon = self.horizon;
 		let target = match self.group(store, hash)?.insert(at, row, horizon) {
@@ -441,7 +451,12 @@ where
 		Ok(true)
 	}
 
-	pub(crate) fn retract(&mut self, store: &mut dyn StateStore, group: &G, row: RowNumber) -> Result<()> {
+	pub(crate) fn retract(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: &G,
+		row: RowNumber,
+	) -> Result<(), ValueError> {
 		let hash = self.hash(group)?;
 		let partition = GroupId::hashed(hash);
 		for session in Mint::new(&mut self.meta).membership(store, partition, row)? {
@@ -478,7 +493,7 @@ where
 		row: RowNumber,
 		pre: X::Item,
 		post: X::Item,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let hash = self.hash(group)?;
 		for session in Mint::new(&mut self.meta).membership(store, GroupId::hashed(hash), row)? {
 			if !self.group(store, hash)?.sessions().iter().any(|open| open.id == session) {
@@ -495,7 +510,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		sealed: &HashSet<(G, WindowSpan<C>)>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut first_touch: HashMap<(Hash128, RowNumber, u64), bool> = HashMap::new();
 		for event in &self.events {
 			if sealed.contains(&(event.group.clone(), session_span(event.session))) {
@@ -551,7 +566,7 @@ pub fn gate_sessions<G, C, X>(
 	routed: &mut Routed<G, C, X>,
 	identities: &HashMap<G, (Hash128, EncodedKey)>,
 	horizon: C,
-) -> Result<(GatedMeta<G, C>, HashSet<(G, WindowSpan<C>)>, u64)>
+) -> Result<(GatedMeta<G, C>, HashSet<(G, WindowSpan<C>)>, u64), ValueError>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
 	C: Coord + Hash,
@@ -616,7 +631,7 @@ pub fn finish_session<H>(
 	identities: &HashMap<H::Group, (Hash128, EncodedKey)>,
 	gap: <H::Coord as Coord>::Span,
 	hooks: &mut H,
-) -> Result<H::Out>
+) -> Result<H::Out, ValueError>
 where
 	H: WindowHooks,
 	H::Group: Clone + Eq + Ord + Hash + Debug + StateCodec,
@@ -799,7 +814,7 @@ pub fn retire_trackers<C: Coord>(
 	hashes: &[Hash128],
 	horizon: C,
 	gap: C::Span,
-) -> Result<Vec<(Hash128, Option<u64>, Option<u64>)>> {
+) -> Result<Vec<(Hash128, Option<u64>, Option<u64>)>, ValueError> {
 	let loaded = load_open_sessions::<C>(store, hashes, gap)?;
 	let mut removes: Vec<GroupStateKey> = Vec::new();
 	let mut saves = Vec::new();

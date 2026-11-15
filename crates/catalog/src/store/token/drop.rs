@@ -7,21 +7,30 @@ use reifydb_core::{
 	key::identity::TokenKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
-use crate::{CatalogStore, Result, store::token::shape::token};
+use crate::{CatalogStore, store::token::shape::token};
 
 impl CatalogStore {
-	pub(crate) fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
+	pub(crate) fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<(), ValueError> {
 		txn.remove(vec![(TokenKey::new(id).into(), None)])?;
 		Ok(())
 	}
 
-	pub(crate) fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	pub(crate) fn drop_tokens_by_identity(
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+	) -> Result<(), ValueError> {
 		Self::drop_identity_tokens_where(txn, identity, |_| true)
 	}
 
-	pub(crate) fn drop_session_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	pub(crate) fn drop_session_tokens_by_identity(
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+	) -> Result<(), ValueError> {
 		Self::drop_identity_tokens_where(txn, identity, |kind| kind == TokenKind::Session)
 	}
 
@@ -29,7 +38,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		drops_kind: impl Fn(TokenKind) -> bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut to_remove = Vec::new();
 		{
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
@@ -49,7 +58,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	pub(crate) fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
+	pub(crate) fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<(), ValueError> {
 		let mut to_remove = Vec::new();
 		{
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;

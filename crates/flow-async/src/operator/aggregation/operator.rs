@@ -23,7 +23,7 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime},
 };
@@ -62,7 +62,7 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		Ok(Self {
 			core: Aggregation::new(
 				operator,
@@ -91,7 +91,7 @@ impl HostOperator for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		apply_aggregate_engine(&mut self.core, host, change)
 	}
@@ -105,7 +105,11 @@ impl HostOperator for AggregateOperator {
 	}
 }
 
-pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+pub fn apply_aggregate_engine(
+	core: &mut Aggregation,
+	host: &mut dyn HostContext,
+	change: Change,
+) -> Result<Change, ValueError> {
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut routing = Routing::default();
@@ -166,7 +170,7 @@ fn finish_aggregate_engine(
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	changed_at: DateTime,
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
 		Box::new(TumblingEngine::<Hash128, DateTimeCoord, RowAccumulator>::new(
 			WindowEngineConfig::builder().build(),
@@ -211,7 +215,12 @@ fn finish_aggregate_engine(
 	core.emit_diffs(inserts, updates, removes, changed_at)
 }
 
-fn route_grouped(core: &Aggregation, batch: &RecordBatch, is_add: bool, routing: &mut Routing) -> Result<()> {
+fn route_grouped(
+	core: &Aggregation,
+	batch: &RecordBatch,
+	is_add: bool,
+	routing: &mut Routing,
+) -> Result<(), ValueError> {
 	let times = row_times(batch)?;
 	let degenerate =
 		WindowSpan::new(<DateTimeCoord as Coord>::from_order(0), <DateTimeCoord as Coord>::from_order(1));

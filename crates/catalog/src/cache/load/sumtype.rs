@@ -13,14 +13,14 @@ use reifydb_core::{
 	key::catalog::SumTypeKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 use serde_json::from_str;
 use tracing::warn;
 
 use super::CatalogCache;
-use crate::{Result, store::sumtype::shape::sumtype};
+use crate::store::sumtype::shape::sumtype;
 
-pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = SumTypeKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 
@@ -34,7 +34,7 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	Ok(())
 }
 
-fn convert_sumtype<K>(multi: MultiVersionRow<K>) -> Result<SumType> {
+fn convert_sumtype<K>(multi: MultiVersionRow<K>) -> Result<SumType, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SumTypeId(sumtype::get_id(&bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(&bytes));

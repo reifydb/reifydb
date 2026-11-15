@@ -20,10 +20,9 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	error::{IdentifierError, RqlError},
 	expression::ExpressionCompiler,
 	plan::logical::{
@@ -37,7 +36,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstInsert<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let unresolved_target = ast.target;
 		let source_ast = BumpBox::into_inner(ast.source);
 		let returning = compile_returning_clause(ast.returning)?;
@@ -50,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 		source_ast: Ast<'bump>,
 		unresolved_target: &UnresolvedObjectIdentifier<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match source_ast {
 			Ast::From(AstFrom::Inline {
 				list,
@@ -76,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 		with_options: Option<AstInsertWith<'bump>>,
 		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let target_name = unresolved_target.name.text();
 		let name = unresolved_target.name;
 		let namespace = unresolved_target.namespace;
@@ -197,7 +196,7 @@ impl<'bump> Compiler<'bump> {
 		target: &UnresolvedObjectIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = target.namespace.iter().map(|n| n.text()).collect();
 		let target_name = target.name.text();
 
@@ -253,7 +252,9 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_insert_with(with_options: Option<AstInsertWith<'_>>) -> Result<(Option<Expression>, Option<Expression>)> {
+fn compile_insert_with(
+	with_options: Option<AstInsertWith<'_>>,
+) -> Result<(Option<Expression>, Option<Expression>), ValueError> {
 	let Some(with_options) = with_options else {
 		return Ok((None, None));
 	};

@@ -2,14 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstCreateTest;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateTestNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateTestNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_test(&self, ast: AstCreateTest<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_test(&self, ast: AstCreateTest<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateTest(CreateTestNode {
 			test: ast.name,
 			cases: ast.cases,

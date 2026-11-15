@@ -15,8 +15,6 @@ use reifydb_value::{
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
-use crate::Result;
-
 pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	TableRowAddress {
 		storage: table_id.into(),
@@ -31,7 +29,7 @@ pub fn resolve_partitions(
 	object: ObjectId,
 	distinct: &[(Partition, Vec<Value>)],
 	verified: &mut HashMap<Partition, Vec<Value>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (partition, values) in distinct {
 		match verified.get(partition) {
 			Some(known) if known != values => return Err(collision(object, *partition)),
@@ -50,7 +48,7 @@ fn check_or_register(
 	object: ObjectId,
 	partition: Partition,
 	values: &[Value],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let key = PartitionKey::new(object, partition);
 	match txn.get(&[key.clone().into()])?.pop().flatten() {
 		Some(multi) if !registry_matches(&multi.bytes, values) => Err(collision(object, partition)),

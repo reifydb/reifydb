@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_value::config::ExtensionParams;
 
 use crate::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
@@ -26,7 +26,7 @@ fn dictionary_values(
 	ctx: &ExternCContext,
 	input_columns: &[OperatorColumn],
 	columns: BorrowedColumns<'_>,
-) -> Result<DictionaryValues> {
+) -> Result<DictionaryValues, SdkError> {
 	let mut values = DictionaryValues::new();
 	for (index, column) in columns.columns().enumerate() {
 		let Some(dictionary) = column.dictionary() else {
@@ -58,13 +58,13 @@ fn dictionary_values(
 }
 
 pub trait ExternCOperator: 'static {
-	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>
+	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError>
 	where
 		Self: Sized;
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()>;
+	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<(), SdkError>;
 
-	fn on_timer(&mut self, _ctx: &mut ExternCContext, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut ExternCContext, _timer: Timer<'_>) -> Result<(), SdkError> {
 		Ok(())
 	}
 
@@ -87,13 +87,13 @@ impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 }
 
 impl<C: MountedOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
-	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn new(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self {
 			core: C::create(operator_id, params, with)?,
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<(), SdkError> {
 		let values = input
 			.diffs()
 			.map(|diff| {
@@ -102,11 +102,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ExternCOperator for Extern
 					dictionary_values(ctx, C::INPUT_COLUMNS, diff.post())?,
 				])
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, SdkError>>()?;
 		self.core.apply(ctx, ExternCChangeView::new(input, &values))
 	}
 
-	fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<(), SdkError> {
 		self.core.on_timer(ctx, timer)
 	}
 

@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::txn::Intern;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::{Span, field, instrument};
 
 use crate::{
@@ -87,7 +87,7 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		operator: &FlowNode,
 		inbox: Vec<Change>,
-	) -> Result<Change> {
+	) -> Result<Change, ValueError> {
 		let order = self
 			.operators
 			.get(&(flow_id, operator.id))
@@ -120,7 +120,7 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		operator: &FlowNode,
 		change: Change,
-	) -> Result<Change> {
+	) -> Result<Change, ValueError> {
 		let FlowEngineInner {
 			operators,
 			durable_sinks,
@@ -183,7 +183,7 @@ mod tests {
 	};
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{Result, value::datetime::DateTime};
+	use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 	use crate::{
 		engine::FlowEngineInner,
@@ -208,7 +208,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
 			let batch = RecordBatch::try_from_iter([("c", column)]).unwrap();
 			Ok(Change::from_flow(OPERATOR, change.version, vec![(self.0)(batch)], change.changed_at))

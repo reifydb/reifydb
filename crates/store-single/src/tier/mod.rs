@@ -8,7 +8,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 
 #[derive(Debug, Clone)]
 pub struct RawEntry {
@@ -39,15 +39,15 @@ impl RangeBatch {
 pub type RangeCursor = reifydb_store::coverage::cursor::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>>;
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError>;
 
 	fn get_with_tombstone(
 		&self,
 		ctx: &TransactionContext,
 		keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>>;
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError>;
 
-	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()>;
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError>;
 
 	fn range_next(
 		&self,
@@ -56,7 +56,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch>;
+	) -> Result<RangeBatch, ValueError>;
 
 	fn range_rev_next(
 		&self,
@@ -65,11 +65,11 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch>;
+	) -> Result<RangeBatch, ValueError>;
 
-	fn ensure_table(&self) -> Result<()>;
+	fn ensure_table(&self) -> Result<(), ValueError>;
 
-	fn clear_table(&self) -> Result<()>;
+	fn clear_table(&self) -> Result<(), ValueError>;
 }
 
 pub trait TierBackend: TierStorage {}

@@ -6,10 +6,7 @@ use reifydb_core::{error::diagnostic::operation::lookup_outside_deferred_view, v
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::ValueError, fragment::Fragment};
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct UnsupportedLookupNode {
 	fragment: Fragment,
@@ -24,11 +21,15 @@ impl UnsupportedLookupNode {
 }
 
 impl QueryNode for UnsupportedLookupNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Err(ValueError(Box::new(lookup_outside_deferred_view(self.fragment.clone()))))
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		Err(ValueError(Box::new(lookup_outside_deferred_view(self.fragment.clone()))))
 	}
 

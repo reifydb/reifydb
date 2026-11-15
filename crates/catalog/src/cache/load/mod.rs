@@ -51,6 +51,7 @@ use primary_key::load_primary_keys;
 use procedure::load_procedures;
 use queue::load_queues;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 use relationship::load_relationships;
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
@@ -65,12 +66,11 @@ use view::load_views;
 use windowed_view_group::load_windowed_view_groups;
 
 use super::CatalogCache;
-use crate::Result;
 
 pub struct CatalogCacheLoader;
 
 impl CatalogCacheLoader {
-	pub fn load_all(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+	pub fn load_all(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 		load_configs(rx, catalog)?;
 		load_namespaces(rx, catalog)?;
 		load_primary_keys(rx, catalog)?;

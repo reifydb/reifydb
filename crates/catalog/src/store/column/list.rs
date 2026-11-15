@@ -11,8 +11,9 @@ use reifydb_core::{
 	key::column::ColumnKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::column::shape::object_column};
+use crate::{CatalogStore, store::column::shape::object_column};
 
 pub struct ColumnInfo {
 	pub column: Column,
@@ -24,7 +25,10 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_columns(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Vec<Column>> {
+	pub(crate) fn list_columns(
+		rx: &mut Transaction<'_>,
+		object: impl Into<ObjectId>,
+	) -> Result<Vec<Column>, ValueError> {
 		let object = object.into();
 		let mut result = vec![];
 
@@ -47,7 +51,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_columns_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>> {
+	pub(crate) fn list_columns_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>, ValueError> {
 		let mut result = Vec::new();
 
 		let tables = CatalogStore::list_tables(rx)?;

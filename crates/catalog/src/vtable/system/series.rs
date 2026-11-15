@@ -11,10 +11,13 @@ use reifydb_core::{
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
@@ -40,12 +43,12 @@ impl SystemSeries {
 }
 
 impl BaseVTable for SystemSeries {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<(), ValueError> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>, ValueError> {
 		if self.exhausted {
 			return Ok(None);
 		}

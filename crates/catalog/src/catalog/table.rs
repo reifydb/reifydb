@@ -20,13 +20,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
@@ -83,13 +84,17 @@ impl From<TableToCreate> for StoreTableToCreate {
 }
 
 impl Catalog {
-	pub fn get_or_create_table_shape(&self, txn: &mut Transaction<'_>, table: &Table) -> Result<RowShape> {
+	pub fn get_or_create_table_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		table: &Table,
+	) -> Result<RowShape, ValueError> {
 		let fields = self.column_shape_fields(txn, &table.columns)?;
 		self.get_or_create_row_shape(txn, RowFamily::Table, fields)
 	}
 
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
+	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(table) = self.cache.find_table_at(id, cmd.version()) {
@@ -160,7 +165,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Table>> {
+	) -> Result<Option<Table>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, cmd.version()) {
@@ -252,7 +257,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Table> {
+	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Table, ValueError> {
 		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -267,7 +272,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl Into<Fragment> + Send,
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		let name = name.into();
 
 		let namespace_name = self
@@ -287,7 +292,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
+	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table, ValueError> {
 		let pk_columns = to_create.primary_key_columns.clone();
 		let table = CatalogStore::create_table(txn, to_create.into())?;
 		self.finalize_created_table(txn, table, pk_columns)
@@ -299,7 +304,7 @@ impl Catalog {
 		table_id: TableId,
 		to_create: TableToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		let pk_columns = to_create.primary_key_columns.clone();
 		let table = CatalogStore::create_table_with_id(txn, table_id, to_create.into(), column_ids)?;
 		self.finalize_created_table(txn, table, pk_columns)
@@ -311,7 +316,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		table: Table,
 		pk_columns: Option<Vec<String>>,
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		txn.track_table_created(table.clone())?;
 		self.get_or_create_table_shape(&mut Transaction::Admin(&mut *txn), &table)?;
 
@@ -330,19 +335,19 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::drop", level = "info", skip(self, txn))]
-	pub fn drop_table(&self, txn: &mut AdminTransaction, table: Table) -> Result<()> {
+	pub fn drop_table(&self, txn: &mut AdminTransaction, table: Table) -> Result<(), ValueError> {
 		CatalogStore::drop_table(txn, table.id)?;
 		txn.track_table_deleted(table)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::table::list", level = "trace", skip(self, txn))]
-	pub fn list_tables(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
+	pub fn list_tables(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>, ValueError> {
 		CatalogStore::list_tables(txn)
 	}
 
 	#[instrument(name = "catalog::table::list_columns", level = "trace", skip(self, txn))]
-	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>> {
+	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>, ValueError> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
@@ -352,12 +357,16 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		CatalogStore::set_table_primary_key(txn, table_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_table_pk_id(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
+	pub fn get_table_pk_id(
+		&self,
+		txn: &mut Transaction<'_>,
+		table_id: TableId,
+	) -> Result<Option<PrimaryKeyId>, ValueError> {
 		CatalogStore::get_table_pk_id(txn, table_id)
 	}
 
@@ -368,7 +377,7 @@ impl Catalog {
 		table_id: TableId,
 		column: TableColumnToCreate,
 		namespace_name: &str,
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let index = ColumnIndex(pre.columns.len() as u8);
 			CatalogStore::create_column(
@@ -397,7 +406,7 @@ impl Catalog {
 		table_id: TableId,
 		column_name: &str,
 		namespace_name: &str,
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let column = find_column_or_error(pre, column_name, namespace_name)?;
 			CatalogStore::drop_column(txn, ObjectId::Table(table_id), column.id)?;
@@ -413,7 +422,7 @@ impl Catalog {
 		old_name: &str,
 		new_name: &str,
 		namespace_name: &str,
-	) -> Result<Table> {
+	) -> Result<Table, ValueError> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let column = find_column_or_error(pre, old_name, namespace_name)?;
 			CatalogStore::rename_column(txn, ObjectId::Table(table_id), column.id, new_name)?;
@@ -423,9 +432,9 @@ impl Catalog {
 }
 
 #[inline]
-fn alter_table_with_tracking<F>(txn: &mut AdminTransaction, table_id: TableId, mutate: F) -> Result<Table>
+fn alter_table_with_tracking<F>(txn: &mut AdminTransaction, table_id: TableId, mutate: F) -> Result<Table, ValueError>
 where
-	F: FnOnce(&mut AdminTransaction, &Table) -> Result<()>,
+	F: FnOnce(&mut AdminTransaction, &Table) -> Result<(), ValueError>,
 {
 	let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 	mutate(txn, &pre)?;
@@ -435,7 +444,11 @@ where
 }
 
 #[inline]
-fn find_column_or_error<'a>(table: &'a Table, column_name: &str, namespace_name: &str) -> Result<&'a Column> {
+fn find_column_or_error<'a>(
+	table: &'a Table,
+	column_name: &str,
+	namespace_name: &str,
+) -> Result<&'a Column, ValueError> {
 	table.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
 		CatalogError::ColumnNotFound {
 			kind: CatalogObjectKind::Table,
@@ -453,7 +466,7 @@ fn resolve_pk_column_ids(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	pk_column_names: &[String],
-) -> Result<Vec<ColumnId>> {
+) -> Result<Vec<ColumnId>, ValueError> {
 	let table_columns = CatalogStore::list_columns(txn, table.id)?;
 	pk_column_names
 		.iter()

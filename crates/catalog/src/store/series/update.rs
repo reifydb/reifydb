@@ -12,18 +12,18 @@ use reifydb_core::{
 	key::{any::TaggedKey, series::SeriesPartitionMetadataKey},
 };
 use reifydb_transaction::{multi::transaction::write::Rebase, transaction::Transaction};
-use reifydb_value::value::partition::Partition;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn update_series_metadata_rebased_txn<F>(
 		txn: &mut Transaction<'_>,
 		series_id: SeriesId,
 		updates: Vec<(Partition, SeriesPartitionMetadata, F)>,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
-		F: Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
+		F: Fn(&mut SeriesPartitionMetadata) -> Result<(), ValueError> + Send + Sync + 'static,
 	{
 		let entries: Vec<(TaggedKey, EncodedBytes, Rebase)> = updates
 			.into_iter()

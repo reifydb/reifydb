@@ -18,6 +18,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		column_view::ColumnView,
@@ -26,15 +27,12 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::{
-		key_rows::{key_rows, key_types},
-		query::{QueryContext, QueryNode, charge_query_memory_bytes},
-	},
+use crate::vm::volcano::{
+	key_rows::{key_rows, key_types},
+	query::{QueryContext, QueryNode, charge_query_memory_bytes},
 };
 
-fn ensure_distinct_keyable(name: &Fragment, data: &ColumnView<'_>) -> Result<()> {
+fn ensure_distinct_keyable(name: &Fragment, data: &ColumnView<'_>) -> Result<(), ValueError> {
 	let ty = data.get_type();
 	if !ty.is_scalar() {
 		return Err(error!(operation::distinct_key_unkeyable(name.clone(), ty)));
@@ -62,7 +60,7 @@ impl DistinctNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		ctx: &mut QueryContext,
-	) -> Result<Option<RecordBatch>> {
+	) -> Result<Option<RecordBatch>, ValueError> {
 		let mut batches = Vec::new();
 		let mut charged = 0usize;
 		let mut total = 0usize;
@@ -80,7 +78,7 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::dedupe")]
-	fn dedupe(&self, all_columns: &RecordBatch) -> Result<Vec<usize>> {
+	fn dedupe(&self, all_columns: &RecordBatch) -> Result<Vec<usize>, ValueError> {
 		let schema = all_columns.schema_ref();
 		let mut key_columns: Vec<(&FieldRef, &ArrayRef)> = Vec::new();
 		if self.columns.is_empty() {
@@ -128,20 +126,24 @@ impl DistinctNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::extract")]
-	fn extract(all_columns: &RecordBatch, kept_indices: &[usize]) -> Result<RecordBatch> {
+	fn extract(all_columns: &RecordBatch, kept_indices: &[usize]) -> Result<RecordBatch, ValueError> {
 		take_rows(all_columns, kept_indices)
 	}
 }
 
 impl QueryNode for DistinctNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.headers.is_some() {
 			return Ok(None);
 		}

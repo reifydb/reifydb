@@ -24,6 +24,7 @@ use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::variant::resolve_enum_equality;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{column_view::ColumnView, sumtype::SumTypeId, system_columns::user_columns},
@@ -31,13 +32,10 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{NoopNode, user_header_names, with_system_headers, with_user_columns};
-use crate::{
-	Result,
-	vm::volcano::{
-		inline::{enum_operand, expand_aliases, expand_sumtype_assignment, take_flat_fields},
-		query::{QueryContext, QueryNode, eval_context_from_transform},
-		udf::{UdfEvalNode, strip_udf_columns},
-	},
+use crate::vm::volcano::{
+	inline::{enum_operand, expand_aliases, expand_sumtype_assignment, take_flat_fields},
+	query::{QueryContext, QueryNode, eval_context_from_transform},
+	udf::{UdfEvalNode, strip_udf_columns},
 };
 
 pub(crate) struct PatchNode {
@@ -66,7 +64,7 @@ impl PatchNode {
 
 impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		if let Some(source) = ctx.source.as_ref().or(self.source.as_ref()) {
 			let (expressions, mut fields) = take_flat_fields(
 				ctx,
@@ -117,7 +115,11 @@ impl QueryNode for PatchNode {
 	}
 
 	#[instrument(name = "volcano::patch::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "PatchNode::next() called before initialize()");
 		}
@@ -170,7 +172,7 @@ impl QueryNode for PatchNode {
 }
 
 impl Transform for PatchNode {
-	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("PatchNode::apply() called before initialize()");
 
@@ -218,7 +220,7 @@ impl PatchNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval")]
-	fn eval_patch(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	fn eval_patch(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		lowered.evaluate(exec_ctx)
 	}
 
@@ -227,7 +229,7 @@ impl PatchNode {
 		input: RecordBatch,
 		patch_names: &[Fragment],
 		patch_columns: Vec<(FieldRef, ArrayRef)>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let mut result_columns: Vec<(FieldRef, ArrayRef)> = Vec::new();
 
 		for (original_field, original_data) in user_columns(&input) {

@@ -27,6 +27,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteTableNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{
@@ -44,7 +45,6 @@ use super::{
 	returning::{decode_returning_dictionaries, decode_stored_table_rows, evaluate_returning, with_pre_image},
 };
 use crate::{
-	Result,
 	error::EngineError,
 	partition::row_key_from_partition,
 	policy::PolicyEvaluator,
@@ -65,7 +65,7 @@ pub(crate) fn delete(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let DeleteTableNode {
 		input,
 		target,
@@ -114,7 +114,7 @@ fn resolve_delete_table_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedTable,
-) -> Result<(Namespace, Table)> {
+) -> Result<(Namespace, Table), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return Err(CatalogError::NotFound {
@@ -155,7 +155,7 @@ fn run_table_delete_with_input(
 	params: &Params,
 	has_returning: bool,
 	caller: IdentityId,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>), ValueError> {
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: resolved_source.clone(),
@@ -233,7 +233,7 @@ fn collect_rows_to_delete(
 	input_node: &mut Box<dyn QueryNode>,
 	context: &QueryContext,
 	target: &TableTarget<'_>,
-) -> Result<(Vec<RowNumber>, Vec<Partition>)> {
+) -> Result<(Vec<RowNumber>, Vec<Partition>), ValueError> {
 	let mut row_numbers_to_delete = Vec::new();
 	let mut partitions_to_delete = Vec::new();
 	let mut mutable_context = context.clone();
@@ -269,7 +269,7 @@ fn run_table_delete_all(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>), ValueError> {
 	let partitioned = !table.partition_by.is_empty();
 	let range = if partitioned {
 		PartitionedRowKey::full_scan(table.id)
@@ -278,7 +278,7 @@ fn run_table_delete_all(
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
 	let mut pk_index = pk_def.as_ref().map(PrimaryKeyIndex::new);
-	let rows: Vec<_> = txn.range(range, RangeScope::All, 32)?.collect::<Result<Vec<_>>>()?;
+	let rows: Vec<_> = txn.range(range, RangeScope::All, 32)?.collect::<Result<Vec<_>, ValueError>>()?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(rows.len());
@@ -317,7 +317,7 @@ fn run_table_delete_all(
 }
 
 #[inline]
-fn delete_table_result(namespace: &str, table: &str, deleted: u64) -> Result<RecordBatch> {
+fn delete_table_result(namespace: &str, table: &str, deleted: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),

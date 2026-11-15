@@ -2,15 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::{AstTake, AstTakeValue};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	nodes::TakeLimit,
 	plan::logical::{Compiler, LogicalPlan, TakeNode},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_take(&self, ast: AstTake<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_take(&self, ast: AstTake<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		let take = match ast.take {
 			AstTakeValue::Literal(n) => TakeLimit::Literal(n),
 			AstTakeValue::Variable(tok) => {

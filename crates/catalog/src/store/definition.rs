@@ -2,12 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::TimeSource, interface::catalog::series::SeriesEncoding};
-use reifydb_value::{fragment::Fragment, value::sumtype::SumTypeId};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::SumTypeId};
 
-use crate::{
-	Result,
-	error::{CatalogError, CatalogObjectKind},
-};
+use crate::error::{CatalogError, CatalogObjectKind};
 
 fn invalid(kind: CatalogObjectKind, name: &Fragment, field: &'static str, reason: &str) -> CatalogError {
 	CatalogError::InvalidDefinition {
@@ -24,7 +21,7 @@ pub(crate) fn reject_invalid_column_list(
 	name: &Fragment,
 	field: &'static str,
 	columns: &[String],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if columns.iter().any(String::is_empty) {
 		return Err(invalid(kind, name, field, "must not contain an empty column name").into());
 	}
@@ -34,21 +31,29 @@ pub(crate) fn reject_invalid_column_list(
 	Ok(())
 }
 
-pub(crate) fn reject_invalid_time(kind: CatalogObjectKind, name: &Fragment, time: &TimeSource) -> Result<()> {
+pub(crate) fn reject_invalid_time(
+	kind: CatalogObjectKind,
+	name: &Fragment,
+	time: &TimeSource,
+) -> Result<(), ValueError> {
 	if matches!(time, TimeSource::Event { ts } if ts.is_empty()) {
 		return Err(invalid(kind, name, "time", "must name a timestamp column").into());
 	}
 	Ok(())
 }
 
-pub(crate) fn reject_zero_tag(kind: CatalogObjectKind, name: &Fragment, tag: Option<SumTypeId>) -> Result<()> {
+pub(crate) fn reject_zero_tag(
+	kind: CatalogObjectKind,
+	name: &Fragment,
+	tag: Option<SumTypeId>,
+) -> Result<(), ValueError> {
 	if tag.is_some_and(|tag| tag.to_u64() == 0) {
 		return Err(invalid(kind, name, "tag", "must not be 0").into());
 	}
 	Ok(())
 }
 
-pub(crate) fn reject_invalid_encoding(name: &Fragment, encoding: Option<&SeriesEncoding>) -> Result<()> {
+pub(crate) fn reject_invalid_encoding(name: &Fragment, encoding: Option<&SeriesEncoding>) -> Result<(), ValueError> {
 	let Some(encoding) = encoding else {
 		return Ok(());
 	};
@@ -66,7 +71,7 @@ pub(crate) fn reject_empty_text(
 	name: &Fragment,
 	field: &'static str,
 	value: Option<&str>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if value.is_some_and(str::is_empty) {
 		return Err(invalid(kind, name, field, "must not be empty").into());
 	}

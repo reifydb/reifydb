@@ -16,6 +16,7 @@ use reifydb_store_column::{
 	compress::Compressor,
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{
@@ -24,12 +25,10 @@ use reifydb_value::{
 	},
 };
 
-use crate::Result;
-
 pub fn compress_columns(
 	columns: Vec<(String, ValueType, (FieldRef, ArrayRef))>,
 	compressor: &Compressor,
-) -> Result<BlockData> {
+) -> Result<BlockData, ValueError> {
 	let mut schema = Vec::with_capacity(columns.len());
 	let mut chunked = Vec::with_capacity(columns.len());
 	for (name, ty, column) in columns {
@@ -46,7 +45,7 @@ pub fn encode_series_block(
 	encoding: &SeriesEncoding,
 	encodings: &BlockEncodings,
 	compressor: &Compressor,
-) -> Result<BlockData> {
+) -> Result<BlockData, ValueError> {
 	let (system, mut user): (Vec<_>, Vec<_>) =
 		columns.into_iter().partition(|(name, _, _)| SystemColumn::from_name(name).is_some());
 	let name = encoding.name.as_str();

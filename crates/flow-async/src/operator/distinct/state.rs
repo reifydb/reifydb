@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::{cowvec::CowVec, hash::Hash128},
 	value::{
 		column_view::ColumnView,
@@ -41,7 +41,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::operator::row_times;
 
-pub(super) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+pub(super) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>, ValueError> {
 	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
 }
 
@@ -94,7 +94,7 @@ impl DistinctLayout {
 		RowShape::new(RowFamily::Pod, fields)
 	}
 
-	pub(super) fn encode(&self, columns: &RecordBatch) -> Result<Vec<SerializedRow>> {
+	pub(super) fn encode(&self, columns: &RecordBatch) -> Result<Vec<SerializedRow>, ValueError> {
 		let views = user_views(columns)?;
 		let shape = self.shape(views.len());
 		let mut bodies: Vec<EncodedPodRowBuilder> =
@@ -118,7 +118,7 @@ impl DistinctLayout {
 			.collect())
 	}
 
-	pub(super) fn decode(&self, rows: &[SerializedRow]) -> Result<RecordBatch> {
+	pub(super) fn decode(&self, rows: &[SerializedRow]) -> Result<RecordBatch, ValueError> {
 		let mut runs: Vec<(RowShape, Vec<EncodedBytes>)> = Vec::new();
 		for row in rows {
 			let width = row.width as usize;
@@ -155,7 +155,7 @@ impl DistinctLayout {
 		})
 	}
 
-	pub(super) fn update_from_columns(&mut self, columns: &RecordBatch) -> Result<bool> {
+	pub(super) fn update_from_columns(&mut self, columns: &RecordBatch) -> Result<bool, ValueError> {
 		let views = user_views(columns)?;
 		if views.is_empty() {
 			return Ok(false);

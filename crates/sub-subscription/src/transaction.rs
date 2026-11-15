@@ -41,7 +41,6 @@ use reifydb_flow_async::{
 use reifydb_runtime::context::{clock::Clock, transaction::TransactionContext};
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{
 		Value,
@@ -127,7 +126,7 @@ fn state_items(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	range: &TaggedKeyBoundRange,
 	version: CommitVersion,
-) -> Vec<Result<MultiVersionRow<TaggedKey>>> {
+) -> Vec<Result<MultiVersionRow<TaggedKey>, ValueError>> {
 	let range = range.encode();
 	state.iter()
 		.filter(|(key, _)| range.contains(*key))
@@ -150,7 +149,7 @@ fn ephemeral_storage_get(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
 	keys: &[EncodedKey],
-) -> Result<Vec<Option<EncodedBytes>>> {
+) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 	let mut rows = vec![None; keys.len()];
 	let (mut query_slots, mut query_keys) = (Vec::new(), Vec::new());
 	for (slot, key) in keys.iter().enumerate() {
@@ -178,7 +177,7 @@ fn ephemeral_storage_range<'a>(
 	range: TaggedKeyBoundRange,
 	scope: RangeScope,
 	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + 'a> {
 	if is_state_range(&range) {
 		let mut items = state_items(state, &range, version);
 		items.sort_by(|a, b| match (a, b) {
@@ -220,41 +219,53 @@ fn ephemeral_group_page(
 }
 
 impl FlowGet for EphemeralTransaction {
-	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		pending_get(self, keys)
 	}
 }
 
 impl FlowBatch for EphemeralTransaction {
-	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.pending_mut().remove(keys);
 		Ok(())
 	}
 }
 
 impl Resolve for EphemeralTransaction {
-	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>, ValueError> {
 		Ok(self.find_dictionary(id))
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+	fn resolve(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>, ValueError> {
 		self.get_from_dictionary(dictionary, ids)
 	}
 }
 
 impl Find for EphemeralTransaction {
-	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	fn find(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>, ValueError> {
 		self.find_in_dictionary(dictionary, values)
 	}
 }
 
 impl Intern for EphemeralTransaction {
-	fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+	fn intern(
+		&mut self,
+		_dictionary: &Dictionary,
+		_values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>, ValueError> {
 		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DictionaryIntern",
 		}))
@@ -322,7 +333,7 @@ impl FlowTransaction for EphemeralTransaction {
 		self.row_shape_cache.entry(operator).or_default()
 	}
 
-	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change> {
+	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change, ValueError> {
 		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DurableSink",
 		}))
@@ -332,13 +343,13 @@ impl FlowTransaction for EphemeralTransaction {
 		&mut self,
 		_sink: &mut dyn DurableSink,
 		_timer: Timer,
-	) -> Result<Option<TimedOutput>> {
+	) -> Result<Option<TimedOutput>, ValueError> {
 		Err(ValueError::from(FlowGraphError::UnsupportedNode {
 			kind: "DurableSink",
 		}))
 	}
 
-	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		ephemeral_storage_get(&self.ctx, &self.state, &self.query, keys)
 	}
 
@@ -347,11 +358,15 @@ impl FlowTransaction for EphemeralTransaction {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		ephemeral_storage_range(&self.ctx, &self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
-	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn fetch_state(
+		&mut self,
+		id: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 		Ok(ephemeral_fetch_state(&self.state, id, keys))
 	}
 
@@ -361,7 +376,7 @@ impl FlowTransaction for EphemeralTransaction {
 		groups: &[GroupId],
 		_batch: u64,
 		keyspaces: KeyspaceMask,
-	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), ValueError> {
 		Ok(ephemeral_group_page(&self.state, id, groups, keyspaces))
 	}
 }

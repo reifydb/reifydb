@@ -8,15 +8,16 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::view::shape::view};
+use crate::{CatalogStore, store::view::shape::view};
 
 impl CatalogStore {
 	pub(crate) fn set_view_primary_key(
 		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let multi = match txn.get(&[ViewKey::new(view_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return_internal_error!(format!(

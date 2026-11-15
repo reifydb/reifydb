@@ -46,7 +46,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	expression::{context::EvalContext, logic::execute_logical_op, prefix::prefix_apply},
 	lower::{
 		cast::lower_cast,
@@ -93,8 +92,6 @@ impl From<ValueError> for Stop {
 	}
 }
 
-type Lowered<T> = std::result::Result<T, Stop>;
-
 impl LoweredExpr {
 	pub fn new(expression: Expression, operator: &'static str) -> Self {
 		Self {
@@ -111,7 +108,7 @@ impl LoweredExpr {
 		}
 	}
 
-	pub fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+	pub fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let ready = self.ready(ctx);
 		match &ready.plan {
 			Plan::Lowered {
@@ -214,7 +211,7 @@ fn lower_root<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
-) -> Lowered<(Arc<dyn PhysicalExpr>, FieldRef)> {
+) -> Result<(Arc<dyn PhysicalExpr>, FieldRef), Stop> {
 	let node = lower_node(ctx, operator, expression)?;
 	let schema = positional_schema(operator, ctx.batch.schema_ref())?;
 	let expr =
@@ -223,7 +220,7 @@ fn lower_root<'e>(
 	Ok((expr, node.field))
 }
 
-fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Expression) -> Lowered<Node> {
+fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Expression) -> Result<Node, Stop> {
 	match expression {
 		Expression::Column(column) => Ok(schema::column(ctx, operator, column)?),
 		Expression::AccessSource(access) => Ok(schema::access(ctx, access)?),
@@ -397,7 +394,7 @@ fn lower_logical<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: &Fragment,
 	(logical_op, df_op): (LogicalOp, Operator),
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	execute_logical_op(&logic_probe(&left.field)?, &logic_probe(&right.field)?, fragment, logical_op)?;
@@ -417,7 +414,7 @@ fn lower_not<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	prefix: &'e PrefixExpression,
-) -> Lowered<Node> {
+) -> Result<Node, Stop> {
 	let inner = lower_node(ctx, operator, &prefix.expression)?;
 	if !is_untyped_none(&inner.field)? {
 		let fragment = prefix.full_fragment_owned();
@@ -433,25 +430,25 @@ fn lower_not<'e>(
 	})
 }
 
-fn logic_probe(field: &FieldRef) -> Result<(FieldRef, ArrayRef)> {
+fn logic_probe(field: &FieldRef) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if is_untyped_none(field)? {
 		return Ok(empty_of(&bool_field("none", true)));
 	}
 	Ok(empty_of(&Arc::new(field.as_ref().clone().with_nullable(false))))
 }
 
-fn bool_operand(node: Node) -> Result<Expr> {
+fn bool_operand(node: Node) -> Result<Expr, ValueError> {
 	if is_untyped_none(&node.field)? {
 		return Ok(literal::none_bool());
 	}
 	Ok(node.expr)
 }
 
-fn is_untyped_none(field: &FieldRef) -> Result<bool> {
+fn is_untyped_none(field: &FieldRef) -> Result<bool, ValueError> {
 	Ok(ColumnView::try_from(&empty_of(field))?.is_untyped_none())
 }
 
-fn inner_type(field: &FieldRef) -> Result<ValueType> {
+fn inner_type(field: &FieldRef) -> Result<ValueType, ValueError> {
 	match from_field(field)?.value_type {
 		Some(value_type) => Ok(value_type.inner_type().clone()),
 		None => Err(internal_error!("operand {} has no value type", field.name())),

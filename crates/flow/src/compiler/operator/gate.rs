@@ -8,7 +8,7 @@ use reifydb_rql::{
 	query::{QueryPlan, extract_resolved_source},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -27,7 +27,7 @@ impl From<GateNode> for GateCompiler {
 }
 
 impl CompileOperator for GateCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let mut conditions = self.conditions;
 		if let Some(source) = extract_resolved_source(&self.input) {
 			let mut tx = txn.reborrow();

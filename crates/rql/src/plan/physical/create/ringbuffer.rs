@@ -4,14 +4,11 @@
 use PhysicalPlan::CreateRingBuffer;
 use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
-use crate::{
-	Result,
-	plan::{
-		logical,
-		physical::{Compiler, CreateRingBufferNode, PhysicalPlan},
-	},
+use crate::plan::{
+	logical,
+	physical::{Compiler, CreateRingBufferNode, PhysicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -19,7 +16,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateRingBufferNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = create.ringbuffer.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.ringbuffer.namespace.first() {

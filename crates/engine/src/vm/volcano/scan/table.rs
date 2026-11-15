@@ -29,7 +29,9 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	error, reifydb_assertions,
+	error,
+	error::ValueError,
+	reifydb_assertions,
 	value::{
 		partition::Partition,
 		row_number::RowNumber,
@@ -45,10 +47,7 @@ use super::{
 	merge::{MergeLayout, PartitionMerge},
 	partition_array, scan_headers, source_system_columns, storage_partitioned_row, storage_row,
 };
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub struct TableScanNode {
 	table: ResolvedTable,
@@ -85,7 +84,7 @@ impl TableScanNode {
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let mut storage_types = Vec::with_capacity(table.columns().len());
 		let mut dictionaries = Vec::with_capacity(table.columns().len());
 
@@ -143,7 +142,7 @@ impl TableScanNode {
 		partitions: Vec<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let mut pending = VecDeque::from(partitions);
 		let first = pending.pop_front();
 		let mut node = Self::new(table, first, context, rx)?;
@@ -158,7 +157,7 @@ impl TableScanNode {
 		scope: RangeScope,
 		batch_size: u64,
 		mut last: Option<StoragePartitionedRowKey>,
-	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>)> {
+	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>), ValueError> {
 		let mut batch = ScannedBatch::default();
 		loop {
 			let Some(partition) = self.partition else {
@@ -209,7 +208,7 @@ impl TableScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		fingerprint: RowShapeFingerprint,
-	) -> Result<RowShape> {
+	) -> Result<RowShape, ValueError> {
 		if let Some(shape) = &self.shape
 			&& shape.fingerprint() == fingerprint
 		{
@@ -232,9 +231,9 @@ impl TableScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_partitioned")]
 	fn drain_batch_partitioned(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>, ValueError>>,
 		batch_size: u64,
-	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>)> {
+	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>), ValueError> {
 		let mut batch = ScannedBatch::default();
 		let mut last = None;
 
@@ -260,9 +259,9 @@ impl TableScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain_row")]
 	fn drain_batch_row(
-		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>>,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>, ValueError>>,
 		batch_size: u64,
-	) -> Result<(ScannedBatch, Option<StorageRowKey>)> {
+	) -> Result<(ScannedBatch, Option<StorageRowKey>), ValueError> {
 		let mut batch = ScannedBatch::default();
 		let mut last = None;
 
@@ -313,7 +312,7 @@ impl TableScanNode {
 		columns: RecordBatch,
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
-	) -> Result<RecordBatch> {
+	) -> Result<RecordBatch, ValueError> {
 		let mut columns = columns;
 		let mut rows = bytes_vec.into_iter().peekable();
 		let mut numbers = row_numbers.into_iter();
@@ -368,12 +367,16 @@ fn partitioned_bounds(
 
 impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		}

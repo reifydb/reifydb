@@ -17,7 +17,7 @@ use reifydb_flow::{aggregate::AggregateContext, context::FlowContext, operator::
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		datetime::DateTime,
 		duration::Duration,
@@ -73,7 +73,7 @@ pub struct WindowOperator {
 }
 
 impl WindowOperator {
-	pub fn new(config: WindowConfig) -> Result<Self> {
+	pub fn new(config: WindowConfig) -> Result<Self, ValueError> {
 		let core = Aggregation::new(
 			config.operator,
 			config.parent_schema,
@@ -196,7 +196,7 @@ impl WindowOperator {
 		}
 	}
 
-	pub fn row_times(&self, columns: &RecordBatch, row_count: usize) -> Result<Vec<DateTime>> {
+	pub fn row_times(&self, columns: &RecordBatch, row_count: usize) -> Result<Vec<DateTime>, ValueError> {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
@@ -204,7 +204,7 @@ impl WindowOperator {
 	}
 }
 
-pub(crate) fn required_row_numbers(columns: &RecordBatch) -> Result<&[RowNumber]> {
+pub(crate) fn required_row_numbers(columns: &RecordBatch) -> Result<&[RowNumber], ValueError> {
 	if columns.num_rows() == 0 {
 		return Ok(&[]);
 	}
@@ -224,7 +224,7 @@ impl HostOperator for WindowOperator {
 		None
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		let out = match self.kind {
 			WindowKind::Tumbling {
@@ -243,7 +243,7 @@ impl HostOperator for WindowOperator {
 		Ok(out)
 	}
 
-	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		let fired = FiredAt::of(&timer);
 		if timer.kind == TimerKind::Maintenance {
 			forget_sealed_groups(self, host, fired)?;
@@ -277,7 +277,11 @@ impl HostOperator for WindowOperator {
 		matches!(self.kind, WindowKind::Session { .. })
 	}
 
-	fn on_timers(&mut self, host: &mut dyn HostContext, timers: Vec<Timer>) -> Result<Vec<Option<TimedOutput>>> {
+	fn on_timers(
+		&mut self,
+		host: &mut dyn HostContext,
+		timers: Vec<Timer>,
+	) -> Result<Vec<Option<TimedOutput>>, ValueError> {
 		if !self.batches_timers() || timers.iter().any(|timer| timer.kind != TimerKind::Seal) {
 			return internal_err!("operator {} batches only session seal timers", self.core.operator.0);
 		}

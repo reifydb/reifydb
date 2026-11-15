@@ -15,7 +15,7 @@ use reifydb_core::{
 	state::timer::TimerKind,
 };
 use reifydb_flow::txn::Intern;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
@@ -34,7 +34,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		version: ChangeVersion,
 		topo: &[OperatorId],
-	) -> Result<u32> {
+	) -> Result<u32, ValueError> {
 		let sources = self.watermark_sources(flow);
 		if sources.is_empty() {
 			let armed = self.file_foreign_arms(flow.id, txn.take_armed());
@@ -75,7 +75,7 @@ impl FlowEngineInner {
 		topo: &[OperatorId],
 		sources: &[OperatorId],
 		stage: &mut TimerStage,
-	) -> Result<u32> {
+	) -> Result<u32, ValueError> {
 		let mut fired_total = 0u32;
 		let mut rounds = 0u32;
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
@@ -271,7 +271,6 @@ mod tests {
 	use reifydb_runtime::context::{RuntimeContext, spawner::Spawner};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
-		Result,
 		error::{Diagnostic, ValueError},
 		factory::time::at_millis,
 	};
@@ -312,11 +311,15 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			_timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			if self.fails {
 				return Err(ValueError(Box::new(Diagnostic {
 					code: "TEST_TIMER_HANDLER_FAILED".to_string(),
@@ -341,11 +344,15 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
 			let batch = RecordBatch::try_from_iter([("c", column)]).unwrap();
 			Ok(Some(TimedOutput::new(vec![(self.0)(batch)], timer.due)))
@@ -475,11 +482,15 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			self.fired.lock().unwrap().push((
 				self.id,
 				timer.due.to_millis(),
@@ -562,11 +573,15 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			Ok(change)
 		}
 
-		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<TimedOutput>> {
+		fn on_timer(
+			&mut self,
+			_host: &mut dyn HostContext,
+			timer: Timer,
+		) -> Result<Option<TimedOutput>, ValueError> {
 			self.runs.lock().unwrap().push((false, vec![(self.id, timer.due.to_millis(), timer.kind)]));
 			Ok(None)
 		}
@@ -579,7 +594,7 @@ mod tests {
 			&mut self,
 			_host: &mut dyn HostContext,
 			timers: Vec<Timer>,
-		) -> Result<Vec<Option<TimedOutput>>> {
+		) -> Result<Vec<Option<TimedOutput>>, ValueError> {
 			let run = timers.iter().map(|timer| (self.id, timer.due.to_millis(), timer.kind)).collect();
 			self.runs.lock().unwrap().push((true, run));
 			Ok(timers.iter().map(|_| None).collect())

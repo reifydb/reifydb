@@ -2,9 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 use tracing::{Span, field, instrument};
 
-use crate::{Result, cache::CatalogCache, store::row_shape::find::load_all_row_shapes};
+use crate::{cache::CatalogCache, store::row_shape::find::load_all_row_shapes};
 
 #[instrument(
 	name = "cache::load_row_shapes",
@@ -12,7 +13,7 @@ use crate::{Result, cache::CatalogCache, store::row_shape::find::load_all_row_sh
 	skip(rx, catalog),
 	fields(shape_count = field::Empty)
 )]
-pub(crate) fn load_row_shapes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_row_shapes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let shapes = load_all_row_shapes(rx)?;
 
 	Span::current().record("shape_count", shapes.len());

@@ -5,16 +5,11 @@ use std::marker::PhantomData;
 
 use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{error::ValueError, fragment::Fragment, return_error};
 
-use crate::{
-	Result,
-	plan::{
-		logical::alter::table::{
-			AlterTableAction as LogicalAlterTableAction, AlterTableNode as LogicalAlterTableNode,
-		},
-		physical::{AlterTableAction, AlterTableNode, Compiler, PhysicalPlan},
-	},
+use crate::plan::{
+	logical::alter::table::{AlterTableAction as LogicalAlterTableAction, AlterTableNode as LogicalAlterTableNode},
+	physical::{AlterTableAction, AlterTableNode, Compiler, PhysicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -22,7 +17,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		alter: LogicalAlterTableNode<'bump>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		let ns_segments: Vec<&str> = alter.table.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_name = ns_segments.join("::");

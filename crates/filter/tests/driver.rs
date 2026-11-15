@@ -10,7 +10,7 @@ use reifydb_filter::{
 	source::{FilterSlice, KeyFilterSource},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 #[derive(Default, Debug)]
 struct SourceState {
@@ -67,7 +67,7 @@ impl KeyFilterSource for FakeSource {
 		state.restarts += 1;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice, ValueError> {
 		let mut state = self.state.lock();
 		state.slices += 1;
 		let end = (state.pos + budget).min(state.hashes.len());

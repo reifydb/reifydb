@@ -10,7 +10,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 };
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata, UnmanagedOperator,
 		column::operator::OperatorColumn,
@@ -75,11 +75,11 @@ impl UnmanagedOperator for RownumProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(RownumProbe)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<(), SdkError> {
 		for i in 0..change.diff_count() {
 			let Some(diff) = change.diff(i) else {
 				continue;

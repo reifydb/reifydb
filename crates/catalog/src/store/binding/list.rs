@@ -7,12 +7,13 @@ use reifydb_core::{
 	key::{any::TaggedKey, catalog::BindingKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::find::decode_binding;
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn list_bindings_all(rx: &mut Transaction<'_>) -> Result<Vec<Binding>> {
+	pub(crate) fn list_bindings_all(rx: &mut Transaction<'_>) -> Result<Vec<Binding>, ValueError> {
 		let mut out = Vec::new();
 		let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {

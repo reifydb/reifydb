@@ -6,10 +6,13 @@ use reifydb_core::{
 	key::identity::TokenKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::{sequence::system::SystemSequence, token::shape::token},
 };
 
@@ -20,7 +23,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		expires_at: Option<DateTime>,
 		created_at: DateTime,
-	) -> Result<Token> {
+	) -> Result<Token, ValueError> {
 		Self::insert_token(txn, token, identity, expires_at, created_at, TokenKind::ApiKey)
 	}
 
@@ -30,7 +33,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		expires_at: Option<DateTime>,
 		created_at: DateTime,
-	) -> Result<Token> {
+	) -> Result<Token, ValueError> {
 		Self::insert_token(txn, token, identity, expires_at, created_at, TokenKind::Session)
 	}
 
@@ -41,7 +44,7 @@ impl CatalogStore {
 		expires_at: Option<DateTime>,
 		created_at: DateTime,
 		kind: TokenKind,
-	) -> Result<Token> {
+	) -> Result<Token, ValueError> {
 		let id = SystemSequence::next_token_id(txn)?;
 
 		let mut row = token::allocate();

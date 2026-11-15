@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackPrimaryKeyChangeOperations, key::PrimaryKey, object::ObjectId,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl CatalogTrackPrimaryKeyChangeOperations for AdminTransaction {
-	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()> {
+	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some((object, primary_key)),
@@ -25,7 +25,7 @@ impl CatalogTrackPrimaryKeyChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()> {
+	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some((object, primary_key)),
 			post: None,

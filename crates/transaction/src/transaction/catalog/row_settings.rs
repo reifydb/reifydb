@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, storage::StorageId},
 	row::RowSettings,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
-	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()> {
+	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some((storage, settings)),

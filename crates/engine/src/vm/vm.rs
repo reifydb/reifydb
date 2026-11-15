@@ -18,6 +18,7 @@ use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
@@ -65,23 +66,20 @@ use super::{
 	services::Services,
 	stack::{ControlFlow, Stack},
 };
-use crate::{
-	Result,
-	vm::instruction::ddl::{
-		alter::{authentication_method::alter_authentication_method, policy::alter_policy},
-		create::{
-			authentication::create_authentication, authentication_method::create_authentication_method,
-			event::create_event, identity::create_identity, identity_attribute::create_identity_attribute,
-			policy::create_policy, role::create_role,
-		},
-		drop::{
-			authentication::drop_authentication, authentication_method::drop_authentication_method,
-			handler::drop_handler, identity::drop_identity, identity_attribute::drop_identity_attribute,
-			policy::drop_policy, role::drop_role, test::drop_test,
-		},
-		grant::grant,
-		revoke::revoke,
+use crate::vm::instruction::ddl::{
+	alter::{authentication_method::alter_authentication_method, policy::alter_policy},
+	create::{
+		authentication::create_authentication, authentication_method::create_authentication_method,
+		event::create_event, identity::create_identity, identity_attribute::create_identity_attribute,
+		policy::create_policy, role::create_role,
 	},
+	drop::{
+		authentication::drop_authentication, authentication_method::drop_authentication_method,
+		handler::drop_handler, identity::drop_identity, identity_attribute::drop_identity_attribute,
+		policy::drop_policy, role::drop_role, test::drop_test,
+	},
+	grant::grant,
+	revoke::revoke,
 };
 
 pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
@@ -214,7 +212,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		instructions: &[Instruction],
 		result: &mut Vec<Frame>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let saved = self.params;
 		self.params = &EMPTY_PARAMS;
 		let run_result = self.run(services, tx, instructions, result);
@@ -222,7 +220,7 @@ impl<'a> Vm<'a> {
 		run_result
 	}
 
-	pub(crate) fn pop_value(&mut self) -> Result<Value> {
+	pub(crate) fn pop_value(&mut self) -> Result<Value, ValueError> {
 		match self.stack.pop()? {
 			Variable::Columns {
 				batch: c,
@@ -231,7 +229,7 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	pub(crate) fn pop_as_columns(&mut self) -> Result<RecordBatch> {
+	pub(crate) fn pop_as_columns(&mut self) -> Result<RecordBatch, ValueError> {
 		match self.stack.pop()? {
 			Variable::Columns {
 				batch: c,
@@ -251,7 +249,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		instructions: &[Instruction],
 		result: &mut Vec<Frame>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let params = self.params;
 		while self.ip < instructions.len() {
 			let _ = self.batch_size != 1 && self.check_mask_merge_point()?;

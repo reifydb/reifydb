@@ -13,7 +13,7 @@ use reifydb_engine::subscription::SubscriptionContext;
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::{engine::FlowEngineInner, operator::apply::ApplyOperator};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, value::value_type::field::from_field};
+use reifydb_value::{error::ValueError, value::value_type::field::from_field};
 
 use crate::delivery::{
 	DeliveryBuffer,
@@ -27,7 +27,7 @@ pub(crate) fn register_ephemeral_flow(
 	flow: FlowDag,
 	ctx: &SubscriptionContext,
 	delivery: Arc<DeliveryBuffer>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let flow_ctx = Arc::new(FlowContext {
 		identity: ctx.identity,
 		symbols: ctx.symbols.clone(),
@@ -71,7 +71,7 @@ pub(crate) fn register_ephemeral_flow(
 	Ok(())
 }
 
-fn enum_names(catalog: &Catalog, txn: &mut Transaction<'_>, schema: Option<&Schema>) -> Result<EnumNames> {
+fn enum_names(catalog: &Catalog, txn: &mut Transaction<'_>, schema: Option<&Schema>) -> Result<EnumNames, ValueError> {
 	let mut names = HashMap::new();
 	for field in schema.map(|schema| schema.fields().iter()).into_iter().flatten() {
 		let Some(id) = from_field(field)?.sumtype else {

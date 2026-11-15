@@ -7,13 +7,13 @@ use reifydb_core::event::{
 	EventBus,
 	operator::{OperatorColumn, OperatorLoadedEvent},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use tracing::{info, instrument};
 
 use crate::operator::extern_rust::{ExternRustOperatorColumn, extern_rust_operator_loader};
 
 #[instrument(name = "flow::subsystem::load_extern_rust_operators", level = "info", skip(event_bus), fields(dir = ?dir))]
-pub fn load_extern_rust_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
+pub fn load_extern_rust_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<(), ValueError> {
 	let loader = extern_rust_operator_loader();
 
 	let entries = read_dir(dir).unwrap();

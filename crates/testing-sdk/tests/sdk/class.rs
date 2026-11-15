@@ -7,7 +7,7 @@ use reifydb_core::{
 	operator_with::{ApplyWith, WithSpan},
 };
 use reifydb_sdk::{
-	error::Result,
+	error::SdkError,
 	flow::operator::{
 		ManagedMount, ManagedOperator, NostateMount, NostateOperator, OperatorMetadata, UnmanagedMount,
 		UnmanagedOperator,
@@ -32,11 +32,11 @@ impl OperatorMetadata for NostateProbe {
 }
 
 impl NostateOperator for NostateProbe {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(NostateProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -53,11 +53,11 @@ impl OperatorMetadata for ManagedProbe {
 }
 
 impl ManagedOperator for ManagedProbe {
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(ManagedProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -82,11 +82,11 @@ impl UnmanagedOperator for UnmanagedProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(UnmanagedProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }
@@ -111,11 +111,11 @@ impl UnmanagedOperator for UnmanagedWindowProbe {
 		needs_pane: false,
 	};
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(UnmanagedWindowProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> Result<(), SdkError> {
 		Ok(())
 	}
 }

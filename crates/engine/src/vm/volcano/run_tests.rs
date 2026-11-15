@@ -8,10 +8,10 @@ use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 use tracing::instrument;
 
 use crate::{
-	Result,
 	run_tests::run::run_tests,
 	vm::{
 		services::Services,
@@ -40,12 +40,16 @@ impl RunTestsQueryNode {
 
 impl QueryNode for RunTestsQueryNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::run_tests::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::run_tests::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.executed {
 			return Ok(None);
 		}

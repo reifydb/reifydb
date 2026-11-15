@@ -7,13 +7,16 @@ use reifydb_core::{
 	key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 
 use super::sumtype_from_bytes;
-use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
+use crate::{CatalogStore, store::sumtype::shape::sumtype_namespace};
 
 impl CatalogStore {
-	pub(crate) fn find_sumtype(rx: &mut Transaction<'_>, sumtype_id: SumTypeId) -> Result<Option<SumType>> {
+	pub(crate) fn find_sumtype(
+		rx: &mut Transaction<'_>,
+		sumtype_id: SumTypeId,
+	) -> Result<Option<SumType>, ValueError> {
 		let Some(multi) = rx.get(&[SumTypeKey::new(sumtype_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -25,7 +28,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<SumType>> {
+	) -> Result<Option<SumType>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), RangeScope::All, 1024)?;
 

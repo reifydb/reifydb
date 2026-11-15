@@ -50,9 +50,9 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
 	count::Count,
+	error::ValueError,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::trace;
@@ -179,7 +179,7 @@ impl MetricsFlushActor {
 		state: &mut MetricsFlushActorState,
 		writes: &[MultiWrite],
 		version: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keys: Vec<EncodedKey> = writes
 			.iter()
 			.filter(|write| write.pre == PriorSize::Unknown)
@@ -196,7 +196,7 @@ impl MetricsFlushActor {
 		state: &mut MetricsFlushActorState,
 		deletes: &[MultiDelete],
 		version: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keys: Vec<EncodedKey> = deletes
 			.iter()
 			.filter(|delete| delete.pre == PriorSize::Unknown)
@@ -214,7 +214,11 @@ impl MetricsFlushActor {
 	}
 
 	#[inline]
-	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<HashMap<EncodedKey, u64>> {
+	fn read_prior_sizes(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<HashMap<EncodedKey, u64>, ValueError> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 && !keys.is_empty() {
 			for (key, result) in
@@ -369,7 +373,7 @@ impl Actor for MetricsFlushActor {
 }
 
 impl MetricsFlushActor {
-	fn drain_request_history(&self, pending: Vec<RequestExecutedEvent>) -> Result<()> {
+	fn drain_request_history(&self, pending: Vec<RequestExecutedEvent>) -> Result<(), ValueError> {
 		let Some((engine, _)) = &self.drain else {
 			return Ok(());
 		};
@@ -386,7 +390,7 @@ impl MetricsFlushActor {
 		Ok(())
 	}
 
-	fn drain_statement_metrics(&self) -> Result<()> {
+	fn drain_statement_metrics(&self) -> Result<(), ValueError> {
 		let Some((engine, clock)) = &self.drain else {
 			return Ok(());
 		};
@@ -421,7 +425,7 @@ fn request_parts(request: &Request) -> (&'static str, &RequestFingerprint, &[Sta
 	}
 }
 
-fn request_history_batch(pending: &[RequestExecutedEvent]) -> Result<RecordBatch> {
+fn request_history_batch(pending: &[RequestExecutedEvent]) -> Result<RecordBatch, ValueError> {
 	let parts: Vec<_> = pending.iter().map(|event| request_parts(event.request())).collect();
 	batch(vec![
 		factory::datetime("ts", pending.iter().map(|event| *event.timestamp())),
@@ -443,7 +447,7 @@ fn request_history_batch(pending: &[RequestExecutedEvent]) -> Result<RecordBatch
 fn statement_metrics_batch(
 	now: DateTime,
 	snapshot: &[(StatementFingerprint, Arc<StatementMetricsAggregate>)],
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	batch(vec![
 		factory::datetime("ts", snapshot.iter().map(|_| now)),
 		factory::utf8("fingerprint", snapshot.iter().map(|(fingerprint, _)| fingerprint.to_hex())),
@@ -490,7 +494,7 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 	}
 }
 
-fn flow_state_rows(engine: &StandardEngine, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
+fn flow_state_rows(engine: &StandardEngine, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>, ValueError> {
 	let names = engine.apply_operator_names(txn)?;
 	let library = engine.operator_store();
 	Ok(engine
@@ -537,7 +541,7 @@ fn phase_name(keyspace: KeyspaceId) -> &'static str {
 	}
 }
 
-fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
+fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>, ValueError> {
 	let mut rows = Vec::new();
 	for tier in [Tier::Buffer, Tier::Persistent] {
 		for (metric_id, combined) in reader.scan_tier(tier)? {

@@ -25,17 +25,21 @@ use reifydb_store_column::{
 	store::{ColumnStore, FsColumnStore},
 	testing::{ColumnHooks, RemoveOutcome, TestingColumnStore},
 };
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 pub const MEMORY_ROOT: &str = "/column";
 
-pub fn memory_store(fs: MemoryFs, fs_hooks: Arc<dyn TestingHooks>, hooks: Arc<dyn ColumnHooks>) -> Result<ColumnStore> {
+pub fn memory_store(
+	fs: MemoryFs,
+	fs_hooks: Arc<dyn TestingHooks>,
+	hooks: Arc<dyn ColumnHooks>,
+) -> Result<ColumnStore, ValueError> {
 	let store = FsColumnStore::new(Fs::Testing(TestingFs::new(fs, fs_hooks)), PathBuf::from(MEMORY_ROOT))?;
 	Ok(ColumnStore::Testing(TestingColumnStore::over(store, hooks)))
 }
 
 #[cfg(reifydb_target = "host")]
-pub fn host_store(dir: PathBuf, hooks: Arc<dyn ColumnHooks>) -> Result<ColumnStore> {
+pub fn host_store(dir: PathBuf, hooks: Arc<dyn ColumnHooks>) -> Result<ColumnStore, ValueError> {
 	let store = FsColumnStore::new(Fs::Host(HostFs::new()), dir)?;
 	Ok(ColumnStore::Testing(TestingColumnStore::over(store, hooks)))
 }

@@ -14,10 +14,13 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{partition::Partition, sumtype::SumTypeId};
+use reifydb_value::{
+	error::ValueError,
+	value::{partition::Partition, sumtype::SumTypeId},
+};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::series::{
 		decode_series_encoding, decode_series_time,
 		shape::{series, series_namespace},
@@ -25,7 +28,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<Series>> {
+	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<Series>, ValueError> {
 		let Some(multi) = rx.get(&[SeriesStorageKey::new(series_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -68,7 +71,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
 		partitions: &[Partition],
-	) -> Result<Vec<Option<SeriesPartitionMetadata>>> {
+	) -> Result<Vec<Option<SeriesPartitionMetadata>>, ValueError> {
 		let keys: Vec<TaggedKey> = partitions
 			.iter()
 			.map(|&partition| SeriesPartitionMetadataKey::new(series_id, partition).into())
@@ -89,7 +92,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<Series>> {
+	) -> Result<Option<Series>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSeriesKey::full_scan(namespace), RangeScope::All, 1024)?;
 

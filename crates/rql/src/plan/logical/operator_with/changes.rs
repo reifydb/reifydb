@@ -6,9 +6,9 @@ use reifydb_rql_frontend::{
 	ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue},
 	token::token::Token,
 };
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	error::RqlError,
 	plan::logical::{
 		Compiler,
@@ -20,7 +20,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_changes_with(
 		token: &Token<'bump>,
 		with: Option<&AstOperatorWith<'bump>>,
-	) -> Result<ChangesWith> {
+	) -> Result<ChangesWith, ValueError> {
 		let mut changes = ChangesWith::default();
 		for entry in entries(with) {
 			match entry.key.word() {
@@ -35,7 +35,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_insert(entry: &AstOperatorWithEntry<'_>) -> Result<InsertTo> {
+fn compile_insert(entry: &AstOperatorWithEntry<'_>) -> Result<InsertTo, ValueError> {
 	match target(entry)? {
 		"insert" => Ok(InsertTo::Insert),
 		"drop" => Ok(InsertTo::Drop),
@@ -43,7 +43,7 @@ fn compile_insert(entry: &AstOperatorWithEntry<'_>) -> Result<InsertTo> {
 	}
 }
 
-fn compile_delete(entry: &AstOperatorWithEntry<'_>) -> Result<DeleteTo> {
+fn compile_delete(entry: &AstOperatorWithEntry<'_>) -> Result<DeleteTo, ValueError> {
 	match target(entry)? {
 		"delete" => Ok(DeleteTo::Delete),
 		"insert" => Ok(DeleteTo::Insert),
@@ -52,7 +52,7 @@ fn compile_delete(entry: &AstOperatorWithEntry<'_>) -> Result<DeleteTo> {
 	}
 }
 
-fn compile_update(entry: &AstOperatorWithEntry<'_>, changes: &mut ChangesWith) -> Result<()> {
+fn compile_update(entry: &AstOperatorWithEntry<'_>, changes: &mut ChangesWith) -> Result<(), ValueError> {
 	changes.update = match target(entry)? {
 		"update" => UpdateTo::Update,
 		"insert" => UpdateTo::Insert,
@@ -63,7 +63,7 @@ fn compile_update(entry: &AstOperatorWithEntry<'_>, changes: &mut ChangesWith) -
 	Ok(())
 }
 
-fn target<'a>(entry: &'a AstOperatorWithEntry<'_>) -> Result<&'a str> {
+fn target<'a>(entry: &'a AstOperatorWithEntry<'_>) -> Result<&'a str, ValueError> {
 	match &entry.value {
 		Some(AstOperatorWithValue::Word(token)) => Ok(token.fragment.text()),
 		Some(AstOperatorWithValue::Block(settings)) => {
@@ -82,7 +82,7 @@ fn target<'a>(entry: &'a AstOperatorWithEntry<'_>) -> Result<&'a str> {
 	}
 }
 
-fn compile_on(entry: &AstOperatorWithEntry<'_>) -> Result<Vec<String>> {
+fn compile_on(entry: &AstOperatorWithEntry<'_>) -> Result<Vec<String>, ValueError> {
 	let Some(AstOperatorWithValue::Block(settings)) = &entry.value else {
 		return Ok(Vec::new());
 	};
@@ -103,8 +103,8 @@ fn compile_on(entry: &AstOperatorWithEntry<'_>) -> Result<Vec<String>> {
 		.collect()
 }
 
-fn check_changes(token: &Token<'_>, changes: &ChangesWith) -> Result<()> {
-	let refuse = |reason: &str| -> Result<()> {
+fn check_changes(token: &Token<'_>, changes: &ChangesWith) -> Result<(), ValueError> {
+	let refuse = |reason: &str| -> Result<(), ValueError> {
 		Err(RqlError::ChangesWithRefused {
 			reason: reason.to_string(),
 			fragment: token.fragment.to_owned(),
@@ -143,10 +143,11 @@ mod tests {
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
 	};
+	use reifydb_value::error::ValueError;
 
-	use crate::{Result, plan::logical::Compiler};
+	use crate::plan::logical::Compiler;
 
-	fn changes_with(source: &str) -> Result<ChangesWith> {
+	fn changes_with(source: &str) -> Result<ChangesWith, ValueError> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
 		let Some(Ast::Changes(changes)) = statements[0].nodes.first() else {

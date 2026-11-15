@@ -24,7 +24,7 @@ use reifydb_testing_chaos::{
 		scenario::{BatchSize, Scenario},
 	},
 };
-use reifydb_value::{Result, value::Value};
+use reifydb_value::{error::ValueError, value::Value};
 
 use crate::{
 	framework::harness::Harness,
@@ -161,7 +161,7 @@ impl HostOperator for Rowwise {
 		}
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		match self {
 			Rowwise::Filter(op) => HostOperator::apply(op, host, change),
 			Rowwise::Map(op) => HostOperator::apply(op, host, change),

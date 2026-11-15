@@ -43,7 +43,7 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
 		row_number::RowNumber,
@@ -85,7 +85,7 @@ impl QueueRetentionTask {
 		}
 	}
 
-	fn queues(&self) -> Result<Vec<Queue>> {
+	fn queues(&self) -> Result<Vec<Queue>, ValueError> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query_txn);
 		let mut queues = self.engine.catalog().list_queues(&mut txn)?;
@@ -110,7 +110,7 @@ impl QueueRetentionTask {
 		partition: Partition,
 		after: Option<&EncodedKey>,
 		limit: usize,
-	) -> Result<Vec<(EncodedKey, RowNumber, QueueItemStatus, u32)>> {
+	) -> Result<Vec<(EncodedKey, RowNumber, QueueItemStatus, u32)>, ValueError> {
 		let mut range = QueueItemStateKey::partition_scan(queue, partition).encode();
 		if let Some(after) = after {
 			range.start = Bound::Excluded(after.clone());
@@ -134,7 +134,13 @@ impl QueueRetentionTask {
 			.collect())
 	}
 
-	fn classify(&self, queue: QueueId, row: RowNumber, attempt: u32, cutoff: DateTime) -> Result<Option<Doomed>> {
+	fn classify(
+		&self,
+		queue: QueueId,
+		row: RowNumber,
+		attempt: u32,
+		cutoff: DateTime,
+	) -> Result<Option<Doomed>, ValueError> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let record = query_txn
 			.get(&[QueueAttemptKey::new(queue, row, attempt).into()])?
@@ -168,7 +174,7 @@ impl QueueRetentionTask {
 		}))
 	}
 
-	fn delete_items(&self, queue: QueueId, doomed: &[Doomed]) -> Result<u64> {
+	fn delete_items(&self, queue: QueueId, doomed: &[Doomed]) -> Result<u64, ValueError> {
 		let purge: Vec<&Doomed> = doomed.iter().filter(|item| !item.state_only).collect();
 		if purge.is_empty() {
 			return Ok(0);
@@ -200,7 +206,12 @@ impl QueueRetentionTask {
 		Ok(purge.len() as u64)
 	}
 
-	fn sweep_deduplication(&mut self, queue: QueueId, now: DateTime, limit: usize) -> Result<(u64, bool)> {
+	fn sweep_deduplication(
+		&mut self,
+		queue: QueueId,
+		now: DateTime,
+		limit: usize,
+	) -> Result<(u64, bool), ValueError> {
 		let range = QueueDeduplicationKey::full_scan(queue).resume_after(self.dedup_cursor.get(&queue));
 
 		let expired = self.expired_deduplication_keys(range, now, limit)?;
@@ -230,7 +241,7 @@ impl QueueRetentionTask {
 		range: TaggedKeyBoundRange,
 		now: DateTime,
 		limit: usize,
-	) -> Result<ExpiredDeduplication> {
+	) -> Result<ExpiredDeduplication, ValueError> {
 		let query_txn = self.engine.begin_query(IdentityId::system())?;
 		let stream = query_txn.range(range, RangeScope::All, limit);
 

@@ -10,10 +10,10 @@ use reifydb_transaction::{
 	change::TransactionalTestChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::instrument;
 
-use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
+use crate::{catalog::Catalog, store::sequence::system::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct TestToCreate {
@@ -25,7 +25,7 @@ pub struct TestToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::test::find", level = "trace", skip(self, txn))]
-	pub fn find_test(&self, txn: &mut Transaction<'_>, id: TestId) -> Result<Option<Test>> {
+	pub fn find_test(&self, txn: &mut Transaction<'_>, id: TestId) -> Result<Option<Test>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(test) = self.cache.find_test_at(id, cmd.version()) {
@@ -72,7 +72,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Test>> {
+	) -> Result<Option<Test>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(test) = self.cache.find_test_by_name_at(namespace, name, cmd.version()) {
@@ -115,7 +115,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::list_in_namespace", level = "trace", skip(self, txn))]
-	pub fn list_tests_in_namespace(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Test>> {
+	pub fn list_tests_in_namespace(
+		&self,
+		txn: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Vec<Test>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_tests_in_namespace_at(namespace, cmd.version()))
@@ -157,7 +161,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::list_all", level = "trace", skip(self, txn))]
-	pub fn list_all_tests(&self, txn: &mut Transaction<'_>) -> Result<Vec<Test>> {
+	pub fn list_all_tests(&self, txn: &mut Transaction<'_>) -> Result<Vec<Test>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.list_all_tests_at(cmd.version())),
 			Transaction::Admin(admin) => {
@@ -191,7 +195,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::drop", level = "info", skip(self, txn))]
-	pub fn drop_test(&self, txn: &mut AdminTransaction, id: TestId) -> Result<()> {
+	pub fn drop_test(&self, txn: &mut AdminTransaction, id: TestId) -> Result<(), ValueError> {
 		if let Some(test) = self.find_test(&mut Transaction::Admin(&mut *txn), id)? {
 			txn.track_test_deleted(test)?;
 		}
@@ -199,7 +203,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test> {
+	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test, ValueError> {
 		let id = SystemSequence::next_test_id(txn)?;
 
 		let test = Test {

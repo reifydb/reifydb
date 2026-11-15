@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::error::{RuntimeErrorKind, TypeError};
+use reifydb_value::error::{RuntimeErrorKind, TypeError, ValueError};
 
-use crate::{
-	Result,
-	vm::{exec::mask::value_is_truthy, vm::Vm},
-};
+use crate::vm::{exec::mask::value_is_truthy, vm::Vm};
 
 const MAX_ITERATIONS: usize = 10_000;
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_jump(&mut self, addr: usize) -> Result<()> {
+	pub(crate) fn exec_jump(&mut self, addr: usize) -> Result<(), ValueError> {
 		self.iteration_count += 1;
 		if self.iteration_count > MAX_ITERATIONS {
 			return Err(TypeError::Runtime {
@@ -26,7 +23,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_jump_if_false_pop(&mut self, addr: usize) -> Result<bool> {
+	pub(crate) fn exec_jump_if_false_pop(&mut self, addr: usize) -> Result<bool, ValueError> {
 		let value = self.pop_value()?;
 		if !value_is_truthy(&value) {
 			self.ip = addr;
@@ -36,7 +33,7 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	pub(crate) fn exec_jump_if_true_pop(&mut self, addr: usize) -> Result<bool> {
+	pub(crate) fn exec_jump_if_true_pop(&mut self, addr: usize) -> Result<bool, ValueError> {
 		let value = self.pop_value()?;
 		if value_is_truthy(&value) {
 			self.ip = addr;
@@ -50,12 +47,12 @@ impl<'a> Vm<'a> {
 		self.symbols.enter_scope();
 	}
 
-	pub(crate) fn exec_exit_scope(&mut self) -> Result<()> {
+	pub(crate) fn exec_exit_scope(&mut self) -> Result<(), ValueError> {
 		self.symbols.exit_scope()?;
 		Ok(())
 	}
 
-	pub(crate) fn exec_break(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
+	pub(crate) fn exec_break(&mut self, exit_scopes: usize, addr: usize) -> Result<(), ValueError> {
 		for _ in 0..exit_scopes {
 			self.symbols.exit_scope()?;
 		}
@@ -63,7 +60,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_continue(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
+	pub(crate) fn exec_continue(&mut self, exit_scopes: usize, addr: usize) -> Result<(), ValueError> {
 		for _ in 0..exit_scopes {
 			self.symbols.exit_scope()?;
 		}

@@ -4,7 +4,7 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{key::operator::state::GroupId, state::timer::TimerKind};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
@@ -50,7 +50,7 @@ impl LookupExpiry {
 		host: &mut dyn HostContext,
 		cleared: &[RowNumber],
 		armed: &[(RowNumber, DateTime)],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(retention) = self.retention else {
 			return Ok(());
 		};
@@ -71,7 +71,7 @@ impl LookupExpiry {
 		self.resync_timer(host)
 	}
 
-	pub(crate) fn free_due(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
+	pub(crate) fn free_due(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<(), ValueError> {
 		if self.retention.is_none() {
 			return Ok(());
 		}
@@ -109,7 +109,7 @@ impl LookupExpiry {
 		self.resync_timer(host)
 	}
 
-	fn resync_timer(&mut self, host: &mut dyn HostContext) -> Result<()> {
+	fn resync_timer(&mut self, host: &mut dyn HostContext) -> Result<(), ValueError> {
 		match self.index.min(host)? {
 			Some(at) => host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key()),
 			None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key()),

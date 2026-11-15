@@ -5,21 +5,22 @@ use arrow_array::RecordBatch;
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::error::diagnostic::flow::extern_column_type_unsupported;
 use reifydb_value::{
-	Result, error,
+	error,
+	error::ValueError,
 	value::{
 		column_view::{ColumnView, ViewData},
 		system_columns::user_columns,
 	},
 };
 
-pub fn ensure_marshallable(batch: &RecordBatch) -> Result<()> {
+pub fn ensure_marshallable(batch: &RecordBatch) -> Result<(), ValueError> {
 	for (field, array) in user_columns(batch) {
 		ensure_view_marshallable(&ColumnView::try_from((array, field.as_ref()))?)?;
 	}
 	Ok(())
 }
 
-pub(crate) fn ensure_view_marshallable(view: &ColumnView<'_>) -> Result<()> {
+pub(crate) fn ensure_view_marshallable(view: &ColumnView<'_>) -> Result<(), ValueError> {
 	if matches!(column_data_to_type_code(view), ValueKind::Digest) {
 		return Err(error!(extern_column_type_unsupported(view.field.name(), view.get_type())));
 	}

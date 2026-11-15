@@ -11,7 +11,7 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
-use crate::{error::Result, types::OperatorWrite};
+use crate::{error::StoreOperatorError, types::OperatorWrite};
 
 #[derive(Debug, Default, Clone, Copy)]
 struct Occupancy {
@@ -69,8 +69,8 @@ impl KeyspaceOccupancy {
 	pub fn mask(
 		&self,
 		operator: OperatorId,
-		seed: impl FnOnce() -> Result<Vec<KeyspaceId>>,
-	) -> Result<KeyspaceMask> {
+		seed: impl FnOnce() -> Result<Vec<KeyspaceId>, StoreOperatorError>,
+	) -> Result<KeyspaceMask, StoreOperatorError> {
 		if let Some(entry) = self.masks.lock().get(&operator)
 			&& entry.seeded
 		{

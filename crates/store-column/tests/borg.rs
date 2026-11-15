@@ -12,10 +12,10 @@ use reifydb_store_column::{
 	persist::{BlockHandle, serialize_block},
 	session::new_session,
 };
-use reifydb_value::{Result, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, value::value_type::ValueType};
 use vortex_session::VortexSession;
 
-fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
+fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData, ValueError> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();

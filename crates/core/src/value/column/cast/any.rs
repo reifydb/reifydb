@@ -4,8 +4,7 @@
 use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::LazyFragment,
 	value::{
 		blob::Blob,
@@ -30,7 +29,7 @@ pub fn from_any(
 	data: &ColumnView,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let name = data.field.name();
 	let any_container = match &data.data {
 		ViewData::Any {

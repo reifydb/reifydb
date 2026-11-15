@@ -19,17 +19,17 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{return_error, value::Value};
+use reifydb_value::{error::ValueError, return_error, value::Value};
 
 use super::{create_deferred_view_flow, extract_view_sort, view_storage};
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn create_deferred_view(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	symbols: &SymbolTable,
 	plan: CreateDeferredViewNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

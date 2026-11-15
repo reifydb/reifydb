@@ -575,12 +575,15 @@ mod source {
 	use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
-	use reifydb_value::value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		system_columns::{SystemColumn, with_system_column},
-		value_type::ValueType,
+	use reifydb_value::{
+		error::ValueError,
+		value::{
+			Value,
+			datetime::DateTime,
+			dictionary::{DictionaryEntryId, DictionaryId},
+			system_columns::{SystemColumn, with_system_column},
+			value_type::ValueType,
+		},
 	};
 
 	use super::values;
@@ -811,7 +814,7 @@ mod source {
 			}
 		}
 
-		fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> reifydb_value::Result<Change> {
+		fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			match self {
 				Op::Series(o) => o.apply(host, change),
 				Op::Table(o) => o.apply(host, change),

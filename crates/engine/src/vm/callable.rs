@@ -10,9 +10,9 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_policy::error::PolicyError;
 use reifydb_routine_abi::{Procedure as RoutineProcedure, context::ProcedureContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, fragment::Fragment, params::Params, value::identity::IdentityId};
 
-use crate::{Result, policy::PolicyEvaluator, vm::services::Services};
+use crate::{policy::PolicyEvaluator, vm::services::Services};
 
 pub(crate) enum CallSite<'a> {
 	Named,
@@ -36,7 +36,7 @@ pub(crate) fn invoke_procedure_routine(
 	caller: IdentityId,
 	call: ProcedureCall<'_>,
 	site: CallSite<'_>,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let session = tx.context().identity.session;
 	enforce_call_policy(services, symbols, tx, session, call.target, site)?;
 
@@ -61,7 +61,7 @@ pub(crate) fn enforce_call_policy(
 	identity: IdentityId,
 	target: &str,
 	site: CallSite<'_>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let (namespace, object) = match Catalog::split_qualified_name(target) {
 		Some((namespace, object)) => (namespace, object.to_string()),
 		None => ("default".to_string(), target.to_string()),

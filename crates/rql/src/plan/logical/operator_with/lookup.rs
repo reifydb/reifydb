@@ -6,9 +6,9 @@ use reifydb_core::{
 	row::OperatorRetention,
 };
 use reifydb_rql_frontend::ast::ast::{AstOperatorWith, AstOperatorWithEntry, AstOperatorWithValue};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	duration::{DurationBound, compile_duration},
 	plan::logical::{
 		Compiler,
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith> {
+	pub(crate) fn compile_lookup_with(with: Option<&AstOperatorWith<'bump>>) -> Result<LookupWith, ValueError> {
 		let mut lookup = LookupWith::default();
 		let mut exact = None;
 		for entry in entries(with) {
@@ -33,7 +33,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_lookup_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
+fn compile_lookup_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit, ValueError> {
 	let token = literal(entry)?;
 	match literal_boolean(token) {
 		Some(on) => Ok(Emit::from(on)),
@@ -41,7 +41,7 @@ fn compile_lookup_emit(entry: &AstOperatorWithEntry<'_>) -> Result<Emit> {
 	}
 }
 
-fn compile_lookup_retention(entry: &AstOperatorWithEntry<'_>) -> Result<OperatorRetention> {
+fn compile_lookup_retention(entry: &AstOperatorWithEntry<'_>) -> Result<OperatorRetention, ValueError> {
 	let Some(AstOperatorWithValue::Block(sides)) = &entry.value else {
 		return Err(unknown_key(entry, "a block such as { left: 10s }"));
 	};
@@ -70,11 +70,11 @@ mod tests {
 		ast::{ast::Ast, parse_str},
 		bump::Bump,
 	};
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{error::ValueError, value::duration::Duration};
 
-	use crate::{Result, plan::logical::Compiler};
+	use crate::plan::logical::Compiler;
 
-	fn lookup_with(source: &str) -> Result<LookupWith> {
+	fn lookup_with(source: &str) -> Result<LookupWith, ValueError> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
 		let Some(Ast::Lookup(lookup)) = statements[0].nodes.first() else {

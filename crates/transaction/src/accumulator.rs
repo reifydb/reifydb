@@ -14,7 +14,7 @@ use reifydb_core::{
 		consolidate::consolidate_diffs,
 	},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, value::datetime::DateTime};
 
 #[derive(Debug, Default)]
 pub(crate) enum FlowDiffNeed {
@@ -120,7 +120,7 @@ impl ChangeAccumulator {
 		offset: usize,
 		version: CommitVersion,
 		changed_at: DateTime,
-	) -> Result<Vec<Change>> {
+	) -> Result<Vec<Change>, ValueError> {
 		if offset >= self.entries.len() {
 			return Ok(Vec::new());
 		}
@@ -143,7 +143,11 @@ impl ChangeAccumulator {
 	}
 }
 
-fn build_changes(entries: Vec<(ObjectId, Diff)>, version: CommitVersion, changed_at: DateTime) -> Result<Vec<Change>> {
+fn build_changes(
+	entries: Vec<(ObjectId, Diff)>,
+	version: CommitVersion,
+	changed_at: DateTime,
+) -> Result<Vec<Change>, ValueError> {
 	let mut grouped: BTreeMap<ObjectId, Vec<Diff>> = BTreeMap::new();
 	for (id, diff) in entries {
 		grouped.entry(id).or_default().push(diff);

@@ -17,7 +17,7 @@ use reifydb_core::{
 		typed::{TypedStateStore, typed_key},
 	},
 };
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 
 use crate::operator::state::reclaim::ReclaimOutcome;
 
@@ -25,17 +25,25 @@ use crate::operator::state::reclaim::ReclaimOutcome;
 mod tests;
 
 pub trait Reaper {
-	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()>;
+	fn reap(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(GroupStateKey, EncodedPodRow)],
+	) -> Result<(), ValueError>;
 }
 
 pub trait IdentityReclaim: StateStore {
-	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>;
+	fn reclaim_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>, ValueError>;
 }
 
 pub struct StoreReaper;
 
 impl Reaper for StoreReaper {
-	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+	fn reap(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(GroupStateKey, EncodedPodRow)],
+	) -> Result<(), ValueError> {
 		let keys: Vec<GroupStateKey> = rows.iter().map(|(key, _)| key.clone()).collect();
 		store.state_remove(&keys)
 	}
@@ -50,7 +58,7 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 	)
 }
 
-pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), ValueError> {
 	reifydb_assertions! {
 		for group in groups {
 			assert!(
@@ -70,7 +78,7 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
 	store.state_set(rows)
 }
 
-pub fn enqueue_retired(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+pub fn enqueue_retired(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<(), ValueError> {
 	let rows: Vec<(GroupStateKey, EncodedPodRow)> = groups
 		.iter()
 		.filter(|group| !group.is_root())
@@ -99,7 +107,7 @@ impl DrainOutcome {
 	}
 }
 
-pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
+pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued, ValueError> {
 	let page = store.state_scan_in::<ReapQueue>(GroupId::ROOT, Bound::Unbounded, Some(limit.saturating_add(1)))?;
 	let more = page.len() > limit;
 	let groups = page.into_iter().take(limit).map(|(suffix, _)| suffix.group.0).collect();
@@ -132,7 +140,7 @@ fn bucket(rows: Vec<(GroupStateKey, EncodedPodRow)>) -> (HashMap<GroupId, GroupS
 	(buckets, last)
 }
 
-fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
+fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>, ValueError> {
 	let swept = store.group_sweep(&[group], budget, KeyspaceMask::data())?;
 	if !swept.complete {
 		return Ok(None);
@@ -147,7 +155,7 @@ pub fn drain_group<R>(
 	group: GroupId,
 	reaper: &mut R,
 	budget: usize,
-) -> Result<GroupDrain>
+) -> Result<GroupDrain, ValueError>
 where
 	R: Reaper,
 {
@@ -163,7 +171,7 @@ fn reap_scanned<R>(
 	scan: GroupScan,
 	reaper: &mut R,
 	budget: usize,
-) -> Result<GroupDrain>
+) -> Result<GroupDrain, ValueError>
 where
 	R: Reaper,
 {
@@ -218,7 +226,7 @@ fn drain_group_scanning<R>(
 	group: GroupId,
 	reaper: &mut R,
 	budget: usize,
-) -> Result<GroupDrain>
+) -> Result<GroupDrain, ValueError>
 where
 	R: Reaper,
 {
@@ -244,7 +252,7 @@ where
 	})
 }
 
-pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome>
+pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome, ValueError>
 where
 	R: Reaper,
 {
@@ -259,7 +267,7 @@ pub fn drain_groups<R>(
 	groups: &[GroupId],
 	reaper: &mut R,
 	budget: usize,
-) -> Result<DrainOutcome>
+) -> Result<DrainOutcome, ValueError>
 where
 	R: Reaper,
 {
@@ -358,7 +366,12 @@ where
 	})
 }
 
-pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R, budget: usize) -> Result<usize>
+pub fn reap_group<R>(
+	store: &mut dyn StateStore,
+	group: GroupId,
+	reaper: &mut R,
+	budget: usize,
+) -> Result<usize, ValueError>
 where
 	R: Reaper,
 {

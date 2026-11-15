@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::LookupNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, fragment::Fragment};
+use reifydb_value::{error, error::ValueError, fragment::Fragment};
 
 use crate::compiler::{CompileOperator, FlowCompiler, operator::join::extract_join_keys};
 
@@ -47,7 +47,7 @@ struct LookupRight {
 	partition_by: Vec<String>,
 }
 
-fn lookup_right(plan: &QueryPlan, fallback: &Fragment) -> Result<LookupRight> {
+fn lookup_right(plan: &QueryPlan, fallback: &Fragment) -> Result<LookupRight, ValueError> {
 	match plan {
 		QueryPlan::TableScan(node) => Ok(LookupRight {
 			object: LookupObject::Table(node.source.def().id),
@@ -99,7 +99,7 @@ fn order_left_keys(
 	right_keys: &[Expression],
 	alias: &str,
 	right: &LookupRight,
-) -> Result<Vec<Expression>> {
+) -> Result<Vec<Expression>, ValueError> {
 	let not_partition = |fragment: Fragment| error!(lookup_using_not_partition(fragment, &right.name));
 
 	let mut names = Vec::with_capacity(right_keys.len());
@@ -129,7 +129,7 @@ fn order_left_keys(
 }
 
 impl CompileOperator for LookupCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let alias_fragment = self.alias.clone().unwrap_or(Fragment::None);
 		let right = lookup_right(&self.right, &alias_fragment)?;
 		let alias = self.alias.as_ref().map(|f| f.text().to_string()).unwrap_or_else(|| right.name.clone());
@@ -223,12 +223,12 @@ mod tests {
 		}
 	}
 
-	fn order(on: &[Expression], right: &LookupRight) -> Result<Vec<Expression>> {
+	fn order(on: &[Expression], right: &LookupRight) -> Result<Vec<Expression>, ValueError> {
 		let (left_keys, right_keys) = extract_join_keys(on);
 		order_left_keys(left_keys, &right_keys, "info", right)
 	}
 
-	fn code(result: Result<Vec<Expression>>) -> String {
+	fn code(result: Result<Vec<Expression>, ValueError>) -> String {
 		result.expect_err("the shape must be rejected").diagnostic().code
 	}
 

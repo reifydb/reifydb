@@ -13,11 +13,12 @@ use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
+use crate::{CatalogStore, store::object::drop::drop_object_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
+	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<(), ValueError> {
 		let pk_id = if let Some(series_def) = Self::find_series(&mut Transaction::Admin(&mut *txn), series)? {
 			txn.remove(vec![(NamespaceSeriesKey::new(series_def.namespace, series).into(), None)])?;
 			series_def.primary_key.as_ref().map(|pk| pk.id)
@@ -34,7 +35,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn drop_series_partition_metadata(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
+	fn drop_series_partition_metadata(txn: &mut AdminTransaction, series: SeriesId) -> Result<(), ValueError> {
 		let mut keys: Vec<SeriesPartitionMetadataKey> = Vec::new();
 		{
 			let stream = txn.range(SeriesPartitionMetadataKey::full_scan(series), RangeScope::All, 1024)?;

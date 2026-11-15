@@ -10,7 +10,8 @@ use reifydb_core::{
 	key::operator::state::GroupId, row::JoinPick, sort::SortDirection,
 };
 use reifydb_value::{
-	Result, error,
+	error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	util::hash::Hash128,
@@ -31,7 +32,7 @@ use crate::operator::{
 	row_times,
 };
 
-fn instant_values(columns: &RecordBatch) -> Result<Option<Vec<Value>>> {
+fn instant_values(columns: &RecordBatch) -> Result<Option<Vec<Value>>, ValueError> {
 	let time = row_times(columns)?;
 	let created = created_at(columns)?;
 	Ok((0..columns.num_rows())
@@ -39,7 +40,7 @@ fn instant_values(columns: &RecordBatch) -> Result<Option<Vec<Value>>> {
 		.collect())
 }
 
-fn full_system_column<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>> {
+fn full_system_column<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option<ColumnView<'a>>, ValueError> {
 	let bare = name.strip_prefix('#').unwrap_or(name);
 	let Some(column) = SystemColumn::ALL.into_iter().find(|column| &column.name()[1..] == bare) else {
 		return Ok(None);
@@ -47,7 +48,7 @@ fn full_system_column<'a>(columns: &'a RecordBatch, name: &str) -> Result<Option
 	Ok(column_view(columns, column.name())?.filter(|view| view.none_count() == 0))
 }
 
-fn ordering_values(columns: &RecordBatch, pick_column: &Fragment) -> Result<Vec<Value>> {
+fn ordering_values(columns: &RecordBatch, pick_column: &Fragment) -> Result<Vec<Value>, ValueError> {
 	let name = pick_column.text();
 	let rows = columns.num_rows();
 	if let Some((field, array)) = user_columns(columns).find(|(field, _)| field.name() == name) {
@@ -73,7 +74,7 @@ fn prefers(ord: Ordering, direction: &SortDirection) -> bool {
 	}
 }
 
-pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Option<usize>> {
+pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Option<usize>, ValueError> {
 	let rows = columns.num_rows();
 	if rows == 0 {
 		return Ok(None);
@@ -82,7 +83,7 @@ pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Opt
 		.keys
 		.iter()
 		.map(|key| Ok((ordering_values(columns, &key.column)?, key.direction.clone())))
-		.collect::<Result<_>>()?;
+		.collect::<Result<_, ValueError>>()?;
 	let tail = ordering.last().map(|(_, direction)| direction.clone()).unwrap_or(SortDirection::Desc);
 	let numbers: Vec<u64> = match sequences(columns)? {
 		sequences if sequences.len() == rows => sequences.to_vec(),
@@ -114,7 +115,11 @@ pub(crate) fn winner_index(columns: &RecordBatch, pick: &JoinPick) -> Result<Opt
 	Ok(winner)
 }
 
-fn read_slot(host: &mut dyn HostContext, right: &Store, group: GroupId) -> Result<Option<(RowNumber, EncodedBytes)>> {
+fn read_slot(
+	host: &mut dyn HostContext,
+	right: &Store,
+	group: GroupId,
+) -> Result<Option<(RowNumber, EncodedBytes)>, ValueError> {
 	let held = right.rows_for_group(host, group, None, 2)?;
 	reifydb_assertions! {
 		assert!(
@@ -133,7 +138,7 @@ pub(crate) fn winning_right_row(
 	host: &mut dyn HostContext,
 	right: &Store,
 	group: GroupId,
-) -> Result<Option<(RowNumber, EncodedBytes, RecordBatch)>> {
+) -> Result<Option<(RowNumber, EncodedBytes, RecordBatch)>, ValueError> {
 	let Some((number, content)) = read_slot(host, right, group)? else {
 		return Ok(None);
 	};
@@ -146,7 +151,7 @@ pub(crate) fn read_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	Ok(winning_right_row(host, right, right.group_of(key_hash))?.map(|(_, _, columns)| columns))
 }
 
@@ -163,7 +168,7 @@ pub(crate) fn write_right_rows(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<SlotChange> {
+) -> Result<SlotChange, ValueError> {
 	if indices.is_empty() {
 		return Ok(SlotChange {
 			old: None,
@@ -186,7 +191,7 @@ fn pick_and_write(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<SlotChange> {
+) -> Result<SlotChange, ValueError> {
 	let encoded = rows.encoded(host, right)?;
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
@@ -228,7 +233,7 @@ pub(crate) fn overwrite_right_slot(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<(Option<RecordBatch>, Option<RecordBatch>)> {
+) -> Result<(Option<RecordBatch>, Option<RecordBatch>), ValueError> {
 	if indices.is_empty() {
 		return Ok((read_right_slot(host, right, key_hash)?, None));
 	}
@@ -249,7 +254,7 @@ pub(crate) fn replace_right_slot(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<(Option<RecordBatch>, Option<RecordBatch>)> {
+) -> Result<(Option<RecordBatch>, Option<RecordBatch>), ValueError> {
 	let group = right.group_of(key_hash);
 	let held = read_slot(host, right, group)?;
 	let old = held.clone().map(|held| columns_from_block(host, right, vec![held])).transpose()?;
@@ -277,7 +282,7 @@ pub(crate) fn remove_right_rows(
 	right: &Store,
 	key_hash: &Hash128,
 	numbers: &[RowNumber],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let group = right.group_of(key_hash);
 	let Some((held, _)) = read_slot(host, right, group)? else {
 		return Ok(());
@@ -294,7 +299,7 @@ pub(crate) fn republish(
 	pre: (&RecordBatch, Option<&RecordBatch>),
 	post: (&RecordBatch, Option<&RecordBatch>),
 	indices: &[usize],
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let withdrawn = operator.latest_columns(host, pre.0, indices, pre.1, Identity::Existing)?;
 	let published = operator.latest_columns(host, post.0, indices, post.1, Identity::Mint)?;
 	let mut out = Vec::new();
@@ -314,7 +319,7 @@ pub(crate) fn republish_slots(
 	indices: &[usize],
 	pre: (&RecordBatch, &[Option<usize>]),
 	post: (&RecordBatch, &[Option<usize>]),
-) -> Result<Vec<Diff>> {
+) -> Result<Vec<Diff>, ValueError> {
 	let withdrawn = operator.latest_columns_slots(host, left, indices, pre.0, pre.1, Identity::Existing)?;
 	let published = operator.latest_columns_slots(host, left, indices, post.0, post.1, Identity::Mint)?;
 	let mut out = Vec::new();

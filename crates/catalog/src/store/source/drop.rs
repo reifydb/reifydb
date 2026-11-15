@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{catalog::SourceKey, namespace::NamespaceSourceKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_source(txn: &mut AdminTransaction, object_id: SourceId) -> Result<()> {
+	pub(crate) fn drop_source(txn: &mut AdminTransaction, object_id: SourceId) -> Result<(), ValueError> {
 		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), object_id)?;
 
 		if let Some(source) = source {

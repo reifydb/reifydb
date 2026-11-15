@@ -26,19 +26,16 @@ use reifydb_core::{
 };
 #[cfg(feature = "runtime")]
 use reifydb_value::value::system_columns::system_column;
+#[cfg(feature = "runtime")]
+use reifydb_value::value::{container::temporal_array::datetimes, duration::Duration};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		column_view::ViewData,
 		container::temporal_array::{datetime_array, datetime_timezone, datetime_to_native},
 		datetime::DateTime,
 		system_columns::{SystemColumn, column_view, with_system_column},
 	},
-};
-#[cfg(feature = "runtime")]
-use reifydb_value::{
-	error::ValueError,
-	value::{container::temporal_array::datetimes, duration::Duration},
 };
 
 #[cfg(feature = "runtime")]
@@ -135,13 +132,13 @@ pub trait HostOperator: Send {
 		InputOrder::Declared
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError>;
 
-	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		Ok(None)
 	}
 
-	fn on_tick(&mut self, _host: &mut dyn HostContext) -> Result<Option<TimedOutput>> {
+	fn on_tick(&mut self, _host: &mut dyn HostContext) -> Result<Option<TimedOutput>, ValueError> {
 		Ok(None)
 	}
 
@@ -149,7 +146,11 @@ pub trait HostOperator: Send {
 		false
 	}
 
-	fn on_timers(&mut self, _host: &mut dyn HostContext, _timers: Vec<Timer>) -> Result<Vec<Option<TimedOutput>>> {
+	fn on_timers(
+		&mut self,
+		_host: &mut dyn HostContext,
+		_timers: Vec<Timer>,
+	) -> Result<Vec<Option<TimedOutput>>, ValueError> {
 		internal_err!("operator {} does not batch timers", self.id().0)
 	}
 
@@ -173,7 +174,7 @@ pub trait HostOperator: Send {
 #[cfg(feature = "runtime")]
 pub type BoxedHostOperator = Box<dyn HostOperator>;
 
-pub fn max_input_time(change: &Change) -> Result<Option<DateTime>> {
+pub fn max_input_time(change: &Change) -> Result<Option<DateTime>, ValueError> {
 	let mut latest = None;
 	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
 		latest = latest.max(time_array(columns)?.and_then(max).map(DateTime::from_nanos));
@@ -182,7 +183,7 @@ pub fn max_input_time(change: &Change) -> Result<Option<DateTime>> {
 }
 
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
-pub(crate) fn stamp_output_created(diffs: &mut Diffs, at: DateTime) -> Result<()> {
+pub(crate) fn stamp_output_created(diffs: &mut Diffs, at: DateTime) -> Result<(), ValueError> {
 	for diff in diffs.iter_mut() {
 		for columns in diff.batches_mut() {
 			let rows = columns.num_rows();
@@ -198,7 +199,7 @@ pub(crate) fn stamp_output_created(diffs: &mut Diffs, at: DateTime) -> Result<()
 	Ok(())
 }
 
-fn time_array(columns: &RecordBatch) -> Result<Option<&TimestampNanosecondArray>> {
+fn time_array(columns: &RecordBatch) -> Result<Option<&TimestampNanosecondArray>, ValueError> {
 	let Some(view) = column_view(columns, SystemColumn::Time.name())? else {
 		return Ok(None);
 	};
@@ -209,7 +210,7 @@ fn time_array(columns: &RecordBatch) -> Result<Option<&TimestampNanosecondArray>
 }
 
 #[cfg(feature = "runtime")]
-pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> {
+pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>, ValueError> {
 	let Some(view) = column_view(columns, SystemColumn::Time.name())? else {
 		return Ok(Vec::new());
 	};
@@ -224,7 +225,7 @@ pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> 
 }
 
 #[cfg(feature = "runtime")]
-pub(crate) fn time_at_or_after(batch: &RecordBatch, from: DateTime) -> Result<BooleanArray> {
+pub(crate) fn time_at_or_after(batch: &RecordBatch, from: DateTime) -> Result<BooleanArray, ValueError> {
 	let Some(times) = system_column(batch, SystemColumn::Time) else {
 		return Ok(BooleanArray::from(vec![true; batch.num_rows()]));
 	};

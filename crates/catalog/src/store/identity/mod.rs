@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{catalog::identity::Identity, store::MultiVersionRow};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::store::identity::shape::identity;
 
@@ -14,7 +14,7 @@ pub mod list;
 pub mod shape;
 pub mod update;
 
-pub(crate) fn convert_identity<K>(multi: MultiVersionRow<K>) -> Result<Identity> {
+pub(crate) fn convert_identity<K>(multi: MultiVersionRow<K>) -> Result<Identity, ValueError> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = identity::get_identity(&bytes);
 	let name = identity::get_name(&bytes).to_string();

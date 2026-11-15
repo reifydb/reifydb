@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::JoinType;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	ast::{ast::AstLookup, parse::Parser},
 	token::{
 		keyword::Keyword::{Inner, Left, Lookup},
@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_lookup(&mut self, join_type: JoinType) -> Result<AstLookup<'bump>> {
+	pub(crate) fn parse_lookup(&mut self, join_type: JoinType) -> Result<AstLookup<'bump>, ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = match join_type {
 			JoinType::Inner => self.consume_keyword(Inner)?,

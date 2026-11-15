@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::{catalog::BindingKey, namespace::NamespaceBindingKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_binding(txn: &mut AdminTransaction, binding_id: BindingId) -> Result<()> {
+	pub(crate) fn drop_binding(txn: &mut AdminTransaction, binding_id: BindingId) -> Result<(), ValueError> {
 		let binding = CatalogStore::find_binding(&mut Transaction::Admin(&mut *txn), binding_id)?;
 
 		if let Some(binding) = binding {

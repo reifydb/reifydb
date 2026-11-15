@@ -28,7 +28,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::RangeScope, transaction::admin::AdminTransaction,
 };
-use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec, value::identity::IdentityId};
 
 use crate::common::{create_test_transaction, deferred_params};
 
@@ -299,8 +299,10 @@ fn test_scan_only_pending() {
 	txn.set(vec![make_key("a")], vec![make_value("1")]).unwrap();
 	txn.set(vec![make_key("c")], vec![make_value("3")]).unwrap();
 
-	let items: Vec<_> =
-		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+	let items: Vec<_> = txn
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, ValueError>>()
+		.unwrap();
 
 	assert_eq!(items.len(), 3);
 	assert_eq!(items[0].key, make_typed_key("a").into());
@@ -324,8 +326,10 @@ fn test_scan_filters_removes() {
 	txn.remove(vec![make_key("b")]).unwrap();
 	txn.set(vec![make_key("c")], vec![make_value("3")]).unwrap();
 
-	let items: Vec<_> =
-		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+	let items: Vec<_> = txn
+		.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, ValueError>>()
+		.unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("a").into());
@@ -373,7 +377,7 @@ fn test_range_only_pending() {
 		start: Included(key_bound("b")),
 		end: Excluded(key_bound("d")),
 	};
-	let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+	let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>, ValueError>>().unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("b").into());
@@ -412,8 +416,10 @@ fn test_prefix_only_pending() {
 	txn.set(vec![make_key("test_b")], vec![make_value("2")]).unwrap();
 	txn.set(vec![make_key("other_c")], vec![make_value("3")]).unwrap();
 
-	let items: Vec<_> =
-		txn.range(prefix_range("test_"), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+	let items: Vec<_> = txn
+		.range(prefix_range("test_"), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, ValueError>>()
+		.unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("test_a").into());

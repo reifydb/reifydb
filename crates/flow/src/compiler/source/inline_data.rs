@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::OperatorId};
 use reifydb_rql::nodes::InlineDataNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -21,7 +21,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 }
 
 impl CompileOperator for InlineDataCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		compiler.add_node(txn, OperatorDef::SourceInlineData {})
 	}
 }

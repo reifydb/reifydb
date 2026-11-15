@@ -9,12 +9,12 @@ use reifydb_core::{
 	key::{catalog::SumTypeKey, namespace::NamespaceSumTypeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use serde_json::to_string;
 
 use super::shape::{sumtype as sumtype_shape, sumtype_namespace};
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::sequence::system::SystemSequence,
 };
@@ -27,7 +27,10 @@ pub struct SumTypeToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_sumtype(txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumType> {
+	pub(crate) fn create_sumtype(
+		txn: &mut AdminTransaction,
+		to_create: SumTypeToCreate,
+	) -> Result<SumType, ValueError> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_existing) = CatalogStore::find_sumtype_by_name(
@@ -209,7 +212,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

@@ -7,15 +7,14 @@ use arrow_array::RecordBatch;
 use reifydb_core::internal_error;
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{error::ValueError, params::Params, value::identity::IdentityId};
 
 use crate::{
-	Result,
 	flow_sync::{load_flow_diff_need, sync_transactional_views},
 	vm::{services::Services, vm::Vm},
 };
 
-fn reject_query_txn(tx: &Transaction<'_>) -> Result<()> {
+fn reject_query_txn(tx: &Transaction<'_>) -> Result<(), ValueError> {
 	if matches!(tx, Transaction::Query(_)) {
 		return Err(internal_error!("Mutation operations cannot be executed in a query transaction"));
 	}
@@ -29,7 +28,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		params: &Params,
 		handler: F,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
 		F: FnOnce(
 			&Arc<Services>,
@@ -37,7 +36,7 @@ impl<'a> Vm<'a> {
 			Params,
 			&SymbolTable,
 			IdentityId,
-		) -> Result<RecordBatch>,
+		) -> Result<RecordBatch, ValueError>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
@@ -53,9 +52,14 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		handler: F,
-	) -> Result<()>
+	) -> Result<(), ValueError>
 	where
-		F: FnOnce(&Arc<Services>, &mut Transaction<'_>, &mut SymbolTable, IdentityId) -> Result<RecordBatch>,
+		F: FnOnce(
+			&Arc<Services>,
+			&mut Transaction<'_>,
+			&mut SymbolTable,
+			IdentityId,
+		) -> Result<RecordBatch, ValueError>,
 	{
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();

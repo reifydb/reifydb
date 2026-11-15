@@ -12,6 +12,7 @@ use reifydb_core::{
 use reifydb_rql::nodes::CreateSumTypeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -20,7 +21,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(super) trait SumTypeExpandable: Sized {
 	fn name(&self) -> &Fragment;
@@ -83,7 +84,7 @@ pub(super) fn expand_sumtype_columns<C: SumTypeExpandable>(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	columns: Vec<C>,
-) -> Result<Vec<C>> {
+) -> Result<Vec<C>, ValueError> {
 	let mut expanded = Vec::with_capacity(columns.len());
 
 	for col in columns {
@@ -128,7 +129,7 @@ pub(crate) fn create_sumtype(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSumTypeNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(existing) = services.catalog.find_sumtype_by_name(
 		&mut Transaction::Admin(&mut *txn),
 		plan.namespace.id(),

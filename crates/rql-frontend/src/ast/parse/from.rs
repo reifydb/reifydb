@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
 		identifier::UnresolvedObjectIdentifier,
@@ -22,7 +23,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_from(&mut self) -> Result<AstFrom<'bump>> {
+	pub(crate) fn parse_from(&mut self) -> Result<AstFrom<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::From)?;
 
 		let is_inline = if let Ok(current) = self.current() {
@@ -150,7 +151,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn parse_static(&mut self) -> Result<AstList<'bump>> {
+	pub(crate) fn parse_static(&mut self) -> Result<AstList<'bump>, ValueError> {
 		let token = self.consume_operator(OpenBracket)?;
 
 		let mut nodes = Vec::new();

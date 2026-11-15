@@ -39,18 +39,16 @@ use reifydb_store_commit::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	util::{cowvec::CowVec, hex::display},
 };
 use tracing::instrument;
 
 use super::StandardMultiStore;
-use crate::{
-	Result,
-	tier::{
-		TierStorage,
-		persistent::{MultiPersistentTier, NarrowRangeRequest, PersistentRangeLayout},
-		range::{NarrowLayout, ServedChunk, resume_after},
-	},
+use crate::tier::{
+	TierStorage,
+	persistent::{MultiPersistentTier, NarrowRangeRequest, PersistentRangeLayout},
+	range::{NarrowLayout, ServedChunk, resume_after},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
@@ -99,7 +97,7 @@ impl MultiVersionGet for StandardMultiStore {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -124,7 +122,7 @@ impl MultiVersionGet for StandardMultiStore {
 
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<(), ValueError> {
 		let classified = classify_deltas(&deltas);
 
 		self.update_read_cache_on_commit(&classified.batches);
@@ -199,7 +197,7 @@ impl StandardMultiStore {
 		ctx: &TransactionContext,
 		keys: &[EncodedKey],
 		version: CommitVersion,
-	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
+	) -> Result<HashMap<EncodedKey, VersionedGetResult>, ValueError> {
 		let mut by_table: HashMap<EntryKind, Vec<ClassifiedKey<'_>>> = HashMap::new();
 		for key in keys {
 			let (table, storage_key) = storage_key(key);
@@ -235,7 +233,7 @@ impl StandardMultiStore {
 		table: EntryKind,
 		table_keys: &[ClassifiedKey<'_>],
 		version: CommitVersion,
-	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>, Vec<VersionedGetResult>)> {
+	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>, Vec<VersionedGetResult>), ValueError> {
 		let key_slices: Vec<&[u8]> = table_keys.iter().map(|routed| routed.key.as_ref()).collect();
 
 		let commit_results = self.probe_commit_batch(ctx, table, &key_slices, version)?;
@@ -258,7 +256,7 @@ impl StandardMultiStore {
 		table: EntryKind,
 		key_slices: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>, ValueError> {
 		TierStorage::get(&self.commit, ctx, table, key_slices, version)
 	}
 
@@ -271,7 +269,7 @@ impl StandardMultiStore {
 		key_slices: &[&[u8]],
 		commit_results: &[VersionedGetResult],
 		version: CommitVersion,
-	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>)> {
+	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>), ValueError> {
 		let mut read_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
 		let mut persistent_idx: Vec<usize> = Vec::new();
 		let mut persistent_slices: Vec<&[u8]> = Vec::new();
@@ -361,7 +359,7 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
+	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<(), ValueError> {
 		self.commit.set(version, batches);
 		Ok(())
 	}
@@ -422,7 +420,7 @@ pub fn scan_tier_chunk<S: TierStorage>(
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let batch = storage.range_next(
 		ctx,
 		scan.table,
@@ -441,7 +439,7 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let batch = storage.range_rev_next(
 		ctx,
 		scan.table,
@@ -459,7 +457,7 @@ fn merge_tier_batch(
 	batch: RangeBatch,
 	range: &EncodedKeyRange,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for entry in batch.entries {
 		if !range.contains(&entry.key) {
 			continue;
@@ -483,7 +481,7 @@ fn merge_tier_batch(
 #[inline]
 fn decode_range_rows(
 	collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<Vec<MultiVersionRow<TaggedKey>>> {
+) -> Result<Vec<MultiVersionRow<TaggedKey>>, ValueError> {
 	let mut items = Vec::with_capacity(collected.len());
 	for (key, (version, value)) in collected {
 		let Some(bytes) = value else {
@@ -505,7 +503,7 @@ fn decode_range_rows(
 pub fn collected_to_batch(
 	collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 	has_more: bool,
-) -> Result<MultiVersionBatch<TaggedKey>> {
+) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 	Ok(MultiVersionBatch {
 		items: decode_range_rows(collected)?,
 		has_more,
@@ -521,7 +519,7 @@ fn step_all_tiers(
 	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if let Some(s) = buffer
 		&& !buffer_cursor.is_exhausted()
 	{
@@ -542,7 +540,7 @@ pub fn scan_tiers_latest(
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	max_keys: usize,
-) -> Result<MultiVersionBatch<TaggedKey>> {
+) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 	let table = classify_key_range(&range);
 	let (start, end) = make_range_bounds(&range);
 	let scan = TierScanQuery {
@@ -593,7 +591,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<TaggedKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -732,7 +730,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<TaggedKey>> {
+	) -> Result<MultiVersionBatch<TaggedKey>, ValueError> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -800,7 +798,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(persistent) = &self.persistent else {
 			return Ok(());
 		};
@@ -820,7 +818,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Option<Result<()>> {
+	) -> Option<Result<(), ValueError>> {
 		let (Some(range), true) = (&self.range, scan.table.caches_ranges()) else {
 			return None;
 		};
@@ -847,7 +845,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let resumed_at = cursor.persistent.last_key().cloned();
 		let head_token = self.range.as_ref().map(|range| range.head_token());
 		let retractions = self.range.as_ref().map(|range| range.retractions());
@@ -899,7 +897,7 @@ impl StandardMultiStore {
 		retractions: Option<u64>,
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let (Some(range), Some(head_token), Some(retractions), true) =
 			(&self.range, head_token, retractions, scan.table.caches_ranges())
 		else {
@@ -1059,7 +1057,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		ctx: &TransactionContext,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
-	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>, ValueError> {
 		if keys.is_empty() || before_version.0 == 0 {
 			return Ok(keys.iter().map(|_| None).collect());
 		}
@@ -1095,7 +1093,7 @@ pub struct MultiVersionRangeIter {
 }
 
 impl Iterator for MultiVersionRangeIter {
-	type Item = Result<MultiVersionRow<TaggedKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -1136,7 +1134,7 @@ pub type MultiVersionRowRangeIter = NarrowRangeIter<StorageRowKey>;
 pub type MultiVersionPartitionedRowRangeIter = NarrowRangeIter<StoragePartitionedRowKey>;
 
 impl<L: PersistentRangeLayout> Iterator for NarrowRangeIter<L> {
-	type Item = Result<MultiVersionRow<L>>;
+	type Item = Result<MultiVersionRow<L>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -1221,7 +1219,7 @@ pub struct MultiVersionRangeRevIter {
 }
 
 impl Iterator for MultiVersionRangeRevIter {
-	type Item = Result<MultiVersionRow<TaggedKey>>;
+	type Item = Result<MultiVersionRow<TaggedKey>, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -1296,7 +1294,7 @@ mod cache_tests {
 	use reifydb_runtime::context::{RuntimeContext, transaction::TransactionContext};
 	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{
-		Result as ValueResult, byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber,
+		byte_size::ByteSize, cow_vec, error::ValueError, util::cowvec::CowVec, value::row_number::RowNumber,
 	};
 
 	use super::{
@@ -1310,12 +1308,12 @@ mod cache_tests {
 	struct NoWalCheckpoint;
 
 	impl WalCheckpoint for NoWalCheckpoint {
-		fn make_durable(&self) -> ValueResult<CommitVersion> {
+		fn make_durable(&self) -> Result<CommitVersion, ValueError> {
 			// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
 			Ok(CommitVersion(i64::MAX as u64))
 		}
 
-		fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+		fn saved_through(&self, _version: CommitVersion) -> Result<(), ValueError> {
 			Ok(())
 		}
 	}
@@ -2670,7 +2668,7 @@ impl StandardMultiStore {
 		end: Bound<StorageRowKey>,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<StorageRowKey>> {
+	) -> Result<MultiVersionBatch<StorageRowKey>, ValueError> {
 		self.range_next_narrow::<StorageRowKey>(ctx, cursor, storage, start, end, scope, batch_size)
 	}
 
@@ -2683,7 +2681,7 @@ impl StandardMultiStore {
 		end: Bound<L>,
 		scope: MultiVersionScope,
 		batch_size: u64,
-	) -> Result<MultiVersionBatch<L>> {
+	) -> Result<MultiVersionBatch<L>, ValueError> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),

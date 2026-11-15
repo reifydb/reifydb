@@ -7,7 +7,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 };
 use reifydb_flow::operator::append::AppendOperator;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	operator::{HostOperator, TimedOutput, host::HostContext},
@@ -29,11 +29,11 @@ impl HostOperator for AppendOperator {
 		None
 	}
 
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		self.apply(change)
 	}
 
-	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<TimedOutput>, ValueError> {
 		Ok(None)
 	}
 

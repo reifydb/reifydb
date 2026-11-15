@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::change::Diff, internal_err};
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
@@ -58,7 +58,7 @@ impl<'a> BuiltinHooks<'a> {
 		}
 	}
 
-	fn emit_row(&self, row_number: RowNumber, time: DateTime, row: BuiltinRow) -> Result<EmitRow> {
+	fn emit_row(&self, row_number: RowNumber, time: DateTime, row: BuiltinRow) -> Result<EmitRow, ValueError> {
 		let Some(group_values) = self.group_values.get(&row.group).cloned() else {
 			return internal_err!("window result for group {:?} has no routed group values", row.group);
 		};
@@ -95,7 +95,7 @@ impl WindowHooks for BuiltinHooks<'_> {
 		})
 	}
 
-	fn emit(&mut self, emits: WindowEmits<BuiltinRow>) -> Result<Vec<Diff>> {
+	fn emit(&mut self, emits: WindowEmits<BuiltinRow>) -> Result<Vec<Diff>, ValueError> {
 		let mut inserts = Vec::with_capacity(emits.inserts.len());
 		for (row_number, time, row) in emits.inserts {
 			inserts.push(self.emit_row(row_number, time, row)?);

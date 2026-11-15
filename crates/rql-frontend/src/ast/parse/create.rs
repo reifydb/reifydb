@@ -16,7 +16,6 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
@@ -197,7 +196,7 @@ struct ParsedEviction<'bump> {
 fn apply_ttl_eviction<'bump>(
 	settings: &mut Option<AstRowSettings<'bump>>,
 	eviction: Option<ParsedEviction<'bump>>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some((token, ttl)) = eviction.and_then(|eviction| eviction.ttl) else {
 		return Ok(());
 	};
@@ -209,7 +208,7 @@ fn apply_ttl_eviction<'bump>(
 }
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_create(&mut self) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create(&mut self) -> Result<AstCreate<'bump>, ValueError> {
 		let token = self.consume_keyword(Create)?;
 
 		let or_replace = if (self.consume_if(TokenKind::Operator(Or))?).is_some() {
@@ -453,7 +452,7 @@ impl<'bump> Parser<'bump> {
 		unimplemented!();
 	}
 
-	fn parse_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -517,7 +516,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_test_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_test_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -581,7 +580,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_test(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_test(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -661,7 +660,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_procedure_with(&mut self) -> Result<RunAs> {
+	fn parse_procedure_with(&mut self) -> Result<RunAs, ValueError> {
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_none() {
 			return Ok(RunAs::default());
 		}
@@ -714,7 +713,7 @@ impl<'bump> Parser<'bump> {
 		Ok(run_as.unwrap_or_default())
 	}
 
-	fn parse_procedure_params(&mut self) -> Result<Vec<AstProcedureParam<'bump>>> {
+	fn parse_procedure_params(&mut self) -> Result<Vec<AstProcedureParam<'bump>>, ValueError> {
 		let mut params = Vec::new();
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -749,7 +748,7 @@ impl<'bump> Parser<'bump> {
 		Ok(params)
 	}
 
-	fn parse_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -776,7 +775,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -870,7 +869,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_series(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_series(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1046,7 +1045,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_deferred_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_deferred_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1112,7 +1111,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn consume_word(&mut self, word: &str) -> Result<bool> {
+	pub(crate) fn consume_word(&mut self, word: &str) -> Result<bool, ValueError> {
 		if self.is_eof() {
 			return Ok(false);
 		}
@@ -1124,7 +1123,7 @@ impl<'bump> Parser<'bump> {
 		Ok(false)
 	}
 
-	pub(crate) fn expect_word(&mut self, word: &str) -> Result<()> {
+	pub(crate) fn expect_word(&mut self, word: &str) -> Result<(), ValueError> {
 		if self.consume_word(word)? {
 			return Ok(());
 		}
@@ -1135,7 +1134,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		hint: ViewStorageKindHint,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1173,7 +1172,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_windowed_view_group_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Vec<AstWindowedViewGroupMember<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Vec<AstWindowedViewGroupMember<'bump>>), ValueError> {
 		let open = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut members: Option<Vec<AstWindowedViewGroupMember<'bump>>> = None;
@@ -1285,7 +1284,7 @@ impl<'bump> Parser<'bump> {
 		Ok((storage_kind, members))
 	}
 
-	fn parse_windowed_view_group_members(&mut self) -> Result<Vec<AstWindowedViewGroupMember<'bump>>> {
+	fn parse_windowed_view_group_members(&mut self) -> Result<Vec<AstWindowedViewGroupMember<'bump>>, ValueError> {
 		self.consume_operator(Operator::OpenBracket)?;
 		let mut members = Vec::new();
 		loop {
@@ -1301,7 +1300,7 @@ impl<'bump> Parser<'bump> {
 		Ok(members)
 	}
 
-	fn parse_windowed_view_group_member(&mut self) -> Result<AstWindowedViewGroupMember<'bump>> {
+	fn parse_windowed_view_group_member(&mut self) -> Result<AstWindowedViewGroupMember<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 		let mut view = None;
 		let mut duration = None;
@@ -1365,7 +1364,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_member_with_entry(&mut self, key: Token<'bump>) -> Result<AstOperatorWithEntry<'bump>> {
+	fn parse_member_with_entry(&mut self, key: Token<'bump>) -> Result<AstOperatorWithEntry<'bump>, ValueError> {
 		Ok(AstOperatorWithEntry {
 			key: AstOperatorWithKey::Word(key),
 			value: Some(self.parse_operator_with_value()?),
@@ -1376,7 +1375,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		hint: ViewStorageKindHint,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1399,7 +1398,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_deferred_queue_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_deferred_queue_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1486,7 +1485,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_transactional_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_transactional_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1554,7 +1553,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		hint: ViewStorageKindHint,
-	) -> Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1576,7 +1575,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_table(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_table(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -1669,7 +1668,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1818,7 +1817,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_queue(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_queue(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1902,7 +1901,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_queue_fifo(&mut self, token: Token<'bump>) -> Result<AstQueueFifo<'bump>> {
+	fn parse_queue_fifo(&mut self, token: Token<'bump>) -> Result<AstQueueFifo<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut ordered_by = None;
@@ -1943,7 +1942,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_queue_deduplicate(&mut self, token: Token<'bump>) -> Result<AstQueueDeduplicate<'bump>> {
+	fn parse_queue_deduplicate(&mut self, token: Token<'bump>) -> Result<AstQueueDeduplicate<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut by = Vec::new();
@@ -2001,7 +2000,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_queue_retention(&mut self) -> Result<AstQueueRetention<'bump>> {
+	fn parse_queue_retention(&mut self) -> Result<AstQueueRetention<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut done = None;
@@ -2041,7 +2040,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_queue_retry(&mut self) -> Result<AstQueueRetry<'bump>> {
+	fn parse_queue_retry(&mut self) -> Result<AstQueueRetry<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut attempts = None;
@@ -2086,7 +2085,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn consume_queue_option_key(&mut self, expected: &str) -> Result<Token<'bump>> {
+	fn consume_queue_option_key(&mut self, expected: &str) -> Result<Token<'bump>, ValueError> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Identifier => self.consume_identifier(),
@@ -2094,7 +2093,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_time_declaration(&mut self) -> Result<AstTimeDeclaration<'bump>> {
+	fn parse_time_declaration(&mut self) -> Result<AstTimeDeclaration<'bump>, ValueError> {
 		if let Some(token) = self.consume_if(TokenKind::Literal(Literal::None))? {
 			return Ok(AstTimeDeclaration::None(token));
 		}
@@ -2125,7 +2124,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_partition_config(&mut self) -> Result<Vec<String>> {
+	fn parse_partition_config(&mut self) -> Result<Vec<String>, ValueError> {
 		let mut partition_by: Vec<String> = Vec::new();
 		self.consume_operator(Operator::OpenCurly)?;
 		loop {
@@ -2183,7 +2182,7 @@ impl<'bump> Parser<'bump> {
 		Ok(partition_by)
 	}
 
-	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>> {
+	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>, ValueError> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -2251,7 +2250,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		self.consume_keyword(Keyword::On)?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -2268,7 +2267,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_create_column_property(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_create_column_property(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		self.consume_keyword(Keyword::On)?;
 
 		let column = self.parse_column_identifier()?;
@@ -2327,7 +2326,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_dictionary(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_dictionary(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -2360,7 +2359,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_enum(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_enum(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -2418,7 +2417,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_type(&mut self) -> Result<AstType<'bump>> {
+	pub(crate) fn parse_type(&mut self) -> Result<AstType<'bump>, ValueError> {
 		let ty_token = self.consume_identifier()?;
 
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
@@ -2447,7 +2446,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn parse_type_parameters(&mut self) -> Result<Vec<AstTypeParameter<'bump>>> {
+	pub(crate) fn parse_type_parameters(&mut self) -> Result<Vec<AstTypeParameter<'bump>>, ValueError> {
 		self.consume_operator(Operator::OpenParen)?;
 		let mut params = vec![self.parse_type_parameter()?];
 		while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
@@ -2457,7 +2456,7 @@ impl<'bump> Parser<'bump> {
 		Ok(params)
 	}
 
-	fn parse_type_parameter(&mut self) -> Result<AstTypeParameter<'bump>> {
+	fn parse_type_parameter(&mut self) -> Result<AstTypeParameter<'bump>, ValueError> {
 		match self.current()?.kind {
 			TokenKind::Identifier | TokenKind::Keyword(_) => Ok(AstTypeParameter::Type(self.parse_type()?)),
 			TokenKind::Literal(kind) => Ok(AstTypeParameter::Literal(self.parse_literal(kind)?)),
@@ -2465,7 +2464,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_columns(&mut self) -> Result<Vec<AstColumnToCreate<'bump>>> {
+	fn parse_columns(&mut self) -> Result<Vec<AstColumnToCreate<'bump>>, ValueError> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -2490,7 +2489,7 @@ impl<'bump> Parser<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn parse_column(&mut self) -> Result<AstColumnToCreate<'bump>> {
+	pub(crate) fn parse_column(&mut self) -> Result<AstColumnToCreate<'bump>, ValueError> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume_identifier()?;
@@ -2531,7 +2530,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_column_properties(&mut self) -> Result<Vec<AstColumnProperty<'bump>>> {
+	fn parse_column_properties(&mut self) -> Result<Vec<AstColumnProperty<'bump>>, ValueError> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -2624,7 +2623,7 @@ impl<'bump> Parser<'bump> {
 		Ok(properties)
 	}
 
-	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -2673,7 +2672,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -2739,7 +2738,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_migration(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_migration(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let name = match &self.current()?.kind {
 			TokenKind::Literal(Literal::Text) => {
 				let text = self.current()?.fragment.text().to_string();
@@ -2862,7 +2861,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_view_as_clause(&mut self) -> Result<Option<AstStatement<'bump>>> {
+	fn parse_view_as_clause(&mut self) -> Result<Option<AstStatement<'bump>>, ValueError> {
 		if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
 
@@ -2898,7 +2897,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_view_capacity(&mut self) -> Result<u64> {
+	fn parse_view_capacity(&mut self) -> Result<u64, ValueError> {
 		let token = self.consume(TokenKind::Literal(Literal::Number))?;
 		token.fragment.text().parse::<u64>().map_err(|_| {
 			let fragment = token.fragment.to_owned();
@@ -2912,7 +2911,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_timestamp_precision(&mut self) -> Result<AstTimestampPrecision> {
+	fn parse_timestamp_precision(&mut self) -> Result<AstTimestampPrecision, ValueError> {
 		let token = self.consume_identifier()?;
 		Ok(match token.fragment.text() {
 			"second" => AstTimestampPrecision::Second,
@@ -2935,7 +2934,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>), ValueError> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -3084,7 +3083,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_view_with_clause(&mut self) -> Result<AstViewWithClause<'bump>> {
+	fn parse_view_with_clause(&mut self) -> Result<AstViewWithClause<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut clause = AstViewWithClause::default();
@@ -3132,7 +3131,7 @@ impl<'bump> Parser<'bump> {
 		Ok(clause)
 	}
 
-	fn parse_column_config(&mut self) -> Result<AstColumnSettings<'bump>> {
+	fn parse_column_config(&mut self) -> Result<AstColumnSettings<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 		let mut settings = AstColumnSettings::default();
 		loop {
@@ -3167,7 +3166,7 @@ impl<'bump> Parser<'bump> {
 		Ok(settings)
 	}
 
-	fn parse_encoding_config(&mut self) -> Result<AstSeriesEncoding<'bump>> {
+	fn parse_encoding_config(&mut self) -> Result<AstSeriesEncoding<'bump>, ValueError> {
 		let open = self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 		if self.current()?.is_operator(Operator::CloseCurly) {
@@ -3213,7 +3212,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_eviction_config(&mut self, reasons: &str) -> Result<ParsedEviction<'bump>> {
+	fn parse_eviction_config(&mut self, reasons: &str) -> Result<ParsedEviction<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut ttl: Option<(Token<'bump>, EvictionVisibility)> = None;
@@ -3255,7 +3254,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_eviction_visibility(&mut self) -> Result<EvictionVisibility> {
+	fn parse_eviction_visibility(&mut self) -> Result<EvictionVisibility, ValueError> {
 		let value = self.consume_queue_option_key(EVICTION_VALUES)?;
 		match value.fragment.text() {
 			"visible" => Ok(EvictionVisibility::Visible),
@@ -3264,7 +3263,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
+	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>, ValueError> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut duration: Option<Token<'bump>> = None;
@@ -3374,7 +3373,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn consume_duration(&mut self, context: &str) -> Result<Token<'bump>> {
+	fn consume_duration(&mut self, context: &str) -> Result<Token<'bump>, ValueError> {
 		let current = self.current()?;
 		if current.kind == TokenKind::Literal(Literal::Duration) {
 			return self.advance();
@@ -3393,7 +3392,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn consume_duration_or_forever(&mut self) -> Result<Token<'bump>> {
+	pub(crate) fn consume_duration_or_forever(&mut self) -> Result<Token<'bump>, ValueError> {
 		let current = self.current()?;
 		if current.kind == TokenKind::Identifier && current.fragment.text() == FOREVER {
 			return self.advance();
@@ -3401,7 +3400,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_duration("'ttl', or the keyword `forever`,")
 	}
 
-	pub(crate) fn consume_boolean(&mut self, key: &str) -> Result<Token<'bump>> {
+	pub(crate) fn consume_boolean(&mut self, key: &str) -> Result<Token<'bump>, ValueError> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Literal(Literal::True) | TokenKind::Literal(Literal::False) => self.advance(),
@@ -3422,7 +3421,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>, ValueError> {
 		let name_token = self.consume_identifier()?;
 		let name = name_token.fragment;
 
@@ -3553,7 +3552,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_relationship_table_with_column(
 		&mut self,
 		_count: usize,
-	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, BumpFragment<'bump>)> {
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, BumpFragment<'bump>), ValueError> {
 		let (table, mut cols) = self.parse_relationship_table_with_columns(1)?;
 		Ok((table, cols.pop().unwrap()))
 	}
@@ -3561,7 +3560,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_relationship_table_with_columns(
 		&mut self,
 		count: usize,
-	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, Vec<BumpFragment<'bump>>)> {
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, Vec<BumpFragment<'bump>>), ValueError> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let table_name = segments.pop().unwrap().into_fragment();
 		let table_namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -3606,9 +3605,9 @@ enum ViewStorageKindHint {
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::{Bump, boxed::Box};
+	use reifydb_value::error::ValueError;
 
 	use crate::{
-		Result,
 		ast::{
 			ast::{
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
@@ -4843,7 +4842,7 @@ pub mod tests {
 		assert!(!msg.is_empty(), "expected a parse error message");
 	}
 
-	fn parse_series<'b>(bump: &'b Bump, source: &'b str) -> Result<AstCreateSeries<'b>> {
+	fn parse_series<'b>(bump: &'b Bump, source: &'b str) -> Result<AstCreateSeries<'b>, ValueError> {
 		let tokens = tokenize(bump, source)?.into_iter().collect();
 		let mut parser = Parser::new(bump, source, tokens);
 		let mut result = parser.parse()?;
@@ -4984,8 +4983,9 @@ pub mod tests {
 
 #[cfg(test)]
 mod time_declaration_tests {
+	use reifydb_value::error::ValueError;
+
 	use crate::{
-		Result,
 		ast::{
 			ast::{Ast, AstCreate, AstTimeDeclaration},
 			parse::Parser,
@@ -4994,7 +4994,7 @@ mod time_declaration_tests {
 		token::tokenize,
 	};
 
-	fn declared_in(bump: &Bump, source: &str) -> Result<String> {
+	fn declared_in(bump: &Bump, source: &str) -> Result<String, ValueError> {
 		let tokens = tokenize(bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(bump, source, tokens);
 		let mut result = parser.parse()?;
@@ -5614,8 +5614,9 @@ mod windowed_view_group_storage_tests {
 
 #[cfg(test)]
 mod queue_view_tests {
+	use reifydb_value::error::ValueError;
+
 	use crate::{
-		Result,
 		ast::{
 			ast::{Ast, AstCreate, AstQueueDispatch, AstViewStorageKind},
 			parse::Parser,
@@ -5626,7 +5627,7 @@ mod queue_view_tests {
 
 	const AS: &str = "as { from ns::t }";
 
-	fn parse_queue_view(with: &str) -> Result<()> {
+	fn parse_queue_view(with: &str) -> Result<(), ValueError> {
 		let source = format!("create deferred queue view ns::v {{ id: int4 }} with {{ {with} }} {AS}");
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, &source).unwrap().into_iter().collect();

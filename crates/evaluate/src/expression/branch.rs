@@ -3,12 +3,10 @@
 
 use reifydb_core::value::column::{arith::is_family, view::group_by::common_key_type};
 use reifydb_value::{
-	error::{RuntimeErrorKind, TypeError},
+	error::{RuntimeErrorKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
-
-use crate::Result;
 
 pub struct BranchLayout {
 	types: Vec<ValueType>,
@@ -39,7 +37,7 @@ impl BranchLayout {
 		&mut self,
 		columns: impl IntoIterator<Item = (&'a str, ValueType, bool)>,
 		fragment: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let incoming: Vec<(&str, ValueType, bool)> = columns.into_iter().collect();
 		let mut disagrees = incoming.len() != self.types.len();
 		if !disagrees {

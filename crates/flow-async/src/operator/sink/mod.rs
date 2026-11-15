@@ -9,7 +9,7 @@ pub mod series_view;
 pub mod view;
 
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{operator::TimedOutput, timer::Timer, transaction::deferred::DeferredTransaction};
 
@@ -18,9 +18,13 @@ pub trait DurableSink: Send {
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change>;
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, ValueError>;
 
-	fn on_timer(&mut self, _txn: &mut DeferredTransaction, _timer: Timer) -> Result<Option<TimedOutput>> {
+	fn on_timer(
+		&mut self,
+		_txn: &mut DeferredTransaction,
+		_timer: Timer,
+	) -> Result<Option<TimedOutput>, ValueError> {
 		Ok(None)
 	}
 }

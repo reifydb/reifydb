@@ -4,7 +4,6 @@
 use reifydb_value::error::{AstErrorKind, TypeError, ValueError};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{AstBlock, AstElseIf, AstIf},
 		parse::{Parser, Precedence},
@@ -14,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_if(&mut self) -> Result<AstIf<'bump>> {
+	pub(crate) fn parse_if(&mut self) -> Result<AstIf<'bump>, ValueError> {
 		let token = self.current()?;
 
 		if !self.current()?.is_keyword(Keyword::If) {
@@ -61,7 +60,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_else_if_chain(&mut self) -> Result<Vec<AstElseIf<'bump>>> {
+	fn parse_else_if_chain(&mut self) -> Result<Vec<AstElseIf<'bump>>, ValueError> {
 		let mut else_ifs = Vec::new();
 
 		while !self.is_eof() {
@@ -98,7 +97,7 @@ impl<'bump> Parser<'bump> {
 		Ok(else_ifs)
 	}
 
-	fn parse_else_block(&mut self) -> Result<Option<AstBlock<'bump>>> {
+	fn parse_else_block(&mut self) -> Result<Option<AstBlock<'bump>>, ValueError> {
 		self.skip_new_line_before_else();
 
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {

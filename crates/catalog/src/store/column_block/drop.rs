@@ -6,11 +6,12 @@ use reifydb_core::{
 	key::column::{ColumnBlockKey, SeriesColumnBlockKey, TableColumnBlockKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_column_block(txn: &mut AdminTransaction, id: ColumnBlockId) -> Result<()> {
+	pub(crate) fn drop_column_block(txn: &mut AdminTransaction, id: ColumnBlockId) -> Result<(), ValueError> {
 		if let Some(block) = Self::find_column_block(&mut Transaction::Admin(&mut *txn), id)? {
 			match block.source {
 				ColumnBlockSource::Table {

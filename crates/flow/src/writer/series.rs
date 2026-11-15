@@ -11,7 +11,7 @@ use reifydb_core::{
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 };
-use reifydb_value::{Result, value::partition::Partition};
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
 use crate::{
 	txn::{FlowStorageTransaction, StorageTransaction},
@@ -79,15 +79,15 @@ impl<'a, T: StorageTransaction> SeriesWriter<'a, T> {
 		}
 	}
 
-	pub fn append(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn append(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		self.set_tagged(rows)
 	}
 
-	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn update(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		self.set_tagged(rows)
 	}
 
-	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	pub fn delete(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		let replaced = rows.iter().map(|(_, pre)| pre.clone()).collect();
 		self.txn.remove_with_pre(rows)?;
 		Ok(Written {
@@ -96,7 +96,7 @@ impl<'a, T: StorageTransaction> SeriesWriter<'a, T> {
 		})
 	}
 
-	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written> {
+	fn set_tagged(&mut self, rows: Vec<(TaggedKey, EncodedBytes)>) -> Result<Written, ValueError> {
 		let written = rows.iter().map(|(_, row)| row.clone()).collect();
 		self.txn.set_with_pre(rows.into_iter().map(|(key, row)| (key, row, SetPre::Unknown)).collect())?;
 		Ok(Written {
@@ -117,7 +117,7 @@ impl<'a, T: FlowStorageTransaction> FlowSeriesWriter<'a, T> {
 		}
 	}
 
-	pub fn append(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+	pub fn append(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 		self.txn.set(keys, rows)
 	}
 
@@ -126,7 +126,7 @@ impl<'a, T: FlowStorageTransaction> FlowSeriesWriter<'a, T> {
 		pre_keys: Vec<EncodedKey>,
 		post_keys: Vec<EncodedKey>,
 		rows: Vec<EncodedBytes>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
 			return internal_err!(
 				"series update got {} pre keys, {} post keys and {} rows",
@@ -144,7 +144,7 @@ impl<'a, T: FlowStorageTransaction> FlowSeriesWriter<'a, T> {
 		Ok(())
 	}
 
-	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	pub fn delete(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.txn.remove(keys)
 	}
 }
@@ -230,24 +230,24 @@ mod tests {
 	}
 
 	impl Get for Recording {
-		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 			self.calls.push(Call::SetWithPre(entries));
 			Ok(())
 		}
 
-		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		fn remove_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 			self.calls.push(Call::RemoveWithPre(entries));
 			Ok(())
 		}
 
-		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<()> {
+		fn remove_tagged(&mut self, keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 			self.calls.push(Call::RemoveTagged(keys));
 			Ok(())
 		}
@@ -260,19 +260,19 @@ mod tests {
 	}
 
 	impl FlowGet for FlowRecording {
-		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl FlowBatch for FlowRecording {
-		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<(), ValueError> {
 			self.calls.push(Call::Set(keys, rows));
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 			self.calls.push(Call::Remove(keys));
 			Ok(())
 		}

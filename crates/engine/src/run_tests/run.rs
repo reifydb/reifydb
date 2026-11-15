@@ -16,12 +16,14 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_value::value::{
-	Value, column_view::ColumnView, duration::Duration, frame::frame::Frame, system_columns::user_columns,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value, column_view::ColumnView, duration::Duration, frame::frame::Frame, system_columns::user_columns,
+	},
 };
 
 use crate::{
-	Result,
 	run_tests::result::{TestOutcome, classify_outcome},
 	vm::{services::Services, vm::Vm},
 };
@@ -88,7 +90,12 @@ fn run_single(
 	}
 }
 
-fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'_>, source: &str) -> Result<Frame> {
+fn resolve_params(
+	vm: &mut Vm,
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	source: &str,
+) -> Result<Frame, ValueError> {
 	let query = format!("FROM {}", source);
 	let compiled = services.compiler.compile(txn, &query)?;
 	match compiled {
@@ -125,7 +132,7 @@ pub(crate) fn run_tests(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RunTestsNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		Transaction::Test(t) => &mut *t.inner,
@@ -220,7 +227,7 @@ pub(crate) fn run_tests(
 
 				let case_columns = user_columns(&cases_frame.batch)
 					.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-					.collect::<Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>, ValueError>>()?;
 				let col_names: Vec<String> =
 					case_columns.iter().map(|c| c.field.name().clone()).collect();
 

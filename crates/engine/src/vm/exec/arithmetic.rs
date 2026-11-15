@@ -14,19 +14,19 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::prefix::prefix_apply, stack::Variable};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>
+	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<(), ValueError>
 	where
 		F: FnOnce(
 			&ArithContext,
 			&(FieldRef, ArrayRef),
 			&(FieldRef, ArrayRef),
 			fn() -> Fragment,
-		) -> Result<(FieldRef, ArrayRef)>,
+		) -> Result<(FieldRef, ArrayRef), ValueError>,
 	{
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
@@ -39,27 +39,27 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_add(&mut self) -> Result<()> {
+	pub(crate) fn exec_add(&mut self) -> Result<(), ValueError> {
 		self.exec_binary_column_op(add_columns, || Fragment::internal("vm_add"))
 	}
 
-	pub(crate) fn exec_sub(&mut self) -> Result<()> {
+	pub(crate) fn exec_sub(&mut self) -> Result<(), ValueError> {
 		self.exec_binary_column_op(sub_columns, || Fragment::internal("vm_sub"))
 	}
 
-	pub(crate) fn exec_mul(&mut self) -> Result<()> {
+	pub(crate) fn exec_mul(&mut self) -> Result<(), ValueError> {
 		self.exec_binary_column_op(mul_columns, || Fragment::internal("vm_mul"))
 	}
 
-	pub(crate) fn exec_div(&mut self) -> Result<()> {
+	pub(crate) fn exec_div(&mut self) -> Result<(), ValueError> {
 		self.exec_binary_column_op(div_columns, || Fragment::internal("vm_div"))
 	}
 
-	pub(crate) fn exec_rem(&mut self) -> Result<()> {
+	pub(crate) fn exec_rem(&mut self) -> Result<(), ValueError> {
 		self.exec_binary_column_op(rem_columns, || Fragment::internal("vm_rem"))
 	}
 
-	pub(crate) fn exec_negate(&mut self) -> Result<()> {
+	pub(crate) fn exec_negate(&mut self) -> Result<(), ValueError> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_negate");
 		let result = prefix_apply(&col, &PrefixOperator::Minus(frag.clone()), &frag)?;

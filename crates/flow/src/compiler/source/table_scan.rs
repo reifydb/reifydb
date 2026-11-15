@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef::SourceTable, interface::catalog::flow::OperatorId};
 use reifydb_rql::nodes::TableScanNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -21,7 +21,7 @@ impl From<TableScanNode> for TableScanCompiler {
 }
 
 impl CompileOperator for TableScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let table = self.table_scan.source.def();
 		let time_domain = table.time.domain();
 		let table_id = table.id;

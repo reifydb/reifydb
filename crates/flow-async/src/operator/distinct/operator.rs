@@ -31,7 +31,7 @@ use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::ValueError, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
@@ -73,7 +73,7 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let lowered_expressions: Vec<LoweredExpr> =
 			expressions.iter().map(|e| LoweredExpr::new(e.clone(), "distinct")).collect();
 
@@ -109,7 +109,7 @@ impl DistinctPlan {
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		ordered: &[Hash128],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if ordered.is_empty() {
 			return Ok(());
 		}
@@ -143,7 +143,7 @@ impl DistinctPlan {
 		Ok(())
 	}
 
-	fn decode_layout(row: Option<EncodedPodRow>) -> Result<DistinctLayout> {
+	fn decode_layout(row: Option<EncodedPodRow>) -> Result<DistinctLayout, ValueError> {
 		match row {
 			Some(row) => {
 				if row.is_empty() {
@@ -165,7 +165,7 @@ impl DistinctPlan {
 		host: &mut dyn HostContext,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let dirty: Vec<(Hash128, RowNumber)> = state.dirty.drain().collect();
 		let mut sets = Vec::new();
 		let mut removes = Vec::new();
@@ -205,7 +205,7 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
-	fn batch_hashes(&self, diffs: &[Diff]) -> Result<(Vec<Hash128>, Vec<DiffHashes>)> {
+	fn batch_hashes(&self, diffs: &[Diff]) -> Result<(Vec<Hash128>, Vec<DiffHashes>), ValueError> {
 		let mut touched: Vec<Hash128> = Vec::new();
 		let mut seen: HashSet<Hash128> = HashSet::new();
 		let mut per_diff: Vec<DiffHashes> = Vec::with_capacity(diffs.len());
@@ -249,7 +249,7 @@ impl HostOperator for DistinctOperator {
 		CAPABILITIES
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 		let change = decode_change(host, change)?;
 		let plan = &self.plan;
 		let operator_id = plan.operator;

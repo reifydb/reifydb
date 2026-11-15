@@ -38,9 +38,9 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{nodes::CompiledViewStorageKind, query::QueryPlan};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error, fragment::Fragment};
+use reifydb_value::{error, error::ValueError, fragment::Fragment};
 
-use crate::{Result, flow_check::FlowRegistrationCheckRef};
+use crate::flow_check::FlowRegistrationCheckRef;
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
 	match plan {
@@ -222,7 +222,7 @@ fn is_windowed_node(plan: &QueryPlan) -> bool {
 	}
 }
 
-fn ensure_no_script_routine_call(plan: &mut QueryPlan, symbols: &SymbolTable) -> Result<()> {
+fn ensure_no_script_routine_call(plan: &mut QueryPlan, symbols: &SymbolTable) -> Result<(), ValueError> {
 	let (expressions, inputs) = plan_expressions_and_inputs(plan);
 	for expression in expressions {
 		let (_, calls) = extract_udf_calls(expression, symbols, &mut 0);
@@ -233,7 +233,7 @@ fn ensure_no_script_routine_call(plan: &mut QueryPlan, symbols: &SymbolTable) ->
 	inputs.into_iter().try_for_each(|input| ensure_no_script_routine_call(input, symbols))
 }
 
-fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<()> {
+fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<(), ValueError> {
 	if let QueryPlan::Lookup(node) = plan {
 		return Err(error!(lookup_outside_deferred_view(node.alias.clone().unwrap_or(Fragment::None))));
 	}
@@ -241,7 +241,7 @@ fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<()> {
 	inputs.into_iter().try_for_each(ensure_no_lookup)
 }
 
-fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorLibrary) -> Result<()> {
+fn ensure_apply_operators_registered(plan: &mut QueryPlan, operators: &OperatorLibrary) -> Result<(), ValueError> {
 	if let QueryPlan::Apply(node) = plan
 		&& operators.get(node.operator.text()).is_none()
 	{
@@ -256,7 +256,7 @@ fn check_managed_time_requirements(
 	txn: &mut Transaction<'_>,
 	flow: &FlowDag,
 	operators: &OperatorLibrary,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let flow_name = format!("flow {}", flow.id.0);
 	for operator_id in flow.topological_order() {
 		let Some(node) = flow.get_operator(operator_id) else {
@@ -280,7 +280,7 @@ fn check_managed_time_requirements(
 	Ok(())
 }
 
-fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary) -> Result<()> {
+fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary) -> Result<(), ValueError> {
 	for operator_id in flow.topological_order() {
 		let Some(node) = flow.get_operator(operator_id) else {
 			continue;
@@ -320,7 +320,7 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 	Ok(())
 }
 
-fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith) -> Result<()> {
+fn check_window_requirements(requirements: WindowRequirements, with: &ApplyWith) -> Result<(), ValueError> {
 	let kind = match (&with.window, requirements.takes_window) {
 		(Some(kind), true) => kind,
 		(Some(kind), false) => return Err(error!(flow_operator_with_window_not_supported(kind.name()))),
@@ -353,7 +353,7 @@ pub(crate) fn prepare_flow_plan(
 	operators: &OperatorLibrary,
 	symbols: &SymbolTable,
 	plan: &mut QueryPlan,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	ensure_no_script_routine_call(plan, symbols)?;
 	ensure_apply_operators_registered(plan, operators)
 }
@@ -364,7 +364,7 @@ pub(crate) fn check_flow_dag(
 	txn: &mut AdminTransaction,
 	dag: &FlowDag,
 	ioc: &IocContainer,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
 	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), dag)?;
 	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), dag, operators)?;
@@ -384,7 +384,7 @@ pub(crate) fn create_deferred_view_flow(
 	view: &View,
 	mut plan: QueryPlan,
 	ioc: &IocContainer,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	prepare_flow_plan(operators, symbols, &mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
@@ -400,7 +400,7 @@ pub(crate) fn create_deferred_view_flow(
 	Ok(())
 }
 
-fn check_transactional_flow(catalog: &Catalog, txn: &mut AdminTransaction, flow: &FlowDag) -> Result<()> {
+fn check_transactional_flow(catalog: &Catalog, txn: &mut AdminTransaction, flow: &FlowDag) -> Result<(), ValueError> {
 	for operator_id in flow.topological_order() {
 		let Some(node) = flow.get_operator(operator_id) else {
 			continue;
@@ -503,7 +503,7 @@ pub(crate) fn create_transactional_view_flow(
 	symbols: &SymbolTable,
 	view: &View,
 	mut plan: QueryPlan,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	ensure_no_lookup(&mut plan)?;
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;

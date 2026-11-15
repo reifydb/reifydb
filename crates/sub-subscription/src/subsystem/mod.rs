@@ -53,7 +53,7 @@ use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
 	wal::{CommitWal, WalCommitLog},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use reifydb_wal::lsn::Lsn;
 
 use self::{
@@ -99,7 +99,7 @@ impl SubscriptionSubsystem {
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
 		loader_metrics: CommitLoaderMetrics,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let catalog = engine.catalog();
 		let multi = engine.multi_owned();
 		let spawner = engine.spawner();
@@ -243,7 +243,7 @@ impl SubscriptionSubsystem {
 }
 
 impl Shutdown for SubscriptionSubsystem {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return Ok(());
 		}
@@ -299,7 +299,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let queue = ioc.resolve::<CommitQueue>()?;
 		let floor = ioc.resolve::<SubscriptionQueueFloor>()?;

@@ -16,13 +16,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	store::view::create::{
 		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorage, ViewToCreate as StoreViewToCreate,
@@ -71,7 +72,7 @@ impl From<ViewToCreate> for StoreViewToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
+	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(view) = self.cache.find_view_at(id, cmd.version()) {
@@ -140,7 +141,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<View>> {
+	) -> Result<Option<View>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, cmd.version()) {
@@ -230,7 +231,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<View> {
+	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<View, ValueError> {
 		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -240,7 +241,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::create_deferred", level = "info", skip(self, txn, to_create))]
-	pub fn create_deferred_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
+	pub fn create_deferred_view(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: ViewToCreate,
+	) -> Result<View, ValueError> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
@@ -252,7 +257,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::create_transactional", level = "info", skip(self, txn, to_create))]
-	pub fn create_transactional_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
+	pub fn create_transactional_view(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: ViewToCreate,
+	) -> Result<View, ValueError> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
@@ -264,7 +273,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::drop", level = "info", skip(self, txn))]
-	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<()> {
+	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<(), ValueError> {
 		if let View::Queue(queue_view) = &view {
 			let queue = self.get_queue(&mut Transaction::Admin(&mut *txn), queue_view.queue)?;
 			self.drop_queue(txn, queue)?;
@@ -275,7 +284,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::list_all", level = "trace", skip(self, txn))]
-	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<View>> {
+	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<View>, ValueError> {
 		CatalogStore::list_views_all(txn)
 	}
 
@@ -285,12 +294,16 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		CatalogStore::set_view_primary_key(txn, view_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::view::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_view_pk_id(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKeyId>> {
+	pub fn get_view_pk_id(
+		&self,
+		txn: &mut Transaction<'_>,
+		view_id: ViewId,
+	) -> Result<Option<PrimaryKeyId>, ValueError> {
 		CatalogStore::get_view_pk_id(txn, view_id)
 	}
 }

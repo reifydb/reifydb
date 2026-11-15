@@ -4,7 +4,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::builder::TracingConfigurator;
 
@@ -40,7 +40,7 @@ impl SubsystemFactory for TracingSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let configurator = if let Some(configure_fn) = self.configurator {
 			configure_fn(TracingConfigurator::new())
 		} else {

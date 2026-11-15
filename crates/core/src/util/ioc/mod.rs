@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::internal_error;
 
@@ -52,7 +52,7 @@ impl IocContainer {
 		self.dependencies.write().clear();
 	}
 
-	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
+	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T, ValueError> {
 		self.dependencies
 			.read()
 			.get(&TypeId::of::<T>())

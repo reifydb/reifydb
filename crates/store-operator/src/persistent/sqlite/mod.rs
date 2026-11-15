@@ -27,7 +27,7 @@ use reifydb_runtime::{
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::sqlite::{OpenMessages, open, pool::ReadPool};
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use rusqlite::Connection;
 use tracing::instrument;
 
@@ -117,7 +117,7 @@ impl SqlitePersistent {
 }
 
 impl Shutdown for SqlitePersistent {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		let mut errors = ShutdownErrors::new("operator store");
 		self.inner.readers.shutdown();
 		if let Some(conn) = self.inner.conn.lock().take()

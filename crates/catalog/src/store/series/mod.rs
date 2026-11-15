@@ -11,9 +11,9 @@ pub mod shape;
 pub mod update;
 
 use reifydb_core::{common::TimeSource, interface::catalog::series::SeriesEncoding};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	error::CatalogError,
 	store::{series::shape::series, time_source::read_time_source},
 };
@@ -22,7 +22,7 @@ pub(crate) fn decode_series_time(bytes: &EncodedCatalogRow) -> TimeSource {
 	read_time_source(&series::SHAPE, bytes.as_slice(), series::TIME_DOMAIN, series::TS)
 }
 
-pub(crate) fn decode_series_encoding(bytes: &EncodedCatalogRow) -> Result<Option<SeriesEncoding>> {
+pub(crate) fn decode_series_encoding(bytes: &EncodedCatalogRow) -> Result<Option<SeriesEncoding>, ValueError> {
 	let config = series::get_encoding_config(bytes);
 	match series::try_get_encoding_name(bytes) {
 		None if config.is_empty() => Ok(None),

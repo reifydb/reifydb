@@ -24,7 +24,7 @@ use crate::{
 		},
 		family::{FamilyValue, cell_width, family_params},
 	},
-	error::{Result as SdkResult, SdkError},
+	error::SdkError,
 	flow::extern_c::wire::change::{ExternCChange, ExternCDiff, ExternCOrigin},
 };
 
@@ -174,7 +174,7 @@ impl<'a> BorrowedColumns<'a> {
 		})
 	}
 
-	pub fn column(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+	pub fn column(&self, name: &str) -> Result<Option<BorrowedColumn<'a>>, SdkError> {
 		for column in self.columns() {
 			if column.checked_name()? != name {
 				continue;
@@ -184,7 +184,11 @@ impl<'a> BorrowedColumns<'a> {
 		Ok(None)
 	}
 
-	pub(crate) fn checked_rows(&self, name: &str, column: BorrowedColumn<'a>) -> SdkResult<BorrowedColumn<'a>> {
+	pub(crate) fn checked_rows(
+		&self,
+		name: &str,
+		column: BorrowedColumn<'a>,
+	) -> Result<BorrowedColumn<'a>, SdkError> {
 		if column.row_count() != self.row_count() {
 			return Err(malformed(format!(
 				"extern-c column {name} holds {} rows in a batch of {}",
@@ -212,7 +216,7 @@ impl<'a> BorrowedColumn<'a> {
 		unsafe { read_buffer_str(&self.extern_c.name) }
 	}
 
-	pub fn checked_name(&self) -> SdkResult<&'a str> {
+	pub fn checked_name(&self) -> Result<&'a str, SdkError> {
 		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
 		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
 		let bytes = unsafe { read_buffer(&self.extern_c.name) };
@@ -276,7 +280,7 @@ impl<'a> BorrowedColumn<'a> {
 		Some(unsafe { slice::from_raw_parts(bytes.as_ptr() as *const T, count) })
 	}
 
-	pub(crate) fn str_at(&self, index: usize) -> SdkResult<Option<&'a str>> {
+	pub(crate) fn str_at(&self, index: usize) -> Result<Option<&'a str>, SdkError> {
 		let Some(bytes) = self.bytes_at(index)? else {
 			return Ok(None);
 		};
@@ -285,7 +289,7 @@ impl<'a> BorrowedColumn<'a> {
 			.map_err(|_| malformed(format!("extern-c column {} cell {index} is not utf8", self.name())))
 	}
 
-	pub(crate) fn bytes_at(&self, index: usize) -> SdkResult<Option<&'a [u8]>> {
+	pub(crate) fn bytes_at(&self, index: usize) -> Result<Option<&'a [u8]>, SdkError> {
 		if index >= self.row_count() {
 			return Ok(None);
 		}
@@ -299,7 +303,7 @@ impl<'a> BorrowedColumn<'a> {
 		}
 	}
 
-	pub(crate) fn dictionary_id_at(&self, index: usize) -> SdkResult<Option<DictionaryEntryId>> {
+	pub(crate) fn dictionary_id_at(&self, index: usize) -> Result<Option<DictionaryEntryId>, SdkError> {
 		let Some(bytes) = self.bytes_at(index)? else {
 			return Ok(None);
 		};
@@ -312,7 +316,7 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	#[inline]
-	pub fn defined_at(&self, index: usize) -> SdkResult<bool> {
+	pub fn defined_at(&self, index: usize) -> Result<bool, SdkError> {
 		let bv = self.defined_bitvec();
 		if bv.is_empty() {
 			return Ok(true);
@@ -321,7 +325,10 @@ impl<'a> BorrowedColumn<'a> {
 		Ok(bv.get(index / 8).is_some_and(|b| (b >> (index % 8)) & 1 == 1))
 	}
 
-	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> SdkResult<Option<SdkResult<T>>> {
+	pub(crate) fn family_cell_at<T: FamilyValue>(
+		&self,
+		index: usize,
+	) -> Result<Option<Result<T, SdkError>>, SdkError> {
 		if self.type_code() != T::KIND {
 			return Ok(None);
 		}
@@ -351,7 +358,7 @@ impl<'a> BorrowedColumn<'a> {
 	}
 }
 
-fn varlen_cell<'a>(column: &BorrowedColumn<'a>, index: usize) -> SdkResult<&'a [u8]> {
+fn varlen_cell<'a>(column: &BorrowedColumn<'a>, index: usize) -> Result<&'a [u8], SdkError> {
 	let offsets_len = column.extern_c.data.offsets.len;
 	if !offsets_len.is_multiple_of(core::mem::size_of::<u64>()) {
 		return Err(malformed(format!(

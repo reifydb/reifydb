@@ -2,21 +2,29 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::LazyFragment,
 	value::{column_view::ColumnView, value_type::ValueType},
 };
 
 use crate::error::CoreError;
 
-pub fn check_digest_write(view: &ColumnView, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
+pub fn check_digest_write(
+	view: &ColumnView,
+	target: &ValueType,
+	fragment: impl LazyFragment,
+) -> Result<(), ValueError> {
 	if view.none_count() == view.len() {
 		return Ok(());
 	}
 	check_digest_write_type(view.get_type().inner_type(), target, fragment)
 }
 
-pub fn check_digest_write_type(actual: &ValueType, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
+pub fn check_digest_write_type(
+	actual: &ValueType,
+	target: &ValueType,
+	fragment: impl LazyFragment,
+) -> Result<(), ValueError> {
 	let expected = target.inner_type();
 	let involves_digest =
 		matches!(actual, ValueType::Digest { .. }) || matches!(expected, ValueType::Digest { .. });

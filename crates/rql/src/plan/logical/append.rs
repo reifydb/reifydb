@@ -7,10 +7,13 @@ use reifydb_rql_frontend::{
 	bump::BumpBox,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{err, error::Diagnostic, fragment::Fragment};
+use reifydb_value::{
+	err,
+	error::{Diagnostic, ValueError},
+	fragment::Fragment,
+};
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan,
@@ -23,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAppend<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		match ast {
 			AstAppend::IntoVariable {
 				target,
@@ -63,7 +66,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode> {
+fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode, ValueError> {
 	let mut rows = Vec::new();
 
 	for row in list.nodes {

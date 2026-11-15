@@ -22,7 +22,7 @@ use reifydb_core::{
 	key::metric::MetricStorageKey,
 };
 use reifydb_runtime::context::transaction::TransactionContext;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{error::ValueError, util::cowvec::CowVec};
 
 use crate::metrics::storage::encoding::{
 	decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
@@ -147,7 +147,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		self.dirty.insert((tier, id));
 	}
 
-	pub fn flush(&mut self) -> Result<()> {
+	pub fn flush(&mut self) -> Result<(), ValueError> {
 		if self.dirty.is_empty() {
 			return Ok(());
 		}
@@ -179,7 +179,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 		}
 	}
 
-	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<MultiStorageMetrics>> {
+	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<MultiStorageMetrics>, ValueError> {
 		let key = encode_storage_stats_key(tier, id);
 		Ok(self.storage
 			.get(&self.ctx, slice::from_ref(&key))?
@@ -188,7 +188,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 			.and_then(|v| decode_storage_stats(v.bytes.as_slice())))
 	}
 
-	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricsId), MultiStorageMetrics)>> {
+	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricsId), MultiStorageMetrics)>, ValueError> {
 		let prefix = storage_stats_key_prefix();
 		let batch = self.storage.prefix(&self.ctx, &prefix)?;
 
@@ -204,7 +204,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 		Ok(results)
 	}
 
-	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricsId, MultiStorageMetrics)>> {
+	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricsId, MultiStorageMetrics)>, ValueError> {
 		self.scan_all().map(|all| {
 			all.into_iter()
 				.filter_map(|((t, obj), stats)| {

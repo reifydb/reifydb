@@ -11,6 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{system_columns::user_columns, value_type::ValueType},
@@ -21,12 +22,9 @@ use super::common::{
 	JoinContext, JoinSlot, ensure_join_keyable, join_key_types, load_and_merge_all, materialize_join,
 	resolve_column_names, user_key_columns, user_views,
 };
-use crate::{
-	Result,
-	vm::volcano::{
-		key_rows::{key_arrays, key_rows},
-		query::{QueryContext, QueryNode},
-	},
+use crate::vm::volcano::{
+	key_rows::{key_arrays, key_rows},
+	query::{QueryContext, QueryNode},
 };
 
 pub struct NaturalJoinNode {
@@ -78,7 +76,7 @@ impl NaturalJoinNode {
 
 impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "volcano::join::natural::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -86,7 +84,11 @@ impl QueryNode for NaturalJoinNode {
 	}
 
 	#[instrument(name = "volcano::join::natural::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 		}
@@ -180,7 +182,7 @@ impl NaturalJoinNode {
 		right_columns: &RecordBatch,
 		right_col_indices: &[usize],
 		targets: &[ValueType],
-	) -> Result<(RowConverter, KeyIndex)> {
+	) -> Result<(RowConverter, KeyIndex), ValueError> {
 		let (converter, arrays) = key_rows(&user_key_columns(right_columns, right_col_indices), targets)?;
 		let rows = converter
 			.convert_columns(&arrays)
@@ -206,7 +208,7 @@ impl NaturalJoinNode {
 		&self,
 		left_columns: &RecordBatch,
 		probe_ctx: &ProbeContext,
-	) -> Result<(Vec<usize>, Vec<Option<usize>>)> {
+	) -> Result<(Vec<usize>, Vec<Option<usize>>), ValueError> {
 		let ProbeContext {
 			converter,
 			hash_table,

@@ -3,20 +3,23 @@
 
 use reifydb_core::error::diagnostic::query::empty_map;
 use reifydb_rql_frontend::ast::ast::AstMap;
-use reifydb_value::return_error;
+use reifydb_value::{error::ValueError, return_error};
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan, MapNode, reserved::reject_reserved_output_names},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_map(&self, ast: AstMap<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_map(&self, ast: AstMap<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		if ast.nodes.is_empty() {
 			return_error!(empty_map(ast.token.fragment.to_owned()));
 		}
-		let map = ast.nodes.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?;
+		let map = ast
+			.nodes
+			.into_iter()
+			.map(ExpressionCompiler::compile)
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		reject_reserved_output_names(&map)?;
 		Ok(LogicalPlan::Map(MapNode {
 			map,

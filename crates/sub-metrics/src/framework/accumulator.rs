@@ -10,7 +10,6 @@ use reifydb_core::{
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
 	count::Count,
 	error::ValueError,
@@ -123,7 +122,7 @@ impl MetricsAccumulator {
 		self.push(domain, surface, rows);
 	}
 
-	pub fn roll(&mut self, now: DateTime) -> Result<Vec<PublishedSurface>> {
+	pub fn roll(&mut self, now: DateTime) -> Result<Vec<PublishedSurface>, ValueError> {
 		let mut published = Vec::new();
 		for state in self.domains.values_mut() {
 			published.push(PublishedSurface {
@@ -250,14 +249,14 @@ fn advance_window(state: &mut DomainState) {
 	}
 }
 
-fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
+fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch, ValueError> {
 	match state.spec.shape {
 		DomainShape::Long => build_long(state, now, surface),
 		DomainShape::Wide => build_wide(state, now, surface),
 	}
 }
 
-fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
+fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch, ValueError> {
 	let mut ts = ColumnBuilder::with_capacity(ValueType::DateTime, 0);
 	let mut scope = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
 	let mut metric = ColumnBuilder::with_capacity(ValueType::Utf8, 0);
@@ -354,7 +353,7 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Result<Re
 	])
 }
 
-fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch> {
+fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<RecordBatch, ValueError> {
 	let spec = &state.spec;
 	let measures = spec.surface_measures(surface);
 	let capacity = state.rows.len();
@@ -404,7 +403,7 @@ fn column_error(
 	internal_error!("metrics {:?} {:?} {} column {}: {}", domain, surface, role, name, cause)
 }
 
-fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface) -> Result<Value> {
+fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface) -> Result<Value, ValueError> {
 	let reading = match (state, surface) {
 		(
 			Some(MeasureState::Level {
@@ -460,14 +459,14 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 	}
 }
 
-fn micros_duration(micros: f64) -> Result<Duration> {
+fn micros_duration(micros: f64) -> Result<Duration, ValueError> {
 	if micros.is_nan() || micros < 0.0 || micros > u64::MAX as f64 {
 		return Err(internal_error!("a reading of {} microseconds is not a Duration", micros));
 	}
 	Ok(Duration::from_micros_infallible(micros as u64))
 }
 
-fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
+fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value, ValueError> {
 	match target {
 		ValueType::Uint2 => Ok(Value::Uint2(reading.as_f64() as u16)),
 		ValueType::Uint4 => Ok(Value::Uint4(reading.as_f64() as u32)),
@@ -490,7 +489,7 @@ fn reading_value(reading: &Reading, target: &ValueType) -> Result<Value> {
 	}
 }
 
-fn zero_value(target: &ValueType) -> Result<Value> {
+fn zero_value(target: &ValueType) -> Result<Value, ValueError> {
 	Ok(match target {
 		ValueType::Uint2 => Value::Uint2(0),
 		ValueType::Uint4 => Value::Uint4(0),
@@ -509,7 +508,7 @@ fn zero_value(target: &ValueType) -> Result<Value> {
 	})
 }
 
-fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading> {
+fn delta_reading(total: &Reading, baseline: Option<f64>) -> Result<Reading, ValueError> {
 	let delta = (total.as_f64() - baseline.unwrap_or(0.0)).max(0.0);
 	Ok(match total {
 		Reading::Heap(_) => Reading::Heap(ByteSize::from_bytes(delta as u64)),

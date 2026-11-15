@@ -14,10 +14,10 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::CatalogError,
 	store::{
 		primary_key::shape::{primary_key, serialize_column_ids},
@@ -34,7 +34,7 @@ impl CatalogStore {
 	pub(crate) fn create_primary_key(
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
-	) -> Result<PrimaryKeyId> {
+	) -> Result<PrimaryKeyId, ValueError> {
 		Self::reject_empty_columns(&to_create)?;
 		Self::reject_unknown_columns(txn, &to_create)?;
 		let id = Self::allocate_primary_key_row(txn, &to_create)?;
@@ -47,7 +47,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_empty_columns(to_create: &PrimaryKeyToCreate) -> Result<()> {
+	fn reject_empty_columns(to_create: &PrimaryKeyToCreate) -> Result<(), ValueError> {
 		if to_create.column_ids.is_empty() {
 			return Err(CatalogError::PrimaryKeyEmpty {
 				fragment: Fragment::None,
@@ -58,7 +58,10 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_unknown_columns(txn: &mut AdminTransaction, to_create: &PrimaryKeyToCreate) -> Result<()> {
+	fn reject_unknown_columns(
+		txn: &mut AdminTransaction,
+		to_create: &PrimaryKeyToCreate,
+	) -> Result<(), ValueError> {
 		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.object)?;
 		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
@@ -78,7 +81,7 @@ impl CatalogStore {
 	fn allocate_primary_key_row(
 		txn: &mut AdminTransaction,
 		to_create: &PrimaryKeyToCreate,
-	) -> Result<PrimaryKeyId> {
+	) -> Result<PrimaryKeyId, ValueError> {
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
 		let mut row = primary_key::allocate();
@@ -91,7 +94,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn link_primary_key_to_object(txn: &mut AdminTransaction, object: ObjectId, id: PrimaryKeyId) -> Result<()> {
+	fn link_primary_key_to_object(
+		txn: &mut AdminTransaction,
+		object: ObjectId,
+		id: PrimaryKeyId,
+	) -> Result<(), ValueError> {
 		match object {
 			ObjectId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;

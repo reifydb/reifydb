@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{cast::cast_column_data, write::check_digest_write},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::LazyFragment,
 	value::{
 		Value,
@@ -17,9 +18,9 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, expression::context::EvalContext, lower::LoweredExpr};
+use crate::{expression::context::EvalContext, lower::LoweredExpr};
 
-pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<(FieldRef, ArrayRef)> {
+pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let column = LoweredExpr::new(expr.clone(), "evaluate").evaluate(ctx)?;
 
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
@@ -36,7 +37,7 @@ pub fn cast_for_write(
 	view: &ColumnView<'_>,
 	target: ValueType,
 	fragment: impl LazyFragment + Clone,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	refuse_lost_scale(view, &target, fragment.clone())?;
 	cast_column_data(ctx, view, target, fragment)
 }
@@ -49,7 +50,7 @@ pub fn loses_scale(value: &Value, target: &ValueType) -> bool {
 	)
 }
 
-fn refuse_lost_scale(data: &ColumnView, target: &ValueType, fragment: impl LazyFragment) -> Result<()> {
+fn refuse_lost_scale(data: &ColumnView, target: &ValueType, fragment: impl LazyFragment) -> Result<(), ValueError> {
 	match (data.get_type().inner_type(), target.inner_type()) {
 		(
 			ValueType::Decimal {

@@ -12,7 +12,7 @@ use reifydb_codec::key::{
 };
 use reifydb_macro::KeyCodec;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{dictionary::DictionaryId, sumtype::SumTypeId},
 };
 
@@ -38,7 +38,7 @@ pub fn serialize_object_id<B: ByteSink>(object: &ObjectId, out: &mut B) {
 	out.extend_from_slice(&encode_u64(object.as_u64()));
 }
 
-pub fn deserialize_object_id(input: &mut &[u8]) -> Result<ObjectId> {
+pub fn deserialize_object_id(input: &mut &[u8]) -> Result<ObjectId, ValueError> {
 	if input.is_empty() {
 		return_internal_error!("Invalid ObjectId encoding: empty input");
 	}
@@ -62,7 +62,7 @@ pub fn serialize_index_id<B: ByteSink>(index: &IndexId, out: &mut B) {
 	}
 }
 
-pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
+pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId, ValueError> {
 	if input.is_empty() {
 		return_internal_error!("Invalid IndexId encoding: empty input");
 	}
@@ -100,12 +100,12 @@ impl KeySerializerCatalogExt for KeySerializer {
 }
 
 pub trait KeyDeserializerCatalogExt {
-	fn read_object_id(&mut self) -> Result<ObjectId>;
-	fn read_index_id(&mut self) -> Result<IndexId>;
+	fn read_object_id(&mut self) -> Result<ObjectId, ValueError>;
+	fn read_index_id(&mut self) -> Result<IndexId, ValueError>;
 }
 
 impl KeyDeserializerCatalogExt for KeyDeserializer<'_> {
-	fn read_object_id(&mut self) -> Result<ObjectId> {
+	fn read_object_id(&mut self) -> Result<ObjectId, ValueError> {
 		let mut slice = self.remaining_bytes();
 		let before = slice.len();
 		let object_id = deserialize_object_id(&mut slice)?;
@@ -113,7 +113,7 @@ impl KeyDeserializerCatalogExt for KeyDeserializer<'_> {
 		Ok(object_id)
 	}
 
-	fn read_index_id(&mut self) -> Result<IndexId> {
+	fn read_index_id(&mut self) -> Result<IndexId, ValueError> {
 		let mut slice = self.remaining_bytes();
 		let before = slice.len();
 		let index_id = deserialize_index_id(&mut slice)?;

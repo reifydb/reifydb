@@ -19,7 +19,6 @@ use reifydb_rql_frontend::{
 use reifydb_value::{error, error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	error::RqlError,
 	plan::logical::{
 		AggregateNode, AppendNode, ApplyNode, AssertNode, ChangesNode, DistinctNode, EnvironmentNode,
@@ -176,7 +175,7 @@ pub enum QueryTree<'bump> {
 pub fn fold<'bump>(
 	bump: &'bump Bump,
 	plans: impl IntoIterator<Item = LogicalPlan<'bump>>,
-) -> Result<Option<QueryTree<'bump>>> {
+) -> Result<Option<QueryTree<'bump>>, ValueError> {
 	let mut roots: Vec<QueryTree<'bump>> = Vec::new();
 	for plan in plans {
 		if let LogicalPlan::Pipeline(pipeline) = plan {
@@ -200,7 +199,7 @@ fn build<'bump>(
 	bump: &'bump Bump,
 	plan: LogicalPlan<'bump>,
 	roots: &mut Vec<QueryTree<'bump>>,
-) -> Result<QueryTree<'bump>> {
+) -> Result<QueryTree<'bump>, ValueError> {
 	let mut optional = || roots.pop().map(|tree| BumpBox::new_in(tree, bump));
 	Ok(match plan {
 		LogicalPlan::SourceScan(node) => QueryTree::SourceScan {
@@ -361,7 +360,7 @@ fn subtree<'bump>(
 	bump: &'bump Bump,
 	plans: impl IntoIterator<Item = LogicalPlan<'bump>>,
 	operator: &'static str,
-) -> Result<Input<'bump>> {
+) -> Result<Input<'bump>, ValueError> {
 	let tree = fold(bump, plans)?.ok_or_else(|| missing_input(operator))?;
 	Ok(BumpBox::new_in(tree, bump))
 }
@@ -371,7 +370,7 @@ fn own_or_pipeline<'bump>(
 	own: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 	pipeline: impl FnOnce() -> Option<Input<'bump>>,
 	operator: &'static str,
-) -> Result<Option<Input<'bump>>> {
+) -> Result<Option<Input<'bump>>, ValueError> {
 	match own {
 		Some(own) => Ok(Some(subtree(bump, once(BumpBox::into_inner(own)), operator)?)),
 		None => Ok(pipeline()),

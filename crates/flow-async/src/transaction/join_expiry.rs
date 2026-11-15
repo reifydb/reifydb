@@ -23,7 +23,6 @@ use reifydb_core::{
 	state::typed::{SuffixBytes, typed_key},
 };
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -99,7 +98,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		id: OperatorId,
 		side: u8,
 		rows: &[(GroupId, RowNumber)],
-	) -> Result<Vec<Option<DateTime>>> {
+	) -> Result<Vec<Option<DateTime>>, ValueError> {
 		let keys: Vec<GroupStateKey> =
 			rows.iter().map(|&(group, row_number)| join_expiry_key(group, side, row_number)).collect();
 		let stored = self.state_get(id, &keys)?;
@@ -124,7 +123,12 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		Ok(cleared)
 	}
 
-	fn join_expiry_arm(&mut self, id: OperatorId, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+	fn join_expiry_arm(
+		&mut self,
+		id: OperatorId,
+		side: u8,
+		rows: &[(GroupId, RowNumber, DateTime)],
+	) -> Result<(), ValueError> {
 		let mut latest: Vec<(GroupId, RowNumber, DateTime)> = Vec::with_capacity(rows.len());
 		let mut slot: HashMap<(GroupId, RowNumber), usize> = HashMap::with_capacity(rows.len());
 		for &(group, row_number, at) in rows {
@@ -163,7 +167,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		self.state_set(id, armed)
 	}
 
-	fn join_expiry_free(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<()> {
+	fn join_expiry_free(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<(), ValueError> {
 		let doomed: Vec<GroupStateKey> = entries
 			.iter()
 			.flat_map(|entry| {
@@ -176,7 +180,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		self.state_remove(id, &doomed)
 	}
 
-	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>> {
+	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>, ValueError> {
 		let batch = self.state_range(
 			id,
 			StateRange::forward(join_due_range(), "join::expiry_min").limit(1).full_page(),
@@ -193,7 +197,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		at: DateTime,
 		budget: usize,
 		start: &DueStart,
-	) -> Result<JoinDuePage> {
+	) -> Result<JoinDuePage, ValueError> {
 		if budget == 0 {
 			return Ok(JoinDuePage {
 				due: Vec::new(),

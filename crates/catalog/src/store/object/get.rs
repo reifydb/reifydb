@@ -8,10 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_object(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Object> {
+	pub(crate) fn get_object(rx: &mut Transaction<'_>, object: impl Into<ObjectId>) -> Result<Object, ValueError> {
 		let object_id = object.into();
 
 		CatalogStore::find_object(rx, object_id)?.ok_or_else(|| {

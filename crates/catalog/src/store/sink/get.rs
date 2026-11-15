@@ -8,10 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_sink(rx: &mut Transaction<'_>, sink: SinkId) -> Result<Sink> {
+	pub(crate) fn get_sink(rx: &mut Transaction<'_>, sink: SinkId) -> Result<Sink, ValueError> {
 		CatalogStore::find_sink(rx, sink)?.ok_or_else(|| {
 			ValueError(Box::new(internal!(
 				"Sink with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

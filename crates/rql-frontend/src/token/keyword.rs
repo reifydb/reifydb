@@ -14,7 +14,6 @@ use super::{
 	identifier::is_identifier_char,
 	token::{Token, TokenKind},
 };
-use crate::Result;
 
 pub const FOREVER: &str = "forever";
 
@@ -39,7 +38,7 @@ macro_rules! keyword {
         impl TryFrom<&str> for Keyword {
             type Error = ValueError;
 
-            fn try_from(value: &str) -> Result<Self> {
+            fn try_from(value: &str) -> Result<Self, ValueError> {
                 reifydb_assertions! {
                     assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 }

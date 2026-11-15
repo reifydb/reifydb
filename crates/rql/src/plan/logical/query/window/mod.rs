@@ -3,10 +3,9 @@
 
 use reifydb_core::{expression::Expression, operator_with::WindowWith};
 use reifydb_rql_frontend::ast::ast::{Ast, AstWindow};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	Result,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, LogicalPlan, reserved::reject_reserved_output_names},
 };
@@ -21,7 +20,7 @@ pub struct WindowNode {
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>, ValueError> {
 		let rql = ast.rql.to_string();
 		let fragment = ast.token.fragment.to_owned();
 
@@ -40,7 +39,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn compile_expressions(asts: Vec<Ast<'bump>>) -> Result<Vec<Expression>> {
+	fn compile_expressions(asts: Vec<Ast<'bump>>) -> Result<Vec<Expression>, ValueError> {
 		let mut expressions = Vec::new();
 		for ast in asts {
 			expressions.push(ExpressionCompiler::compile(ast)?);

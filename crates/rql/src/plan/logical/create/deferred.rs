@@ -12,6 +12,7 @@ use reifydb_rql_frontend::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		constraint::{Constraint, TypeConstraint},
@@ -20,7 +21,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result, convert_data_type_with_constraints,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateDeferredViewNode, LogicalPlan,
 		create::{
@@ -59,7 +60,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateDeferredView<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
 		let mut columns = self.compile_view_columns(ast.columns, &view_ns_segments, tx)?;
 
@@ -136,7 +137,7 @@ impl<'bump> Compiler<'bump> {
 		ast_columns: Vec<AstColumnToCreate<'bump>>,
 		view_ns_segments: &[&str],
 		tx: &mut Transaction<'_>,
-	) -> Result<Vec<ViewColumnToCreate>> {
+	) -> Result<Vec<ViewColumnToCreate>, ValueError> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast_columns.into_iter() {
 			reject_reserved_column_name(&col.name.to_owned())?;

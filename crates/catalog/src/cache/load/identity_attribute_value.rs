@@ -3,11 +3,15 @@
 
 use reifydb_core::{key::identity::IdentityAttributeValueKey, return_internal_error};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::identity_attribute_value::convert_identity_attribute_value};
+use crate::store::identity_attribute_value::convert_identity_attribute_value;
 
-pub(crate) fn load_identity_attribute_values(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_identity_attribute_values(
+	rx: &mut Transaction<'_>,
+	catalog: &CatalogCache,
+) -> Result<(), ValueError> {
 	let range = IdentityAttributeValueKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 

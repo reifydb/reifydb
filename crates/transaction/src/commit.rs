@@ -4,15 +4,15 @@
 use std::sync::Arc;
 
 use reifydb_core::common::CommitVersion;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::transaction::command::CommandTransaction;
 
-pub type CommitApply = Box<dyn FnOnce(&mut CommandTransaction) -> Result<()> + Send>;
+pub type CommitApply = Box<dyn FnOnce(&mut CommandTransaction) -> Result<(), ValueError> + Send>;
 
-pub type CommitCompletion = Box<dyn FnOnce(Result<Committed>) + Send>;
+pub type CommitCompletion = Box<dyn FnOnce(Result<Committed, ValueError>) + Send>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Committed {
@@ -25,7 +25,7 @@ pub struct CommitSubmission {
 	pub completion: CommitCompletion,
 }
 
-pub type CommitBegin = Arc<dyn Fn() -> Result<CommandTransaction> + Send + Sync>;
+pub type CommitBegin = Arc<dyn Fn() -> Result<CommandTransaction, ValueError> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CommitHandle {
@@ -49,7 +49,7 @@ impl CommitHandle {
 	}
 }
 
-fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<Committed> {
+fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<Committed, ValueError> {
 	let mut transaction = begin_unchecked(begin)?;
 	if let Err(e) = (apply)(&mut transaction) {
 		let _ = transaction.rollback();
@@ -61,7 +61,7 @@ fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<Committed
 }
 
 #[instrument(name = "transaction::commit::begin", level = "debug", skip_all)]
-fn begin_unchecked(begin: &CommitBegin) -> Result<CommandTransaction> {
+fn begin_unchecked(begin: &CommitBegin) -> Result<CommandTransaction, ValueError> {
 	let mut transaction = (begin)()?;
 	if let Err(e) = transaction.disable_conflict_tracking() {
 		let _ = transaction.rollback();

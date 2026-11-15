@@ -5,7 +5,7 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{column_view::ColumnView, decimal::Decimal},
 };
 
@@ -13,7 +13,7 @@ fn view(column: &(FieldRef, ArrayRef)) -> ColumnView<'_> {
 	ColumnView::try_from(column).unwrap()
 }
 
-fn assert_read_error<T: std::fmt::Debug>(read: Result<Option<T>>, reason: &str) {
+fn assert_read_error<T: std::fmt::Debug>(read: Result<Option<T>, ValueError>, reason: &str) {
 	let err = read.unwrap_err();
 	assert_eq!(err.code, "CONV_004");
 	assert!(err.message.contains(reason), "expected '{reason}' in '{}'", err.message);

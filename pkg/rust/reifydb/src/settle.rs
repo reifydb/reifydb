@@ -18,7 +18,7 @@ use reifydb_core::{
 	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId, internal,
 };
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
-use reifydb_value::{Result, error::ValueError, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::Database;
 
@@ -148,7 +148,7 @@ struct SettleGuard;
 
 #[cfg(reifydb_dst)]
 impl SettleGuard {
-	fn enter() -> Result<Self> {
+	fn enter() -> Result<Self, ValueError> {
 		if SETTLING.with(|flag| flag.replace(true)) {
 			return Err(ValueError(Box::new(internal!(
 				"settle_subscriptions was re-entered on a thread that is already settling; \
@@ -176,13 +176,13 @@ impl Database {
 	/// and only then be staged on a subscriber's queue; some of those hops are woken eagerly and
 	/// some only when a timer fires, so how many passes a write costs depends on the pipeline.
 	/// The loop therefore repeats until all four progress signals agree rather than counting hops.
-	pub fn settle_subscriptions(&self) -> Result<Settled> {
+	pub fn settle_subscriptions(&self) -> Result<Settled, ValueError> {
 		self.settle_subscriptions_within(SettleBudget::Default)
 	}
 
 	/// [`Self::settle_subscriptions`] with an explicit pass budget. Exceeding the budget is an
 	/// error naming every signal that was still outstanding, never a hang.
-	pub fn settle_subscriptions_within(&self, budget: SettleBudget) -> Result<Settled> {
+	pub fn settle_subscriptions_within(&self, budget: SettleBudget) -> Result<Settled, ValueError> {
 		let _guard = SettleGuard::enter()?;
 
 		let Some(subsystem) = self.subsystem::<SubscriptionSubsystem>() else {
@@ -273,7 +273,7 @@ impl Database {
 	/// The target is snapshotted on entry so a concurrent writer cannot push the frontier away
 	/// from a caller trying to reach it. A subscription that overran its queue is refused, because
 	/// the overflow threw the work away.
-	pub fn caught_up(&self) -> Result<CaughtUp> {
+	pub fn caught_up(&self) -> Result<CaughtUp, ValueError> {
 		let Some(subsystem) = self.subsystem::<SubscriptionSubsystem>() else {
 			return Ok(CaughtUp {
 				target: CommitVersion(0),
@@ -293,7 +293,7 @@ impl Database {
 
 	/// Under dst the calling thread runs the actors, the commit log consumer and the flow tick.
 	#[cfg(reifydb_dst)]
-	fn reach(&self, target: CommitVersion) -> Result<u32> {
+	fn reach(&self, target: CommitVersion) -> Result<u32, ValueError> {
 		let _guard = SettleGuard::enter()?;
 		let system = self.spawner().system();
 		let step = self.settle_step();
@@ -328,7 +328,7 @@ impl Database {
 
 	/// The commit log consumer and the flow actors have their own threads, so only the watermarks matter.
 	#[cfg(not(reifydb_dst))]
-	fn reach(&self, target: CommitVersion) -> Result<u32> {
+	fn reach(&self, target: CommitVersion) -> Result<u32, ValueError> {
 		let watermarks = self.watermarks();
 		let reader = watermarks.reader();
 
@@ -357,7 +357,7 @@ impl Database {
 	}
 }
 
-fn refuse_lagged(store: &SubscriptionStore) -> Result<()> {
+fn refuse_lagged(store: &SubscriptionStore) -> Result<(), ValueError> {
 	match lagged_subscriptions(store).first() {
 		None => Ok(()),
 		Some(id) => Err(ValueError(Box::new(subscription_lagged(

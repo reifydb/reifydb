@@ -9,7 +9,7 @@ use reifydb_core::{expression::CallExpression, value::column::factory::rename};
 use reifydb_routine_abi::{Function, context::FunctionContext};
 use reifydb_value::error::ValueError;
 
-use crate::{Result, error::EvaluateError, expression::context::EvalContext};
+use crate::{error::EvaluateError, expression::context::EvalContext};
 
 pub(crate) fn call_builtin(
 	ctx: &EvalContext,
@@ -17,7 +17,7 @@ pub(crate) fn call_builtin(
 	routine: Option<&Arc<dyn Function>>,
 	result_label: &str,
 	arguments: &[(FieldRef, ArrayRef)],
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
 

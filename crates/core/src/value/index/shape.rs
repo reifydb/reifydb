@@ -3,7 +3,7 @@
 
 use std::{alloc, ops::Deref, sync::Arc};
 
-use reifydb_value::{Result, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, value::value_type::ValueType};
 
 use crate::{error::CoreError, sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
@@ -19,7 +19,7 @@ impl Deref for IndexShape {
 }
 
 impl IndexShape {
-	pub fn new(types: &[ValueType], directions: &[SortDirection]) -> Result<Self> {
+	pub fn new(types: &[ValueType], directions: &[SortDirection]) -> Result<Self, ValueError> {
 		if types.len() != directions.len() {
 			return Err(CoreError::IndexTypesDirectionsMismatch {
 				types_len: types.len(),

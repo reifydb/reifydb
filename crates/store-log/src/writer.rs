@@ -18,7 +18,7 @@ use reifydb_runtime::{
 use reifydb_value::clock::ClockNow;
 
 use crate::{
-	error::{Result, StoreLogError},
+	error::StoreLogError,
 	partition::{Partition, log_name},
 	segment::sync_path,
 };
@@ -75,7 +75,7 @@ where
 		}
 	}
 
-	pub fn commit(&self, record: &Record) -> Result<Position> {
+	pub fn commit(&self, record: &Record) -> Result<Position, StoreLogError> {
 		let mut state = self.inner.state.lock();
 		if state.stopped {
 			return Err(stopped_error(&state));
@@ -95,7 +95,7 @@ where
 		Ok(position)
 	}
 
-	pub fn flush(&self) -> Result<()> {
+	pub fn flush(&self) -> Result<(), StoreLogError> {
 		let (path, mark) = {
 			let state = self.inner.state.lock();
 			(state.active.clone(), state.written)
@@ -117,15 +117,18 @@ where
 		self.inner.state.lock().written
 	}
 
-	pub fn truncate_from(&self, index: LogIndex) -> Result<()> {
+	pub fn truncate_from(&self, index: LogIndex) -> Result<(), StoreLogError> {
 		self.cut(|partition| partition.truncate_from(index))
 	}
 
-	pub fn rebase(&self, index: LogIndex, term: Term) -> Result<()> {
+	pub fn rebase(&self, index: LogIndex, term: Term) -> Result<(), StoreLogError> {
 		self.cut(|partition| partition.rebase(index, term))
 	}
 
-	fn cut(&self, act: impl FnOnce(&mut Partition<F, C>) -> Result<()>) -> Result<()> {
+	fn cut(
+		&self,
+		act: impl FnOnce(&mut Partition<F, C>) -> Result<(), StoreLogError>,
+	) -> Result<(), StoreLogError> {
 		let mut state = self.inner.state.lock();
 		if state.stopped {
 			return Err(stopped_error(&state));

@@ -44,6 +44,7 @@ use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::nodes::UpdateTableNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -68,7 +69,6 @@ use super::{
 	table_insert::cast_partitions,
 };
 use crate::{
-	Result,
 	error::EngineError,
 	partition::row_key_from_partition,
 	policy::PolicyEvaluator,
@@ -93,7 +93,7 @@ pub(crate) fn update_table(
 	params: Params,
 	symbols: &SymbolTable,
 	caller: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let UpdateTableNode {
 		input,
 		target,
@@ -145,7 +145,7 @@ fn resolve_update_table_target(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedTable,
-) -> Result<(Namespace, Table)> {
+) -> Result<(Namespace, Table), ValueError> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -192,7 +192,7 @@ fn run_table_update(
 	shape: &RowShape,
 	context: &QueryContext,
 	has_returning: bool,
-) -> Result<(u64, ReturnedRows, ReturnedRows)> {
+) -> Result<(u64, ReturnedRows, ReturnedRows), ValueError> {
 	let mut updated_count = 0u64;
 	let mut returned_rows: ReturnedRows = Vec::new();
 	let mut pre_rows: ReturnedRows = Vec::new();
@@ -380,7 +380,7 @@ fn enforce_old_row_policies(
 	row_numbers: &[RowNumber],
 	rows: &[EncodedBytes],
 	compiled: Option<&CompiledWritePolicies>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let Some(compiled) = compiled.filter(|compiled| compiled.reads_row()) else {
 		return Ok(());
 	};
@@ -415,7 +415,7 @@ impl KeyRotation {
 		pre_row: &[u8],
 		new_row: &[u8],
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let index = IndexId::primary(pk_def.id);
 		let pre_key: TaggedKey =
 			IndexEntryKey::new(target.table.id, index, encoder.encode(pre_shape, pre_row)).into();
@@ -450,14 +450,14 @@ impl KeyRotation {
 		Ok(())
 	}
 
-	fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+	fn write(self, txn: &mut Transaction<'_>) -> Result<(), ValueError> {
 		txn.remove(self.removes)?;
 		txn.set(self.sets)
 	}
 }
 
 #[inline]
-fn update_table_result(namespace: &str, table: &str, updated: u64) -> Result<RecordBatch> {
+fn update_table_result(namespace: &str, table: &str, updated: u64) -> Result<RecordBatch, ValueError> {
 	single_row([
 		("namespace", Value::Utf8(namespace.to_string())),
 		("table", Value::Utf8(table.to_string())),

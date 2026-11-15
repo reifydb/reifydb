@@ -9,11 +9,11 @@ use reifydb_core::{
 	key::{catalog::SinkKey, namespace::NamespaceSinkKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use serde_json::to_string;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::sink::next_sink_id,
@@ -32,7 +32,7 @@ pub struct SinkToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_sink(txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
+	pub(crate) fn create_sink(txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink, ValueError> {
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_sink(txn, namespace_id, &to_create.name)?;
 
@@ -51,7 +51,11 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn reject_existing_sink(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+	fn reject_existing_sink(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<(), ValueError> {
 		if CatalogStore::find_sink_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
 			.is_none()
 		{
@@ -72,7 +76,7 @@ impl CatalogStore {
 		sink: SinkId,
 		namespace: NamespaceId,
 		to_create: &SinkToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let config_json = to_string(&to_create.config).map_err(|e| CatalogError::SinkConfigEncode {
 			name: to_create.name.text().to_string(),
 			reason: e.to_string(),
@@ -98,7 +102,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		sink: SinkId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = sink_namespace::allocate();
 		sink_namespace::set_id(&mut row, u64::from(sink));
 		sink_namespace::set_name(&mut row, name);

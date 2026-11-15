@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{AstClosure, AstFunctionParameter, AstVariable},
 		parse::Parser,
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_closure(&mut self) -> Result<AstClosure<'bump>> {
+	pub(crate) fn parse_closure(&mut self) -> Result<AstClosure<'bump>, ValueError> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 
 		let parameters = self.parse_closure_parameters()?;
@@ -27,7 +28,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_closure_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>> {
+	fn parse_closure_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>, ValueError> {
 		let mut parameters = Vec::new();
 
 		loop {

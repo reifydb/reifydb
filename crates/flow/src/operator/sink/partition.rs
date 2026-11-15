@@ -10,7 +10,8 @@ use reifydb_core::{
 	partition::{BatchPartitions, PartitionError, partitions_of_batch, registry_matches, registry_row},
 };
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{Value, column_view::ColumnView, partition::Partition},
 };
 
@@ -19,11 +20,11 @@ use crate::txn::{FlowBatch, FlowGet};
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) -> Result<BatchPartitions> {
+pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) -> Result<BatchPartitions, ValueError> {
 	let keys = indices
 		.iter()
 		.map(|&i| ColumnView::try_from((columns.column(i), columns.schema_ref().field(i))))
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	reifydb_assertions! {
 		for (&i, key) in indices.iter().zip(&keys) {
 			let column = &view.columns()[i];
@@ -46,8 +47,8 @@ pub fn resolve_partitions_flow<T: FlowGet + FlowBatch + ?Sized>(
 	object: ObjectId,
 	distinct: &[(Partition, Vec<Value>)],
 	verified: &mut HashMap<Partition, Vec<Value>>,
-) -> Result<()> {
-	let collision = |partition: Partition| -> Result<()> {
+) -> Result<(), ValueError> {
+	let collision = |partition: Partition| -> Result<(), ValueError> {
 		Err(PartitionError::PartitionHashCollision {
 			object,
 			hash: partition.0,

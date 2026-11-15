@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	actors::pending::PendingWrite,
@@ -15,7 +15,7 @@ use crate::{
 	},
 };
 
-pub fn read_batch<S: StateStore + ?Sized>(store: &mut S, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+pub fn read_batch<S: StateStore + ?Sized>(store: &mut S, keys: Vec<GroupStateKey>) -> Result<StateBatch, ValueError> {
 	let batch = StateBatch::read(keys, |keys| store.state_get(keys))?;
 	for slot in 0..batch.len() {
 		store.state_classify(batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
@@ -23,7 +23,7 @@ pub fn read_batch<S: StateStore + ?Sized>(store: &mut S, keys: Vec<GroupStateKey
 	Ok(batch)
 }
 
-pub fn write_batch<S: StateStore + ?Sized>(store: &mut S, batch: StateBatch) -> Result<()> {
+pub fn write_batch<S: StateStore + ?Sized>(store: &mut S, batch: StateBatch) -> Result<(), ValueError> {
 	let mut sets = Vec::new();
 	let mut removes = Vec::new();
 	for (key, write) in batch.into_writes() {
@@ -48,7 +48,7 @@ pub fn group_sweep<S: StateStore + ?Sized>(
 	groups: &[GroupId],
 	limit: usize,
 	keyspaces: KeyspaceMask,
-) -> Result<GroupSweep> {
+) -> Result<GroupSweep, ValueError> {
 	let probe = limit.saturating_add(1);
 	let mut rows = Vec::new();
 	for group in sweep_order(groups) {

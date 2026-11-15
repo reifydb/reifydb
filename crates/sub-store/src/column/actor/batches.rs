@@ -18,7 +18,8 @@ use reifydb_store_column::{
 	stats::block_stats,
 };
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{
 		system_columns::{SystemColumn, created_at, partitions, row_numbers, system_column, time, updated_at},
 		value_type::{ValueType, field::from_field},
@@ -52,7 +53,7 @@ pub fn arrow_columns_from_batches(
 	schema: &[(String, ValueType)],
 	batches: &[RecordBatch],
 	version: CommitVersion,
-) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>> {
+) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>, ValueError> {
 	let timed = schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Time));
 	let partitioned =
 		schema.iter().any(|(name, _)| SystemColumn::from_name(name) == Some(SystemColumn::Partitions));
@@ -108,14 +109,14 @@ pub fn block_data_from_batches(
 	batches: Vec<RecordBatch>,
 	version: CommitVersion,
 	compressor: &Compressor,
-) -> Result<BlockData> {
+) -> Result<BlockData, ValueError> {
 	compress_columns(arrow_columns_from_batches(&schema, &batches, version)?, compressor)
 }
 
 pub fn stats_from_arrow(
 	columns: &[(String, ValueType, (FieldRef, ArrayRef))],
 	session: &VortexSession,
-) -> Result<Vec<ColumnStats>> {
+) -> Result<Vec<ColumnStats>, ValueError> {
 	let mut schema = Vec::with_capacity(columns.len());
 	let mut chunks = Vec::with_capacity(columns.len());
 	for (name, ty, column) in columns {
@@ -127,7 +128,7 @@ pub fn stats_from_arrow(
 	block_stats(&BlockData::new(Arc::new(schema), chunks), session)
 }
 
-fn user_column_buffer(name: &str, batches: &[RecordBatch]) -> Result<(FieldRef, ArrayRef)> {
+fn user_column_buffer(name: &str, batches: &[RecordBatch]) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut parts: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(batches.len());
 	for batch in batches {
 		let (index, _) = batch.schema_ref().column_with_name(name).ok_or_else(|| {
@@ -150,7 +151,7 @@ fn system_column_buffer(
 	sc: SystemColumn,
 	batches: &[RecordBatch],
 	version: CommitVersion,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	if batches.is_empty() {
 		return Err(SubStoreError::NoBatchesForMaterialization {
 			column: sc.name().to_string(),
@@ -254,7 +255,11 @@ mod tests {
 			1
 		}
 
-		fn bind(&self, user: &[FieldRef], _config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+		fn bind(
+			&self,
+			user: &[FieldRef],
+			_config: &[(String, Value)],
+		) -> Result<Box<dyn BoundBlockEncoding>, ValueError> {
 			Ok(Box::new(BoundFaulty {
 				fault: self.0,
 				user: user.to_vec(),
@@ -272,7 +277,7 @@ mod tests {
 			self.user.clone()
 		}
 
-		fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+		fn encode(&self, user: RecordBatch) -> Result<RecordBatch, ValueError> {
 			match self.fault {
 				Fault::DropRow => Ok(user.slice(0, user.num_rows() - 1)),
 				Fault::ExtraField => {
@@ -292,7 +297,7 @@ mod tests {
 			}
 		}
 
-		fn decode(&self, _version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+		fn decode(&self, _version: u32, stored: RecordBatch) -> Result<RecordBatch, ValueError> {
 			match self.fault {
 				Fault::Lossy => {
 					let index = stored.schema().index_of("value").unwrap();
@@ -393,7 +398,7 @@ mod tests {
 			.configure()
 	}
 
-	fn encode(series: &Series, columns: Columns) -> Result<BlockData> {
+	fn encode(series: &Series, columns: Columns) -> Result<BlockData, ValueError> {
 		encode_series_block(columns, series, series.encoding.as_ref().unwrap(), &registry(), &compressor())
 	}
 
@@ -418,7 +423,7 @@ mod tests {
 		assert!(header.user.iter().all(|column| !column.nullable), "{:?}", header.user);
 	}
 
-	fn error_of(result: Result<BlockData>) -> (String, String) {
+	fn error_of(result: Result<BlockData, ValueError>) -> (String, String) {
 		let Err(ValueError(diagnostic)) = result else {
 			panic!("expected the seal to fail");
 		};

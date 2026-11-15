@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
@@ -12,14 +12,14 @@ use crate::{
 };
 
 impl ColumnBuilder {
-	pub fn push_typed(&mut self, value: Value, declared: &ValueType) -> Result<()> {
+	pub fn push_typed(&mut self, value: Value, declared: &ValueType) -> Result<(), ValueError> {
 		match declared {
 			ValueType::Option(inner_type) => self.push_typed_option(value, inner_type),
 			_ => self.push_typed_required(value, declared),
 		}
 	}
 
-	fn push_typed_option(&mut self, value: Value, inner_type: &ValueType) -> Result<()> {
+	fn push_typed_option(&mut self, value: Value, inner_type: &ValueType) -> Result<(), ValueError> {
 		if !self.optional {
 			return internal_err!(
 				"column declares Option({:?}) but its buffer is {:?}; a buffer that stops being an Option publishes a column type the schema never declared",
@@ -63,7 +63,7 @@ impl ColumnBuilder {
 		Ok(())
 	}
 
-	fn push_typed_required(&mut self, value: Value, declared: &ValueType) -> Result<()> {
+	fn push_typed_required(&mut self, value: Value, declared: &ValueType) -> Result<(), ValueError> {
 		let buffer_type = self.get_type();
 		if buffer_type != *declared {
 			return internal_err!("column declares {:?} but its buffer is {:?}", declared, buffer_type);
@@ -86,7 +86,7 @@ fn same_family(value: &Value, declared: &ValueType) -> bool {
 	matches!((value, declared), (Value::Decimal(_), ValueType::Decimal { .. }))
 }
 
-fn coerced(mut value: Value, declared: &ValueType) -> Result<Value> {
+fn coerced(mut value: Value, declared: &ValueType) -> Result<Value, ValueError> {
 	if same_family(&value, declared) {
 		TypeConstraint::unconstrained(declared.clone()).coerce(&mut value)?;
 	}

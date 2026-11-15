@@ -2,14 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::{AstCreateNamespace, AstCreateRemoteNamespace};
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateNamespaceNode, CreateRemoteNamespaceNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateNamespaceNode, CreateRemoteNamespaceNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_namespace(&self, ast: AstCreateNamespace<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_namespace(
+		&self,
+		ast: AstCreateNamespace<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateNamespace(CreateNamespaceNode {
 			segments: ast.namespace.segments,
 			if_not_exists: ast.if_not_exists,
@@ -19,7 +20,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_remote_namespace(
 		&self,
 		ast: AstCreateRemoteNamespace<'bump>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateRemoteNamespace(CreateRemoteNamespaceNode {
 			segments: ast.namespace.segments,
 			if_not_exists: ast.if_not_exists,

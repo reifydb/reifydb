@@ -16,9 +16,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::partition::Partition;
-
-use crate::Result;
+use reifydb_value::{error::ValueError, value::partition::Partition};
 
 #[derive(Clone, Copy)]
 pub(crate) enum MergeLayout {
@@ -40,7 +38,7 @@ impl MergeLayout {
 		}
 	}
 
-	fn locate(self, key: &TaggedKey) -> Result<(Partition, MergeOrder)> {
+	fn locate(self, key: &TaggedKey) -> Result<(Partition, MergeOrder), ValueError> {
 		match (self, key) {
 			(Self::Row, TaggedKey::PartitionedRow(key)) => Ok((key.partition, (None, key.row.0, 0))),
 			(Self::Series, TaggedKey::PartitionedSeriesRow(key)) => {
@@ -94,7 +92,7 @@ impl PartitionMerge {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		batch_size: u64,
-	) -> Result<Vec<MultiVersionRow<TaggedKey>>> {
+	) -> Result<Vec<MultiVersionRow<TaggedKey>>, ValueError> {
 		if !self.opened {
 			self.open(rx, batch_size)?;
 		}
@@ -114,7 +112,7 @@ impl PartitionMerge {
 		Ok(rows)
 	}
 
-	fn open(&mut self, rx: &mut Transaction<'_>, batch_size: u64) -> Result<()> {
+	fn open(&mut self, rx: &mut Transaction<'_>, batch_size: u64) -> Result<(), ValueError> {
 		self.opened = true;
 		match self.fixed.take() {
 			Some(range) => self.heads.push(MergeHead::over(range)),
@@ -126,7 +124,7 @@ impl PartitionMerge {
 		Ok(())
 	}
 
-	fn discover(&mut self, rx: &mut Transaction<'_>) -> Result<()> {
+	fn discover(&mut self, rx: &mut Transaction<'_>) -> Result<(), ValueError> {
 		let outer = self.layout.range(self.storage, None);
 		let mut end = outer.end.clone();
 		loop {
@@ -149,14 +147,14 @@ impl PartitionMerge {
 		}
 	}
 
-	fn enqueue(&mut self, rx: &mut Transaction<'_>, index: usize, batch_size: u64) -> Result<()> {
+	fn enqueue(&mut self, rx: &mut Transaction<'_>, index: usize, batch_size: u64) -> Result<(), ValueError> {
 		let head = &mut self.heads[index];
 		if head.buffer.is_empty() && !head.exhausted {
 			let range = head.range.clone().resume_before(head.last.as_ref());
 			head.buffer = rx
 				.range_rev(range, RangeScope::All, batch_size as usize)?
 				.take(batch_size as usize)
-				.collect::<Result<VecDeque<_>>>()?;
+				.collect::<Result<VecDeque<_>, ValueError>>()?;
 			head.exhausted = (head.buffer.len() as u64) < batch_size;
 			if let Some(row) = head.buffer.back() {
 				head.last = Some(row.key.clone());

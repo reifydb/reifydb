@@ -6,15 +6,15 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::DropSourceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
 pub(crate) fn drop_source(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropSourceNode,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let source = services.catalog.find_source_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),

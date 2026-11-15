@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	interface::catalog::{
@@ -37,197 +37,197 @@ use crate::{
 };
 
 pub trait CatalogTrackConfigChangeOperations {
-	fn track_config_set(&mut self, pre: Config, post: Config) -> Result<()>;
+	fn track_config_set(&mut self, pre: Config, post: Config) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackTableChangeOperations {
-	fn track_table_created(&mut self, table: Table) -> Result<()>;
+	fn track_table_created(&mut self, table: Table) -> Result<(), ValueError>;
 
-	fn track_table_updated(&mut self, pre: Table, post: Table) -> Result<()>;
+	fn track_table_updated(&mut self, pre: Table, post: Table) -> Result<(), ValueError>;
 
-	fn track_table_deleted(&mut self, table: Table) -> Result<()>;
+	fn track_table_deleted(&mut self, table: Table) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackRelationshipChangeOperations {
-	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<()>;
+	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<(), ValueError>;
 
-	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<()>;
+	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackNamespaceChangeOperations {
-	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()>;
+	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<(), ValueError>;
 
-	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<()>;
+	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackFlowChangeOperations {
-	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<()>;
+	fn track_flow_created(&mut self, entry: FlowEntry) -> Result<(), ValueError>;
 
-	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<()>;
+	fn track_flow_updated(&mut self, pre: FlowEntry, post: FlowEntry) -> Result<(), ValueError>;
 
-	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<()>;
+	fn track_flow_deleted(&mut self, entry: FlowEntry) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackPrimaryKeyChangeOperations {
-	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
+	fn track_primary_key_created(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<(), ValueError>;
 
-	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
+	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackViewChangeOperations {
-	fn track_view_created(&mut self, view: View) -> Result<()>;
+	fn track_view_created(&mut self, view: View) -> Result<(), ValueError>;
 
-	fn track_view_deleted(&mut self, view: View) -> Result<()>;
+	fn track_view_deleted(&mut self, view: View) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackDictionaryChangeOperations {
-	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<()>;
+	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<(), ValueError>;
 
-	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<()>;
+	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackColumnBlockChangeOperations {
-	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<()>;
+	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<(), ValueError>;
 
-	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<()>;
+	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackSeriesChangeOperations {
-	fn track_series_created(&mut self, series: Series) -> Result<()>;
+	fn track_series_created(&mut self, series: Series) -> Result<(), ValueError>;
 
-	fn track_series_updated(&mut self, pre: Series, post: Series) -> Result<()>;
+	fn track_series_updated(&mut self, pre: Series, post: Series) -> Result<(), ValueError>;
 
-	fn track_series_deleted(&mut self, series: Series) -> Result<()>;
+	fn track_series_deleted(&mut self, series: Series) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackRingBufferChangeOperations {
-	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()>;
+	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<(), ValueError>;
 
-	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()>;
+	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackQueueChangeOperations {
-	fn track_queue_created(&mut self, queue: Queue) -> Result<()>;
+	fn track_queue_created(&mut self, queue: Queue) -> Result<(), ValueError>;
 
-	fn track_queue_deleted(&mut self, queue: Queue) -> Result<()>;
+	fn track_queue_deleted(&mut self, queue: Queue) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackSumTypeChangeOperations {
-	fn track_sumtype_created(&mut self, sumtype: SumType) -> Result<()>;
+	fn track_sumtype_created(&mut self, sumtype: SumType) -> Result<(), ValueError>;
 
-	fn track_sumtype_deleted(&mut self, sumtype: SumType) -> Result<()>;
+	fn track_sumtype_deleted(&mut self, sumtype: SumType) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackProcedureChangeOperations {
-	fn track_procedure_created(&mut self, procedure: Procedure) -> Result<()>;
+	fn track_procedure_created(&mut self, procedure: Procedure) -> Result<(), ValueError>;
 
-	fn track_procedure_deleted(&mut self, procedure: Procedure) -> Result<()>;
+	fn track_procedure_deleted(&mut self, procedure: Procedure) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackTestChangeOperations {
-	fn track_test_created(&mut self, test: Test) -> Result<()>;
+	fn track_test_created(&mut self, test: Test) -> Result<(), ValueError>;
 
-	fn track_test_deleted(&mut self, test: Test) -> Result<()>;
+	fn track_test_deleted(&mut self, test: Test) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackHandlerChangeOperations {
-	fn track_handler_created(&mut self, handler: Handler) -> Result<()>;
+	fn track_handler_created(&mut self, handler: Handler) -> Result<(), ValueError>;
 
-	fn track_handler_deleted(&mut self, handler: Handler) -> Result<()>;
+	fn track_handler_deleted(&mut self, handler: Handler) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackIdentityChangeOperations {
-	fn track_identity_created(&mut self, identity: Identity) -> Result<()>;
+	fn track_identity_created(&mut self, identity: Identity) -> Result<(), ValueError>;
 
-	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()>;
+	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<(), ValueError>;
 
-	fn track_identity_deleted(&mut self, identity: Identity) -> Result<()>;
+	fn track_identity_deleted(&mut self, identity: Identity) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackRoleChangeOperations {
-	fn track_role_created(&mut self, role: Role) -> Result<()>;
+	fn track_role_created(&mut self, role: Role) -> Result<(), ValueError>;
 
-	fn track_role_deleted(&mut self, role: Role) -> Result<()>;
+	fn track_role_deleted(&mut self, role: Role) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackGrantedRoleChangeOperations {
-	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<()>;
+	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<(), ValueError>;
 
-	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<()>;
+	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackIdentityAttributeChangeOperations {
-	fn track_identity_attribute_created(&mut self, attribute: IdentityAttribute) -> Result<()>;
+	fn track_identity_attribute_created(&mut self, attribute: IdentityAttribute) -> Result<(), ValueError>;
 
-	fn track_identity_attribute_deleted(&mut self, attribute: IdentityAttribute) -> Result<()>;
+	fn track_identity_attribute_deleted(&mut self, attribute: IdentityAttribute) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackIdentityAttributeValueChangeOperations {
-	fn track_identity_attribute_value_created(&mut self, value: IdentityAttributeValue) -> Result<()>;
+	fn track_identity_attribute_value_created(&mut self, value: IdentityAttributeValue) -> Result<(), ValueError>;
 
-	fn track_identity_attribute_value_deleted(&mut self, value: IdentityAttributeValue) -> Result<()>;
+	fn track_identity_attribute_value_deleted(&mut self, value: IdentityAttributeValue) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackPolicyChangeOperations {
-	fn track_policy_created(&mut self, policy: Policy) -> Result<()>;
+	fn track_policy_created(&mut self, policy: Policy) -> Result<(), ValueError>;
 
-	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<()>;
+	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<(), ValueError>;
 
-	fn track_policy_deleted(&mut self, policy: Policy) -> Result<()>;
+	fn track_policy_deleted(&mut self, policy: Policy) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackMigrationChangeOperations {
-	fn track_migration_created(&mut self, migration: Migration) -> Result<()>;
+	fn track_migration_created(&mut self, migration: Migration) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackMigrationEventChangeOperations {
-	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<()>;
+	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackAuthenticationChangeOperations {
-	fn track_authentication_created(&mut self, auth: Authentication) -> Result<()>;
+	fn track_authentication_created(&mut self, auth: Authentication) -> Result<(), ValueError>;
 
-	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<()>;
+	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackAuthenticationMethodChangeOperations {
-	fn track_authentication_method_created(&mut self, method: AuthenticationMethod) -> Result<()>;
+	fn track_authentication_method_created(&mut self, method: AuthenticationMethod) -> Result<(), ValueError>;
 
 	fn track_authentication_method_updated(
 		&mut self,
 		pre: AuthenticationMethod,
 		post: AuthenticationMethod,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 
-	fn track_authentication_method_deleted(&mut self, method: AuthenticationMethod) -> Result<()>;
+	fn track_authentication_method_deleted(&mut self, method: AuthenticationMethod) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackSourceChangeOperations {
-	fn track_source_created(&mut self, source: Source) -> Result<()>;
+	fn track_source_created(&mut self, source: Source) -> Result<(), ValueError>;
 
-	fn track_source_deleted(&mut self, source: Source) -> Result<()>;
+	fn track_source_deleted(&mut self, source: Source) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackBindingChangeOperations {
-	fn track_binding_created(&mut self, binding: Binding) -> Result<()>;
+	fn track_binding_created(&mut self, binding: Binding) -> Result<(), ValueError>;
 
-	fn track_binding_deleted(&mut self, binding: Binding) -> Result<()>;
+	fn track_binding_deleted(&mut self, binding: Binding) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackSinkChangeOperations {
-	fn track_sink_created(&mut self, sink: Sink) -> Result<()>;
+	fn track_sink_created(&mut self, sink: Sink) -> Result<(), ValueError>;
 
-	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()>;
+	fn track_sink_deleted(&mut self, sink: Sink) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackWindowedViewGroupChangeOperations {
-	fn track_windowed_view_group_created(&mut self, group: WindowedViewGroup) -> Result<()>;
+	fn track_windowed_view_group_created(&mut self, group: WindowedViewGroup) -> Result<(), ValueError>;
 
-	fn track_windowed_view_group_deleted(&mut self, group: WindowedViewGroup) -> Result<()>;
+	fn track_windowed_view_group_deleted(&mut self, group: WindowedViewGroup) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackRowSettingsChangeOperations {
-	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
+	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackOperatorRetentionChangeOperations {
@@ -235,7 +235,7 @@ pub trait CatalogTrackOperatorRetentionChangeOperations {
 		&mut self,
 		operator: OperatorId,
 		retention: OperatorRetention,
-	) -> Result<()>;
+	) -> Result<(), ValueError>;
 }
 
 pub trait CatalogTrackChangeOperations:

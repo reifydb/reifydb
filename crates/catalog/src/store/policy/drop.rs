@@ -9,11 +9,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> Result<()> {
+	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> Result<(), ValueError> {
 		{
 			let range = PolicyOpKey::policy_scan(policy);
 			let mut stream = txn.range(range, RangeScope::All, 1024)?;

@@ -3,12 +3,12 @@
 
 use reifydb_core::{interface::catalog::sumtype::SumType, return_internal_error};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::sumtype::SumTypeId;
+use reifydb_value::{error::ValueError, value::sumtype::SumTypeId};
 
-use crate::{CatalogStore, Result};
+use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_sumtype(rx: &mut Transaction<'_>, sumtype: SumTypeId) -> Result<SumType> {
+	pub(crate) fn get_sumtype(rx: &mut Transaction<'_>, sumtype: SumTypeId) -> Result<SumType, ValueError> {
 		match Self::find_sumtype(rx, sumtype)? {
 			Some(def) => Ok(def),
 			None => return_internal_error!("SumType with ID {:?} not found in catalog.", sumtype),

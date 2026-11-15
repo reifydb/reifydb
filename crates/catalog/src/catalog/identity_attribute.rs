@@ -12,12 +12,13 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, identity::IdentityId, value_type::ValueType},
 };
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError};
+use crate::{CatalogStore, catalog::Catalog, error::CatalogError};
 
 impl Catalog {
 	#[instrument(name = "catalog::identity_attribute::find_by_name", level = "trace", skip(self, txn))]
@@ -25,7 +26,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		name: &str,
-	) -> Result<Option<IdentityAttribute>> {
+	) -> Result<Option<IdentityAttribute>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(attribute) =
@@ -129,7 +130,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		id: IdentityAttributeId,
-	) -> Result<Option<IdentityAttribute>> {
+	) -> Result<Option<IdentityAttribute>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(attribute) =
@@ -202,7 +203,10 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity_attribute::list_all", level = "trace", skip(self, txn))]
-	pub fn list_identity_attributes(&self, txn: &mut Transaction<'_>) -> Result<Vec<IdentityAttribute>> {
+	pub fn list_identity_attributes(
+		&self,
+		txn: &mut Transaction<'_>,
+	) -> Result<Vec<IdentityAttribute>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.list_all_identity_attributes_at(cmd.version())),
 			Transaction::Admin(admin) => {
@@ -239,14 +243,18 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		name: &str,
 		value_type: ValueType,
-	) -> Result<IdentityAttribute> {
+	) -> Result<IdentityAttribute, ValueError> {
 		let attribute = CatalogStore::create_identity_attribute(txn, name, value_type)?;
 		txn.track_identity_attribute_created(attribute.clone())?;
 		Ok(attribute)
 	}
 
 	#[instrument(name = "catalog::identity_attribute::drop", level = "info", skip(self, txn))]
-	pub fn drop_identity_attribute(&self, txn: &mut AdminTransaction, id: IdentityAttributeId) -> Result<()> {
+	pub fn drop_identity_attribute(
+		&self,
+		txn: &mut AdminTransaction,
+		id: IdentityAttributeId,
+	) -> Result<(), ValueError> {
 		let values = CatalogStore::find_identity_attribute_values_for_attribute(
 			&mut Transaction::Admin(&mut *txn),
 			id,
@@ -274,7 +282,7 @@ impl Catalog {
 		identity: IdentityId,
 		attribute: &IdentityAttribute,
 		value: Value,
-	) -> Result<IdentityAttributeValue> {
+	) -> Result<IdentityAttributeValue, ValueError> {
 		if value.get_type() != attribute.value_type {
 			return Err(CatalogError::IdentityAttributeValueInvalid {
 				name: attribute.name.clone(),
@@ -295,7 +303,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		attribute: IdentityAttributeId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(value) = CatalogStore::find_identity_attribute_value(
 			&mut Transaction::Admin(&mut *txn),
 			identity,
@@ -314,7 +322,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		attribute: IdentityAttributeId,
-	) -> Result<Vec<IdentityAttributeValue>> {
+	) -> Result<Vec<IdentityAttributeValue>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				let version = admin.version();
@@ -389,7 +397,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<IdentityAttributeValue>> {
+	) -> Result<Vec<IdentityAttributeValue>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				let version = admin.version();

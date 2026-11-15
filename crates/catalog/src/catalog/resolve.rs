@@ -6,11 +6,10 @@ use reifydb_core::interface::{
 	resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::instrument;
 
 use super::Catalog;
-use crate::Result;
 
 impl Catalog {
 	#[instrument(name = "catalog::resolve::namespace", level = "trace", skip(self, txn))]
@@ -18,14 +17,14 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		namespace_id: NamespaceId,
-	) -> Result<ResolvedNamespace> {
+	) -> Result<ResolvedNamespace, ValueError> {
 		let def = self.get_namespace(txn, namespace_id)?;
 		let ident = Fragment::internal(def.name());
 		Ok(ResolvedNamespace::new(ident, def))
 	}
 
 	#[instrument(name = "catalog::resolve::table", level = "trace", skip(self, txn))]
-	pub fn resolve_table(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<ResolvedTable> {
+	pub fn resolve_table(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<ResolvedTable, ValueError> {
 		let table = self.get_table(txn, table_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, table.namespace)?;
 		let table_ident = Fragment::internal(table.name.clone());
@@ -34,7 +33,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::resolve::view", level = "trace", skip(self, txn))]
-	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView> {
+	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView, ValueError> {
 		let view = self.get_view(txn, view_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, view.namespace())?;
 		let view_ident = Fragment::internal(view.name());
@@ -47,7 +46,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
-	) -> Result<ResolvedRingBuffer> {
+	) -> Result<ResolvedRingBuffer, ValueError> {
 		let ringbuffer = self.get_ringbuffer(txn, ringbuffer_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, ringbuffer.namespace)?;
 		let ringbuffer_ident = Fragment::internal(ringbuffer.name.clone());
@@ -60,7 +59,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace_name: &str,
 		target_name: &str,
-	) -> Result<Vec<String>> {
+	) -> Result<Vec<String>, ValueError> {
 		let namespace_id = if let Some(ns) = self.find_namespace_by_name(txn, namespace_name)? {
 			ns.id()
 		} else {

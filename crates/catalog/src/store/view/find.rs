@@ -18,12 +18,12 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::view::shape::{parse_view_sort, view, view_namespace, view_queue, view_ringbuffer},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
+	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>, ValueError> {
 		let Some(multi) = rx.get(&[ViewKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
@@ -40,7 +40,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<View>> {
+	) -> Result<Option<View>, ValueError> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), RangeScope::All, 1024)?;
 
@@ -77,7 +77,7 @@ pub(crate) fn decode_view(
 	bytes: &EncodedCatalogRow,
 	columns: Vec<Column>,
 	primary_key: Option<PrimaryKey>,
-) -> Result<View> {
+) -> Result<View, ValueError> {
 	let id = ViewId(view::get_id(bytes));
 	let namespace = NamespaceId(view::get_namespace(bytes));
 	let name = view::get_name(bytes).to_string();

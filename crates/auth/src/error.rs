@@ -6,8 +6,6 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
-pub type Result<T> = std::result::Result<T, ValueError>;
-
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
 	#[error("password is required for password authentication")]

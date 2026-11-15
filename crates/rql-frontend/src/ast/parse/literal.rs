@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{
 			AstLiteral, AstLiteralBoolean, AstLiteralDuration, AstLiteralNone, AstLiteralNumber,
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_literal(&mut self, kind: Literal) -> Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal(&mut self, kind: Literal) -> Result<AstLiteral<'bump>, ValueError> {
 		let token = self.consume_literal(kind)?;
 		Ok(match kind {
 			Literal::Number => AstLiteral::Number(AstLiteralNumber(token)),
@@ -26,11 +27,11 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_literal_number(&mut self) -> Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_number(&mut self) -> Result<AstLiteral<'bump>, ValueError> {
 		self.parse_literal(Literal::Number)
 	}
 
-	pub(crate) fn parse_literal_text(&mut self) -> Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_text(&mut self) -> Result<AstLiteral<'bump>, ValueError> {
 		self.parse_literal(Literal::Text)
 	}
 }

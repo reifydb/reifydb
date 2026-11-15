@@ -3,9 +3,9 @@
 
 use reifydb_core::common::TimeSource;
 use reifydb_rql_frontend::ast::ast::AstTimeDeclaration;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::value_type::ValueType};
 
-use crate::{Result, error::RqlError};
+use crate::error::RqlError;
 
 #[derive(Debug, Default, Clone)]
 pub enum TimeDeclaration {
@@ -38,7 +38,7 @@ pub fn resolve_declared_source_time<'a>(
 	declaration: &TimeDeclaration,
 	columns: impl IntoIterator<Item = (&'a str, ValueType, bool)>,
 	row_ttl: Option<Fragment>,
-) -> Result<TimeSource> {
+) -> Result<TimeSource, ValueError> {
 	match declaration {
 		TimeDeclaration::Undeclared | TimeDeclaration::None => match row_ttl {
 			Some(fragment) => Err(RqlError::RowTtlWithoutTimeDomain {
@@ -57,7 +57,7 @@ pub fn resolve_declared_source_time<'a>(
 fn resolve_event_column<'a>(
 	column: &Fragment,
 	columns: impl IntoIterator<Item = (&'a str, ValueType, bool)>,
-) -> Result<TimeSource> {
+) -> Result<TimeSource, ValueError> {
 	let name = column.text();
 	let mut available = Vec::new();
 
@@ -107,7 +107,7 @@ mod tests {
 		vec![("id", ValueType::Int4, false), ("block_time", ValueType::DateTime, false)]
 	}
 
-	fn resolve(declaration: &TimeDeclaration) -> Result<TimeSource> {
+	fn resolve(declaration: &TimeDeclaration) -> Result<TimeSource, ValueError> {
 		resolve_declared_source_time(declaration, columns(), None)
 	}
 

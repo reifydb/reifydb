@@ -19,6 +19,7 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, stack::SymbolTable};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	params::Params,
 	value::{
 		column_view::ColumnView,
@@ -31,12 +32,14 @@ use reifydb_value::{
 };
 
 use crate::{
-	Result,
 	transaction::operation::table::{decode_table_rows, load_stored_shape},
 	vm::{services::Services, volcano::decode_dictionary_columns},
 };
 
-pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
+pub(crate) fn decode_rows_to_columns(
+	shape: &RowShape,
+	rows: &[(RowNumber, EncodedBytes)],
+) -> Result<RecordBatch, ValueError> {
 	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
 	from_encoded_bytes(shape, &ids, &encoded)
 }
@@ -47,7 +50,7 @@ pub(crate) fn decode_stored_table_rows(
 	table: &Table,
 	shape: &RowShape,
 	rows: &[(RowNumber, EncodedBytes)],
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
 	decode_table_rows(shape, &ids, &encoded, |fingerprint| load_stored_shape(catalog, txn, table, fingerprint))
 }
@@ -56,7 +59,7 @@ pub(crate) fn with_series_stamps(
 	columns: Vec<(FieldRef, ArrayRef)>,
 	row_numbers: &[RowNumber],
 	encoded: &[EncodedBytes],
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let rows: Vec<&EncodedSeriesRow> = encoded.iter().map(EncodedSeriesRow::view).collect();
 	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|row_number| row_number.0)));
 	let mut stamps: Vec<(SystemColumn, ArrayRef)> = vec![
@@ -88,7 +91,7 @@ pub(crate) fn with_series_stamps(
 	stamp_system_columns(batch(columns)?, stamps)
 }
 
-pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<RecordBatch> {
+pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	let mut merged: Vec<(FieldRef, ArrayRef)> =
 		user_columns(&post).map(|(field, array)| (field.clone(), array.clone())).collect();
 	for (field, array) in user_columns(pre) {
@@ -102,14 +105,14 @@ pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<Rec
 	stamp_system_columns(batch(merged)?, stamps)
 }
 
-pub(crate) fn with_absent_pre_image(post: RecordBatch) -> Result<RecordBatch> {
+pub(crate) fn with_absent_pre_image(post: RecordBatch) -> Result<RecordBatch, ValueError> {
 	let row_count = post.num_rows();
 	let absent = batch(user_columns(&post)
 		.map(|(field, array)| {
 			let ty = ColumnView::try_from((array, field.as_ref()))?.get_type();
 			Ok(factory::none_typed(field.name(), ty, row_count))
 		})
-		.collect::<Result<Vec<_>>>()?)?;
+		.collect::<Result<Vec<_>, ValueError>>()?)?;
 	with_pre_image(post, &absent)
 }
 
@@ -118,7 +121,7 @@ pub(crate) fn decode_returning_dictionaries(
 	txn: &mut Transaction<'_>,
 	object_columns: &[Column],
 	columns: RecordBatch,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let mut dictionaries: Vec<Option<(Dictionary, ValueType)>> = Vec::with_capacity(columns.num_columns());
 	for (field, _) in user_columns(&columns) {
 		let column = object_columns.iter().find(|c| c.name == *field.name());
@@ -133,7 +136,7 @@ pub(crate) fn decode_returning_dictionaries(
 	decode_dictionary_columns(columns, &dictionaries, txn)
 }
 
-fn try_column_passthrough(exprs: &[Expression], input: &RecordBatch) -> Result<Option<RecordBatch>> {
+fn try_column_passthrough(exprs: &[Expression], input: &RecordBatch) -> Result<Option<RecordBatch>, ValueError> {
 	let mut cols: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(exprs.len());
 	for expr in exprs {
 		let Expression::Column(col_expr) = expr else {
@@ -148,7 +151,7 @@ fn try_column_passthrough(exprs: &[Expression], input: &RecordBatch) -> Result<O
 	Ok(Some(carry_row_numbers(batch(cols)?, input)?))
 }
 
-fn carry_row_numbers(columns: RecordBatch, input: &RecordBatch) -> Result<RecordBatch> {
+fn carry_row_numbers(columns: RecordBatch, input: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	match system_column(input, SystemColumn::RowNumbers) {
 		Some(array) => with_system_column(columns, SystemColumn::RowNumbers, array.clone()),
 		None => Ok(columns),
@@ -161,7 +164,7 @@ pub(crate) fn evaluate_returning(
 	returning_exprs: &[Expression],
 	input: RecordBatch,
 	identity: IdentityId,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	if let Some(columns) = try_column_passthrough(returning_exprs, &input)? {
 		return Ok(columns);
 	}

@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, WindowedViewGroupId},
 	windowed_view_group::WindowedViewGroup,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackWindowedViewGroupChangeOperations for AdminTransaction {
-	fn track_windowed_view_group_created(&mut self, group: WindowedViewGroup) -> Result<()> {
+	fn track_windowed_view_group_created(&mut self, group: WindowedViewGroup) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(group),
@@ -28,7 +28,7 @@ impl CatalogTrackWindowedViewGroupChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_windowed_view_group_deleted(&mut self, group: WindowedViewGroup) -> Result<()> {
+	fn track_windowed_view_group_deleted(&mut self, group: WindowedViewGroup) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(group),
 			post: None,

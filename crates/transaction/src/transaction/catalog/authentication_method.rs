@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	authentication_method::{AuthenticationMethod, AuthenticationMethodId},
 	change::CatalogTrackAuthenticationMethodChangeOperations,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackAuthenticationMethodChangeOperations for AdminTransaction {
-	fn track_authentication_method_created(&mut self, method: AuthenticationMethod) -> Result<()> {
+	fn track_authentication_method_created(&mut self, method: AuthenticationMethod) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(method),
@@ -31,7 +31,7 @@ impl CatalogTrackAuthenticationMethodChangeOperations for AdminTransaction {
 		&mut self,
 		pre: AuthenticationMethod,
 		post: AuthenticationMethod,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -41,7 +41,7 @@ impl CatalogTrackAuthenticationMethodChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_authentication_method_deleted(&mut self, method: AuthenticationMethod) -> Result<()> {
+	fn track_authentication_method_deleted(&mut self, method: AuthenticationMethod) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(method),
 			post: None,

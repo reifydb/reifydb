@@ -7,7 +7,7 @@ use arrow_array::{Array, GenericByteArray, RecordBatch, types::ByteArrayType};
 use arrow_buffer::{BooleanBuffer, i256};
 use reifydb_codec::extern_c::cells::{encode_any_cell, encode_dictionary_id_cell};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::bitmap::packed_bytes,
 	value::{
 		Value,
@@ -47,11 +47,11 @@ use crate::{
 
 impl Arena {
 	#[instrument(name = "flow::marshal::columns", level = "trace", skip_all, fields(row_count = batch.num_rows(), column_count = user_columns(batch).count()))]
-	pub fn marshal_columns(&mut self, batch: &RecordBatch) -> Result<ExternCColumns> {
+	pub fn marshal_columns(&mut self, batch: &RecordBatch) -> Result<ExternCColumns, ValueError> {
 		let row_count = batch.num_rows();
 		let views = user_columns(batch)
 			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let column_count = views.len();
 
 		if row_count == 0 && column_count == 0 {

@@ -29,7 +29,7 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		diff_type::DiffType, duration::Duration, identity::IdentityId, partition::ScanPartitions,
 		row_number::RowNumber, system_columns::require_row_numbers,
@@ -139,7 +139,7 @@ impl SubscriptionWorkerActor {
 		base_query: &MultiReadTransaction,
 		change: Change,
 		flow_id: FlowId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut txn = EphemeralTransaction::new(
 			Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			change.version.commit,
@@ -179,7 +179,7 @@ impl SubscriptionWorkerActor {
 	}
 }
 
-fn row_batch_size(catalog: &Catalog) -> Result<NonZeroU64> {
+fn row_batch_size(catalog: &Catalog) -> Result<NonZeroU64, ValueError> {
 	match NonZeroU64::new(u64::from(catalog.get_config_uint2(ConfigKey::QueryRowBatchSize))) {
 		Some(batch_size) => Ok(batch_size),
 		None => internal_err!("QUERY_ROW_BATCH_SIZE is 0, which its config validation rejects"),
@@ -198,7 +198,7 @@ impl Snapshot {
 		self.rows.len() as u64
 	}
 
-	fn fold(&mut self, staged: Vec<StagedBatch>) -> Result<()> {
+	fn fold(&mut self, staged: Vec<StagedBatch>) -> Result<(), ValueError> {
 		for (op, batch) in staged {
 			if batch.num_rows() == 0 {
 				continue;
@@ -225,7 +225,7 @@ impl Snapshot {
 		Ok(())
 	}
 
-	fn compact(&mut self) -> Result<()> {
+	fn compact(&mut self) -> Result<(), ValueError> {
 		let mut live: Vec<(usize, usize)> = self.rows.values().copied().collect();
 		live.sort_unstable();
 		let mut parts: Vec<RecordBatch> = Vec::new();
@@ -248,7 +248,7 @@ impl Snapshot {
 		Ok(())
 	}
 
-	fn into_batches(mut self, newest_first: bool) -> Result<Vec<StagedBatch>> {
+	fn into_batches(mut self, newest_first: bool) -> Result<Vec<StagedBatch>, ValueError> {
 		self.compact()?;
 		if !newest_first {
 			return Ok(self.batches.into_iter().map(|batch| (DiffType::Insert, batch)).collect());

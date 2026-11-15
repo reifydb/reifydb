@@ -21,7 +21,6 @@ use reifydb_value::error::ValueError;
 use tracing::{Span, field, instrument};
 
 use super::shape::{shape_field, shape_header};
-use crate::Result;
 
 #[instrument(
 	name = "shape_store::find",
@@ -36,7 +35,7 @@ use crate::Result;
 pub(crate) fn find_row_shape_by_fingerprint(
 	txn: &mut Transaction<'_>,
 	fingerprint: RowShapeFingerprint,
-) -> Result<Option<RowShape>> {
+) -> Result<Option<RowShape>, ValueError> {
 	let header_key = RowShapeKey::new(fingerprint);
 	let header_entry = match txn.get(&[header_key.clone().into()])?.pop().flatten() {
 		Some(entry) => entry,
@@ -90,7 +89,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 		total_fields = field::Empty
 	)
 )]
-pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
+pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>, ValueError> {
 	let mut shape_headers: Vec<(RowShapeFingerprint, RowFamily, usize)> = Vec::new();
 
 	{

@@ -15,7 +15,7 @@ use reifydb_flow_async::window::{
 };
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sdk::{
-	error::Result as SdkResult,
+	error::SdkError,
 	flow::operator::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
@@ -87,16 +87,16 @@ impl WindowedOperator for FoldWindowProbe {
 	type Accumulator = Moments;
 	type Output = FoldWindow;
 
-	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self, SdkError> {
 		Ok(Self)
 	}
 
-	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTimeCoord>>> {
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> SdkResult<Option<DateTimeCoord>> {
+					.map(|row| -> Result<Option<DateTimeCoord>, SdkError> {
 						Ok(row.row_time().map(DateTimeCoord))
 					})
 					.transpose()
@@ -110,12 +110,12 @@ impl WindowedOperator for FoldWindowProbe {
 		_ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
-	) -> SdkResult<Vec<Option<(String, f64)>>> {
+	) -> Result<Vec<Option<(String, f64)>>, SdkError> {
 		rows.iter()
 			.map(|&i| {
 				cols.row(i)
 					.as_ref()
-					.map(|row| -> SdkResult<Option<(String, f64)>> {
+					.map(|row| -> Result<Option<(String, f64)>, SdkError> {
 						let (Some(k), Some(v)) = (row.utf8("k")?, row.i64("v")?) else {
 							return Ok(None);
 						};

@@ -6,10 +6,9 @@ use arrow_schema::FieldRef;
 use datafusion_common::{ScalarValue, metadata::FieldMetadata};
 use datafusion_expr::Expr;
 use reifydb_core::expression::{ConstantExpression, ParameterExpression, VariableExpression};
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
-	Result,
 	expression::{
 		compile::{type_column, variable_column, variable_field_column},
 		constant::constant_value,
@@ -18,17 +17,21 @@ use crate::{
 	lower::{Node, bool_field, error::from_datafusion},
 };
 
-pub(super) fn constant(operator: &str, constant: &ConstantExpression, label: &str) -> Result<Node> {
+pub(super) fn constant(operator: &str, constant: &ConstantExpression, label: &str) -> Result<Node, ValueError> {
 	let (field, array) = constant_value(constant, label, 1)?;
 	row_zero(operator, &field, &array)
 }
 
-pub(super) fn variable(ctx: &EvalContext, operator: &str, variable: &VariableExpression) -> Result<Node> {
+pub(super) fn variable(ctx: &EvalContext, operator: &str, variable: &VariableExpression) -> Result<Node, ValueError> {
 	let (field, array) = variable_column(ctx, variable, 1)?;
 	row_zero(operator, &field, &array)
 }
 
-pub(super) fn parameter(ctx: &EvalContext, operator: &str, parameter: &ParameterExpression) -> Result<Node> {
+pub(super) fn parameter(
+	ctx: &EvalContext,
+	operator: &str,
+	parameter: &ParameterExpression,
+) -> Result<Node, ValueError> {
 	let fragment = match parameter {
 		ParameterExpression::Positional {
 			fragment,
@@ -46,7 +49,7 @@ pub(super) fn parameter(ctx: &EvalContext, operator: &str, parameter: &Parameter
 	)
 }
 
-pub(super) fn type_literal(operator: &str, ty: &ValueType, fragment: &Fragment) -> Result<Node> {
+pub(super) fn type_literal(operator: &str, ty: &ValueType, fragment: &Fragment) -> Result<Node, ValueError> {
 	let (field, array) = type_column(1, ty, fragment);
 	row_zero(operator, &field, &array)
 }
@@ -56,12 +59,12 @@ pub(super) fn variable_field(
 	operator: &str,
 	variable: &VariableExpression,
 	field_name: &str,
-) -> Result<Node> {
+) -> Result<Node, ValueError> {
 	let (field, array) = variable_field_column(ctx, variable, field_name, 1)?;
 	row_zero(operator, &field, &array)
 }
 
-pub(super) fn row_zero(operator: &str, field: &FieldRef, array: &ArrayRef) -> Result<Node> {
+pub(super) fn row_zero(operator: &str, field: &FieldRef, array: &ArrayRef) -> Result<Node, ValueError> {
 	let value = ScalarValue::try_from_array(array.as_ref(), 0).map_err(|err| from_datafusion(operator, err))?;
 	Ok(Node {
 		expr: Expr::Literal(value, Some(FieldMetadata::from(field.metadata()))),

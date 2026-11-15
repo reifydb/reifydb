@@ -16,10 +16,13 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+use reifydb_value::{
+	error::ValueError,
+	value::{constraint::TypeConstraint, value_type::ValueType},
+};
 
 use super::ensure_namespace;
-use crate::{Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
+use crate::{cache::CatalogCache, catalog::Catalog, error::CatalogError};
 
 #[derive(Debug, Clone)]
 pub enum EphemeralProcedureDescriptor {
@@ -89,7 +92,7 @@ pub fn load_ephemeral_procedures(
 	catalog: &CatalogCache,
 	descriptors: Vec<EphemeralProcedureDescriptor>,
 	version: CommitVersion,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut seen: HashMap<ProcedureId, String> = HashMap::new();
 
 	let mut to_clear = Vec::new();
@@ -178,7 +181,7 @@ pub fn bootstrap_system_procedures(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let catalog_api = Catalog::new(catalog.clone());
 
 	let mut admin = AdminTransaction::new(

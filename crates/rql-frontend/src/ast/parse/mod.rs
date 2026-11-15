@@ -61,10 +61,9 @@ use Operator::*;
 use Separator::NewLine;
 use bumpalo::Bump;
 use reifydb_core::error::diagnostic::query::duplicate_field;
-use reifydb_value::return_error;
+use reifydb_value::{error::ValueError, return_error};
 
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstBetween, AstInfix, AstStatement, AstVariable, InfixOperator},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
@@ -112,7 +111,7 @@ pub fn parse<'bump>(
 	bump: &'bump Bump,
 	source: &'bump str,
 	tokens: Vec<Token<'bump>>,
-) -> Result<Vec<AstStatement<'bump>>> {
+) -> Result<Vec<AstStatement<'bump>>, ValueError> {
 	let mut parser = Parser::new(bump, source, tokens);
 	parser.parse()
 }
@@ -121,7 +120,7 @@ pub(crate) fn is_block_terminated(node: &Ast) -> bool {
 	matches!(node, Ast::If(_) | Ast::Match(_) | Ast::Loop(_) | Ast::While(_) | Ast::For(_) | Ast::DefFunction(_))
 }
 
-pub(crate) fn reject_duplicate_aliases(nodes: &[Ast<'_>]) -> Result<()> {
+pub(crate) fn reject_duplicate_aliases(nodes: &[Ast<'_>]) -> Result<(), ValueError> {
 	let mut seen: Vec<&str> = Vec::with_capacity(nodes.len());
 	for node in nodes {
 		let Ast::Infix(AstInfix {
@@ -189,7 +188,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse(&mut self) -> Result<Vec<AstStatement<'bump>>> {
+	fn parse(&mut self) -> Result<Vec<AstStatement<'bump>>, ValueError> {
 		let mut result = Vec::with_capacity(4);
 		loop {
 			if self.is_eof() {
@@ -201,7 +200,7 @@ impl<'bump> Parser<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn parse_statement(&mut self) -> Result<AstStatement<'bump>> {
+	pub(crate) fn parse_statement(&mut self) -> Result<AstStatement<'bump>, ValueError> {
 		let start_offset = if let Ok(current) = self.current() {
 			current.fragment.offset()
 		} else {
@@ -269,7 +268,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_statement_content(&mut self) -> Result<AstStatement<'bump>> {
+	pub(crate) fn parse_statement_content(&mut self) -> Result<AstStatement<'bump>, ValueError> {
 		let start_offset = if let Ok(current) = self.current() {
 			current.fragment.offset()
 		} else {
@@ -310,7 +309,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
+	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast<'bump>, ValueError> {
 		self.depth += 1;
 		if self.depth > MAX_PARSE_DEPTH {
 			self.depth -= 1;
@@ -324,7 +323,7 @@ impl<'bump> Parser<'bump> {
 		result
 	}
 
-	fn parse_node_inner(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
+	fn parse_node_inner(&mut self, precedence: Precedence) -> Result<Ast<'bump>, ValueError> {
 		let mut left = self.parse_primary()?;
 
 		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)) {
@@ -390,7 +389,7 @@ impl<'bump> Parser<'bump> {
 		Ok(left)
 	}
 
-	pub(crate) fn advance(&mut self) -> Result<Token<'bump>> {
+	pub(crate) fn advance(&mut self) -> Result<Token<'bump>, ValueError> {
 		if self.position >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
@@ -399,12 +398,12 @@ impl<'bump> Parser<'bump> {
 		Ok(token)
 	}
 
-	pub(crate) fn consume(&mut self, expected: TokenKind) -> Result<Token<'bump>> {
+	pub(crate) fn consume(&mut self, expected: TokenKind) -> Result<Token<'bump>, ValueError> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> Result<Option<Token<'bump>>> {
+	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> Result<Option<Token<'bump>>, ValueError> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -412,7 +411,7 @@ impl<'bump> Parser<'bump> {
 		Ok(Some(self.consume(expected)?))
 	}
 
-	pub(crate) fn consume_while(&mut self, expected: TokenKind) -> Result<()> {
+	pub(crate) fn consume_while(&mut self, expected: TokenKind) -> Result<(), ValueError> {
 		loop {
 			if self.is_eof() || self.current()?.kind != expected {
 				return Ok(());
@@ -421,22 +420,22 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn consume_literal(&mut self, expected: Literal) -> Result<Token<'bump>> {
+	pub(crate) fn consume_literal(&mut self, expected: Literal) -> Result<Token<'bump>, ValueError> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_operator(&mut self, expected: Operator) -> Result<Token<'bump>> {
+	pub(crate) fn consume_operator(&mut self, expected: Operator) -> Result<Token<'bump>, ValueError> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> Result<Token<'bump>> {
+	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> Result<Token<'bump>, ValueError> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_identifier(&mut self) -> Result<Token<'bump>> {
+	pub(crate) fn consume_identifier(&mut self) -> Result<Token<'bump>, ValueError> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			Ok(Token {
@@ -451,7 +450,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn current(&self) -> Result<Token<'bump>> {
+	pub(crate) fn current(&self) -> Result<Token<'bump>, ValueError> {
 		if self.position >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
@@ -465,7 +464,7 @@ impl<'bump> Parser<'bump> {
 		matches!(self.tokens[self.position + 1].kind, TokenKind::Keyword(k) if k == keyword)
 	}
 
-	pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<()> {
+	pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<(), ValueError> {
 		let got = self.current()?;
 		if got.kind == expected {
 			Ok(())
@@ -483,19 +482,19 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn current_expect_literal(&self, literal: Literal) -> Result<()> {
+	pub(crate) fn current_expect_literal(&self, literal: Literal) -> Result<(), ValueError> {
 		self.current_expect(TokenKind::Literal(literal))
 	}
 
-	pub(crate) fn current_expect_operator(&self, operator: Operator) -> Result<()> {
+	pub(crate) fn current_expect_operator(&self, operator: Operator) -> Result<(), ValueError> {
 		self.current_expect(TokenKind::Operator(operator))
 	}
 
-	pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> Result<()> {
+	pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> Result<(), ValueError> {
 		self.current_expect(TokenKind::Keyword(keyword))
 	}
 
-	pub(crate) fn current_precedence(&self) -> Result<Precedence> {
+	pub(crate) fn current_precedence(&self) -> Result<Precedence, ValueError> {
 		if self.is_eof() {
 			return Ok(Precedence::None);
 		};
@@ -553,12 +552,12 @@ impl<'bump> Parser<'bump> {
 		false
 	}
 
-	pub(crate) fn skip_new_line(&mut self) -> Result<()> {
+	pub(crate) fn skip_new_line(&mut self) -> Result<(), ValueError> {
 		self.consume_while(TokenKind::Separator(NewLine))?;
 		Ok(())
 	}
 
-	pub(crate) fn parse_between(&mut self, value: Ast<'bump>) -> Result<AstBetween<'bump>> {
+	pub(crate) fn parse_between(&mut self, value: Ast<'bump>) -> Result<AstBetween<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = BumpBox::new_in(self.parse_node(Precedence::Comparison)?, self.bump());
 		self.consume_operator(Operator::And)?;
@@ -572,7 +571,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> Result<AstInfix<'bump>> {
+	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> Result<AstInfix<'bump>, ValueError> {
 		if negated {
 			self.consume_operator(Operator::Not)?;
 		}
@@ -600,7 +599,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> Result<AstInfix<'bump>> {
+	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> Result<AstInfix<'bump>, ValueError> {
 		let contains_token = self.consume_keyword(Keyword::Contains)?;
 		let right = Ast::List(self.parse_list()?);
 
@@ -617,7 +616,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		allow_colon_alias: bool,
 		break_on: Option<Keyword>,
-	) -> Result<(Vec<Ast<'bump>>, bool)> {
+	) -> Result<(Vec<Ast<'bump>>, bool), ValueError> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
@@ -676,7 +675,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		keyword: Keyword,
 		op: OperationKind,
-	) -> Result<(Token<'bump>, Vec<Ast<'bump>>, &'bump str)> {
+	) -> Result<(Token<'bump>, Vec<Ast<'bump>>, &'bump str), ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(keyword)?;
 
@@ -696,7 +695,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_keyword_with_optional_braces_single(
 		&mut self,
 		keyword: Keyword,
-	) -> Result<(Token<'bump>, BumpBox<'bump, Ast<'bump>>, &'bump str)> {
+	) -> Result<(Token<'bump>, BumpBox<'bump, Ast<'bump>>, &'bump str), ValueError> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(keyword)?;
 
@@ -728,7 +727,7 @@ impl<'bump> Parser<'bump> {
 		is_valid_key && self.tokens[self.position + 1].is_operator(Operator::Colon)
 	}
 
-	pub(crate) fn try_parse_colon_alias(&mut self) -> Option<Result<Ast<'bump>>> {
+	pub(crate) fn try_parse_colon_alias(&mut self) -> Option<Result<Ast<'bump>, ValueError>> {
 		if !self.is_colon_alias() {
 			return None;
 		}
@@ -736,7 +735,7 @@ impl<'bump> Parser<'bump> {
 		Some(self.parse_colon_alias_inner())
 	}
 
-	fn parse_colon_alias_inner(&mut self) -> Result<Ast<'bump>> {
+	fn parse_colon_alias_inner(&mut self) -> Result<Ast<'bump>, ValueError> {
 		let key = if matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text)) {
 			Ast::Literal(self.parse_literal_text()?)
 		} else {

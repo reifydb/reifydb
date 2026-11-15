@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	Result,
 	nodes::CreateRemoteNamespaceNode,
 	plan::{
 		logical,
@@ -17,7 +17,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		_rx: &mut Transaction<'_>,
 		create: logical::CreateNamespaceNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,
@@ -28,7 +28,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		_rx: &mut Transaction<'_>,
 		create: logical::CreateRemoteNamespaceNode<'_>,
-	) -> Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>, ValueError> {
 		Ok(PhysicalPlan::CreateRemoteNamespace(CreateRemoteNamespaceNode {
 			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,

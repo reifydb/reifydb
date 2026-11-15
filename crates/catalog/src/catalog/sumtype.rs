@@ -10,10 +10,10 @@ use reifydb_transaction::{
 	change::TransactionalSumTypeChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{fragment::Fragment, value::sumtype::SumTypeId};
+use reifydb_value::{error::ValueError, fragment::Fragment, value::sumtype::SumTypeId};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate};
+use crate::{CatalogStore, catalog::Catalog, store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate};
 
 #[derive(Debug, Clone)]
 pub struct SumTypeToCreate {
@@ -41,7 +41,7 @@ impl From<SumTypeToCreate> for StoreSumTypeToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::sumtype::find", level = "trace", skip(self, txn))]
-	pub fn find_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> Result<Option<SumType>> {
+	pub fn find_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> Result<Option<SumType>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(def) = self.cache.find_sumtype_at(id, cmd.version()) {
@@ -115,7 +115,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<SumType>> {
+	) -> Result<Option<SumType>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, cmd.version()) {
@@ -210,26 +210,34 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sumtype::get", level = "trace", skip(self, txn))]
-	pub fn get_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> Result<SumType> {
+	pub fn get_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> Result<SumType, ValueError> {
 		CatalogStore::get_sumtype(txn, id)
 	}
 
 	#[instrument(name = "catalog::sumtype::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_sumtype(&self, txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumType> {
+	pub fn create_sumtype(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: SumTypeToCreate,
+	) -> Result<SumType, ValueError> {
 		let def = CatalogStore::create_sumtype(txn, to_create.into())?;
 		txn.track_sumtype_created(def.clone())?;
 		Ok(def)
 	}
 
 	#[instrument(name = "catalog::sumtype::drop", level = "info", skip(self, txn))]
-	pub fn drop_sumtype(&self, txn: &mut AdminTransaction, sumtype: SumType) -> Result<()> {
+	pub fn drop_sumtype(&self, txn: &mut AdminTransaction, sumtype: SumType) -> Result<(), ValueError> {
 		CatalogStore::drop_sumtype(txn, sumtype.id)?;
 		txn.track_sumtype_deleted(sumtype)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::sumtype::list", level = "trace", skip(self, txn))]
-	pub fn list_sumtypes(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<SumType>> {
+	pub fn list_sumtypes(
+		&self,
+		txn: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Vec<SumType>, ValueError> {
 		CatalogStore::list_sumtypes(txn, namespace)
 	}
 }

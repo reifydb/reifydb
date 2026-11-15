@@ -38,7 +38,7 @@ use reifydb_runtime::{
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{error::ValueError, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
 use reifydb_wal::{lsn::Lsn, sync::WalMode};
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
@@ -198,7 +198,7 @@ pub(crate) struct CommittedTxn {
 	conflict_manager: Option<ConflictManager>,
 }
 
-pub(crate) type CommitRebase = Box<dyn FnOnce(&mut CowVec<Delta>, CommitVersion) -> Result<()> + Send>;
+pub(crate) type CommitRebase = Box<dyn FnOnce(&mut CowVec<Delta>, CommitVersion) -> Result<(), ValueError> + Send>;
 
 pub(crate) enum CreateCommitResult {
 	Success {
@@ -346,7 +346,7 @@ where
 		source: Option<SourceVersion>,
 		section: OperatorSection,
 		layers: Vec<CommitLayer>,
-	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
 		self.shared.commit(version, conflicts, deltas, None, prepared, source, section, layers, window_size)
 	}
@@ -373,7 +373,7 @@ where
 		source: Option<SourceVersion>,
 		section: OperatorSection,
 		layers: Vec<CommitLayer>,
-	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
 		self.shared.commit(
 			version,
@@ -393,11 +393,11 @@ where
 		inner.last_unchecked = self.versions.current().expect("the current version is readable");
 	}
 
-	pub(crate) fn version(&self) -> Result<CommitVersion> {
+	pub(crate) fn version(&self) -> Result<CommitVersion, ValueError> {
 		self.versions.current()
 	}
 
-	pub(crate) fn freeze_commits(&self) -> Result<CommitVersion> {
+	pub(crate) fn freeze_commits(&self) -> Result<CommitVersion, ValueError> {
 		let mut state = self.inner.write();
 		state.frozen = true;
 		self.versions.current()
@@ -438,7 +438,7 @@ where
 		source: Option<SourceVersion>,
 		section: OperatorSection,
 		layers: Vec<CommitLayer>,
-	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+	) -> Result<(CreateCommitResult, CowVec<Delta>), ValueError> {
 		let mut inner = self.inner.write();
 		if version < inner.evicted_up_through {
 			return Ok((CreateCommitResult::TooOld, deltas));
@@ -490,7 +490,7 @@ where
 		window_size: u64,
 		timing: SpanTiming,
 		evicted: &mut Vec<CommittedWindow>,
-	) -> Result<CreateCommitResult> {
+	) -> Result<CreateCommitResult, ValueError> {
 		if version < state.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);
 		}
@@ -611,7 +611,7 @@ where
 		section: &OperatorSection,
 		layers: &[CommitLayer],
 		fresh: bool,
-	) -> Result<(CommitVersion, Lsn, DateTime)> {
+	) -> Result<(CommitVersion, Lsn, DateTime), ValueError> {
 		if state.frozen {
 			return Err(TransactionError::ShuttingDown.into());
 		}
@@ -700,7 +700,12 @@ where
 		)
 	}
 
-	fn resolve_keys(&self, deltas: &mut CowVec<Delta>, keys: &[TaggedKey], version: CommitVersion) -> Result<()> {
+	fn resolve_keys(
+		&self,
+		deltas: &mut CowVec<Delta>,
+		keys: &[TaggedKey],
+		version: CommitVersion,
+	) -> Result<(), ValueError> {
 		if keys.is_empty() {
 			return Ok(());
 		}
@@ -728,7 +733,7 @@ where
 		Ok(())
 	}
 
-	fn resolve_unknown_pres(&self, deltas: &mut CowVec<Delta>, version: CommitVersion) -> Result<()> {
+	fn resolve_unknown_pres(&self, deltas: &mut CowVec<Delta>, version: CommitVersion) -> Result<(), ValueError> {
 		let unknown: Vec<TaggedKey> = deltas
 			.iter()
 			.filter_map(|delta| match delta {
@@ -849,11 +854,11 @@ mod tests {
 	}
 
 	impl VersionProvider for MockVersionProvider {
-		fn next(&self) -> Result<CommitVersion> {
+		fn next(&self) -> Result<CommitVersion, ValueError> {
 			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
 		}
 
-		fn reserve(&self) -> Result<CommitVersion> {
+		fn reserve(&self) -> Result<CommitVersion, ValueError> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed) + 1))
 		}
 
@@ -861,7 +866,7 @@ mod tests {
 			self.current.fetch_max(version.0, Ordering::Relaxed);
 		}
 
-		fn current(&self) -> Result<CommitVersion> {
+		fn current(&self) -> Result<CommitVersion, ValueError> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
 

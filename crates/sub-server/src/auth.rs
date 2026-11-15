@@ -37,23 +37,24 @@ impl fmt::Display for AuthError {
 
 impl StdError for AuthError {}
 
-pub type AuthResult<T> = Result<T, AuthError>;
-
-pub fn extract_identity_from_auth_header(auth_service: &AuthService, auth_header: &str) -> AuthResult<IdentityId> {
+pub fn extract_identity_from_auth_header(
+	auth_service: &AuthService,
+	auth_header: &str,
+) -> Result<IdentityId, AuthError> {
 	match auth_header.strip_prefix("Bearer ") {
 		Some(token) => validate_bearer_token(auth_service, token.trim()),
 		None => Err(AuthError::InvalidHeader),
 	}
 }
 
-pub fn extract_identity_from_ws_auth(auth_service: &AuthService, token: Option<&str>) -> AuthResult<IdentityId> {
+pub fn extract_identity_from_ws_auth(auth_service: &AuthService, token: Option<&str>) -> Result<IdentityId, AuthError> {
 	match token {
 		Some(t) if !t.is_empty() => validate_bearer_token(auth_service, t),
 		_ => Ok(IdentityId::anonymous()),
 	}
 }
 
-fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<IdentityId> {
+fn validate_bearer_token(auth_service: &AuthService, token: &str) -> Result<IdentityId, AuthError> {
 	if token.is_empty() {
 		return Err(AuthError::InvalidToken);
 	}

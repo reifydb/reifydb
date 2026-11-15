@@ -26,7 +26,8 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -77,7 +78,7 @@ struct RetainedSession<G, S, K> {
 	windows: HashMap<(G, WindowSpan<S>), WindowSlots<K>>,
 }
 
-fn slot_value<T: OperatorState>(batch: &StateBatch, slot: usize) -> Result<Option<T>> {
+fn slot_value<T: OperatorState>(batch: &StateBatch, slot: usize) -> Result<Option<T>, ValueError> {
 	match batch.value(slot) {
 		Some(row) => Ok(Some(decode::<T>(row)?)),
 		None => Ok(None),
@@ -128,7 +129,11 @@ where
 	S: WindowAnchor + Hash,
 	RetainedHeader<O>: OperatorState,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, rows: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+	fn reap(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: &[(GroupStateKey, EncodedPodRow)],
+	) -> Result<(), ValueError> {
 		let header_keyspace =
 			KeyspaceFamily::Guest.keyspace(KeyspaceId::ACCUMULATOR, KeyspaceId::GUEST_ACCUMULATOR);
 		let mut kept: Vec<(GroupId, RowNumber)> = Vec::new();
@@ -183,7 +188,7 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		entries: &[WindowReindex<'_, G, S>],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut drops = Vec::new();
 		let mut sets = Vec::new();
 		for entry in entries.iter().filter(|entry| entry.prior != entry.new) {
@@ -220,7 +225,7 @@ where
 		order: &[(G, WindowSpan<S>)],
 		slot_key: SK,
 		build_output: BO,
-	) -> Result<Vec<RetainedResult<G, S, O>>>
+	) -> Result<Vec<RetainedResult<G, S, O>>, ValueError>
 	where
 		SK: Fn(&G, S) -> (GroupId, EncodedKey),
 		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
@@ -267,7 +272,7 @@ where
 		store: &mut dyn StateStore,
 		pending: Vec<PendingEmit<G, S, O>>,
 		build_output: BO,
-	) -> Result<Vec<RetainedResult<G, S, O>>>
+	) -> Result<Vec<RetainedResult<G, S, O>>, ValueError>
 	where
 		BO: Fn(&G, WindowSpan<S>, &BTreeMap<K, V>) -> Option<O>,
 	{
@@ -396,7 +401,7 @@ where
 		&self,
 		store: &mut dyn StateStore,
 		windows: &[(GroupId, u64)],
-	) -> Result<HashMap<GroupId, BTreeMap<K, V>>> {
+	) -> Result<HashMap<GroupId, BTreeMap<K, V>>, ValueError> {
 		if windows.is_empty() {
 			return Ok(HashMap::new());
 		}
@@ -445,7 +450,7 @@ where
 		Ok(read)
 	}
 
-	fn entry_key(group: GroupId, key: &K) -> Result<RetainedEntryKey> {
+	fn entry_key(group: GroupId, key: &K) -> Result<RetainedEntryKey, ValueError> {
 		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
 	}
 
@@ -453,7 +458,7 @@ where
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, S, Vec<(K, V)>>,
 		slot_resolved: &SlotResolved<G, S>,
-	) -> Result<RetainedSession<G, S, K>> {
+	) -> Result<RetainedSession<G, S, K>, ValueError> {
 		let mut keys: Vec<GroupStateKey> = Vec::new();
 		let mut meta_slots: BTreeMap<G, usize> = BTreeMap::new();
 		for (group, _) in buckets.keys() {
@@ -542,7 +547,7 @@ where
 		slots: &WindowSlots<K>,
 		folded: &BTreeMap<K, Option<V>>,
 		key: &K,
-	) -> Result<Option<V>> {
+	) -> Result<Option<V>, ValueError> {
 		match folded.get(key) {
 			Some(value) => Ok(value.clone()),
 			None => Ok(slot_value::<RetainedEntry<K, V>>(batch, Self::entry_slot(slots, key))?
@@ -555,7 +560,7 @@ where
 		slots: &WindowSlots<K>,
 		events: AccumulatorEvents<Vec<(K, V)>>,
 		first_time: DateTime,
-	) -> Result<(u64, RetainedHeader<O>)> {
+	) -> Result<(u64, RetainedHeader<O>), ValueError> {
 		let mut header: RetainedHeader<O> =
 			slot_value(batch, slots.header)?.unwrap_or_else(|| RetainedHeader {
 				count: 0,
@@ -610,7 +615,7 @@ where
 		session: &mut RetainedSession<G, S, K>,
 		mut buckets: TumblingBuckets<G, S, Vec<(K, V)>>,
 		order: &[(G, WindowSpan<S>)],
-	) -> Result<Vec<PendingEmit<G, S, O>>> {
+	) -> Result<Vec<PendingEmit<G, S, O>>, ValueError> {
 		let now = store.batch_time();
 		let mut pending: Vec<PendingEmit<G, S, O>> = Vec::new();
 
@@ -652,7 +657,11 @@ where
 		Ok(pending)
 	}
 
-	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, S>>> {
+	pub fn expire(
+		&mut self,
+		store: &mut dyn StateStore,
+		threshold: u64,
+	) -> Result<Vec<ExpiredWindow<G, S>>, ValueError> {
 		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
 			self.expiry.due(store, threshold, self.expire_batch)?;
 
@@ -680,7 +689,7 @@ where
 		Ok(out)
 	}
 
-	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize, ValueError> {
 		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 }
@@ -694,7 +703,7 @@ mod tests {
 		key::operator::state::{GroupId, KeyspaceMask},
 		state::timer::StateStore,
 	};
-	use reifydb_value::{Result, util::hash::Hash128};
+	use reifydb_value::{error::ValueError, util::hash::Hash128};
 
 	use super::{RetainedHeader, RetainedResult, RetainedTumblingEngine};
 	use crate::{
@@ -766,7 +775,11 @@ mod tests {
 		results.iter().map(|r| r.kind).collect()
 	}
 
-	fn stored(engine: &Engine, store: &mut MockStore, window: (GroupId, EncodedKey)) -> Result<BTreeMap<u64, i64>> {
+	fn stored(
+		engine: &Engine,
+		store: &mut MockStore,
+		window: (GroupId, EncodedKey),
+	) -> Result<BTreeMap<u64, i64>, ValueError> {
 		let (id, slot) = window;
 		let header: Option<RetainedHeader<Out>> =
 			get(store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, id, slot)))?.remove(0);

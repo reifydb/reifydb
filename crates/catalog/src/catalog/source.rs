@@ -6,10 +6,10 @@ use reifydb_transaction::{
 	change::TransactionalSourceChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::source::create::SourceToCreate as StoreSourceToCreate};
+use crate::{CatalogStore, catalog::Catalog, store::source::create::SourceToCreate as StoreSourceToCreate};
 
 #[derive(Debug, Clone)]
 pub struct SourceToCreate {
@@ -41,7 +41,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<Source>> {
+	) -> Result<Option<Source>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(source) = self.cache.find_source_by_name_at(namespace, name, cmd.version())
@@ -139,21 +139,25 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::source::create", level = "info", skip(self, txn, to_create))]
-	pub fn create_source(&self, txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
+	pub fn create_source(
+		&self,
+		txn: &mut AdminTransaction,
+		to_create: SourceToCreate,
+	) -> Result<Source, ValueError> {
 		let source = CatalogStore::create_source(txn, to_create.into())?;
 		txn.track_source_created(source.clone())?;
 		Ok(source)
 	}
 
 	#[instrument(name = "catalog::source::drop", level = "info", skip(self, txn))]
-	pub fn drop_source(&self, txn: &mut AdminTransaction, source: Source) -> Result<()> {
+	pub fn drop_source(&self, txn: &mut AdminTransaction, source: Source) -> Result<(), ValueError> {
 		CatalogStore::drop_source(txn, source.id)?;
 		txn.track_source_deleted(source)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::source::list_all", level = "trace", skip(self, txn))]
-	pub fn list_sources_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Source>> {
+	pub fn list_sources_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Source>, ValueError> {
 		CatalogStore::list_sources_all(txn)
 	}
 }

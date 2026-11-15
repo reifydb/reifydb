@@ -11,10 +11,10 @@ use reifydb_transaction::{
 	change::TransactionalAuthenticationChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError};
+use crate::{CatalogStore, catalog::Catalog, error::CatalogError};
 
 impl Catalog {
 	#[instrument(name = "catalog::authentication::create", level = "info", skip(self, txn))]
@@ -24,7 +24,7 @@ impl Catalog {
 		identity: IdentityId,
 		method: &str,
 		properties: BTreeMap<String, String>,
-	) -> Result<Authentication> {
+	) -> Result<Authentication, ValueError> {
 		if CatalogStore::find_authentication_method_by_name(&mut Transaction::Admin(&mut *txn), method)?
 			.is_none()
 		{
@@ -43,7 +43,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		id: AuthenticationId,
-	) -> Result<Option<Authentication>> {
+	) -> Result<Option<Authentication>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(auth) = self.cache.find_authentication_at(id, cmd.version()) {
@@ -127,7 +127,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<Option<Authentication>> {
+	) -> Result<Option<Authentication>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
@@ -255,7 +255,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		method: &str,
-	) -> Result<Vec<Authentication>> {
+	) -> Result<Vec<Authentication>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_authentications_by_method_at(method, cmd.version()))
@@ -291,7 +291,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(auth) = CatalogStore::find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut *txn),
 			identity,

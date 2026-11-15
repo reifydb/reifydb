@@ -4,10 +4,11 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{any::TaggedKey, catalog::BindingKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{Result, cache::CatalogCache, store::binding::find::decode_binding};
+use crate::{cache::CatalogCache, store::binding::find::decode_binding};
 
-pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let stream = rx.range(BindingKey::full_scan(), RangeScope::All, 1024)?;
 
 	for entry in stream {

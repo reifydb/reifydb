@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::error::ValueError;
+
 use crate::{
-	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstInsert, AstInsertWith, AstVariable},
 		identifier::UnresolvedObjectIdentifier,
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_insert(&mut self) -> Result<AstInsert<'bump>> {
+	pub(crate) fn parse_insert(&mut self) -> Result<AstInsert<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
@@ -102,7 +103,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_insert_with(&mut self) -> Result<AstInsertWith<'bump>> {
+	fn parse_insert_with(&mut self) -> Result<AstInsertWith<'bump>, ValueError> {
 		let token = self.consume_keyword(Keyword::With)?;
 		let inline = self.parse_inline()?;
 

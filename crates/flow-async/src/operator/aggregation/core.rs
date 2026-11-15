@@ -37,7 +37,6 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
-	Result,
 	error::ValueError,
 	fragment::Fragment,
 	reifydb_assertions,
@@ -97,7 +96,7 @@ pub enum SlotInput {
 	EventTime,
 }
 
-fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'_>) -> Result<()> {
+fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'_>) -> Result<(), ValueError> {
 	if accuracy.is_none() && matches!(data.data, ViewData::Digest { .. }) {
 		return Ok(());
 	}
@@ -384,7 +383,7 @@ fn typed_column<'v>(
 	name: &str,
 	declared: Option<ValueType>,
 	values: impl Iterator<Item = &'v Value>,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let values: Vec<&Value> = values.collect();
 	let column_type = match declared {
 		Some(declared) => {
@@ -414,7 +413,7 @@ fn typed_column<'v>(
 	Ok(builder.finish(name))
 }
 
-fn optional_named(name: &str, field: &FieldRef, array: ArrayRef) -> Result<(FieldRef, ArrayRef)> {
+fn optional_named(name: &str, field: &FieldRef, array: ArrayRef) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut field_type = from_field(field)?;
 	field_type.value_type = field_type.value_type.map(|value_type| match value_type {
 		ValueType::Option(_) => value_type,
@@ -477,7 +476,7 @@ impl Aggregation {
 		runtime_context: RuntimeContext,
 		context: AggregateContext,
 		ctx: Arc<FlowContext>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let lowered_group_by: Vec<LoweredExpr> =
 			group_by.iter().map(|e| LoweredExpr::new(e.clone(), "aggregate_by")).collect();
 
@@ -606,7 +605,7 @@ impl Aggregation {
 		&mut self.tumbling_engine
 	}
 
-	pub fn compute_groups(&self, columns: &RecordBatch) -> Result<BatchGroups> {
+	pub fn compute_groups(&self, columns: &RecordBatch) -> Result<BatchGroups, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(BatchGroups::default());
@@ -633,7 +632,8 @@ impl Aggregation {
 			}
 			group_columns.push(column);
 		}
-		let group_views = group_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let group_views =
+			group_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, ValueError>>()?;
 
 		let mut rows = vec![Vec::new(); row_count];
 		for view in &group_views {
@@ -647,7 +647,7 @@ impl Aggregation {
 		})
 	}
 
-	pub fn evaluate_slot_inputs(&self, columns: &RecordBatch) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	pub fn evaluate_slot_inputs(&self, columns: &RecordBatch) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let mut out = Vec::with_capacity(self.lowered_slot_args.len());
 		if !self.lowered_slot_args.is_empty() {
 			let row_count = columns.num_rows();
@@ -661,7 +661,11 @@ impl Aggregation {
 		Ok(out)
 	}
 
-	fn check_digest_inputs(&self, columns: &RecordBatch, slot_cols: &[(FieldRef, ArrayRef)]) -> Result<()> {
+	fn check_digest_inputs(
+		&self,
+		columns: &RecordBatch,
+		slot_cols: &[(FieldRef, ArrayRef)],
+	) -> Result<(), ValueError> {
 		let Some(kinds) = &self.slot_kinds else {
 			return Ok(());
 		};
@@ -685,12 +689,16 @@ impl Aggregation {
 		Ok(())
 	}
 
-	pub fn slot_views(&self, columns: &RecordBatch, slot_cols: &[(FieldRef, ArrayRef)]) -> Result<SlotViews> {
+	pub fn slot_views(
+		&self,
+		columns: &RecordBatch,
+		slot_cols: &[(FieldRef, ArrayRef)],
+	) -> Result<SlotViews, ValueError> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(SlotViews(Arc::new(SlotColumns(Vec::new()))));
 		}
-		let array = |(field, array): (FieldRef, ArrayRef)| -> Result<SlotColumn> {
+		let array = |(field, array): (FieldRef, ArrayRef)| -> Result<SlotColumn, ValueError> {
 			let typed = match ColumnView::try_from((&array, field.as_ref()))?.data {
 				ViewData::Float8(a) => Some(SlotColumn::Float8(a.clone())),
 				ViewData::Int1(a) => Some(SlotColumn::Int1(a.clone())),
@@ -705,7 +713,7 @@ impl Aggregation {
 		let slots = self
 			.slot_inputs
 			.iter()
-			.map(|input| -> Result<SlotColumn> {
+			.map(|input| -> Result<SlotColumn, ValueError> {
 				match input {
 					SlotInput::Star => Ok(SlotColumn::Absent),
 					SlotInput::Column(name) => match columns.schema_ref().fields().find(name) {
@@ -718,7 +726,7 @@ impl Aggregation {
 					SlotInput::EventTime => Ok(SlotColumn::EventTime),
 				}
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		Ok(SlotViews(Arc::new(SlotColumns(slots))))
 	}
 
@@ -751,7 +759,7 @@ impl Aggregation {
 		updates: Vec<(EmitRow, EmitRow)>,
 		removes: Vec<EmitRow>,
 		ts: DateTime,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		let inserts: Vec<EmitRow> = inserts.into_iter().map(|row| self.patched(row)).collect();
 		let updates: Vec<(EmitRow, EmitRow)> =
 			updates.into_iter().map(|(pre, post)| (self.patched(pre), self.patched(post))).collect();
@@ -799,7 +807,7 @@ impl Aggregation {
 		row
 	}
 
-	fn emit_batch(&mut self, rows: &[&EmitRow], ts: DateTime) -> Result<RecordBatch> {
+	fn emit_batch(&mut self, rows: &[&EmitRow], ts: DateTime) -> Result<RecordBatch, ValueError> {
 		let count = rows.len();
 		let slot_count = rows.first().map_or(0, |row| row.slot_values.len());
 		let slot_columns = (0..slot_count)
@@ -810,7 +818,7 @@ impl Aggregation {
 					rows.iter().map(|row| &row.slot_values[slot]),
 				)
 			})
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let outputs = self.output_columns(slot_columns, count)?;
 		let mut columns: Vec<(FieldRef, ArrayRef)> =
 			Vec::with_capacity(self.group_names.len() + outputs.len() + 4);
@@ -860,7 +868,7 @@ impl Aggregation {
 		&self,
 		slot_columns: Vec<(FieldRef, ArrayRef)>,
 		count: usize,
-	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		if self.lowered_outputs.is_empty() {
 			return Ok(slot_columns);
 		}
@@ -888,7 +896,7 @@ impl Aggregation {
 		&self,
 		slot_columns: &[(FieldRef, ArrayRef)],
 		count: usize,
-	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let session = self.eval_session();
 		let exec_ctx = session.with_eval(batch(slot_columns.to_vec())?, count);
 		self.lowered_outputs.iter().map(|lowered| lowered.evaluate(&exec_ctx)).collect()

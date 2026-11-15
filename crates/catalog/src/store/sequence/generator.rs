@@ -9,12 +9,10 @@ use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::{Result as TxResult, value::value_type::ValueType};
-
-use crate::Result;
+use reifydb_value::{error::ValueError, value::value_type::ValueType};
 
 pub trait SequenceTransaction: Send {
-	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>;
 
@@ -22,7 +20,7 @@ pub trait SequenceTransaction: Send {
 }
 
 impl SequenceTransaction for CommandTransaction {
-	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -35,7 +33,7 @@ impl SequenceTransaction for CommandTransaction {
 }
 
 impl SequenceTransaction for AdminTransaction {
-	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -48,7 +46,7 @@ impl SequenceTransaction for AdminTransaction {
 }
 
 impl SequenceTransaction for Transaction<'_> {
-	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -70,8 +68,9 @@ macro_rules! impl_generator {
 		max_value: $max:expr
 	) => {
 		pub(crate) mod $mod_name {
+			use reifydb_value::error::ValueError;
+
 			use super::*;
-			use crate::Result;
 
 			pub(crate) const WIDTH: usize = size_of::<$prim>();
 
@@ -79,7 +78,7 @@ macro_rules! impl_generator {
 				EncodedPodRow::new(&value.to_be_bytes())
 			}
 
-			pub(crate) fn decode(row: &EncodedPodRow) -> Result<$prim> {
+			pub(crate) fn decode(row: &EncodedPodRow) -> Result<$prim, ValueError> {
 				let Ok(bytes) = <[u8; WIDTH]>::try_from(row.body()) else {
 					return_internal_error!(
 						"Sequence counter is {} bytes wide, expected {}. This indicates a corrupt or foreign sequence row.",
@@ -98,7 +97,7 @@ macro_rules! impl_generator {
 					txn: &mut impl SequenceTransaction,
 					key: &K,
 					count: NonZeroU64,
-				) -> Result<RangeInclusive<$prim>> {
+				) -> Result<RangeInclusive<$prim>, ValueError> {
 					let encoded = key.clone().into().encode();
 					let mut tx = txn.begin_single_command([&encoded])?;
 					let first = match tx.get(from_ref(key))?.remove(0) {
@@ -123,7 +122,7 @@ macro_rules! impl_generator {
 					txn: &mut impl SequenceTransaction,
 					key: &K,
 					value: $prim,
-				) -> Result<()> {
+				) -> Result<(), ValueError> {
 					let encoded = key.clone().into().encode();
 					let mut tx = txn.begin_single_command([&encoded])?;
 					tx.set(vec![(key.clone(), encode(value).into_bytes())])?;
@@ -465,7 +464,7 @@ impl u64::GeneratorU64 {
 		txn: &mut impl SequenceTransaction,
 		key: &K,
 		default: Option<u64>,
-	) -> Result<u64> {
+	) -> Result<u64, ValueError> {
 		Self::next_batched(txn, key, default, 1)
 	}
 
@@ -474,7 +473,7 @@ impl u64::GeneratorU64 {
 		key: &K,
 		default: Option<u64>,
 		incr: u64,
-	) -> Result<u64> {
+	) -> Result<u64, ValueError> {
 		let encoded = key.clone().into().encode();
 		let mut tx = txn.begin_single_command([&encoded])?;
 		let result = match tx.get(from_ref(key))?.remove(0) {

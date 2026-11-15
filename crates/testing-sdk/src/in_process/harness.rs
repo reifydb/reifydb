@@ -31,14 +31,14 @@ use reifydb_flow_async::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{MountedOperator, OperatorMetadata, mount::mount, state::decode_payload},
 };
 use reifydb_testing_chaos::operator::{event::Row, subject::Subject};
 use reifydb_value::{
-	Result as ValueResult,
 	config::ExtensionParams,
 	count::Count,
+	error::ValueError,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -62,7 +62,7 @@ fn bare(value_type: ValueType) -> ValueType {
 	}
 }
 
-fn check_output<C: OperatorMetadata>(change: &Change) -> Result<()> {
+fn check_output<C: OperatorMetadata>(change: &Change) -> Result<(), SdkError> {
 	for batch in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
 		let emitted: Vec<_> = user_columns(batch).map(|(field, _)| field).collect();
 		let declared = <C as OperatorMetadata>::OUTPUT_COLUMNS;
@@ -128,13 +128,13 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		operator_id: OperatorId,
 		params: &HashMap<String, Value>,
 		with: &ApplyWith,
-	) -> Result<BoxedHostOperator> {
+	) -> Result<BoxedHostOperator, SdkError> {
 		let logic = C::create(operator_id, &ExtensionParams::new("operator", params.clone()), with)?;
 		let mounted = mount(logic, operator_id, <C as OperatorMetadata>::CAPABILITIES);
 		Ok(Box::new(ApplyOperator::new(None, operator_id, mounted, with)))
 	}
 
-	pub fn apply(&mut self, input: Change) -> Result<Change> {
+	pub fn apply(&mut self, input: Change) -> Result<Change, SdkError> {
 		let retention = self.operator.retention();
 		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
 		let output = match self.calls.as_mut() {
@@ -146,12 +146,12 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		Ok(output)
 	}
 
-	pub fn fire_timer(&mut self, due: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
+	pub fn fire_timer(&mut self, due: DateTime, kind: TimerKind, key: &[u8]) -> Result<(), SdkError> {
 		self.on_timer(due, kind, key)?;
 		Ok(())
 	}
 
-	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>> {
+	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>, SdkError> {
 		let retention = self.operator.retention();
 		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
 		let timer = Timer {
@@ -197,7 +197,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			.collect()
 	}
 
-	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize> {
+	pub fn advance_watermark(&mut self, at: DateTime) -> Result<usize, SdkError> {
 		const MAX_ROUNDS: usize = 8192;
 
 		let watermark = self.txn.flow_watermark().map_or(at, |current| current.max(at));
@@ -340,7 +340,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		}
 	}
 
-	pub fn reset(&mut self) -> Result<()> {
+	pub fn reset(&mut self) -> Result<(), SdkError> {
 		*self.txn.pending_mut() = Pending::new();
 		self.txn.take_armed();
 		self.txn.source_watermark_cache().clear();
@@ -359,11 +359,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 }
 
 impl<C: MountedOperator + OperatorMetadata + 'static> Subject for InProcessOperatorHarness<C> {
-	fn apply(&mut self, change: Change) -> ValueResult<Change> {
+	fn apply(&mut self, change: Change) -> Result<Change, ValueError> {
 		InProcessOperatorHarness::apply(self, change).map_err(Into::into)
 	}
 
-	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
+	fn tick(&mut self, at_ms: u64) -> Result<Option<Change>, ValueError> {
 		let at = DateTime::from_epoch_millis(
 			i64::try_from(at_ms).expect("chaos harness tick time fits in i64 milliseconds"),
 		)?;
@@ -461,7 +461,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarnessBu
 		self
 	}
 
-	pub fn build(self) -> Result<InProcessOperatorHarness<C>> {
+	pub fn build(self) -> Result<InProcessOperatorHarness<C>, SdkError> {
 		let txn = TestFlowTransaction::new(self.version, self.clock);
 		for (dictionary, values) in &self.dictionaries {
 			txn.catalog().cache().set_dictionary(dictionary.id, CommitVersion(1), Some(dictionary.clone()));
@@ -525,11 +525,19 @@ mod tests {
 			needs_pane: false,
 		};
 
-		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+		fn create(
+			_operator_id: OperatorId,
+			_params: &ExtensionParams,
+			_with: &ApplyWith,
+		) -> Result<Self, SdkError> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> Result<()> {
+		fn apply(
+			&mut self,
+			ctx: &mut impl GuestContext<Unmanaged>,
+			change: impl ChangeView,
+		) -> Result<(), SdkError> {
 			for index in 0..change.diff_count() {
 				let Some(diff) = change.diff(index) else {
 					continue;

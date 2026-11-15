@@ -3,11 +3,12 @@
 
 use reifydb_core::key::identity::RoleKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
 use super::CatalogCache;
-use crate::{Result, store::role::convert_role};
+use crate::store::role::convert_role;
 
-pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
+pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<(), ValueError> {
 	let range = RoleKey::full_scan();
 	let stream = rx.range(range, RangeScope::All, 1024)?;
 

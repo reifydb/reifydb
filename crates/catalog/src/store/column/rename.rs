@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::column::{ColumnKey, ColumnsKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::column::shape::{column, object_column},
 };
 
@@ -19,7 +20,7 @@ impl CatalogStore {
 		object: ObjectId,
 		column_id: ColumnId,
 		new_name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if let Some(multi) = txn.get(&[ColumnsKey::new(column_id).into()])?.pop().flatten() {
 			let old = EncodedCatalogRow::try_from(multi.bytes)?;
 			let mut row = column::allocate();

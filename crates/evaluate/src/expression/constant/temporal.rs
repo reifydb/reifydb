@@ -5,19 +5,21 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory;
 use reifydb_value::{
-	error::{TemporalKind, TypeError},
+	error::{TemporalKind, TypeError, ValueError},
 	fragment::Fragment,
 	value::temporal::parse::{
 		date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 	},
 };
 
-use crate::Result;
-
 pub struct TemporalParser;
 
 impl TemporalParser {
-	pub fn parse_temporal(fragment: Fragment, name: &str, row_count: usize) -> Result<(FieldRef, ArrayRef)> {
+	pub fn parse_temporal(
+		fragment: Fragment,
+		name: &str,
+		row_count: usize,
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let value = fragment.text();
 
 		if value.starts_with('P') || value.starts_with('p') {

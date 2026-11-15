@@ -8,10 +8,10 @@ use reifydb_core::{
 	},
 	key::row::RowSequenceKey,
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use super::generator::SequenceTransaction;
-use crate::{Result, store::sequence::generator::u64::GeneratorU64};
+use crate::store::sequence::generator::u64::GeneratorU64;
 
 pub struct RowSequence {}
 
@@ -20,7 +20,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		table: TableId,
 		count: u64,
-	) -> Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>, ValueError> {
 		Self::next_row_number_batch_for_source(txn, StorageId::from(table), count)
 	}
 
@@ -28,7 +28,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
-	) -> Result<RowNumber> {
+	) -> Result<RowNumber, ValueError> {
 		let last = GeneratorU64::next_batched(
 			txn,
 			&RowSequenceKey::new(StorageId::from(ringbuffer)),
@@ -42,7 +42,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		series: SeriesId,
 		count: u64,
-	) -> Result<RowNumber> {
+	) -> Result<RowNumber, ValueError> {
 		let last =
 			GeneratorU64::next_batched(txn, &RowSequenceKey::new(StorageId::series(series)), None, count)?;
 		Ok(RowNumber(last + 1 - count))
@@ -52,7 +52,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		queue: QueueId,
 		count: u64,
-	) -> Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>, ValueError> {
 		Self::next_row_number_batch_for_source(txn, StorageId::from(queue), count)
 	}
 
@@ -60,7 +60,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		storage: StorageId,
 		count: u64,
-	) -> Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>, ValueError> {
 		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::new(storage), None, count)?;
 
 		let first_row_number = last_row_number.saturating_sub(count - 1);

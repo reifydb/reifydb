@@ -7,9 +7,10 @@ use std::sync::Arc;
 
 use reifydb_engine::{engine::StandardEngine, queue::hydrate::hydrate_queues};
 use reifydb_runtime::context::transaction::TransactionContext;
+use reifydb_value::error::ValueError;
 
 use crate::{
-	MigrationStatement, Result,
+	MigrationStatement,
 	boot::start::{apply_migrations, configure_store, ensure_storage_version},
 };
 
@@ -26,7 +27,7 @@ impl Bootloader {
 }
 
 impl Bootloader {
-	pub fn load(&self) -> Result<()> {
+	pub fn load(&self) -> Result<(), ValueError> {
 		ensure_storage_version(
 			&Arc::new(TransactionContext::system(self.engine.runtime_context().clone())),
 			&self.engine.single_owned(),
@@ -36,7 +37,7 @@ impl Bootloader {
 		Ok(())
 	}
 
-	pub fn apply_migrations(&self, migrations: &[MigrationStatement]) -> Result<()> {
+	pub fn apply_migrations(&self, migrations: &[MigrationStatement]) -> Result<(), ValueError> {
 		apply_migrations(&self.engine, migrations)
 	}
 }

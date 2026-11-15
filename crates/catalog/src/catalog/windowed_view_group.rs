@@ -11,11 +11,11 @@ use reifydb_transaction::{
 	change::TransactionalWindowedViewGroupChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result, catalog::Catalog,
+	CatalogStore, catalog::Catalog,
 	store::windowed_view_group::create::WindowedViewGroupToCreate as StoreWindowedViewGroupToCreate,
 };
 
@@ -45,7 +45,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<WindowedViewGroup>> {
+	) -> Result<Option<WindowedViewGroup>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(group) =
@@ -144,21 +144,28 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: WindowedViewGroupToCreate,
-	) -> Result<WindowedViewGroup> {
+	) -> Result<WindowedViewGroup, ValueError> {
 		let group = CatalogStore::create_windowed_view_group(txn, to_create.into())?;
 		txn.track_windowed_view_group_created(group.clone())?;
 		Ok(group)
 	}
 
 	#[instrument(name = "catalog::windowed_view_group::drop", level = "info", skip(self, txn))]
-	pub fn drop_windowed_view_group(&self, txn: &mut AdminTransaction, group: WindowedViewGroup) -> Result<()> {
+	pub fn drop_windowed_view_group(
+		&self,
+		txn: &mut AdminTransaction,
+		group: WindowedViewGroup,
+	) -> Result<(), ValueError> {
 		CatalogStore::drop_windowed_view_group(txn, group.id)?;
 		txn.track_windowed_view_group_deleted(group)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::windowed_view_group::list_all", level = "trace", skip(self, txn))]
-	pub fn list_windowed_view_groups_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<WindowedViewGroup>> {
+	pub fn list_windowed_view_groups_all(
+		&self,
+		txn: &mut Transaction<'_>,
+	) -> Result<Vec<WindowedViewGroup>, ValueError> {
 		CatalogStore::list_windowed_view_groups_all(txn)
 	}
 }

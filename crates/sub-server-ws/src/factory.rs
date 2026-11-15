@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	state::{AppState, StateConfig},
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
-use reifydb_value::{Result, byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, error::ValueError, value::duration::Duration};
 use tokio::runtime::Handle;
 
 use crate::subsystem::WsSubsystem;
@@ -153,7 +153,7 @@ impl WsSubsystemFactory {
 }
 
 impl SubsystemFactory for WsSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let config = (self.config_fn)();
 
 		let engine = ioc.resolve::<StandardEngine>()?;

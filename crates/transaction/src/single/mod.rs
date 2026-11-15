@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, transaction::TransactionContext},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
 #[cfg(feature = "testing")]
@@ -91,19 +91,19 @@ impl SingleTransaction {
 		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner), wal, Clock::Real)
 	}
 
-	pub fn with_query<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R>
+	pub fn with_query<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R>,
+		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R, ValueError>,
 	{
 		let mut tx = self.begin_query(ctx, keys)?;
 		f(&mut tx)
 	}
 
-	pub fn with_command<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R>
+	pub fn with_command<'a, I, F, R>(&self, ctx: &Arc<TransactionContext>, keys: I, f: F) -> Result<R, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R>,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R, ValueError>,
 	{
 		let mut tx = self.begin_command(ctx, keys)?;
 		let result = f(&mut tx)?;
@@ -111,7 +111,11 @@ impl SingleTransaction {
 		Ok(result)
 	}
 
-	pub fn begin_query<'a, I>(&self, ctx: &Arc<TransactionContext>, keys: I) -> Result<SingleReadTransaction<'_>>
+	pub fn begin_query<'a, I>(
+		&self,
+		ctx: &Arc<TransactionContext>,
+		keys: I,
+	) -> Result<SingleReadTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -138,7 +142,11 @@ impl SingleTransaction {
 		})
 	}
 
-	pub fn begin_command<'a, I>(&self, ctx: &Arc<TransactionContext>, keys: I) -> Result<SingleWriteTransaction<'_>>
+	pub fn begin_command<'a, I>(
+		&self,
+		ctx: &Arc<TransactionContext>,
+		keys: I,
+	) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -150,7 +158,7 @@ impl SingleTransaction {
 		ctx: &Arc<TransactionContext>,
 		lock_keys: I,
 		ranges: Vec<EncodedKeyRange>,
-	) -> Result<SingleWriteTransaction<'_>>
+	) -> Result<SingleWriteTransaction<'_>, ValueError>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

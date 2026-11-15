@@ -19,5 +19,3 @@ pub mod fragment;
 pub mod params;
 pub mod util;
 pub mod value;
-
-pub type Result<T> = std::result::Result<T, error::ValueError>;

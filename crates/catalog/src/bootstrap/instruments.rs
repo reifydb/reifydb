@@ -12,11 +12,10 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::{error::ValueError, value::value_type::ValueType};
 
 use super::{ensure_namespace, metric::ensure_snapshot_series, series_col};
 use crate::{
-	Result,
 	cache::CatalogCache,
 	catalog::{Catalog, series::SeriesColumnToCreate},
 };
@@ -27,7 +26,7 @@ pub fn bootstrap_instruments(
 	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	runtime: &RuntimeContext,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
 		multi.begin_command(multi.generate_transaction_id())?,

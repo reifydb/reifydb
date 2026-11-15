@@ -5,11 +5,15 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::batch::single_row;
 use reifydb_rql::nodes::RevokeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{error::ValueError, value::Value};
 
-use crate::{Result, vm::services::Services};
+use crate::vm::services::Services;
 
-pub(crate) fn revoke(services: &Services, txn: &mut AdminTransaction, plan: RevokeNode) -> Result<RecordBatch> {
+pub(crate) fn revoke(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: RevokeNode,
+) -> Result<RecordBatch, ValueError> {
 	let role_name = plan.role.text();
 	let user_name = plan.user.text();
 

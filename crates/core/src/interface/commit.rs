@@ -10,8 +10,8 @@ use std::{
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_value::{
-	Result,
 	byte_size::ByteSize,
+	error::ValueError,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 use reifydb_wal::lsn::Lsn;
@@ -217,7 +217,12 @@ pub struct Loaded {
 }
 
 pub trait CommitLog: Send + Sync + 'static {
-	fn read(&self, after: (CommitVersion, Lsn), up_to: CommitVersion, budget: ByteSize) -> Result<Loaded>;
+	fn read(
+		&self,
+		after: (CommitVersion, Lsn),
+		up_to: CommitVersion,
+		budget: ByteSize,
+	) -> Result<Loaded, ValueError>;
 }
 
 pub trait CommitFloor: Send + Sync + 'static {

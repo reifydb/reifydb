@@ -2,14 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql_frontend::ast::ast::AstCreateDictionary;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreateDictionaryNode, LogicalPlan},
-};
+use crate::plan::logical::{Compiler, CreateDictionaryNode, LogicalPlan};
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_dictionary(&self, ast: AstCreateDictionary<'bump>) -> Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_dictionary(
+		&self,
+		ast: AstCreateDictionary<'bump>,
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		Ok(LogicalPlan::CreateDictionary(CreateDictionaryNode {
 			dictionary: ast.dictionary,
 			if_not_exists: ast.if_not_exists,

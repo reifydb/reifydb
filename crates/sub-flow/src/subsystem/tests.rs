@@ -18,7 +18,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::operator::{BoxedHostOperator, HostOperator, host::HostContext};
 use reifydb_runtime::{RuntimeConfig, context::clock::Clock, fatal::FatalConfig};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 
 use crate::{
 	builder::{CustomOperatorEntry, CustomOperators, FlowConfig},
@@ -42,7 +42,7 @@ impl HostOperator for PanicsOnApply {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _host: &mut dyn HostContext, _change: Change) -> Result<Change> {
+	fn apply(&mut self, _host: &mut dyn HostContext, _change: Change) -> Result<Change, ValueError> {
 		panic!("{PANICKING_OPERATOR} fails every flow step it is given")
 	}
 }
@@ -50,7 +50,7 @@ impl HostOperator for PanicsOnApply {
 struct FlowWithAPanickingOperator;
 
 impl SubsystemFactory for FlowWithAPanickingOperator {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let queue = ioc.resolve::<CommitQueue>()?;
 		ioc.register_service(FlowQueueFloor(queue.floor("flow")));

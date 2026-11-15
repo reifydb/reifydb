@@ -10,14 +10,15 @@ use reifydb_core::{
 	key::catalog::ColumnPropertyKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, Result, store::column_property::shape::column_property};
+use crate::{CatalogStore, store::column_property::shape::column_property};
 
 impl CatalogStore {
 	pub(crate) fn list_column_properties(
 		rx: &mut Transaction<'_>,
 		column: ColumnId,
-	) -> Result<Vec<ColumnProperty>> {
+	) -> Result<Vec<ColumnProperty>, ValueError> {
 		let stream = rx.range(ColumnPropertyKey::full_scan(column), RangeScope::All, 1024)?;
 		let mut result = Vec::new();
 
@@ -42,7 +43,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnProperty>> {
+	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnProperty>, ValueError> {
 		let mut result = Vec::new();
 
 		let columns = CatalogStore::list_columns_all(rx)?;

@@ -37,7 +37,7 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 };
-use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
+use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 
 pub mod deferred;
 pub mod dictionary;
@@ -52,6 +52,8 @@ pub mod scope;
 pub mod state;
 pub mod substrate;
 pub mod watermark;
+
+use reifydb_value::error::ValueError;
 
 use crate::{
 	operator::{TimedOutput, sink::DurableSink},
@@ -231,20 +233,28 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 
 	fn row_shape_cache(&mut self, operator: OperatorId) -> &mut HashMap<EncodedKey, RowShape>;
 
-	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change>;
+	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change, ValueError>;
 
-	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<TimedOutput>>;
+	fn run_durable_sink_timer(
+		&mut self,
+		sink: &mut dyn DurableSink,
+		timer: Timer,
+	) -> Result<Option<TimedOutput>, ValueError>;
 
-	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>>;
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError>;
 
 	fn storage_range(
 		&mut self,
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>;
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_>;
 
-	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>>;
+	fn fetch_state(
+		&mut self,
+		id: OperatorId,
+		keys: &[GroupStateKey],
+	) -> Result<Vec<Option<EncodedBytes>>, ValueError>;
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {
 		None
@@ -279,7 +289,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>, ValueError>> + Send + '_> {
 		let encoded = range.encode();
 		let mut merged = BTreeMap::new();
 		self.pending().collect_range((encoded.start.as_ref(), encoded.end.as_ref()), &mut merged);
@@ -289,7 +299,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version, false))
 	}
 
-	fn remove_unobserved(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+	fn remove_unobserved(&mut self, keys: Vec<EncodedKey>) -> Result<(), ValueError> {
 		self.pending_mut().put(keys
 			.into_iter()
 			.map(|key| {
@@ -333,7 +343,7 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 		groups: &[GroupId],
 		batch: u64,
 		keyspaces: KeyspaceMask,
-	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), ValueError> {
 		let page = self.operator_store().group_page(id, groups, batch, keyspaces)?;
 		Ok((page.items, page.has_more))
 	}
@@ -346,7 +356,10 @@ pub trait FlowTransaction: FlowGet + FlowBatch + Sized + Send + 'static {
 	}
 }
 
-pub fn pending_get<T: FlowTransaction>(txn: &mut T, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+pub fn pending_get<T: FlowTransaction>(
+	txn: &mut T,
+	keys: &[EncodedKey],
+) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 	let mut rows = Vec::with_capacity(keys.len());
 	let mut misses = Vec::new();
 	let mut miss_keys = Vec::new();

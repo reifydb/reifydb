@@ -13,7 +13,7 @@ use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{error::ValueError, value::duration::Duration};
 use tokio::runtime::Handle;
 
 use crate::subsystem::HttpSubsystem;
@@ -176,7 +176,7 @@ impl HttpSubsystemFactory {
 type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle, AuthService);
 
 impl SubsystemFactory for HttpSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		let config = (self.config_fn)();
 
 		let (engine, interceptors, spawner, clock, rng, handle, auth_service) =
@@ -212,7 +212,7 @@ impl HttpSubsystemFactory {
 		clock: Option<Clock>,
 		rng: Option<Rng>,
 		handle: Option<Handle>,
-	) -> Result<ResolvedDeps> {
+	) -> Result<ResolvedDeps, ValueError> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 
@@ -269,7 +269,7 @@ impl HttpSubsystemFactory {
 		admin_bind_addr: Option<String>,
 		state: AppState,
 		handle: Handle,
-	) -> Result<HttpSubsystem> {
+	) -> Result<HttpSubsystem, ValueError> {
 		HttpSubsystem::new(bind_addr, admin_bind_addr, state, handle)
 	}
 }

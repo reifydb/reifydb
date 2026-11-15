@@ -33,12 +33,15 @@ use reifydb_core::{
 };
 use reifydb_flow::writer::ring::{collect_ring_rows, ring_row_range};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{
-	datetime::DateTime,
-	partition::Partition,
-	row_number::RowNumber,
-	system_columns::{SystemColumn, with_system_column},
-	value_type::ValueType,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		datetime::DateTime,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, with_system_column},
+		value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
@@ -46,10 +49,7 @@ use super::{
 	super::decode_dictionary_columns, empty_scan, guard_view_read, partition_array, scan_headers,
 	source_system_columns,
 };
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 const MERGE_WINDOW: usize = 64;
 
@@ -78,7 +78,7 @@ impl RingSource {
 		partition: Option<Partition>,
 		after: Option<RowNumber>,
 		limit: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		let resume = after.map(|row| self.key(partition, row));
 		let range = ring_row_range(self.storage, partition).resume_before(resume.as_ref());
 		collect_ring_rows(txn.range_rev(range, RangeScope::All, limit.min(SCAN_BATCH))?, limit)
@@ -104,7 +104,11 @@ struct OldestFirstMerge {
 }
 
 impl OldestFirstMerge {
-	fn open(txn: &mut Transaction<'_>, source: &RingSource, partitions: &[PartitionedMetadata]) -> Result<Self> {
+	fn open(
+		txn: &mut Transaction<'_>,
+		source: &RingSource,
+		partitions: &[PartitionedMetadata],
+	) -> Result<Self, ValueError> {
 		let mut merge = Self {
 			heads: partitions
 				.iter()
@@ -123,7 +127,7 @@ impl OldestFirstMerge {
 		Ok(merge)
 	}
 
-	fn enqueue(&mut self, txn: &mut Transaction<'_>, source: &RingSource, index: usize) -> Result<()> {
+	fn enqueue(&mut self, txn: &mut Transaction<'_>, source: &RingSource, index: usize) -> Result<(), ValueError> {
 		let head = &mut self.heads[index];
 		if head.buffer.is_empty() && !head.exhausted {
 			let window = source.oldest(txn, head.partition, head.after, MERGE_WINDOW)?;
@@ -143,7 +147,7 @@ impl OldestFirstMerge {
 		txn: &mut Transaction<'_>,
 		source: &RingSource,
 		batch_size: usize,
-	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>, ValueError> {
 		let mut rows = Vec::new();
 		while rows.len() < batch_size {
 			let Some(Reverse((_, index))) = self.queue.pop() else {
@@ -190,7 +194,7 @@ impl RingBufferScan {
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let def = ringbuffer.def();
 		let partitioned = !partition_col_indices(ringbuffer.columns(), &def.partition_by).is_empty();
 		let system_columns = source_system_columns(partitioned, def.time != TimeSource::None, false, true);
@@ -210,7 +214,7 @@ impl RingBufferScan {
 		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let View::RingBuffer(def) = view.def() else {
 			return Err(internal_error!(
 				"view {} is not ring buffer backed and cannot be scanned as a ring",
@@ -236,7 +240,7 @@ impl RingBufferScan {
 		newest_first: bool,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		let mut storage_types = Vec::with_capacity(source.columns.len());
 		let mut dictionaries = Vec::with_capacity(source.columns.len());
 		for col in &source.columns {
@@ -298,7 +302,7 @@ impl RingBufferScan {
 		self
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape, ValueError> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -315,7 +319,11 @@ impl RingBufferScan {
 		Ok(shape)
 	}
 
-	fn list_partitions(&self, txn: &mut Transaction<'_>, ctx: &QueryContext) -> Result<Vec<PartitionedMetadata>> {
+	fn list_partitions(
+		&self,
+		txn: &mut Transaction<'_>,
+		ctx: &QueryContext,
+	) -> Result<Vec<PartitionedMetadata>, ValueError> {
 		let catalog = &ctx.services.catalog;
 		let found = match self.source.only {
 			Some(partition) => catalog
@@ -350,7 +358,7 @@ impl RingBufferScan {
 		&self,
 		txn: &mut Transaction<'_>,
 		index: usize,
-	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>, ValueError> {
 		let listed = &self.partitions[index];
 		let mut loaded = self.source.oldest(txn, listed.partition, head_cursor(listed), usize::MAX)?;
 		if self.newest_first {
@@ -364,7 +372,7 @@ impl RingBufferScan {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		batch_size: usize,
-	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>> {
+	) -> Result<Vec<(Option<Partition>, RowNumber, EncodedBytes)>, ValueError> {
 		let mut drained = Vec::new();
 		while drained.len() < batch_size && self.current_partition_index < self.partitions.len() {
 			if !self.current_partition_loaded {
@@ -411,7 +419,7 @@ impl RingBufferScan {
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "volcano::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		if let Some(view) = &self.source.view {
 			guard_view_read(view, txn, &ctx.services)?;
 		}
@@ -426,7 +434,11 @@ impl QueryNode for RingBufferScan {
 	}
 
 	#[instrument(name = "volcano::scan::ringbuffer::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		txn: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if self.finished {
 			return Ok(None);
 		}

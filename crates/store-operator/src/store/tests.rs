@@ -40,7 +40,7 @@ use reifydb_wal::lsn::Lsn;
 use crate::{
 	actor::resident_flush::flush_now,
 	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::{
 		Enumerate, PersistentTier,
 		filter::OperatorStateKeySource,
@@ -564,7 +564,7 @@ impl EnumerateFault {
 }
 
 impl PersistentHooks for EnumerateFault {
-	fn on_enumerate(&self) -> Result<()> {
+	fn on_enumerate(&self) -> Result<(), StoreOperatorError> {
 		let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
 		if self.armed.load(Ordering::SeqCst) && call >= self.from_call {
 			return Err(StoreOperatorError::Backend {

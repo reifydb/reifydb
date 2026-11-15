@@ -57,7 +57,7 @@ use crate::{
 pub mod multi;
 pub mod router;
 
-use crate::Result;
+use reifydb_value::error::ValueError;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 struct SqlitePageCacheCollector {
@@ -114,7 +114,7 @@ impl StandardMultiStore {
 	#[instrument(name = "store::multi::new", level = "debug", skip(config), fields(
 		has_persistent = config.persistent.is_some(),
 	))]
-	pub fn new(config: MultiStoreConfig) -> Result<Self> {
+	pub fn new(config: MultiStoreConfig) -> Result<Self, ValueError> {
 		let commit = config.commit.storage;
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
@@ -319,7 +319,7 @@ impl Deref for StandardMultiStore {
 }
 
 impl Shutdown for StandardMultiStore {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if let Some(filter) = self.filter.as_ref() {
 			let _ = filter.send(FilterMessage::Shutdown);
 		}

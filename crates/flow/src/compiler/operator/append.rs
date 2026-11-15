@@ -4,7 +4,7 @@
 use reifydb_core::{flow::operator::OperatorDef, interface::catalog::flow::OperatorId};
 use reifydb_rql::{nodes::AppendQueryNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -23,7 +23,7 @@ impl From<AppendQueryNode> for AppendCompiler {
 }
 
 impl CompileOperator for AppendCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = compiler.compile_plan(txn, *self.right)?;
 

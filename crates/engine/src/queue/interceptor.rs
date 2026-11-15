@@ -11,10 +11,13 @@ use reifydb_transaction::{
 	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions, remove_queue_scheduling_state},
 	single::SingleTransaction,
 };
-use reifydb_value::value::{datetime::DateTime, partition::Partition};
+use reifydb_value::{
+	error::ValueError,
+	value::{datetime::DateTime, partition::Partition},
+};
 use tracing::instrument;
 
-use crate::{Result, queue::wake::QueueWakeRegistry};
+use crate::queue::wake::QueueWakeRegistry;
 
 pub struct QueueSchedulingInterceptor {
 	ctx: Arc<TransactionContext>,
@@ -44,7 +47,7 @@ impl QueueSchedulingInterceptor {
 		skip_all,
 		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
-	fn admit(&self, queue: QueueId, partition: Partition, items: &[QueueAdmission]) -> Result<()> {
+	fn admit(&self, queue: QueueId, partition: Partition, items: &[QueueAdmission]) -> Result<(), ValueError> {
 		admit_ready_items(&self.ctx, &self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|item| is_due(item.not_before, now)).count());
@@ -57,7 +60,7 @@ impl QueueSchedulingInterceptor {
 		skip_all,
 		fields(queue = queue.0, partition = partition.0, items = items.len())
 	)]
-	fn ack(&self, queue: QueueId, partition: Partition, items: &[QueueRowAck]) -> Result<()> {
+	fn ack(&self, queue: QueueId, partition: Partition, items: &[QueueRowAck]) -> Result<(), ValueError> {
 		apply_ack_transitions(&self.ctx, &self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|ack| releases_work(ack, now)).count());
@@ -79,7 +82,7 @@ fn releases_work(ack: &QueueRowAck, now: DateTime) -> bool {
 }
 
 impl PostCommitInterceptor for QueueSchedulingInterceptor {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<(), ValueError> {
 		if ctx.version == CommitVersion(0) {
 			return Ok(());
 		}

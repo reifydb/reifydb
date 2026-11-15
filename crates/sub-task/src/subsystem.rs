@@ -24,7 +24,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -158,7 +158,7 @@ type DrainedCoordinator = (Option<Sender<TaskCoordinatorMessage>>, Option<JoinHa
 
 impl Shutdown for TaskSubsystem {
 	#[instrument(name = "task::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		if !self.claim_shutdown() {
 			return Ok(());
 		}

@@ -10,13 +10,10 @@ use reifydb_core::{
 	value::column::headers::ColumnHeaders,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
+use reifydb_value::{error::ValueError, fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct IndexScanNode {
 	_table: Table, // FIXME needs to work with different sources
@@ -31,7 +28,7 @@ pub(crate) struct IndexScanNode {
 }
 
 impl IndexScanNode {
-	pub fn new(table: Table, index_id: IndexId, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(table: Table, index_id: IndexId, context: Arc<QueryContext>) -> Result<Self, ValueError> {
 		let storage_types = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
 		let headers = ColumnHeaders {
@@ -53,12 +50,16 @@ impl IndexScanNode {
 
 impl QueryNode for IndexScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::index::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::index::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		_rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		}

@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::{context::transaction::TransactionContext, shutdown::Shutdown};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
+use reifydb_value::{byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -15,6 +15,7 @@ use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
+use reifydb_value::error::ValueError;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
 
@@ -35,7 +36,7 @@ pub enum SinglePersistentTier {
 }
 
 impl Shutdown for SinglePersistentTier {
-	fn shutdown(&self) -> Result<()> {
+	fn shutdown(&self) -> Result<(), ValueError> {
 		match self {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.shutdown(),
@@ -62,13 +63,17 @@ impl SinglePersistentTier {
 		}
 	}
 
-	pub fn persist(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, saved_lsn: Option<Lsn>) -> Result<()> {
+	pub fn persist(
+		&self,
+		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
+		saved_lsn: Option<Lsn>,
+	) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(storage) => storage.persist(entries, saved_lsn),
 		}
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, ValueError> {
 		match self {
 			Self::Sqlite(storage) => storage.saved_lsn(),
 		}
@@ -81,11 +86,15 @@ impl SinglePersistentTier {
 		match *self {}
 	}
 
-	pub fn persist(&self, _entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, _saved_lsn: Option<Lsn>) -> Result<()> {
+	pub fn persist(
+		&self,
+		_entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
+		_saved_lsn: Option<Lsn>,
+	) -> Result<(), ValueError> {
 		match *self {}
 	}
 
-	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>, ValueError> {
 		match *self {}
 	}
 }
@@ -93,7 +102,7 @@ impl SinglePersistentTier {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl TierStorage for SinglePersistentTier {
 	#[inline]
-	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, ctx: &TransactionContext, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.get(ctx, keys),
 		}
@@ -104,14 +113,14 @@ impl TierStorage for SinglePersistentTier {
 		&self,
 		ctx: &TransactionContext,
 		keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.get_with_tombstone(ctx, keys),
 		}
 	}
 
 	#[inline]
-	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(s) => s.set(entries),
 		}
@@ -125,7 +134,7 @@ impl TierStorage for SinglePersistentTier {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_next(ctx, cursor, start, end, batch_size),
 		}
@@ -139,21 +148,21 @@ impl TierStorage for SinglePersistentTier {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match self {
 			Self::Sqlite(s) => s.range_rev_next(ctx, cursor, start, end, batch_size),
 		}
 	}
 
 	#[inline]
-	fn ensure_table(&self) -> Result<()> {
+	fn ensure_table(&self) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(s) => s.ensure_table(),
 		}
 	}
 
 	#[inline]
-	fn clear_table(&self) -> Result<()> {
+	fn clear_table(&self) -> Result<(), ValueError> {
 		match self {
 			Self::Sqlite(s) => s.clear_table(),
 		}
@@ -162,7 +171,7 @@ impl TierStorage for SinglePersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for SinglePersistentTier {
-	fn get(&self, _ctx: &TransactionContext, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+	fn get(&self, _ctx: &TransactionContext, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>, ValueError> {
 		match *self {}
 	}
 
@@ -170,11 +179,11 @@ impl TierStorage for SinglePersistentTier {
 		&self,
 		_ctx: &TransactionContext,
 		_keys: &[&[u8]],
-	) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
+	) -> Result<Vec<Option<Option<CowVec<u8>>>>, ValueError> {
 		match *self {}
 	}
 
-	fn set(&self, _entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, _entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<(), ValueError> {
 		match *self {}
 	}
 
@@ -185,7 +194,7 @@ impl TierStorage for SinglePersistentTier {
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
 		_batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match *self {}
 	}
 
@@ -196,15 +205,15 @@ impl TierStorage for SinglePersistentTier {
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
 		_batch_size: usize,
-	) -> Result<RangeBatch> {
+	) -> Result<RangeBatch, ValueError> {
 		match *self {}
 	}
 
-	fn ensure_table(&self) -> Result<()> {
+	fn ensure_table(&self) -> Result<(), ValueError> {
 		match *self {}
 	}
 
-	fn clear_table(&self) -> Result<()> {
+	fn clear_table(&self) -> Result<(), ValueError> {
 		match *self {}
 	}
 }

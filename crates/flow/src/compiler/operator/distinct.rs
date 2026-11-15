@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::DistinctNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, fragment::Fragment};
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::compiler::{CompileOperator, FlowCompiler};
 
@@ -57,7 +57,7 @@ fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 }
 
 impl CompileOperator for DistinctCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let expressions: Vec<Expression> = self

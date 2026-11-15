@@ -37,7 +37,7 @@ use reifydb_flow_async::{
 use reifydb_runtime::context::transaction::TransactionContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		datetime::DateTime,
 		identity::IdentityId,
@@ -139,7 +139,11 @@ impl SliceComputer {
 		once(head).chain(self.members.iter().map(|(flow, _)| *flow)).collect()
 	}
 
-	fn unit_checkpoints(&self, head: FlowId, checkpoint: FlowCheckpoint) -> Result<Vec<(FlowId, FlowCheckpoint)>> {
+	fn unit_checkpoints(
+		&self,
+		head: FlowId,
+		checkpoint: FlowCheckpoint,
+	) -> Result<Vec<(FlowId, FlowCheckpoint)>, ValueError> {
 		let operators = self.engine.operator_state();
 		let mut checkpoints = vec![(head, checkpoint)];
 		for (member, _) in self.members.iter() {
@@ -162,7 +166,7 @@ impl SliceComputer {
 		flow_engine: &FlowEngineInner,
 		txn: &mut DeferredTransaction,
 		head: FlowId,
-	) -> Result<WatermarkHolds> {
+	) -> Result<WatermarkHolds, ValueError> {
 		let mut holds = WatermarkHolds::new();
 		for flow in self.unit_ids(head) {
 			holds.extend(flow_engine.holds(txn, flow)?);
@@ -181,7 +185,7 @@ impl SliceComputer {
 		more: bool,
 		config: &SliceConfig,
 		hold_cache: &mut Option<HoldCache>,
-	) -> Result<SliceStep> {
+	) -> Result<SliceStep, ValueError> {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let relevant: Vec<&CommitEntry> = items[start..]
 			.iter()
@@ -330,7 +334,7 @@ impl SliceComputer {
 		durable_cursor: CommitVersion,
 		more: bool,
 		config: &SliceConfig,
-	) -> Result<SliceStep> {
+	) -> Result<SliceStep, ValueError> {
 		let advance_to = checkpoint.version;
 		let lsn = checkpoint.lsn;
 		let (holds, folded) = self.resolved_holds(flow_engine, flow_id, advance_to)?;
@@ -359,7 +363,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		state_version: CommitVersion,
-	) -> Result<(WatermarkHolds, Pending)> {
+	) -> Result<(WatermarkHolds, Pending), ValueError> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -392,7 +396,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		groups: Vec<Vec<Change>>,
-	) -> Result<(Vec<(Pending, bool)>, WatermarkHolds)> {
+	) -> Result<(Vec<(Pending, bool)>, WatermarkHolds), ValueError> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -445,7 +449,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		cursor: CommitVersion,
-	) -> Result<(Pending, bool)> {
+	) -> Result<(Pending, bool), ValueError> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self
 			.engine
@@ -493,7 +497,7 @@ pub(crate) fn process_unit(
 	head: FlowId,
 	members: &[(FlowId, ViewId)],
 	changes: Vec<Change>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let latest = changes
 		.iter()
 		.map(|change| (change.version, change.changed_at))
@@ -518,7 +522,7 @@ fn feed_member(
 	parent_view: ViewId,
 	version: ChangeVersion,
 	changed_at: DateTime,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let diffs = consolidate_diffs(txn.take_emits(parent_view))?;
 	if diffs.iter().all(|diff| diff.row_count() == 0) {
 		return Ok(());
@@ -526,13 +530,16 @@ fn feed_member(
 	let Some(view) = txn.catalog.cache().find_view(parent_view) else {
 		return internal_err!("fused parent view {parent_view:?} is not in the catalog");
 	};
-	let diffs = diffs.into_iter().map(|diff| as_dictionary_ids(txn, &view, diff)).collect::<Result<Vec<_>>>()?;
+	let diffs = diffs
+		.into_iter()
+		.map(|diff| as_dictionary_ids(txn, &view, diff))
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let change = Change::from_object(ObjectId::View(parent_view), version, diffs, changed_at);
 	flow_engine.process(txn, vec![change], member)
 }
 
-fn as_dictionary_ids(txn: &mut DeferredTransaction, view: &View, diff: Diff) -> Result<Diff> {
-	let mut encode = |batch: RecordBatch| -> Result<RecordBatch> {
+fn as_dictionary_ids(txn: &mut DeferredTransaction, view: &View, diff: Diff) -> Result<Diff, ValueError> {
+	let mut encode = |batch: RecordBatch| -> Result<RecordBatch, ValueError> {
 		let batch = dictionary_lookup_view_columns(txn, view, &batch)?.unwrap_or(batch);
 		tag_dictionaries(view, &batch)
 	};
@@ -563,7 +570,7 @@ fn as_dictionary_ids(txn: &mut DeferredTransaction, view: &View, diff: Diff) -> 
 	})
 }
 
-fn tag_dictionaries(view: &View, columns: &RecordBatch) -> Result<RecordBatch> {
+fn tag_dictionaries(view: &View, columns: &RecordBatch) -> Result<RecordBatch, ValueError> {
 	let mut tagged = Vec::with_capacity(columns.num_columns());
 	for (field, array) in columns.schema_ref().fields().iter().zip(columns.columns()) {
 		let dictionary =
@@ -600,7 +607,7 @@ pub(crate) fn collect_flow_changes(
 	relevant: &[&CommitEntry],
 	source_objects: &BTreeSet<ObjectId>,
 	completeness_objects: Option<&BTreeSet<u64>>,
-) -> Result<Vec<Change>> {
+) -> Result<Vec<Change>, ValueError> {
 	if relevant.is_empty() {
 		return Ok(Vec::new());
 	}

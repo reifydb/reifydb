@@ -16,7 +16,7 @@ use reifydb_value::{byte_size::ByteSize, clock::ClockNow};
 
 use crate::{
 	device::{Append, Device, Flush, Mark, ReadFrom, Reclaim},
-	error::{Result, WalError},
+	error::WalError,
 	lsn::Lsn,
 };
 
@@ -143,7 +143,7 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn append(&self, record: &Record) -> Result<Position> {
+	fn append(&self, record: &Record) -> Result<Position, WalError> {
 		self.call();
 		let lsn = Lsn::from_version(record.version).unwrap_or(Lsn::FIRST);
 		match self.0.hooks.on_append(lsn, record.payload.len()) {
@@ -152,7 +152,7 @@ where
 		}
 	}
 
-	fn head(&self) -> Result<Option<LogVersion>> {
+	fn head(&self) -> Result<Option<LogVersion>, WalError> {
 		Append::head(&self.0.log)
 	}
 }
@@ -175,7 +175,7 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn flush(&self) -> Result<()> {
+	fn flush(&self) -> Result<(), WalError> {
 		self.call();
 		let target = Append::head(&self.0.log)?.and_then(Lsn::from_version);
 		if let FlushOutcome::Err(error) = self.0.hooks.on_flush(target) {
@@ -185,7 +185,7 @@ where
 		Flush::flush(&self.0.log)
 	}
 
-	fn durable(&self) -> Result<Option<LogVersion>> {
+	fn durable(&self) -> Result<Option<LogVersion>, WalError> {
 		Flush::durable(&self.0.log)
 	}
 }
@@ -213,7 +213,7 @@ where
 	where
 		Self: 'a;
 
-	fn read_from(&self, from: LogVersion) -> Result<Cursor<'_, F>> {
+	fn read_from(&self, from: LogVersion) -> Result<Cursor<'_, F>, WalError> {
 		ReadFrom::read_from(&self.0.log, from)
 	}
 }
@@ -236,15 +236,15 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn start(&self) -> Result<Option<LogVersion>> {
+	fn start(&self) -> Result<Option<LogVersion>, WalError> {
 		Reclaim::start(&self.0.log)
 	}
 
-	fn committed(&self) -> Result<LogIndex> {
+	fn committed(&self) -> Result<LogIndex, WalError> {
 		Reclaim::committed(&self.0.log)
 	}
 
-	fn drop_below(&self, index: LogIndex) -> Result<()> {
+	fn drop_below(&self, index: LogIndex) -> Result<(), WalError> {
 		self.call();
 		self.0.hooks.during_gc(GcStage::FloorsRead);
 		let dropped = Reclaim::drop_below(&self.0.log, index);
@@ -252,7 +252,7 @@ where
 		dropped
 	}
 
-	fn bytes(&self) -> Result<ByteSize> {
+	fn bytes(&self) -> Result<ByteSize, WalError> {
 		Reclaim::bytes(&self.0.log)
 	}
 }
@@ -275,17 +275,17 @@ where
 	C: ClockNow + Clone + Send + 'static,
 	Partition<F, C>: Send,
 {
-	fn register(&self, id: &str) -> Result<()> {
+	fn register(&self, id: &str) -> Result<(), WalError> {
 		self.call();
 		Mark::register(&self.0.log, id)
 	}
 
-	fn record(&self, id: &str, version: LogVersion) -> Result<()> {
+	fn record(&self, id: &str, version: LogVersion) -> Result<(), WalError> {
 		self.call();
 		Mark::record(&self.0.log, id, version)
 	}
 
-	fn readers(&self) -> Result<Vec<(String, LogVersion)>> {
+	fn readers(&self) -> Result<Vec<(String, LogVersion)>, WalError> {
 		Mark::readers(&self.0.log)
 	}
 }

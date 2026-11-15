@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	state::timer::{TimerKind, TimerMove},
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	timer::{Timer, TimerDue, wheel::TimerWheel},
@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub trait TimerExtension: FlowTransaction {
-	fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
+	fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<(), ValueError> {
 		TimerWheel::arm(operator, self, timer)?;
 		self.push_armed(TimerDue {
 			operator_id: operator,
@@ -23,11 +23,16 @@ pub trait TimerExtension: FlowTransaction {
 		Ok(())
 	}
 
-	fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
+	fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<(), ValueError> {
 		TimerWheel::disarm(operator, self, timer)
 	}
 
-	fn rearm_timers(&mut self, operator: OperatorId, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+	fn rearm_timers(
+		&mut self,
+		operator: OperatorId,
+		kind: TimerKind,
+		moves: &[TimerMove],
+	) -> Result<(), ValueError> {
 		TimerWheel::rearm(operator, self, kind, moves)?;
 		for due in moves.iter().filter(|timer| timer.before != timer.after).filter_map(|timer| timer.after) {
 			self.push_armed(TimerDue {
@@ -38,7 +43,12 @@ pub trait TimerExtension: FlowTransaction {
 		Ok(())
 	}
 
-	fn disarm_timer_by_key(&mut self, operator: OperatorId, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer_by_key(
+		&mut self,
+		operator: OperatorId,
+		kind: TimerKind,
+		key: &EncodedKey,
+	) -> Result<(), ValueError> {
 		TimerWheel::disarm_by_key(operator, self, kind, key)
 	}
 }

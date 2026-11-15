@@ -10,14 +10,15 @@ use reifydb_core::{
 };
 use reifydb_evaluate::stack::Variable;
 use reifydb_value::{
+	error::ValueError,
 	fragment::Fragment,
 	value::{Value, column_view::ColumnView, system_columns::user_columns, value_type::field::is_sumtype_tag},
 };
 
-use crate::{Result, vm::vm::Vm};
+use crate::vm::vm::Vm;
 
 impl<'a> Vm<'a> {
-	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<()> {
+	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<(), ValueError> {
 		let columns = match self.stack.pop()? {
 			Variable::Columns {
 				batch: c,
@@ -63,7 +64,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_for_next(&mut self, variable_name: &Fragment, end_addr: usize) -> Result<bool> {
+	pub(crate) fn exec_for_next(&mut self, variable_name: &Fragment, end_addr: usize) -> Result<bool, ValueError> {
 		let var_name = variable_name.text();
 		let clean_name = var_name.strip_prefix('$').unwrap_or(var_name);
 		let iter_key = format!("__for_{}", var_name);

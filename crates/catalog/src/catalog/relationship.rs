@@ -10,11 +10,11 @@ use reifydb_transaction::{
 	change::TransactionalRelationshipChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::relationship::create::RelationshipToCreate as StoreRelationshipToCreate,
@@ -53,7 +53,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: RelationshipToCreate,
-	) -> Result<Relationship> {
+	) -> Result<Relationship, ValueError> {
 		let rel = CatalogStore::create_relationship(txn, to_create.into())?;
 		txn.track_relationship_created(rel.clone())?;
 		Ok(rel)
@@ -66,7 +66,7 @@ impl Catalog {
 		namespace: NamespaceId,
 		source_table: TableId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let rel = match self.find_relationship_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace,
@@ -91,7 +91,11 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::relationship::find", level = "trace", skip(self, txn))]
-	pub fn find_relationship(&self, txn: &mut Transaction<'_>, id: RelationshipId) -> Result<Option<Relationship>> {
+	pub fn find_relationship(
+		&self,
+		txn: &mut Transaction<'_>,
+		id: RelationshipId,
+	) -> Result<Option<Relationship>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(rel) = self.cache.find_relationship_at(id, cmd.version()) {
@@ -160,7 +164,7 @@ impl Catalog {
 		namespace: NamespaceId,
 		source_table: TableId,
 		name: &str,
-	) -> Result<Option<Relationship>> {
+	) -> Result<Option<Relationship>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(rel) = self.cache.find_relationship_by_name_at(
@@ -278,7 +282,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::relationship::list", level = "debug", skip(self, txn))]
-	pub fn list_relationships(&self, txn: &mut Transaction<'_>) -> Result<Vec<Relationship>> {
+	pub fn list_relationships(&self, txn: &mut Transaction<'_>) -> Result<Vec<Relationship>, ValueError> {
 		CatalogStore::list_relationships(txn)
 	}
 
@@ -287,7 +291,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		source_table: TableId,
-	) -> Result<Vec<Relationship>> {
+	) -> Result<Vec<Relationship>, ValueError> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.cache.list_relationships_from_at(source_table, cmd.version()))

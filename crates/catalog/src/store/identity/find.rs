@@ -4,20 +4,23 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::{error::ValueError, value::identity::IdentityId};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	store::identity::{convert_identity, shape::identity},
 };
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<Identity>> {
+	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<Identity>, ValueError> {
 		rx.get(&[IdentityKey::new(id).into()])?.pop().flatten().map(convert_identity).transpose()
 	}
 
-	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
+	pub(crate) fn find_identity_by_name(
+		rx: &mut Transaction<'_>,
+		name: &str,
+	) -> Result<Option<Identity>, ValueError> {
 		let stream = rx.range(IdentityKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {

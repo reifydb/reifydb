@@ -3,12 +3,11 @@
 
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
 use reifydb_core::{interface::catalog::queue::Queue, partition, partition::QueuePlacement};
+use reifydb_value::error::ValueError;
 #[cfg(test)]
 use reifydb_value::value::partition::Partition;
 
-use crate::Result;
-
-pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
+pub fn ordered_by_index(queue: &Queue) -> Result<Option<usize>, ValueError> {
 	partition::ordered_by_index(queue)
 }
 

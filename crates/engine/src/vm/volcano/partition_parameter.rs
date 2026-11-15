@@ -13,21 +13,24 @@ use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_flow::compiler::child_plans;
 use reifydb_rql::{nodes::PartitionKey, query::QueryPlan};
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
-use reifydb_value::value::{
-	Value,
-	dictionary::DictionaryId,
-	partition::{Partition, ScanPartitions},
-	value_type::ValueType,
+use reifydb_value::{
+	error::ValueError,
+	value::{
+		Value,
+		dictionary::DictionaryId,
+		partition::{Partition, ScanPartitions},
+		value_type::ValueType,
+	},
 };
 
-use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
+use crate::transaction::operation::dictionary::DictionaryOperations;
 
 pub(crate) fn scan_partitions(
 	plan: &QueryPlan,
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Result<BTreeMap<ObjectId, ScanPartitions>> {
+) -> Result<BTreeMap<ObjectId, ScanPartitions>, ValueError> {
 	let mut partitions = BTreeMap::new();
 	collect_partitions(plan, None, catalog, txn, symbols, &mut partitions)?;
 	Ok(partitions)
@@ -40,7 +43,7 @@ fn collect_partitions(
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
 	partitions: &mut BTreeMap<ObjectId, ScanPartitions>,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	let mut record = |source: ObjectId, partition: ScanPartitions| {
 		partitions
 			.entry(source)
@@ -96,7 +99,7 @@ pub(crate) fn choose_partition(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Result<ScanPartitions> {
+) -> Result<ScanPartitions, ValueError> {
 	if txn.layout() == ScanLayout::Column {
 		return Ok(ScanPartitions::All);
 	}
@@ -120,7 +123,7 @@ pub(crate) fn choose_partitions(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Result<Option<ScanPartitions>> {
+) -> Result<Option<ScanPartitions>, ValueError> {
 	let (ScanLayout::Row, [key]) = (txn.layout(), keys) else {
 		return Ok(None);
 	};
@@ -179,7 +182,7 @@ fn resolve_key(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	symbols: &SymbolTable,
-) -> Result<Resolved> {
+) -> Result<Resolved, ValueError> {
 	let PartitionKey::Dictionary {
 		dictionary,
 		key,
@@ -201,7 +204,7 @@ fn lookup(
 	txn: &mut Transaction<'_>,
 	dictionary: DictionaryId,
 	values: Vec<Value>,
-) -> Result<Vec<Option<Value>>> {
+) -> Result<Vec<Option<Value>>, ValueError> {
 	let found = catalog.find_dictionary(txn, dictionary)?.ok_or_else(|| {
 		internal_error!("dictionary {:?} of a partition key is not in the catalog", dictionary)
 	})?;

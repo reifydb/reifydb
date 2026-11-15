@@ -3,18 +3,16 @@
 
 use reifydb_rql_frontend::ast::ast::AstCreatePrimaryKey;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::error::ValueError;
 
-use crate::{
-	Result,
-	plan::logical::{Compiler, CreatePrimaryKeyNode, LogicalPlan, PrimaryKeyColumn},
-};
+use crate::plan::logical::{Compiler, CreatePrimaryKeyNode, LogicalPlan, PrimaryKeyColumn};
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_primary_key(
 		&self,
 		ast: AstCreatePrimaryKey<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>, ValueError> {
 		let columns = ast
 			.columns
 			.into_iter()

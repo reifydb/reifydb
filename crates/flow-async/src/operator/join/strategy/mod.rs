@@ -21,7 +21,7 @@ pub(crate) mod latest;
 pub mod latest_inner;
 pub mod latest_left;
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::operator::join::strategy::{
 	hash_inner::InnerHashJoin, hash_left::LeftHashJoin, latest_inner::LatestInnerHashJoin,
@@ -64,7 +64,7 @@ impl JoinStrategy {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
 			JoinStrategy::Inner(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
@@ -79,7 +79,7 @@ impl JoinStrategy {
 		pre: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
 			JoinStrategy::Inner(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
@@ -95,7 +95,7 @@ impl JoinStrategy {
 		post: &RecordBatch,
 		row_idx: usize,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
 			JoinStrategy::Inner(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
@@ -111,7 +111,7 @@ impl JoinStrategy {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_insert(host, post, indices, key_hash, ctx),
 			JoinStrategy::Inner(s) => s.handle_insert(host, post, indices, key_hash, ctx),
@@ -127,7 +127,7 @@ impl JoinStrategy {
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
 			JoinStrategy::Inner(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
@@ -146,7 +146,7 @@ impl JoinStrategy {
 		pre: &RecordBatch,
 		replaces: &[(Hash128, Vec<usize>, Vec<usize>)],
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::LatestLeft(s) => s.handle_right_replaces(host, pre, replaces, ctx),
 			JoinStrategy::Left(_) | JoinStrategy::Inner(_) | JoinStrategy::LatestInner(_) => {
@@ -174,7 +174,7 @@ impl JoinStrategy {
 		indices: &[usize],
 		keys: UpdateKeys,
 		ctx: &mut JoinContext,
-	) -> Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>, ValueError> {
 		match self {
 			JoinStrategy::Left(s) => s.handle_update(host, pre, post, indices, keys, ctx),
 			JoinStrategy::Inner(s) => s.handle_update(host, pre, post, indices, keys, ctx),

@@ -9,9 +9,10 @@ use reifydb_core::{
 	key::catalog::ColumnPropertyKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::ValueError;
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::CatalogError,
 	store::{column_property::shape::column_property, sequence::system::SystemSequence},
 };
@@ -21,7 +22,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		column: ColumnId,
 		property: ColumnPropertyKind,
-	) -> Result<ColumnProperty> {
+	) -> Result<ColumnProperty, ValueError> {
 		let (property_kind, _value_kind) = property.to_u8();
 		for existing in Self::list_column_properties(&mut Transaction::Admin(&mut *txn), column)? {
 			let (existing_kind, _) = existing.property.to_u8();

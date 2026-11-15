@@ -29,21 +29,21 @@ use reifydb_value::value::{
 };
 
 use crate::{
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
 		column::{row::Row, sink::RowSink},
 		state::{decode_payload, encode_payload},
 	},
 };
 
-pub(crate) fn check_emit_count(rows: usize, row_numbers: usize) -> Result<()> {
+pub(crate) fn check_emit_count(rows: usize, row_numbers: usize) -> Result<(), SdkError> {
 	if rows == row_numbers {
 		return Ok(());
 	}
 	Err(SdkError::InvalidInput(format!("emit of {rows} rows with {row_numbers} row numbers")))
 }
 
-pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<()> {
+pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<(), SdkError> {
 	if is_class_framed_inner(class, key.as_slice()) {
 		return Ok(());
 	}
@@ -53,7 +53,7 @@ pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<
 	)))
 }
 
-pub(crate) fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> Result<()> {
+pub(crate) fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> Result<(), SdkError> {
 	if guest_may_address(class, keyspace) {
 		return Ok(());
 	}
@@ -64,7 +64,7 @@ pub(crate) fn guest_sweep_mask(keyspaces: KeyspaceMask) -> KeyspaceMask {
 	KeyspaceMask::windowed().intersect(keyspaces)
 }
 
-pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<()> {
+pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<(), SdkError> {
 	match keys.iter().position(|key| key.is_empty()) {
 		Some(slot) => Err(SdkError::Other(format!(
 			"a guest row-number batch key at slot {slot} is empty; an empty key names the group row, remove group rows with remove_row_number_for_group"
@@ -73,7 +73,7 @@ pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<()> {
 	}
 }
 
-pub(crate) fn check_class_batch(class: OperatorClass, batch: &StateBatch) -> Result<()> {
+pub(crate) fn check_class_batch(class: OperatorClass, batch: &StateBatch) -> Result<(), SdkError> {
 	for slot in 0..batch.len() {
 		class_framed(class, batch.key(slot))?;
 	}
@@ -108,34 +108,39 @@ impl<'a> GuestBound<'a> {
 pub trait GuestEmit {
 	type Sink: RowSink;
 	fn sink(&mut self) -> &mut Self::Sink;
-	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<()>;
+	fn finish(self, row_numbers: &[RowNumber], times: &[DateTime]) -> Result<(), SdkError>;
 }
 
 pub trait GuestUpdateEmit {
 	type Sink: RowSink;
 	fn pre(&mut self) -> &mut Self::Sink;
 	fn post(&mut self) -> &mut Self::Sink;
-	fn finish(self, row_numbers: &[RowNumber], pre_times: &[DateTime], post_times: &[DateTime]) -> Result<()>;
+	fn finish(
+		self,
+		row_numbers: &[RowNumber],
+		pre_times: &[DateTime],
+		post_times: &[DateTime],
+	) -> Result<(), SdkError>;
 }
 
 pub trait GuestState {
-	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>>;
-	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()>;
-	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()>;
-	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>>;
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>, SdkError>;
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<(), SdkError>;
+	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<(), SdkError>;
+	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>, SdkError>;
 	fn get_bytes(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError>;
 
-	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), SdkError>;
 
-	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()>;
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<(), SdkError>;
 
-	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch, SdkError>;
 
-	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()>;
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<(), SdkError>;
 
 	fn range_bytes_visit(
 		&self,
@@ -144,15 +149,15 @@ pub trait GuestState {
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<(), SdkError>,
+	) -> Result<(), SdkError>;
 
 	fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
-	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)>;
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), SdkError>;
 
 	fn last_bytes(
 		&self,
@@ -160,7 +165,7 @@ pub trait GuestState {
 		keyspace: KeyspaceId,
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
-	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	) -> Result<Option<(GroupStateKey, EncodedPodRow)>, SdkError> {
 		let mut last = None;
 		self.range_bytes_visit(group, keyspace, start, end, None, &mut |key, payload| {
 			last = Some((key, payload));
@@ -231,7 +236,7 @@ impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
 		}
 	}
 
-	pub fn get(&self, slot: usize) -> Result<Option<T>> {
+	pub fn get(&self, slot: usize) -> Result<Option<T>, SdkError> {
 		let slot = self.first[slot];
 		match self.batch.op(slot) {
 			Some(PendingWrite::Set(bytes)) => Ok(Some(decode_payload(EncodedPodRow::view(bytes))?)),
@@ -242,7 +247,7 @@ impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
 		}
 	}
 
-	pub fn set(&mut self, slot: usize, value: &T) -> Result<()> {
+	pub fn set(&mut self, slot: usize, value: &T) -> Result<(), SdkError> {
 		self.batch.set(self.first[slot], encode_payload(value)?);
 		Ok(())
 	}
@@ -251,7 +256,7 @@ impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
 		self.batch.remove(self.first[slot]);
 	}
 
-	pub fn commit(self, state: &mut impl ClassState<C>) -> Result<()> {
+	pub fn commit(self, state: &mut impl ClassState<C>) -> Result<(), SdkError> {
 		state.write_batch(self)
 	}
 }
@@ -261,35 +266,35 @@ fn class_keys<C: CustomClass>(keys: &[C::Key]) -> Vec<GroupStateKey> {
 }
 
 pub trait ClassState<C: CustomClass> {
-	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>>;
-	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<()>;
-	fn remove(&mut self, keys: &[C::Key]) -> Result<()>;
-	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>>;
-	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>>;
-	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()>;
+	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>, SdkError>;
+	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<(), SdkError>;
+	fn remove(&mut self, keys: &[C::Key]) -> Result<(), SdkError>;
+	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>, SdkError>;
+	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>, SdkError>;
+	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<(), SdkError>;
 }
 
 impl<C: CustomClass, S: GuestState> ClassState<C> for S {
-	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>> {
+	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>, SdkError> {
 		GuestState::get(self, &class_keys::<C>(keys))
 	}
-	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<(), SdkError> {
 		let mut encoded = Vec::with_capacity(rows.len());
 		for (key, value) in rows {
 			encoded.push((key.as_ref().clone(), encode_payload(value)?));
 		}
 		self.set_bytes(encoded)
 	}
-	fn remove(&mut self, keys: &[C::Key]) -> Result<()> {
+	fn remove(&mut self, keys: &[C::Key]) -> Result<(), SdkError> {
 		GuestState::remove(self, &class_keys::<C>(keys))
 	}
-	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>> {
+	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>, SdkError> {
 		GuestState::contains(self, &class_keys::<C>(keys))
 	}
-	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>> {
+	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>, SdkError> {
 		Ok(ClassBatch::new(self.batch_bytes(class_keys::<C>(keys))?))
 	}
-	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()> {
+	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<(), SdkError> {
 		check_class_batch(C::CLASS, &batch.batch)?;
 		self.write_batch_bytes(batch.batch)
 	}
@@ -308,35 +313,46 @@ pub trait GuestEmitContext {
 
 	fn operator_id(&self) -> OperatorId;
 	fn batch_time(&self) -> DateTime;
-	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
-	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
-	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
-	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
-	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber>;
-	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>>;
-	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<()>;
-	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
-	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
-	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
-	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
+	fn get_or_create_row_numbers(
+		&mut self,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>, SdkError>;
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+	) -> Result<Vec<(RowNumber, bool)>, SdkError>;
+	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>, SdkError>;
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<(), SdkError>;
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<(), SdkError>;
+	fn mint_row_numbers(&mut self, count: usize) -> Result<RowNumber, SdkError>;
+	fn get_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>, SdkError>;
+	fn set_row_numbers_for_groups(&mut self, rows: &[(GroupId, RowNumber)]) -> Result<(), SdkError>;
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), SdkError>;
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<(), SdkError>;
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<(), SdkError>;
+	fn flow_watermark(&mut self) -> Result<Option<DateTime>, SdkError>;
 	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>>;
-	fn dictionary_intern(&mut self, dictionary: DictionaryId, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
+	) -> Result<Vec<Option<DictionaryEntryId>>, SdkError>;
+	fn dictionary_intern(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>, SdkError>;
 
-	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
-	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;
-	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::RemoveEmit<'_>>;
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>, SdkError>;
+	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>, SdkError>;
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::RemoveEmit<'_>, SdkError>;
 
 	fn emit_insert<'r, R: Row + 'r, I>(
 		&mut self,
 		rows: I,
 		row_numbers: &[RowNumber],
 		times: &[DateTime],
-	) -> Result<()>
+	) -> Result<(), SdkError>
 	where
 		I: IntoIterator<Item = &'r R>,
 		I::IntoIter: ExactSizeIterator + Clone,
@@ -360,7 +376,7 @@ pub trait GuestEmitContext {
 		row_numbers: &[RowNumber],
 		pre_times: &[DateTime],
 		post_times: &[DateTime],
-	) -> Result<()>
+	) -> Result<(), SdkError>
 	where
 		P: IntoIterator<Item = &'r R>,
 		P::IntoIter: ExactSizeIterator + Clone,
@@ -387,7 +403,7 @@ pub trait GuestEmitContext {
 		rows: I,
 		row_numbers: &[RowNumber],
 		times: &[DateTime],
-	) -> Result<()>
+	) -> Result<(), SdkError>
 	where
 		I: IntoIterator<Item = &'r R>,
 		I::IntoIter: ExactSizeIterator + Clone,
@@ -416,7 +432,11 @@ pub trait GuestContext<C = Windowed>: GuestEmitContext {
 	fn window_state(&mut self) -> impl GuestState + '_
 	where
 		C: WindowClass;
-	fn reclaim_group_identities(&mut self, groups: &[GroupId], limit: usize) -> Result<Vec<ReclaimOutcome>>
+	fn reclaim_group_identities(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+	) -> Result<Vec<ReclaimOutcome>, SdkError>
 	where
 		C: WindowClass;
 }

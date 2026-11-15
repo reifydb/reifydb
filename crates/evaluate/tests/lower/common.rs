@@ -28,7 +28,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::CompiledClosure;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	fragment::Fragment,
 	params::Params,
 	value::{column_view::ColumnView, constraint::Constraint, identity::IdentityId, value_type::ValueType},
@@ -79,7 +79,7 @@ impl Env {
 		}
 	}
 
-	pub fn lowered(&self, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef)> {
+	pub fn lowered(&self, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef), ValueError> {
 		LoweredExpr::new(expression.clone(), "test").evaluate(&self.ctx(batch))
 	}
 }
@@ -430,7 +430,7 @@ pub fn map(expressions: Vec<Expression>) -> Expression {
 	})
 }
 
-pub fn describe(result: &Result<(FieldRef, ArrayRef)>) -> String {
+pub fn describe(result: &Result<(FieldRef, ArrayRef), ValueError>) -> String {
 	match result {
 		Ok(column) => format!("{:?} {:?}", column.0, strings(column)),
 		Err(error) => format!("{} {:?} {} {:?}", error.code, error.fragment.text(), error.message, error.notes),
@@ -464,11 +464,19 @@ impl Frozen {
 		self.next()
 	}
 
-	pub fn old(&mut self, env: &Env, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef)> {
+	pub fn old(
+		&mut self,
+		env: &Env,
+		expression: &Expression,
+		batch: RecordBatch,
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		self.answer(env.lowered(expression, batch))
 	}
 
-	pub fn answer(&mut self, result: Result<(FieldRef, ArrayRef)>) -> Result<(FieldRef, ArrayRef)> {
+	pub fn answer(
+		&mut self,
+		result: Result<(FieldRef, ArrayRef), ValueError>,
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let expected = self.next();
 		assert_eq!(describe(&result), expected, "frozen old answer {}", self.next);
 		result

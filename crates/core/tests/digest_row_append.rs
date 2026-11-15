@@ -11,7 +11,7 @@ use reifydb_core::value::{
 	column::builder::ColumnBuilder,
 };
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -64,7 +64,7 @@ fn empty_columns(shape: &RowShape) -> RecordBatch {
 	batch(columns).unwrap()
 }
 
-fn append(shape: &RowShape, columns: &mut RecordBatch, rows: &[Vec<Value>]) -> Result<()> {
+fn append(shape: &RowShape, columns: &mut RecordBatch, rows: &[Vec<Value>]) -> Result<(), ValueError> {
 	let row_numbers = (1..=rows.len() as u64).map(RowNumber).collect();
 	*columns = append_rows(columns.clone(), shape, encode_rows(shape, rows), row_numbers)?;
 	Ok(())

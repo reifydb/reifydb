@@ -33,7 +33,6 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_value::{
-	Result as ValueResult,
 	config::ExtensionParams,
 	error::ValueError,
 	util::hash::xxh3_128,
@@ -41,7 +40,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::{Result, SdkError},
+	error::SdkError,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::Row},
@@ -132,14 +131,16 @@ where
 		settings: &WindowSettings<A::Coord>,
 		store: &mut dyn WindowStore,
 		input: RollingInput<A>,
-	) -> Result<Emitted<A>> {
+	) -> Result<Emitted<A>, SdkError> {
 		let pane = mode.pane;
 		let new_accumulator = || aggregator.new_accumulator(settings);
 		let finalize = |group: &A::GroupKey, newest: A::Coord, accumulator: &A::Accumulator| {
 			rolling_output(aggregator, settings, pane, group, newest, accumulator)
 		};
-		let empty = |prior: &A::Output| -> ValueResult<Option<A::Output>> { Ok(aggregator.carry_empty(prior)) };
-		let key = |_: &A::GroupKey| -> ValueResult<NoKey> { Ok(NoKey) };
+		let empty = |prior: &A::Output| -> Result<Option<A::Output>, ValueError> {
+			Ok(aggregator.carry_empty(prior))
+		};
+		let key = |_: &A::GroupKey| -> Result<NoKey, ValueError> { Ok(NoKey) };
 		let mut hooks = RowHooks {
 			new_accumulator: &new_accumulator,
 			key: Some(&key),
@@ -167,7 +168,7 @@ where
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		change: &V,
-	) -> Result<Emitted<A>> {
+	) -> Result<Emitted<A>, SdkError> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let mut rows = SdkRows::new(aggregator, ctx, change);
 		let routed: Routed<A::GroupKey, A::Coord, Contributions<A>> = runner.route(&mut rows)?;
@@ -194,7 +195,7 @@ where
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		change: &V,
-	) -> Result<Emitted<A>> {
+	) -> Result<Emitted<A>, SdkError> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
 		let mut rows = SdkRows::sessions(aggregator, ctx, change);
 		let routed = route_session(&mut rows)?;
@@ -225,7 +226,7 @@ where
 		inserts: &[(RowNumber, DateTime, A::Output)],
 		updates: &[UpdateRow<A>],
 		removes: &[(RowNumber, DateTime, A::Output)],
-	) -> Result<()> {
+	) -> Result<(), SdkError> {
 		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, ..)| *rn).collect();
 		let times: Vec<DateTime> = inserts.iter().map(|(_, time, _)| *time).collect();
 		ctx.emit_insert(inserts.iter().map(|(.., data)| data), &row_numbers, &times)?;
@@ -293,7 +294,7 @@ where
 		None
 	}
 
-	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
+	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self, SdkError> {
 		with.reject_retention()?;
 		let rolls = <A::Kinds as KindSet<A>>::ROLLING
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
@@ -389,7 +390,7 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<(), SdkError> {
 		if self.seal_span.is_none() || !<A::Coord as SealDomain>::arms_timer() {
 			return Ok(());
 		}
@@ -431,7 +432,7 @@ where
 		self.emit_batches(ctx, &inserts, &updates, &removes)
 	}
 
-	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<(), SdkError> {
 		if self.sessions {
 			let (inserts, updates, removes) = {
 				let Self {
@@ -551,7 +552,7 @@ mod tests {
 				type Accumulator = LastValue<i64>;
 				type Output = Out;
 
-				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 					Ok(Self {
 						settings_seen: Mutex::new(Vec::new()),
 						_group: PhantomData,
@@ -562,12 +563,14 @@ mod tests {
 					&self,
 					cols: &impl crate::flow::operator::view::ColumnsView,
 					rows: &[usize],
-				) -> Result<Vec<Option<$coord>>> {
+				) -> Result<Vec<Option<$coord>>, SdkError> {
 					rows.iter()
 						.map(|&i| {
 							cols.row(i)
 								.as_ref()
-								.map(|_| -> Result<Option<$coord>> { Ok(None) })
+								.map(|_| -> Result<Option<$coord>, SdkError> {
+									Ok(None)
+								})
 								.transpose()
 								.map(Option::flatten)
 						})
@@ -579,12 +582,14 @@ mod tests {
 					_: &mut impl GuestContext<Windowed>,
 					cols: &impl crate::flow::operator::view::ColumnsView,
 					rows: &[usize],
-				) -> Result<Vec<Option<($group, i64)>>> {
+				) -> Result<Vec<Option<($group, i64)>>, SdkError> {
 					rows.iter()
 						.map(|&i| {
 							cols.row(i)
 								.as_ref()
-								.map(|_| -> Result<Option<($group, i64)>> { Ok(None) })
+								.map(|_| -> Result<Option<($group, i64)>, SdkError> {
+									Ok(None)
+								})
 								.transpose()
 								.map(Option::flatten)
 						})
@@ -789,13 +794,13 @@ mod tests {
 		type Accumulator = LastValue<i64>;
 		type Output = Out;
 
-		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 			Ok(Self {
 				spans: Mutex::new(Vec::new()),
 			})
 		}
 
-		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 
@@ -804,7 +809,7 @@ mod tests {
 			_: &mut impl GuestContext<Windowed>,
 			_: &impl ColumnsView,
 			rows: &[usize],
-		) -> Result<Vec<Option<(u32, i64)>>> {
+		) -> Result<Vec<Option<(u32, i64)>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 
@@ -933,11 +938,11 @@ mod tests {
 		type Accumulator = Tally;
 		type Output = Out;
 
-		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
+		fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self, SdkError> {
 			Ok(Self)
 		}
 
-		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>> {
+		fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTimeCoord>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 
@@ -946,7 +951,7 @@ mod tests {
 			_: &mut impl GuestContext<Windowed>,
 			_: &impl ColumnsView,
 			rows: &[usize],
-		) -> Result<Vec<Option<(u32, i64)>>> {
+		) -> Result<Vec<Option<(u32, i64)>>, SdkError> {
 			Ok(vec![None; rows.len()])
 		}
 

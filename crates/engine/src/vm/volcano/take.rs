@@ -5,13 +5,10 @@ use arrow_array::RecordBatch;
 use reifydb_core::value::{batch::head, column::headers::ColumnHeaders};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{error::ValueError, reifydb_assertions};
 use tracing::instrument;
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct TakeNode {
 	input: Box<dyn QueryNode>,
@@ -33,14 +30,18 @@ impl TakeNode {
 
 impl QueryNode for TakeNode {
 	#[instrument(name = "volcano::take::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::take::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 		}
@@ -80,7 +81,7 @@ impl QueryNode for TakeNode {
 }
 
 impl Transform for TakeNode {
-	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, _ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		if input.num_rows() > self.remaining {
 			return Ok(head(&input, self.remaining));
 		}

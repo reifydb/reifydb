@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{delta::SetPre, interface::catalog::storage::StorageId, key::row::RowKey};
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use crate::txn::StorageTransaction;
 
@@ -20,7 +20,7 @@ impl<'a, T: StorageTransaction> QueueWriter<'a, T> {
 		}
 	}
 
-	pub fn insert(&mut self, rows: impl IntoIterator<Item = (RowNumber, EncodedBytes)>) -> Result<()> {
+	pub fn insert(&mut self, rows: impl IntoIterator<Item = (RowNumber, EncodedBytes)>) -> Result<(), ValueError> {
 		let storage = self.storage;
 		self.txn.set_with_pre(
 			rows.into_iter()
@@ -45,23 +45,23 @@ mod tests {
 	}
 
 	impl Get for Recording {
-		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get_tagged(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<EncodedBytes>>, ValueError> {
 			self.reads += 1;
 			Ok(vec![None; keys.len()])
 		}
 	}
 
 	impl Batch for Recording {
-		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<(), ValueError> {
 			self.with_pre.push(entries);
 			Ok(())
 		}
 
-		fn remove_with_pre(&mut self, _entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		fn remove_with_pre(&mut self, _entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<(), ValueError> {
 			panic!("a queue insert never removes a row")
 		}
 
-		fn remove_tagged(&mut self, _keys: Vec<TaggedKey>) -> Result<()> {
+		fn remove_tagged(&mut self, _keys: Vec<TaggedKey>) -> Result<(), ValueError> {
 			panic!("a queue insert never removes a row")
 		}
 	}

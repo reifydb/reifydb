@@ -6,8 +6,7 @@ use std::fmt::Display;
 use arrow_array::{Array, ArrayRef, BooleanArray, LargeBinaryArray};
 use arrow_schema::FieldRef;
 use reifydb_value::{
-	Result,
-	error::TypeError,
+	error::{TypeError, ValueError},
 	fragment::LazyFragment,
 	value::{
 		blob::Blob,
@@ -27,7 +26,7 @@ use reifydb_value::{
 use super::error::CastError;
 use crate::value::column::{builder::ColumnBuilder, factory::utf8};
 
-pub fn to_text(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef)> {
+pub fn to_text(data: &ColumnView, lazy_fragment: impl LazyFragment) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let name = data.field.name();
 	match &data.data {
 		ViewData::Blob {
@@ -76,7 +75,7 @@ pub fn from_blob(
 	container: &LargeBinaryArray,
 	name: &str,
 	lazy_fragment: impl LazyFragment,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut out = ColumnBuilder::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		let blob = Blob::new(container.value(idx).to_vec());
@@ -95,7 +94,7 @@ pub fn from_blob(
 }
 
 #[inline]
-fn from_bool(container: &BooleanArray, name: &str) -> Result<(FieldRef, ArrayRef)> {
+fn from_bool(container: &BooleanArray, name: &str) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut out = ColumnBuilder::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_valid(idx) {
@@ -108,7 +107,7 @@ fn from_bool(container: &BooleanArray, name: &str) -> Result<(FieldRef, ArrayRef
 }
 
 #[inline]
-fn from_number<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef)>
+fn from_number<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	T: Display + IsNumber,
 {
@@ -120,7 +119,7 @@ where
 }
 
 #[inline]
-fn from_temporal<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef)>
+fn from_temporal<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	T: Display + IsTemporal,
 {
@@ -132,7 +131,7 @@ where
 }
 
 #[inline]
-fn from_uuid<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef)>
+fn from_uuid<T>(container: &[T], name: &str) -> Result<(FieldRef, ArrayRef), ValueError>
 where
 	T: Display + IsUuid,
 {
@@ -144,7 +143,7 @@ where
 }
 
 #[inline]
-fn from_identity_id(container: &[IdentityId], name: &str) -> Result<(FieldRef, ArrayRef)> {
+fn from_identity_id(container: &[IdentityId], name: &str) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut out = ColumnBuilder::with_capacity(ValueType::Utf8, container.len());
 	for value in container {
 		out.push::<String>(value.to_string());

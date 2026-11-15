@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 #[derive(Debug)]
 pub struct FilterSlice {
@@ -18,5 +18,5 @@ pub trait KeyFilterSource: Send + Debug {
 
 	fn restart(&mut self);
 
-	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice>;
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice, ValueError>;
 }

@@ -16,7 +16,8 @@ use reifydb_core::{
 };
 use reifydb_flow::txn::Intern;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	value::{Value, datetime::DateTime, system_columns::column_view},
 };
 use tracing::{Span, field, info, instrument};
@@ -39,7 +40,7 @@ pub(crate) struct SourceArrival {
 
 pub(crate) type SourceArrivals = Vec<SourceArrival>;
 
-fn latest_input_time(changes: &[Change]) -> Result<Option<DateTime>> {
+fn latest_input_time(changes: &[Change]) -> Result<Option<DateTime>, ValueError> {
 	let mut latest = None;
 	for change in changes {
 		latest = latest.max(max_input_time(change)?);
@@ -60,7 +61,7 @@ impl FlowEngineInner {
 		txn: &mut T,
 		changes: Vec<Change>,
 		flow_id: FlowId,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -108,7 +109,7 @@ impl FlowEngineInner {
 		txn: &mut T,
 		flow_id: FlowId,
 		version: CommitVersion,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -144,7 +145,7 @@ impl FlowEngineInner {
 		version: ChangeVersion,
 		source_changes: Vec<Change>,
 		topo: &[OperatorId],
-	) -> Result<u32> {
+	) -> Result<u32, ValueError> {
 		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
 		for change in source_changes {
@@ -165,7 +166,7 @@ impl FlowEngineInner {
 				}))
 			})
 			.filter_map(Result::transpose)
-			.collect::<Result<_>>()?;
+			.collect::<Result<_, ValueError>>()?;
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
 		let (published, mut silent) = published_arrivals(
 			&self.sources,
@@ -198,7 +199,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		mut pending: HashMap<OperatorId, Vec<Change>>,
 		topo: &[OperatorId],
-	) -> Result<u32> {
+	) -> Result<u32, ValueError> {
 		let mut nodes_processed = 0u32;
 		for operator_id in topo {
 			let inbox = match pending.remove(operator_id) {
@@ -314,7 +315,7 @@ fn warn_unpublished(flow_id: FlowId, silent: &[ObjectId]) {
 	}
 }
 
-fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) -> Result<()> {
+fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) -> Result<(), ValueError> {
 	for diff in change.diffs.iter() {
 		let Some(columns) = diff.post() else {
 			continue;
@@ -346,7 +347,7 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 	Ok(())
 }
 
-fn advance_lookup_frontiers<T: FlowTransaction>(txn: &mut T, arrivals: &[SourceArrival]) -> Result<()> {
+fn advance_lookup_frontiers<T: FlowTransaction>(txn: &mut T, arrivals: &[SourceArrival]) -> Result<(), ValueError> {
 	for arrival in arrivals {
 		SourceWatermarks::advance(arrival.source, txn, arrival.at)?;
 	}
@@ -357,7 +358,7 @@ fn freeze_arrival_frontier<T: FlowTransaction>(
 	txn: &mut T,
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	if !sources.is_empty() {
 		let frontier = SourceWatermarks::flow_watermark(sources, txn)?;
 		txn.set_flow_watermark(frontier);
@@ -971,7 +972,7 @@ mod tests {
 			self.order
 		}
 
-		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change, ValueError> {
 			let origins = change
 				.diffs
 				.iter()

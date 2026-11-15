@@ -9,10 +9,10 @@ use reifydb_core::{
 	key::catalog::RelationshipKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{error::ValueError, fragment::Fragment};
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{relationship::shape::relationship as relationship_shape, sequence::system::SystemSequence},
 };
@@ -33,7 +33,7 @@ impl CatalogStore {
 	pub(crate) fn create_relationship(
 		txn: &mut AdminTransaction,
 		to_create: RelationshipToCreate,
-	) -> Result<Relationship> {
+	) -> Result<Relationship, ValueError> {
 		if to_create.cardinality.requires_junction() != to_create.junction.is_some() {
 			return Err(CatalogError::RelationshipJunctionMismatch {
 				fragment: to_create.name.clone(),
@@ -100,7 +100,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		source_table: TableId,
 		name: &str,
-	) -> Result<Option<Relationship>> {
+	) -> Result<Option<Relationship>, ValueError> {
 		for rel in Self::list_relationships(rx)? {
 			if rel.namespace == namespace && rel.source_table == source_table && rel.name == name {
 				return Ok(Some(rel));

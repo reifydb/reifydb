@@ -21,7 +21,7 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock, spawner::Spawner};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	value::{
 		column_view::ColumnView,
 		datetime::DateTime,
@@ -34,7 +34,7 @@ use reifydb_value::{
 
 use crate::common::NoDictionaries;
 
-fn extend(expressions: &[&str]) -> Result<ExtendOperator> {
+fn extend(expressions: &[&str]) -> Result<ExtendOperator, ValueError> {
 	ExtendOperator::new(
 		None,
 		OperatorId(1),

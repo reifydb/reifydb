@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, SinkId},
 	sink::Sink,
 };
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{
 	change::{
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackSinkChangeOperations for AdminTransaction {
-	fn track_sink_created(&mut self, sink: Sink) -> Result<()> {
+	fn track_sink_created(&mut self, sink: Sink) -> Result<(), ValueError> {
 		let change = Change {
 			pre: None,
 			post: Some(sink),
@@ -28,7 +28,7 @@ impl CatalogTrackSinkChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()> {
+	fn track_sink_deleted(&mut self, sink: Sink) -> Result<(), ValueError> {
 		let change = Change {
 			pre: Some(sink),
 			post: None,

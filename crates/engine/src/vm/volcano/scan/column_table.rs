@@ -14,12 +14,9 @@ use reifydb_store_column::{block::Schema, store::ColumnStore};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::ValueError, value::system_columns::SystemColumn};
 
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode},
-		scan::{column_block_sequence::BlockSequenceReader, empty_scan, scan_headers, source_system_columns},
-	},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode},
+	scan::{column_block_sequence::BlockSequenceReader, empty_scan, scan_headers, source_system_columns},
 };
 
 enum ScanState {
@@ -55,7 +52,7 @@ impl ColumnTableScanNode {
 		}
 	}
 
-	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState> {
+	fn open(&self, rx: &mut Transaction<'_>) -> Result<ScanState, ValueError> {
 		let services = &self.context.services;
 		let name = self.table.fully_qualified_name();
 
@@ -81,7 +78,7 @@ impl ColumnTableScanNode {
 	}
 }
 
-fn empty_columns(schema: &Schema) -> Result<RecordBatch> {
+fn empty_columns(schema: &Schema) -> Result<RecordBatch, ValueError> {
 	let columns = schema
 		.iter()
 		.filter(|(name, _, _)| SystemColumn::from_name(name).is_none())
@@ -93,11 +90,15 @@ fn empty_columns(schema: &Schema) -> Result<RecordBatch> {
 }
 
 impl QueryNode for ColumnTableScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<(), ValueError> {
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		_ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		if matches!(self.state, ScanState::Unopened) {
 			self.state = self.open(rx)?;
 		}

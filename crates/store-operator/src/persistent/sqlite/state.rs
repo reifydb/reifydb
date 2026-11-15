@@ -14,14 +14,18 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
-	error::{Result, StoreOperatorError},
+	error::StoreOperatorError,
 	persistent::sqlite::{SqlitePersistent, route},
 	types::OperatorBatch,
 };
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::state_sizes", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_sizes(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<ByteSize>>> {
+	pub fn state_sizes(
+		&self,
+		operator: OperatorId,
+		keys: &[&EncodedKey],
+	) -> Result<Vec<Option<ByteSize>>, StoreOperatorError> {
 		if keys.is_empty() || !self.state_written() {
 			return Ok(vec![None; keys.len()]);
 		}
@@ -37,7 +41,11 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn get(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn get(
+		&self,
+		operator: OperatorId,
+		keys: &[&EncodedKey],
+	) -> Result<Vec<Option<EncodedPodRow>>, StoreOperatorError> {
 		if keys.is_empty() || !self.state_written() {
 			return Ok(vec![None; keys.len()]);
 		}
@@ -55,7 +63,7 @@ impl SqlitePersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		self.page(operator, range, batch_size, false)
 	}
 
@@ -65,7 +73,7 @@ impl SqlitePersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		self.page(operator, range, batch_size, true)
 	}
 
@@ -76,7 +84,7 @@ impl SqlitePersistent {
 		groups: &[GroupId],
 		batch_size: u64,
 		mask: KeyspaceMask,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		if groups.is_empty() || !self.state_written() {
 			return Ok(OperatorBatch::empty());
 		}
@@ -108,7 +116,7 @@ impl SqlitePersistent {
 		range: EncodedKeyRange,
 		batch_size: u64,
 		reverse: bool,
-	) -> Result<OperatorBatch> {
+	) -> Result<OperatorBatch, StoreOperatorError> {
 		if !self.state_written() {
 			return Ok(OperatorBatch::empty());
 		}
@@ -132,7 +140,7 @@ impl SqlitePersistent {
 		keyspace: KeyspaceId,
 		after: Option<&EncodedKey>,
 		limit: u64,
-	) -> Result<Vec<EncodedKey>> {
+	) -> Result<Vec<EncodedKey>, StoreOperatorError> {
 		if !self.state_written() {
 			return Ok(Vec::new());
 		}

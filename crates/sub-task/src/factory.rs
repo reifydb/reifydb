@@ -4,7 +4,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::Result;
+use reifydb_value::error::ValueError;
 
 use crate::{subsystem::TaskSubsystem, task::ScheduledTask};
 
@@ -50,7 +50,7 @@ impl SubsystemFactory for TaskSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>, ValueError> {
 		Ok(Box::new(TaskSubsystem::new(ioc, self.config.tasks)))
 	}
 }

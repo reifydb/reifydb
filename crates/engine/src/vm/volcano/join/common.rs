@@ -19,6 +19,7 @@ use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
+	error::ValueError,
 	fragment::Fragment,
 	value::{
 		Value,
@@ -31,16 +32,13 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
-};
+use crate::vm::volcano::query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query};
 
 pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<dyn QueryNode>,
 	rx: &mut Transaction<'a>,
 	ctx: &mut QueryContext,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	let mut batches = Vec::new();
 	let mut charged = 0usize;
 	let mut total = 0usize;
@@ -53,7 +51,7 @@ pub(crate) fn load_and_merge_all<'a>(
 	concat(&batches)
 }
 
-pub(crate) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
+pub(crate) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>, ValueError> {
 	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
 }
 
@@ -78,8 +76,11 @@ pub(crate) fn materialize_join(
 	right_excluded: &[usize],
 	right_picks: &[Option<usize>],
 	emitted: u64,
-) -> Result<RecordBatch> {
-	let parts = left_slots.iter().map(|slot| take_rows(slot.columns, slot.picks)).collect::<Result<Vec<_>>>()?;
+) -> Result<RecordBatch, ValueError> {
+	let parts = left_slots
+		.iter()
+		.map(|slot| take_rows(slot.columns, slot.picks))
+		.collect::<Result<Vec<_>, ValueError>>()?;
 	let left = concat(&parts)?;
 	let right = take_rows_or_none(right_columns, right_picks)?;
 	let mut picked: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(left.num_columns() + right.num_columns());
@@ -247,7 +248,7 @@ pub(crate) fn ensure_join_keyable(
 	columns: &[ColumnView<'_>],
 	key_indices: &[usize],
 	fragment: impl Fn(usize) -> Fragment,
-) -> Result<()> {
+) -> Result<(), ValueError> {
 	for (key, &idx) in key_indices.iter().enumerate() {
 		let ty = columns[idx].get_type();
 		if matches!(ty.inner_type(), ValueType::Digest { .. }) {
@@ -263,7 +264,7 @@ pub(crate) fn join_key_types(
 	right: &[ColumnView<'_>],
 	right_indices: &[usize],
 	fragment: impl Fn(usize) -> Fragment,
-) -> Result<Vec<ValueType>> {
+) -> Result<Vec<ValueType>, ValueError> {
 	let mut targets = Vec::with_capacity(left_indices.len());
 	for (key, (&li, &ri)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
 		let left_ty = left[li].get_type();
@@ -290,7 +291,7 @@ pub(crate) fn eval_join_condition(
 	right_row: &[Value],
 	alias: &Option<Fragment>,
 	ctx: &QueryContext,
-) -> Result<bool> {
+) -> Result<bool, ValueError> {
 	if lowered.is_empty() {
 		return Ok(true);
 	}

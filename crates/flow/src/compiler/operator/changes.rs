@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::ChangesNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, fragment::Fragment};
+use reifydb_value::{error, error::ValueError, fragment::Fragment};
 
 use crate::compiler::{CompileOperator, FlowCompiler, operator::join::output_column_names};
 
@@ -26,7 +26,7 @@ impl From<ChangesNode> for ChangesCompiler {
 }
 
 impl CompileOperator for ChangesCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId, ValueError> {
 		if let Some(columns) = output_column_names(&self.input) {
 			for name in &self.with.update_on {
 				if !columns.contains(name) {

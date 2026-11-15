@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRowBuilder};
 use reifydb_core::interface::catalog::series::Series;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{error::ValueError, value::row_number::RowNumber};
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
@@ -23,11 +23,11 @@ impl<'a> SeriesRowPreInsertContext<'a> {
 }
 
 pub trait SeriesRowPreInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPreInsertContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -39,14 +39,14 @@ impl InterceptorChain<dyn SeriesRowPreInsertInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -57,7 +57,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -68,16 +68,16 @@ where
 
 impl<F> SeriesRowPreInsertInterceptor for ClosureSeriesRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_pre_insert<F>(f: F) -> ClosureSeriesRowPreInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPreInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPreInsertInterceptor::new(f)
 }
@@ -97,11 +97,11 @@ impl<'a> SeriesRowPostInsertContext<'a> {
 }
 
 pub trait SeriesRowPostInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostInsertContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPostInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPostInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPostInsertContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -111,14 +111,14 @@ impl InterceptorChain<dyn SeriesRowPostInsertInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -129,7 +129,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -140,16 +140,16 @@ where
 
 impl<F> SeriesRowPostInsertInterceptor for ClosureSeriesRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_post_insert<F>(f: F) -> ClosureSeriesRowPostInsertInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPostInsertContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPostInsertInterceptor::new(f)
 }
@@ -169,11 +169,11 @@ impl<'a> SeriesRowPreUpdateContext<'a> {
 }
 
 pub trait SeriesRowPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPreUpdateContext) -> Result<(), ValueError> {
 		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
@@ -185,14 +185,14 @@ impl InterceptorChain<dyn SeriesRowPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -203,7 +203,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -214,16 +214,16 @@ where
 
 impl<F> SeriesRowPreUpdateInterceptor for ClosureSeriesRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_pre_update<F>(f: F) -> ClosureSeriesRowPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPreUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPreUpdateInterceptor::new(f)
 }
@@ -246,11 +246,11 @@ impl<'a> SeriesRowPostUpdateContext<'a> {
 }
 
 pub trait SeriesRowPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostUpdateContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPostUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPostUpdateContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -260,14 +260,14 @@ impl InterceptorChain<dyn SeriesRowPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -278,7 +278,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -289,16 +289,16 @@ where
 
 impl<F> SeriesRowPostUpdateInterceptor for ClosureSeriesRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostUpdateContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_post_update<F>(f: F) -> ClosureSeriesRowPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPostUpdateContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPostUpdateInterceptor::new(f)
 }
@@ -318,11 +318,11 @@ impl<'a> SeriesRowPreDeleteContext<'a> {
 }
 
 pub trait SeriesRowPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPreDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPreDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -332,14 +332,14 @@ impl InterceptorChain<dyn SeriesRowPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -350,7 +350,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -361,16 +361,16 @@ where
 
 impl<F> SeriesRowPreDeleteInterceptor for ClosureSeriesRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPreDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_pre_delete<F>(f: F) -> ClosureSeriesRowPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPreDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPreDeleteInterceptor::new(f)
 }
@@ -390,11 +390,11 @@ impl<'a> SeriesRowPostDeleteContext<'a> {
 }
 
 pub trait SeriesRowPostDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostDeleteContext<'a>) -> Result<()>;
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError>;
 }
 
 impl InterceptorChain<dyn SeriesRowPostDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPostDeleteContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: SeriesRowPostDeleteContext) -> Result<(), ValueError> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -404,14 +404,14 @@ impl InterceptorChain<dyn SeriesRowPostDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureSeriesRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureSeriesRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -422,7 +422,7 @@ where
 
 impl<F> Clone for ClosureSeriesRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -433,16 +433,16 @@ where
 
 impl<F> SeriesRowPostDeleteInterceptor for ClosureSeriesRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut SeriesRowPostDeleteContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn series_row_post_delete<F>(f: F) -> ClosureSeriesRowPostDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut SeriesRowPostDeleteContext<'a>) -> Result<(), ValueError> + Send + Sync + Clone + 'static,
 {
 	ClosureSeriesRowPostDeleteInterceptor::new(f)
 }
@@ -454,7 +454,7 @@ impl SeriesRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		series: &Series,
 		rows: &mut [EncodedSeriesRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPreInsertContext::new(series, rows);
 		txn.series_row_pre_insert_interceptors().execute(ctx)
 	}
@@ -463,7 +463,7 @@ impl SeriesRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		series: &Series,
 		bytes_slice: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPostInsertContext::new(series, bytes_slice);
 		txn.series_row_post_insert_interceptors().execute(ctx)
 	}
@@ -472,7 +472,7 @@ impl SeriesRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		series: &Series,
 		rows: &mut [EncodedSeriesRowBuilder],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPreUpdateContext::new(series, rows);
 		txn.series_row_pre_update_interceptors().execute(ctx)
 	}
@@ -482,17 +482,25 @@ impl SeriesRowInterceptor {
 		series: &Series,
 		posts: &[EncodedBytes],
 		pres: &[EncodedBytes],
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPostUpdateContext::new(series, posts, pres);
 		txn.series_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, series: &Series, ids: &[RowNumber]) -> Result<()> {
+	pub fn pre_delete(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		ids: &[RowNumber],
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPreDeleteContext::new(series, ids);
 		txn.series_row_pre_delete_interceptors().execute(ctx)
 	}
 
-	pub fn post_delete(txn: &mut impl WithInterceptors, series: &Series, deleted: &[EncodedBytes]) -> Result<()> {
+	pub fn post_delete(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		deleted: &[EncodedBytes],
+	) -> Result<(), ValueError> {
 		let ctx = SeriesRowPostDeleteContext::new(series, deleted);
 		txn.series_row_post_delete_interceptors().execute(ctx)
 	}

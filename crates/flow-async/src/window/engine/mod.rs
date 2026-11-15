@@ -34,7 +34,7 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
+	error::ValueError,
 	util::hash::{Hash128, xxh3_128},
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -158,7 +158,7 @@ impl MetaSweep {
 		}
 	}
 
-	pub(crate) fn sweep<M>(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize>
+	pub(crate) fn sweep<M>(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize, ValueError>
 	where
 		M: MetaHighWater + Clone + OperatorState + HeapSize,
 	{
@@ -177,9 +177,9 @@ impl MetaSweep {
 		store: &mut dyn StateStore,
 		threshold: u64,
 		mut visit: V,
-	) -> Result<usize>
+	) -> Result<usize, ValueError>
 	where
-		V: FnMut(&mut dyn StateStore, MetaKey, &EncodedPodRow) -> Result<MetaFate>,
+		V: FnMut(&mut dyn StateStore, MetaKey, &EncodedPodRow) -> Result<MetaFate, ValueError>,
 	{
 		if self.cursor.is_none() && self.low_water.is_some_and(|lw| lw >= threshold) {
 			return Ok(0);
@@ -388,7 +388,7 @@ impl IntoGroupStateKey for &MetaKey {
 	}
 }
 
-pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128> {
+pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128, ValueError> {
 	Ok(xxh3_128(encode(group)?.body()))
 }
 

@@ -21,7 +21,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	CatalogStore, Result,
+	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -51,13 +51,15 @@ pub struct RingBufferToCreate {
 	pub time: TimeSource,
 }
 
+use reifydb_value::error::ValueError;
+
 use crate::store::time_source::write_time_source;
 
 impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> Result<RingBuffer> {
+	) -> Result<RingBuffer, ValueError> {
 		Self::validate_ringbuffer(&to_create)?;
 		let namespace_id = to_create.namespace;
 		Self::reject_existing_ringbuffer(txn, namespace_id, &to_create.name)?;
@@ -78,7 +80,7 @@ impl CatalogStore {
 		})
 	}
 
-	fn validate_ringbuffer(to_create: &RingBufferToCreate) -> Result<()> {
+	fn validate_ringbuffer(to_create: &RingBufferToCreate) -> Result<(), ValueError> {
 		reject_invalid_column_list(
 			CatalogObjectKind::RingBuffer,
 			&to_create.name,
@@ -106,7 +108,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,
 		name: &Fragment,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -130,7 +132,7 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = ringbuffer::allocate();
 		ringbuffer::set_id(&mut row, u64::from(ringbuffer));
 		ringbuffer::set_namespace(&mut row, u64::from(namespace));
@@ -158,7 +160,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		ringbuffer: RingBufferId,
 		name: &str,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let mut row = ringbuffer_namespace::allocate();
 		ringbuffer_namespace::set_id(&mut row, u64::from(ringbuffer));
 		ringbuffer_namespace::set_name(&mut row, name);
@@ -172,7 +174,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
 			columns.push(CatalogStore::create_column(
@@ -195,7 +197,10 @@ impl CatalogStore {
 		Ok(columns)
 	}
 
-	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
+	fn initialize_ringbuffer_metadata(
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+	) -> Result<(), ValueError> {
 		let row = encode_ringbuffer_metadata(&RingBufferMetadata::default());
 		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
 		Ok(())
@@ -206,7 +211,7 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<RingBuffer> {
+	) -> Result<RingBuffer, ValueError> {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
 		Self::validate_ringbuffer(&to_create)?;
 
@@ -234,7 +239,7 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
-	) -> Result<Vec<Column>> {
+	) -> Result<Vec<Column>, ValueError> {
 		let mut columns = Vec::new();
 		for (idx, (col, &col_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
 			columns.push(CatalogStore::create_column_with_id(
@@ -392,7 +397,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>>>()
+			.collect::<Result<Vec<_>, ValueError>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

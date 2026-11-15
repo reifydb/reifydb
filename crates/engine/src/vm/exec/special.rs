@@ -15,10 +15,14 @@ use reifydb_rql::{
 	nodes::{AssertBlockNode, DispatchNode, MigrateNode, RollbackMigrationNode},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error::Diagnostic, fragment::Fragment, params::Params, value::value_type::ValueType};
+use reifydb_value::{
+	error::{Diagnostic, ValueError},
+	fragment::Fragment,
+	params::Params,
+	value::value_type::ValueType,
+};
 
 use crate::{
-	Result,
 	error::EngineError,
 	vm::{
 		instruction::{
@@ -37,7 +41,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		node: &DispatchNode,
 		params: &Params,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		if matches!(tx, Transaction::Query(_)) {
 			return Err(internal_error!("DISPATCH requires a command or admin transaction"));
 		}
@@ -54,7 +58,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &MigrateNode,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let columns = execute_migrate(self, services, tx, node.clone())?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
@@ -65,7 +69,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &RollbackMigrationNode,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let columns = execute_rollback_migration(self, services, tx, node.clone())?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
@@ -76,7 +80,7 @@ impl<'a> Vm<'a> {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &AssertBlockNode,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let rql = &node.rql;
 		let compile_result = services.compiler.compile_with_policy(tx, rql, inject_from_policies);
 
@@ -161,7 +165,7 @@ impl<'a> Vm<'a> {
 	}
 }
 
-fn diagnostic_to_columns(diag: &Diagnostic) -> Result<RecordBatch> {
+fn diagnostic_to_columns(diag: &Diagnostic) -> Result<RecordBatch, ValueError> {
 	let code_col = factory::utf8("code", [diag.code.as_str()]);
 	let message_col = factory::utf8("message", [diag.message.as_str()]);
 	let rql_col = match &diag.rql {

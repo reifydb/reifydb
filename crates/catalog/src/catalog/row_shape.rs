@@ -19,7 +19,6 @@ use reifydb_value::{error::ValueError, value::constraint::TypeConstraint};
 use tracing::{Span, field, instrument};
 
 use crate::{
-	Result,
 	catalog::Catalog,
 	store::row_shape::{
 		create::create_row_shape,
@@ -40,7 +39,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		family: RowFamily,
 		fields: Vec<RowShapeField>,
-	) -> Result<RowShape> {
+	) -> Result<RowShape, ValueError> {
 		let shape = RowShape::new(family, fields);
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
@@ -75,7 +74,7 @@ impl Catalog {
 		&self,
 		fingerprint: RowShapeFingerprint,
 		txn: &mut Transaction<'_>,
-	) -> Result<Option<RowShape>> {
+	) -> Result<Option<RowShape>, ValueError> {
 		if let Some(shape) = self.cache.find_row_shape(fingerprint) {
 			Span::current().record("cache_hit", true);
 			Span::current().record("field_count", shape.field_count());
@@ -137,7 +136,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		columns: impl IntoIterator<Item = &'a Column>,
-	) -> Result<Vec<RowShapeField>> {
+	) -> Result<Vec<RowShapeField>, ValueError> {
 		let mut fields = Vec::new();
 		for col in columns {
 			let constraint = match col.dictionary_id {

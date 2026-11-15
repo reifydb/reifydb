@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_value::{Result, error::ValueError};
+use reifydb_value::error::ValueError;
 
 use crate::{
 	actors::pending::PendingWrite,
@@ -23,8 +23,8 @@ pub struct StateBatch {
 impl StateBatch {
 	pub fn read(
 		keys: Vec<GroupStateKey>,
-		read: impl FnOnce(&[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>>,
-	) -> Result<Self> {
+		read: impl FnOnce(&[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>, ValueError>,
+	) -> Result<Self, ValueError> {
 		check_batch_keys(&keys)?;
 		let values = read(&keys)?;
 		if values.len() != keys.len() {
@@ -42,7 +42,7 @@ impl StateBatch {
 		keys: Vec<GroupStateKey>,
 		values: Vec<Option<EncodedPodRow>>,
 		ops: Vec<Option<PendingWrite>>,
-	) -> Result<Self> {
+	) -> Result<Self, ValueError> {
 		check_batch_keys(&keys)?;
 		if values.len() != keys.len() || ops.len() != keys.len() {
 			return internal_err!(
@@ -107,14 +107,14 @@ impl StateBatch {
 	}
 }
 
-pub fn check_batch_keys(keys: &[GroupStateKey]) -> Result<()> {
+pub fn check_batch_keys(keys: &[GroupStateKey]) -> Result<(), ValueError> {
 	for key in keys {
 		check_batch_key(key)?;
 	}
 	Ok(())
 }
 
-pub fn check_batch_key(key: &GroupStateKey) -> Result<()> {
+pub fn check_batch_key(key: &GroupStateKey) -> Result<(), ValueError> {
 	let inner = key.as_slice();
 	if inner.is_empty() || !is_framed_inner(inner) {
 		return Err(ValueError(Box::new(flow_state_batch_key_unframed(inner.len()))));

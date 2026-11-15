@@ -16,19 +16,17 @@ use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::variant::resolve_enum_equality;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::ValueError,
 	reifydb_assertions,
 	value::column_view::{ColumnView, ViewData},
 };
 use tracing::instrument;
 
 use super::NoopNode;
-use crate::{
-	Result,
-	vm::volcano::{
-		inline::enum_operand,
-		query::{QueryContext, QueryNode, eval_context_from_transform},
-		udf::{UdfEvalNode, strip_udf_columns},
-	},
+use crate::vm::volcano::{
+	inline::enum_operand,
+	query::{QueryContext, QueryNode, eval_context_from_transform},
+	udf::{UdfEvalNode, strip_udf_columns},
 };
 
 pub(crate) struct FilterNode {
@@ -72,7 +70,7 @@ impl FilterNode {
 		lowered: &LoweredExpr,
 		columns: &RecordBatch,
 		row_count: usize,
-	) -> Result<(FieldRef, ArrayRef)> {
+	) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 		lowered.evaluate(&exec_ctx)
 	}
@@ -88,14 +86,14 @@ impl FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::compact")]
-	fn compact(columns: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch> {
+	fn compact(columns: &RecordBatch, mask: &BooleanBuffer) -> Result<RecordBatch, ValueError> {
 		filter(columns, mask)
 	}
 }
 
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		if let Some(source) = self.source.as_ref() {
 			for expr in &mut self.expressions {
 				resolve_enum_equality(expr, source, &ctx.services.catalog, rx, &mut |e| {
@@ -119,7 +117,11 @@ impl QueryNode for FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		}
@@ -161,7 +163,7 @@ impl QueryNode for FilterNode {
 }
 
 impl Transform for FilterNode {
-	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
+	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch, ValueError> {
 		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 

@@ -8,7 +8,8 @@ use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
 use reifydb_core::value::batch::{batch, concat_columns};
 use reifydb_value::{
-	Result, reifydb_assertions,
+	error::ValueError,
+	reifydb_assertions,
 	util::bitmap,
 	value::system_columns::{require_created_at, require_row_numbers, require_updated_at},
 };
@@ -51,7 +52,7 @@ impl BlockReader {
 		self
 	}
 
-	fn read_next_batch(&mut self) -> Result<Option<RecordBatch>> {
+	fn read_next_batch(&mut self) -> Result<Option<RecordBatch>, ValueError> {
 		let (start, end) = self.advance_batch_window();
 		let data = self.data.as_ref();
 
@@ -87,7 +88,7 @@ fn evaluate_and_materialize(
 	start: usize,
 	end: usize,
 	session: &VortexSession,
-) -> Result<Option<RecordBatch>> {
+) -> Result<Option<RecordBatch>, ValueError> {
 	let schema = &data.schema;
 	let view = data.view_range(start, end)?;
 	let selection = predicate::evaluate(&view, predicate, session)?;
@@ -100,8 +101,8 @@ fn evaluate_and_materialize(
 
 fn materialize(
 	schema: &Schema,
-	mut fetch: impl FnMut(&str, usize) -> Result<(FieldRef, ArrayRef)>,
-) -> Result<RecordBatch> {
+	mut fetch: impl FnMut(&str, usize) -> Result<(FieldRef, ArrayRef), ValueError>,
+) -> Result<RecordBatch, ValueError> {
 	let mut columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(schema.len());
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
 		columns.push(fetch(name, i)?);
@@ -113,7 +114,12 @@ fn materialize(
 	Ok(materialized)
 }
 
-fn materialize_full(data: &BlockData, start: usize, end: usize, session: &VortexSession) -> Result<RecordBatch> {
+fn materialize_full(
+	data: &BlockData,
+	start: usize,
+	end: usize,
+	session: &VortexSession,
+) -> Result<RecordBatch, ValueError> {
 	materialize(&data.schema, |name, i| read_range(name, &data.columns[i], start, end, session))
 }
 
@@ -123,7 +129,7 @@ fn materialize_view_full(
 	_start: usize,
 	_end: usize,
 	session: &VortexSession,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	materialize(schema, |name, i| concat_view_chunks(name, &view.columns[i], session))
 }
 
@@ -133,7 +139,7 @@ fn materialize_filtered(
 	_batch_start: usize,
 	mask: &BooleanBuffer,
 	session: &VortexSession,
-) -> Result<RecordBatch> {
+) -> Result<RecordBatch, ValueError> {
 	materialize(schema, |name, i| filter_view_column(name, &view.columns[i], mask, session))
 }
 
@@ -142,7 +148,7 @@ fn filter_view_column(
 	view_chunks: &ColumnChunks,
 	mask: &BooleanBuffer,
 	session: &VortexSession,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut chunk_offset = 0usize;
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(view_chunks.chunks.len());
 	for chunk in &view_chunks.chunks {
@@ -165,7 +171,11 @@ fn to_mask(bits: &BooleanBuffer) -> Mask {
 	Mask::from(BitBuffer::from(bits.clone()))
 }
 
-fn concat_view_chunks(name: &str, view_chunks: &ColumnChunks, session: &VortexSession) -> Result<(FieldRef, ArrayRef)> {
+fn concat_view_chunks(
+	name: &str,
+	view_chunks: &ColumnChunks,
+	session: &VortexSession,
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	assert!(!view_chunks.chunks.is_empty(), "concat_view_chunks called with empty chunks");
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(view_chunks.chunks.len());
 	for chunk in &view_chunks.chunks {
@@ -180,7 +190,7 @@ fn read_range(
 	start: usize,
 	end: usize,
 	session: &VortexSession,
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let ranges = column_chunks.iter_range_chunks(start, end);
 	assert!(!ranges.is_empty(), "read_range called with empty range");
 	let mut out: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(ranges.len());
@@ -192,7 +202,7 @@ fn read_range(
 }
 
 impl Iterator for BlockReader {
-	type Item = Result<RecordBatch>;
+	type Item = Result<RecordBatch, ValueError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {

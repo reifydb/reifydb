@@ -43,12 +43,9 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::NoopNode;
-use crate::{
-	Result,
-	vm::volcano::{
-		query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
-		udf::UdfEvalNode,
-	},
+use crate::vm::volcano::{
+	query::{QueryContext, QueryNode, charge_query_memory_bytes, eval_context_from_query},
+	udf::UdfEvalNode,
 };
 
 enum SlotInput {
@@ -65,7 +62,12 @@ struct AggregateSlot {
 }
 
 impl AggregateSlot {
-	fn update(&mut self, columns: &RecordBatch, inputs: &[(FieldRef, ArrayRef)], groups: &GroupRows) -> Result<()> {
+	fn update(
+		&mut self,
+		columns: &RecordBatch,
+		inputs: &[(FieldRef, ArrayRef)],
+		groups: &GroupRows,
+	) -> Result<(), ValueError> {
 		let argument = match &self.input {
 			SlotInput::Column {
 				name,
@@ -85,7 +87,7 @@ impl AggregateSlot {
 		Ok(())
 	}
 
-	fn finalize(mut self, dict: &GroupKeyDict) -> Result<(FieldRef, ArrayRef)> {
+	fn finalize(mut self, dict: &GroupKeyDict) -> Result<(FieldRef, ArrayRef), ValueError> {
 		let (keys_out, data) = self.accumulator.finalize()?;
 		align_column_data(dict, &keys_out, data)
 	}
@@ -148,7 +150,7 @@ impl AggregateNode {
 		aggregation: &mut Aggregation,
 		dict: &mut GroupKeyDict,
 		key_types: &mut Vec<Option<FieldType>>,
-	) -> Result<()> {
+	) -> Result<(), ValueError> {
 		let keys: Vec<&str> = aggregation.keys.iter().map(String::as_str).collect();
 		let mut charged = 0usize;
 		while let Some(columns) = input.next(rx, ctx)? {
@@ -194,7 +196,7 @@ impl AggregateNode {
 				.inputs
 				.iter()
 				.map(|lowered| lowered.evaluate(&evaluation))
-				.collect::<Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>, ValueError>>()?;
 			let columns = evaluation.batch;
 
 			for slot in aggregation.slots.iter_mut() {
@@ -217,12 +219,12 @@ impl AggregateNode {
 		dict: &GroupKeyDict,
 		key_types: &[Option<FieldType>],
 		ctx: &QueryContext,
-	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	) -> Result<Vec<(FieldRef, ArrayRef)>, ValueError> {
 		let slot_columns = slots
 			.into_iter()
 			.enumerate()
 			.map(|(idx, slot)| Ok(rename(slot.finalize(dict)?, &synthetic_aggregate_column_name(idx))))
-			.collect::<Result<Vec<_>>>()?;
+			.collect::<Result<Vec<_>, ValueError>>()?;
 		let evaluation = eval_context_from_query(ctx).with_eval(batch(slot_columns)?, dict.len());
 		let mut result_columns = Vec::new();
 
@@ -262,7 +264,7 @@ impl AggregateNode {
 
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<(), ValueError> {
 		let (keys, projections, slots, input_expressions) =
 			parse_keys_and_aggregates(&self.by, &self.map, &ctx.services.routines, ctx)?;
 		let (input, input_expressions, _) = UdfEvalNode::wrap_if_needed(
@@ -289,7 +291,11 @@ impl QueryNode for AggregateNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+	) -> Result<Option<RecordBatch>, ValueError> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		}
@@ -335,7 +341,7 @@ fn parse_keys_and_aggregates(
 	project: &[Expression],
 	routines: &Routines,
 	ctx: &QueryContext,
-) -> Result<ParsedKeysAndAggregates> {
+) -> Result<ParsedKeysAndAggregates, ValueError> {
 	let mut keys = Vec::new();
 	let mut projections = Vec::new();
 	let mut inputs = Vec::new();
@@ -458,7 +464,7 @@ fn aggregate_slot(
 	routines: &Routines,
 	ctx: &QueryContext,
 	inputs: &mut Vec<Expression>,
-) -> Result<AggregateSlot> {
+) -> Result<AggregateSlot, ValueError> {
 	let func_name = call.func.0.text();
 	let function = routines.get_aggregate_function(func_name).ok_or_else(|| RoutineError::FunctionNotFound {
 		function: call.func.0.clone(),
@@ -508,7 +514,7 @@ fn aggregate_slot(
 	})
 }
 
-fn literal_arguments(call: &CallExpression, max_literals: usize) -> Result<Vec<LiteralArgument>> {
+fn literal_arguments(call: &CallExpression, max_literals: usize) -> Result<Vec<LiteralArgument>, ValueError> {
 	let func_name = call.func.0.text();
 	let max_args = max_literals + 1;
 	if call.args.len() > max_args {
@@ -584,7 +590,7 @@ fn align_column_data(
 	dict: &GroupKeyDict,
 	produced: &[GroupId],
 	data: (FieldRef, ArrayRef),
-) -> Result<(FieldRef, ArrayRef)> {
+) -> Result<(FieldRef, ArrayRef), ValueError> {
 	let mut position_of: Vec<Option<usize>> = vec![None; dict.len()];
 	for (position, group) in produced.iter().enumerate() {
 		if let Some(slot) = position_of.get_mut(group.index()) {
@@ -604,7 +610,7 @@ fn align_column_data(
 				.into()
 			})
 		})
-		.collect::<Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>, ValueError>>()?;
 
 	let aligned = take_rows(&batch(vec![data])?, &reorder_indices)?;
 	Ok((aligned.schema_ref().fields()[0].clone(), aligned.column(0).clone()))
