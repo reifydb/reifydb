@@ -425,6 +425,16 @@ impl Catalog {
 	) -> Result<Table, ValueError> {
 		alter_table_with_tracking(txn, table_id, |txn, pre| {
 			let column = find_column_or_error(pre, old_name, namespace_name)?;
+			if pre.columns.iter().any(|existing| existing.name == new_name) {
+				return Err(CatalogError::ColumnAlreadyExists {
+					kind: CatalogObjectKind::Table,
+					namespace: namespace_name.to_string(),
+					name: pre.name.clone(),
+					column: new_name.to_string(),
+					fragment: Fragment::None,
+				}
+				.into());
+			}
 			CatalogStore::rename_column(txn, ObjectId::Table(table_id), column.id, new_name)?;
 			Ok(())
 		})
