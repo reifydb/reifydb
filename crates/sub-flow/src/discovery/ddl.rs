@@ -3,10 +3,17 @@
 
 use std::sync::Arc;
 
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, SetPre},
-	interface::{catalog::flow::FlowId, commit::CommitEntry},
+	interface::{
+		catalog::{
+			flow::FlowId,
+			id::{QueueId, ViewId},
+		},
+		commit::CommitEntry,
+	},
 	key::any::TaggedKey,
 };
 use reifydb_wal::lsn::Lsn;
@@ -42,4 +49,49 @@ pub fn extract_deleted_flow_ids(entries: &[Arc<CommitEntry>]) -> Vec<FlowId> {
 		}
 	}
 	flow_ids
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DroppedView {
+	pub view: ViewId,
+	pub queue: Option<QueueId>,
+}
+
+pub fn extract_dropped_views(entries: &[Arc<CommitEntry>]) -> Vec<DroppedView> {
+	let mut dropped: Vec<DroppedView> = Vec::new();
+	for entry in entries {
+		for delta in &entry.deltas {
+			match delta {
+				Delta::Remove {
+					key: TaggedKey::View(key),
+					..
+				} => {
+					if !dropped.iter().any(|item| item.view == key.view) {
+						dropped.push(DroppedView {
+							view: key.view,
+							queue: None,
+						});
+					}
+				}
+				Delta::Remove {
+					key: TaggedKey::ViewQueue(key),
+					announce,
+				} => {
+					let Some(bytes) = announce.pre() else {
+						continue;
+					};
+					let queue = CatalogStore::view_queue_id(bytes);
+					match dropped.iter_mut().find(|item| item.view == key.view) {
+						Some(item) => item.queue = Some(queue),
+						None => dropped.push(DroppedView {
+							view: key.view,
+							queue: Some(queue),
+						}),
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	dropped
 }

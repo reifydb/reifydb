@@ -11,6 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::lift::entry_changed_objects;
 use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
+use reifydb_sub_flow::progress::frontier::ControlFrontier;
 use reifydb_value::value::duration::Duration;
 
 use crate::gate::{GatedPassThrough, gate, set_gate};
@@ -88,10 +89,33 @@ fn hold(db: &TestDb, gate_name: &str) {
 	);
 }
 
+fn await_drain_frontiers(db: &TestDb) {
+	// The gate must open only after every drain bound passed the backlog, otherwise the fold is cut short.
+	let to = db.engine().current_version().expect("the current version after the backlog");
+	let control = db
+		.engine()
+		.ioc()
+		.resolve::<ControlFrontier>()
+		.expect("the flow subsystem registers its control frontier");
+	assert!(
+		poll_until(
+			|| {
+				let engine = db.engine();
+				(engine.commit_released() >= to && engine.done_until() >= to && control.get() >= to)
+					.then_some(())
+			},
+			SETTLE
+		)
+		.is_some(),
+		"the drain frontiers never passed the backlog"
+	);
+}
+
 fn backlog(db: &TestDb, gate_name: &str, rounds: usize) -> Vec<CommitVersion> {
 	hold(db, gate_name);
 	let written: Vec<CommitVersion> =
 		(0..rounds).map(|round| write_src(db, "a", round as i64, round == 0)).collect();
+	await_drain_frontiers(db);
 	set_gate(gate_name, true);
 	settle(db);
 	written
@@ -205,6 +229,7 @@ fn a_producer_stays_exact_after_an_exact_reader_is_created() {
 	insert_level(&db, 1, "a");
 	let second = write_src(&db, "a", 20, false);
 	insert_level(&db, 2, "a");
+	await_drain_frontiers(&db);
 	set_gate("backlog_commit_e5", true);
 	settle(&db);
 
@@ -271,6 +296,7 @@ fn an_aggregate_behind_a_backlog_is_read_at_each_source() {
 	insert_level(&db, 1, "a");
 	let second = write_src(&db, "a", 5, true);
 	insert_level(&db, 2, "a");
+	await_drain_frontiers(&db);
 	set_gate("backlog_commit_b1_3", true);
 	settle(&db);
 
@@ -373,6 +399,7 @@ fn paced_left_script(db: &TestDb, gate_name: &str, read: &str, chained: bool) ->
 			db.engine().current_version().expect("the current version after a left write")
 		})
 		.collect();
+	await_drain_frontiers(db);
 	set_gate(gate_name, true);
 	settle(db);
 	written
@@ -682,6 +709,7 @@ fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view() {
 	insert_level(&db, 3, "a");
 	db.command("DELETE app::src FILTER { k == 'a' }");
 	insert_level(&db, 4, "a");
+	await_drain_frontiers(&db);
 	set_gate(gate_name, true);
 	settle(&db);
 
@@ -717,6 +745,7 @@ fn an_emit_off_lookup_reads_each_source_inside_its_folded_right_view_without_a_c
 	insert_level(&db, 3, "a");
 	db.command("DELETE app::src FILTER { k == 'a' }");
 	insert_level(&db, 4, "a");
+	await_drain_frontiers(&db);
 	set_gate(gate_name, true);
 	settle(&db);
 
