@@ -265,6 +265,9 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		ceiling: LogIndex,
 		deadline: Option<DateTime>,
 	) -> Result<Vec<LogVersion>, StoreLogError> {
+		if self.bases.len() <= 1 {
+			return Ok(Vec::new());
+		}
 		let pinned = floor(&self.fs, &self.dir)?;
 		let mut dropped = Vec::new();
 		while self.bases.len() > 1 {
@@ -1089,6 +1092,33 @@ mod tests {
 
 		assert_eq!(partition.base_indexes(), [LogIndex::new(7)]);
 		assert!(partition.record_at(LogIndex::new(3)).unwrap().is_none());
+	}
+
+	#[test]
+	fn dropping_from_a_single_segment_partition_costs_no_syscall_at_all() {
+		// the active segment is never dropped, so an idle gc tick must never pay for a reader lookup.
+		let fs = TestingFs::new(MemoryFs::new(), Arc::new(NoFaults));
+		fs.mkdir(Path::new("/log")).unwrap();
+		let mock = MockClock::from_millis(1_000);
+		let mut partition = Partition::create(
+			fs.clone(),
+			Clock::Mock(mock.clone()),
+			Path::new(DIR),
+			config(),
+			BASE,
+			BASE_INDEX,
+		)
+		.unwrap();
+		partition.append(&record(500, &[0u8; 200])).unwrap();
+		let tail = partition.last_index().unwrap();
+		partition.commit(tail).unwrap();
+		assert_eq!(partition.bases(), [BASE]);
+		let before = fs.calls();
+
+		assert_eq!(partition.drop_below(tail).unwrap(), []);
+		assert_eq!(partition.purge(EXPIRED).unwrap(), []);
+
+		assert_eq!(fs.calls(), before, "a drop with nothing to drop reached the filesystem");
 	}
 
 	#[test]
