@@ -204,6 +204,10 @@ release:
 	echo "$(YELLOW)[8/8] Pushing to remote...$(NC)"; \
 	git push origin release || exit 1; \
 	git push origin "v$$NEW_VERSION" || exit 1; \
+	for dir in $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_DST_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR); do \
+		echo "$(BLUE)  Pushing $$dir...$(NC)"; \
+		git -C $$dir push origin HEAD || exit 1; \
+	done; \
 	echo "$(GREEN)✓ Pushed to remote$(NC)"; \
 	echo ""; \
 	echo "$(GREEN)=====================================$(NC)"; \
