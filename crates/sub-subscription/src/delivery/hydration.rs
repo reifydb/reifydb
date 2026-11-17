@@ -37,10 +37,13 @@ pub(crate) fn backfill_sources(flow: &FlowDag) -> Result<BTreeSet<ObjectId>, Hyd
 			} => {
 				sources.insert(ObjectId::RingBuffer(*ringbuffer));
 			}
-			OperatorDef::SourceInlineData {
+			OperatorDef::SourceSeries {
+				series,
 				..
+			} => {
+				sources.insert(ObjectId::Series(*series));
 			}
-			| OperatorDef::SourceSeries {
+			OperatorDef::SourceInlineData {
 				..
 			} => return Err(HydrateError::UnsupportedSourceType),
 			_ => {}

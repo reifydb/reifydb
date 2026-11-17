@@ -681,6 +681,36 @@ fn a_late_subscription_over_a_ring_buffer_equals_an_early_one() {
 	});
 }
 
+const SERIES_HISTORY: &[&str] = &[
+	"INSERT app::s [{ts: datetime::from_epoch_millis(3000), id: 1, qty: 10}, {ts: datetime::from_epoch_millis(1000), id: 2, qty: 60}, {ts: datetime::from_epoch_millis(2000), id: 3, qty: 70}]",
+	"INSERT app::s [{ts: datetime::from_epoch_millis(1000), id: 4, qty: 20}, {ts: datetime::from_epoch_millis(1000), id: 5, qty: 90}]",
+	"UPDATE app::s { qty: 65 } FILTER { id == 4 }",
+	"DELETE app::s FILTER { id == 3 }",
+	"INSERT app::s [{ts: datetime::from_epoch_millis(500), id: 6, qty: 55}, {ts: datetime::from_epoch_millis(4000), id: 7, qty: 15}]",
+];
+
+const SERIES_LATER: &[&str] = &[
+	"INSERT app::s [{ts: datetime::from_epoch_millis(1000), id: 8, qty: 99}]",
+	"UPDATE app::s { qty: 51 } FILTER { id == 7 }",
+	"DELETE app::s FILTER { id == 5 }",
+];
+
+#[test]
+fn a_late_subscription_over_a_series_equals_an_early_one() {
+	// A series source must be backfilled like any other, otherwise a late subscriber never hears of rows written
+	// before it.
+	late_equals_early(Case {
+		flows: false,
+		ddl: &["CREATE SERIES app::s { ts: datetime, id: int4, qty: int4 } WITH { key: ts }"],
+		rql: "from app::s | filter { qty > 50 } | map { id, qty }",
+		history: SERIES_HISTORY,
+		later: SERIES_LATER,
+		oracle: true,
+		after_history: &["id=2, qty=60", "id=4, qty=65", "id=5, qty=90", "id=6, qty=55"],
+		after_later: &["id=2, qty=60", "id=4, qty=65", "id=6, qty=55", "id=7, qty=51", "id=8, qty=99"],
+	});
+}
+
 fn collect_embedded(sub: &Subscription) -> Vec<StagedBatch> {
 	let mut out: Vec<StagedBatch> = Vec::new();
 	let mut quiet = 0;

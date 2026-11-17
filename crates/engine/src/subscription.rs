@@ -90,7 +90,7 @@ impl HydrateError {
 	pub fn wire_message(&self, rql: &str, cap: u64) -> String {
 		match self {
 			Self::SubscriptionNotFound => "Subscription not found at hydration time".to_string(),
-			Self::UnsupportedSourceType => "hydration is not supported for SourceSeries / SourceInlineData; set the hydration.enabled subscribe option to false to subscribe without it".to_string(),
+			Self::UnsupportedSourceType => "hydration is not supported for SourceInlineData; set the hydration.enabled subscribe option to false to subscribe without it".to_string(),
 			Self::RowCapExceeded {
 				bound,
 				..
