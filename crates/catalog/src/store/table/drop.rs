@@ -8,7 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, store::object::drop::drop_object_metadata};
+use crate::{
+	CatalogStore,
+	store::object::drop::{drop_object_catalog_metadata, drop_object_partitions},
+};
 
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<(), ValueError> {
@@ -17,7 +20,8 @@ impl CatalogStore {
 		}
 
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
-		drop_object_metadata(txn, StorageId::Table(table), pk_id)?;
+		drop_object_catalog_metadata(txn, StorageId::Table(table), pk_id)?;
+		drop_object_partitions(txn, StorageId::Table(table))?;
 
 		txn.remove(vec![(TableKey::new(table).into(), None)])?;
 

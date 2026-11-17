@@ -11,16 +11,28 @@ use reifydb_transaction::{
 };
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, store::object::drop::drop_object_metadata};
+use crate::{
+	CatalogStore,
+	store::object::drop::{drop_object_catalog_metadata, drop_object_partitions},
+};
 
 impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<(), ValueError> {
+		drop_object_partitions(txn, queue.into())?;
+		Self::drop_queue_catalog_rows(txn, queue)
+	}
+
+	pub(crate) fn drop_view_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<(), ValueError> {
+		Self::drop_queue_catalog_rows(txn, queue)
+	}
+
+	fn drop_queue_catalog_rows(txn: &mut AdminTransaction, queue: QueueId) -> Result<(), ValueError> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
 			txn.remove(vec![(NamespaceQueueKey::new(queue_def.namespace, queue).into(), None)])?;
 			remove_queue_scheduling_state(txn.context(), &txn.single, queue)?;
 		}
 
-		drop_object_metadata(txn, queue.into(), None)?;
+		drop_object_catalog_metadata(txn, queue.into(), None)?;
 
 		txn.remove(vec![(QueueKey::new(queue).into(), None)])?;
 

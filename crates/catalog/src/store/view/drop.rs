@@ -2,35 +2,47 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
+	interface::catalog::{
+		id::{QueueId, ViewId},
+		storage::StorageId,
+		view::{View, ViewKind, ViewStorageKind},
+	},
 	key::{
-		any::TaggedKey,
 		catalog::{ViewKey, ViewQueueKey, ViewRingBufferKey},
 		namespace::NamespaceViewKey,
-		ringbuffer::RingBufferMetadataKey,
 		row::RowSettingsKey,
 	},
-	return_internal_error,
 };
-use reifydb_transaction::{
-	multi::RangeScope,
-	transaction::{Transaction, admin::AdminTransaction},
-};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, store::object::drop::drop_object_metadata};
+use crate::{
+	CatalogStore,
+	store::object::drop::{drop_object_catalog_metadata, drop_object_partitions},
+};
 
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<(), ValueError> {
-		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
-			txn.remove(vec![(NamespaceViewKey::new(view_def.namespace(), view).into(), None)])?;
-			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
-			view_def.primary_key().map(|pk| pk.id)
-		} else {
-			None
-		};
+		let (pk_id, deferred, queue) =
+			if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
+				txn.remove(vec![(NamespaceViewKey::new(view_def.namespace(), view).into(), None)])?;
+				Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
+				let queue: Option<QueueId> = match &view_def {
+					View::Queue(queue_view) => Some(queue_view.queue),
+					_ => None,
+				};
+				(view_def.primary_key().map(|pk| pk.id), view_def.kind() == ViewKind::Deferred, queue)
+			} else {
+				(None, false, None)
+			};
 
-		drop_object_metadata(txn, view.into(), pk_id)?;
+		if let Some(queue) = queue {
+			Self::drop_view_queue(txn, queue)?;
+		}
+		drop_object_catalog_metadata(txn, view.into(), pk_id)?;
+		if !deferred {
+			drop_object_partitions(txn, view.into())?;
+		}
 
 		txn.remove(vec![(RowSettingsKey::new(StorageId::View(view)).into(), None)])?;
 
@@ -47,21 +59,6 @@ impl CatalogStore {
 		match kind {
 			ViewStorageKind::Table => Ok(()),
 			ViewStorageKind::RingBuffer => {
-				let range = RingBufferMetadataKey::full_scan_for_storage(StorageId::View(view));
-				let mut stream = txn.range(range, RangeScope::All, 1024)?;
-				let mut keys = Vec::new();
-				for entry in stream.by_ref() {
-					let TaggedKey::RingBufferMetadata(key) = entry?.key else {
-						return_internal_error!(
-							"ring buffer metadata scan yielded a key that is not a RingBufferMetadataKey"
-						);
-					};
-					keys.push(key);
-				}
-				drop(stream);
-				for key in keys {
-					txn.remove(vec![(key.clone().into(), None)])?;
-				}
 				txn.remove(vec![(ViewRingBufferKey::new(view).into(), None)])?;
 				Ok(())
 			}

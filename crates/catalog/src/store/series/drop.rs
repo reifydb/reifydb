@@ -15,7 +15,10 @@ use reifydb_transaction::{
 };
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, store::object::drop::drop_object_metadata};
+use crate::{
+	CatalogStore,
+	store::object::drop::{drop_object_catalog_metadata, drop_object_partitions},
+};
 
 impl CatalogStore {
 	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<(), ValueError> {
@@ -26,7 +29,8 @@ impl CatalogStore {
 			None
 		};
 
-		drop_object_metadata(txn, series.into(), pk_id)?;
+		drop_object_catalog_metadata(txn, series.into(), pk_id)?;
+		drop_object_partitions(txn, series.into())?;
 
 		Self::drop_series_partition_metadata(txn, series)?;
 

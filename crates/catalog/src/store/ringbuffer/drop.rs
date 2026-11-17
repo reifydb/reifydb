@@ -8,7 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::error::ValueError;
 
-use crate::{CatalogStore, store::object::drop::drop_object_metadata};
+use crate::{
+	CatalogStore,
+	store::object::drop::{drop_object_catalog_metadata, drop_object_partitions},
+};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<(), ValueError> {
@@ -36,7 +39,8 @@ impl CatalogStore {
 			None
 		};
 
-		drop_object_metadata(txn, ringbuffer.into(), pk_id)?;
+		drop_object_catalog_metadata(txn, ringbuffer.into(), pk_id)?;
+		drop_object_partitions(txn, ringbuffer.into())?;
 
 		txn.remove(vec![(RingBufferKey::new(ringbuffer).into(), None)])?;
 

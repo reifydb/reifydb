@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::catalog::EncodedCatalogRow;
+use reifydb_codec::row::{bytes::EncodedBytes, catalog::EncodedCatalogRow};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, QueueId, ViewId},
@@ -62,6 +62,10 @@ impl CatalogStore {
 		};
 
 		Ok(Some(Self::get_view(rx, view)?))
+	}
+
+	pub fn view_queue_id(row: &EncodedBytes) -> QueueId {
+		QueueId(view_queue::get_queue(EncodedCatalogRow::view(row)))
 	}
 }
 

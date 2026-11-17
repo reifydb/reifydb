@@ -24,7 +24,7 @@ use reifydb_value::error::ValueError;
 
 use crate::{CatalogStore, store::column::shape::object_column};
 
-pub(crate) fn drop_object_metadata(
+pub(crate) fn drop_object_catalog_metadata(
 	txn: &mut AdminTransaction,
 	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
@@ -67,6 +67,23 @@ pub(crate) fn drop_object_metadata(
 		txn.remove(vec![(col_key.clone().into(), None)])?;
 	}
 
+	if let Some(pk_id) = pk_id {
+		txn.track_primary_key_deleted(
+			ObjectId::from(storage),
+			PrimaryKey {
+				id: pk_id,
+				columns: Vec::new(),
+			},
+		)?;
+		txn.remove(vec![(PrimaryKeyKey::new(pk_id).into(), None)])?;
+	}
+
+	txn.remove(vec![(RowSequenceKey::new(storage).into(), None)])?;
+
+	Ok(())
+}
+
+pub(crate) fn drop_object_partitions(txn: &mut AdminTransaction, storage: StorageId) -> Result<(), ValueError> {
 	let mut partition_stream =
 		txn.range(PartitionKey::full_scan(ObjectId::from(storage)), RangeScope::All, 1024)?;
 	let mut partition_keys = Vec::new();
@@ -80,19 +97,6 @@ pub(crate) fn drop_object_metadata(
 	for key in partition_keys {
 		txn.remove(vec![(key.clone().into(), None)])?;
 	}
-
-	if let Some(pk_id) = pk_id {
-		txn.track_primary_key_deleted(
-			ObjectId::from(storage),
-			PrimaryKey {
-				id: pk_id,
-				columns: Vec::new(),
-			},
-		)?;
-		txn.remove(vec![(PrimaryKeyKey::new(pk_id).into(), None)])?;
-	}
-
-	txn.remove(vec![(RowSequenceKey::new(storage).into(), None)])?;
 
 	Ok(())
 }

@@ -3,8 +3,9 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		change::CatalogTrackViewChangeOperations,
+		change::{CatalogTrackQueueChangeOperations, CatalogTrackViewChangeOperations},
 		id::{NamespaceId, PrimaryKeyId, ViewId},
+		queue::Queue,
 		view::{View, ViewSortKey},
 	},
 	internal,
@@ -274,11 +275,16 @@ impl Catalog {
 
 	#[instrument(name = "catalog::view::drop", level = "info", skip(self, txn))]
 	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<(), ValueError> {
-		if let View::Queue(queue_view) = &view {
-			let queue = self.get_queue(&mut Transaction::Admin(&mut *txn), queue_view.queue)?;
-			self.drop_queue(txn, queue)?;
-		}
+		let owned_queue: Option<Queue> = match &view {
+			View::Queue(queue_view) => {
+				Some(self.get_queue(&mut Transaction::Admin(&mut *txn), queue_view.queue)?)
+			}
+			_ => None,
+		};
 		CatalogStore::drop_view(txn, view.id())?;
+		if let Some(queue) = owned_queue {
+			txn.track_queue_deleted(queue)?;
+		}
 		txn.track_view_deleted(view)?;
 		Ok(())
 	}
