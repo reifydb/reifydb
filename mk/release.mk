@@ -72,7 +72,7 @@ set-version:
 	@$(call check_script,update-version.sh)
 	@echo "$(YELLOW)Setting version to $(VERSION)$(NC)"
 	@$(SCRIPTS_DIR)/update-version.sh $(VERSION)
-	@for dir in $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR); do \
+	@for dir in $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_DST_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR); do \
 		echo "$(BLUE)  Updating $$dir to $(VERSION)...$(NC)"; \
 		sed -i -e 's/^package\.version = ".*"/package.version = "$(VERSION)"/' \
 			-e '/^\[workspace\.package\]/,/^\[/ s/^version = ".*"/version = "$(VERSION)"/' $$dir/Cargo.toml || exit 1; \

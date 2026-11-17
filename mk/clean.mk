@@ -17,6 +17,7 @@ clean-siblings:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) clean
 	cd $(TEST_CHAOS_DIR) && $(MAKE) clean
 	cd $(TEST_QUERY_DIR) && $(MAKE) clean
+	cd $(TEST_DST_DIR) && $(MAKE) clean
 	cd $(TEST_FUZZ_DIR) && $(MAKE) clean
 
 # Clean the entire cargo target directory

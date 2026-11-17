@@ -9,5 +9,5 @@
 test-dst:
 	@echo "🧪 Running DST tests..."
 	MAKEFLAGS= REIFYDB_DST=1 cargo test --profile gate-dst -p reifydb-runtime --no-fail-fast $(CARGO_OFFLINE)
-	MAKEFLAGS= REIFYDB_DST=1 cargo test --profile gate-dst -p reifydb-client --features dst --no-fail-fast $(CARGO_OFFLINE)
+	cd $(TEST_DST_DIR) && $(MAKE) test
 	@$(MAKE) --no-print-directory sweep-auto

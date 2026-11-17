@@ -12,6 +12,7 @@ TEST_CHAOS_DIR ?= ../testchaos
 TEST_CRATE_DIR ?= ../testcrate
 TEST_REGRESSION_DIR ?= ../testregression
 TEST_QUERY_DIR ?= ../testquery
+TEST_DST_DIR ?= ../testdst
 TEST_FUZZ_DIR ?= ../testfuzz
 EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
