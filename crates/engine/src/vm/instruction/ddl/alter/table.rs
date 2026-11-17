@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice;
+use std::{collections::HashMap, slice};
 
 use arrow_array::RecordBatch;
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	shape::{RowShape, fingerprint::RowShapeFingerprint},
+	table::EncodedTableRow,
+};
 use reifydb_core::{
-	interface::catalog::object::ObjectId,
+	interface::catalog::{object::ObjectId, table::Table},
 	internal_error,
-	key::{any::TaggedKey, partition::PartitionKey, row::PartitionedRowKey},
+	key::{
+		any::TaggedKey,
+		partition::PartitionKey,
+		row::{PartitionedRowKey, RowKey},
+	},
 	partition::partition_of,
 	value::batch::single_row,
 };
@@ -23,12 +31,17 @@ use reifydb_value::{
 };
 
 use crate::{
-	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
+	transaction::operation::{
+		dictionary::DictionaryOperations,
+		table::{TableOperations, load_stored_shape},
+	},
 	vm::{
 		instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
 		services::Services,
 	},
 };
+
+const RESHAPE_PAGE: usize = 1024;
 
 pub(crate) fn execute_alter_table(
 	services: &Services,
@@ -54,7 +67,8 @@ pub(crate) fn execute_alter_table(
 			column,
 		} => {
 			let col_name = column.text().to_string();
-			services.catalog.drop_table_column(txn, table.id, column.text(), &namespace_name)?;
+			let post = services.catalog.drop_table_column(txn, table.id, column.text(), &namespace_name)?;
+			reshape_rows(services, txn, &table, &post)?;
 			("DROP COLUMN", Value::Utf8(col_name))
 		}
 		AlterTableAction::RenameColumn {
@@ -191,6 +205,74 @@ pub(crate) fn execute_alter_table(
 		("table", Value::Utf8(table_name)),
 		("details", details),
 	])
+}
+
+fn reshape_rows(services: &Services, txn: &mut AdminTransaction, pre: &Table, post: &Table) -> Result<(), ValueError> {
+	let shape = services.catalog.get_or_create_table_shape(&mut Transaction::Admin(txn), post)?;
+	let sources = post
+		.columns
+		.iter()
+		.map(|column| {
+			pre.columns.iter().position(|before| before.id == column.id).ok_or_else(|| {
+				internal_error!(
+					"Column {} of table {} did not exist before the drop",
+					column.name,
+					post.name
+				)
+			})
+		})
+		.collect::<Result<Vec<usize>, ValueError>>()?;
+
+	let mut stored: HashMap<RowShapeFingerprint, RowShape> = HashMap::new();
+	let mut last: Option<TaggedKey> = None;
+	loop {
+		let range = if pre.partition_by.is_empty() {
+			RowKey::full_scan(pre.id).resume_after(last.as_ref())
+		} else {
+			PartitionedRowKey::full_scan(pre.id).resume_after(last.as_ref())
+		};
+		let page: Vec<_> =
+			txn.range(range, RangeScope::All, RESHAPE_PAGE)?.collect::<Result<Vec<_>, ValueError>>()?;
+		let Some(tail) = page.last() else {
+			break;
+		};
+		last = Some(tail.key.clone());
+		let exhausted = page.len() < RESHAPE_PAGE;
+
+		let mut entries = Vec::with_capacity(page.len());
+		for entry in page {
+			let old = EncodedTableRow::view(&entry.bytes);
+			let fingerprint = old.fingerprint();
+			if !stored.contains_key(&fingerprint) {
+				let loaded = load_stored_shape(
+					&services.catalog,
+					&mut Transaction::Admin(txn),
+					pre,
+					fingerprint,
+				)?;
+				stored.insert(fingerprint, loaded);
+			}
+			let from = &stored[&fingerprint];
+			let mut row = shape.allocate_table();
+			for (index, &source) in sources.iter().enumerate() {
+				if source < from.field_count() {
+					shape.set_value(&mut row, index, &from.get_value(&entry.bytes, source));
+				} else {
+					shape.set_none(&mut row, index);
+				}
+			}
+			row.set_timestamps(old.created_at(), old.updated_at());
+			if let Some(time) = old.time() {
+				row.set_time(time);
+			}
+			entries.push((entry.key, row.freeze_bytes()));
+		}
+		txn.set(entries)?;
+		if exhausted {
+			break;
+		}
+	}
+	Ok(())
 }
 
 #[cfg(test)]
