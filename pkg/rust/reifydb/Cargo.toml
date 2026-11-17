@@ -136,11 +136,6 @@ path = "tests/testing_surface.rs"
 required-features = ["flow_testing"]
 
 [[test]]
-name = "dst_subscription"
-path = "tests/dst_subscription.rs"
-required-features = ["sub_flow"]
-
-[[test]]
 name = "ws_stream_acceptor"
 path = "tests/ws_stream_acceptor.rs"
 required-features = ["sub_server_ws", "sub_flow"]
