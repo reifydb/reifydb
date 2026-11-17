@@ -123,11 +123,11 @@ where
 	}
 
 	pub fn compact_to(&self, partition: u32, index: LogIndex) -> Result<(), StoreLogError> {
-		self.with(partition, |found| found.compact_to(index))?
+		self.maintain(partition, |found| found.compact_to(index))?
 	}
 
 	pub fn drop_below(&self, partition: u32, index: LogIndex) -> Result<Vec<LogVersion>, StoreLogError> {
-		self.with(partition, |found| {
+		self.maintain(partition, |found| {
 			if index < found.commit_index() {
 				return Ok(Vec::new());
 			}
@@ -151,7 +151,7 @@ where
 
 	pub fn sync(&self) -> Result<(), StoreLogError> {
 		for writer in &self.writers {
-			let (dir, base) = writer.with(|partition| (partition.dir().to_path_buf(), partition.base()));
+			let (dir, base) = writer.read(|partition| (partition.dir().to_path_buf(), partition.base()));
 			sync(&self.fs, &dir, base)?;
 		}
 		Ok(())
@@ -160,7 +160,7 @@ where
 	pub fn purge(&self, ttl: Duration) -> Result<Vec<(u32, Vec<LogVersion>)>, StoreLogError> {
 		let mut dropped = Vec::with_capacity(self.writers.len());
 		for (at, writer) in self.writers.iter().enumerate() {
-			dropped.push((at as u32, writer.with(|partition| partition.purge(ttl))?));
+			dropped.push((at as u32, writer.maintain(|partition| partition.purge(ttl))?));
 		}
 		Ok(dropped)
 	}
@@ -180,14 +180,14 @@ where
 	pub fn cursor(&self, partition: u32, id: &str) -> Result<Cursor<'_, F>, StoreLogError> {
 		let dir = self.dir_of(partition)?;
 		let after = version_of(&self.fs, &dir, id)?;
-		let torn = self.writer(partition)?.with(|partition| partition.torn());
+		let torn = self.writer(partition)?.read(|partition| partition.torn());
 		Cursor::open(&self.fs, &dir, (after != LogVersion::ZERO).then_some(after), torn)
 	}
 
 	pub fn read_from(&self, partition: u32, version: LogVersion) -> Result<Cursor<'_, F>, StoreLogError> {
 		let dir = self.dir_of(partition)?;
 		let after = LogVersion::new(version.as_u64().saturating_sub(1));
-		let torn = self.writer(partition)?.with(|partition| partition.torn());
+		let torn = self.writer(partition)?.read(|partition| partition.torn());
 		Cursor::open(&self.fs, &dir, Some(after), torn)
 	}
 
@@ -213,27 +213,35 @@ where
 	}
 
 	pub fn base(&self, partition: u32) -> Result<LogVersion, StoreLogError> {
-		Ok(self.writer(partition)?.with(|partition| partition.base()))
+		Ok(self.writer(partition)?.read(|partition| partition.base()))
 	}
 
 	pub fn bases(&self, partition: u32) -> Result<Vec<LogVersion>, StoreLogError> {
-		Ok(self.writer(partition)?.with(|partition| partition.bases().to_vec()))
+		Ok(self.writer(partition)?.read(|partition| partition.bases().to_vec()))
 	}
 
 	pub fn commit_index(&self, partition: u32) -> Result<LogIndex, StoreLogError> {
-		Ok(self.writer(partition)?.with(|partition| partition.commit_index()))
+		Ok(self.writer(partition)?.read(|partition| partition.commit_index()))
 	}
 
 	pub fn segment_bytes(&self, partition: u32) -> Result<ByteSize, StoreLogError> {
-		Ok(self.writer(partition)?.with(|partition| partition.segment().capacity()))
+		Ok(self.writer(partition)?.read(|partition| partition.segment().capacity()))
 	}
 
 	pub fn bytes(&self, partition: u32) -> Result<ByteSize, StoreLogError> {
-		self.with(partition, |found| found.bytes())?
+		self.read(partition, |found| found.bytes())?
 	}
 
-	pub fn with<R>(&self, partition: u32, act: impl FnOnce(&mut Partition<F, C>) -> R) -> Result<R, StoreLogError> {
-		Ok(self.writer(partition)?.with(act))
+	pub fn read<R>(&self, partition: u32, act: impl FnOnce(&Partition<F, C>) -> R) -> Result<R, StoreLogError> {
+		Ok(self.writer(partition)?.read(act))
+	}
+
+	pub fn maintain<R>(
+		&self,
+		partition: u32,
+		act: impl FnOnce(&mut Partition<F, C>) -> R,
+	) -> Result<R, StoreLogError> {
+		Ok(self.writer(partition)?.maintain(act))
 	}
 
 	fn writer(&self, partition: u32) -> Result<&Writer<F, C>, StoreLogError> {
@@ -359,7 +367,7 @@ mod tests {
 	}
 
 	fn versions(log: &Log<MemoryFs, Clock>, partition: u32) -> Vec<u64> {
-		log.with(partition, |partition| drain(partition))
+		log.read(partition, |partition| drain(partition))
 			.unwrap()
 			.unwrap()
 			.iter()

@@ -29,6 +29,8 @@ struct State<F: Filesystem, C: ClockNow> {
 	durable: Option<LogVersion>,
 	active: PathBuf,
 	stopped: bool,
+	writes: u64,
+	synced: u64,
 }
 
 struct Inner<F: Filesystem, C: ClockNow> {
@@ -70,6 +72,8 @@ where
 					durable,
 					active,
 					stopped: false,
+					writes: 1,
+					synced: 0,
 				}),
 			}),
 		}
@@ -89,6 +93,7 @@ where
 				found: record.version,
 			});
 		}
+		state.writes += 1;
 		let position = state.partition.append(record)?;
 		state.written = Some(record.version);
 		state.active = active_of(&state.partition);
@@ -96,15 +101,19 @@ where
 	}
 
 	pub fn flush(&self) -> Result<(), StoreLogError> {
-		let (path, mark) = {
+		let (path, mark, writes) = {
 			let state = self.inner.state.lock();
-			(state.active.clone(), state.written)
+			if state.synced == state.writes && !state.stopped {
+				return Ok(());
+			}
+			(state.active.clone(), state.written, state.writes)
 		};
 		if let Err(error) = sync_path(&self.inner.fs, &path) {
 			terminate(&self.inner, &path, error);
 			return Err(stopped_error(&self.inner.state.lock()));
 		}
 		let mut state = self.inner.state.lock();
+		state.synced = state.synced.max(writes);
 		state.durable = state.durable.max(mark);
 		Ok(())
 	}
@@ -133,6 +142,7 @@ where
 		if state.stopped {
 			return Err(stopped_error(&state));
 		}
+		state.writes += 1;
 		act(&mut state.partition)?;
 		let head = state.partition.head();
 		state.written = head;
@@ -141,7 +151,12 @@ where
 		Ok(())
 	}
 
-	pub fn with<R>(&self, act: impl FnOnce(&mut Partition<F, C>) -> R) -> R {
+	pub fn read<R>(&self, act: impl FnOnce(&Partition<F, C>) -> R) -> R {
+		let state = self.inner.state.lock();
+		act(&state.partition)
+	}
+
+	pub fn maintain<R>(&self, act: impl FnOnce(&mut Partition<F, C>) -> R) -> R {
 		let mut state = self.inner.state.lock();
 		act(&mut state.partition)
 	}
@@ -174,10 +189,19 @@ fn stopped_error<F: Filesystem, C: ClockNow>(state: &MutexGuard<'_, State<F, C>>
 
 #[cfg(test)]
 mod tests {
+	use std::{
+		panic::{AssertUnwindSafe, catch_unwind},
+		sync::atomic::{AtomicBool, Ordering},
+	};
+
 	use reifydb_codec::log::{LogIndex, RecordKind, Term};
 	use reifydb_runtime::{
 		context::clock::{Clock, MockClock},
-		io::fs::memory::MemoryFs,
+		io::fs::{
+			Pwrite,
+			memory::{MemoryFs, SectorState},
+			testing::{FileId, SyncOutcome, TestingFs, TestingHooks},
+		},
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -274,12 +298,12 @@ mod tests {
 		let writer = detached();
 		writer.commit(&record(3)).unwrap();
 		writer.flush().unwrap();
-		let before = writer.with(|partition| drain(partition).unwrap());
+		let before = writer.read(|partition| drain(partition).unwrap());
 
 		writer.commit(&record(2)).err().unwrap();
 		writer.flush().unwrap();
 
-		assert_eq!(writer.with(|partition| drain(partition).unwrap()), before);
+		assert_eq!(writer.read(|partition| drain(partition).unwrap()), before);
 		assert_eq!(writer.durable(), Some(LogVersion::new(BASE.as_u64() + 3)));
 	}
 
@@ -306,6 +330,139 @@ mod tests {
 
 		assert_eq!(writer.durable(), None);
 		assert_eq!(writer.written(), None);
-		assert_eq!(writer.with(|partition| partition.last_index()), Some(LogIndex::new(20)));
+		assert_eq!(writer.read(|partition| partition.last_index()), Some(LogIndex::new(20)));
+	}
+
+	fn mounted() -> (MemoryFs, Writer<MemoryFs, Clock>) {
+		let fs = MemoryFs::new();
+		fs.mkdir(Path::new("/log")).unwrap();
+		let partition = Partition::create(
+			fs.clone(),
+			Clock::Mock(MockClock::from_millis(1_000)),
+			Path::new(DIR),
+			Config {
+				segment_bytes: ByteSize::from_bytes(4096),
+				segment_age: Duration::from_seconds_const(60),
+				index_interval: ByteSize::from_bytes(64),
+			},
+			BASE,
+			LogIndex::new(1),
+		)
+		.unwrap();
+		(fs.clone(), Writer::detached(fs, partition))
+	}
+
+	fn unsynced_sectors(fs: &MemoryFs) -> usize {
+		let file = fs.open_mut(&Path::new(DIR).join(log_name(BASE))).unwrap();
+		file.sector_states().iter().filter(|state| **state == SectorState::Dirty).count()
+	}
+
+	fn scribble(fs: &MemoryFs) {
+		let file = fs.open_mut(&Path::new(DIR).join(log_name(BASE))).unwrap();
+		file.pwrite(2048, &[0xEE]).unwrap();
+		assert_eq!(unsynced_sectors(fs), 1);
+	}
+
+	#[test]
+	fn a_flush_with_nothing_written_since_the_last_one_never_touches_the_device() {
+		// an idle tick must not pay a device sync, so bytes that bypassed the writer stay unsynced.
+		let (fs, writer) = mounted();
+		writer.commit(&record(0)).unwrap();
+		writer.flush().unwrap();
+		scribble(&fs);
+
+		writer.flush().unwrap();
+
+		assert_eq!(unsynced_sectors(&fs), 1);
+		assert_eq!(writer.durable(), Some(BASE));
+	}
+
+	#[test]
+	fn the_first_flush_after_open_syncs_even_with_no_commit() {
+		// bytes recovered at open may never have reached the device, so equal watermarks must not skip the
+		// sync.
+		let (fs, writer) = mounted();
+		scribble(&fs);
+
+		writer.flush().unwrap();
+
+		assert_eq!(unsynced_sectors(&fs), 0);
+	}
+
+	#[test]
+	fn a_commit_after_a_flush_is_synced_by_the_next_flush() {
+		// the skip must never outlive a write, or a committed record is reported durable while still in memory.
+		let (fs, writer) = mounted();
+		writer.commit(&record(0)).unwrap();
+		writer.flush().unwrap();
+
+		writer.commit(&record(1)).unwrap();
+		assert!(unsynced_sectors(&fs) > 0);
+		writer.flush().unwrap();
+
+		assert_eq!(unsynced_sectors(&fs), 0);
+		assert_eq!(writer.durable(), Some(LogVersion::new(BASE.as_u64() + 1)));
+	}
+
+	#[test]
+	fn a_flush_after_a_truncate_syncs_although_the_watermarks_are_equal() {
+		// a cut rewrites the segment while lowering both marks to the head, so the marks alone cannot prove it
+		// clean.
+		let (fs, writer) = mounted();
+		for offset in 0..3 {
+			writer.commit(&record(offset)).unwrap();
+		}
+		writer.flush().unwrap();
+		writer.truncate_from(LogIndex::new(3)).unwrap();
+		assert_eq!(writer.durable(), writer.written());
+		scribble(&fs);
+
+		writer.flush().unwrap();
+
+		assert_eq!(unsynced_sectors(&fs), 0);
+	}
+
+	struct SyncDiesWhenArmed(AtomicBool);
+
+	impl TestingHooks for SyncDiesWhenArmed {
+		fn on_sync(&self, _file: FileId) -> SyncOutcome {
+			if self.0.swap(false, Ordering::SeqCst) {
+				panic!("the sync died before it returned");
+			}
+			SyncOutcome::Honest
+		}
+	}
+
+	#[test]
+	fn a_sync_that_never_finishes_leaves_the_writer_unsynced() {
+		// a flush that died mid-sync proved nothing, so the next one must reach the device or a checkpoint
+		// trusts lost bytes.
+		let hooks = Arc::new(SyncDiesWhenArmed(AtomicBool::new(false)));
+		let fs = TestingFs::new(MemoryFs::new(), hooks.clone());
+		fs.mkdir(Path::new("/log")).unwrap();
+		let partition = Partition::create(
+			fs.clone(),
+			Clock::Mock(MockClock::from_millis(1_000)),
+			Path::new(DIR),
+			Config {
+				segment_bytes: ByteSize::from_bytes(4096),
+				segment_age: Duration::from_seconds_const(60),
+				index_interval: ByteSize::from_bytes(64),
+			},
+			BASE,
+			LogIndex::new(1),
+		)
+		.unwrap();
+		let writer = Writer::detached(fs.clone(), partition);
+		writer.commit(&record(0)).unwrap();
+		hooks.0.store(true, Ordering::SeqCst);
+		assert!(catch_unwind(AssertUnwindSafe(|| writer.flush())).is_err());
+		assert_eq!(writer.durable(), None);
+		let before = fs.calls();
+
+		writer.flush().unwrap();
+
+		assert!(fs.calls() > before, "the flush after a dead sync never reached the device");
+		assert_eq!(writer.durable(), Some(BASE));
 	}
 }

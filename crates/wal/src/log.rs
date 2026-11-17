@@ -55,7 +55,7 @@ where
 	}
 
 	fn head(&self) -> Result<Option<LogVersion>, WalError> {
-		Ok(self.with(0, |partition| partition.head())?)
+		Ok(self.read(0, |partition| partition.head())?)
 	}
 }
 
@@ -145,7 +145,7 @@ where
 		if base != LogVersion::ZERO {
 			return Ok(Some(base));
 		}
-		let head = self.with(0, |partition| partition.head())?;
+		let head = self.read(0, |partition| partition.head())?;
 		Ok(head.map(|_| Lsn::FIRST.into()))
 	}
 
