@@ -12,7 +12,7 @@ use std::{
 
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	completeness::CompletenessWriterRef,
 	error::NameKind,
 	interceptor::CatalogCacheInterceptor,
@@ -411,10 +411,11 @@ impl StandardEngine {
 		let mut query = self.begin_query(IdentityId::system())?;
 		catalog.reject_name_taken(
 			&mut Transaction::Query(&mut query),
-			namespace_id,
-			&Fragment::internal(name),
+			QualifiedName {
+				namespace: namespace_id,
+				name: &Fragment::internal(name),
+			},
 			NameKind::VirtualTable,
-			NameAllowed::default(),
 		)?;
 		catalog.register_vtable_user(def.clone())?;
 

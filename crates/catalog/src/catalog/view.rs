@@ -25,7 +25,10 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{
+		Catalog,
+		name::{NameAllowed, QualifiedName},
+	},
 	error::NameKind,
 	store::view::create::{
 		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorage, ViewToCreate as StoreViewToCreate,
@@ -47,6 +50,15 @@ pub struct ViewToCreate {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub storage: ViewStorage,
 	pub sort: Vec<ViewSortKey>,
+}
+
+impl ViewToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
@@ -255,10 +267,9 @@ impl Catalog {
 			} => Some(*queue),
 			_ => None,
 		};
-		self.reject_name_taken(
+		self.reject_name_taken_allowing(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
+			to_create.qualified(),
 			NameKind::View,
 			NameAllowed {
 				queue: owned_queue,
@@ -288,10 +299,9 @@ impl Catalog {
 			} => Some(*queue),
 			_ => None,
 		};
-		self.reject_name_taken(
+		self.reject_name_taken_allowing(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
+			to_create.qualified(),
 			NameKind::View,
 			NameAllowed {
 				queue: owned_queue,

@@ -26,7 +26,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::queue::create::{QueueColumnToCreate as StoreQueueColumnToCreate, QueueToCreate as StoreQueueToCreate},
 };
@@ -52,6 +52,15 @@ pub struct QueueToCreate {
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
 	pub time: TimeSource,
+}
+
+impl QueueToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<QueueColumnToCreate> for StoreQueueColumnToCreate {
@@ -252,13 +261,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::queue::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_queue(&self, txn: &mut AdminTransaction, to_create: QueueToCreate) -> Result<Queue, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Queue,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Queue)?;
 		let queue = CatalogStore::create_queue(txn, to_create.into())?;
 		txn.track_queue_created(queue.clone())?;
 

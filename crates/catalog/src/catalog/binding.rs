@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::binding::create::BindingToCreate as StoreBindingToCreate,
 };
@@ -245,10 +245,11 @@ impl Catalog {
 	) -> Result<Binding, ValueError> {
 		self.reject_name_taken(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&Fragment::internal(&to_create.name),
+			QualifiedName {
+				namespace: to_create.namespace,
+				name: &Fragment::internal(&to_create.name),
+			},
 			NameKind::Binding,
-			NameAllowed::default(),
 		)?;
 		if let Some(existing) = self.find_binding_by_name(
 			&mut Transaction::Admin(&mut *txn),

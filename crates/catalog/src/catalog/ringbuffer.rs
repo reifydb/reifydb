@@ -27,7 +27,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::ringbuffer::create::{
 		RingBufferColumnToCreate as StoreRingBufferColumnToCreate,
@@ -53,6 +53,15 @@ pub struct RingBufferToCreate {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+}
+
+impl RingBufferToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -272,10 +281,8 @@ impl Catalog {
 	) -> Result<RingBuffer, ValueError> {
 		self.reject_name_taken(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
+			to_create.qualified(),
 			NameKind::RingBuffer,
-			NameAllowed::default(),
 		)?;
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;

@@ -29,7 +29,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::series::create::{
 		SeriesColumnToCreate as StoreSeriesColumnToCreate, SeriesToCreate as StoreSeriesToCreate,
@@ -55,6 +55,15 @@ pub struct SeriesToCreate {
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
 	pub encoding: Option<SeriesEncoding>,
+}
+
+impl SeriesToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -289,13 +298,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SeriesToCreate,
 	) -> Result<Series, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Series,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Series)?;
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 

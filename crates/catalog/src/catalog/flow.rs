@@ -22,7 +22,10 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{
+		Catalog,
+		name::{NameAllowed, QualifiedName},
+	},
 	error::NameKind,
 	store::{flow::create::FlowToCreate as StoreFlowToCreate, sequence::flow as flow_sequence},
 };
@@ -32,6 +35,15 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub allowed: NameAllowed,
+}
+
+impl FlowToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {
@@ -311,10 +323,9 @@ impl Catalog {
 		to_create: FlowToCreate,
 		dag: FlowDag,
 	) -> Result<Flow, ValueError> {
-		self.reject_name_taken(
+		self.reject_name_taken_allowing(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
+			to_create.qualified(),
 			NameKind::Flow,
 			to_create.allowed,
 		)?;

@@ -4,7 +4,10 @@
 use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::{
-		flow::FlowToCreate, name::NameAllowed, namespace::NamespaceToCreate, view::ViewToCreate,
+		flow::FlowToCreate,
+		name::{NameAllowed, QualifiedName},
+		namespace::NamespaceToCreate,
+		view::ViewToCreate,
 		windowed_view_group::WindowedViewGroupToCreate,
 	},
 	error::{CatalogError, CatalogObjectKind, NameKind},
@@ -52,10 +55,11 @@ pub(crate) fn create_deferred_windowed_view_group(
 	}
 	services.catalog.reject_name_taken(
 		&mut Transaction::Admin(txn),
-		plan.namespace.id(),
-		&plan.group,
+		QualifiedName {
+			namespace: plan.namespace.id(),
+			name: &plan.group,
+		},
 		NameKind::WindowedViewGroup,
-		NameAllowed::default(),
 	)?;
 	let own: Option<Namespace> = if plan.members.iter().any(|member| member.namespace.is_none()) {
 		Some(services.catalog.create_namespace(

@@ -23,7 +23,7 @@ use tracing::instrument;
 use crate::{
 	CatalogStore,
 	cache::CatalogCache,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::{CatalogError, NameKind},
 };
 
@@ -304,10 +304,11 @@ impl Catalog {
 	) -> Result<Procedure, ValueError> {
 		self.reject_name_taken(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace(),
-			to_create.name(),
+			QualifiedName {
+				namespace: to_create.namespace(),
+				name: to_create.name(),
+			},
 			NameKind::Procedure,
-			NameAllowed::default(),
 		)?;
 		let procedure = CatalogStore::create_procedure(txn, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;

@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::handler::create::HandlerToCreate as StoreHandlerToCreate,
 };
@@ -26,6 +26,15 @@ pub struct HandlerToCreate {
 	pub namespace: NamespaceId,
 	pub variant: VariantRef,
 	pub body_source: String,
+}
+
+impl HandlerToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl Catalog {
@@ -205,13 +214,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: HandlerToCreate,
 	) -> Result<Handler, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Handler,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Handler)?;
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,

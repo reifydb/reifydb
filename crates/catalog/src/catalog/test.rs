@@ -14,7 +14,7 @@ use reifydb_value::{error::ValueError, fragment::Fragment};
 use tracing::instrument;
 
 use crate::{
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::sequence::system::SystemSequence,
 };
@@ -25,6 +25,15 @@ pub struct TestToCreate {
 	pub namespace: NamespaceId,
 	pub cases: Option<String>,
 	pub body: String,
+}
+
+impl TestToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl Catalog {
@@ -208,13 +217,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::test::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Test,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Test)?;
 		let id = SystemSequence::next_test_id(txn)?;
 
 		let test = Test {

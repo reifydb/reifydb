@@ -15,7 +15,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate,
 };
@@ -26,6 +26,15 @@ pub struct SumTypeToCreate {
 	pub namespace: NamespaceId,
 	pub variants: Vec<Variant>,
 	pub kind: SumTypeKind,
+}
+
+impl SumTypeToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<SumTypeToCreate> for StoreSumTypeToCreate {
@@ -227,10 +236,8 @@ impl Catalog {
 	) -> Result<SumType, ValueError> {
 		self.reject_name_taken(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
+			to_create.qualified(),
 			NameKind::EnumOrEvent,
-			NameAllowed::default(),
 		)?;
 		let def = CatalogStore::create_sumtype(txn, to_create.into())?;
 		txn.track_sumtype_created(def.clone())?;

@@ -11,7 +11,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::sink::create::SinkToCreate as StoreSinkToCreate,
 };
@@ -24,6 +24,15 @@ pub struct SinkToCreate {
 	pub source_name: String,
 	pub connector: String,
 	pub config: Vec<(String, String)>,
+}
+
+impl SinkToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<SinkToCreate> for StoreSinkToCreate {
@@ -129,13 +138,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::sink::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Sink,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Sink)?;
 		let sink = CatalogStore::create_sink(txn, to_create.into())?;
 		txn.track_sink_created(sink.clone())?;
 		Ok(sink)

@@ -11,6 +11,12 @@ use crate::{
 	error::{CatalogError, NameKind},
 };
 
+#[derive(Debug, Clone, Copy)]
+pub struct QualifiedName<'a> {
+	pub namespace: NamespaceId,
+	pub name: &'a Fragment,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NameAllowed {
 	pub queue: Option<QueueId>,
@@ -22,11 +28,23 @@ impl Catalog {
 	pub fn reject_name_taken(
 		&self,
 		txn: &mut Transaction<'_>,
-		namespace: NamespaceId,
-		name: &Fragment,
+		target: QualifiedName<'_>,
+		creating: NameKind,
+	) -> Result<(), ValueError> {
+		self.reject_name_taken_allowing(txn, target, creating, NameAllowed::default())
+	}
+
+	pub fn reject_name_taken_allowing(
+		&self,
+		txn: &mut Transaction<'_>,
+		target: QualifiedName<'_>,
 		creating: NameKind,
 		allowed: NameAllowed,
 	) -> Result<(), ValueError> {
+		let QualifiedName {
+			namespace,
+			name,
+		} = target;
 		let text = name.text();
 		let Some(existing) = self.find_name_holder(txn, namespace, text, creating, allowed)? else {
 			return Ok(());

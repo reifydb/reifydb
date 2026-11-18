@@ -28,7 +28,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -56,6 +56,15 @@ pub struct TableToCreate {
 	pub primary_key_columns: Option<Vec<String>>,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+}
+
+impl TableToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<TableColumnToCreate> for StoreTableColumnToCreate {
@@ -293,13 +302,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::table::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Table,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Table)?;
 		let pk_columns = to_create.primary_key_columns.clone();
 		let table = CatalogStore::create_table(txn, to_create.into())?;
 		self.finalize_created_table(txn, table, pk_columns)

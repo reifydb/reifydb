@@ -11,7 +11,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::NameKind,
 	store::source::create::SourceToCreate as StoreSourceToCreate,
 };
@@ -24,6 +24,15 @@ pub struct SourceToCreate {
 	pub config: Vec<(String, String)>,
 	pub target_namespace: NamespaceId,
 	pub target_name: String,
+}
+
+impl SourceToCreate {
+	pub fn qualified(&self) -> QualifiedName<'_> {
+		QualifiedName {
+			namespace: self.namespace,
+			name: &self.name,
+		}
+	}
 }
 
 impl From<SourceToCreate> for StoreSourceToCreate {
@@ -149,13 +158,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SourceToCreate,
 	) -> Result<Source, ValueError> {
-		self.reject_name_taken(
-			&mut Transaction::Admin(&mut *txn),
-			to_create.namespace,
-			&to_create.name,
-			NameKind::Source,
-			NameAllowed::default(),
-		)?;
+		self.reject_name_taken(&mut Transaction::Admin(&mut *txn), to_create.qualified(), NameKind::Source)?;
 		let source = CatalogStore::create_source(txn, to_create.into())?;
 		txn.track_source_created(source.clone())?;
 		Ok(source)

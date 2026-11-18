@@ -24,7 +24,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
-	catalog::{Catalog, name::NameAllowed},
+	catalog::{Catalog, name::QualifiedName},
 	error::{CatalogError, CatalogObjectKind, NameKind},
 	store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate,
 };
@@ -333,10 +333,11 @@ impl Catalog {
 		};
 		self.reject_name_taken(
 			&mut Transaction::Admin(&mut *txn),
-			to_create.parent_id,
-			&name,
+			QualifiedName {
+				namespace: to_create.parent_id,
+				name: &name,
+			},
 			NameKind::Namespace,
-			NameAllowed::default(),
 		)?;
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
 		txn.track_namespace_created(namespace.clone())?;
